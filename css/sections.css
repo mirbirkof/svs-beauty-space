@@ -147,8 +147,8 @@
 }
 
 @keyframes heroEntrance {
-  0%   { transform: scale(1.15); opacity: 0; filter: blur(8px); }
-  40%  { opacity: 0.8; filter: blur(2px); }
+  0%   { transform: scale(1.12); opacity: 0; filter: blur(6px); }
+  30%  { opacity: 1; filter: blur(1px); }
   100% { transform: scale(1.0); opacity: 1; filter: blur(0); }
 }
 
@@ -161,35 +161,36 @@
   100% { transform: scale(1.03); }
 }
 
-/* Layered overlay — more transparent in center to show photo */
+/* Layered overlay — transparent in center to show photo clearly */
 .hero__overlay {
   position: absolute;
   inset: 0;
   z-index: 1;
   background:
     radial-gradient(
-      ellipse 80% 60% at 60% 40%,
-      rgba(10, 9, 8, 0.15) 0%,
-      rgba(10, 9, 8, 0.4) 50%,
-      rgba(10, 9, 8, 0.75) 80%,
-      rgba(10, 9, 8, 0.92) 100%
+      ellipse 90% 70% at 65% 40%,
+      rgba(10, 9, 8, 0.0) 0%,
+      rgba(10, 9, 8, 0.1) 30%,
+      rgba(10, 9, 8, 0.35) 60%,
+      rgba(10, 9, 8, 0.75) 85%,
+      rgba(10, 9, 8, 0.9) 100%
     );
 }
 
-/* SILK LAYER — translucent, blurs away on scroll */
+/* SILK LAYER — soft translucent, dissolves on scroll */
 .hero__silk {
   position: absolute;
   inset: 0;
   z-index: 2;
   background: linear-gradient(
     135deg,
-    rgba(245, 240, 235, 0.08) 0%,
-    rgba(201, 169, 110, 0.04) 30%,
-    rgba(245, 240, 235, 0.06) 60%,
-    rgba(201, 169, 110, 0.03) 100%
+    rgba(245, 240, 235, 0.05) 0%,
+    rgba(201, 169, 110, 0.02) 40%,
+    rgba(245, 240, 235, 0.04) 70%,
+    transparent 100%
   );
-  backdrop-filter: blur(var(--silk-blur, 12px)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--silk-blur, 12px)) saturate(1.2);
+  backdrop-filter: blur(var(--silk-blur, 4px)) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--silk-blur, 4px)) saturate(1.1);
   opacity: var(--silk-opacity, 1);
   pointer-events: none;
   transition: none;

@@ -36,10 +36,10 @@
     function update() {
       var scrollY = window.pageYOffset;
       var vh = window.innerHeight;
-      // Silk dissolves in first 40% of viewport height
-      var progress = clamp(scrollY / (vh * 0.4), 0, 1);
+      // Silk dissolves in first 30% of viewport height
+      var progress = clamp(scrollY / (vh * 0.3), 0, 1);
 
-      var blur = lerp(12, 0, progress);
+      var blur = lerp(4, 0, progress);
       var opacity = lerp(1, 0, progress);
 
       silk.style.setProperty('--silk-blur', blur.toFixed(1) + 'px');
