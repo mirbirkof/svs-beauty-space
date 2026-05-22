@@ -1,16 +1,16 @@
 /* ═══════════════════════════════════════════════════════
-   SVS BEAUTY SPACE — Design System
-   Warm Cinematic Luxury · Editorial · Architectural
+   SVS BEAUTY SPACE — Design System v2
+   Vogue × Saint Laurent × Aman Editorial
    ═══════════════════════════════════════════════════════ */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  /* ── Palette — Warm Dark + Gold Accent ─────────────── */
-  --c-black:       #0A0908;
-  --c-dark:        #131110;
-  --c-dark-warm:   #1C1916;
-  --c-dark-soft:   #2A2520;
+  /* ── Palette ────────────────────────────────────────── */
+  --c-black:       #000000;
+  --c-dark:        #0A0908;
+  --c-dark-warm:   #111110;
+  --c-dark-soft:   #1A1918;
   --c-graphite:    #4A433C;
   --c-stone:       #8A8076;
   --c-sand:        #B8ADA0;
@@ -24,7 +24,7 @@
   --c-gold-muted:  #A08B60;
 
   /* ── Semantic ──────────────────────────────────────── */
-  --c-bg:          var(--c-dark);
+  --c-bg:          var(--c-black);
   --c-bg-light:    var(--c-warm-white);
   --c-surface:     var(--c-dark-warm);
   --c-text:        var(--c-warm-white);
@@ -33,21 +33,21 @@
   --c-accent:      var(--c-gold);
   --c-border:      rgba(201, 169, 110, 0.25);
   --c-border-light: rgba(201, 169, 110, 0.15);
-  --c-divider:     rgba(255, 255, 255, 0.06);
+  --c-divider:     rgba(255, 255, 255, 0.08);
 
-  /* ── Typography ────────────────────────────────────── */
+  /* ── Typography — Editorial Scale ──────────────────── */
   --ff-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --ff-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
 
-  --f-display: clamp(2.8rem, 6vw, 5.5rem);
-  --f-h1:      clamp(2.2rem, 4.5vw, 4rem);
-  --f-h2:      clamp(1.6rem, 3vw, 2.8rem);
+  --f-display: clamp(3.5rem, 10vw, 9rem);
+  --f-h1:      clamp(2.5rem, 6vw, 5rem);
+  --f-h2:      clamp(1.8rem, 3.5vw, 3.2rem);
   --f-h3:      clamp(1.2rem, 1.8vw, 1.6rem);
   --f-h4:      clamp(1rem, 1.2vw, 1.2rem);
   --f-body:    clamp(0.92rem, 1vw, 1.05rem);
   --f-body-sm: clamp(0.82rem, 0.88vw, 0.9rem);
   --f-caption: clamp(0.7rem, 0.76vw, 0.78rem);
-  --f-overline: 0.65rem;
+  --f-overline: 0.68rem;
 
   --fw-light:    300;
   --fw-regular:  400;
@@ -69,6 +69,7 @@
   /* ── Motion ────────────────────────────────────────── */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-expo: cubic-bezier(0.19, 1, 0.22, 1);
   --t-fast: 0.3s;
   --t-normal: 0.6s;
   --t-slow: 1s;
@@ -92,6 +93,13 @@ body {
   color: var(--c-text);
   background: var(--c-bg);
   overflow-x: hidden;
+  cursor: none;
+}
+
+/* Restore default cursor on touch devices */
+@media (pointer: coarse) {
+  body { cursor: auto; }
+  .cursor { display: none !important; }
 }
 
 ::selection {
@@ -100,16 +108,26 @@ body {
 }
 
 img, video { max-width: 100%; height: auto; display: block; }
-a { color: inherit; text-decoration: none; }
-button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+a { color: inherit; text-decoration: none; cursor: none; }
+button { font-family: inherit; cursor: none; border: none; background: none; color: inherit; }
 
-/* ── Typography ────────────────────────────────────────── */
+@media (pointer: coarse) {
+  a, button { cursor: auto; }
+}
+
+/* ── Focus styles ─────────────────────────────────────── */
+:focus-visible {
+  outline: 1px solid var(--c-gold);
+  outline-offset: 3px;
+}
+
+/* ── Typography — Editorial ───────────────────────────── */
 .t-display {
   font-family: var(--ff-serif);
   font-size: var(--f-display);
   font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
   text-transform: uppercase;
 }
 
@@ -117,8 +135,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   font-family: var(--ff-serif);
   font-size: var(--f-h1);
   font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
   text-transform: uppercase;
 }
 
@@ -126,8 +144,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   font-family: var(--ff-serif);
   font-size: var(--f-h2);
   font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: 0;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
   text-transform: uppercase;
 }
 
@@ -219,10 +237,27 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   text-transform: uppercase;
   border: 1px solid var(--c-border);
   transition: all var(--t-fast) var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Button hover ripple */
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--c-gold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s var(--ease-expo);
+  z-index: -1;
+}
+
+.btn:hover::after {
+  transform: scaleX(1);
 }
 
 .btn:hover {
-  background: var(--c-gold);
   color: var(--c-dark);
   border-color: var(--c-gold);
 }
@@ -233,8 +268,11 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   border-color: var(--c-gold);
 }
 
-.btn--filled:hover {
+.btn--filled::after {
   background: var(--c-gold-soft);
+}
+
+.btn--filled:hover {
   border-color: var(--c-gold-soft);
 }
 
@@ -265,24 +303,75 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   background: var(--c-gold);
 }
 
+/* ── CUSTOM CURSOR ────────────────────────────────────── */
+.cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  pointer-events: none;
+  mix-blend-mode: difference;
+}
+
+.cursor__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-white);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s var(--ease), height 0.3s var(--ease), opacity 0.3s;
+}
+
+.cursor__ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.4s var(--ease), height 0.4s var(--ease), border-color 0.3s;
+}
+
+/* Cursor states */
+body.cursor--hover .cursor__dot {
+  width: 12px;
+  height: 12px;
+  background: var(--c-gold);
+}
+body.cursor--hover .cursor__ring {
+  width: 60px;
+  height: 60px;
+  border-color: var(--c-gold);
+}
+
+body.cursor--drag .cursor__ring {
+  width: 24px;
+  height: 24px;
+}
+
 /* ── GRAIN OVERLAY ─────────────────────────────────────── */
 .grain {
   position: fixed;
-  inset: 0;
+  inset: -50%;
   z-index: 9000;
   pointer-events: none;
-  opacity: 0.035;
+  opacity: 0.06;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
-  background-size: 180px 180px;
-  animation: grainShift 0.5s steps(3) infinite;
+  background-size: 100px 100px;
+  animation: grainShift 0.4s steps(6) infinite;
 }
 
 @keyframes grainShift {
   0%   { transform: translate(0, 0); }
-  33%  { transform: translate(-5%, -5%); }
-  66%  { transform: translate(5%, 3%); }
+  16%  { transform: translate(-5%, -5%); }
+  33%  { transform: translate(3%, 2%); }
+  50%  { transform: translate(-2%, 5%); }
+  66%  { transform: translate(5%, -3%); }
+  83%  { transform: translate(-3%, 1%); }
   100% { transform: translate(0, 0); }
 }
 
@@ -305,33 +394,75 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   animation: particleFloat linear infinite;
 }
 
-.particle--1 { left: 10%; animation-duration: 18s; animation-delay: 0s; }
-.particle--2 { left: 25%; animation-duration: 22s; animation-delay: 3s; }
-.particle--3 { left: 50%; animation-duration: 16s; animation-delay: 6s; }
-.particle--4 { left: 70%; animation-duration: 20s; animation-delay: 2s; }
-.particle--5 { left: 85%; animation-duration: 24s; animation-delay: 8s; }
-.particle--6 { left: 40%; animation-duration: 19s; animation-delay: 5s; }
-
 @keyframes particleFloat {
   0% {
-    transform: translateY(100vh) scale(0);
+    transform: translateY(100vh) translateX(0) scale(0);
     opacity: 0;
   }
-  10% {
-    opacity: 0.4;
-    transform: translateY(80vh) scale(1);
+  5% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.5;
+    transform: translateY(70vh) translateX(10px) scale(1);
   }
   50% {
-    opacity: 0.15;
+    opacity: 0.2;
+    transform: translateY(40vh) translateX(-15px) scale(0.8);
   }
-  90% {
-    opacity: 0.3;
-    transform: translateY(5vh) scale(0.5);
+  85% {
+    opacity: 0.4;
+    transform: translateY(10vh) translateX(8px) scale(0.6);
   }
   100% {
-    transform: translateY(-5vh) scale(0);
+    transform: translateY(-5vh) translateX(0) scale(0);
     opacity: 0;
   }
+}
+
+/* ── MARQUEE TICKER ────────────────────────────────────── */
+.marquee {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  border-top: 1px solid var(--c-divider);
+  border-bottom: 1px solid var(--c-divider);
+  padding: var(--s-4) 0;
+  background: var(--c-black);
+}
+
+.marquee__track {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  white-space: nowrap;
+  animation: marqueeScroll 30s linear infinite;
+  width: max-content;
+}
+
+.marquee__track span {
+  font-family: var(--ff-serif);
+  font-size: clamp(0.9rem, 1.5vw, 1.2rem);
+  font-weight: 400;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+.marquee__dot {
+  width: 4px !important;
+  height: 4px !important;
+  border-radius: 50%;
+  background: var(--c-gold) !important;
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+}
+
+@keyframes marqueeScroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 /* ── Utility ───────────────────────────────────────────── */

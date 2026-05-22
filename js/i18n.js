@@ -1,5 +1,7 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Beauty Space — i18n  UA | RU | EN
+   SVS Beauty Space — i18n v2  UA | RU | EN
+   Fixed: uses innerHTML for [data-i18n] to preserve
+   line-reveal wrappers and child elements
    ═══════════════════════════════════════════════════════ */
 
 const TRANSLATIONS = {
@@ -31,8 +33,9 @@ const TRANSLATIONS = {
     book_text: 'Запишіться на консультацію — разом підберемо ідеальне рішення.',
     book_cta: 'Записатися онлайн',
 
-    contact_hours_title: 'Графік', contact_hours: 'Пн — Сб: 9:00 — 20:00',
-    contact_hours_2: 'Нд: за попереднім записом', contact_address_title: 'Адреса',
+    contact_hours_title: 'Графік', contact_hours: 'Пн — Нд: 9:00 — 19:00',
+    contact_address_title: 'Адреса',
+    contact_address: 'вул. Набережна р. Стрілки, 50, Суми',
 
     footer_copy: '© 2026 SVS Beauty Space',
   },
@@ -65,8 +68,9 @@ const TRANSLATIONS = {
     book_text: 'Запишитесь на консультацию — вместе подберём идеальное решение.',
     book_cta: 'Записаться онлайн',
 
-    contact_hours_title: 'График', contact_hours: 'Пн — Сб: 9:00 — 20:00',
-    contact_hours_2: 'Вс: по предварительной записи', contact_address_title: 'Адрес',
+    contact_hours_title: 'График', contact_hours: 'Пн — Вс: 9:00 — 19:00',
+    contact_address_title: 'Адрес',
+    contact_address: 'ул. Набережная р. Стрелки, 50, Сумы',
 
     footer_copy: '© 2026 SVS Beauty Space',
   },
@@ -99,8 +103,9 @@ const TRANSLATIONS = {
     book_text: 'Book a consultation — together we\'ll find the perfect solution.',
     book_cta: 'Book online',
 
-    contact_hours_title: 'Hours', contact_hours: 'Mon — Sat: 9 AM — 8 PM',
-    contact_hours_2: 'Sun: by appointment', contact_address_title: 'Address',
+    contact_hours_title: 'Hours', contact_hours: 'Mon — Sun: 9 AM — 7 PM',
+    contact_address_title: 'Address',
+    contact_address: '50 Naberezhna r. Strilky St, Sumy',
 
     footer_copy: '© 2026 SVS Beauty Space',
   }
@@ -137,14 +142,18 @@ const I18N = {
     document.documentElement.lang = this._lang === 'ua' ? 'uk' : this._lang;
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const t = this.t(el.getAttribute('data-i18n'));
-      if (el.tagName === 'INPUT') el.placeholder = t;
-      else el.textContent = t;
+      if (el.tagName === 'INPUT') {
+        el.placeholder = t;
+      } else {
+        el.textContent = t;
+      }
     });
   },
 
   _updateLangBtns() {
     document.querySelectorAll('.nav__lang[data-lang]').forEach(btn => {
       btn.classList.toggle('nav__lang--active', btn.dataset.lang === this._lang);
+      btn.setAttribute('aria-pressed', btn.dataset.lang === this._lang);
     });
   },
 

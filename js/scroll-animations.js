@@ -1,15 +1,13 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Beauty Space — Premium Scroll Animation System
-   Apple x Aman x Saint Laurent
+   SVS Beauty Space — Scroll Animation System v2
+   Vogue × Saint Laurent × Aman
 
-   Pure vanilla JS. No dependencies.
-   IntersectionObserver + rAF + scroll events.
-   Each effect is a standalone function with kill switch.
+   Fixed: parallax/heroZoom conflict, rv+sticky overlap,
+   i18n-safe text reveals, counter threshold, cursor
    ═══════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
-  /* ── Globals & Utilities ─────────────────────────────── */
   var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var reducedMotion = prefersReducedMotion.matches;
 
@@ -43,12 +41,12 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     1. PARALLAX IMAGES
+     1. PARALLAX — only about__media, NOT hero (hero has its own CSS anim)
      ═══════════════════════════════════════════════════════ */
   function initParallax() {
     if (reducedMotion) return function () {};
 
-    var elements = document.querySelectorAll('.about__media img, .hero__bg img');
+    var elements = document.querySelectorAll('.about__media img');
     if (!elements.length) return function () {};
 
     elements.forEach(function (img) {
@@ -64,7 +62,7 @@
         if (rect.bottom < -100 || rect.top > vh + 100) return;
 
         var centerOffset = (rect.top + rect.height / 2 - vh / 2) / vh;
-        var translateY = centerOffset * -15;
+        var translateY = centerOffset * -12;
 
         img.style.transform = 'translate3d(0,' + translateY + '%,0) scale(1.08)';
       });
@@ -77,46 +75,7 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     2. STICKY REVEAL SECTIONS
-     ═══════════════════════════════════════════════════════ */
-  function initStickyReveal() {
-    if (reducedMotion) return function () {};
-
-    var containers = document.querySelectorAll('.about__text, .contact__cta, .contact__info');
-    if (!containers.length) return function () {};
-
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-
-        var children = entry.target.querySelectorAll('.t-overline, .t-h2, .t-h3, .t-display, .t-body-sm, .t-body, .link-arrow, .btn, .t-caption, p');
-        var delay = 0;
-
-        children.forEach(function (child) {
-          if (child.classList.contains('sticky-reveal')) return;
-          child.classList.add('sticky-reveal');
-          child.setAttribute('data-delay', String(Math.min(delay, 5)));
-          void child.offsetHeight;
-          setTimeout(function () {
-            child.classList.add('is-visible');
-          }, 50 + delay * 100);
-          delay++;
-        });
-
-        observer.unobserve(entry.target);
-      });
-    }, {
-      threshold: 0.15,
-      rootMargin: '0px 0px -60px 0px'
-    });
-
-    containers.forEach(function (el) { observer.observe(el); });
-    return function () { observer.disconnect(); };
-  }
-
-
-  /* ═══════════════════════════════════════════════════════
-     3. SMOOTH COUNTER ANIMATION
+     2. SMOOTH COUNTER ANIMATION — fixed threshold
      ═══════════════════════════════════════════════════════ */
   function initCounters() {
     if (reducedMotion) return function () {};
@@ -127,12 +86,11 @@
     function animateCounter(el) {
       var raw = el.textContent.trim();
       var match = raw.match(/^(\d+)(\D*)$/);
-
       if (!match) return;
 
       var target = parseInt(match[1], 10);
       var suffix = match[2] || '';
-      var duration = 2000;
+      var duration = 2200;
       var startTime = null;
 
       function easeOutQuart(t) {
@@ -166,7 +124,8 @@
         observer.unobserve(entry.target);
       });
     }, {
-      threshold: 0.5
+      threshold: 0.15,
+      rootMargin: '0px 0px -30px 0px'
     });
 
     statNums.forEach(function (el) { observer.observe(el); });
@@ -175,96 +134,17 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     4. TEXT LINE REVEAL
-     ═══════════════════════════════════════════════════════ */
-  function initTextLineReveal() {
-    if (reducedMotion) return function () {};
-
-    var headings = document.querySelectorAll('.t-display, .t-h2');
-    if (!headings.length) return function () {};
-
-    headings.forEach(function (heading) {
-      if (heading.querySelector('.line-reveal')) return;
-
-      var children = heading.childNodes;
-      var lines = [];
-      var currentLine = [];
-
-      children.forEach(function (node) {
-        if (node.nodeName === 'BR') {
-          if (currentLine.length) lines.push(currentLine);
-          currentLine = [];
-        } else {
-          currentLine.push(node.cloneNode(true));
-        }
-      });
-      if (currentLine.length) lines.push(currentLine);
-
-      if (lines.length <= 1) {
-        var wrapper = document.createElement('span');
-        wrapper.className = 'line-reveal';
-        var inner = document.createElement('span');
-        inner.className = 'line-reveal__inner';
-        while (heading.firstChild) {
-          inner.appendChild(heading.firstChild);
-        }
-        wrapper.appendChild(inner);
-        heading.appendChild(wrapper);
-      } else {
-        heading.innerHTML = '';
-        lines.forEach(function (lineNodes, i) {
-          var wrapper = document.createElement('span');
-          wrapper.className = 'line-reveal';
-          wrapper.style.display = 'block';
-          var inner = document.createElement('span');
-          inner.className = 'line-reveal__inner';
-          inner.style.display = 'inline-block';
-          inner.style.transitionDelay = (i * 0.12) + 's';
-          lineNodes.forEach(function (node) {
-            inner.appendChild(node);
-          });
-          wrapper.appendChild(inner);
-          heading.appendChild(wrapper);
-        });
-      }
-    });
-
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        var reveals = entry.target.querySelectorAll('.line-reveal');
-        reveals.forEach(function (el) {
-          el.classList.add('is-revealed');
-        });
-        observer.unobserve(entry.target);
-      });
-    }, {
-      threshold: 0.2,
-      rootMargin: '0px 0px -40px 0px'
-    });
-
-    headings.forEach(function (h) { observer.observe(h); });
-    return function () { observer.disconnect(); };
-  }
-
-
-  /* ═══════════════════════════════════════════════════════
-     5. IMAGE SCALE ON SCROLL
+     3. IMAGE SCALE ON SCROLL — excludes rv-img (no conflict)
      ═══════════════════════════════════════════════════════ */
   function initImageScale() {
     if (reducedMotion) return function () {};
 
-    var images = document.querySelectorAll('.svc-card__img img, .rv-img img');
+    var images = document.querySelectorAll('.svc-card__img img');
     if (!images.length) return function () {};
-
-    images.forEach(function (img) {
-      var parent = img.closest('.rv-img, .svc-card__img');
-      if (parent) parent.classList.add('img-scale-wrap');
-    });
 
     function update() {
       images.forEach(function (img) {
-        var parent = img.closest('.img-scale-wrap');
+        var parent = img.closest('.svc-card__img');
         if (!parent) return;
 
         var rect = parent.getBoundingClientRect();
@@ -273,7 +153,7 @@
         if (rect.bottom < 0 || rect.top > vh) return;
 
         var progress = clamp(1 - (rect.top - vh * 0.2) / (vh * 0.6), 0, 1);
-        var scale = lerp(1.05, 1.0, progress);
+        var scale = lerp(1.08, 1.0, progress);
 
         img.style.transform = 'scale(' + scale.toFixed(4) + ')';
       });
@@ -286,7 +166,7 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     6. SCROLL PROGRESS INDICATOR
+     4. SCROLL PROGRESS INDICATOR
      ═══════════════════════════════════════════════════════ */
   function initScrollProgress() {
     if (reducedMotion) return function () {};
@@ -315,7 +195,7 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     7. SECTION FADE TRANSITIONS
+     5. SECTION FADE TRANSITIONS
      ═══════════════════════════════════════════════════════ */
   function initSectionFade() {
     if (reducedMotion) return function () {};
@@ -368,11 +248,75 @@
 
 
   /* ═══════════════════════════════════════════════════════
-     8. MAGNETIC CURSOR EFFECT
+     6. CUSTOM CURSOR FOLLOWER (lerp-smoothed)
+     ═══════════════════════════════════════════════════════ */
+  function initCursorFollower() {
+    if (reducedMotion) return function () {};
+    if (!window.matchMedia('(pointer: fine)').matches) return function () {};
+
+    var cursor = document.querySelector('.cursor');
+    var dot = cursor && cursor.querySelector('.cursor__dot');
+    var ring = cursor && cursor.querySelector('.cursor__ring');
+    if (!cursor || !dot || !ring) return function () {};
+
+    var mx = -100, my = -100;
+    var dx = -100, dy = -100;
+    var rx = -100, ry = -100;
+    var raf;
+
+    function onMove(e) {
+      mx = e.clientX;
+      my = e.clientY;
+    }
+
+    function animate() {
+      dx = lerp(dx, mx, 0.25);
+      dy = lerp(dy, my, 0.25);
+      rx = lerp(rx, mx, 0.12);
+      ry = lerp(ry, my, 0.12);
+
+      dot.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) translate(-50%,-50%)';
+      ring.style.transform = 'translate(' + rx.toFixed(1) + 'px,' + ry.toFixed(1) + 'px) translate(-50%,-50%)';
+
+      raf = requestAnimationFrame(animate);
+    }
+
+    // Hover states
+    var interactiveEls = document.querySelectorAll('a, button, .transform, .svc-card, [data-transform]');
+    function onEnter() { document.body.classList.add('cursor--hover'); }
+    function onLeave() { document.body.classList.remove('cursor--hover'); }
+
+    interactiveEls.forEach(function (el) {
+      el.addEventListener('mouseenter', onEnter);
+      el.addEventListener('mouseleave', onLeave);
+    });
+
+    // Drag state
+    var transforms = document.querySelectorAll('[data-transform]');
+    transforms.forEach(function (t) {
+      t.addEventListener('mousedown', function () { document.body.classList.add('cursor--drag'); });
+    });
+    window.addEventListener('mouseup', function () { document.body.classList.remove('cursor--drag'); });
+
+    window.addEventListener('mousemove', onMove);
+    raf = requestAnimationFrame(animate);
+
+    return function () {
+      window.removeEventListener('mousemove', onMove);
+      cancelAnimationFrame(raf);
+      interactiveEls.forEach(function (el) {
+        el.removeEventListener('mouseenter', onEnter);
+        el.removeEventListener('mouseleave', onLeave);
+      });
+    };
+  }
+
+
+  /* ═══════════════════════════════════════════════════════
+     7. MAGNETIC CURSOR EFFECT
      ═══════════════════════════════════════════════════════ */
   function initMagneticCursor() {
     if (reducedMotion) return function () {};
-
     if (!window.matchMedia('(pointer: fine)').matches) return function () {};
 
     var buttons = document.querySelectorAll('.btn, .link-arrow, .nav__link, .nav__lang, .swiper-btn');
@@ -420,19 +364,51 @@
 
 
   /* ═══════════════════════════════════════════════════════
+     8. HORIZONTAL SECTION SLIDE (sections slide in from sides)
+     ═══════════════════════════════════════════════════════ */
+  function initHorizontalReveal() {
+    if (reducedMotion) return function () {};
+
+    var targets = document.querySelectorAll('.results__slider, .about__media');
+    if (!targets.length) return function () {};
+
+    targets.forEach(function (el) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(-60px)';
+      el.style.transition = 'opacity 1.2s cubic-bezier(0.22,1,0.36,1), transform 1.2s cubic-bezier(0.22,1,0.36,1)';
+    });
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateX(0)';
+        observer.unobserve(entry.target);
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: '0px 0px -60px 0px'
+    });
+
+    targets.forEach(function (el) { observer.observe(el); });
+    return function () { observer.disconnect(); };
+  }
+
+
+  /* ═══════════════════════════════════════════════════════
      ORCHESTRATOR
      ═══════════════════════════════════════════════════════ */
   var activeEffects = {};
 
   var effects = {
-    parallax:       initParallax,
-    stickyReveal:   initStickyReveal,
-    counters:       initCounters,
-    textLineReveal: initTextLineReveal,
-    imageScale:     initImageScale,
-    scrollProgress: initScrollProgress,
-    sectionFade:    initSectionFade,
-    magneticCursor: initMagneticCursor
+    parallax:         initParallax,
+    counters:         initCounters,
+    imageScale:       initImageScale,
+    scrollProgress:   initScrollProgress,
+    sectionFade:      initSectionFade,
+    cursorFollower:   initCursorFollower,
+    magneticCursor:   initMagneticCursor,
+    horizontalReveal: initHorizontalReveal
   };
 
   function initScrollAnimations() {
@@ -469,7 +445,6 @@
     activeEffects = {};
   }
 
-  /* ── Public API ─────────────────────────────────────── */
   window.SVSScroll = {
     init: initScrollAnimations,
     toggle: toggleEffect,
@@ -477,7 +452,6 @@
     effects: Object.keys(effects)
   };
 
-  /* ── Auto-init on DOMContentLoaded ──────────────────── */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initScrollAnimations);
   } else {
