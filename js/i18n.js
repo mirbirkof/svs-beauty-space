@@ -12,7 +12,7 @@ const TRANSLATIONS = {
 
     hero_line1: 'Краса,', hero_line2: 'яка відчувається',
     hero_sub: 'Преміальний простір краси та естетики',
-    hero_cta: 'Записатися',
+    hero_cta: 'Записатися', hero_shop: 'Магазин',
 
     svc_overline: 'Послуги', svc_title: 'Індивідуальна краса у деталях',
 
@@ -48,7 +48,7 @@ const TRANSLATIONS = {
 
     hero_line1: 'Красота,', hero_line2: 'которая чувствуется',
     hero_sub: 'Премиальное пространство красоты и эстетики',
-    hero_cta: 'Записаться',
+    hero_cta: 'Записаться', hero_shop: 'Магазин',
 
     svc_overline: 'Услуги', svc_title: 'Индивидуальная красота в деталях',
 
@@ -84,7 +84,7 @@ const TRANSLATIONS = {
 
     hero_line1: 'Beauty', hero_line2: 'that is felt',
     hero_sub: 'A premium space of beauty and aesthetics',
-    hero_cta: 'Book Now',
+    hero_cta: 'Book Now', hero_shop: 'Shop',
 
     svc_overline: 'Services', svc_title: 'Individual beauty in details',
 

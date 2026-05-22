@@ -257,6 +257,13 @@
   max-width: 400px;
 }
 
+.hero__buttons {
+  display: flex;
+  gap: var(--s-4);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .hero__scroll {
   position: absolute;
   bottom: var(--s-8);

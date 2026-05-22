@@ -285,6 +285,21 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   box-shadow: 0 0 40px rgba(201, 169, 110, 0.2);
 }
 
+.btn--shop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  background: transparent;
+  color: var(--c-warm-white);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.btn--shop svg { flex-shrink: 0; }
+.btn--shop:hover {
+  border-color: var(--c-gold);
+  color: var(--c-gold);
+  box-shadow: 0 0 30px rgba(201, 169, 110, 0.12);
+}
+
 .link-arrow {
   display: inline-flex;
   align-items: center;
