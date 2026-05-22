@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Beauty Space — App
+   SVS Beauty Space — App (Compact Premium)
    ═══════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -77,6 +77,40 @@
     });
   }
 
+  /* ── Swiper init ────────────────────────────────────── */
+  function initSwiper() {
+    if (typeof Swiper === 'undefined') return;
+
+    new Swiper('#servicesSwiper', {
+      slidesPerView: 1.15,
+      spaceBetween: 20,
+      speed: 800,
+      grabCursor: true,
+      pagination: {
+        el: '#svcPagination',
+        clickable: true,
+      },
+      navigation: {
+        prevEl: '#svcPrev',
+        nextEl: '#svcNext',
+      },
+      breakpoints: {
+        480: {
+          slidesPerView: 1.5,
+          spaceBetween: 24,
+        },
+        768: {
+          slidesPerView: 2.3,
+          spaceBetween: 28,
+        },
+        1200: {
+          slidesPerView: 3.2,
+          spaceBetween: 32,
+        },
+      },
+    });
+  }
+
   /* ── Smooth anchors ─────────────────────────────────── */
   function initAnchors() {
     document.querySelectorAll('a[href^="#"]').forEach(a => {
@@ -96,6 +130,7 @@
     initReveal();
     initNav();
     initTransforms();
+    initSwiper();
     initAnchors();
   });
 })();

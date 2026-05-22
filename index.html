@@ -4,17 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SVS Beauty Space</title>
-  <meta name="description" content="SVS Beauty Space — преміальний простір краси та естетики. Фарбування, відновлення, кератин. Італійська косметика Raywell.">
+  <meta name="description" content="SVS Beauty Space — premium beauty and aesthetics. Colouring, restoration, keratin. Italian Raywell cosmetics.">
   <meta name="theme-color" content="#131110">
 
   <meta property="og:title" content="SVS Beauty Space">
-  <meta property="og:description" content="Краса, яка відчувається">
+  <meta property="og:description" content="Beauty that is felt">
   <meta property="og:type" content="website">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/animations.css">
   <link rel="stylesheet" href="css/sections.css">
@@ -22,7 +23,20 @@
 </head>
 <body>
 
-  <!-- ═══ NAV ═══ -->
+  <!-- Grain overlay (global) -->
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Floating particles (global) -->
+  <div class="particles" aria-hidden="true">
+    <span class="particle particle--1"></span>
+    <span class="particle particle--2"></span>
+    <span class="particle particle--3"></span>
+    <span class="particle particle--4"></span>
+    <span class="particle particle--5"></span>
+    <span class="particle particle--6"></span>
+  </div>
+
+  <!-- NAV -->
   <header class="nav" id="nav">
     <div class="nav__inner container">
       <a href="#" class="nav__logo">
@@ -31,10 +45,9 @@
       </a>
 
       <nav class="nav__links" id="navLinks">
-        <a href="#about" class="nav__link" data-i18n="nav_about">Про нас</a>
         <a href="#services" class="nav__link" data-i18n="nav_services">Послуги</a>
-        <a href="#master" class="nav__link" data-i18n="nav_specialist">Експерти</a>
-        <a href="#space" class="nav__link" data-i18n="nav_atmosphere">Простір</a>
+        <a href="#results" class="nav__link" data-i18n="nav_results">Результати</a>
+        <a href="#about" class="nav__link" data-i18n="nav_about">Про нас</a>
         <a href="#contact" class="nav__link" data-i18n="nav_contact">Контакти</a>
       </nav>
 
@@ -44,7 +57,7 @@
           <button class="nav__lang" data-lang="en">EN</button>
           <button class="nav__lang" data-lang="ru">RU</button>
         </div>
-        <a href="#booking" class="btn nav__cta" data-i18n="nav_book">Записатися</a>
+        <a href="#contact" class="btn nav__cta" data-i18n="nav_book">Записатися</a>
         <button class="nav__burger" id="navBurger" aria-label="Menu">
           <span></span><span></span>
         </button>
@@ -52,131 +65,126 @@
     </div>
   </header>
 
-  <!-- ═══ HERO ═══ -->
+  <!-- 1. HERO — fullscreen background image -->
   <section class="hero" id="hero">
-    <div class="hero__inner container">
-      <div class="hero__text">
-        <h1 class="hero__title t-display rv rv--up">
-          <span data-i18n="hero_line1">Краса,</span><br>
-          <span data-i18n="hero_line2">яка відчувається</span>
-        </h1>
-        <p class="hero__sub rv rv--fade rv--d2" data-i18n="hero_sub">Преміальний простір краси та естетики</p>
-        <a href="#booking" class="btn rv rv--d3" data-i18n="hero_cta">Записатися</a>
-      </div>
-      <div class="hero__media rv-img rv--d1">
-        <img src="img/hero.jpg" alt="" loading="eager">
-      </div>
+    <div class="hero__bg">
+      <img src="img/hero.jpg" alt="" loading="eager">
+    </div>
+    <div class="hero__overlay"></div>
+    <div class="hero__content container">
+      <p class="hero__overline t-overline rv rv--fade">SVS Beauty Space</p>
+      <h1 class="hero__title t-display rv rv--up">
+        <span data-i18n="hero_line1">Краса,</span><br>
+        <span data-i18n="hero_line2">яка відчувається</span>
+      </h1>
+      <p class="hero__sub rv rv--fade rv--d2" data-i18n="hero_sub">Преміальний простір краси та естетики</p>
+      <a href="#contact" class="btn btn--filled rv rv--d3" data-i18n="hero_cta">Записатися</a>
     </div>
     <div class="hero__scroll">
       <svg width="16" height="24" viewBox="0 0 16 24" fill="none"><path d="M8 0v20m0 0l6-6m-6 6l-6-6" stroke="currentColor" stroke-width="1.5"/></svg>
     </div>
   </section>
 
-  <!-- ═══ SPACE (Atmosphere) ═══ -->
-  <section class="split split--img-left" id="space">
-    <div class="split__media rv-img">
-      <img src="img/atm-main.jpg" alt="SVS Beauty Space interior" loading="lazy">
+  <!-- 2. SERVICES — Swiper horizontal carousel -->
+  <section class="services" id="services">
+    <div class="services__header container">
+      <p class="t-overline rv" data-i18n="svc_overline">Послуги</p>
+      <h2 class="t-h2 rv rv--d1" data-i18n="svc_title">Індивідуальна краса у деталях</h2>
     </div>
-    <div class="split__content">
-      <div class="split__text container">
-        <p class="t-overline rv" data-i18n="space_overline">Простір</p>
-        <h2 class="t-h2 rv rv--d1" data-i18n="space_title">Місце, де час працює на вас</h2>
-        <p class="t-body-sm rv rv--d2" style="color: var(--c-text-soft); max-width: var(--max-text);" data-i18n="space_text">Архітектура, світло та деталі створені для вашого комфорту та відновлення.</p>
-        <a href="#" class="link-arrow rv rv--d3" data-i18n="space_cta">Дослідити простір</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ SERVICES ═══ -->
-  <section class="split split--img-right" id="services">
-    <div class="split__content">
-      <div class="split__text container">
-        <p class="t-overline rv" data-i18n="svc_overline">Послуги</p>
-        <h2 class="t-h2 rv rv--d1" data-i18n="svc_title">Індивідуальна краса у деталях</h2>
-        <p class="t-body-sm rv rv--d2" style="color: var(--c-text-soft); max-width: var(--max-text);" data-i18n="svc_text">Персоналізовані протоколи для вашої природної естетики.</p>
-        <a href="#rituals" class="link-arrow rv rv--d3" data-i18n="svc_cta">Дивитися послуги</a>
-      </div>
-    </div>
-    <div class="split__media rv-img">
-      <img src="img/svc-color.jpg" alt="Hair coloring process" loading="lazy">
-    </div>
-  </section>
-
-  <!-- ═══ RITUALS (Service Detail) ═══ -->
-  <section class="rituals" id="rituals">
-    <div class="container">
-      <div class="rituals__grid">
-        <article class="rit rv rv--d1">
-          <div class="rit__img rv-img">
-            <img src="img/svc-color.jpg" alt="Coloring" loading="lazy">
+    <div class="services__carousel">
+      <div class="swiper" id="servicesSwiper">
+        <div class="swiper-wrapper">
+          <!-- Card 1: Coloring -->
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-color.jpg" alt="Coloring" loading="lazy">
+              </div>
+              <div class="svc-card__body">
+                <h3 class="t-h3" data-i18n="rit_color_title">Фарбування</h3>
+                <p class="t-body-sm" data-i18n="rit_color_text">Блонд, балаяж, омбре. Авторська техніка Foiled Cashmere.</p>
+              </div>
+            </article>
           </div>
-          <div class="rit__body">
-            <h3 class="t-h3" data-i18n="rit_color_title">Фарбування</h3>
-            <p class="t-body-sm" style="color: var(--c-text-soft);" data-i18n="rit_color_text">Блонд, балаяж, омбре. Авторська техніка Foiled Cashmere.</p>
+          <!-- Card 2: Restoration -->
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-care.jpg" alt="Restoration" loading="lazy">
+              </div>
+              <div class="svc-card__body">
+                <h3 class="t-h3" data-i18n="rit_care_title">Відновлення</h3>
+                <p class="t-body-sm" data-i18n="rit_care_text">Кератин, нанопластика, ботокс. Глибока реконструкція структури.</p>
+              </div>
+            </article>
           </div>
-        </article>
-        <article class="rit rv rv--d2">
-          <div class="rit__img rv-img">
-            <img src="img/svc-care.jpg" alt="Restoration" loading="lazy">
+          <!-- Card 3: Haircuts -->
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-cut.jpg" alt="Haircuts" loading="lazy">
+              </div>
+              <div class="svc-card__body">
+                <h3 class="t-h3" data-i18n="rit_cut_title">Стрижки</h3>
+                <p class="t-body-sm" data-i18n="rit_cut_text">Від класичних ліній до сучасних текстур.</p>
+              </div>
+            </article>
           </div>
-          <div class="rit__body">
-            <h3 class="t-h3" data-i18n="rit_care_title">Відновлення</h3>
-            <p class="t-body-sm" style="color: var(--c-text-soft);" data-i18n="rit_care_text">Кератин, нанопластика, ботокс. Глибока реконструкція структури.</p>
+          <!-- Card 4: Styling -->
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-style.jpg" alt="Styling" loading="lazy">
+              </div>
+              <div class="svc-card__body">
+                <h3 class="t-h3" data-i18n="rit_style_title">Зачіски</h3>
+                <p class="t-body-sm" data-i18n="rit_style_text">Вечірні та весільні образи.</p>
+              </div>
+            </article>
           </div>
-        </article>
-        <article class="rit rv rv--d3">
-          <div class="rit__img rv-img">
-            <img src="img/svc-cut.jpg" alt="Haircuts" loading="lazy">
-          </div>
-          <div class="rit__body">
-            <h3 class="t-h3" data-i18n="rit_cut_title">Стрижки</h3>
-            <p class="t-body-sm" style="color: var(--c-text-soft);" data-i18n="rit_cut_text">Від класичних ліній до сучасних текстур.</p>
-          </div>
-        </article>
-        <article class="rit rv rv--d4">
-          <div class="rit__img rv-img">
-            <img src="img/svc-style.jpg" alt="Styling" loading="lazy">
-          </div>
-          <div class="rit__body">
-            <h3 class="t-h3" data-i18n="rit_style_title">Зачіски</h3>
-            <p class="t-body-sm" style="color: var(--c-text-soft);" data-i18n="rit_style_text">Вечірні та весільні образи.</p>
-          </div>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ MASTER (Expert) ═══ -->
-  <section class="split split--img-right" id="master">
-    <div class="split__content">
-      <div class="split__text container">
-        <p class="t-overline rv" data-i18n="spec_overline">Експерти</p>
-        <h2 class="t-h2 rv rv--d1" data-i18n="spec_headline">Досвід. Чуттєвість. Майстерність.</h2>
-        <p class="t-body-sm rv rv--d2" style="color: var(--c-text-soft); max-width: var(--max-text);" data-i18n="spec_text">Наша команда — це експерти, які живуть красою та створюють її щодня.</p>
-        <a href="#" class="link-arrow rv rv--d3" data-i18n="spec_cta">Познайомитися з експертами</a>
-      </div>
-    </div>
-    <div class="split__media rv-img">
-      <img src="img/specialist.jpg" alt="SVS Beauty Space specialist" loading="lazy">
-    </div>
-  </section>
-
-  <!-- ═══ ABOUT (Manifesto) ═══ -->
-  <section class="about" id="about">
-    <div class="container">
-      <div class="about__inner">
-        <div class="about__text">
-          <p class="t-overline rv" data-i18n="about_overline">Про нас</p>
-          <h2 class="t-h2 rv rv--d1" data-i18n="about_title">Ми не робимо зачіски. Ми створюємо відчуття.</h2>
-          <p class="t-body-sm rv rv--d2" style="color: var(--c-text-soft);" data-i18n="about_text">SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна італійська косметика Raywell. Авторські методики. Простір, створений для вас.</p>
         </div>
-        <div class="about__stats rv rv--d3">
+      </div>
+      <!-- Swiper navigation -->
+      <div class="services__nav container">
+        <button class="swiper-btn swiper-btn--prev" id="svcPrev" aria-label="Previous">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M13 4l-6 6 6 6" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <div class="swiper-pagination" id="svcPagination"></div>
+        <button class="swiper-btn swiper-btn--next" id="svcNext" aria-label="Next">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. RESULTS — before/after + stats -->
+  <section class="results" id="results">
+    <div class="container">
+      <div class="results__header">
+        <p class="t-overline rv" data-i18n="tr_overline">Результати</p>
+        <h2 class="t-h2 rv rv--d1" data-i18n="tr_title">Реальні перетворення</h2>
+      </div>
+      <div class="results__grid">
+        <div class="results__slider">
+          <div class="transform rv rv--d2" data-transform>
+            <img src="img/before-1.jpg" alt="Before" class="transform__before" loading="lazy">
+            <img src="img/after-1.jpg" alt="After" class="transform__after" loading="lazy">
+            <div class="transform__handle">
+              <div class="transform__handle-line"></div>
+              <div class="transform__handle-dot"></div>
+              <div class="transform__handle-line"></div>
+            </div>
+            <span class="transform__label transform__label--before" data-i18n="tr_before">До</span>
+            <span class="transform__label transform__label--after" data-i18n="tr_after">Після</span>
+          </div>
+        </div>
+        <div class="results__stats rv rv--d3">
           <div class="stat">
-            <span class="stat__num">10+</span>
+            <span class="stat__num" data-count="10">10+</span>
             <span class="stat__label" data-i18n="stat_years">років досвіду</span>
           </div>
           <div class="stat">
-            <span class="stat__num">2000+</span>
+            <span class="stat__num" data-count="2000">2000+</span>
             <span class="stat__label" data-i18n="stat_clients">задоволених клієнтів</span>
           </div>
           <div class="stat">
@@ -188,130 +196,67 @@
     </div>
   </section>
 
-  <!-- ═══ TRANSFORMS ═══ -->
-  <section class="transforms" id="transforms">
+  <!-- 4. ABOUT + EXPERTS — combined -->
+  <section class="about" id="about">
     <div class="container">
-      <p class="t-overline rv" data-i18n="tr_overline">Результати</p>
-      <h2 class="t-h2 rv rv--d1" data-i18n="tr_title">Реальні перетворення</h2>
-      <div class="transforms__grid">
-        <div class="transform rv rv--d2" data-transform>
-          <img src="img/before-1.jpg" alt="Before" class="transform__before" loading="lazy">
-          <img src="img/after-1.jpg" alt="After" class="transform__after" loading="lazy">
-          <div class="transform__handle">
-            <div class="transform__handle-line"></div>
-            <div class="transform__handle-dot"></div>
-            <div class="transform__handle-line"></div>
+      <div class="about__inner">
+        <div class="about__text">
+          <p class="t-overline rv" data-i18n="about_overline">Про нас</p>
+          <h2 class="t-h2 rv rv--d1" data-i18n="about_title">Ми не робимо зачіски. Ми створюємо відчуття.</h2>
+          <p class="t-body-sm rv rv--d2" data-i18n="about_text">SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна італійська косметика Raywell. Авторські методики. Простір, створений для вас.</p>
+          <div class="about__expert rv rv--d3">
+            <p class="t-overline" data-i18n="spec_overline">Експерти</p>
+            <p class="t-h3" data-i18n="spec_headline">Досвід. Чуттєвість. Майстерність.</p>
+            <p class="t-body-sm" data-i18n="spec_text">Наша команда — це експерти, які живуть красою та створюють її щодня.</p>
           </div>
-          <span class="transform__label transform__label--before" data-i18n="tr_before">До</span>
-          <span class="transform__label transform__label--after" data-i18n="tr_after">Після</span>
         </div>
-        <div class="transform rv rv--d3" data-transform>
-          <img src="img/before-2.jpg" alt="Before" class="transform__before" loading="lazy">
-          <img src="img/after-2.jpg" alt="After" class="transform__after" loading="lazy">
-          <div class="transform__handle">
-            <div class="transform__handle-line"></div>
-            <div class="transform__handle-dot"></div>
-            <div class="transform__handle-line"></div>
-          </div>
-          <span class="transform__label transform__label--before" data-i18n="tr_before">До</span>
-          <span class="transform__label transform__label--after" data-i18n="tr_after">Після</span>
+        <div class="about__media rv-img rv--d1">
+          <img src="img/specialist.jpg" alt="SVS Beauty Space specialist" loading="lazy">
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ═══ RAYWELL ═══ -->
-  <section class="raywell" id="raywell">
-    <div class="container">
-      <p class="t-overline rv" data-i18n="ray_overline">Raywell</p>
-      <h2 class="t-h2 rv rv--d1" data-i18n="ray_title">Професійний догляд вдома</h2>
-      <div class="raywell__grid">
-        <article class="ray-item rv rv--d2">
-          <div class="ray-item__img rv-img"><img src="img/prod-noyellow.jpg" alt="No Yellow Shampoo" loading="lazy"></div>
-          <h4 class="t-h4" data-i18n="ray_p1_title">No Yellow Shampoo</h4>
-          <p class="t-caption" data-i18n="ray_p1_text">Нейтралізація жовтизни</p>
-        </article>
-        <article class="ray-item rv rv--d3">
-          <div class="ray-item__img rv-img"><img src="img/prod-noorange.jpg" alt="No Orange Shampoo" loading="lazy"></div>
-          <h4 class="t-h4" data-i18n="ray_p2_title">No Orange Shampoo</h4>
-          <p class="t-caption" data-i18n="ray_p2_text">Холодний відтінок після освітлення</p>
-        </article>
-        <article class="ray-item rv rv--d4">
-          <div class="ray-item__img rv-img"><img src="img/prod-recovery.jpg" alt="Recovery Mask" loading="lazy"></div>
-          <h4 class="t-h4" data-i18n="ray_p3_title">Recovery Mask</h4>
-          <p class="t-caption" data-i18n="ray_p3_text">Глибоке відновлення та живлення</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ VOICES ═══ -->
-  <section class="voices" id="voices">
-    <div class="container">
-      <p class="t-overline rv" data-i18n="voice_overline">Відгуки</p>
-      <div class="voices__list">
-        <blockquote class="voice rv rv--d1">
-          <p class="voice__text">"Найкращий салон. Колір тримається неймовірно, волосся здорове."</p>
-          <footer class="voice__author"><span class="voice__name">Олена К.</span><span class="t-caption">3 роки з SVS</span></footer>
-        </blockquote>
-        <blockquote class="voice rv rv--d2">
-          <p class="voice__text">"Foiled Cashmere — це мистецтво. Тепер тільки сюди."</p>
-          <footer class="voice__author"><span class="voice__name">Марія Д.</span><span class="t-caption">Балаяж</span></footer>
-        </blockquote>
-        <blockquote class="voice rv rv--d3">
-          <p class="voice__text">"Довіряю на 100%. Атмосфера неймовірна."</p>
-          <footer class="voice__author"><span class="voice__name">Вікторія С.</span><span class="t-caption">Фарбування</span></footer>
-        </blockquote>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ BOOKING ═══ -->
-  <section class="booking" id="booking">
-    <div class="container">
-      <div class="booking__inner">
-        <p class="t-overline rv" data-i18n="book_overline">Запис</p>
-        <h2 class="t-display rv rv--up rv--d1" data-i18n="book_title">Готові до змін?</h2>
-        <p class="t-body-sm rv rv--d2" style="color: var(--c-text-soft); max-width: var(--max-text);" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
-        <a href="https://b.bukon.me/svs-beauty-space" target="_blank" rel="noopener" class="btn btn--filled rv rv--d3" data-i18n="book_cta">Записатися онлайн</a>
-        <p class="rv rv--d4" style="margin-top: var(--s-5);"><a href="tel:+380XXXXXXXXX" class="t-caption" style="color: var(--c-text-muted);">+380 XX XXX XX XX</a></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ CONTACT ═══ -->
+  <!-- 5. BOOKING + CONTACT — combined -->
   <section class="contact" id="contact">
     <div class="container">
       <div class="contact__inner">
-        <div class="contact__info">
-          <p class="t-overline rv" data-i18n="contact_overline">Контакти</p>
-          <h2 class="t-h2 rv rv--d1" data-i18n="contact_title">Знайдіть нас</h2>
-          <div class="contact__block rv rv--d2">
-            <p class="t-caption" style="color: var(--c-text-muted);" data-i18n="contact_hours_title">Графік</p>
+        <div class="contact__cta">
+          <p class="t-overline rv" data-i18n="book_overline">Запис</p>
+          <h2 class="t-display rv rv--up rv--d1" data-i18n="book_title">Готові до змін?</h2>
+          <p class="t-body-sm rv rv--d2" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
+          <a href="https://b.bukon.me/svs-beauty-space" target="_blank" rel="noopener" class="btn btn--filled rv rv--d3" data-i18n="book_cta">Записатися онлайн</a>
+        </div>
+        <div class="contact__info rv rv--d2">
+          <div class="contact__block">
+            <p class="t-caption" data-i18n="contact_hours_title">Графік</p>
             <p data-i18n="contact_hours">Пн — Сб: 9:00 — 20:00</p>
-            <p class="t-body-sm" style="color: var(--c-text-soft);" data-i18n="contact_hours_2">Нд: за попереднім записом</p>
+            <p class="t-body-sm" data-i18n="contact_hours_2">Нд: за попереднім записом</p>
           </div>
-          <div class="contact__block rv rv--d3">
-            <p class="t-caption" style="color: var(--c-text-muted);" data-i18n="contact_address_title">Адреса</p>
+          <div class="contact__block">
+            <p class="t-caption" data-i18n="contact_address_title">Адреса</p>
             <p>м. Херсон</p>
           </div>
-          <a href="https://instagram.com/svs_beauty_space" target="_blank" rel="noopener" class="contact__ig rv rv--d4">@svs_beauty_space</a>
+          <div class="contact__block">
+            <a href="tel:+380XXXXXXXXX" class="contact__phone">+380 XX XXX XX XX</a>
+          </div>
+          <a href="https://instagram.com/svs_beauty_space" target="_blank" rel="noopener" class="contact__ig">@svs_beauty_space</a>
         </div>
-        <div class="contact__map rv rv--scale rv--d2"></div>
       </div>
     </div>
   </section>
 
-  <!-- ═══ FOOTER ═══ -->
+  <!-- FOOTER -->
   <footer class="footer">
     <div class="container">
       <div class="footer__inner">
         <span class="footer__logo">SVS</span>
-        <span class="t-caption" data-i18n="footer_copy">© 2026 SVS Beauty Space</span>
+        <span class="t-caption" data-i18n="footer_copy">&copy; 2026 SVS Beauty Space</span>
       </div>
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>
   <script src="js/scroll-animations.js"></script>

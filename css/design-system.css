@@ -81,6 +81,7 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -262,6 +263,75 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   width: 40px;
   height: 1px;
   background: var(--c-gold);
+}
+
+/* ── GRAIN OVERLAY ─────────────────────────────────────── */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 180px 180px;
+  animation: grainShift 0.5s steps(3) infinite;
+}
+
+@keyframes grainShift {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(-5%, -5%); }
+  66%  { transform: translate(5%, 3%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ── FLOATING PARTICLES ────────────────────────────────── */
+.particles {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--c-gold);
+  opacity: 0;
+  animation: particleFloat linear infinite;
+}
+
+.particle--1 { left: 10%; animation-duration: 18s; animation-delay: 0s; }
+.particle--2 { left: 25%; animation-duration: 22s; animation-delay: 3s; }
+.particle--3 { left: 50%; animation-duration: 16s; animation-delay: 6s; }
+.particle--4 { left: 70%; animation-duration: 20s; animation-delay: 2s; }
+.particle--5 { left: 85%; animation-duration: 24s; animation-delay: 8s; }
+.particle--6 { left: 40%; animation-duration: 19s; animation-delay: 5s; }
+
+@keyframes particleFloat {
+  0% {
+    transform: translateY(100vh) scale(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.4;
+    transform: translateY(80vh) scale(1);
+  }
+  50% {
+    opacity: 0.15;
+  }
+  90% {
+    opacity: 0.3;
+    transform: translateY(5vh) scale(0.5);
+  }
+  100% {
+    transform: translateY(-5vh) scale(0);
+    opacity: 0;
+  }
 }
 
 /* ── Utility ───────────────────────────────────────────── */
