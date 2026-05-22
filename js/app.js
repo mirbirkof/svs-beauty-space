@@ -48,6 +48,12 @@
       if (t) return; t = true;
       requestAnimationFrame(() => {
         nav.classList.toggle('nav--scrolled', scrollY > 60);
+        // Lotus bloom when scrolled
+        var lotus = document.getElementById('navLotus');
+        if (lotus) {
+          if (scrollY > 80) lotus.classList.add('is-blooming');
+          else lotus.classList.remove('is-blooming');
+        }
         t = false;
       });
     }, { passive: true });

@@ -65,7 +65,18 @@
   <header class="nav" id="nav">
     <div class="nav__inner container">
       <a href="#" class="nav__logo">
-        <span class="nav__logo-main">SVS</span>
+        <span class="nav__logo-main">
+          <svg class="nav__lotus" id="navLotus" viewBox="0 0 60 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path class="lotus-petal lotus-p1" d="M30 8 C28 18, 16 28, 8 34 C14 30, 22 22, 30 8Z" fill="currentColor" opacity="0.25"/>
+            <path class="lotus-petal lotus-p2" d="M30 8 C32 18, 44 28, 52 34 C46 30, 38 22, 30 8Z" fill="currentColor" opacity="0.25"/>
+            <path class="lotus-petal lotus-p3" d="M30 4 C26 16, 10 24, 2 28 C10 26, 24 18, 30 4Z" fill="currentColor" opacity="0.18"/>
+            <path class="lotus-petal lotus-p4" d="M30 4 C34 16, 50 24, 58 28 C50 26, 36 18, 30 4Z" fill="currentColor" opacity="0.18"/>
+            <path class="lotus-petal lotus-p5" d="M30 2 C29 14, 20 20, 14 24 C20 22, 28 14, 30 2Z" fill="currentColor" opacity="0.35"/>
+            <path class="lotus-petal lotus-p6" d="M30 2 C31 14, 40 20, 46 24 C40 22, 32 14, 30 2Z" fill="currentColor" opacity="0.35"/>
+            <path class="lotus-petal lotus-center" d="M30 0 C28 12, 26 18, 30 26 C34 18, 32 12, 30 0Z" fill="currentColor" opacity="0.5"/>
+          </svg>
+          SVS
+        </span>
         <span class="nav__logo-sub">Beauty Space</span>
       </a>
 
@@ -127,20 +138,22 @@
   <div class="marquee" aria-hidden="true">
     <div class="marquee__track">
       <span>Фарбування</span><span class="marquee__dot"></span>
-      <span>Кератин</span><span class="marquee__dot"></span>
+      <span>Біовирівнювання</span><span class="marquee__dot"></span>
       <span>Балаяж</span><span class="marquee__dot"></span>
       <span>Стрижки</span><span class="marquee__dot"></span>
       <span>Манікюр</span><span class="marquee__dot"></span>
       <span>Педикюр</span><span class="marquee__dot"></span>
-      <span>Ботокс</span><span class="marquee__dot"></span>
+      <span>Airtouch</span><span class="marquee__dot"></span>
+      <span>Brazilian Blond</span><span class="marquee__dot"></span>
       <span>Нарощування вій</span><span class="marquee__dot"></span>
       <span>Фарбування</span><span class="marquee__dot"></span>
-      <span>Кератин</span><span class="marquee__dot"></span>
+      <span>Біовирівнювання</span><span class="marquee__dot"></span>
       <span>Балаяж</span><span class="marquee__dot"></span>
       <span>Стрижки</span><span class="marquee__dot"></span>
       <span>Манікюр</span><span class="marquee__dot"></span>
       <span>Педикюр</span><span class="marquee__dot"></span>
-      <span>Ботокс</span><span class="marquee__dot"></span>
+      <span>Airtouch</span><span class="marquee__dot"></span>
+      <span>Brazilian Blond</span><span class="marquee__dot"></span>
       <span>Нарощування вій</span><span class="marquee__dot"></span>
     </div>
   </div>
@@ -279,6 +292,10 @@
           <h2 class="contact__big-title rv rv--blur rv--d1" data-i18n="book_title">Готові до змін?</h2>
           <p class="t-body-sm rv rv--blur rv--d2" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
           <a href="https://bookon.ua/yUnOMY9SZDzioZCDkLpG" target="_blank" rel="noopener" class="btn btn--filled rv rv--blur rv--d3" data-i18n="book_cta" aria-label="Book online (opens in new tab)">Записатися онлайн</a>
+          <a href="tel:+380991283375" class="contact__tap-hint rv rv--blur rv--d4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14m0 0l-6-6m6 6l6-6"/></svg>
+            <span data-i18n="contact_hint">Натисни щоб зв'язатись</span>
+          </a>
         </div>
         <div class="contact__info rv rv--blur rv--d2">
           <div class="contact__block">
@@ -297,7 +314,40 @@
       </div>
       <a href="https://maps.app.goo.gl/egrsbNv2eTxV2EzG6" target="_blank" rel="noopener" class="contact__map rv rv--blur rv--d3" aria-label="Open directions in Google Maps">
         <div class="contact__map-placeholder">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" fill="currentColor"/></svg>
+          <!-- Stylized dark map with streets -->
+          <svg class="contact__map-svg" viewBox="0 0 800 280" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+            <!-- River -->
+            <path d="M0 180 C150 160, 300 200, 500 170 C600 155, 700 190, 800 175" stroke="#1a2a3a" stroke-width="28" fill="none" opacity="0.5"/>
+            <path d="M0 180 C150 160, 300 200, 500 170 C600 155, 700 190, 800 175" stroke="#15202d" stroke-width="16" fill="none" opacity="0.6"/>
+            <!-- Main roads -->
+            <line x1="0" y1="100" x2="800" y2="95" stroke="#2a2a28" stroke-width="3"/>
+            <line x1="0" y1="140" x2="800" y2="145" stroke="#2a2a28" stroke-width="2.5"/>
+            <line x1="200" y1="0" x2="220" y2="280" stroke="#2a2a28" stroke-width="2.5"/>
+            <line x1="450" y1="0" x2="430" y2="280" stroke="#2a2a28" stroke-width="3"/>
+            <line x1="620" y1="0" x2="640" y2="280" stroke="#2a2a28" stroke-width="2"/>
+            <!-- Small streets -->
+            <line x1="100" y1="0" x2="110" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="320" y1="0" x2="330" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="540" y1="0" x2="535" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="720" y1="0" x2="730" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="0" y1="60" x2="800" y2="55" stroke="#222220" stroke-width="1.2"/>
+            <line x1="0" y1="220" x2="800" y2="225" stroke="#222220" stroke-width="1.2"/>
+            <!-- Blocks -->
+            <rect x="110" y="60" width="85" height="35" rx="2" fill="#1a1a18" opacity="0.6"/>
+            <rect x="230" y="100" width="85" height="38" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <rect x="460" y="55" width="70" height="40" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <rect x="545" y="100" width="70" height="38" rx="2" fill="#1a1a18" opacity="0.4"/>
+            <rect x="650" y="60" width="65" height="32" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <!-- Pin marker -->
+            <circle cx="420" cy="130" r="18" fill="rgba(201,169,110,0.15)"/>
+            <circle cx="420" cy="130" r="8" fill="rgba(201,169,110,0.3)"/>
+            <circle cx="420" cy="130" r="3.5" fill="var(--c-gold)"/>
+            <!-- Pin pulse -->
+            <circle cx="420" cy="130" r="18" fill="none" stroke="var(--c-gold)" stroke-width="1" opacity="0.4">
+              <animate attributeName="r" from="12" to="28" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" from="0.4" to="0" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
         </div>
         <span class="contact__map-label">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 7a2 2 0 110-4 2 2 0 010 4z" fill="currentColor"/></svg>
