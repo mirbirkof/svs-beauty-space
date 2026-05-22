@@ -440,7 +440,7 @@
   object-fit: cover;
 }
 
-.transform__before { clip-path: inset(0 50% 0 0); }
+.transform__before { clip-path: inset(0 50% 0 0); z-index: 2; }
 
 .transform__handle {
   position: absolute;
@@ -450,7 +450,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
 }
 
@@ -485,6 +485,7 @@
   text-transform: uppercase;
   color: var(--c-white);
   opacity: 0.5;
+  z-index: 4;
 }
 .transform__label--before { left: var(--s-4); }
 .transform__label--after { right: var(--s-4); }
