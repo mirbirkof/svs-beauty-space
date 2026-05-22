@@ -43,9 +43,9 @@
     const burger = document.getElementById('navBurger');
     const links = document.getElementById('navLinks');
 
-    // Lotus blooms on page load
+    // Lotus blooms on load, closes on scroll, opens when back to top
+    var lotus = document.getElementById('navLotus');
     setTimeout(function() {
-      var lotus = document.getElementById('navLotus');
       if (lotus) lotus.classList.add('is-blooming');
     }, 600);
 
@@ -53,7 +53,12 @@
     window.addEventListener('scroll', () => {
       if (t) return; t = true;
       requestAnimationFrame(() => {
-        nav.classList.toggle('nav--scrolled', scrollY > 60);
+        var scrolled = scrollY > 60;
+        nav.classList.toggle('nav--scrolled', scrolled);
+        if (lotus) {
+          if (scrolled) lotus.classList.remove('is-blooming');
+          else lotus.classList.add('is-blooming');
+        }
         t = false;
       });
     }, { passive: true });
