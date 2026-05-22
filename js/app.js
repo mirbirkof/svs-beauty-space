@@ -43,17 +43,17 @@
     const burger = document.getElementById('navBurger');
     const links = document.getElementById('navLinks');
 
+    // Lotus blooms on page load
+    setTimeout(function() {
+      var lotus = document.getElementById('navLotus');
+      if (lotus) lotus.classList.add('is-blooming');
+    }, 600);
+
     let t = false;
     window.addEventListener('scroll', () => {
       if (t) return; t = true;
       requestAnimationFrame(() => {
         nav.classList.toggle('nav--scrolled', scrollY > 60);
-        // Lotus bloom when scrolled
-        var lotus = document.getElementById('navLotus');
-        if (lotus) {
-          if (scrollY > 80) lotus.classList.add('is-blooming');
-          else lotus.classList.remove('is-blooming');
-        }
         t = false;
       });
     }, { passive: true });

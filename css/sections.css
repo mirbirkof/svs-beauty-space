@@ -46,35 +46,50 @@
 
 .nav__lotus {
   position: absolute;
-  width: 52px;
-  height: 46px;
+  width: 140px;
+  height: 110px;
   left: 50%;
-  top: 50%;
+  top: 46%;
   transform: translate(-50%, -50%);
   color: var(--c-gold);
   pointer-events: none;
   z-index: -1;
+  filter: drop-shadow(0 0 10px rgba(201, 169, 110, 0.45))
+         drop-shadow(0 0 25px rgba(201, 169, 110, 0.12));
+}
+
+@keyframes lotusBloom {
+  0%   { transform: scale(0.05); opacity: 0; }
+  100% { transform: scale(1); opacity: var(--petal-opacity, 1); }
 }
 
 .lotus-petal {
-  transform-origin: 30px 26px;
-  transition: none;
+  transform-box: view-box;
+  transform-origin: 50% 88%;
+  transform: scale(0.05);
+  opacity: 0;
 }
 
-/* Closed state — petals folded */
-.lotus-p1, .lotus-p3, .lotus-p5 { transform: rotate(15deg) scale(0.5); opacity: 0; }
-.lotus-p2, .lotus-p4, .lotus-p6 { transform: rotate(-15deg) scale(0.5); opacity: 0; }
-.lotus-center { transform: scaleY(0.4); opacity: 0; }
-
-/* Bloom controlled by JS via CSS custom property --lotus */
-.nav__lotus.is-blooming .lotus-petal { transition: transform 1.2s var(--ease-silk), opacity 1s var(--ease-silk); }
-.nav__lotus.is-blooming .lotus-p1 { transform: rotate(0) scale(1); opacity: 0.25; }
-.nav__lotus.is-blooming .lotus-p2 { transform: rotate(0) scale(1); opacity: 0.25; }
-.nav__lotus.is-blooming .lotus-p3 { transform: rotate(0) scale(1); opacity: 0.18; }
-.nav__lotus.is-blooming .lotus-p4 { transform: rotate(0) scale(1); opacity: 0.18; }
-.nav__lotus.is-blooming .lotus-p5 { transform: rotate(0) scale(1); opacity: 0.35; }
-.nav__lotus.is-blooming .lotus-p6 { transform: rotate(0) scale(1); opacity: 0.35; }
-.nav__lotus.is-blooming .lotus-center { transform: scaleY(1); opacity: 0.5; }
+/* Bloom — CSS animation, reliable on all devices */
+.nav__lotus.is-blooming .lotus-center {
+  --petal-opacity: 1;
+  animation: lotusBloom 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.3s forwards;
+}
+.nav__lotus.is-blooming .lotus-p5,
+.nav__lotus.is-blooming .lotus-p6 {
+  --petal-opacity: 0.85;
+  animation: lotusBloom 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.5s forwards;
+}
+.nav__lotus.is-blooming .lotus-p3,
+.nav__lotus.is-blooming .lotus-p4 {
+  --petal-opacity: 0.7;
+  animation: lotusBloom 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.7s forwards;
+}
+.nav__lotus.is-blooming .lotus-p1,
+.nav__lotus.is-blooming .lotus-p2 {
+  --petal-opacity: 0.55;
+  animation: lotusBloom 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.9s forwards;
+}
 
 .nav__logo-sub {
   font-size: 0.7rem;
