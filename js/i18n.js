@@ -22,10 +22,10 @@ const TRANSLATIONS = {
     rit_style_title: 'Зачіски', rit_style_text: 'Вечірні та весільні образи.',
 
     tr_overline: 'Результати', tr_title: 'Реальні перетворення', tr_before: 'До', tr_after: 'Після',
-    stat_years: 'років досвіду', stat_clients: 'задоволених клієнтів', stat_raywell: 'офіційний представник',
+    stat_years: 'років досвіду', stat_clients: 'задоволених клієнтів',
 
     about_overline: 'Про нас', about_title: 'Ми не робимо зачіски. Ми створюємо відчуття.',
-    about_text: 'SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна італійська косметика Raywell. Авторські методики. Простір, створений для вас.',
+    about_text: 'SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна косметика світових брендів. Авторські методики. Простір, створений для вас.',
     spec_overline: 'Експерти', spec_headline: 'Досвід. Чуттєвість. Майстерність.',
     spec_text: 'Наша команда — це експерти, які живуть красою та створюють її щодня.',
 
@@ -35,7 +35,8 @@ const TRANSLATIONS = {
 
     contact_hours_title: 'Графік', contact_hours: 'Пн — Нд: 9:00 — 19:00',
     contact_address_title: 'Адреса',
-    contact_address: 'вул. Набережна р. Стрілки, 50, Суми',
+    contact_address: '1-ша Набережна р. Стрілка, 50, Суми',
+    contact_directions: 'Прокласти маршрут',
 
     footer_copy: '© 2026 SVS Beauty Space',
   },
@@ -57,10 +58,10 @@ const TRANSLATIONS = {
     rit_style_title: 'Причёски', rit_style_text: 'Вечерние и свадебные образы.',
 
     tr_overline: 'Результаты', tr_title: 'Реальные преображения', tr_before: 'До', tr_after: 'После',
-    stat_years: 'лет опыта', stat_clients: 'довольных клиентов', stat_raywell: 'официальный представитель',
+    stat_years: 'лет опыта', stat_clients: 'довольных клиентов',
 
     about_overline: 'О нас', about_title: 'Мы не делаем причёски. Мы создаём ощущение.',
-    about_text: 'SVS Beauty Space — это место, где каждая деталь продумана. От подбора техники до индивидуального ухода. Премиальная итальянская косметика Raywell. Авторские методики. Пространство, созданное для вас.',
+    about_text: 'SVS Beauty Space — это место, где каждая деталь продумана. От подбора техники до индивидуального ухода. Премиальная косметика мировых брендов. Авторские методики. Пространство, созданное для вас.',
     spec_overline: 'Эксперты', spec_headline: 'Опыт. Чуткость. Мастерство.',
     spec_text: 'Наша команда — это эксперты, которые живут красотой и создают её каждый день.',
 
@@ -70,7 +71,8 @@ const TRANSLATIONS = {
 
     contact_hours_title: 'График', contact_hours: 'Пн — Вс: 9:00 — 19:00',
     contact_address_title: 'Адрес',
-    contact_address: 'ул. Набережная р. Стрелки, 50, Сумы',
+    contact_address: '1-я Набережная р. Стрелка, 50, Сумы',
+    contact_directions: 'Проложить маршрут',
 
     footer_copy: '© 2026 SVS Beauty Space',
   },
@@ -92,10 +94,10 @@ const TRANSLATIONS = {
     rit_style_title: 'Styling', rit_style_text: 'Evening and bridal looks.',
 
     tr_overline: 'Results', tr_title: 'Real transformations', tr_before: 'Before', tr_after: 'After',
-    stat_years: 'years of experience', stat_clients: 'satisfied clients', stat_raywell: 'official representative',
+    stat_years: 'years of experience', stat_clients: 'satisfied clients',
 
     about_overline: 'About', about_title: 'We don\'t do hairstyles. We create feeling.',
-    about_text: 'SVS Beauty Space is where every detail is considered. From technique selection to personalized aftercare. Premium Italian Raywell cosmetics. Signature methods. A space designed for you.',
+    about_text: 'SVS Beauty Space is where every detail is considered. From technique selection to personalized aftercare. Premium world-class cosmetics. Signature methods. A space designed for you.',
     spec_overline: 'Experts', spec_headline: 'Experience. Sensitivity. Mastery.',
     spec_text: 'Our team are experts who live and breathe beauty every day.',
 
@@ -105,7 +107,8 @@ const TRANSLATIONS = {
 
     contact_hours_title: 'Hours', contact_hours: 'Mon — Sun: 9 AM — 7 PM',
     contact_address_title: 'Address',
-    contact_address: '50 Naberezhna r. Strilky St, Sumy',
+    contact_address: '1st Naberezhna r. Strilka, 50, Sumy',
+    contact_directions: 'Get directions',
 
     footer_copy: '© 2026 SVS Beauty Space',
   }
