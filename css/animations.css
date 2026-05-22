@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════
+   SVS Beauty Space — Premium Scroll Animations
+   Cinematic · Architectural · Luxury
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Scroll Progress Indicator ────────────────────────── */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--c-gold-muted), var(--c-gold), var(--c-gold-soft));
+  z-index: 9999;
+  pointer-events: none;
+  will-change: width;
+  transition: none;
+}
+
+/* ── Parallax Containers ──────────────────────────────── */
+.has-parallax {
+  will-change: transform;
+}
+
+/* ── Image Scale on Scroll ────────────────────────────── */
+.img-scale-wrap img {
+  will-change: transform;
+  transition: none;
+}
+
+/* ── Text Line Reveal ─────────────────────────────────── */
+.line-reveal {
+  overflow: hidden;
+}
+
+.line-reveal__inner {
+  display: block;
+  transform: translateY(110%);
+  will-change: transform;
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.line-reveal.is-revealed .line-reveal__inner {
+  transform: translateY(0);
+}
+
+/* ── Sticky Reveal (text content) ─────────────────────── */
+.sticky-reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  will-change: opacity, transform;
+  transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sticky-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Staggered delays for children */
+.sticky-reveal[data-delay="1"] { transition-delay: 0.1s; }
+.sticky-reveal[data-delay="2"] { transition-delay: 0.2s; }
+.sticky-reveal[data-delay="3"] { transition-delay: 0.3s; }
+.sticky-reveal[data-delay="4"] { transition-delay: 0.45s; }
+.sticky-reveal[data-delay="5"] { transition-delay: 0.6s; }
+
+/* ── Counter Animation ────────────────────────────────── */
+.stat__num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Ritual Card Horizontal Slide ─────────────────────── */
+.rit-slide {
+  opacity: 0;
+  will-change: opacity, transform;
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rit-slide--left {
+  transform: translateX(-60px);
+}
+
+.rit-slide--right {
+  transform: translateX(60px);
+}
+
+.rit-slide.is-slid-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ── Section Exit Fade ────────────────────────────────── */
+.section-fade {
+  will-change: opacity;
+  transition: opacity 0.4s ease-out;
+}
+
+/* ── Magnetic Button ──────────────────────────────────── */
+.magnetic-btn {
+  will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.magnetic-btn:hover {
+  /* transform is set via JS */
+}
+
+/* ── Reduced Motion ───────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress,
+  .has-parallax,
+  .img-scale-wrap img,
+  .line-reveal__inner,
+  .sticky-reveal,
+  .rit-slide,
+  .section-fade,
+  .magnetic-btn {
+    transition: none !important;
+    transform: none !important;
+    will-change: auto !important;
+    opacity: 1 !important;
+  }
+
+  .line-reveal__inner {
+    transform: none !important;
+  }
+
+  .rit-slide {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
