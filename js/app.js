@@ -25,17 +25,16 @@
     const hero = document.querySelector('.hero');
     if (!hero) return;
 
-    // Delay for dramatic effect
+    // Quick entrance — photo appears fast
     setTimeout(() => {
       hero.classList.add('hero--loaded');
-      // Trigger rv elements in hero
       hero.querySelectorAll('.rv, .rv-img').forEach(el => el.classList.add('is-v'));
-    }, 300);
+    }, 100);
 
-    // Switch to breathing after entrance completes
+    // Switch to breathing after zoom settles
     setTimeout(() => {
       hero.classList.add('hero--breathing');
-    }, 3000);
+    }, 3500);
   }
 
   /* ── Nav ─────────────────────────────────────────── */
