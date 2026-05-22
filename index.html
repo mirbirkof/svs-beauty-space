@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SVS Beauty Space — Sumy</title>
   <meta name="description" content="SVS Beauty Space — premium beauty salon in Sumy. Colouring, restoration, keratin, manicure. Italian Raywell cosmetics. Award-winning quality.">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#0A0908">
 
   <meta property="og:title" content="SVS Beauty Space">
   <meta property="og:description" content="Beauty that is felt. Premium salon in Sumy.">
@@ -32,28 +32,33 @@
     <div class="cursor__ring"></div>
   </div>
 
-  <!-- Floating particles (20) -->
-  <div class="particles" aria-hidden="true">
-    <span class="particle" style="left:5%;animation-duration:16s;animation-delay:0s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:10%;animation-duration:20s;animation-delay:2s;"></span>
-    <span class="particle" style="left:15%;animation-duration:18s;animation-delay:5s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:20%;animation-duration:22s;animation-delay:1s;"></span>
-    <span class="particle" style="left:28%;animation-duration:17s;animation-delay:7s;width:4px;height:4px;"></span>
-    <span class="particle" style="left:33%;animation-duration:19s;animation-delay:3s;"></span>
-    <span class="particle" style="left:40%;animation-duration:21s;animation-delay:6s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:47%;animation-duration:15s;animation-delay:0s;"></span>
-    <span class="particle" style="left:53%;animation-duration:23s;animation-delay:4s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:58%;animation-duration:18s;animation-delay:8s;"></span>
-    <span class="particle" style="left:63%;animation-duration:20s;animation-delay:1s;width:4px;height:4px;"></span>
-    <span class="particle" style="left:68%;animation-duration:16s;animation-delay:5s;"></span>
-    <span class="particle" style="left:73%;animation-duration:22s;animation-delay:3s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:78%;animation-duration:19s;animation-delay:7s;"></span>
-    <span class="particle" style="left:83%;animation-duration:17s;animation-delay:2s;width:3px;height:3px;"></span>
-    <span class="particle" style="left:88%;animation-duration:21s;animation-delay:6s;"></span>
-    <span class="particle" style="left:92%;animation-duration:18s;animation-delay:0s;width:4px;height:4px;"></span>
-    <span class="particle" style="left:95%;animation-duration:20s;animation-delay:4s;"></span>
-    <span class="particle" style="left:3%;animation-duration:24s;animation-delay:9s;"></span>
-    <span class="particle" style="left:50%;animation-duration:16s;animation-delay:10s;width:3px;height:3px;"></span>
+  <!-- SVG Hair Flow Lines -->
+  <svg class="hair-flow" aria-hidden="true" viewBox="0 0 1440 900" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="hairGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:rgba(201,169,110,0);"/>
+        <stop offset="30%" style="stop-color:rgba(201,169,110,0.12);"/>
+        <stop offset="70%" style="stop-color:rgba(201,169,110,0.08);"/>
+        <stop offset="100%" style="stop-color:rgba(201,169,110,0);"/>
+      </linearGradient>
+      <linearGradient id="hairGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:rgba(245,240,235,0);"/>
+        <stop offset="40%" style="stop-color:rgba(245,240,235,0.06);"/>
+        <stop offset="60%" style="stop-color:rgba(245,240,235,0.04);"/>
+        <stop offset="100%" style="stop-color:rgba(245,240,235,0);"/>
+      </linearGradient>
+    </defs>
+    <path class="hair-line hair-line--1" d="M-100,200 C200,180 400,320 720,280 S1100,200 1540,240" stroke="url(#hairGrad1)" fill="none" stroke-width="1.5"/>
+    <path class="hair-line hair-line--2" d="M-100,400 C300,380 500,480 720,440 S1000,380 1540,420" stroke="url(#hairGrad2)" fill="none" stroke-width="1"/>
+    <path class="hair-line hair-line--3" d="M-100,600 C250,580 450,680 720,650 S1050,580 1540,620" stroke="url(#hairGrad1)" fill="none" stroke-width="1.2"/>
+    <path class="hair-line hair-line--4" d="M-100,100 C350,90 550,180 800,150 S1150,100 1540,130" stroke="url(#hairGrad2)" fill="none" stroke-width="0.8"/>
+  </svg>
+
+  <!-- Soft floating light -->
+  <div class="ambient-light" aria-hidden="true">
+    <div class="ambient-light__orb ambient-light__orb--1"></div>
+    <div class="ambient-light__orb ambient-light__orb--2"></div>
+    <div class="ambient-light__orb ambient-light__orb--3"></div>
   </div>
 
   <!-- NAV -->
@@ -69,7 +74,6 @@
         <a href="#results" class="nav__link" data-i18n="nav_results">Результати</a>
         <a href="#about" class="nav__link" data-i18n="nav_about">Про нас</a>
         <a href="#contact" class="nav__link" data-i18n="nav_contact">Контакти</a>
-        <!-- Mobile language switcher -->
         <div class="nav__langs nav__langs--mobile">
           <button class="nav__lang nav__lang--active" data-lang="ua">UA</button>
           <button class="nav__lang" data-lang="en">EN</button>
@@ -91,20 +95,22 @@
     </div>
   </header>
 
-  <!-- 1. HERO — fullscreen, left-aligned editorial -->
+  <!-- 1. HERO — fullscreen with silk reveal -->
   <section class="hero" id="hero">
     <div class="hero__bg">
       <img src="img/hero.jpg" alt="SVS Beauty Space" loading="eager" fetchpriority="high">
     </div>
     <div class="hero__overlay"></div>
+    <!-- Silk layer — blurs away on scroll -->
+    <div class="hero__silk" id="heroSilk"></div>
     <div class="hero__content container">
-      <p class="hero__overline t-overline rv rv--fade">SVS Beauty Space</p>
+      <p class="hero__overline t-overline rv rv--blur">SVS Beauty Space</p>
       <h1 class="hero__title">
         <span class="hero__line hero__line--1" data-i18n="hero_line1">Краса,</span>
         <span class="hero__line hero__line--2" data-i18n="hero_line2">яка відчувається</span>
       </h1>
-      <p class="hero__sub rv rv--fade rv--d2" data-i18n="hero_sub">Преміальний простір краси та естетики</p>
-      <a href="#contact" class="btn btn--filled rv rv--d3" data-i18n="hero_cta">Записатися</a>
+      <p class="hero__sub rv rv--blur rv--d2" data-i18n="hero_sub">Преміальний простір краси та естетики</p>
+      <a href="#contact" class="btn btn--filled rv rv--blur rv--d3" data-i18n="hero_cta">Записатися</a>
     </div>
     <div class="hero__scroll">
       <svg width="16" height="24" viewBox="0 0 16 24" fill="none"><path d="M8 0v20m0 0l6-6m-6 6l-6-6" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -136,8 +142,8 @@
   <!-- 2. SERVICES — editorial overlay cards -->
   <section class="services" id="services">
     <div class="services__header container">
-      <p class="t-overline rv" data-i18n="svc_overline">Послуги</p>
-      <h2 class="t-h2 rv rv--d1" data-i18n="svc_title">Індивідуальна краса у деталях</h2>
+      <p class="t-overline rv rv--blur" data-i18n="svc_overline">Послуги</p>
+      <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="svc_title">Індивідуальна краса у деталях</h2>
     </div>
     <div class="services__carousel">
       <div class="swiper" id="servicesSwiper">
@@ -204,12 +210,12 @@
   <section class="results" id="results">
     <div class="container">
       <div class="results__header">
-        <p class="t-overline rv" data-i18n="tr_overline">Результати</p>
-        <h2 class="t-h2 rv rv--d1" data-i18n="tr_title">Реальні перетворення</h2>
+        <p class="t-overline rv rv--blur" data-i18n="tr_overline">Результати</p>
+        <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="tr_title">Реальні перетворення</h2>
       </div>
       <div class="results__grid">
         <div class="results__slider">
-          <div class="transform rv rv--d2" data-transform>
+          <div class="transform rv rv--blur rv--d2" data-transform>
             <img src="img/before-1.jpg" alt="Before" class="transform__before" loading="lazy">
             <img src="img/after-1.jpg" alt="After" class="transform__after" loading="lazy">
             <div class="transform__handle">
@@ -224,15 +230,15 @@
           </div>
         </div>
         <div class="results__stats">
-          <div class="stat rv">
+          <div class="stat rv rv--blur">
             <span class="stat__num" data-count="9">9+</span>
             <span class="stat__label" data-i18n="stat_years">років досвіду</span>
           </div>
-          <div class="stat rv rv--d1">
+          <div class="stat rv rv--blur rv--d1">
             <span class="stat__num" data-count="1898">1898+</span>
             <span class="stat__label" data-i18n="stat_clients">задоволених клієнтів</span>
           </div>
-          <div class="stat rv rv--d2">
+          <div class="stat rv rv--blur rv--d2">
             <span class="stat__num">Raywell</span>
             <span class="stat__label" data-i18n="stat_raywell">офіційний представник</span>
           </div>
@@ -246,10 +252,10 @@
     <div class="container">
       <div class="about__inner">
         <div class="about__text">
-          <p class="t-overline rv" data-i18n="about_overline">Про нас</p>
-          <h2 class="t-h2 rv rv--d1" data-i18n="about_title">Ми не робимо зачіски. Ми створюємо відчуття.</h2>
-          <p class="t-body-sm rv rv--d2" data-i18n="about_text">SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна італійська косметика Raywell. Авторські методики. Простір, створений для вас.</p>
-          <div class="about__expert rv rv--d3">
+          <p class="t-overline rv rv--blur" data-i18n="about_overline">Про нас</p>
+          <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="about_title">Ми не робимо зачіски. Ми створюємо відчуття.</h2>
+          <p class="t-body-sm rv rv--blur rv--d2" data-i18n="about_text">SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна італійська косметика Raywell. Авторські методики. Простір, створений для вас.</p>
+          <div class="about__expert rv rv--blur rv--d3">
             <p class="t-overline" data-i18n="spec_overline">Експерти</p>
             <p class="t-h3" data-i18n="spec_headline">Досвід. Чуттєвість. Майстерність.</p>
             <p class="t-body-sm" data-i18n="spec_text">Наша команда — це експерти, які живуть красою та створюють її щодня.</p>
@@ -267,12 +273,12 @@
     <div class="container">
       <div class="contact__inner">
         <div class="contact__cta">
-          <p class="t-overline rv" data-i18n="book_overline">Запис</p>
-          <h2 class="contact__big-title rv rv--up rv--d1" data-i18n="book_title">Готові до змін?</h2>
-          <p class="t-body-sm rv rv--d2" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
-          <a href="https://bookon.ua/yUnOMY9SZDzioZCDkLpG" target="_blank" rel="noopener" class="btn btn--filled rv rv--d3" data-i18n="book_cta" aria-label="Book online (opens in new tab)">Записатися онлайн</a>
+          <p class="t-overline rv rv--blur" data-i18n="book_overline">Запис</p>
+          <h2 class="contact__big-title rv rv--blur rv--d1" data-i18n="book_title">Готові до змін?</h2>
+          <p class="t-body-sm rv rv--blur rv--d2" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
+          <a href="https://bookon.ua/yUnOMY9SZDzioZCDkLpG" target="_blank" rel="noopener" class="btn btn--filled rv rv--blur rv--d3" data-i18n="book_cta" aria-label="Book online (opens in new tab)">Записатися онлайн</a>
         </div>
-        <div class="contact__info rv rv--d2">
+        <div class="contact__info rv rv--blur rv--d2">
           <div class="contact__block">
             <p class="t-caption" data-i18n="contact_hours_title">Графік</p>
             <p data-i18n="contact_hours">Пн — Нд: 9:00 — 19:00</p>
@@ -287,8 +293,7 @@
           <a href="https://instagram.com/svs_beauty_space" target="_blank" rel="noopener" class="contact__ig">@svs_beauty_space</a>
         </div>
       </div>
-      <!-- Google Map -->
-      <div class="contact__map rv rv--d3">
+      <div class="contact__map rv rv--blur rv--d3">
         <iframe
           src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2519.3!2d34.7942!3d50.9098!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2z0JHQtdGA0LXQttC90LAg0YAuINCh0YLRgNGW0LvQutC4LCA1MCwg0KHRg9C80Lg!5e0!3m2!1suk!2sua!4v1"
           width="100%" height="300" style="border:0;filter:grayscale(1) brightness(0.4) contrast(1.2);" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"

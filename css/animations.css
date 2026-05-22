@@ -1,67 +1,61 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Beauty Space — Scroll Animations CSS v2
+   SVS Beauty Space — Animations CSS v3
    ═══════════════════════════════════════════════════════ */
 
-/* ── Scroll Progress Indicator ────────────────────────── */
 .scroll-progress {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 0%;
-  height: 2px;
+  top: 0; left: 0;
+  width: 0%; height: 2px;
   background: linear-gradient(90deg, var(--c-gold-muted), var(--c-gold), var(--c-gold-soft));
   z-index: 9999;
   pointer-events: none;
   will-change: width;
-  transition: none;
 }
 
-/* ── Parallax Containers ──────────────────────────────── */
-.has-parallax {
-  will-change: transform;
-}
+.has-parallax { will-change: transform; }
 
-/* ── Section Exit Fade ────────────────────────────────── */
 .section-fade {
   will-change: opacity;
   transition: opacity 0.4s ease-out;
 }
 
-/* ── Magnetic Button ──────────────────────────────────── */
 .magnetic-btn {
   will-change: transform;
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* ── Reduced Motion ───────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .scroll-progress,
-  .has-parallax,
-  .section-fade,
-  .magnetic-btn {
+  .scroll-progress, .has-parallax, .section-fade, .magnetic-btn {
     transition: none !important;
     transform: none !important;
     will-change: auto !important;
     opacity: 1 !important;
   }
 
+  .rv {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
   .hero__bg img {
     animation: none !important;
     transform: scale(1) !important;
     opacity: 1 !important;
+    filter: none !important;
   }
 
   .hero__line {
     transform: none !important;
     opacity: 1 !important;
+    filter: none !important;
   }
 
-  .grain {
-    animation: none !important;
+  .hero__silk {
+    display: none !important;
   }
 
-  .particle {
-    animation: none !important;
+  .grain, .hair-flow, .ambient-light {
     display: none !important;
   }
 
@@ -71,5 +65,10 @@
 
   .cursor {
     display: none !important;
+  }
+
+  .hair-line {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
   }
 }

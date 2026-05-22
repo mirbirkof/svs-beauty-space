@@ -1,16 +1,16 @@
 /* ═══════════════════════════════════════════════════════
-   SVS BEAUTY SPACE — Design System v2
-   Vogue × Saint Laurent × Aman Editorial
+   SVS BEAUTY SPACE — Design System v3
+   Cinematic Luxury · Silk · Editorial
    ═══════════════════════════════════════════════════════ */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  /* ── Palette ────────────────────────────────────────── */
-  --c-black:       #000000;
-  --c-dark:        #0A0908;
-  --c-dark-warm:   #111110;
-  --c-dark-soft:   #1A1918;
+  /* ── Palette — Deep warm + gold + subtle warmth ──── */
+  --c-black:       #0A0908;
+  --c-dark:        #0F0E0C;
+  --c-dark-warm:   #141210;
+  --c-dark-soft:   #1A1816;
   --c-graphite:    #4A433C;
   --c-stone:       #8A8076;
   --c-sand:        #B8ADA0;
@@ -23,25 +23,28 @@
   --c-gold-soft:   #D4BB8A;
   --c-gold-muted:  #A08B60;
 
+  /* warm glow for ambient effects */
+  --c-glow:        rgba(201, 169, 110, 0.04);
+  --c-glow-warm:   rgba(212, 187, 138, 0.03);
+
   /* ── Semantic ──────────────────────────────────────── */
   --c-bg:          var(--c-black);
-  --c-bg-light:    var(--c-warm-white);
   --c-surface:     var(--c-dark-warm);
   --c-text:        var(--c-warm-white);
   --c-text-soft:   var(--c-sand);
   --c-text-muted:  var(--c-stone);
   --c-accent:      var(--c-gold);
   --c-border:      rgba(201, 169, 110, 0.25);
-  --c-border-light: rgba(201, 169, 110, 0.15);
-  --c-divider:     rgba(255, 255, 255, 0.08);
+  --c-border-light: rgba(201, 169, 110, 0.12);
+  --c-divider:     rgba(255, 255, 255, 0.06);
 
-  /* ── Typography — Editorial Scale ──────────────────── */
+  /* ── Typography — Cinematic Scale ──────────────────── */
   --ff-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --ff-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
 
-  --f-display: clamp(3.5rem, 10vw, 9rem);
-  --f-h1:      clamp(2.5rem, 6vw, 5rem);
-  --f-h2:      clamp(1.8rem, 3.5vw, 3.2rem);
+  --f-display: clamp(3rem, 8vw, 7rem);
+  --f-h1:      clamp(2.2rem, 5vw, 4.2rem);
+  --f-h2:      clamp(1.6rem, 3vw, 2.8rem);
   --f-h3:      clamp(1.2rem, 1.8vw, 1.6rem);
   --f-h4:      clamp(1rem, 1.2vw, 1.2rem);
   --f-body:    clamp(0.92rem, 1vw, 1.05rem);
@@ -66,10 +69,11 @@
   --max-text: 520px;
   --nav-h: 72px;
 
-  /* ── Motion ────────────────────────────────────────── */
+  /* ── Motion — silk-smooth easings ──────────────────── */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-silk: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --t-fast: 0.3s;
   --t-normal: 0.6s;
   --t-slow: 1s;
@@ -96,7 +100,6 @@ body {
   cursor: none;
 }
 
-/* Restore default cursor on touch devices */
 @media (pointer: coarse) {
   body { cursor: auto; }
   .cursor { display: none !important; }
@@ -115,13 +118,12 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   a, button { cursor: auto; }
 }
 
-/* ── Focus styles ─────────────────────────────────────── */
 :focus-visible {
   outline: 1px solid var(--c-gold);
   outline-offset: 3px;
 }
 
-/* ── Typography — Editorial ───────────────────────────── */
+/* ── Typography ───────────────────────────────────────── */
 .t-display {
   font-family: var(--ff-serif);
   font-size: var(--f-display);
@@ -189,43 +191,48 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   padding-right: var(--edge);
 }
 
-/* ── Reveal Animations ─────────────────────────────────── */
+/* ── BLUR-TO-FOCUS Reveal (replaces simple fade) ──────── */
 .rv {
   opacity: 0;
-  transform: translateY(28px);
-  transition: opacity var(--t-reveal) var(--ease),
-              transform var(--t-reveal) var(--ease);
+  filter: blur(8px);
+  transform: translateY(20px);
+  transition: opacity var(--t-reveal) var(--ease-silk),
+              filter var(--t-reveal) var(--ease-silk),
+              transform var(--t-reveal) var(--ease-silk);
 }
 
 .rv.is-v {
   opacity: 1;
+  filter: blur(0);
   transform: none;
 }
 
-.rv--fade  { transform: none; }
-.rv--up    { transform: translateY(50px); }
-.rv--scale { transform: scale(0.95); }
+.rv--blur  { transform: none; }  /* blur only, no translateY */
+.rv--up    { transform: translateY(40px); }
+.rv--scale { transform: scale(0.97); filter: blur(6px); }
 
-.rv--d1 { transition-delay: 0.12s; }
-.rv--d2 { transition-delay: 0.24s; }
-.rv--d3 { transition-delay: 0.36s; }
-.rv--d4 { transition-delay: 0.48s; }
+.rv--d1 { transition-delay: 0.15s; }
+.rv--d2 { transition-delay: 0.3s; }
+.rv--d3 { transition-delay: 0.45s; }
+.rv--d4 { transition-delay: 0.6s; }
 
 .rv-img { overflow: hidden; }
 .rv-img img {
   opacity: 0;
-  transform: scale(1.08);
-  transition: opacity var(--t-slow) var(--ease),
-              transform 1.4s var(--ease);
+  transform: scale(1.06);
+  filter: blur(4px);
+  transition: opacity 1.2s var(--ease-silk),
+              transform 1.8s var(--ease-silk),
+              filter 1.4s var(--ease-silk);
 }
 .rv-img.is-v img {
   opacity: 1;
   transform: scale(1);
+  filter: blur(0);
 }
 
 /* ── Components ────────────────────────────────────────── */
 
-/* Button — outlined gold */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -236,12 +243,12 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   letter-spacing: 0.12em;
   text-transform: uppercase;
   border: 1px solid var(--c-border);
-  transition: all var(--t-fast) var(--ease);
+  transition: all 0.5s var(--ease-silk);
   position: relative;
   overflow: hidden;
 }
 
-/* Button hover ripple */
+/* Soft glow on hover */
 .btn::after {
   content: '';
   position: absolute;
@@ -249,7 +256,7 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   background: var(--c-gold);
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 0.5s var(--ease-expo);
+  transition: transform 0.6s var(--ease-expo);
   z-index: -1;
 }
 
@@ -260,6 +267,7 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
 .btn:hover {
   color: var(--c-dark);
   border-color: var(--c-gold);
+  box-shadow: 0 0 30px rgba(201, 169, 110, 0.15);
 }
 
 .btn--filled {
@@ -274,9 +282,9 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
 
 .btn--filled:hover {
   border-color: var(--c-gold-soft);
+  box-shadow: 0 0 40px rgba(201, 169, 110, 0.2);
 }
 
-/* Link arrow */
 .link-arrow {
   display: inline-flex;
   align-items: center;
@@ -296,60 +304,37 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   border-color: var(--c-gold);
 }
 
-/* Divider line */
-.line {
-  width: 40px;
-  height: 1px;
-  background: var(--c-gold);
-}
+.line { width: 40px; height: 1px; background: var(--c-gold); }
 
 /* ── CUSTOM CURSOR ────────────────────────────────────── */
 .cursor {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   z-index: 10000;
   pointer-events: none;
   mix-blend-mode: difference;
 }
 
 .cursor__dot {
-  width: 6px;
-  height: 6px;
+  width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--c-white);
   transform: translate(-50%, -50%);
-  transition: width 0.3s var(--ease), height 0.3s var(--ease), opacity 0.3s;
+  transition: width 0.3s var(--ease), height 0.3s var(--ease);
 }
 
 .cursor__ring {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(255,255,255,0.5);
+  position: absolute; top: 0; left: 0;
+  width: 40px; height: 40px;
+  border: 1px solid rgba(255,255,255,0.4);
   border-radius: 50%;
   transform: translate(-50%, -50%);
   transition: width 0.4s var(--ease), height 0.4s var(--ease), border-color 0.3s;
 }
 
-/* Cursor states */
-body.cursor--hover .cursor__dot {
-  width: 12px;
-  height: 12px;
-  background: var(--c-gold);
-}
-body.cursor--hover .cursor__ring {
-  width: 60px;
-  height: 60px;
-  border-color: var(--c-gold);
-}
-
-body.cursor--drag .cursor__ring {
-  width: 24px;
-  height: 24px;
-}
+body.cursor--hover .cursor__dot { width: 12px; height: 12px; background: var(--c-gold); }
+body.cursor--hover .cursor__ring { width: 60px; height: 60px; border-color: var(--c-gold); }
+body.cursor--drag .cursor__ring { width: 24px; height: 24px; }
 
 /* ── GRAIN OVERLAY ─────────────────────────────────────── */
 .grain {
@@ -357,7 +342,7 @@ body.cursor--drag .cursor__ring {
   inset: -50%;
   z-index: 9000;
   pointer-events: none;
-  opacity: 0.06;
+  opacity: 0.05;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
@@ -375,49 +360,79 @@ body.cursor--drag .cursor__ring {
   100% { transform: translate(0, 0); }
 }
 
-/* ── FLOATING PARTICLES ────────────────────────────────── */
-.particles {
+/* ── SVG HAIR FLOW LINES ──────────────────────────────── */
+.hair-flow {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 1;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.hair-line {
+  stroke-dasharray: 2000;
+  stroke-dashoffset: 2000;
+  animation: hairDraw 4s var(--ease-silk) forwards;
+  will-change: stroke-dashoffset;
+}
+
+.hair-line--1 { animation-delay: 0.5s; }
+.hair-line--2 { animation-delay: 1.2s; }
+.hair-line--3 { animation-delay: 1.8s; }
+.hair-line--4 { animation-delay: 0.8s; }
+
+@keyframes hairDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── AMBIENT FLOATING LIGHT ───────────────────────────── */
+.ambient-light {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
 }
 
-.particle {
+.ambient-light__orb {
   position: absolute;
-  width: 2px;
-  height: 2px;
   border-radius: 50%;
-  background: var(--c-gold);
-  opacity: 0;
-  animation: particleFloat linear infinite;
+  filter: blur(120px);
+  will-change: transform;
+  animation: ambientFloat linear infinite;
 }
 
-@keyframes particleFloat {
-  0% {
-    transform: translateY(100vh) translateX(0) scale(0);
-    opacity: 0;
-  }
-  5% {
-    opacity: 0;
-  }
-  15% {
-    opacity: 0.5;
-    transform: translateY(70vh) translateX(10px) scale(1);
-  }
-  50% {
-    opacity: 0.2;
-    transform: translateY(40vh) translateX(-15px) scale(0.8);
-  }
-  85% {
-    opacity: 0.4;
-    transform: translateY(10vh) translateX(8px) scale(0.6);
-  }
-  100% {
-    transform: translateY(-5vh) translateX(0) scale(0);
-    opacity: 0;
-  }
+.ambient-light__orb--1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(201,169,110,0.06) 0%, transparent 70%);
+  top: 10%; left: -5%;
+  animation-duration: 25s;
+}
+
+.ambient-light__orb--2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(245,240,235,0.03) 0%, transparent 70%);
+  top: 50%; right: -10%;
+  animation-duration: 30s;
+  animation-delay: -10s;
+}
+
+.ambient-light__orb--3 {
+  width: 350px; height: 350px;
+  background: radial-gradient(circle, rgba(201,169,110,0.04) 0%, transparent 70%);
+  bottom: 10%; left: 30%;
+  animation-duration: 22s;
+  animation-delay: -5s;
+}
+
+@keyframes ambientFloat {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(50px, -30px) scale(1.1); }
+  50%  { transform: translate(-20px, 40px) scale(0.95); }
+  75%  { transform: translate(30px, 20px) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
 }
 
 /* ── MARQUEE TICKER ────────────────────────────────────── */
@@ -450,8 +465,7 @@ body.cursor--drag .cursor__ring {
 }
 
 .marquee__dot {
-  width: 4px !important;
-  height: 4px !important;
+  width: 4px !important; height: 4px !important;
   border-radius: 50%;
   background: var(--c-gold) !important;
   display: inline-block;
