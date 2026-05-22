@@ -114,12 +114,28 @@
       }, { threshold: 0.3 });
       swIO.observe(slider);
 
+      let startX = 0, startY = 0, locked = false;
+
       slider.addEventListener('mousedown', e => { drag = true; e.preventDefault(); pos(e.clientX); });
-      slider.addEventListener('touchstart', e => { drag = true; e.preventDefault(); pos(e.touches[0].clientX); }, { passive: false });
+      slider.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        drag = true;
+        locked = false;
+      }, { passive: true });
       window.addEventListener('mousemove', e => { if (drag) pos(e.clientX); });
-      window.addEventListener('touchmove', e => { if (drag) pos(e.touches[0].clientX); }, { passive: false });
-      window.addEventListener('mouseup', () => { drag = false; });
-      window.addEventListener('touchend', () => { drag = false; });
+      window.addEventListener('touchmove', e => {
+        if (!drag) return;
+        const dx = Math.abs(e.touches[0].clientX - startX);
+        const dy = Math.abs(e.touches[0].clientY - startY);
+        if (!locked) {
+          if (dy > dx) { drag = false; return; } // vertical scroll — release
+          if (dx > 8) locked = true; // horizontal drag — lock
+        }
+        if (locked) { e.preventDefault(); pos(e.touches[0].clientX); }
+      }, { passive: false });
+      window.addEventListener('mouseup', () => { drag = false; locked = false; });
+      window.addEventListener('touchend', () => { drag = false; locked = false; });
     });
   }
 

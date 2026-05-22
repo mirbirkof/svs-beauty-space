@@ -33,7 +33,7 @@ const TRANSLATIONS = {
     book_text: 'Запишіться на консультацію — разом підберемо ідеальне рішення.',
     book_cta: 'Записатися онлайн',
 
-    contact_hours_title: 'Графік', contact_hours: 'Пн — Нд: 9:00 — 19:00',
+    contact_hours_title: 'Графік', contact_hours: 'Пн — Нд: 8:00 — 19:00',
     contact_address_title: 'Адреса',
     contact_address: '1-ша Набережна р. Стрілка, 50, Суми',
     contact_directions: 'Прокласти маршрут',
@@ -69,7 +69,7 @@ const TRANSLATIONS = {
     book_text: 'Запишитесь на консультацию — вместе подберём идеальное решение.',
     book_cta: 'Записаться онлайн',
 
-    contact_hours_title: 'График', contact_hours: 'Пн — Вс: 9:00 — 19:00',
+    contact_hours_title: 'График', contact_hours: 'Пн — Вс: 8:00 — 19:00',
     contact_address_title: 'Адрес',
     contact_address: '1-я Набережная р. Стрелка, 50, Сумы',
     contact_directions: 'Проложить маршрут',
@@ -105,7 +105,7 @@ const TRANSLATIONS = {
     book_text: 'Book a consultation — together we\'ll find the perfect solution.',
     book_cta: 'Book online',
 
-    contact_hours_title: 'Hours', contact_hours: 'Mon — Sun: 9 AM — 7 PM',
+    contact_hours_title: 'Hours', contact_hours: 'Mon — Sun: 8 AM — 7 PM',
     contact_address_title: 'Address',
     contact_address: '1st Naberezhna r. Strilka, 50, Sumy',
     contact_directions: 'Get directions',

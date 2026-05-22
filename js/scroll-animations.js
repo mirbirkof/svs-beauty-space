@@ -203,36 +203,8 @@
      6. SECTION FADE
      ═══════════════════════════════════════════════════════ */
   function initSectionFade() {
-    if (reducedMotion) return function () {};
-
-    var sections = document.querySelectorAll('.services, .results, .about, .contact');
-    if (!sections.length) return function () {};
-
-    sections.forEach(function (s) { s.classList.add('section-fade'); });
-
-    function update() {
-      var vh = window.innerHeight;
-      sections.forEach(function (section) {
-        var rect = section.getBoundingClientRect();
-        if (rect.bottom < -200 || rect.top > vh + 200) { section.style.opacity = ''; return; }
-
-        var opacity = 1;
-        if (rect.top < 0) {
-          opacity = lerp(1, 0.3, clamp(Math.abs(rect.top) / (rect.height * 0.4), 0, 1));
-        }
-        if (rect.top > vh * 0.85) {
-          opacity = lerp(1, 0.7, clamp((rect.top - vh * 0.85) / (vh * 0.15), 0, 1));
-        }
-        section.style.opacity = opacity.toFixed(3);
-      });
-    }
-
-    var cleanup = onScroll(update);
-    update();
-    return function () {
-      cleanup();
-      sections.forEach(function (s) { s.style.opacity = ''; s.classList.remove('section-fade'); });
-    };
+    // Disabled — caused visible flicker/fading on scroll
+    return function () {};
   }
 
 
