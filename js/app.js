@@ -43,11 +43,8 @@
     const burger = document.getElementById('navBurger');
     const links = document.getElementById('navLinks');
 
-    // Lotus blooms on load, closes on scroll, opens when back to top
+    // Lotus: bud at top, blooms on scroll down, closes on scroll back up
     var lotus = document.getElementById('navLotus');
-    setTimeout(function() {
-      if (lotus) lotus.classList.add('is-blooming');
-    }, 600);
 
     let t = false;
     window.addEventListener('scroll', () => {
@@ -56,8 +53,8 @@
         var scrolled = scrollY > 60;
         nav.classList.toggle('nav--scrolled', scrolled);
         if (lotus) {
-          if (scrolled) lotus.classList.remove('is-blooming');
-          else lotus.classList.add('is-blooming');
+          if (scrolled) lotus.classList.add('is-blooming');
+          else lotus.classList.remove('is-blooming');
         }
         t = false;
       });

@@ -104,28 +104,8 @@
      3. PARALLAX — about section only
      ═══════════════════════════════════════════════════════ */
   function initParallax() {
-    if (reducedMotion) return function () {};
-
-    var elements = document.querySelectorAll('.about__media img');
-    if (!elements.length) return function () {};
-
-    elements.forEach(function (img) { img.classList.add('has-parallax'); });
-
-    function update() {
-      elements.forEach(function (img) {
-        var parent = img.parentElement;
-        var rect = parent.getBoundingClientRect();
-        var vh = window.innerHeight;
-        if (rect.bottom < -100 || rect.top > vh + 100) return;
-        var centerOffset = (rect.top + rect.height / 2 - vh / 2) / vh;
-        var translateY = centerOffset * -12;
-        img.style.transform = 'translate3d(0,' + translateY + '%,0) scale(1.06)';
-      });
-    }
-
-    var cleanup = onScroll(update);
-    update();
-    return cleanup;
+    // Parallax disabled — static images only
+    return function () {};
   }
 
 

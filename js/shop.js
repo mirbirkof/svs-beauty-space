@@ -148,14 +148,54 @@
   // ── Cart logic ──
   function toggleCart(productId) {
     var idx = cart.findIndex(function (c) { return c.id === productId; });
-    if (idx !== -1) {
-      cart.splice(idx, 1);
-    } else {
+    var adding = idx === -1;
+    if (adding) {
       cart.push({ id: productId, qty: 1 });
+    } else {
+      cart.splice(idx, 1);
     }
     saveCart();
     renderProducts();
     renderCart();
+    if (adding) lotusCartAnimation();
+  }
+
+  function lotusCartAnimation() {
+    var lotus = document.getElementById('shopLotus');
+    if (!lotus) return;
+
+    // Wiggle
+    lotus.classList.remove('is-wiggling');
+    void lotus.offsetWidth;
+    lotus.classList.add('is-wiggling');
+    setTimeout(function() { lotus.classList.remove('is-wiggling'); }, 900);
+
+    // Sparkle droplets
+    var rect = lotus.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    for (var i = 0; i < 8; i++) {
+      var dot = document.createElement('div');
+      dot.className = 'lotus-sparkle';
+      var angle = (Math.PI * 2 / 8) * i + (Math.random() - 0.5) * 0.5;
+      var dist = 30 + Math.random() * 40;
+      var tx = Math.cos(angle) * dist;
+      var ty = Math.sin(angle) * dist;
+      dot.style.left = cx + 'px';
+      dot.style.top = cy + 'px';
+      dot.style.setProperty('transform', 'translate(' + tx + 'px, ' + ty + 'px) scale(0)');
+      dot.style.animationDelay = (i * 0.04) + 's';
+      dot.style.width = (4 + Math.random() * 4) + 'px';
+      dot.style.height = dot.style.width;
+      // Set final transform via animation
+      dot.style.animation = 'none';
+      document.body.appendChild(dot);
+      void dot.offsetWidth;
+      dot.style.animation = '';
+      dot.style.setProperty('--tx', tx + 'px');
+      dot.style.setProperty('--ty', ty + 'px');
+      setTimeout(function(el) { el.remove(); }.bind(null, dot), 1000);
+    }
   }
 
   function updateQty(productId, delta) {
