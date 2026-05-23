@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Особистий кабінет — SVS Beauty Space</title>
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/shop.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Google Sign-In -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav nav--scrolled">
+    <div class="container nav__inner">
+      <a href="index.html" class="nav__logo">
+        <span class="nav__logo-main">SVS</span>
+        <span class="nav__logo-sub">Beauty Space</span>
+      </a>
+      <div class="shop-nav">
+        <a href="shop.html" class="shop-nav__back-btn" aria-label="До каталогу">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="auth-page" id="authPage">
+    <!-- Filled by auth.js -->
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="shop.html" class="footer__back">← До магазину</a>
+      <span class="t-caption">&copy; 2026 SVS Beauty Space</span>
+    </div>
+  </footer>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>

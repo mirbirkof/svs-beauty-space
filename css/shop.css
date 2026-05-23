@@ -108,6 +108,25 @@
 .shop-nav__search-btn:hover,
 .shop-nav__cart-btn:hover { color: var(--c-gold); }
 
+.shop-nav__account-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--c-warm-white);
+  cursor: pointer;
+  padding: var(--s-2);
+  text-decoration: none;
+  font-size: 0.75rem;
+  letter-spacing: .04em;
+  transition: color var(--t-fast);
+}
+.shop-nav__account-btn:hover { color: var(--c-gold); }
+.shop-nav__account-btn.is-master { color: var(--c-gold); }
+.shop-nav__account-label { font-size: 0.7rem; font-weight: 500; }
+@media (max-width: 480px) { .shop-nav__account-label { display: none; } }
+
 .shop-nav__cart-count {
   position: absolute;
   top: 0; right: -2px;

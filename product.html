@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Товар — SVS Beauty Space</title>
+  <meta name="description" content="Професійна косметика SVS Beauty Space">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/shop.css">
+  <link rel="stylesheet" href="css/product.css">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav nav--scrolled">
+    <div class="container nav__inner">
+      <a href="index.html" class="nav__logo">
+        <span class="nav__logo-main">
+          <canvas class="nav__lotus nav__lotus--shop" id="shopLotus" aria-hidden="true"></canvas>
+          SVS
+        </span>
+        <span class="nav__logo-sub">Beauty Space</span>
+      </a>
+      <div class="shop-nav">
+        <a href="shop.html" class="shop-nav__back-btn" aria-label="Назад до каталогу">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </a>
+        <button class="shop-nav__cart-btn" id="cartToggle" aria-label="Кошик">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
+          <span class="shop-nav__cart-count" id="cartCount" style="display:none">0</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- PRODUCT PAGE -->
+  <main class="product-page" id="productPage">
+    <!-- Filled by JS -->
+  </main>
+
+  <!-- CART DRAWER -->
+  <div class="cart-overlay" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-drawer__header">
+      <h3>Кошик</h3>
+      <button class="cart-drawer__close" id="cartClose" aria-label="Закрити кошик">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="cart-drawer__items" id="cartItems"></div>
+    <div class="cart-drawer__empty" id="cartEmpty"><p>Кошик порожній</p></div>
+    <div class="cart-drawer__footer" id="cartFooter" style="display:none">
+      <div class="cart-drawer__total">
+        <span>Разом:</span>
+        <span id="cartTotal">0 ₴</span>
+      </div>
+      <button class="btn btn--filled cart-drawer__checkout" id="checkoutBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Оформити замовлення
+      </button>
+    </div>
+  </aside>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="shop.html" class="footer__back">← До каталогу</a>
+      <span class="t-caption">&copy; 2026 SVS Beauty Space</span>
+    </div>
+  </footer>
+
+  <script src="js/lotus.js"></script>
+  <script src="js/shop-data.js"></script>
+  <script src="js/product.js"></script>
+</body>
+</html>
