@@ -65,7 +65,7 @@
 
 .lotus-petal {
   transform-box: view-box;
-  transform-origin: 50% 60%;
+  transform-origin: 50% 55%;
   transform: scale(0.15) rotate(0deg);
   opacity: 0;
   transition: transform 1.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -74,7 +74,7 @@
 
 .lotus-seed {
   transform-box: view-box;
-  transform-origin: 50% 60%;
+  transform-origin: 50% 55%;
   opacity: 0;
   transition: opacity 0.8s ease 0.4s;
 }
