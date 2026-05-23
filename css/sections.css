@@ -42,27 +42,19 @@
   position: relative;
   display: inline-flex;
   align-items: center;
+  isolation: isolate;
 }
 
-/* Lotus — real photo with gold filter, clip-path bloom */
+/* Lotus — Canvas programmatic drawing */
 .nav__lotus {
   position: absolute;
-  width: 120px;
-  height: 120px;
+  width: 130px;
+  height: 130px;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: -1;
-  object-fit: contain;
-  /* Gold tint: sepia base + warm hue */
-  filter: sepia(1) saturate(1.8) brightness(0.7) hue-rotate(15deg)
-          drop-shadow(0 0 6px rgba(201, 169, 110, 0.4));
-  /* Start as tiny bud — circle reveals gradually */
-  clip-path: circle(12% at 50% 45%);
-  transition: clip-path 1.8s cubic-bezier(0.22, 1, 0.36, 1),
-              filter 0.8s ease;
-  opacity: 0.85;
 }
 
 .nav__logo-sub {
@@ -587,11 +579,10 @@
   background: var(--c-dark);
   aspect-ratio: 3/4;
 }
-.about__lotus-logo {
+.about__lotus-canvas {
   width: 65%;
-  height: auto !important;
-  object-fit: contain !important;
-  filter: sepia(1) saturate(1.8) brightness(0.75) hue-rotate(15deg);
+  max-width: 240px;
+  aspect-ratio: 1;
 }
 .about__brand {
   font-family: var(--ff-serif);

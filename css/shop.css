@@ -3,6 +3,29 @@
    Luxury dark aesthetic, matching main site
    ═══════════════════════════════════════════════════════ */
 
+/* ── Nav base (shop doesn't load sections.css) ───── */
+.nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 200;
+  background: rgba(10, 9, 8, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--c-divider);
+}
+.nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--nav-h);
+}
+.nav__logo {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  z-index: 210;
+}
+
 /* ── Logo in shop nav ─────────────────────────────── */
 .nav__logo-main {
   font-family: var(--ff-serif);
@@ -12,6 +35,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
+  isolation: isolate;
 }
 .nav__logo-sub {
   font-size: 0.7rem;
@@ -21,21 +45,16 @@
   color: var(--c-text-muted);
 }
 
-/* ── Lotus in shop nav (photo-based, always bloomed) ── */
+/* ── Lotus in shop nav (Canvas, scroll-driven) ── */
 .nav__lotus--shop {
   position: absolute;
-  width: 120px;
-  height: 120px;
+  width: 130px;
+  height: 130px;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: -1;
-  object-fit: contain;
-  filter: sepia(1) saturate(1.8) brightness(0.85) hue-rotate(15deg)
-          drop-shadow(0 0 10px rgba(201, 169, 110, 0.5));
-  clip-path: circle(48% at 50% 45%);
-  opacity: 0.85;
 }
 
 /* Lotus wiggle on cart add */

@@ -164,11 +164,14 @@
     var lotus = document.getElementById('shopLotus');
     if (!lotus) return;
 
-    // Wiggle
-    lotus.classList.remove('is-wiggling');
-    void lotus.offsetWidth;
-    lotus.classList.add('is-wiggling');
-    setTimeout(function() { lotus.classList.remove('is-wiggling'); }, 900);
+    // Wiggle via SVSLotus or fallback
+    if (window.SVSLotus) SVSLotus.wiggle('shopLotus');
+    else {
+      lotus.classList.remove('is-wiggling');
+      void lotus.offsetWidth;
+      lotus.classList.add('is-wiggling');
+      setTimeout(function() { lotus.classList.remove('is-wiggling'); }, 900);
+    }
 
     // Sparkle droplets
     var rect = lotus.getBoundingClientRect();
@@ -322,7 +325,11 @@
     }
   });
 
-  // ── Init ──
+  // ── Init lotus + render ──
+  if (window.SVSLotus) {
+    SVSLotus.init('shopLotus', 'scroll');
+  }
+
   renderCategories();
   renderProducts();
   renderCart();

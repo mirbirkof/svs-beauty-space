@@ -66,7 +66,7 @@
     <div class="nav__inner container">
       <a href="#" class="nav__logo">
         <span class="nav__logo-main">
-          <img class="nav__lotus" id="navLotus" src="img/lotus.jpg" alt="" aria-hidden="true">
+          <canvas class="nav__lotus" id="navLotus" aria-hidden="true"></canvas>
           SVS
         </span>
         <span class="nav__logo-sub">Beauty Space</span>
@@ -269,7 +269,7 @@
           </div>
         </div>
         <div class="about__media about__media--logo rv rv--blur rv--d1">
-          <img class="about__lotus-logo" src="img/lotus.jpg" alt="SVS Beauty Space" loading="lazy">
+          <canvas class="about__lotus-canvas" id="aboutLotus" width="240" height="240" aria-hidden="true"></canvas>
           <span class="about__brand">SVS</span>
           <span class="about__brand-sub">Beauty Space</span>
         </div>
@@ -363,6 +363,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
   <script src="js/i18n.js"></script>
+  <script src="js/lotus.js"></script>
   <script src="js/app.js"></script>
   <script src="js/scroll-animations.js"></script>
 </body>

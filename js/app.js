@@ -43,23 +43,17 @@
     const burger = document.getElementById('navBurger');
     const links = document.getElementById('navLinks');
 
-    // Lotus: gradual bloom driven by scroll position
-    var lotus = document.getElementById('navLotus');
+    // Lotus: Canvas bloom driven by scroll
+    if (window.SVSLotus) {
+      SVSLotus.init('navLotus', 'scroll');
+      SVSLotus.init('aboutLotus', 'full');
+    }
 
     let t = false;
     window.addEventListener('scroll', () => {
       if (t) return; t = true;
       requestAnimationFrame(() => {
         nav.classList.toggle('nav--scrolled', scrollY > 60);
-        if (lotus) {
-          // Map scroll 0→400 to bloom 12%→52%
-          var progress = Math.min(scrollY / 400, 1);
-          var radius = 12 + progress * 40;
-          lotus.style.clipPath = 'circle(' + radius + '% at 50% 45%)';
-          // Brighter glow when open
-          var brightness = 0.7 + progress * 0.2;
-          lotus.style.filter = 'sepia(1) saturate(1.8) brightness(' + brightness + ') hue-rotate(15deg) drop-shadow(0 0 ' + (6 + progress * 10) + 'px rgba(201,169,110,' + (0.4 + progress * 0.2) + '))';
-        }
         t = false;
       });
     }, { passive: true });
