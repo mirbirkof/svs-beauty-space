@@ -1,17 +1,19 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Beauty Space — Shop Engine v1
-   Pure JS, no dependencies. Cart in localStorage.
+   SVS Beauty Space — Shop Engine v2
+   Brands filter, quantity selector, retail prices only
    ═══════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
   // ── State ──
   var cart = JSON.parse(localStorage.getItem('svs_cart') || '[]');
+  var activeBrand = null;
   var activeCategory = null;
   var searchQuery = '';
   var sortMode = 'popular';
 
   // ── DOM refs ──
+  var brandGrid = document.getElementById('brandGrid');
   var catGrid = document.getElementById('catGrid');
   var productsGrid = document.getElementById('productsGrid');
   var productsTitle = document.getElementById('productsTitle');
@@ -27,13 +29,47 @@
   var searchInput = document.getElementById('searchInput');
   var sortSelect = document.getElementById('sortSelect');
 
+  // ── Brand name lookup ──
+  function brandName(id) {
+    var b = SHOP_BRANDS.find(function (br) { return br.id === id; });
+    return b ? b.name : id;
+  }
+
+  // ── Brands ──
+  function renderBrands() {
+    var html = '<button class="shop-brand' + (!activeBrand ? ' shop-brand--active' : '') + '" data-brand="">Усі бренди</button>';
+    SHOP_BRANDS.forEach(function (b) {
+      html += '<button class="shop-brand' + (activeBrand === b.id ? ' shop-brand--active' : '') + '" data-brand="' + b.id + '">' + b.name + '</button>';
+    });
+    brandGrid.innerHTML = html;
+
+    brandGrid.querySelectorAll('.shop-brand').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        activeBrand = btn.dataset.brand || null;
+        renderBrands();
+        renderCategories();
+        renderProducts();
+      });
+    });
+  }
+
   // ── Categories ──
   function renderCategories() {
+    // Count products per category (respecting brand filter)
+    var counts = {};
+    var totalCount = 0;
+    SHOP_PRODUCTS.forEach(function (p) {
+      if (activeBrand && p.brand !== activeBrand) return;
+      counts[p.category] = (counts[p.category] || 0) + 1;
+      totalCount++;
+    });
+
     var html = '<button class="shop-cat' + (!activeCategory ? ' shop-cat--active' : '') + '" data-cat="">' +
-      '<span class="shop-cat__icon">☆</span><span class="shop-cat__name">Усі</span></button>';
+      '<span class="shop-cat__icon">☆</span><span class="shop-cat__name">Усі <span class="shop-cat__count">' + totalCount + '</span></span></button>';
     SHOP_CATEGORIES.forEach(function (c) {
+      if (!counts[c.id]) return; // hide empty categories
       html += '<button class="shop-cat' + (activeCategory === c.id ? ' shop-cat--active' : '') + '" data-cat="' + c.id + '">' +
-        '<span class="shop-cat__icon">' + c.icon + '</span><span class="shop-cat__name">' + c.name + '</span></button>';
+        '<span class="shop-cat__icon">' + c.icon + '</span><span class="shop-cat__name">' + c.name + ' <span class="shop-cat__count">' + counts[c.id] + '</span></span></button>';
     });
     catGrid.innerHTML = html;
 
@@ -50,6 +86,10 @@
   function getFilteredProducts() {
     var list = SHOP_PRODUCTS.slice();
 
+    if (activeBrand) {
+      list = list.filter(function (p) { return p.brand === activeBrand; });
+    }
+
     if (activeCategory) {
       list = list.filter(function (p) { return p.category === activeCategory; });
     }
@@ -58,13 +98,11 @@
       var q = searchQuery.toLowerCase();
       list = list.filter(function (p) {
         return p.name.toLowerCase().indexOf(q) !== -1 ||
-               p.brand.toLowerCase().indexOf(q) !== -1 ||
-               p.desc.toLowerCase().indexOf(q) !== -1 ||
-               p.category.toLowerCase().indexOf(q) !== -1;
+               brandName(p.brand).toLowerCase().indexOf(q) !== -1 ||
+               p.desc.toLowerCase().indexOf(q) !== -1;
       });
     }
 
-    // Sort
     if (sortMode === 'price-asc') list.sort(function (a, b) { return a.price - b.price; });
     else if (sortMode === 'price-desc') list.sort(function (a, b) { return b.price - a.price; });
     else if (sortMode === 'name') list.sort(function (a, b) { return a.name.localeCompare(b.name, 'uk'); });
@@ -76,14 +114,21 @@
   function renderProducts() {
     var list = getFilteredProducts();
 
-    if (activeCategory) {
+    // Title
+    var title = 'Усі товари';
+    if (searchQuery) title = 'Результати: «' + searchQuery + '»';
+    else if (activeBrand && activeCategory) {
+      var br = SHOP_BRANDS.find(function (b) { return b.id === activeBrand; });
       var cat = SHOP_CATEGORIES.find(function (c) { return c.id === activeCategory; });
-      productsTitle.textContent = cat ? cat.name : 'Усі товари';
-    } else if (searchQuery) {
-      productsTitle.textContent = 'Результати: «' + searchQuery + '»';
-    } else {
-      productsTitle.textContent = 'Усі товари';
+      title = (br ? br.name : '') + ' — ' + (cat ? cat.name : '');
+    } else if (activeBrand) {
+      var br2 = SHOP_BRANDS.find(function (b) { return b.id === activeBrand; });
+      title = br2 ? br2.name : 'Усі товари';
+    } else if (activeCategory) {
+      var cat2 = SHOP_CATEGORIES.find(function (c) { return c.id === activeCategory; });
+      title = cat2 ? cat2.name : 'Усі товари';
     }
+    productsTitle.textContent = title + ' (' + list.length + ')';
 
     if (!list.length) {
       productsGrid.innerHTML = '';
@@ -95,35 +140,41 @@
     var html = '';
     list.forEach(function (p) {
       var inCart = cart.find(function (c) { return c.id === p.id; });
+      var qty = inCart ? inCart.qty : 1;
       var badgeHtml = '';
       if (p.badge === 'sale') badgeHtml = '<span class="product-card__badge product-card__badge--sale">Знижка</span>';
       else if (p.badge === 'hit') badgeHtml = '<span class="product-card__badge product-card__badge--hit">Хіт</span>';
       else if (p.badge === 'new') badgeHtml = '<span class="product-card__badge product-card__badge--new">Новинка</span>';
 
-      var priceHtml = '';
-      if (p.oldPrice) {
-        priceHtml = '<span class="product-card__old-price">' + p.oldPrice + ' ₴</span> <span class="product-card__price product-card__price--sale">' + p.price + ' ₴</span>';
-      } else {
-        priceHtml = '<span class="product-card__price">' + p.price + ' ₴</span>';
-      }
+      var displayPrice = inCart ? p.price * qty : p.price;
 
       html += '<div class="product-card" data-id="' + p.id + '">' +
         '<div class="product-card__img">' +
           '<div class="product-card__img-placeholder">' +
-            '<span>' + p.name.charAt(0) + '</span>' +
+            '<span>' + brandName(p.brand).charAt(0) + '</span>' +
           '</div>' +
           badgeHtml +
         '</div>' +
         '<div class="product-card__body">' +
-          '<p class="product-card__brand">' + p.brand + '</p>' +
+          '<p class="product-card__brand">' + brandName(p.brand) + '</p>' +
           '<h3 class="product-card__name">' + p.name + '</h3>' +
           '<p class="product-card__volume">' + p.volume + '</p>' +
-          '<p class="product-card__desc">' + p.desc + '</p>' +
+          (p.desc ? '<p class="product-card__desc">' + p.desc + '</p>' : '') +
           '<div class="product-card__footer">' +
-            '<div class="product-card__prices">' + priceHtml + '</div>' +
-            '<button class="product-card__add' + (inCart ? ' product-card__add--in-cart' : '') + '" data-id="' + p.id + '">' +
-              (inCart ? '✓ У кошику' : 'Додати') +
-            '</button>' +
+            '<div class="product-card__prices">' +
+              '<span class="product-card__price">' + displayPrice + ' ₴</span>' +
+            '</div>' +
+            '<div class="product-card__actions">' +
+              (inCart ?
+                '<div class="product-card__qty">' +
+                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="-1">−</button>' +
+                  '<span class="product-card__qty-num">' + qty + '</span>' +
+                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="1">+</button>' +
+                '</div>'
+              :
+                '<button class="product-card__add" data-id="' + p.id + '">Додати</button>'
+              ) +
+            '</div>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -131,40 +182,40 @@
 
     productsGrid.innerHTML = html;
 
-    // Animate cards in
     productsGrid.querySelectorAll('.product-card').forEach(function (card, i) {
-      card.style.animationDelay = (i * 0.06) + 's';
+      card.style.animationDelay = (i * 0.04) + 's';
     });
 
     // Add-to-cart buttons
     productsGrid.querySelectorAll('.product-card__add').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        toggleCart(btn.dataset.id);
+        addToCart(btn.dataset.id);
+      });
+    });
+
+    // Qty buttons on cards
+    productsGrid.querySelectorAll('.product-card__qty-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        updateQty(btn.dataset.id, parseInt(btn.dataset.delta));
       });
     });
   }
 
   // ── Cart logic ──
-  function toggleCart(productId) {
-    var idx = cart.findIndex(function (c) { return c.id === productId; });
-    var adding = idx === -1;
-    if (adding) {
-      cart.push({ id: productId, qty: 1 });
-    } else {
-      cart.splice(idx, 1);
-    }
+  function addToCart(productId) {
+    cart.push({ id: productId, qty: 1 });
     saveCart();
     renderProducts();
     renderCart();
-    if (adding) lotusCartAnimation();
+    lotusCartAnimation();
   }
 
   function lotusCartAnimation() {
     var lotus = document.getElementById('shopLotus');
     if (!lotus) return;
 
-    // Wiggle via SVSLotus or fallback
     if (window.SVSLotus) SVSLotus.wiggle('shopLotus');
     else {
       lotus.classList.remove('is-wiggling');
@@ -173,7 +224,6 @@
       setTimeout(function() { lotus.classList.remove('is-wiggling'); }, 900);
     }
 
-    // Sparkle droplets
     var rect = lotus.getBoundingClientRect();
     var cx = rect.left + rect.width / 2;
     var cy = rect.top + rect.height / 2;
@@ -186,11 +236,9 @@
       var ty = Math.sin(angle) * dist;
       dot.style.left = cx + 'px';
       dot.style.top = cy + 'px';
-      dot.style.setProperty('transform', 'translate(' + tx + 'px, ' + ty + 'px) scale(0)');
       dot.style.animationDelay = (i * 0.04) + 's';
       dot.style.width = (4 + Math.random() * 4) + 'px';
       dot.style.height = dot.style.width;
-      // Set final transform via animation
       dot.style.animation = 'none';
       document.body.appendChild(dot);
       void dot.offsetWidth;
@@ -243,12 +291,12 @@
       html += '<div class="cart-item">' +
         '<div class="cart-item__img">' +
           '<div class="product-card__img-placeholder product-card__img-placeholder--sm">' +
-            '<span>' + p.name.charAt(0) + '</span>' +
+            '<span>' + brandName(p.brand).charAt(0) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="cart-item__info">' +
           '<p class="cart-item__name">' + p.name + '</p>' +
-          '<p class="cart-item__volume">' + p.volume + '</p>' +
+          '<p class="cart-item__volume">' + brandName(p.brand) + ' · ' + p.volume + '</p>' +
           '<div class="cart-item__controls">' +
             '<button class="cart-item__qty-btn" data-id="' + p.id + '" data-delta="-1">−</button>' +
             '<span class="cart-item__qty">' + item.qty + '</span>' +
@@ -307,7 +355,8 @@
 
   searchInput.addEventListener('input', function () {
     searchQuery = searchInput.value.trim();
-    if (searchQuery) activeCategory = null;
+    if (searchQuery) { activeBrand = null; activeCategory = null; }
+    renderBrands();
     renderCategories();
     renderProducts();
   });
@@ -317,7 +366,6 @@
     renderProducts();
   });
 
-  // Escape key
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       closeCart();
@@ -325,11 +373,12 @@
     }
   });
 
-  // ── Init lotus + render ──
+  // ── Init ──
   if (window.SVSLotus) {
     SVSLotus.init('shopLotus', 'scroll');
   }
 
+  renderBrands();
   renderCategories();
   renderProducts();
   renderCart();
