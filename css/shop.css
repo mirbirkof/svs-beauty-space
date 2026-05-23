@@ -24,8 +24,8 @@
 /* ── Lotus in shop nav ────────────────────────────── */
 .nav__lotus--shop {
   position: absolute;
-  width: 100px;
-  height: 80px;
+  width: 130px;
+  height: 74px;
   left: 50%;
   top: 48%;
   transform: translate(-50%, -50%);
@@ -37,7 +37,7 @@
 }
 .nav__lotus--shop .lotus-petal {
   transform-box: view-box;
-  transform-origin: 50% 82%;
+  transform-origin: 50% 60%;
   transform: scale(0.15);
   opacity: 0;
   transition: transform 1.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -55,6 +55,8 @@
 .nav__lotus--shop.is-blooming .lotus-p4 { transform: scale(1); opacity: 0.65; transition-delay: 0.22s; }
 .nav__lotus--shop.is-blooming .lotus-p1,
 .nav__lotus--shop.is-blooming .lotus-p2 { transform: scale(1); opacity: 0.5; transition-delay: 0.35s; }
+.nav__lotus--shop.is-blooming .lotus-p1b,
+.nav__lotus--shop.is-blooming .lotus-p2b { transform: scale(1); opacity: 0.45; transition-delay: 0.4s; }
 
 /* Lotus wiggle on cart add */
 @keyframes lotusWiggle {

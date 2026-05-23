@@ -46,10 +46,10 @@
 
 .nav__lotus {
   position: absolute;
-  width: 100px;
-  height: 80px;
+  width: 130px;
+  height: 74px;
   left: 50%;
-  top: 48%;
+  top: 50%;
   transform: translate(-50%, -50%);
   color: var(--c-gold);
   pointer-events: none;
@@ -65,7 +65,7 @@
 
 .lotus-petal {
   transform-box: view-box;
-  transform-origin: 50% 82%;
+  transform-origin: 50% 60%;
   transform: scale(0.15) rotate(0deg);
   opacity: 0;
   transition: transform 1.4s cubic-bezier(0.22, 1, 0.36, 1),
@@ -74,7 +74,7 @@
 
 .lotus-seed {
   transform-box: view-box;
-  transform-origin: 50% 82%;
+  transform-origin: 50% 60%;
   opacity: 0;
   transition: opacity 0.8s ease 0.4s;
 }
@@ -102,6 +102,11 @@
 .nav__lotus.is-blooming .lotus-p2 {
   transform: scale(1); opacity: 0.5;
   transition-delay: 0.35s;
+}
+.nav__lotus.is-blooming .lotus-p1b,
+.nav__lotus.is-blooming .lotus-p2b {
+  transform: scale(1); opacity: 0.45;
+  transition-delay: 0.4s;
 }
 
 .nav__logo-sub {
