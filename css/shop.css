@@ -336,7 +336,10 @@
   border: 1px solid var(--c-divider);
   transition: border-color var(--t-fast), transform var(--t-fast);
   animation: cardFadeIn 0.5s var(--ease) both;
-  cursor: default;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  display: block;
 }
 .product-card:hover {
   border-color: rgba(201, 169, 110, 0.3);

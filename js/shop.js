@@ -179,7 +179,7 @@
       // Wholesale badge for masters
       var masterBadge = isMaster ? '<span class="product-card__wholesale-badge">Опт</span>' : '';
 
-      html += '<div class="product-card" data-id="' + p.id + '" data-href="product.html#' + p.id + '" style="animation-delay:' + (i * 0.04) + 's">' +
+      html += '<a class="product-card" href="product.html#' + p.id + '" data-id="' + p.id + '" style="animation-delay:' + (i * 0.04) + 's;text-decoration:none;color:inherit;display:block">' +
         '<div class="product-card__img">' +
           imgHtml(p, false) +
           badgeHtml +
@@ -189,7 +189,7 @@
           '<p class="product-card__brand">' + brandName(p.brand) + '</p>' +
           '<h3 class="product-card__name">' + p.name + '</h3>' +
           volSelectorHtml +
-          (p.desc ? '<p class="product-card__desc">' + p.desc.substring(0, 80) + (p.desc.length > 80 ? '…' : '') + '</p>' : '') +
+          (p.desc ? '<p class="product-card__desc">' + p.desc.substring(0, 90) + (p.desc.length > 90 ? '…' : '') + '</p>' : '') +
           '<div class="product-card__footer">' +
             '<div class="product-card__prices">' +
               '<span class="product-card__price" id="price-' + p.id + '">' + displayPrice + ' ₴</span>' +
@@ -197,34 +197,25 @@
             '<div class="product-card__actions">' +
               (inCart ?
                 '<div class="product-card__qty">' +
-                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="-1">−</button>' +
+                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="-1" onclick="event.preventDefault()">−</button>' +
                   '<span class="product-card__qty-num">' + qty + '</span>' +
-                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="1">+</button>' +
+                  '<button class="product-card__qty-btn" data-id="' + p.id + '" data-delta="1" onclick="event.preventDefault()">+</button>' +
                 '</div>'
               :
-                '<button class="product-card__add" data-id="' + p.id + '">Додати</button>'
+                '<button class="product-card__add" data-id="' + p.id + '" onclick="event.preventDefault()">Додати</button>'
               ) +
             '</div>' +
           '</div>' +
         '</div>' +
-      '</div>';
+      '</a>';
     });
 
     productsGrid.innerHTML = html;
 
-    // Click on card → product page (but not on buttons)
-    productsGrid.querySelectorAll('.product-card').forEach(function (card) {
-      card.addEventListener('click', function (e) {
-        if (e.target.closest('button') || e.target.closest('.product-card__vols')) return;
-        var href = card.dataset.href;
-        if (href) window.location.href = href;
-      });
-      card.style.cursor = 'pointer';
-    });
-
     // Volume selector buttons
     productsGrid.querySelectorAll('.product-card__vol-btn').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
+        e.preventDefault();
         e.stopPropagation();
         var pid = btn.dataset.pid;
         var vi = parseInt(btn.dataset.vi);
@@ -248,6 +239,7 @@
     // Add-to-cart
     productsGrid.querySelectorAll('.product-card__add').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
+        e.preventDefault();
         e.stopPropagation();
         var pid = btn.dataset.id;
         // get active volIdx
@@ -260,6 +252,7 @@
     // Qty on cards
     productsGrid.querySelectorAll('.product-card__qty-btn').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
+        e.preventDefault();
         e.stopPropagation();
         updateQty(btn.dataset.id, parseInt(btn.dataset.delta));
       });
