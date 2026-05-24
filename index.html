@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SVS Beauty Space — Sumy</title>
-  <meta name="description" content="SVS Beauty Space — premium beauty salon in Sumy. Colouring, restoration, keratin, nanoplasty, styling. World-class cosmetics. Award-winning quality.">
+  <title>SVS Beauty Space — Салон краси Суми | Фарбування, біовирівнювання, манікюр</title>
+  <meta name="description" content="SVS Beauty Space — преміальний салон краси в Сумах. Фарбування, біовирівнювання, балаяж, Airtouch, Brazilian Blond, манікюр, педикюр. Професійна косметика Raywell, Schwarzkopf.">
+  <meta name="keywords" content="салон краси Суми, фарбування волосся Суми, біовирівнювання Суми, балаяж Суми, манікюр Суми, SVS Beauty Space">
   <meta name="theme-color" content="#0A0908">
 
-  <meta property="og:title" content="SVS Beauty Space">
-  <meta property="og:description" content="Beauty that is felt. Premium salon in Sumy.">
+  <meta property="og:title" content="SVS Beauty Space — Салон краси Суми">
+  <meta property="og:description" content="Краса, яка відчувається. Преміальний салон в Сумах — фарбування, біовирівнювання, манікюр.">
   <meta property="og:type" content="website">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -74,6 +75,7 @@
 
       <nav class="nav__links" id="navLinks">
         <a href="#services" class="nav__link" data-i18n="nav_services">Послуги</a>
+        <a href="shop.html" class="nav__link" data-i18n="nav_shop">Магазин</a>
         <a href="#results" class="nav__link" data-i18n="nav_results">Результати</a>
         <a href="#about" class="nav__link" data-i18n="nav_about">Про нас</a>
         <a href="#contact" class="nav__link" data-i18n="nav_contact">Контакти</a>
@@ -177,7 +179,7 @@
               </div>
               <div class="svc-card__overlay">
                 <h3 class="svc-card__title" data-i18n="rit_care_title">Відновлення</h3>
-                <p class="svc-card__text" data-i18n="rit_care_text">Кератин, нанопластика, ботокс. Глибока реконструкція структури.</p>
+                <p class="svc-card__text" data-i18n="rit_care_text">Біовирівнювання, ботокс, реконструкція. Глибоке відновлення здоров'я волосся.</p>
               </div>
             </article>
           </div>
@@ -360,6 +362,49 @@
       </div>
     </div>
   </footer>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BeautySalon",
+    "name": "SVS Beauty Space",
+    "image": "https://svs-beauty-space.com/img/hero.jpg",
+    "url": "https://svs-beauty-space.com",
+    "telephone": "+380991283375",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "1-ша Набережна р. Стрілка, 50",
+      "addressLocality": "Суми",
+      "addressCountry": "UA"
+    },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": 50.9077,
+      "longitude": 34.7981
+    },
+    "openingHoursSpecification": {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+      "opens": "08:00",
+      "closes": "19:00"
+    },
+    "priceRange": "$$",
+    "sameAs": ["https://instagram.com/svs_beauty_space"],
+    "hasOfferCatalog": {
+      "@type": "OfferCatalog",
+      "name": "Послуги",
+      "itemListElement": [
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Фарбування волосся"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Біовирівнювання"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Балаяж"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Airtouch"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Манікюр"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Педикюр"}}
+      ]
+    }
+  }
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
   <script src="js/i18n.js"></script>

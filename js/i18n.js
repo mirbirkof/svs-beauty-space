@@ -7,7 +7,7 @@
 const TRANSLATIONS = {
   ua: {
     lang_label: 'UA',
-    nav_services: 'Послуги', nav_results: 'Результати',
+    nav_services: 'Послуги', nav_shop: 'Магазин', nav_results: 'Результати',
     nav_about: 'Про нас', nav_contact: 'Контакти', nav_book: 'Записатися',
 
     hero_line1: 'Краса,', hero_line2: 'яка відчувається',
@@ -17,7 +17,7 @@ const TRANSLATIONS = {
     svc_overline: 'Послуги', svc_title: 'Індивідуальна краса у деталях',
 
     rit_color_title: 'Фарбування', rit_color_text: 'Блонд, балаяж, омбре. Авторська техніка Foiled Cashmere.',
-    rit_care_title: 'Відновлення', rit_care_text: 'Кератин, нанопластика, ботокс. Глибока реконструкція структури.',
+    rit_care_title: 'Відновлення', rit_care_text: 'Біовирівнювання, ботокс, реконструкція. Глибоке відновлення здоров\'я волосся.',
     rit_cut_title: 'Стрижки', rit_cut_text: 'Від класичних ліній до сучасних текстур.',
     rit_style_title: 'Зачіски', rit_style_text: 'Вечірні та весільні образи.',
 
@@ -44,7 +44,7 @@ const TRANSLATIONS = {
 
   ru: {
     lang_label: 'RU',
-    nav_services: 'Услуги', nav_results: 'Результаты',
+    nav_services: 'Услуги', nav_shop: 'Магазин', nav_results: 'Результаты',
     nav_about: 'О нас', nav_contact: 'Контакты', nav_book: 'Записаться',
 
     hero_line1: 'Красота,', hero_line2: 'которая чувствуется',
@@ -54,7 +54,7 @@ const TRANSLATIONS = {
     svc_overline: 'Услуги', svc_title: 'Индивидуальная красота в деталях',
 
     rit_color_title: 'Окрашивание', rit_color_text: 'Блонд, балаяж, омбре. Авторская техника Foiled Cashmere.',
-    rit_care_title: 'Восстановление', rit_care_text: 'Кератин, нанопластика, ботокс. Глубокая реконструкция структуры.',
+    rit_care_title: 'Восстановление', rit_care_text: 'Биовыравнивание, ботокс, реконструкция. Глубокое восстановление здоровья волос.',
     rit_cut_title: 'Стрижки', rit_cut_text: 'От классических линий до современных текстур.',
     rit_style_title: 'Причёски', rit_style_text: 'Вечерние и свадебные образы.',
 
@@ -81,7 +81,7 @@ const TRANSLATIONS = {
 
   en: {
     lang_label: 'EN',
-    nav_services: 'Services', nav_results: 'Results',
+    nav_services: 'Services', nav_shop: 'Shop', nav_results: 'Results',
     nav_about: 'About', nav_contact: 'Contact', nav_book: 'Book',
 
     hero_line1: 'Beauty', hero_line2: 'that is felt',
@@ -91,7 +91,7 @@ const TRANSLATIONS = {
     svc_overline: 'Services', svc_title: 'Individual beauty in details',
 
     rit_color_title: 'Colouring', rit_color_text: 'Blonde, balayage, ombre. Signature Foiled Cashmere technique.',
-    rit_care_title: 'Restoration', rit_care_text: 'Keratin, nanoplasty, botox. Deep structural reconstruction.',
+    rit_care_title: 'Restoration', rit_care_text: 'Bio-straightening, botox, reconstruction. Deep hair health recovery.',
     rit_cut_title: 'Haircuts', rit_cut_text: 'From classic lines to modern textures.',
     rit_style_title: 'Styling', rit_style_text: 'Evening and bridal looks.',
 

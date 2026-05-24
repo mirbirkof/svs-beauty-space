@@ -204,14 +204,19 @@
       ? '<div class="product-detail__master-info"><span class="master-badge">Майстер</span> Оптова ціна активна</div>'
       : '';
 
-    // Related products (same brand, same category)
-    var related = SHOP_PRODUCTS.filter(function (pr) {
-      return pr.id !== p.id && (pr.brand === p.brand || pr.category === p.category);
-    }).slice(0, 4);
+    // Related products — prioritize complementary (different category, same brand), then same category
+    var complementary = SHOP_PRODUCTS.filter(function (pr) {
+      return pr.id !== p.id && pr.brand === p.brand && pr.category !== p.category;
+    }).slice(0, 2);
+    var sameCat = SHOP_PRODUCTS.filter(function (pr) {
+      return pr.id !== p.id && pr.category === p.category && complementary.indexOf(pr) === -1;
+    }).slice(0, 2);
+    var related = complementary.concat(sameCat).slice(0, 4);
 
     var relatedHtml = '';
     if (related.length) {
-      relatedHtml = '<section class="product-related"><div class="container"><h2 class="product-related__title">Схожі товари</h2><div class="product-related__grid">';
+      var relTitle = complementary.length ? 'Рекомендуємо до замовлення' : 'Схожі товари';
+      relatedHtml = '<section class="product-related"><div class="container"><h2 class="product-related__title">' + relTitle + '</h2><div class="product-related__grid">';
       related.forEach(function (rp) {
         var rv = rp.volumes[0];
         var rp_price = getPrice(rv);

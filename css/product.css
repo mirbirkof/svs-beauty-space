@@ -449,3 +449,19 @@
   height: 100%;
   object-fit: contain;
 }
+
+/* ── Mobile sticky buy bar ────────────────────────────── */
+@media (max-width: 768px) {
+  .product-detail__buy {
+    position: sticky;
+    bottom: 0;
+    background: rgba(10, 9, 8, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: var(--s-4);
+    margin: var(--s-4) calc(-1 * var(--s-4)) 0;
+    border-top: 1px solid var(--c-divider);
+    z-index: 50;
+    border-radius: 16px 16px 0 0;
+  }
+}
