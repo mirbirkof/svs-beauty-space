@@ -44,83 +44,95 @@
   <!-- SEARCH BAR (hidden by default) -->
   <div class="search-bar" id="searchBar">
     <div class="container">
-      <input type="text" class="search-bar__input" id="searchInput" placeholder="Пошук товарів..." autocomplete="off">
+      <input type="text" class="search-bar__input" id="searchInput" placeholder="Шампунь, маска, фарба, олія..." autocomplete="off">
       <button class="search-bar__close" id="searchClose" aria-label="Закрити">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
   </div>
 
-  <!-- HERO -->
+  <!-- HERO — compact with inline search + trust -->
   <section class="shop-hero">
     <div class="container">
-      <p class="t-overline">Інтернет-магазин</p>
       <h1 class="shop-hero__title">Професійна косметика</h1>
-      <p class="shop-hero__sub">Засоби, якими працюють наші майстри — тепер для вас</p>
-    </div>
-  </section>
-
-  <!-- BRANDS -->
-  <section class="shop-brands" id="brands">
-    <div class="container">
-      <div class="shop-brands__grid" id="brandGrid">
-        <!-- Filled by JS -->
+      <div class="shop-hero__search" id="heroSearch">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" class="shop-hero__search-input" id="heroSearchInput" placeholder="Знайти серед 267 товарів..." autocomplete="off">
+      </div>
+      <div class="shop-hero__trust">
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Оригінал
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Доставка по Україні
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Працюємо цим у салоні
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg>
+          Консультація майстра
+        </span>
       </div>
     </div>
   </section>
 
-  <!-- CATEGORIES -->
-  <section class="shop-cats" id="categories">
+  <!-- FILTERS BAR — brands + category button + sort -->
+  <section class="shop-filters" id="filters">
     <div class="container">
-      <div class="shop-cats__grid" id="catGrid">
-        <!-- Filled by JS -->
+      <div class="shop-filters__row">
+        <div class="shop-brands__grid" id="brandGrid"></div>
+        <div class="shop-filters__right">
+          <button class="shop-filters__cat-btn" id="catToggle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+            <span id="catBtnLabel">Категорії</span>
+            <span class="shop-filters__cat-arrow">›</span>
+          </button>
+          <select id="sortSelect" class="shop-sort">
+            <option value="popular">Популярні</option>
+            <option value="price-asc">Дешевші</option>
+            <option value="price-desc">Дорожчі</option>
+            <option value="name">За назвою</option>
+          </select>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- TRUST BAR -->
-  <section class="shop-trust">
-    <div class="container">
-      <div class="shop-trust__grid">
-        <div class="shop-trust__item">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span>Оригінальна продукція</span>
-        </div>
-        <div class="shop-trust__item">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          <span>Доставка по Україні</span>
-        </div>
-        <div class="shop-trust__item">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span>Використовуємо у салоні</span>
-        </div>
-        <div class="shop-trust__item">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg>
-          <span>Консультація майстра</span>
-        </div>
-      </div>
+  <!-- CATEGORY DROPDOWN -->
+  <div class="cat-dropdown" id="catDropdown">
+    <div class="cat-dropdown__inner" id="catDropdownInner">
+      <!-- Filled by JS -->
     </div>
-  </section>
+  </div>
+  <div class="cat-dropdown__overlay" id="catOverlay"></div>
 
   <!-- PRODUCTS -->
   <section class="shop-products" id="products">
     <div class="container">
       <div class="shop-products__header">
         <h2 class="shop-products__title" id="productsTitle">Усі товари</h2>
-        <div class="shop-products__sort">
-          <select id="sortSelect" class="shop-sort">
-            <option value="popular">Популярні</option>
-            <option value="price-asc">Ціна: дешевші</option>
-            <option value="price-desc">Ціна: дорожчі</option>
-            <option value="name">За назвою</option>
+        <div class="shop-products__per-page">
+          <span class="shop-products__per-label">Показувати:</span>
+          <select id="perPageSelect" class="shop-sort shop-sort--sm">
+            <option value="30">30</option>
+            <option value="60" selected>60</option>
+            <option value="100">100</option>
           </select>
         </div>
       </div>
-      <div class="shop-products__grid" id="productsGrid">
-        <!-- Filled by JS -->
-      </div>
+      <div class="shop-products__grid" id="productsGrid"></div>
       <div class="shop-products__empty" id="productsEmpty" style="display:none">
         <p>Товарів не знайдено</p>
+      </div>
+      <!-- PAGINATION -->
+      <div class="shop-pagination" id="pagination" style="display:none">
+        <button class="shop-pagination__btn" id="pagePrev" aria-label="Попередня">‹</button>
+        <div class="shop-pagination__pages" id="pageNumbers"></div>
+        <button class="shop-pagination__btn" id="pageNext" aria-label="Наступна">›</button>
       </div>
     </div>
   </section>
@@ -134,9 +146,7 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <div class="cart-drawer__items" id="cartItems">
-      <!-- Filled by JS -->
-    </div>
+    <div class="cart-drawer__items" id="cartItems"></div>
     <div class="cart-drawer__empty" id="cartEmpty">
       <p>Кошик порожній</p>
     </div>
