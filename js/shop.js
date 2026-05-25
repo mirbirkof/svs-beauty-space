@@ -81,7 +81,9 @@
     });
   }
 
-  // ── Categories ──
+  // ── Categories (accordion groups) ──
+  var openGroup = null;
+
   function renderCategories() {
     var counts = {}, totalCount = 0;
     SHOP_PRODUCTS.forEach(function (p) {
@@ -89,15 +91,65 @@
       counts[p.category] = (counts[p.category] || 0) + 1;
       totalCount++;
     });
+
+    var groups = (typeof SHOP_CATEGORY_GROUPS !== 'undefined') ? SHOP_CATEGORY_GROUPS : null;
+
+    // "All" button
     var html = '<button class="shop-cat' + (!activeCategory ? ' shop-cat--active' : '') + '" data-cat="">' +
       '<span class="shop-cat__icon">☆</span><span class="shop-cat__name">Усі <span class="shop-cat__count">' + totalCount + '</span></span></button>';
-    SHOP_CATEGORIES.forEach(function (c) {
-      if (!counts[c.id]) return;
-      html += '<button class="shop-cat' + (activeCategory === c.id ? ' shop-cat--active' : '') + '" data-cat="' + c.id + '">' +
-        '<span class="shop-cat__icon">' + c.icon + '</span><span class="shop-cat__name">' + c.name + ' <span class="shop-cat__count">' + counts[c.id] + '</span></span></button>';
-    });
+
+    if (groups) {
+      // Render grouped accordion
+      groups.forEach(function (g, gi) {
+        var groupCount = 0;
+        g.cats.forEach(function (cid) { groupCount += (counts[cid] || 0); });
+        if (!groupCount) return;
+
+        var isOpen = openGroup === gi;
+        var hasActive = g.cats.indexOf(activeCategory) !== -1;
+
+        html += '<div class="shop-cat-group' + (isOpen ? ' is-open' : '') + (hasActive ? ' has-active' : '') + '">' +
+          '<button class="shop-cat-group__header" data-group="' + gi + '">' +
+            '<span class="shop-cat-group__name">' + g.name + '</span>' +
+            '<span class="shop-cat-group__count">' + groupCount + '</span>' +
+            '<span class="shop-cat-group__arrow">›</span>' +
+          '</button>';
+
+        if (isOpen) {
+          html += '<div class="shop-cat-group__items">';
+          g.cats.forEach(function (cid) {
+            if (!counts[cid]) return;
+            var cat = SHOP_CATEGORIES.find(function (c) { return c.id === cid; });
+            if (!cat) return;
+            html += '<button class="shop-cat' + (activeCategory === cid ? ' shop-cat--active' : '') + '" data-cat="' + cid + '">' +
+              '<span class="shop-cat__icon">' + cat.icon + '</span><span class="shop-cat__name">' + cat.name + ' <span class="shop-cat__count">' + counts[cid] + '</span></span></button>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+    } else {
+      // Fallback: flat categories
+      SHOP_CATEGORIES.forEach(function (c) {
+        if (!counts[c.id]) return;
+        html += '<button class="shop-cat' + (activeCategory === c.id ? ' shop-cat--active' : '') + '" data-cat="' + c.id + '">' +
+          '<span class="shop-cat__icon">' + c.icon + '</span><span class="shop-cat__name">' + c.name + ' <span class="shop-cat__count">' + counts[c.id] + '</span></span></button>';
+      });
+    }
+
     catGrid.innerHTML = html;
-    catGrid.querySelectorAll('.shop-cat').forEach(function (btn) {
+
+    // Group accordion click
+    catGrid.querySelectorAll('.shop-cat-group__header').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var gi = parseInt(btn.dataset.group);
+        openGroup = (openGroup === gi) ? null : gi;
+        renderCategories();
+      });
+    });
+
+    // Category button click
+    catGrid.querySelectorAll('.shop-cat[data-cat]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         activeCategory = btn.dataset.cat || null;
         renderCategories(); renderProducts();
@@ -279,10 +331,26 @@
     item.qty += delta;
     if (item.qty < 1) {
       cart = cart.filter(function (c) { return c.id !== productId; });
+      saveCart();
+      renderCart();
+      renderProducts();
+      return;
     }
     saveCart();
     renderCart();
-    renderProducts();
+    // Update card in-place instead of full re-render
+    var card = productsGrid.querySelector('.product-card[data-id="' + productId + '"]');
+    if (card) {
+      var qtyNum = card.querySelector('.product-card__qty-num');
+      if (qtyNum) qtyNum.textContent = item.qty;
+      var p = SHOP_PRODUCTS.find(function (pr) { return pr.id === productId; });
+      if (p) {
+        var vol = p.volumes[item.volIdx || 0];
+        var price = isMaster ? vol.wholesale : vol.price;
+        var priceEl = document.getElementById('price-' + productId);
+        if (priceEl) priceEl.textContent = (price * item.qty) + ' ₴';
+      }
+    }
   }
 
   function saveCart() {

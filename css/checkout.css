@@ -280,6 +280,19 @@
   color: #bbb;
 }
 
+/* Payment note (dev mode) */
+.checkout-payment-note {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 0 16px;
+  padding: 14px;
+  background: #f8f5f0;
+  border-radius: 10px;
+  border: 1px solid #e8e0d5;
+}
+
 /* Login notice */
 .checkout-login-notice {
   display: flex;

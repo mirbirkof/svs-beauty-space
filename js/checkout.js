@@ -84,10 +84,10 @@ function getCartTotal() {
 }
 
 function resolveCartProducts() {
-  // Attach product objects from SHOP_DATA
+  // Attach product objects from SHOP_PRODUCTS
   cart = cart.map((item) => {
-    if (!item.product && typeof SHOP_DATA !== 'undefined') {
-      const product = SHOP_DATA.find((p) => p.id === item.id);
+    if (!item.product && typeof SHOP_PRODUCTS !== 'undefined') {
+      const product = SHOP_PRODUCTS.find((p) => p.id === item.id);
       return { ...item, product };
     }
     return item;
@@ -119,22 +119,22 @@ function render() {
       <section class="checkout-payment">
         <h2 class="checkout-section-title">Оплата</h2>
 
-        ${!currentUser ? renderLoginNotice() : ''}
-
-        <div id="paymentSection" ${!currentUser ? 'style="display:none"' : ''}>
-          <div id="paymentElement" class="checkout-payment-element">
-            ${!stripe ? renderDevPayment() : '<div class="stripe-placeholder">Завантаження форми оплати...</div>'}
-          </div>
+        <div id="paymentSection">
+          ${stripe ? '<div id="paymentElement" class="checkout-payment-element"><div class="stripe-placeholder">Завантаження форми оплати...</div></div>' : ''}
 
           <div class="checkout-error" id="checkoutError"></div>
 
-          <button class="checkout-pay-btn" id="payBtn" ${!currentUser ? 'disabled' : ''}>
-            Сплатити ${total.toLocaleString('uk-UA')} ₴
+          <div class="checkout-payment-methods">
+            <p class="checkout-payment-note">Оплата при отриманні (накладений платіж) або за реквізитами після підтвердження замовлення менеджером.</p>
+          </div>
+
+          <button class="checkout-pay-btn" id="payBtn">
+            Оформити замовлення · ${total.toLocaleString('uk-UA')} ₴
           </button>
 
           <div class="checkout-secure-note">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            Захищено Stripe · SSL шифрування
+            Ваші дані захищені · Менеджер зв'яжеться для підтвердження
           </div>
         </div>
       </section>
@@ -143,7 +143,7 @@ function render() {
 
   renderItems();
 
-  if (currentUser && stripe) {
+  if (stripe) {
     createPaymentIntent().then(mountStripe);
   }
 
@@ -225,6 +225,26 @@ function renderLoginNotice() {
         <strong>Увійдіть для оплати</strong>
         <p>Для оформлення замовлення потрібен обліковий запис.</p>
         <a href="account.html" class="checkout-login-link">Увійти / Зареєструватися</a>
+      </div>
+    </div>
+  `;
+}
+
+function renderContactForm() {
+  return `
+    <div class="checkout-contact-form">
+      <h3 class="checkout-delivery__title">Контактні дані</h3>
+      <div class="checkout-delivery__fields">
+        <div class="checkout-field">
+          <label>Ім'я та прізвище</label>
+          <input type="text" id="contactName" placeholder="Оля Ковальчук"
+            value="${currentUser?.name || ''}" autocomplete="name">
+        </div>
+        <div class="checkout-field">
+          <label>Номер телефону</label>
+          <input type="tel" id="contactPhone" placeholder="+380 XX XXX XX XX"
+            value="${currentUser?.phone || ''}" autocomplete="tel">
+        </div>
       </div>
     </div>
   `;
@@ -330,14 +350,20 @@ async function mountStripe(clientSecret) {
 async function handlePay() {
   const btn = document.getElementById('payBtn');
 
-  // Dev mode (no Stripe)
-  if (!stripe || !elements) {
-    showSuccess();
+  // Validate delivery form
+  const name = document.getElementById('deliveryName')?.value?.trim();
+  const phone = document.getElementById('deliveryPhone')?.value?.trim();
+  if (!name || !phone) {
+    showError('Вкажіть ім\'я та номер телефону');
     return;
   }
 
-  if (!currentUser) {
-    window.location.href = 'account.html';
+  // Dev mode (no Stripe) — order confirmation
+  if (!stripe || !elements) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="checkout-spinner-sm"></span>Оформлення...';
+    // Simulate order processing
+    setTimeout(() => showSuccess(), 800);
     return;
   }
 
@@ -373,16 +399,16 @@ function showSuccess() {
   // Clear cart
   localStorage.removeItem(STORAGE_CART);
 
+  const devOrderId = 'SVS-' + Date.now().toString(36).toUpperCase();
   const page = document.getElementById('checkoutPage');
   page.innerHTML = `
     <div class="container checkout-success">
       <div class="checkout-success__icon">✓</div>
       <h2>Замовлення оформлено!</h2>
-      <p>Дякуємо за покупку. Ми зв'яжемося з вами для підтвердження деталей доставки.</p>
-      ${orderId ? `<p class="checkout-success__id">№ замовлення: <strong>${orderId}</strong></p>` : ''}
+      <p>Дякуємо за покупку. Менеджер зв'яжеться з вами для підтвердження деталей доставки та оплати.</p>
+      <p class="checkout-success__id">№ замовлення: <strong>${devOrderId}</strong></p>
       <div class="checkout-success__actions">
         <a href="shop.html" class="checkout-empty-btn">Продовжити покупки</a>
-        <a href="account.html" class="checkout-orders-link">Мої замовлення</a>
       </div>
     </div>
   `;
