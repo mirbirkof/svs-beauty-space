@@ -11,8 +11,21 @@ const express = require('express');
 const crypto = require('crypto');
 const https = require('https');
 const router = express.Router();
-const db = require('../db');
 const bp = require('../beautyproClient');
+
+// In-memory pending bookings (MVP — replace with SQLite later)
+const store = new Map();
+const db = {
+  insert(token, row) { store.set(token, { ...row, status: 'pending', created_at: Date.now() }); },
+  get(token) { return store.get(token) || null; },
+  byTgUser(uid) {
+    const list = [...store.values()].filter(r => r.tg_user_id === uid && r.status === 'pending');
+    return list.sort((a,b)=>b.created_at-a.created_at)[0] || null;
+  },
+  update(token, patch) {
+    const r = store.get(token); if (!r) return; Object.assign(r, patch); store.set(token, r);
+  },
+};
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Svs_beautybot';
@@ -41,26 +54,7 @@ function tg(method, body) {
   });
 }
 
-function ensureSchema() {
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS pending_bookings (
-      token TEXT PRIMARY KEY,
-      service_id TEXT NOT NULL,
-      employee_id TEXT NOT NULL,
-      date_from TEXT NOT NULL,
-      date_to TEXT NOT NULL,
-      client_name TEXT,
-      phone TEXT,
-      tg_user_id INTEGER,
-      status TEXT DEFAULT 'pending',
-      appointment_id TEXT,
-      error TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      verified_at TEXT
-    )
-  `).run();
-}
-ensureSchema();
+// In-memory schema — no init needed
 
 // === POST /init =========================================
 router.post('/init', (req, res) => {
@@ -70,10 +64,7 @@ router.post('/init', (req, res) => {
       return res.status(400).json({ error: 'service_id, employee_id, date_from, date_to обовʼязкові' });
     }
     const token = genToken();
-    db.prepare(`
-      INSERT INTO pending_bookings (token, service_id, employee_id, date_from, date_to, client_name)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(token, service_id, employee_id, date_from, date_to, client_name || null);
+    db.insert(token, { token, service_id, employee_id, date_from, date_to, client_name: client_name || null });
 
     res.json({
       ok: true,
@@ -88,9 +79,9 @@ router.post('/init', (req, res) => {
 
 // === GET /status/:token =================================
 router.get('/status/:token', (req, res) => {
-  const row = db.prepare('SELECT status, appointment_id, error FROM pending_bookings WHERE token = ?').get(req.params.token);
+  const row = db.get(req.params.token);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json(row);
+  res.json({ status: row.status, appointment_id: row.appointment_id || null, error: row.error || null });
 });
 
 // === POST /telegram (webhook) ===========================
@@ -111,7 +102,7 @@ router.post('/telegram', async (req, res) => {
           text: 'Вітаємо! Цей бот підтверджує онлайн-записи на сайті SVS Beauty Space. Перейдіть на сайт щоб почати.',
         });
       }
-      const row = db.prepare('SELECT * FROM pending_bookings WHERE token = ?').get(token);
+      const row = db.get(token);
       if (!row) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '⌛ Запис застарів. Поверніться на сайт і почніть знову.' });
       }
@@ -119,7 +110,7 @@ router.post('/telegram', async (req, res) => {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '✓ Цей запис вже підтверджено.' });
       }
       // store tg_user_id, ask contact
-      db.prepare('UPDATE pending_bookings SET tg_user_id = ? WHERE token = ?').run(msg.from.id, token);
+      db.update(token, { tg_user_id: msg.from.id });
       return tg('sendMessage', {
         chat_id: msg.chat.id,
         text: 'Для підтвердження запису поділіться номером телефону:',
@@ -138,7 +129,7 @@ router.post('/telegram', async (req, res) => {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '❌ Можна поділитись лише власним номером.' });
       }
       const phone = '+' + msg.contact.phone_number.replace(/\D/g, '');
-      const row = db.prepare('SELECT * FROM pending_bookings WHERE tg_user_id = ? AND status = "pending" ORDER BY created_at DESC LIMIT 1').get(msg.from.id);
+      const row = db.byTgUser(msg.from.id);
       if (!row) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: 'Активних записів немає.' });
       }
@@ -152,9 +143,7 @@ router.post('/telegram', async (req, res) => {
           date_from: row.date_from,
           date_to: row.date_to,
         });
-        db.prepare(`
-          UPDATE pending_bookings SET status='confirmed', phone=?, appointment_id=?, verified_at=datetime('now') WHERE token=?
-        `).run(phone, String(appt.id || appt.appointment_id || ''), row.token);
+        db.update(row.token, { status: 'confirmed', phone, appointment_id: String(appt.id || appt.appointment_id || ''), verified_at: Date.now() });
 
         await tg('sendMessage', {
           chat_id: msg.chat.id,
@@ -163,7 +152,7 @@ router.post('/telegram', async (req, res) => {
         });
       } catch (e) {
         console.error('[booking/bp-push]', e.message);
-        db.prepare('UPDATE pending_bookings SET status=?, error=? WHERE token=?').run('failed', e.message.slice(0, 200), row.token);
+        db.update(row.token, { status: 'failed', error: e.message.slice(0, 200) });
         await tg('sendMessage', {
           chat_id: msg.chat.id,
           text: '⚠️ Не вдалось зберегти запис у CRM. Адміністратор звʼяжеться з вами найближчим часом.',

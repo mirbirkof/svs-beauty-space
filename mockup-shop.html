@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVS Beauty Space — Shop Mockup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --c-black: #0A0908;
+      --c-dark: #0F0E0C;
+      --c-dark-warm: #141210;
+      --c-dark-soft: #1A1816;
+      --c-graphite: #4A433C;
+      --c-stone: #8A8076;
+      --c-sand: #B8ADA0;
+      --c-warm-grey: #D4CCC2;
+      --c-cream: #EDE7DF;
+      --c-warm-white: #F5F0EB;
+      --c-white: #FAF8F5;
+      --c-gold: #C9A96E;
+      --c-gold-soft: #D4BB8A;
+      --c-gold-muted: #A08B60;
+      --c-border: rgba(201, 169, 110, 0.25);
+      --c-border-light: rgba(201, 169, 110, 0.12);
+      --c-divider: rgba(255, 255, 255, 0.06);
+      --ff-serif: 'Playfair Display', Georgia, serif;
+      --ff-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    body {
+      background: var(--c-black);
+      color: var(--c-warm-white);
+      font-family: var(--ff-sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Grain overlay */
+    .grain {
+      position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* Ambient glow */
+    .ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    .ambient__orb {
+      position: absolute; border-radius: 50%; filter: blur(120px);
+      animation: float 20s ease-in-out infinite;
+    }
+    .ambient__orb--1 { width: 500px; height: 500px; background: rgba(201,169,110,0.04); top: -100px; right: -100px; }
+    .ambient__orb--2 { width: 400px; height: 400px; background: rgba(212,187,138,0.03); bottom: 200px; left: -100px; animation-delay: -7s; }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0); }
+      33% { transform: translate(30px, -20px); }
+      66% { transform: translate(-20px, 30px); }
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 clamp(1.5rem, 5vw, 6rem); }
+
+    /* ═══ NAV ═══ */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 9, 8, 0.85);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--c-divider);
+      height: 72px;
+    }
+    .nav__inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 100%;
+    }
+    .nav__logo { text-decoration: none; color: var(--c-warm-white); display: flex; flex-direction: column; }
+    .nav__logo-main { font-family: var(--ff-serif); font-size: 1.4rem; font-weight: 600; letter-spacing: 2px; }
+    .nav__logo-sub { font-size: 0.6rem; letter-spacing: 4px; text-transform: uppercase; color: var(--c-gold); margin-top: -2px; }
+    .nav__right { display: flex; align-items: center; gap: 1.5rem; }
+    .nav__search {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: var(--c-dark-warm); border: 1px solid var(--c-border-light);
+      border-radius: 100px; padding: 0.5rem 1rem; width: 280px;
+      transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .nav__search:focus-within { border-color: var(--c-gold); width: 360px; }
+    .nav__search input {
+      background: none; border: none; color: var(--c-warm-white); font-family: var(--ff-sans);
+      font-size: 0.85rem; outline: none; width: 100%;
+    }
+    .nav__search input::placeholder { color: var(--c-stone); }
+    .nav__search svg { color: var(--c-stone); flex-shrink: 0; }
+    .nav__icon { color: var(--c-sand); cursor: pointer; position: relative; transition: color 0.3s; }
+    .nav__icon:hover { color: var(--c-gold); }
+    .nav__badge {
+      position: absolute; top: -6px; right: -6px; background: var(--c-gold); color: var(--c-black);
+      font-size: 0.6rem; font-weight: 600; width: 16px; height: 16px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    }
+    .nav__links { display: flex; gap: 2rem; }
+    .nav__link {
+      color: var(--c-sand); text-decoration: none; font-size: 0.85rem;
+      letter-spacing: 0.5px; transition: color 0.3s; position: relative;
+    }
+    .nav__link:hover, .nav__link--active { color: var(--c-warm-white); }
+    .nav__link--active::after {
+      content: ''; position: absolute; bottom: -4px; left: 0; right: 0;
+      height: 1px; background: var(--c-gold);
+    }
+
+    /* ═══ HERO ═══ */
+    .hero {
+      padding: 120px 0 40px; text-align: center; position: relative; z-index: 1;
+    }
+    .hero__overline {
+      font-size: 0.68rem; letter-spacing: 4px; text-transform: uppercase;
+      color: var(--c-gold); margin-bottom: 1rem;
+    }
+    .hero__title {
+      font-family: var(--ff-serif); font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 400; margin-bottom: 1.5rem; line-height: 1.2;
+    }
+    .hero__search {
+      max-width: 500px; margin: 0 auto; display: flex; align-items: center; gap: 0.75rem;
+      background: var(--c-dark-warm); border: 1px solid var(--c-border-light);
+      border-radius: 100px; padding: 0.75rem 1.5rem;
+      transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .hero__search:focus-within { border-color: var(--c-gold); box-shadow: 0 0 30px rgba(201,169,110,0.08); }
+    .hero__search input {
+      background: none; border: none; color: var(--c-warm-white);
+      font-family: var(--ff-sans); font-size: 0.95rem; outline: none; width: 100%;
+    }
+    .hero__search input::placeholder { color: var(--c-stone); }
+    .hero__search svg { color: var(--c-stone); flex-shrink: 0; }
+    .hero__trust {
+      display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; flex-wrap: wrap;
+    }
+    .hero__trust-item {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.75rem; color: var(--c-stone); letter-spacing: 0.3px;
+    }
+    .hero__trust-item svg { color: var(--c-gold-muted); }
+
+    /* ═══ FILTERS ═══ */
+    .filters {
+      padding: 1rem 0 2rem; position: relative; z-index: 1;
+      border-bottom: 1px solid var(--c-divider);
+    }
+    .filters__row {
+      display: flex; align-items: center; gap: 0.75rem;
+      overflow-x: auto; scrollbar-width: none; padding-bottom: 0.5rem;
+    }
+    .filters__row::-webkit-scrollbar { display: none; }
+    .filters__label {
+      font-size: 0.7rem; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--c-stone); white-space: nowrap; margin-right: 0.5rem;
+    }
+    .pill {
+      padding: 0.4rem 1rem; border-radius: 100px; font-size: 0.78rem;
+      font-family: var(--ff-sans); cursor: pointer; white-space: nowrap;
+      border: 1px solid var(--c-border-light); background: transparent;
+      color: var(--c-sand); transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+      letter-spacing: 0.3px;
+    }
+    .pill:hover { border-color: var(--c-gold); color: var(--c-warm-white); }
+    .pill--active {
+      background: var(--c-gold); color: var(--c-black); border-color: var(--c-gold);
+      font-weight: 500;
+    }
+    .filters__sort {
+      margin-left: auto; display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.78rem; color: var(--c-stone); white-space: nowrap;
+    }
+    .filters__sort select {
+      background: var(--c-dark-warm); color: var(--c-sand); border: 1px solid var(--c-border-light);
+      border-radius: 8px; padding: 0.35rem 0.75rem; font-family: var(--ff-sans);
+      font-size: 0.78rem; cursor: pointer; outline: none;
+    }
+
+    /* ═══ BRAND PILLS ═══ */
+    .brands { padding: 1rem 0; position: relative; z-index: 1; }
+    .brands__row { display: flex; gap: 0.5rem; }
+    .pill--brand { font-weight: 500; letter-spacing: 1px; }
+
+    /* ═══ PRODUCT GRID ═══ */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px; padding: 2rem 0 4rem;
+      position: relative; z-index: 1;
+    }
+
+    .card {
+      background: var(--c-dark-warm); border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--c-border-light);
+      transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      position: relative; cursor: pointer;
+    }
+    .card:hover {
+      transform: translateY(-4px) scale(1.02);
+      border-color: var(--c-border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px rgba(201,169,110,0.05);
+    }
+    .card__img {
+      aspect-ratio: 3/4; background: var(--c-dark-soft); position: relative; overflow: hidden;
+    }
+    .card__img-placeholder {
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, var(--c-dark-soft) 0%, var(--c-dark) 50%, var(--c-dark-warm) 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card__img-icon { color: var(--c-graphite); opacity: 0.4; }
+    .card__badge {
+      position: absolute; top: 12px; left: 12px;
+      background: var(--c-gold); color: var(--c-black);
+      font-size: 0.6rem; font-weight: 600; letter-spacing: 1px;
+      padding: 0.25rem 0.6rem; border-radius: 100px; text-transform: uppercase;
+    }
+    .card__actions {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 1rem; display: flex; gap: 0.5rem;
+      background: linear-gradient(transparent, rgba(10,9,8,0.9));
+      transform: translateY(100%); opacity: 0;
+      transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .card:hover .card__actions { transform: translateY(0); opacity: 1; }
+    .card__btn {
+      flex: 1; padding: 0.5rem; border-radius: 8px; font-family: var(--ff-sans);
+      font-size: 0.75rem; cursor: pointer; letter-spacing: 0.5px;
+      transition: all 0.3s;
+    }
+    .card__btn--cart {
+      background: var(--c-gold); color: var(--c-black); border: none; font-weight: 500;
+    }
+    .card__btn--cart:hover { background: var(--c-gold-soft); }
+    .card__btn--quick {
+      background: transparent; color: var(--c-warm-white);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .card__btn--quick:hover { border-color: var(--c-warm-white); }
+    .card__info { padding: 1rem; }
+    .card__brand {
+      font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--c-gold-muted); margin-bottom: 0.3rem;
+    }
+    .card__name {
+      font-family: var(--ff-serif); font-size: 0.95rem; font-weight: 400;
+      line-height: 1.3; margin-bottom: 0.3rem; color: var(--c-warm-white);
+    }
+    .card__volume { font-size: 0.75rem; color: var(--c-stone); margin-bottom: 0.5rem; }
+    .card__price-row { display: flex; align-items: baseline; gap: 0.5rem; }
+    .card__price {
+      font-size: 1rem; font-weight: 600; color: var(--c-gold);
+    }
+    .card__price--old {
+      font-size: 0.8rem; color: var(--c-stone); text-decoration: line-through; font-weight: 400;
+    }
+    .card__wishlist {
+      position: absolute; top: 12px; right: 12px; background: rgba(10,9,8,0.6);
+      border: none; color: var(--c-sand); cursor: pointer; width: 32px; height: 32px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(10px); transition: all 0.3s; opacity: 0;
+    }
+    .card:hover .card__wishlist { opacity: 1; }
+    .card__wishlist:hover { color: #e74c3c; transform: scale(1.1); }
+
+    /* ═══ CART SIDEBAR ═══ */
+    .cart-overlay {
+      position: fixed; inset: 0; background: rgba(10,9,8,0.6);
+      backdrop-filter: blur(8px); z-index: 200; opacity: 1;
+    }
+    .cart {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 420px;
+      background: var(--c-dark); border-left: 1px solid var(--c-border-light);
+      z-index: 201; display: flex; flex-direction: column;
+    }
+    .cart__header {
+      padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--c-divider);
+    }
+    .cart__title { font-family: var(--ff-serif); font-size: 1.2rem; }
+    .cart__count { font-size: 0.8rem; color: var(--c-stone); }
+    .cart__close { background: none; border: none; color: var(--c-sand); cursor: pointer; }
+    .cart__items { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+    .cart-item {
+      display: flex; gap: 1rem; padding: 1rem 0;
+      border-bottom: 1px solid var(--c-divider);
+    }
+    .cart-item__img {
+      width: 64px; height: 80px; background: var(--c-dark-warm); border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .cart-item__info { flex: 1; }
+    .cart-item__name { font-family: var(--ff-serif); font-size: 0.85rem; margin-bottom: 0.2rem; }
+    .cart-item__volume { font-size: 0.72rem; color: var(--c-stone); margin-bottom: 0.5rem; }
+    .cart-item__bottom { display: flex; align-items: center; justify-content: space-between; }
+    .cart-item__qty {
+      display: flex; align-items: center; gap: 0.75rem;
+      border: 1px solid var(--c-border-light); border-radius: 8px; padding: 0.2rem 0.5rem;
+    }
+    .cart-item__qty button {
+      background: none; border: none; color: var(--c-sand); cursor: pointer;
+      font-size: 0.9rem; width: 20px; height: 20px;
+    }
+    .cart-item__qty span { font-size: 0.8rem; color: var(--c-warm-white); min-width: 16px; text-align: center; }
+    .cart-item__price { font-weight: 600; color: var(--c-gold); font-size: 0.9rem; }
+    .cart__footer {
+      padding: 1.5rem; border-top: 1px solid var(--c-divider);
+    }
+    .cart__total {
+      display: flex; justify-content: space-between; margin-bottom: 1rem;
+      padding-bottom: 1rem; border-bottom: 1px solid var(--c-gold-muted);
+    }
+    .cart__total-label { font-size: 0.85rem; color: var(--c-sand); }
+    .cart__total-value { font-family: var(--ff-serif); font-size: 1.3rem; color: var(--c-gold); }
+    .cart__checkout {
+      width: 100%; padding: 0.85rem; background: var(--c-gold); color: var(--c-black);
+      border: none; border-radius: 8px; font-family: var(--ff-sans); font-size: 0.9rem;
+      font-weight: 600; cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+      transition: all 0.3s; position: relative; overflow: hidden;
+    }
+    .cart__checkout:hover { background: var(--c-gold-soft); }
+    .cart__checkout::after {
+      content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      animation: shimmer 3s ease-in-out infinite;
+    }
+    @keyframes shimmer { 0% { left: -100%; } 50%, 100% { left: 100%; } }
+
+    .cart__delivery {
+      text-align: center; margin-top: 0.75rem; font-size: 0.72rem; color: var(--c-stone);
+    }
+    .cart__delivery svg { vertical-align: middle; margin-right: 0.3rem; }
+
+    /* ═══ LOAD MORE ═══ */
+    .load-more {
+      text-align: center; padding: 2rem 0 4rem; position: relative; z-index: 1;
+    }
+    .load-more__btn {
+      padding: 0.7rem 2.5rem; border-radius: 100px; font-family: var(--ff-sans);
+      font-size: 0.85rem; cursor: pointer; letter-spacing: 1px;
+      background: transparent; color: var(--c-gold); border: 1px solid var(--c-gold);
+      transition: all 0.3s;
+    }
+    .load-more__btn:hover { background: var(--c-gold); color: var(--c-black); }
+    .load-more__count { font-size: 0.72rem; color: var(--c-stone); margin-top: 0.5rem; }
+
+    /* ═══ FOOTER ═══ */
+    .footer {
+      border-top: 1px solid var(--c-divider); padding: 3rem 0 2rem;
+      position: relative; z-index: 1;
+    }
+    .footer__grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; }
+    .footer__brand-name { font-family: var(--ff-serif); font-size: 1.2rem; margin-bottom: 0.5rem; }
+    .footer__brand-sub { font-size: 0.7rem; letter-spacing: 3px; color: var(--c-gold); text-transform: uppercase; }
+    .footer__desc { font-size: 0.8rem; color: var(--c-stone); margin-top: 1rem; line-height: 1.7; }
+    .footer__heading {
+      font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--c-gold-muted); margin-bottom: 1rem;
+    }
+    .footer__link {
+      display: block; font-size: 0.82rem; color: var(--c-sand);
+      text-decoration: none; margin-bottom: 0.6rem; transition: color 0.3s;
+    }
+    .footer__link:hover { color: var(--c-gold); }
+    .footer__bottom {
+      margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--c-divider);
+      display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--c-stone);
+    }
+  </style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+<div class="ambient" aria-hidden="true">
+  <div class="ambient__orb ambient__orb--1"></div>
+  <div class="ambient__orb ambient__orb--2"></div>
+</div>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="container nav__inner">
+    <a href="#" class="nav__logo">
+      <span class="nav__logo-main">SVS</span>
+      <span class="nav__logo-sub">Beauty Space</span>
+    </a>
+    <nav class="nav__links">
+      <a href="#" class="nav__link">Послуги</a>
+      <a href="#" class="nav__link nav__link--active">Магазин</a>
+      <a href="#" class="nav__link">Результати</a>
+      <a href="#" class="nav__link">Про нас</a>
+    </nav>
+    <div class="nav__right">
+      <div class="nav__search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" placeholder="Шампунь, маска, олія...">
+      </div>
+      <div class="nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      </div>
+      <div class="nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
+        <span class="nav__badge">3</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero__overline">Raywell · Extremo · Envie · Invidia</div>
+    <h1 class="hero__title">Професійна косметика<br>для вашого волосся</h1>
+    <div class="hero__search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" placeholder="Знайти серед 267 товарів...">
+    </div>
+    <div class="hero__trust">
+      <span class="hero__trust-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        100% оригінал
+      </span>
+      <span class="hero__trust-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Доставка по Україні
+      </span>
+      <span class="hero__trust-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Працюємо цим у салоні
+      </span>
+      <span class="hero__trust-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg>
+        Консультація майстра
+      </span>
+    </div>
+  </div>
+</section>
+
+<!-- FILTERS -->
+<section class="filters">
+  <div class="container">
+    <div class="filters__row">
+      <span class="filters__label">Категорія</span>
+      <button class="pill pill--active">Усе</button>
+      <button class="pill">Шампуні</button>
+      <button class="pill">Маски</button>
+      <button class="pill">Кондиціонери</button>
+      <button class="pill">Олії</button>
+      <button class="pill">Сироватки</button>
+      <button class="pill">Ампули</button>
+      <button class="pill">Термозахист</button>
+      <button class="pill">Фарби</button>
+      <button class="pill">Кератин</button>
+      <button class="pill">Стайлінг</button>
+      <button class="pill">Набори</button>
+      <div class="filters__sort">
+        <span>Сортувати:</span>
+        <select>
+          <option>Популярність</option>
+          <option>Ціна ↑</option>
+          <option>Ціна ↓</option>
+          <option>Новинки</option>
+        </select>
+      </div>
+    </div>
+    <div class="brands" style="padding-top:0.75rem">
+      <div class="brands__row">
+        <button class="pill pill--brand pill--active">Raywell</button>
+        <button class="pill pill--brand">Extremo</button>
+        <button class="pill pill--brand">Envie</button>
+        <button class="pill pill--brand">Invidia</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRODUCT GRID -->
+<section class="container">
+  <div class="grid">
+
+    <!-- Card 1 — Bestseller -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <span class="card__badge">Бестселер</span>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Bio Lamellar Shampoo</div>
+        <div class="card__volume">250 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">589 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2 — New -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <span class="card__badge">Новинка</span>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Boto Hair Gold 24K Filler</div>
+        <div class="card__volume">100 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">1 890 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3 — Sale -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <span class="card__badge">-15%</span>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Bio Croma Mask Color Protection</div>
+        <div class="card__volume">500 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">749 ₴</span>
+          <span class="card__price--old">879 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 4 -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Excellence Elixir Oil</div>
+        <div class="card__volume">100 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">679 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 5 -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Extremo</div>
+        <div class="card__name">Keratin Reconstruction Cream</div>
+        <div class="card__volume">250 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">459 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 6 -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <span class="card__badge">Бестселер</span>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Bio Blond No Yellow Shampoo</div>
+        <div class="card__volume">1000 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">899 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 7 -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Envie</div>
+        <div class="card__name">Argan Oil Deep Repair Mask</div>
+        <div class="card__volume">500 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">529 ₴</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 8 -->
+    <div class="card">
+      <div class="card__img">
+        <div class="card__img-placeholder">
+          <svg class="card__img-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </div>
+        <span class="card__badge">Новинка</span>
+      </div>
+      <button class="card__wishlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></button>
+      <div class="card__actions">
+        <button class="card__btn card__btn--cart">В кошик</button>
+        <button class="card__btn card__btn--quick">Огляд</button>
+      </div>
+      <div class="card__info">
+        <div class="card__brand">Raywell</div>
+        <div class="card__name">Biomimetic Molecular Repair Serum</div>
+        <div class="card__volume">150 ml</div>
+        <div class="card__price-row">
+          <span class="card__price">1 250 ₴</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="load-more">
+    <button class="load-more__btn">Показати ще</button>
+    <div class="load-more__count">Показано 8 з 267 товарів</div>
+  </div>
+</section>
+
+<!-- CART SIDEBAR (visible for mockup) -->
+<div class="cart-overlay"></div>
+<div class="cart">
+  <div class="cart__header">
+    <div>
+      <span class="cart__title">Кошик</span>
+      <span class="cart__count"> · 3 товари</span>
+    </div>
+    <button class="cart__close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="cart__items">
+    <div class="cart-item">
+      <div class="cart-item__img"></div>
+      <div class="cart-item__info">
+        <div class="cart-item__name">Bio Lamellar Shampoo</div>
+        <div class="cart-item__volume">Raywell · 250 ml</div>
+        <div class="cart-item__bottom">
+          <div class="cart-item__qty">
+            <button>−</button><span>1</span><button>+</button>
+          </div>
+          <span class="cart-item__price">589 ₴</span>
+        </div>
+      </div>
+    </div>
+    <div class="cart-item">
+      <div class="cart-item__img"></div>
+      <div class="cart-item__info">
+        <div class="cart-item__name">Boto Hair Gold 24K Filler</div>
+        <div class="cart-item__volume">Raywell · 100 ml</div>
+        <div class="cart-item__bottom">
+          <div class="cart-item__qty">
+            <button>−</button><span>2</span><button>+</button>
+          </div>
+          <span class="cart-item__price">3 780 ₴</span>
+        </div>
+      </div>
+    </div>
+    <div class="cart-item">
+      <div class="cart-item__img"></div>
+      <div class="cart-item__info">
+        <div class="cart-item__name">Excellence Elixir Oil</div>
+        <div class="cart-item__volume">Raywell · 100 ml</div>
+        <div class="cart-item__bottom">
+          <div class="cart-item__qty">
+            <button>−</button><span>1</span><button>+</button>
+          </div>
+          <span class="cart-item__price">679 ₴</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cart__footer">
+    <div class="cart__total">
+      <span class="cart__total-label">Разом</span>
+      <span class="cart__total-value">5 048 ₴</span>
+    </div>
+    <button class="cart__checkout">Оформити замовлення</button>
+    <div class="cart__delivery">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Безкоштовна доставка від 2000 ₴
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
