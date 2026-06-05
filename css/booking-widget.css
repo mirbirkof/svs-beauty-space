@@ -1,0 +1,20 @@
+/* SVS Booking Widget — модалка */
+.svs-book-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+.svs-book-modal[hidden] { display: none; }
+.svs-book-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
+.svs-book-dialog { position: relative; background: #fff; color: #1a1a1a; width: min(440px, 92vw); max-height: 90vh; overflow: auto; border-radius: 18px; padding: 28px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: svsbk-pop .25s ease; }
+@keyframes svsbk-pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.svs-book-close { position: absolute; top: 10px; right: 14px; background: transparent; border: 0; font-size: 28px; line-height: 1; cursor: pointer; color: #888; }
+.svs-book-close:hover { color: #000; }
+.svs-book-dialog h3 { margin: 0 0 8px; font-size: 22px; }
+.svs-book-sub { color: #666; font-size: 14px; margin: 0 0 18px; }
+.svs-book-dialog label { display: block; margin-bottom: 14px; font-size: 13px; color: #444; }
+.svs-book-dialog input, .svs-book-dialog textarea { width: 100%; padding: 11px 13px; margin-top: 5px; border: 1px solid #d8d8d8; border-radius: 10px; font: inherit; font-size: 15px; background: #fafafa; box-sizing: border-box; }
+.svs-book-dialog input:focus, .svs-book-dialog textarea:focus { outline: none; border-color: #333; background: #fff; }
+.svs-book-submit { width: 100%; padding: 13px; background: #1a1a1a; color: #fff; border: 0; border-radius: 10px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; margin-top: 4px; }
+.svs-book-submit:hover { background: #000; }
+.svs-book-hint { font-size: 12px; color: #888; margin: 12px 0 0; line-height: 1.5; }
+.svs-book-spinner { width: 42px; height: 42px; border: 3px solid #eee; border-top-color: #333; border-radius: 50%; margin: 22px auto; animation: svsbk-spin 1s linear infinite; }
+@keyframes svsbk-spin { to { transform: rotate(360deg); } }
+.svs-book-tg-link { display: inline-block; margin-top: 14px; color: #2481cc; text-decoration: none; font-size: 14px; }
+.svs-book-tg-link:hover { text-decoration: underline; }
