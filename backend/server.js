@@ -11,6 +11,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payments');
+const bookingRoutes = require('./routes/booking');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -46,6 +47,7 @@ const smsLimiter = rateLimit({
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/auth/sms', smsLimiter);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/booking', bookingRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get('/api/health', (req, res) => {
