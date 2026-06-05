@@ -7,7 +7,7 @@
   'use strict';
 
   // Backend URL — поміняти на свій домен після переїзду з туннелю
-  const API = window.SVS_BOOKING_API || 'https://368d19844b7491.lhr.life';
+  const API = window.SVS_BOOKING_API || 'https://710d997d23cf2e.lhr.life';
 
   const html = `
     <div id="svs-book-modal" class="svs-book-modal" hidden>
