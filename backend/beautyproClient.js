@@ -10,8 +10,8 @@ const https = require('https');
 const BASE = 'https://api.aihelps.com/v1';
 const APP_ID = process.env.BEAUTYPRO_ID_KEY;
 const SECRET = process.env.BEAUTYPRO_SECRET_KEY;
-const DATABASE_CODE = process.env.BEAUTYPRO_DATABASE_CODE;
-const LOCATION = process.env.BEAUTYPRO_LOCATION_ID;
+const DATABASE_CODE = process.env.BEAUTYPRO_DATABASE_CODE || '664684';
+const LOCATION = process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499';
 
 let cache = { token: null, expiresAt: 0, refreshToken: null };
 
@@ -101,12 +101,13 @@ async function createAppointment({ client_id, service_id, employee_id, date_from
 
 async function listServices() {
   const token = await getToken();
-  return request('GET', '/services', { token, query: { public: 'true', archive: 'false' } });
+  // BeautyPro API requires explicit fields= param
+  return request('GET', '/services', { token, query: { fields: 'name,duration,price,category', archive: 'false' } });
 }
 
 async function listEmployees() {
   const token = await getToken();
-  return request('GET', '/employees', { token, query: { public: 'true', archive: 'false' } });
+  return request('GET', '/employees', { token, query: { fields: 'name,position,services', archive: 'false', location: LOCATION } });
 }
 
 async function freeTime({ duration, professional, from, to, location }) {
