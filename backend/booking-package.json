@@ -1,0 +1,10 @@
+{
+  "name": "svs-booking",
+  "version": "1.0.0",
+  "private": true,
+  "main": "booking-server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1"
+  }
+}
