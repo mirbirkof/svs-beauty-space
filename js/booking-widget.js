@@ -541,7 +541,7 @@
     root = div.firstElementChild;
     document.body.appendChild(root);
     root.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-close],[data-action],[data-goto],[data-svc],[data-mst],[data-slot]');
+      const t = e.target.closest('[data-close],[data-action],[data-goto],[data-svc],[data-mst],[data-date],[data-slot]');
       if (!t) return;
       if (t.dataset.close !== undefined) return close();
       if (t.dataset.goto) return show(t.dataset.goto);
