@@ -178,14 +178,16 @@
     // Без пошуку — 3 фіксовані категорії
     // Розподіл по ключових словах в назві (BeautyPro повертає тільки category id)
     const buckets = {
-      hair:  { title: 'Перукарські послуги', items: [] },
-      nails: { title: 'Ногтьовий сервіс',    items: [] },
-      face:  { title: 'Візаж та лешмейк',    items: [] },
-      other: { title: 'Інші послуги',        items: [] },
+      hair:    { title: 'Перукарські послуги', items: [] },
+      nails:   { title: 'Ногтьовий сервіс',    items: [] },
+      face:    { title: 'Візаж та лешмейк',    items: [] },
+      massage: { title: 'Масаж та body sculpt', items: [] },
+      other:   { title: 'Інші послуги',        items: [] },
     };
     const RX_NAILS = /(манік|маник|педик|нігт|ногт|гель[\-\s]?лак|шелак|шеллак|nail|френч|втирк|укріпленн|зняття|дизайн)/i;
     const RX_FACE  = /(бров|брів|вій|ресн|лешм|lash|депіл|депил|шугар|віск|воск|макіяж|макияж|обличч|лиц|пілінг|пилинг|чист(ка|ку|ою)|перманент|татуаж|мікроблейд|microblad|перм|premium\s*\d?\s*d|hollywood|класика|контуринг|консультац)/i;
     const RX_HAIR  = /(волос|стрижк|стриж|фарб|мелір|мелир|тон(ування|ирование|уванн)|укладк|blow|hair|омбре|балаяж|шатуш|ламін|ламин|ботокс|кератин|нанопласт|боярдо|боярдеї|освітленн|осветлен|колорування|колорирование|біовирівн|біозавив|вихід з чорного|накрутк|вкладанн|чубчик|голови та вкладан|миття голови|зачіск|холодне відновленн|biomimetic|довжина)/i;
+    const RX_MASSAGE = /(масаж|massage|sculpt|lymphat|лімфодрен|лимфодрен|bdsm|booty|body|detox|aponeuros|face[\s\-]?lift|alginate|ліфтинг.?масаж|глибокотканин|архітектурн.{0,12}ліфтинг)/i;
 
     // Жорсткий маппінг по GUID категорії з BeautyPro (06.06)
     const CAT_HAIR = new Set([
@@ -218,13 +220,14 @@
       if (cid && CAT_FACE.has(cid))  { buckets.face.items.push(s);  return; }
       // 3) Fallback 2 — regex по назві
       const n = s.name || '';
-      if (RX_NAILS.test(n))      buckets.nails.items.push(s);
+      if (RX_MASSAGE.test(n))    buckets.massage.items.push(s);
+      else if (RX_NAILS.test(n)) buckets.nails.items.push(s);
       else if (RX_FACE.test(n))  buckets.face.items.push(s);
       else if (RX_HAIR.test(n))  buckets.hair.items.push(s);
       else                       buckets.other.items.push(s);
     });
 
-    const order = ['hair','nails','face','other'];
+    const order = ['hair','nails','face','massage','other'];
     const visible = order.filter(k => buckets[k].items.length);
     $('#svs-services').innerHTML = visible.map((k, idx) => `
       <details class="svs-book-cat" ${idx === 0 ? 'open' : ''}>
