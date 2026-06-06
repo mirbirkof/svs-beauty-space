@@ -397,6 +397,11 @@
     };
 
     // 1) Спроба прямого запису у CRM
+    // idempotency_key — UUID-подібний рядок; зберігаємо у state щоб retry використав той самий
+    if (!state._idemKey) {
+      state._idemKey = (crypto.randomUUID && crypto.randomUUID()) ||
+        (Date.now().toString(36) + Math.random().toString(36).slice(2));
+    }
     try {
       const r = await fetch(API + '/api/booking/direct', {
         method: 'POST',
@@ -405,14 +410,29 @@
           phone,
           name: state.name,
           service_id: state.service.id,
+          service_name: state.service.name,
           employee_id: state.master.id,
+          master_name: state.master.name,
           date_from: fromIso,
           date_to: toIso,
+          idempotency_key: state._idemKey,
         }),
       });
       const data = await r.json();
       if (r.ok && data.ok) {
-        $('#svs-done-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
+        const slotLabel = (typeof from === 'string' ? from.slice(11, 16) : '');
+        const when = `${state.date}${slotLabel ? ' · ' + slotLabel : ''}`;
+        $('#svs-done-summary').innerHTML =
+          `<b>${state.service.name}</b><br>` +
+          `${state.master.name} · ${when}` +
+          (data.cancel_token
+            ? `<div class="svs-book-manage">
+                 <a class="svs-book-manage-link" href="?booking=${data.cancel_token}" target="_blank">
+                   ✏ Перенести або скасувати
+                 </a>
+                 <div class="svs-book-manage-hint">Збережіть це посилання — без нього доведеться телефонувати в салон</div>
+               </div>`
+            : '');
         show('done');
         return; // _submitting лишається true до закриття — захист від повторної відправки
       }
@@ -505,6 +525,85 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', mount);
+  // ── Manage booking screen (?booking=TOKEN) ───────────────
+  async function handleManageUrl() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('booking');
+    if (!token) return;
+    if (!root) mount();
+
+    // Окремий екран замість стандартного флоу
+    const dialog = root.querySelector('.svs-book-dialog');
+    if (!dialog) return;
+    root.hidden = false;
+    document.body.style.overflow = 'hidden';
+    dialog.innerHTML = `
+      <button class="svs-book-close" data-close aria-label="Закрити">×</button>
+      <h3>Ваш запис</h3>
+      <div id="svs-manage-body"><div class="svs-book-loading">Завантаження…</div></div>
+    `;
+    // Закрытие
+    dialog.querySelector('[data-close]').addEventListener('click', () => {
+      root.hidden = true;
+      document.body.style.overflow = '';
+      history.replaceState(null, '', location.pathname);
+    });
+
+    const body = dialog.querySelector('#svs-manage-body');
+    try {
+      const r = await fetch(API + '/api/booking/info/' + encodeURIComponent(token));
+      const info = await r.json();
+      if (!r.ok) {
+        body.innerHTML = `<div class="svs-book-err">${info.error || 'Запис не знайдено'}</div>`;
+        return;
+      }
+      if (info.status === 'used') {
+        body.innerHTML = `<div class="svs-book-empty">Запис вже ${info.used_action === 'cancel' ? 'скасовано' : 'перенесено'}.</div>`;
+        return;
+      }
+      const startLocal = new Date(info.start_at).toLocaleString('uk-UA', {
+        day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+      });
+      body.innerHTML = `
+        <div class="svs-book-info-row"><span>Послуга:</span> <b>${info.service_name || '—'}</b></div>
+        <div class="svs-book-info-row"><span>Майстер:</span> <b>${info.master_name || '—'}</b></div>
+        <div class="svs-book-info-row"><span>Коли:</span> <b>${startLocal}</b></div>
+        <div class="svs-book-manage-actions">
+          <button class="svs-book-submit" id="svs-do-cancel" style="background:#c1361d">✖ Скасувати</button>
+          <button class="svs-book-submit alt" id="svs-do-reschedule">↻ Перенести</button>
+        </div>
+        <p class="svs-book-hint">Скасування/перенос можливі не пізніше ніж за 2 години до запису</p>
+      `;
+      dialog.querySelector('#svs-do-cancel').addEventListener('click', async () => {
+        if (!confirm('Точно скасувати запис?')) return;
+        const cr = await fetch(API + '/api/booking/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const cd = await cr.json();
+        if (cr.ok) {
+          body.innerHTML = `<div class="svs-book-empty">✓ Запис скасовано. Чекаємо вас наступного разу.</div>`;
+        } else {
+          alert(cd.error || 'Не вдалося скасувати');
+        }
+      });
+      dialog.querySelector('#svs-do-reschedule').addEventListener('click', () => {
+        // Перенос: закриваємо манаге, відкриваємо звичайний флоу на ту ж послугу
+        // (повний UX-flow перенесення — Спринт 3+)
+        alert('Перенос: відкривається звичайний віджет, оберіть нову дату. Старий запис скасується автоматично після нової.');
+        root.hidden = true;
+        history.replaceState(null, '', location.pathname);
+        window.SVSBooking.open();
+      });
+    } catch (e) {
+      body.innerHTML = `<div class="svs-book-err">Помилка: ${e.message}</div>`;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    mount();
+    handleManageUrl();
+  });
   window.SVSBooking = { open, close };
 })();
