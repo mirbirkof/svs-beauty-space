@@ -211,20 +211,21 @@
         </div>`;
       return;
     }
-    if (!days.length) {
+    // Показуємо ТІЛЬКИ дні з вільними вікнами — занятих не відображаємо
+    const freeDays = days.filter(d => d.count > 0);
+    if (!freeDays.length) {
       $('#svs-calendar').innerHTML = '<div class="svs-book-empty">На найближчі 2 тижні вільних днів немає. Зателефонуйте салону.</div>';
       return;
     }
     const wd = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
     const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
-    $('#svs-calendar').innerHTML = days.map(d => {
+    $('#svs-calendar').innerHTML = freeDays.map(d => {
       const [y, m, dd] = d.date.split('-').map(Number);
       const date = new Date(y, m - 1, dd);
       const dayLabel = `${dd} ${mn[m - 1]}`;
       const wdLabel = wd[date.getDay()];
-      const free = d.count > 0;
-      const slotsLabel = free ? `🟢 ${d.count} вікон${d.first ? ' · ' + d.first + '-' + d.last : ''}` : '⚫ Зайнято';
-      return `<button class="svs-book-day ${free ? 'free' : 'busy'}" ${free ? `data-date="${d.date}"` : 'disabled'}>
+      const slotsLabel = `🟢 ${d.count} вікон${d.first ? ' · ' + d.first + '-' + d.last : ''}`;
+      return `<button class="svs-book-day free" data-date="${d.date}">
         <div class="svs-book-day-top"><b>${dayLabel}</b> <span>${wdLabel}</span></div>
         <div class="svs-book-day-bot">${slotsLabel}</div>
       </button>`;
