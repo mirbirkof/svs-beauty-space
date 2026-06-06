@@ -64,7 +64,11 @@
             <label>Ваше імʼя
               <input type="text" id="svs-name" placeholder="Як до вас звертатись?">
             </label>
-            <button class="svs-book-submit" data-action="confirm" disabled>Підтвердити через Telegram</button>
+            <label>Телефон
+              <input type="tel" id="svs-phone" placeholder="+380XXXXXXXXX" autocomplete="tel">
+            </label>
+            <button class="svs-book-submit" data-action="confirm" disabled>Записатись</button>
+            <p class="svs-book-hint">Натискаючи кнопку, ви погоджуєтесь на запис у CRM салону</p>
           </div>
         </div>
 
@@ -239,16 +243,45 @@
     $('button[data-action="confirm"]').disabled = false;
   }
 
-  // ── Confirm: init booking → Telegram ───────────────────
+  // ── Confirm: пряма запис у CRM (з fallback на Telegram) ─
   async function confirm() {
     state.name = ($('#svs-name').value || '').trim();
+    const phoneRaw = ($('#svs-phone').value || '').trim();
+    const phoneDigits = phoneRaw.replace(/\D/g, '');
     if (!state.name) { alert('Введіть імʼя'); return; }
+    if (phoneDigits.length < 10) { alert('Введіть коректний телефон'); return; }
     if (!state.slot) { alert('Оберіть час'); return; }
     const from = state.slot.from || state.slot.start || state.slot;
     const dur = state.service.duration || 60;
     const fromIso = typeof from === 'string' ? new Date(from).toISOString() : new Date(from).toISOString();
     const toIso = new Date(new Date(fromIso).getTime() + dur * 60000).toISOString();
 
+    // 1) Спроба прямого запису у CRM
+    try {
+      const r = await fetch(API + '/api/booking/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: '+' + phoneDigits,
+          name: state.name,
+          service_id: state.service.id,
+          employee_id: state.master.id,
+          date_from: fromIso,
+          date_to: toIso,
+        }),
+      });
+      const data = await r.json();
+      if (r.ok && data.ok) {
+        $('#svs-done-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
+        show('done');
+        return;
+      }
+      throw new Error(data.error || 'CRM error');
+    } catch (e) {
+      console.warn('[svs-book] direct failed, fallback to TG:', e.message);
+    }
+
+    // 2) Fallback: підтвердження через Telegram
     try {
       const r = await fetch(API + '/api/booking/init', {
         method: 'POST',
