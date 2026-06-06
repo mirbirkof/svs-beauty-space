@@ -81,6 +81,14 @@
           <p>У боті натисніть <b>«📱 Поділитись номером»</b>. Сторінка оновиться автоматично.</p>
           <a class="svs-book-tg-link" id="svs-link" target="_blank" rel="noopener">Відкрити бота повторно</a>
         </div>
+        <div class="svs-book-step" data-step="tgconfirm" hidden>
+          <button class="svs-book-back" data-goto="time">← Час</button>
+          <h3>Майже все ✨</h3>
+          <p class="svs-book-sub" id="svs-tg-summary"></p>
+          <p>Натисніть кнопку нижче — відкриється Telegram-бот <b>@Svs_beautybot</b>. Якщо ви вже ділились номером — запис буде створено автоматично. Якщо ні — бот попросить поділитись номером, це займе 5 секунд.</p>
+          <button class="svs-book-submit" data-action="toTg">📲 Підтвердити в Telegram</button>
+          <p class="svs-book-hint">Бот працює як друга страховка: ви точно отримаєте нагадування і зможете перенести запис.</p>
+        </div>
         <div class="svs-book-step" data-step="done" hidden>
           <h3>✓ Запис підтверджено</h3>
           <p id="svs-done-summary"></p>
@@ -380,7 +388,48 @@
       if (!state.master) return;
       $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === mstId));
     }
-    $('button[data-action="confirm"]').disabled = false;
+    const cBtn = $('button[data-action="confirm"]');
+    if (cBtn) cBtn.disabled = false;
+    // Після вибору майстра — одразу переходимо на екран підтвердження через Telegram
+    const slotLabel = state.slot.time || (state.slot.from || '').slice(11, 16);
+    const sum = $('#svs-tg-summary');
+    if (sum) sum.textContent = `${state.service.name} · ${state.date} · ${slotLabel} · ${state.master.name}`;
+    show('tgconfirm');
+  }
+
+  // ── Step 5: відправити в бота для підтвердження ────────
+  async function toTg() {
+    if (!state.service || !state.master || !state.slot) { alert('Оберіть послугу, майстра і час'); return; }
+    const from = state.slot.from || state.slot.start || state.slot;
+    const dur = state.service.duration || 60;
+    const fromIso = toUaIso(typeof from === 'string' ? from : new Date(from));
+    const toIso = toUaIso(new Date(new Date(fromIso).getTime() + dur * 60000));
+    const btn = $('button[data-action="toTg"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Відкриваємо Telegram…'; }
+    try {
+      const r = await fetch(API + '/api/booking/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id: state.service.id,
+          employee_id: state.master.id,
+          date_from: fromIso,
+          date_to: toIso,
+          client_name: state.name || '',
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.deep_link) throw new Error(data.error || 'init failed');
+      // Telegram WebApp: openTelegramLink, інакше — звичайний перехід
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+        window.Telegram.WebApp.openTelegramLink(data.deep_link);
+      } else {
+        window.location.href = data.deep_link;
+      }
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '📲 Підтвердити в Telegram'; }
+      alert('Не вдалось створити запис: ' + e.message);
+    }
   }
 
   // ── Helpers: нормалізація телефону (UA) і таймзони ────
@@ -551,6 +600,7 @@
       if (t.dataset.slot != null) return pickSlot(Number(t.dataset.slot));
       if (t.dataset.action === 'loadSlots') return loadSlots();
       if (t.dataset.action === 'confirm') return confirm();
+      if (t.dataset.action === 'toTg') return toTg();
       if (t.dataset.action === 'reset') return reset();
     });
     root.addEventListener('input', (e) => {
