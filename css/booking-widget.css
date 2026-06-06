@@ -81,3 +81,19 @@
 .svs-book-manage-actions button { flex:1; }
 .svs-book-submit.alt { background:#f5f7fa; color:#1a1a1a; border:1px solid #ccc; }
 .svs-book-submit.alt:hover { background:#eef0f3; }
+
+/* iOS Safari: вимикаємо :hover на touch-only пристроях,
+   щоб не вимагало подвійного тапу для click. */
+@media (hover: none), (pointer: coarse) {
+  .svs-book-day.free:hover { border-color: #e2e2e2; transform: none; box-shadow: none; }
+  .svs-book-card:hover { background: #fafafa; border-color: #eee; }
+  .svs-book-card-any:hover { background: linear-gradient(135deg,#fff7e6,#ffe9b8); border-color: #e6b85c; }
+  .svs-book-slot:hover { background: #fafafa; }
+  .svs-book-cat-title:hover { background: transparent; }
+  .svs-book-submit:hover { background: #1a1a1a; }
+  .svs-book-fallback-btn:hover { background: #1a1a1a; }
+  .svs-book-fallback-btn.alt:hover { background: #2196f3; }
+  .svs-book-manage-link:hover { background: #fff; }
+}
+.svs-book-day, .svs-book-card, .svs-book-slot, .svs-book-submit, .svs-book-fallback-btn, .svs-book-cat-title { touch-action: manipulation; -webkit-tap-highlight-color: rgba(0,0,0,.05); }
+
