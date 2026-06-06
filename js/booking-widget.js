@@ -175,28 +175,32 @@
       return;
     }
 
-    // Без пошуку — групуємо по категоріях
-    const groups = new Map();
+    // Без пошуку — 3 фіксовані категорії
+    // Розподіл по ключових словах в назві (BeautyPro повертає тільки category id)
+    const buckets = {
+      hair:  { title: 'Перукарські послуги', items: [] },
+      nails: { title: 'Ногтьовий сервіс',    items: [] },
+      face:  { title: 'Візаж та лешмейк',    items: [] },
+      other: { title: 'Інші послуги',        items: [] },
+    };
+    const RX_NAILS = /(манік|маник|педик|нігт|ногт|гель[\-\s]?лак|шелак|шеллак|nail)/i;
+    const RX_FACE  = /(бров|брів|вій|ресн|лешм|lash|депіл|депил|шугар|віск|воск|макіяж|макияж|обличч|лиц|пілінг|пилинг|чист(ка|ку|ою)|перманент|татуаж|мікроблейд|microblad|перм)/i;
+    const RX_HAIR  = /(волос|стрижк|стриж|фарб|мелір|мелир|тон(ування|ирование|уванн)|укладк|blow|hair|омбре|балаяж|шатуш|ламін|ламин|ботокс|кератин|нанопласт|боярдо|боярдеї|освітленн|осветлен|колорування|колорирование)/i;
+
     items.forEach(s => {
-      const cat = s.category || 'other';
-      if (!groups.has(cat)) groups.set(cat, []);
-      groups.get(cat).push(s);
+      const n = s.name || '';
+      if (RX_NAILS.test(n))      buckets.nails.items.push(s);
+      else if (RX_FACE.test(n))  buckets.face.items.push(s);
+      else if (RX_HAIR.test(n))  buckets.hair.items.push(s);
+      else                       buckets.other.items.push(s);
     });
 
-    // Назви категорій по евристиці першої послуги (BeautyPro повертає тільки id)
-    const catName = (catId, services) => {
-      if (catId === 'other') return 'Інші послуги';
-      // евристика: беремо префікс назви до першого пробілу/тире у найкоротшої послуги
-      const sample = services[0].name;
-      const m = sample.match(/^([А-ЯҐЄІЇA-Z][^,·.()\-]+?)(?:\s+[а-яa-z]|$)/);
-      return m ? m[1].trim() : 'Послуги';
-    };
-
-    const sorted = Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
-    $('#svs-services').innerHTML = sorted.map(([catId, list]) => `
-      <details class="svs-book-cat" ${sorted.indexOf([catId, list]) === 0 ? 'open' : ''}>
-        <summary class="svs-book-cat-title">${catName(catId, list)} <span class="svs-book-cat-count">${list.length}</span></summary>
-        <div class="svs-book-cat-list">${list.map(renderCard).join('')}</div>
+    const order = ['hair','nails','face','other'];
+    const visible = order.filter(k => buckets[k].items.length);
+    $('#svs-services').innerHTML = visible.map((k, idx) => `
+      <details class="svs-book-cat" ${idx === 0 ? 'open' : ''}>
+        <summary class="svs-book-cat-title">${buckets[k].title} <span class="svs-book-cat-count">${buckets[k].items.length}</span></summary>
+        <div class="svs-book-cat-list">${buckets[k].items.map(renderCard).join('')}</div>
       </details>
     `).join('');
   }
