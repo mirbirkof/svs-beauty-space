@@ -160,13 +160,45 @@
     const f = (filter || '').toLowerCase();
     const items = state.services.filter(s => !f || s.name.toLowerCase().includes(f));
     if (!items.length) { $('#svs-services').innerHTML = '<div class="svs-book-empty">Нічого не знайдено</div>'; return; }
-    $('#svs-services').innerHTML = items.slice(0, 50).map(s => {
+
+    const renderCard = s => {
       const price = s.price ? Object.values(s.price)[0] : null;
       return `<button class="svs-book-card" data-svc="${s.id}">
         <div class="svs-book-card-title">${s.name}</div>
         <div class="svs-book-card-meta">${s.duration || '?'} хв${price ? ' · ' + price + ' грн' : ''}</div>
       </button>`;
-    }).join('');
+    };
+
+    // Якщо йде пошук — плоский список (до 50)
+    if (f) {
+      $('#svs-services').innerHTML = items.slice(0, 50).map(renderCard).join('');
+      return;
+    }
+
+    // Без пошуку — групуємо по категоріях
+    const groups = new Map();
+    items.forEach(s => {
+      const cat = s.category || 'other';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(s);
+    });
+
+    // Назви категорій по евристиці першої послуги (BeautyPro повертає тільки id)
+    const catName = (catId, services) => {
+      if (catId === 'other') return 'Інші послуги';
+      // евристика: беремо префікс назви до першого пробілу/тире у найкоротшої послуги
+      const sample = services[0].name;
+      const m = sample.match(/^([А-ЯҐЄІЇA-Z][^,·.()\-]+?)(?:\s+[а-яa-z]|$)/);
+      return m ? m[1].trim() : 'Послуги';
+    };
+
+    const sorted = Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+    $('#svs-services').innerHTML = sorted.map(([catId, list]) => `
+      <details class="svs-book-cat" ${sorted.indexOf([catId, list]) === 0 ? 'open' : ''}>
+        <summary class="svs-book-cat-title">${catName(catId, list)} <span class="svs-book-cat-count">${list.length}</span></summary>
+        <div class="svs-book-cat-list">${list.map(renderCard).join('')}</div>
+      </details>
+    `).join('');
   }
 
   // ── Step 2: date (calendar of ALL masters availability) ─
@@ -282,10 +314,17 @@
     const list = available.length ? available : (state.masters || []);
     const slotLabel = state.slot.time || (state.slot.from || '').slice(11, 16);
     $('#svs-mst-summary').textContent = `${state.service.name} · ${state.date} · ${slotLabel}`;
+    state._slotAvailableMasters = list;  // для опції "Будь-який вільний"
     if (!list.length) {
       $('#svs-masters').innerHTML = '<div class="svs-book-empty">На цей час майстрів немає. Оберіть інший час.</div>';
     } else {
-      $('#svs-masters').innerHTML = list.map(m => `
+      // Кнопка "Будь-який вільний майстер" зверху списку - підставляє першого вільного
+      const anyMasterCard = list.length > 1 ? `
+        <button class="svs-book-card svs-book-card-any" data-mst="__any__">
+          <div class="svs-book-card-title">🎲 Будь-який вільний майстер</div>
+          <div class="svs-book-card-meta">Підберемо першого вільного на цей час</div>
+        </button>` : '';
+      $('#svs-masters').innerHTML = anyMasterCard + list.map(m => `
         <button class="svs-book-card" data-mst="${m.id}">
           <div class="svs-book-card-title">${m.name}</div>
         </button>`).join('');
@@ -294,9 +333,17 @@
     $('button[data-action="confirm"]').disabled = true;
   }
   function pickMaster(mstId) {
-    state.master = (state.masters || []).find(m => m.id === mstId);
-    if (!state.master) return;
-    $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === mstId));
+    if (mstId === '__any__') {
+      // "Будь-який вільний майстер" - беремо першого з доступних на цей слот
+      const pool = state._slotAvailableMasters || state.masters || [];
+      state.master = pool[0];
+      if (!state.master) return;
+      $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === '__any__'));
+    } else {
+      state.master = (state.masters || []).find(m => m.id === mstId);
+      if (!state.master) return;
+      $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === mstId));
+    }
     $('button[data-action="confirm"]').disabled = false;
   }
 
