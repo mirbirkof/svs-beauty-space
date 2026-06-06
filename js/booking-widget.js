@@ -122,6 +122,11 @@
     if (!root) mount();
     root.hidden = false;
     document.body.style.overflow = 'hidden';
+    // Скидаємо стан попередньої сесії запису
+    _submitting = false;
+    state.service = state.master = state.date = state.slot = null;
+    const btn = $('button[data-action="confirm"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Записатись'; }
     show('service');
     loadServices();
   }
@@ -243,18 +248,54 @@
     $('button[data-action="confirm"]').disabled = false;
   }
 
+  // ── Helpers: нормалізація телефону (UA) і таймзони ────
+  function normalizePhone(raw) {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (!d) return null;
+    // UA: 0XXXXXXXXX (10 цифр) → +380XXXXXXXXX
+    if (d.length === 10 && d.startsWith('0')) return '+380' + d.slice(1);
+    // UA: 380XXXXXXXXX (12 цифр) → +380XXXXXXXXX
+    if (d.length === 12 && d.startsWith('380')) return '+' + d;
+    // Інтернаціонал: 11-15 цифр з кодом країни → "+"+d
+    if (d.length >= 11 && d.length <= 15) return '+' + d;
+    return null;
+  }
+  // ISO з явною UA-зоною (+03:00 літо / +02:00 зима) — щоб дата не зʼїхала
+  function toUaIso(date) {
+    const d = new Date(date);
+    const offMin = -d.getTimezoneOffset(); // браузер клієнта вже у його зоні
+    const sign = offMin >= 0 ? '+' : '-';
+    const hh = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
+    const mm = String(Math.abs(offMin) % 60).padStart(2, '0');
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${hh}:${mm}`;
+  }
+
   // ── Confirm: пряма запис у CRM (з fallback на Telegram) ─
+  let _submitting = false;
   async function confirm() {
+    if (_submitting) return; // bug-fix #1: захист від подвійного кліку
     state.name = ($('#svs-name').value || '').trim();
     const phoneRaw = ($('#svs-phone').value || '').trim();
-    const phoneDigits = phoneRaw.replace(/\D/g, '');
+    const phone = normalizePhone(phoneRaw); // bug-fix #2: нормалізація
     if (!state.name) { alert('Введіть імʼя'); return; }
-    if (phoneDigits.length < 10) { alert('Введіть коректний телефон'); return; }
+    if (!phone) { alert('Введіть коректний телефон (наприклад 0991234567)'); return; }
     if (!state.slot) { alert('Оберіть час'); return; }
+
+    _submitting = true;
+    const btn = $('button[data-action="confirm"]');
+    if (btn) { btn.disabled = true; btn.dataset._origText = btn.textContent; btn.textContent = 'Записуємо…'; }
+
     const from = state.slot.from || state.slot.start || state.slot;
     const dur = state.service.duration || 60;
-    const fromIso = typeof from === 'string' ? new Date(from).toISOString() : new Date(from).toISOString();
-    const toIso = new Date(new Date(fromIso).getTime() + dur * 60000).toISOString();
+    // bug-fix #3: ISO з зоною клієнта замість UTC
+    const fromIso = toUaIso(typeof from === 'string' ? from : new Date(from));
+    const toIso = toUaIso(new Date(new Date(fromIso).getTime() + dur * 60000));
+
+    const restoreBtn = () => {
+      _submitting = false;
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset._origText || 'Записатись'; }
+    };
 
     // 1) Спроба прямого запису у CRM
     try {
@@ -262,7 +303,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: '+' + phoneDigits,
+          phone,
           name: state.name,
           service_id: state.service.id,
           employee_id: state.master.id,
@@ -274,7 +315,7 @@
       if (r.ok && data.ok) {
         $('#svs-done-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
         show('done');
-        return;
+        return; // _submitting лишається true до закриття — захист від повторної відправки
       }
       throw new Error(data.error || 'CRM error');
     } catch (e) {
@@ -297,13 +338,15 @@
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'init failed');
       currentToken = data.token;
+      // bug-fix #4: НЕ window.open() після await (блокують моб. браузери) — показуємо клікабельне посилання
       $('#svs-link').href = data.deep_link;
-      window.open(data.deep_link, '_blank', 'noopener');
+      $('#svs-link').textContent = '👉 Відкрити бота для підтвердження';
       show('wait');
       poll();
     } catch (e) {
       $('#svs-err').textContent = 'Помилка: ' + e.message;
       show('error');
+      restoreBtn();
     }
   }
   function poll() {
