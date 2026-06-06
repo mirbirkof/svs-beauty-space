@@ -40,3 +40,12 @@
 .svs-book-err { color:#c62828; }
 .svs-book-name-block { margin-top:16px; padding-top:16px; border-top:1px solid #eee; }
 .svs-book-submit:disabled { opacity:.4; cursor:not-allowed; }
+.svs-book-calendar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+.svs-book-day { background: #fff; border: 1.5px solid #e2e2e2; border-radius: 10px; padding: 10px 12px; text-align: left; cursor: pointer; transition: all .15s; font: inherit; color: inherit; }
+.svs-book-day.free:hover { border-color: #1a1a1a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.svs-book-day.busy { background: #f5f5f5; color: #999; cursor: not-allowed; opacity: .6; }
+.svs-book-day-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.svs-book-day-top b { font-size: 16px; }
+.svs-book-day-top span { font-size: 12px; color: #888; text-transform: uppercase; }
+.svs-book-day-bot { font-size: 13px; }
+.svs-book-hint { font-size: 12px; color: #888; margin: 6px 0 0; }

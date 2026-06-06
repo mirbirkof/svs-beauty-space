@@ -43,13 +43,15 @@
           </div>
         </div>
 
-        <!-- Step 3: date -->
+        <!-- Step 3: date (calendar grid with availability) -->
         <div class="svs-book-step" data-step="date" hidden>
           <button class="svs-book-back" data-goto="master">← Майстер</button>
           <h3>Оберіть дату</h3>
           <p class="svs-book-sub" id="svs-mst-summary"></p>
-          <input type="date" id="svs-date">
-          <button class="svs-book-submit" data-action="loadSlots">Показати вільний час</button>
+          <div id="svs-calendar" class="svs-book-calendar">
+            <div class="svs-book-loading">Шукаю вільні дні…</div>
+          </div>
+          <p class="svs-book-hint">Сірі дні — повністю зайняті</p>
         </div>
 
         <!-- Step 4: time -->
@@ -192,21 +194,51 @@
       </button>`).join('');
   }
 
-  // ── Step 3: date ───────────────────────────────────────
+  // ── Step 3: date (calendar with availability counts) ───
   function pickMaster(mstId) {
     state.master = state.masters.find(m => m.id === mstId);
     if (!state.master) return;
     $('#svs-mst-summary').textContent = `${state.service.name} · ${state.master.name}`;
-    // выставляем дату по умолчанию = завтра
-    const t = new Date(); t.setDate(t.getDate() + 1);
-    $('#svs-date').min = new Date().toISOString().slice(0, 10);
-    $('#svs-date').value = t.toISOString().slice(0, 10);
     show('date');
+    loadAvailability();
+  }
+  async function loadAvailability() {
+    $('#svs-calendar').innerHTML = '<div class="svs-book-loading">Шукаю вільні дні…</div>';
+    try {
+      const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&employee_id=${encodeURIComponent(state.master.id)}&days=14`;
+      const days = await api(url);
+      renderCalendar(Array.isArray(days) ? days : []);
+    } catch (e) {
+      $('#svs-calendar').innerHTML = `<div class="svs-book-err">Не вдалося завантажити: ${e.message}</div>`;
+    }
+  }
+  function renderCalendar(days) {
+    if (!days.length) {
+      $('#svs-calendar').innerHTML = '<div class="svs-book-empty">На найближчі 2 тижні вільних днів немає. Зателефонуйте салону.</div>';
+      return;
+    }
+    const wd = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+    const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
+    $('#svs-calendar').innerHTML = days.map(d => {
+      const [y, m, dd] = d.date.split('-').map(Number);
+      const date = new Date(y, m - 1, dd);
+      const dayLabel = `${dd} ${mn[m - 1]}`;
+      const wdLabel = wd[date.getDay()];
+      const free = d.count > 0;
+      const slotsLabel = free ? `🟢 ${d.count} вікон${d.first ? ' · ' + d.first + '-' + d.last : ''}` : '⚫ Зайнято';
+      return `<button class="svs-book-day ${free ? 'free' : 'busy'}" ${free ? `data-date="${d.date}"` : 'disabled'}>
+        <div class="svs-book-day-top"><b>${dayLabel}</b> <span>${wdLabel}</span></div>
+        <div class="svs-book-day-bot">${slotsLabel}</div>
+      </button>`;
+    }).join('');
+  }
+  function pickDate(dateStr) {
+    state.date = dateStr;
+    loadSlots();
   }
 
   // ── Step 4: slots ──────────────────────────────────────
   async function loadSlots() {
-    state.date = $('#svs-date').value;
     if (!state.date) { alert('Оберіть дату'); return; }
     $('#svs-date-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
     show('time');
@@ -392,6 +424,7 @@
       if (t.dataset.goto) return show(t.dataset.goto);
       if (t.dataset.svc) return loadMasters(t.dataset.svc);
       if (t.dataset.mst) return pickMaster(t.dataset.mst);
+      if (t.dataset.date) return pickDate(t.dataset.date);
       if (t.dataset.slot != null) return pickSlot(Number(t.dataset.slot));
       if (t.dataset.action === 'loadSlots') return loadSlots();
       if (t.dataset.action === 'confirm') return confirm();
