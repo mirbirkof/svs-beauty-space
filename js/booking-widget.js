@@ -17,9 +17,9 @@
         <!-- step indicator -->
         <div class="svs-book-steps">
           <span data-pin="service" class="active">1. Послуга</span>
-          <span data-pin="master">2. Майстер</span>
-          <span data-pin="date">3. Дата</span>
-          <span data-pin="time">4. Час</span>
+          <span data-pin="date">2. Дата</span>
+          <span data-pin="time">3. Час</span>
+          <span data-pin="master">4. Майстер</span>
         </div>
 
         <!-- Step 1: service -->
@@ -112,7 +112,7 @@
   function show(step) {
     $$('.svs-book-step').forEach(el => el.hidden = el.dataset.step !== step);
     $$('.svs-book-steps span').forEach(s => {
-      const map = { service: 0, master: 1, date: 2, time: 3 };
+      const map = { service: 0, date: 1, time: 2, master: 3 };
       const cur = map[step];
       const my = map[s.dataset.pin];
       s.classList.toggle('active', my === cur);
@@ -169,43 +169,28 @@
     }).join('');
   }
 
-  // ── Step 2: masters ────────────────────────────────────
-  async function loadMasters(svcId) {
+  // ── Step 2: date (calendar of ALL masters availability) ─
+  async function pickService(svcId) {
     state.service = state.services.find(s => s.id === svcId);
     if (!state.service) return;
+    state.master = null; state.date = null; state.slot = null;
     $('#svs-svc-summary').textContent = `${state.service.name} · ${state.service.duration} хв`;
-    show('master');
+    show('date');
+    loadAvailability();
+    loadMastersBg(svcId); // у фоні: щоб знати імʼя для останнього кроку
+  }
+  async function loadMastersBg(svcId) {
     try {
       const list = await api('/api/booking/masters?service_id=' + encodeURIComponent(svcId));
       const all = Array.isArray(list) ? list : [];
-      // оставляем только тех, кто умеет эту услугу
       const filtered = all.filter(m => Array.isArray(m.services) && m.services.some(x => x.id === svcId));
       state.masters = filtered.length ? filtered : all;
-      renderMasters();
-    } catch (e) {
-      $('#svs-masters').innerHTML = `<div class="svs-book-err">Помилка: ${e.message}</div>`;
-    }
-  }
-  function renderMasters() {
-    if (!state.masters.length) { $('#svs-masters').innerHTML = '<div class="svs-book-empty">Майстри не знайдені</div>'; return; }
-    $('#svs-masters').innerHTML = state.masters.map(m => `
-      <button class="svs-book-card" data-mst="${m.id}">
-        <div class="svs-book-card-title">${m.name}</div>
-      </button>`).join('');
-  }
-
-  // ── Step 3: date (calendar with availability counts) ───
-  function pickMaster(mstId) {
-    state.master = state.masters.find(m => m.id === mstId);
-    if (!state.master) return;
-    $('#svs-mst-summary').textContent = `${state.service.name} · ${state.master.name}`;
-    show('date');
-    loadAvailability();
+    } catch { state.masters = []; }
   }
   async function loadAvailability() {
     $('#svs-calendar').innerHTML = '<div class="svs-book-loading">Шукаю вільні дні…</div>';
     try {
-      const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&employee_id=${encodeURIComponent(state.master.id)}&days=14`;
+      const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&days=14`;
       const days = await api(url);
       renderCalendar(Array.isArray(days) ? days : []);
     } catch (e) {
@@ -237,14 +222,14 @@
     loadSlots();
   }
 
-  // ── Step 4: slots ──────────────────────────────────────
+  // ── Step 3: slots (з усіма майстрами) ─────────────────
   async function loadSlots() {
     if (!state.date) { alert('Оберіть дату'); return; }
-    $('#svs-date-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
+    $('#svs-date-summary').textContent = `${state.service.name} · ${state.date}`;
     show('time');
     $('#svs-slots').innerHTML = '<div class="svs-book-loading">Шукаю вільний час…</div>';
     try {
-      const url = `/api/booking/slots?service_id=${encodeURIComponent(state.service.id)}&employee_id=${encodeURIComponent(state.master.id)}&date=${state.date}`;
+      const url = `/api/booking/slots?service_id=${encodeURIComponent(state.service.id)}&date=${state.date}`;
       const data = await api(url);
       renderSlots(data);
     } catch (e) {
@@ -277,6 +262,27 @@
   function pickSlot(idx) {
     state.slot = state._rawSlots[idx];
     $$('.svs-book-slot').forEach(b => b.classList.toggle('chosen', b.dataset.slot === String(idx)));
+    // Step 4: вибір майстра серед тих, хто вільний у цей слот
+    const slotEmployees = Array.isArray(state.slot.employees) ? state.slot.employees : [];
+    const available = (state.masters || []).filter(m => slotEmployees.includes(m.id));
+    const list = available.length ? available : (state.masters || []);
+    const slotLabel = state.slot.time || (state.slot.from || '').slice(11, 16);
+    $('#svs-mst-summary').textContent = `${state.service.name} · ${state.date} · ${slotLabel}`;
+    if (!list.length) {
+      $('#svs-masters').innerHTML = '<div class="svs-book-empty">На цей час майстрів немає. Оберіть інший час.</div>';
+    } else {
+      $('#svs-masters').innerHTML = list.map(m => `
+        <button class="svs-book-card" data-mst="${m.id}">
+          <div class="svs-book-card-title">${m.name}</div>
+        </button>`).join('');
+    }
+    show('master');
+    $('button[data-action="confirm"]').disabled = true;
+  }
+  function pickMaster(mstId) {
+    state.master = (state.masters || []).find(m => m.id === mstId);
+    if (!state.master) return;
+    $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === mstId));
     $('button[data-action="confirm"]').disabled = false;
   }
 
@@ -422,7 +428,7 @@
       if (!t) return;
       if (t.dataset.close !== undefined) return close();
       if (t.dataset.goto) return show(t.dataset.goto);
-      if (t.dataset.svc) return loadMasters(t.dataset.svc);
+      if (t.dataset.svc) return pickService(t.dataset.svc);
       if (t.dataset.mst) return pickMaster(t.dataset.mst);
       if (t.dataset.date) return pickDate(t.dataset.date);
       if (t.dataset.slot != null) return pickSlot(Number(t.dataset.slot));
