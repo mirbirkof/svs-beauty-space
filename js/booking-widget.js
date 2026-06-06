@@ -229,8 +229,8 @@
 
     const order = ['hair','nails','face','massage','other'];
     const visible = order.filter(k => buckets[k].items.length);
-    $('#svs-services').innerHTML = visible.map((k, idx) => `
-      <details class="svs-book-cat" ${idx === 0 ? 'open' : ''}>
+    $('#svs-services').innerHTML = visible.map((k) => `
+      <details class="svs-book-cat">
         <summary class="svs-book-cat-title">${buckets[k].title} <span class="svs-book-cat-count">${buckets[k].items.length}</span></summary>
         <div class="svs-book-cat-list">${buckets[k].items.map(renderCard).join('')}</div>
       </details>
