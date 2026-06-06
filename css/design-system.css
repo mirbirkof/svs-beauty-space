@@ -285,6 +285,23 @@ button { font-family: inherit; cursor: none; border: none; background: none; col
   box-shadow: 0 0 40px rgba(201, 169, 110, 0.2);
 }
 
+/* Велика hero-кнопка "Записатися" — більше площі для тапу на мобільному */
+.btn--hero-lg {
+  padding: calc(var(--s-3) * 1.6) calc(var(--s-6) * 1.4);
+  font-size: calc(var(--f-caption) * 1.15);
+  letter-spacing: 0.18em;
+  min-width: 260px;
+}
+@media (max-width: 768px) {
+  .btn--hero-lg {
+    padding: calc(var(--s-3) * 1.8) calc(var(--s-6) * 1.5);
+    font-size: calc(var(--f-caption) * 1.2);
+    min-width: 280px;
+    width: 100%;
+    max-width: 360px;
+  }
+}
+
 .btn--shop {
   display: inline-flex;
   align-items: center;

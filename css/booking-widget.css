@@ -2,7 +2,7 @@
 .svs-book-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; }
 .svs-book-modal[hidden] { display: none; }
 .svs-book-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
-.svs-book-dialog { position: relative; background: #fff; color: #1a1a1a; width: min(440px, 92vw); max-height: 90vh; overflow: auto; border-radius: 18px; padding: 28px 26px; box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: svsbk-pop .25s ease; }
+.svs-book-dialog { position: relative; background: #fff; color: #1a1a1a; width: min(560px, 94vw); max-height: 92vh; overflow: auto; border-radius: 18px; padding: 30px 28px; box-shadow: 0 25px 70px rgba(0,0,0,.35); animation: svsbk-pop .25s ease; border-top: 3px solid #c9a96e; }
 @keyframes svsbk-pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .svs-book-close { position: absolute; top: 10px; right: 14px; background: transparent; border: 0; font-size: 28px; line-height: 1; cursor: pointer; color: #888; }
 .svs-book-close:hover { color: #000; }
@@ -27,7 +27,7 @@
 .svs-book-back { background:none; border:0; color:#666; font-size:13px; cursor:pointer; padding:4px 0; margin-bottom:8px; }
 .svs-book-back:hover { color:#000; }
 .svs-book-search input { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:12px; }
-.svs-book-list { display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto; }
+.svs-book-list { display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto; }
 .svs-book-card { text-align:left; padding:12px 14px; background:#fafafa; border:1px solid #eee; border-radius:8px; cursor:pointer; transition:.15s; }
 .svs-book-card:hover { background:#f0f0f0; border-color:#ccc; }
 .svs-book-card-title { font-weight:500; }
@@ -42,7 +42,7 @@
 .svs-book-cat-title:hover { background:#f7f7f7; }
 .svs-book-cat-count { background:#eee; color:#666; font-size:11px; padding:2px 8px; border-radius:10px; }
 .svs-book-cat-list { display:flex; flex-direction:column; gap:6px; padding:6px 8px 10px; }
-.svs-book-slots { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; max-height:200px; overflow-y:auto; }
+.svs-book-slots { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; max-height:320px; overflow-y:auto; }
 .svs-book-slot { padding:8px 14px; background:#fafafa; border:1px solid #ddd; border-radius:6px; cursor:pointer; font-size:14px; }
 .svs-book-slot:hover { background:#f0f0f0; }
 .svs-book-slot.chosen { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
