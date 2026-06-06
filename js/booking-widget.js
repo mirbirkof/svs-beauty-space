@@ -190,14 +190,27 @@
   async function loadAvailability() {
     $('#svs-calendar').innerHTML = '<div class="svs-book-loading">Шукаю вільні дні…</div>';
     try {
-      const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&days=14`;
-      const days = await api(url);
-      renderCalendar(Array.isArray(days) ? days : []);
+      const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&days=14&format=v2`;
+      const resp = await api(url);
+      const days = resp && Array.isArray(resp.days) ? resp.days : (Array.isArray(resp) ? resp : []);
+      const noSchedule = resp && resp.noSchedule === true;
+      renderCalendar(days, noSchedule);
     } catch (e) {
       $('#svs-calendar').innerHTML = `<div class="svs-book-err">Не вдалося завантажити: ${e.message}</div>`;
     }
   }
-  function renderCalendar(days) {
+  function renderCalendar(days, noSchedule) {
+    if (noSchedule) {
+      $('#svs-calendar').innerHTML = `
+        <div class="svs-book-fallback">
+          <div class="svs-book-fallback-icon">📞</div>
+          <div class="svs-book-fallback-title">Графік на найближчі 2 тижні ще не складено</div>
+          <div class="svs-book-fallback-text">Майстри ще не виставили зміни. Щоб записатись — будь ласка, зателефонуйте або напишіть:</div>
+          <a class="svs-book-fallback-btn" href="tel:+380632407847">📞 +38 063 240 7847</a>
+          <a class="svs-book-fallback-btn alt" href="https://t.me/Svsf1rstbot" target="_blank">💬 Написати в Telegram</a>
+        </div>`;
+      return;
+    }
     if (!days.length) {
       $('#svs-calendar').innerHTML = '<div class="svs-book-empty">На найближчі 2 тижні вільних днів немає. Зателефонуйте салону.</div>';
       return;
