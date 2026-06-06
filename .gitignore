@@ -3,3 +3,7 @@ backend/.env
 .env
 
 *.url-backup
+
+# случайная папка с тильдой (playwright dump)
+~/
+
