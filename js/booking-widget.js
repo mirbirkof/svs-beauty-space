@@ -187,7 +187,29 @@
     const RX_FACE  = /(бров|брів|вій|ресн|лешм|lash|депіл|депил|шугар|віск|воск|макіяж|макияж|обличч|лиц|пілінг|пилинг|чист(ка|ку|ою)|перманент|татуаж|мікроблейд|microblad|перм|premium\s*\d?\s*d|hollywood|класика|контуринг|консультац)/i;
     const RX_HAIR  = /(волос|стрижк|стриж|фарб|мелір|мелир|тон(ування|ирование|уванн)|укладк|blow|hair|омбре|балаяж|шатуш|ламін|ламин|ботокс|кератин|нанопласт|боярдо|боярдеї|освітленн|осветлен|колорування|колорирование|біовирівн|біозавив|вихід з чорного|накрутк|вкладанн|чубчик|голови та вкладан|миття голови|зачіск|холодне відновленн|biomimetic|довжина)/i;
 
+    // Жорсткий маппінг по GUID категорії з BeautyPro (06.06)
+    const CAT_HAIR = new Set([
+      '88de9f81-ba4e-ec40-2721-6e895218a30b','88de9f81-ba4e-ec40-2721-6e890940ef12',
+      '88de9f81-ba4e-ec40-2721-6e89464791b2','88de9f81-ba4e-ca1e-2721-6e8915aaac8e',
+      '88deba75-de0a-5172-500e-323d51507ece','88deba75-ddf9-9eaa-57ac-e23d1325ae90',
+      '88deba75-de29-4fcd-57ac-e23d7b0da276','88deba75-dde8-ecf0-783f-1287064f794a',
+      '88de9f81-ba4f-3ae7-2721-6e891864f1eb','88de9f81-ba4f-3ae7-2721-6e89242af004',
+    ]);
+    const CAT_NAILS = new Set([
+      '88de9f81-ba86-ef50-2721-6e891d076fb3','88deba75-de18-9c79-57ac-e23d3877784d',
+      '88deba75-de39-fda4-500e-323d0962e307','88de9f81-ba86-ef50-2721-6e8940dd1cbc',
+      '88de9f81-ba86-ef50-2721-6e896814c8cf',
+    ]);
+    const CAT_FACE = new Set([
+      '88deba75-de48-4b92-57ac-e23d0ef4a3f1','88deba75-de67-48b4-500e-323d315989c2',
+      '88de9f81-ba12-e930-2721-6e8900c1746f','88deba75-de77-fa8f-57ac-e23d54c5a8fc',
+      '88deba75-de58-fbf4-57ac-e23d46888bbe',
+    ]);
     items.forEach(s => {
+      const cid = typeof s.category === 'string' ? s.category : (s.category && s.category.id ? s.category.id : null);
+      if (cid && CAT_HAIR.has(cid))  { buckets.hair.items.push(s);  return; }
+      if (cid && CAT_NAILS.has(cid)) { buckets.nails.items.push(s); return; }
+      if (cid && CAT_FACE.has(cid))  { buckets.face.items.push(s);  return; }
       const n = s.name || '';
       if (RX_NAILS.test(n))      buckets.nails.items.push(s);
       else if (RX_FACE.test(n))  buckets.face.items.push(s);
