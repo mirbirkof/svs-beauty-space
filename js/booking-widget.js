@@ -206,10 +206,17 @@
       '88deba75-de58-fbf4-57ac-e23d46888bbe',
     ]);
     items.forEach(s => {
+      // 1) Primary — від сервера (за позицією мастера: Стилист/Визажист/Мастер маникюра)
+      if (s.widget_category && buckets[s.widget_category]) {
+        buckets[s.widget_category].items.push(s);
+        return;
+      }
+      // 2) Fallback — старий GUID-маппінг по категоріях BeautyPro
       const cid = typeof s.category === 'string' ? s.category : (s.category && s.category.id ? s.category.id : null);
       if (cid && CAT_HAIR.has(cid))  { buckets.hair.items.push(s);  return; }
       if (cid && CAT_NAILS.has(cid)) { buckets.nails.items.push(s); return; }
       if (cid && CAT_FACE.has(cid))  { buckets.face.items.push(s);  return; }
+      // 3) Fallback 2 — regex по назві
       const n = s.name || '';
       if (RX_NAILS.test(n))      buckets.nails.items.push(s);
       else if (RX_FACE.test(n))  buckets.face.items.push(s);
