@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мій кабінет — SVS Beauty Space</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  .tab { padding: 10px 18px; border-bottom: 2px solid transparent; cursor:pointer; color:#64748b; font-weight:500 }
+  .tab.active { border-color:#0f172a; color:#0f172a }
+  .star { color:#f59e0b; font-size:18px }
+  .star.dim { color:#e5e7eb }
+  .fav-icon { color:#ef4444 }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b">
+  <div class="max-w-3xl mx-auto px-6 py-5 flex justify-between items-center">
+    <a href="/" class="text-xl font-bold">SVS Beauty Space</a>
+    <nav class="text-sm flex gap-5">
+      <a href="/promotions.html" class="text-slate-600 hover:text-slate-900">Акции</a>
+      <a href="/my.html" class="text-slate-900 font-semibold">Кабинет</a>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-6 py-8">
+
+<!-- LOGIN -->
+<section id="login" class="bg-white rounded-2xl shadow-sm p-6">
+  <h1 class="text-2xl font-bold mb-1">Личный кабинет</h1>
+  <p class="text-sm text-slate-500 mb-5">Введите телефон чтобы посмотреть свои отзывы, избранное и историю</p>
+  <input id="phone" type="tel" placeholder="+380XXXXXXXXX" class="w-full border rounded-xl px-4 py-3 text-lg">
+  <button onclick="enter()" class="w-full bg-slate-900 text-white rounded-xl py-3 mt-4 font-semibold">Войти</button>
+</section>
+
+<!-- PROFILE -->
+<section id="profile" class="hidden">
+  <div class="bg-white rounded-2xl shadow-sm p-6 mb-4">
+    <div class="flex justify-between items-center">
+      <div>
+        <p class="text-xs uppercase text-slate-500">Кабинет клиента</p>
+        <h1 id="myPhone" class="text-xl font-bold"></h1>
+      </div>
+      <button onclick="logout()" class="text-sm text-slate-500 hover:text-slate-900">Выйти</button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm">
+    <div class="flex border-b">
+      <div class="tab active" data-tab="history">История</div>
+      <div class="tab" data-tab="favorites">Избранное</div>
+      <div class="tab" data-tab="reviews">Мои отзывы</div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="t-history" class="p-6">
+      <div id="hist-list" class="text-slate-500">Загрузка…</div>
+    </div>
+
+    <!-- FAVORITES -->
+    <div id="t-favorites" class="hidden p-6">
+      <div class="flex gap-2 mb-4">
+        <select id="fav-kind" class="border rounded-lg px-3 py-1.5 text-sm">
+          <option value="">Всё</option>
+          <option value="master">Мастера</option>
+          <option value="service">Услуги</option>
+          <option value="product">Товары</option>
+        </select>
+        <button onclick="loadFavs()" class="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-sm">Показать</button>
+      </div>
+      <div id="fav-list" class="text-slate-500">Загрузка…</div>
+    </div>
+
+    <!-- REVIEWS -->
+    <div id="t-reviews" class="hidden p-6">
+      <button onclick="document.getElementById('new-review').classList.toggle('hidden')" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm mb-4">+ Оставить отзыв</button>
+      <div id="new-review" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+        <input id="rev-master" placeholder="ID мастера или имя" class="border rounded-lg px-3 py-2 text-sm w-full mb-2">
+        <div class="flex gap-1 mb-2 text-2xl cursor-pointer" id="rev-stars">
+          ${[1,2,3,4,5].map(i=>`<span data-r="${i}">☆</span>`).join('')}
+        </div>
+        <textarea id="rev-text" placeholder="Ваш отзыв" class="border rounded-lg px-3 py-2 text-sm w-full mb-2" rows="3"></textarea>
+        <label class="flex items-center gap-2 text-sm text-slate-600 mb-3"><input id="rev-anon" type="checkbox"> Анонимно</label>
+        <button onclick="submitReview()" class="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm">Опубликовать</button>
+      </div>
+      <div id="rev-list" class="text-slate-500">Загрузка…</div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+const API_SHOP = location.origin;
+const API_DIK  = 'https://5071e3cc6935b7.lhr.life';
+let myPhone = localStorage.getItem('myPhone') || '';
+let myRating = 5;
+
+if (myPhone) showProfile();
+
+function normPhone(p) {
+  const d = String(p||'').replace(/\D/g,'');
+  if (d.length === 12 && d.startsWith('380')) return '+' + d;
+  if (d.length === 10 && d.startsWith('0')) return '+38' + d;
+  return p;
+}
+
+function enter() {
+  const p = normPhone(document.getElementById('phone').value);
+  if (!p || p.length < 10) { alert('Введите телефон'); return; }
+  myPhone = p;
+  localStorage.setItem('myPhone', p);
+  showProfile();
+}
+
+function logout() {
+  localStorage.removeItem('myPhone');
+  location.reload();
+}
+
+function showProfile() {
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('profile').classList.remove('hidden');
+  document.getElementById('myPhone').textContent = myPhone;
+  loadHistory();
+  loadFavs();
+  loadReviews();
+}
+
+// табы
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  ['history','favorites','reviews'].forEach(n => document.getElementById('t-'+n).classList.add('hidden'));
+  document.getElementById('t-'+t.dataset.tab).classList.remove('hidden');
+});
+
+// stars в форме нового отзыва
+document.querySelectorAll('#rev-stars span').forEach(s => s.onclick = () => {
+  myRating = parseInt(s.dataset.r);
+  document.querySelectorAll('#rev-stars span').forEach(x => x.textContent = parseInt(x.dataset.r) <= myRating ? '★' : '☆');
+});
+
+// === HISTORY ===
+async function loadHistory() {
+  try {
+    const r = await fetch(`${API_SHOP}/api/booking/history?phone=${encodeURIComponent(myPhone)}`).then(r => r.json());
+    const all = [...(r.bookings||[]), ...(r.waitlist||[]), ...(r.orders||[])];
+    if (!all.length) { document.getElementById('hist-list').innerHTML = '<p class="text-slate-500">История пуста</p>'; return; }
+    document.getElementById('hist-list').innerHTML = all.map(x => `
+      <div class="border-b py-3">
+        <div class="flex justify-between">
+          <div>
+            <p class="font-medium">${x.service_name || x.title || 'Заказ #'+x.id}</p>
+            <p class="text-xs text-slate-500">${x.date_from || x.created_at || ''}</p>
+          </div>
+          <span class="text-sm">${x.total ? x.total+'₴' : (x.status||'')}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    document.getElementById('hist-list').innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки: '+e.message+'</p>';
+  }
+}
+
+// === FAVORITES ===
+async function loadFavs() {
+  const kind = document.getElementById('fav-kind').value;
+  const params = new URLSearchParams({phone: myPhone});
+  if (kind) params.append('kind', kind);
+  const r = await fetch(`${API_DIK}/api/favorites?${params}`).then(r => r.json());
+  if (!r.items?.length) { document.getElementById('fav-list').innerHTML = '<p class="text-slate-500">Избранного нет</p>'; return; }
+  document.getElementById('fav-list').innerHTML = r.items.map(f => `
+    <div class="flex justify-between items-center border-b py-3">
+      <div>
+        <p class="font-medium">${f.target_name || f.target_id}</p>
+        <p class="text-xs text-slate-500">${f.kind==='master'?'Мастер':f.kind==='service'?'Услуга':'Товар'} · добавлено ${new Date(f.created_at).toLocaleDateString('ru-UA')}</p>
+      </div>
+      <button onclick="rmFav('${f.kind}','${f.target_id}')" class="text-red-500 text-sm hover:underline">Убрать</button>
+    </div>
+  `).join('');
+}
+
+async function rmFav(kind, target_id) {
+  await fetch(`${API_DIK}/api/favorites`, {
+    method:'DELETE', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({client_phone: myPhone, kind, target_id})
+  });
+  loadFavs();
+}
+
+// === REVIEWS ===
+async function loadReviews() {
+  const r = await fetch(`${API_DIK}/api/reviews?limit=200`).then(r => r.json());
+  const mine = (r.items||[]).filter(x => {
+    // отзыв виден если телефон совпадает (но в API client_phone не возвращается из соображений приватности)
+    // показываем все опубликованные с display_name содержащим окончание телефона
+    const tail = myPhone.slice(-4);
+    return x.display_name && x.display_name.includes(tail);
+  });
+  if (!mine.length) { document.getElementById('rev-list').innerHTML = '<p class="text-slate-500">Вы ещё не оставили отзывов</p>'; return; }
+  document.getElementById('rev-list').innerHTML = mine.map(rv => `
+    <div class="border-b py-3">
+      <div class="flex justify-between mb-1">
+        <span>${stars(rv.rating)}</span>
+        <span class="text-xs text-slate-500">${new Date(rv.created_at).toLocaleDateString('ru-UA')}</span>
+      </div>
+      <p class="text-sm text-slate-600 mb-1">${rv.master_name || rv.master_id || 'Без мастера'}</p>
+      <p class="text-sm">${rv.text||''}</p>
+      ${rv.is_anonymous ? '<p class="text-xs text-amber-700 mt-1">📌 Опубликован анонимно</p>' : ''}
+    </div>
+  `).join('');
+}
+
+function stars(n) {
+  let s = '';
+  for (let i=1; i<=5; i++) s += `<span class="star ${i<=n?'':'dim'}">★</span>`;
+  return s;
+}
+
+async function submitReview() {
+  const body = {
+    client_phone: myPhone,
+    master_id: document.getElementById('rev-master').value.trim() || 'unknown',
+    master_name: document.getElementById('rev-master').value.trim() || null,
+    rating: myRating,
+    text: document.getElementById('rev-text').value.trim(),
+    is_anonymous: document.getElementById('rev-anon').checked
+  };
+  if (!body.text) { alert('Напишите отзыв'); return; }
+  const r = await fetch(`${API_DIK}/api/reviews`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  if (r.ok) {
+    document.getElementById('rev-text').value = '';
+    document.getElementById('rev-master').value = '';
+    document.getElementById('rev-anon').checked = false;
+    document.getElementById('new-review').classList.add('hidden');
+    loadReviews();
+  } else alert('Ошибка отправки');
+}
+</script>
+</body>
+</html>
