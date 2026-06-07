@@ -59,12 +59,13 @@ if (TOKEN) localStorage.setItem('admin_token', TOKEN);
 const H = { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json' };
 
 async function load() {
-  const r = await fetch('/api/promo/list', { headers: H });
+  const r = await fetch('/api/promo/admin/list', { headers: H });
   const data = await r.json();
   const rows = document.getElementById('rows');
   if (!data.ok) { rows.innerHTML = `<tr><td colspan="7" class="p-4 text-red-600">${data.error || 'Помилка'}</td></tr>`; return; }
-  if (!data.promos.length) { rows.innerHTML = '<tr><td colspan="7" class="p-4 text-slate-400">Промокодів ще немає</td></tr>'; return; }
-  rows.innerHTML = data.promos.map(p => `
+  const list = data.items || data.promos || [];
+  if (!list.length) { rows.innerHTML = '<tr><td colspan="7" class="p-4 text-slate-400">Промокодів ще немає</td></tr>'; return; }
+  rows.innerHTML = list.map(p => `
     <tr class="border-t">
       <td class="p-3 font-mono font-bold">${p.code}</td>
       <td class="p-3">${p.type === 'percent' ? '%' : 'грн'}</td>
@@ -76,7 +77,7 @@ async function load() {
     </tr>`).join('');
   rows.querySelectorAll('.del').forEach(b => b.onclick = async () => {
     if (!confirm('Деактивувати ' + b.dataset.code + '?')) return;
-    await fetch('/api/promo/' + b.dataset.code, { method: 'DELETE', headers: H });
+    await fetch('/api/promo/admin/' + b.dataset.code, { method: 'DELETE', headers: H });
     load();
   });
 }
@@ -87,7 +88,7 @@ document.getElementById('createForm').onsubmit = async (e) => {
   const body = {};
   fd.forEach((v, k) => { if (v) body[k] = (k === 'value' || k === 'min_total' || k === 'max_uses') ? Number(v) : v; });
   body.code = body.code.toUpperCase();
-  const r = await fetch('/api/promo/create', { method: 'POST', headers: H, body: JSON.stringify(body) });
+  const r = await fetch('/api/promo/admin/create', { method: 'POST', headers: H, body: JSON.stringify(body) });
   const j = await r.json();
   const msg = document.getElementById('createMsg');
   if (j.ok) { msg.className = 'mt-3 text-sm text-emerald-600'; msg.textContent = 'Створено: ' + body.code; e.target.reset(); load(); }
