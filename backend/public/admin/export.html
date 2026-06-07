@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Експорт — SVS Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div class="max-w-3xl mx-auto p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Експорт даних</h1>
+    <a href="/admin/" class="text-sm text-slate-500 hover:text-slate-700">← до головної</a>
+  </div>
+
+  <p class="text-slate-600 mb-6">Файли CSV з UTF-8 BOM — відкриваються в Excel і Google Sheets без проблем з кодуванням.</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <a id="orders" class="block bg-white rounded-xl shadow p-5 hover:shadow-lg transition cursor-pointer">
+      <div class="text-3xl mb-2">📦</div>
+      <h3 class="font-semibold mb-1">Замовлення</h3>
+      <p class="text-xs text-slate-500">Всі замовлення з сумами, статусами, клієнтами</p>
+      <div class="mt-3 text-blue-600 text-sm font-medium">Завантажити CSV →</div>
+    </a>
+    <a id="clients" class="block bg-white rounded-xl shadow p-5 hover:shadow-lg transition cursor-pointer">
+      <div class="text-3xl mb-2">👥</div>
+      <h3 class="font-semibold mb-1">Клієнти</h3>
+      <p class="text-xs text-slate-500">База клієнтів з телефонами, бонусами, прив'язкою до BeautyPro</p>
+      <div class="mt-3 text-blue-600 text-sm font-medium">Завантажити CSV →</div>
+    </a>
+    <a id="products" class="block bg-white rounded-xl shadow p-5 hover:shadow-lg transition cursor-pointer">
+      <div class="text-3xl mb-2">🧴</div>
+      <h3 class="font-semibold mb-1">Товари</h3>
+      <p class="text-xs text-slate-500">Каталог з варіантами, цінами, залишками</p>
+      <div class="mt-3 text-blue-600 text-sm font-medium">Завантажити CSV →</div>
+    </a>
+  </div>
+
+  <div class="mt-8 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+    <b>Підказка:</b> файли формуються на льоту з актуального стану БД. Завантажуй коли потрібно — звіт за поточний момент.
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('admin_token') || prompt('ADMIN_TOKEN');
+if (TOKEN) localStorage.setItem('admin_token', TOKEN);
+['orders', 'clients', 'products'].forEach(kind => {
+  document.getElementById(kind).href = `/api/export/${kind}.csv?token=${encodeURIComponent(TOKEN)}`;
+  document.getElementById(kind).setAttribute('download', `${kind}-${new Date().toISOString().slice(0,10)}.csv`);
+});
+</script>
+</body>
+</html>
