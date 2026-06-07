@@ -4,6 +4,11 @@ backend/.env
 
 *.url-backup
 
+backend/node_modules/
+node_modules/
+backend/shop.db
+backend/shop.db-*
+
 # случайная папка с тильдой (playwright dump)
 ~/
 
