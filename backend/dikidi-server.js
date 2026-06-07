@@ -11,6 +11,8 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'dikidi-features', ts: new Date().toISOString() }));
 
 app.use('/api', require('./routes/dikidi-features'));
+app.use('/api', require('./routes/payroll-stock'));
+app.use('/api', require('./routes/loyalty'));
 
 // статика — публичные страницы (promotions.html, my.html, ...)
 app.use(express.static(__dirname + '/public'));

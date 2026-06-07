@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS Beauty — Моя лояльность</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  .tier-card { transition: all 0.3s; }
+  .progress-bar { transition: width 0.6s ease-out; }
+</style>
+</head>
+<body class="bg-gradient-to-br from-rose-50 to-amber-50 min-h-screen">
+
+<header class="bg-white border-b shadow-sm">
+  <div class="max-w-3xl mx-auto px-6 py-4">
+    <h1 class="text-xl font-bold">Программа лояльности</h1>
+    <p class="text-xs text-gray-500">Чем больше у нас — тем выше уровень и больше бонусов</p>
+  </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-6 py-6 space-y-6">
+
+  <!-- Логин по телефону -->
+  <section id="login-card" class="bg-white rounded-2xl shadow-md p-6">
+    <h2 class="text-lg font-bold mb-3">Ваш телефон</h2>
+    <div class="flex gap-2">
+      <input id="phone" placeholder="+380XXXXXXXXX" class="border rounded-lg px-4 py-3 text-base flex-1" maxlength="13">
+      <button onclick="loadProfile()" class="bg-rose-600 text-white px-6 py-3 rounded-lg font-medium">Войти</button>
+    </div>
+  </section>
+
+  <!-- Профиль -->
+  <section id="profile-card" class="hidden bg-white rounded-2xl shadow-md p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-sm text-gray-500">Ваш уровень</p>
+        <h2 id="tier-name" class="text-3xl font-bold">—</h2>
+      </div>
+      <div id="tier-badge" class="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-bold">★</div>
+    </div>
+
+    <div class="bg-gray-50 rounded-xl p-4 mb-4">
+      <div class="flex justify-between text-sm mb-2">
+        <span>Потрачено всего</span>
+        <span id="total-spent" class="font-bold">0 ₴</span>
+      </div>
+      <div class="flex justify-between text-sm mb-2">
+        <span>Ваш бонус с каждой покупки</span>
+        <span id="bonus-pct" class="font-bold text-emerald-600">3%</span>
+      </div>
+      <p id="perks" class="text-xs text-gray-600 mt-3">—</p>
+    </div>
+
+    <!-- Прогресс до следующего уровня -->
+    <div id="next-block" class="hidden">
+      <div class="flex justify-between text-xs text-gray-600 mb-1">
+        <span>До уровня <b id="next-name">—</b></span>
+        <span id="to-next">— ₴</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+        <div id="progress-bar" class="progress-bar bg-gradient-to-r from-rose-400 to-amber-400 h-2 rounded-full" style="width:0%"></div>
+      </div>
+    </div>
+    <div id="top-block" class="hidden text-center text-emerald-700 font-bold">
+      🏆 Вы достигли максимального уровня
+    </div>
+  </section>
+
+  <!-- Все уровни -->
+  <section id="tiers-card" class="hidden bg-white rounded-2xl shadow-md p-6">
+    <h2 class="text-lg font-bold mb-4">Все уровни</h2>
+    <div id="tiers-list" class="space-y-2"></div>
+  </section>
+
+  <!-- Рефералка -->
+  <section id="ref-card" class="hidden bg-white rounded-2xl shadow-md p-6">
+    <h2 class="text-lg font-bold mb-2">Пригласить друга</h2>
+    <p class="text-sm text-gray-600 mb-3">За каждого приглашённого, который сделает первую покупку — <b>+150 ₴ бонусов</b> вам</p>
+    <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-3">
+      <p class="text-xs text-gray-600 mb-1">Ваша реферальная ссылка:</p>
+      <div class="flex gap-2">
+        <input id="ref-link" readonly class="border rounded-lg px-3 py-2 text-xs flex-1 bg-white font-mono">
+        <button onclick="copyRef()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm">Копировать</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-4">
+      <div class="bg-gray-50 rounded-lg p-3 text-center">
+        <p class="text-2xl font-bold" id="ref-count">0</p>
+        <p class="text-xs text-gray-600">приглашено</p>
+      </div>
+      <div class="bg-emerald-50 rounded-lg p-3 text-center">
+        <p class="text-2xl font-bold text-emerald-700" id="ref-earned">0 ₴</p>
+        <p class="text-xs text-gray-600">заработано</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- День рождения -->
+  <section id="bday-card" class="hidden bg-white rounded-2xl shadow-md p-6">
+    <h2 class="text-lg font-bold mb-2">🎂 День рождения</h2>
+    <p class="text-sm text-gray-600 mb-3">Подарим бонусы в день рождения. Размер зависит от уровня.</p>
+    <div class="flex gap-2">
+      <input id="bday" type="date" class="border rounded-lg px-3 py-2 text-sm flex-1">
+      <button onclick="saveBday()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm">Сохранить</button>
+    </div>
+    <p id="bday-msg" class="text-xs text-gray-500 mt-2"></p>
+  </section>
+
+</main>
+
+<script>
+const API = (function() {
+  try { return localStorage.getItem('DIKIDI_API') || 'https://e710158f8a5b88.lhr.life'; }
+  catch(e) { return 'https://e710158f8a5b88.lhr.life'; }
+})();
+
+let CURRENT_PHONE = null;
+
+// автозагрузка если уже логинились раньше
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const saved = localStorage.getItem('SVS_PHONE');
+    if (saved) {
+      document.getElementById('phone').value = saved;
+      loadProfile();
+    }
+  } catch (e) {}
+});
+
+async function loadProfile() {
+  const phone = document.getElementById('phone').value.trim();
+  if (!phone || phone.length < 10) { alert('Введите телефон в формате +380XXXXXXXXX'); return; }
+  CURRENT_PHONE = phone;
+  try { localStorage.setItem('SVS_PHONE', phone); } catch (e) {}
+
+  // загрузить профиль + уровни параллельно
+  const [pRes, tRes] = await Promise.all([
+    fetch(`${API}/api/loyalty/profile/${encodeURIComponent(phone)}`).then(r => r.json()),
+    fetch(`${API}/api/loyalty/tiers`).then(r => r.json())
+  ]);
+  if (!pRes.ok) { alert('Ошибка: ' + (pRes.error || 'unknown')); return; }
+
+  // скрыть логин, показать профиль
+  document.getElementById('login-card').classList.add('hidden');
+  document.getElementById('profile-card').classList.remove('hidden');
+  document.getElementById('tiers-card').classList.remove('hidden');
+  document.getElementById('ref-card').classList.remove('hidden');
+  document.getElementById('bday-card').classList.remove('hidden');
+
+  // профиль
+  const t = pRes.current_tier;
+  document.getElementById('tier-name').textContent = t.name;
+  document.getElementById('tier-badge').style.borderColor = t.color;
+  document.getElementById('tier-badge').style.color = t.color;
+  document.getElementById('total-spent').textContent = Math.round(pRes.total_spent).toLocaleString('ru-UA') + ' ₴';
+  document.getElementById('bonus-pct').textContent = parseFloat(t.bonus_percent) + '%';
+  document.getElementById('perks').textContent = t.perks || '';
+
+  // прогресс
+  if (pRes.next_tier) {
+    document.getElementById('next-block').classList.remove('hidden');
+    document.getElementById('top-block').classList.add('hidden');
+    document.getElementById('next-name').textContent = pRes.next_tier.name;
+    document.getElementById('to-next').textContent = Math.round(pRes.to_next).toLocaleString('ru-UA') + ' ₴';
+    const pct = Math.min(100, Math.round(pRes.total_spent / parseFloat(pRes.next_tier.min_spent) * 100));
+    setTimeout(() => { document.getElementById('progress-bar').style.width = pct + '%'; }, 100);
+  } else {
+    document.getElementById('next-block').classList.add('hidden');
+    document.getElementById('top-block').classList.remove('hidden');
+  }
+
+  // все уровни
+  document.getElementById('tiers-list').innerHTML = tRes.items.map(x => {
+    const isMe = x.name === t.name;
+    return `<div class="tier-card flex items-center gap-3 p-3 rounded-lg ${isMe?'bg-amber-50 border-2 border-amber-300':'bg-gray-50'}">
+      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold" style="border-color:${x.color};color:${x.color}">${x.name[0]}</div>
+      <div class="flex-1">
+        <p class="font-medium text-sm">${x.name} ${isMe?'<span class="text-xs text-amber-600">— вы здесь</span>':''}</p>
+        <p class="text-xs text-gray-500">${x.perks||''}</p>
+      </div>
+      <div class="text-right text-xs">
+        <p class="font-bold">${parseFloat(x.bonus_percent)}%</p>
+        <p class="text-gray-500">от ${parseInt(x.min_spent).toLocaleString('ru-UA')} ₴</p>
+      </div>
+    </div>`;
+  }).join('');
+
+  // рефералка
+  document.getElementById('ref-link').value = `https://t.me/Svs_beautybot?start=ref_${encodeURIComponent(phone)}`;
+  document.getElementById('ref-count').textContent = pRes.referrals.invited_count;
+  document.getElementById('ref-earned').textContent = pRes.referrals.bonuses_earned + ' ₴';
+}
+
+function copyRef() {
+  const inp = document.getElementById('ref-link');
+  inp.select();
+  document.execCommand('copy');
+  alert('Скопировано!');
+}
+
+async function saveBday() {
+  const bday = document.getElementById('bday').value;
+  if (!bday) { alert('Выберите дату'); return; }
+  const r = await fetch(`${API}/api/loyalty/birthday`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({client_phone: CURRENT_PHONE, birthday: bday})
+  }).then(r => r.json());
+  document.getElementById('bday-msg').textContent = r.ok ? '✓ Сохранено. Подарок придёт в день рождения' : 'Ошибка: ' + r.error;
+}
+</script>
+</body>
+</html>

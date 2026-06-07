@@ -3,383 +3,800 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SVS Beauty World — Адмін</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>SVS Beauty — CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; }
-  .tab.active { background:#111; color:#fff }
-  table { border-collapse: collapse; width: 100% }
-  th, td { padding: 8px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px }
-  th { background: #fafafa; font-weight: 600 }
-  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600 }
-  .b-new { background:#dbeafe; color:#1e40af }
-  .b-paid { background:#dcfce7; color:#166534 }
-  .b-packing { background:#fef3c7; color:#92400e }
-  .b-shipped { background:#e0e7ff; color:#3730a3 }
-  .b-delivered { background:#d1fae5; color:#065f46 }
-  .b-cancelled { background:#fee2e2; color:#991b1b }
-  .b-refunded { background:#f3e8ff; color:#6b21a8 }
+:root {
+  --primary: #5B5FC7;
+  --primary-hover: #4B4FB7;
+  --primary-light: #EDEDFA;
+  --sidebar-bg: #1E1F2B;
+  --sidebar-text: #A0A3BD;
+  --sidebar-active: #5B5FC7;
+  --sidebar-active-text: #fff;
+  --bg: #F4F5FA;
+  --card: #fff;
+  --text: #1E1F2B;
+  --text-secondary: #6E7191;
+  --border: #E4E6F0;
+  --success: #2DC96F;
+  --warning: #F5A623;
+  --danger: #E5484D;
+  --info: #3B82F6;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+
+/* SIDEBAR */
+.sidebar {
+  position:fixed; left:0; top:0; bottom:0; width:240px;
+  background:var(--sidebar-bg); display:flex; flex-direction:column;
+  z-index:100; transition:transform .2s;
+}
+.sidebar-logo {
+  padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,.08);
+}
+.sidebar-logo h1 { color:#fff; font-size:16px; font-weight:700; }
+.sidebar-logo span { color:var(--sidebar-text); font-size:11px; display:block; margin-top:2px; }
+.sidebar-nav { flex:1; overflow-y:auto; padding:12px 0; }
+.sidebar-section { padding:6px 16px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:rgba(255,255,255,.3); margin-top:8px; }
+.sidebar-item {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 16px; margin:1px 8px; border-radius:var(--radius-sm);
+  color:var(--sidebar-text); cursor:pointer; font-size:13px; font-weight:500;
+  transition:all .15s; text-decoration:none;
+}
+.sidebar-item:hover { background:rgba(255,255,255,.06); color:#fff; }
+.sidebar-item.active { background:var(--sidebar-active); color:var(--sidebar-active-text); }
+.sidebar-item .material-icons-round { font-size:20px; }
+.sidebar-badge {
+  margin-left:auto; background:var(--danger); color:#fff;
+  font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; min-width:18px; text-align:center;
+}
+.sidebar-footer { padding:12px 16px; border-top:1px solid rgba(255,255,255,.08); }
+.sidebar-footer button {
+  display:flex; align-items:center; gap:8px; background:none; border:none;
+  color:var(--sidebar-text); cursor:pointer; font-size:13px; padding:6px 0;
+}
+.sidebar-footer button:hover { color:#fff; }
+
+/* MAIN */
+.main { margin-left:240px; min-height:100vh; }
+.topbar {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:0 24px; height:56px; display:flex; align-items:center; justify-content:space-between;
+  position:sticky; top:0; z-index:50;
+}
+.topbar-title { font-size:16px; font-weight:600; }
+.topbar-right { display:flex; align-items:center; gap:12px; }
+.topbar-btn {
+  display:flex; align-items:center; gap:4px;
+  padding:6px 12px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:var(--card); font-size:13px; cursor:pointer; color:var(--text-secondary);
+}
+.topbar-btn:hover { border-color:var(--primary); color:var(--primary); }
+.content { padding:24px; }
+
+/* CARDS */
+.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); }
+.card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.card-header h3 { font-size:14px; font-weight:600; }
+.card-body { padding:20px; }
+
+/* KPI */
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+.kpi-card {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px 20px; position:relative; overflow:hidden;
+}
+.kpi-card::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
+}
+.kpi-card.purple::before { background:var(--primary); }
+.kpi-card.green::before { background:var(--success); }
+.kpi-card.blue::before { background:var(--info); }
+.kpi-card.orange::before { background:var(--warning); }
+.kpi-card.pink::before { background:#EC4899; }
+.kpi-label { font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.03em; }
+.kpi-value { font-size:28px; font-weight:700; margin-top:4px; line-height:1.1; }
+
+/* TABLES */
+.tbl { width:100%; border-collapse:collapse; }
+.tbl th { background:#FAFBFC; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.03em;
+  color:var(--text-secondary); padding:10px 16px; text-align:left; border-bottom:1px solid var(--border); }
+.tbl td { padding:10px 16px; border-bottom:1px solid #f0f1f5; font-size:13px; vertical-align:middle; }
+.tbl tr:hover td { background:#FAFBFC; }
+.tbl tr { cursor:pointer; }
+
+/* BADGES */
+.badge { display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; }
+.b-new { background:#DBEAFE; color:#1E40AF; }
+.b-paid { background:#DCFCE7; color:#166534; }
+.b-packing { background:#FEF3C7; color:#92400E; }
+.b-shipped { background:#E0E7FF; color:#3730A3; }
+.b-delivered { background:#D1FAE5; color:#065F46; }
+.b-cancelled { background:#FEE2E2; color:#991B1B; }
+.b-refunded { background:#F3E8FF; color:#6B21A8; }
+.b-confirmed { background:#DCFCE7; color:#166534; }
+.b-pending { background:#FEF3C7; color:#92400E; }
+.b-published { background:#DCFCE7; color:#166534; }
+.b-hidden { background:#FEE2E2; color:#991B1B; }
+
+/* BUTTONS */
+.btn { padding:8px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:.15s; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-hover); }
+.btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--primary); color:var(--primary); }
+.btn-sm { padding:5px 10px; font-size:12px; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-success { background:var(--success); color:#fff; }
+
+/* INPUTS */
+.input { border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px; font-size:13px; outline:none; transition:.15s; font-family:inherit; }
+.input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-light); }
+select.input { background:var(--card); }
+
+/* GRID */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+/* MODAL */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:200; padding:16px; }
+.modal { background:var(--card); border-radius:var(--radius); max-width:640px; width:100%; max-height:90vh; overflow-y:auto; }
+.modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal-header h3 { font-size:16px; font-weight:600; }
+.modal-close { background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:20px; }
+.modal-body { padding:20px; }
+
+/* PAGES HIDDEN */
+.page { display:none; }
+.page.active { display:block; }
+
+/* LOGIN */
+.login-screen { min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--sidebar-bg); }
+.login-card { background:var(--card); border-radius:16px; padding:40px; width:380px; text-align:center; }
+.login-card h1 { font-size:20px; font-weight:700; margin-bottom:4px; }
+.login-card p { font-size:13px; color:var(--text-secondary); margin-bottom:24px; }
+.login-card .input { width:100%; margin-bottom:12px; }
+.login-card .btn { width:100%; justify-content:center; padding:10px; }
+
+/* MOBILE */
+.mobile-toggle { display:none; background:none; border:none; cursor:pointer; color:var(--text); }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); }
+  .main { margin-left:0; }
+  .mobile-toggle { display:flex; }
+  .kpi-grid { grid-template-columns:1fr 1fr; }
+}
+
+/* SCROLLBAR */
+.sidebar-nav::-webkit-scrollbar { width:4px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1); border-radius:4px; }
+
+/* EMPTY STATE */
+.empty { text-align:center; padding:40px; color:var(--text-secondary); }
+.empty .material-icons-round { font-size:48px; opacity:.3; display:block; margin-bottom:8px; }
 </style>
 </head>
-<body class="bg-gray-50">
+<body>
 
 <!-- LOGIN -->
-<div id="login" class="min-h-screen flex items-center justify-center hidden">
-  <div class="bg-white shadow-xl rounded-2xl p-8 w-96">
-    <h1 class="text-2xl font-bold mb-2">SVS Beauty World</h1>
-    <p class="text-sm text-gray-500 mb-6">Адмін-панель</p>
-    <input id="tokenInput" type="password" placeholder="Admin token" class="w-full border rounded-lg px-3 py-2 mb-3">
-    <button onclick="login()" class="w-full bg-black text-white py-2 rounded-lg">Увійти</button>
-    <p id="loginErr" class="text-red-600 text-sm mt-3 hidden">Невірний токен</p>
+<div id="login" class="login-screen">
+  <div class="login-card">
+    <h1>SVS Beauty</h1>
+    <p>CRM · Адмін-панель</p>
+    <input id="tokenInput" type="password" placeholder="Admin token" class="input">
+    <button onclick="login()" class="btn btn-primary">Увійти</button>
+    <p id="loginErr" style="display:none;color:var(--danger);font-size:13px;margin-top:12px">Невірний токен</p>
   </div>
 </div>
 
 <!-- APP -->
-<div id="app" class="hidden">
-  <header class="bg-white shadow-sm">
-    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-      <h1 class="text-lg font-bold">SVS Beauty World — Адмін</h1>
-      <div class="flex gap-2 items-center text-sm">
-        <a href="dashboard.html" class="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700">📊 Аналітика</a>
-        <a href="promos.html" class="text-gray-500 hover:text-black">Промо</a>
-        <a href="export.html" class="text-gray-500 hover:text-black">Експорт</a>
-        <button onclick="logout()" class="text-gray-500 hover:text-black ml-2">Вийти</button>
+<div id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <h1>SVS Beauty</h1>
+      <span>CRM &amp; Управління</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">Головне</div>
+      <a class="sidebar-item active" data-page="dashboard" onclick="go('dashboard')">
+        <span class="material-icons-round">dashboard</span> Дашборд
+      </a>
+      <a class="sidebar-item" data-page="journal" onclick="go('journal')">
+        <span class="material-icons-round">event_note</span> Журнал записів
+      </a>
+      <a class="sidebar-item" data-page="clients" onclick="go('clients')">
+        <span class="material-icons-round">people</span> Клієнти
+      </a>
+
+      <div class="sidebar-section">Магазин</div>
+      <a class="sidebar-item" data-page="orders" onclick="go('orders')">
+        <span class="material-icons-round">shopping_bag</span> Замовлення
+        <span class="sidebar-badge" id="badge-orders" style="display:none">0</span>
+      </a>
+      <a class="sidebar-item" data-page="products" onclick="go('products')">
+        <span class="material-icons-round">inventory_2</span> Товари
+      </a>
+      <a class="sidebar-item" data-page="stock" onclick="go('stock')">
+        <span class="material-icons-round">warehouse</span> Склад
+      </a>
+
+      <div class="sidebar-section">Маркетинг</div>
+      <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
+        <span class="material-icons-round">star_rate</span> Відгуки
+      </a>
+      <a class="sidebar-item" data-page="promos" onclick="go('promos')">
+        <span class="material-icons-round">local_offer</span> Акції
+      </a>
+
+      <div class="sidebar-section">Управління</div>
+      <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
+        <span class="material-icons-round">payments</span> Зарплата
+      </a>
+      <a class="sidebar-item" data-page="blacklist" onclick="go('blacklist')">
+        <span class="material-icons-round">block</span> Чорний список
+      </a>
+      <a class="sidebar-item" data-page="sync" onclick="go('sync')">
+        <span class="material-icons-round">sync</span> BeautyPro
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <button onclick="logout()">
+        <span class="material-icons-round" style="font-size:18px">logout</span> Вийти
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
+          <span class="material-icons-round">menu</span>
+        </button>
+        <span class="topbar-title" id="pageTitle">Дашборд</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-btn" onclick="window.open('/admin/export.html')">
+          <span class="material-icons-round" style="font-size:16px">download</span> Експорт
+        </button>
       </div>
     </div>
-    <nav class="max-w-7xl mx-auto px-6 flex gap-2 pb-3 overflow-x-auto">
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="dashboard" onclick="show('dashboard')">Дашборд</button>
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="orders" onclick="show('orders')">Замовлення</button>
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="products" onclick="show('products')">Товари</button>
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="clients" onclick="show('clients')">Клієнти</button>
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="stock" onclick="show('stock')">Склад</button>
-      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="sync" onclick="show('sync')">Синхро BeautyPro</button>
-    </nav>
-  </header>
 
-  <main class="max-w-7xl mx-auto px-6 py-6">
-    <!-- DASHBOARD -->
-    <section id="tab-dashboard" class="space-y-6">
-      <h2 class="text-xl font-bold">KPI</h2>
-      <div id="kpi" class="grid grid-cols-2 md:grid-cols-5 gap-4"></div>
-      <h3 class="text-lg font-bold mt-8">Топ товарів за виручкою</h3>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table><thead><tr><th>Товар</th><th>Шт</th><th>Виручка</th></tr></thead><tbody id="topBody"></tbody></table>
-      </div>
-      <h3 class="text-lg font-bold mt-8">Низький залишок (≤ 5 шт)</h3>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table><thead><tr><th>Товар</th><th>Об'єм</th><th>Залишок</th></tr></thead><tbody id="lowBody"></tbody></table>
-      </div>
-    </section>
+    <div class="content">
 
-    <!-- ORDERS -->
-    <section id="tab-orders" class="hidden space-y-4">
-      <div class="flex items-center gap-3">
-        <h2 class="text-xl font-bold">Замовлення</h2>
-        <select id="orderStatusFilter" onchange="loadOrders()" class="border rounded-lg px-3 py-1.5 text-sm">
-          <option value="">Усі статуси</option>
-          <option value="new">Нові</option>
-          <option value="paid">Оплачені</option>
-          <option value="packing">У пакуванні</option>
-          <option value="shipped">Відправлено</option>
-          <option value="delivered">Доставлено</option>
-          <option value="cancelled">Скасовано</option>
-        </select>
+      <!-- ═══ DASHBOARD ═══ -->
+      <div class="page active" id="page-dashboard">
+        <div class="kpi-grid" id="kpi"></div>
+        <div class="grid-2" style="gap:24px">
+          <div class="card">
+            <div class="card-header"><h3>Топ товарів за виручкою</h3></div>
+            <div class="card-body" style="padding:0">
+              <table class="tbl"><thead><tr><th>Товар</th><th>Шт</th><th>Виручка</th></tr></thead><tbody id="topBody"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Низький залишок (≤ 5)</h3></div>
+            <div class="card-body" style="padding:0">
+              <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th>Залишок</th></tr></thead><tbody id="lowBody"></tbody></table>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table>
-          <thead><tr><th>#</th><th>Клієнт</th><th>Телефон</th><th>Сума</th><th>Доставка</th><th>Статус</th><th>Створено</th><th>Дії</th></tr></thead>
-          <tbody id="ordersBody"></tbody>
-        </table>
-      </div>
-    </section>
 
-    <!-- PRODUCTS -->
-    <section id="tab-products" class="hidden space-y-4">
-      <div class="flex items-center gap-3">
-        <h2 class="text-xl font-bold">Товари</h2>
-        <input id="productSearch" placeholder="Пошук..." class="border rounded-lg px-3 py-1.5 text-sm" oninput="debounce(loadProducts,400)">
+      <!-- ═══ JOURNAL ═══ -->
+      <div class="page" id="page-journal">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button class="btn btn-outline btn-sm j-mode active" data-mode="day" onclick="setJournalMode('day')">День</button>
+          <button class="btn btn-outline btn-sm j-mode" data-mode="month" onclick="setJournalMode('month')">Місяць</button>
+          <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
+          <input type="date" id="journalDate" class="input" style="margin-left:auto" onchange="loadJournal()">
+        </div>
+        <div class="card">
+          <div class="card-body" id="journalContent">
+            <div class="empty"><span class="material-icons-round">event_note</span>Завантаження журналу...</div>
+          </div>
+        </div>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table>
-          <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>Активний</th></tr></thead>
-          <tbody id="productsBody"></tbody>
-        </table>
-      </div>
-    </section>
 
-    <!-- CLIENTS -->
-    <section id="tab-clients" class="hidden space-y-4">
-      <div class="flex items-center gap-3">
-        <h2 class="text-xl font-bold">Клієнти</h2>
-        <input id="clientSearch" placeholder="Телефон або імʼя..." class="border rounded-lg px-3 py-1.5 text-sm" oninput="debounce(loadClients,400)">
+      <!-- ═══ CLIENTS ═══ -->
+      <div class="page" id="page-clients">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="clientSearch" placeholder="Пошук за телефоном або імʼям..." class="input" style="flex:1" oninput="debounce(loadClients,400)">
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Імʼя</th><th>Телефон</th><th>Email</th><th>Замовлень</th><th>Витрачено</th><th>Бонуси</th><th>Зареєстр.</th></tr></thead>
+              <tbody id="clientsBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
-        <table>
-          <thead><tr><th>Імʼя</th><th>Телефон</th><th>Email</th><th>Замовлень</th><th>Витрачено</th><th>Бонуси</th><th>Зареєстр.</th></tr></thead>
-          <tbody id="clientsBody"></tbody>
-        </table>
-      </div>
-    </section>
 
-    <!-- STOCK -->
-    <section id="tab-stock" class="hidden space-y-4">
-      <h2 class="text-xl font-bold">Прихід товару</h2>
-      <div class="bg-white rounded-xl shadow-sm p-4 max-w-2xl space-y-3">
-        <input id="stockVariantId" type="number" placeholder="ID варіанту (з вкладки Товари)" class="w-full border rounded-lg px-3 py-2 text-sm">
-        <input id="stockQty" type="number" placeholder="Кількість (+ прихід, − списання)" class="w-full border rounded-lg px-3 py-2 text-sm">
-        <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="w-full border rounded-lg px-3 py-2 text-sm">
-        <button onclick="addStock()" class="bg-black text-white px-4 py-2 rounded-lg text-sm">Внести</button>
-        <p id="stockResult" class="text-sm"></p>
+      <!-- ═══ ORDERS ═══ -->
+      <div class="page" id="page-orders">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <select id="orderStatusFilter" class="input" onchange="loadOrders()">
+            <option value="">Усі статуси</option>
+            <option value="new">Нові</option>
+            <option value="paid">Оплачені</option>
+            <option value="packing">У пакуванні</option>
+            <option value="shipped">Відправлено</option>
+            <option value="delivered">Доставлено</option>
+            <option value="cancelled">Скасовано</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>#</th><th>Клієнт</th><th>Телефон</th><th>Сума</th><th>Доставка</th><th>Статус</th><th>Створено</th><th>Дії</th></tr></thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <!-- SYNC -->
-    <section id="tab-sync" class="hidden space-y-4">
-      <h2 class="text-xl font-bold">Синхронізація з BeautyPro</h2>
-      <div id="syncStats" class="bg-white rounded-xl shadow-sm p-4 max-w-2xl"></div>
-      <button onclick="runSync()" class="bg-black text-white px-4 py-2 rounded-lg text-sm">Запустити синхро всіх клієнтів</button>
-      <pre id="syncLog" class="bg-white rounded-xl shadow-sm p-4 text-xs overflow-x-auto max-h-96"></pre>
-    </section>
-  </main>
-
-  <!-- ORDER DETAIL MODAL -->
-  <div id="orderModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target===this) closeOrder()">
-    <div class="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold" id="orderTitle">Замовлення</h3>
-        <button onclick="closeOrder()" class="text-gray-400 hover:text-black">✕</button>
+      <!-- ═══ PRODUCTS ═══ -->
+      <div class="page" id="page-products">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="productSearch" placeholder="Пошук товару..." class="input" style="flex:1" oninput="debounce(loadProducts,400)">
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>Активний</th></tr></thead>
+              <tbody id="productsBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div id="orderDetail"></div>
+
+      <!-- ═══ STOCK ═══ -->
+      <div class="page" id="page-stock">
+        <div class="card" style="max-width:500px">
+          <div class="card-header"><h3>Прихід / списання товару</h3></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+            <input id="stockVariantId" type="number" placeholder="ID варіанту" class="input">
+            <input id="stockQty" type="number" placeholder="Кількість (+ прихід, − списання)" class="input">
+            <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="input">
+            <button onclick="addStock()" class="btn btn-primary">Внести</button>
+            <p id="stockResult" style="font-size:13px"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ REVIEWS ═══ -->
+      <div class="page" id="page-reviews">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="reviewMaster" placeholder="Фільтр по майстру (master_id)" class="input">
+          <select id="reviewRating" class="input">
+            <option value="">Усі рейтинги</option>
+            <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
+          </select>
+          <button onclick="loadReviews()" class="btn btn-primary btn-sm">Фільтр</button>
+        </div>
+        <div class="card">
+          <div class="card-body" id="reviewsList">
+            <div class="empty"><span class="material-icons-round">star_rate</span>Завантаження...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PROMOS ═══ -->
+      <div class="page" id="page-promos">
+        <div style="margin-bottom:16px">
+          <button onclick="toggleNewPromo()" class="btn btn-primary btn-sm">
+            <span class="material-icons-round" style="font-size:16px">add</span> Створити акцію
+          </button>
+        </div>
+        <div id="promoForm" class="card" style="display:none;margin-bottom:16px">
+          <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <input id="p-title" placeholder="Назва акції" class="input" style="grid-column:span 2">
+            <input id="p-desc" placeholder="Опис (опціонально)" class="input" style="grid-column:span 2">
+            <input id="p-pct" type="number" placeholder="Знижка %" class="input">
+            <select id="p-category" class="input">
+              <option value="shop">Магазин</option><option value="salon">Салон</option><option value="combo">Комбо</option>
+            </select>
+            <input id="p-ends" type="datetime-local" class="input" style="grid-column:span 2">
+            <button onclick="createPromo()" class="btn btn-primary" style="grid-column:span 2">Створити</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body" id="promosList">
+            <div class="empty"><span class="material-icons-round">local_offer</span>Завантаження...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAYROLL ═══ -->
+      <div class="page" id="page-payroll">
+        <div class="card">
+          <div class="card-header"><h3>Схеми зарплати майстрів</h3></div>
+          <div class="card-body" id="payrollList">
+            <div class="empty"><span class="material-icons-round">payments</span>Завантаження...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ BLACKLIST ═══ -->
+      <div class="page" id="page-blacklist">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="blPhone" placeholder="+380XXXXXXXXX" class="input">
+          <input id="blReason" placeholder="Причина" class="input" style="flex:1">
+          <button onclick="addToBlacklist()" class="btn btn-danger btn-sm">Додати</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Телефон</th><th>Причина</th><th>Додано</th><th>Дії</th></tr></thead>
+              <tbody id="blacklistBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SYNC ═══ -->
+      <div class="page" id="page-sync">
+        <div class="kpi-grid" id="syncStats" style="max-width:600px"></div>
+        <button onclick="runSync()" class="btn btn-primary" style="margin-bottom:16px">
+          <span class="material-icons-round" style="font-size:16px">sync</span> Запустити синхро
+        </button>
+        <div class="card">
+          <div class="card-body">
+            <pre id="syncLog" style="font-size:12px;max-height:400px;overflow:auto;white-space:pre-wrap">Натисніть «Запустити синхро» для початку</pre>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+
+  <!-- ORDER MODAL -->
+  <div id="orderModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeOrder()">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="orderTitle">Замовлення</h3>
+        <button class="modal-close" onclick="closeOrder()">✕</button>
+      </div>
+      <div class="modal-body" id="orderDetail"></div>
     </div>
   </div>
-</div>
+
+</div><!-- /app -->
 
 <script>
-const API = location.origin.includes('localhost') || location.origin.includes('127.0.0.1')
-  ? location.origin
-  : location.origin; // используем тот же origin что и сама страница
+const API = location.origin;
+const DIKIDI_API = location.origin.replace(/:\d+/, ':3012');
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
+let currentPage = 'dashboard';
+let journalMode = 'day';
 
-// ── auth ────────────────────────────────────────────────
+// ── Auth ─────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  if (TOKEN) {
-    checkToken();
-  } else {
-    document.getElementById('login').classList.remove('hidden');
-  }
+  document.getElementById('journalDate').valueAsDate = new Date();
+  if (TOKEN) checkToken(); else showLogin();
 });
+
+function showLogin() { document.getElementById('login').style.display=''; document.getElementById('app').style.display='none'; }
 
 async function checkToken() {
   try {
     const r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } });
     if (r.status === 200) {
-      document.getElementById('login').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
-      show('dashboard');
-    } else throw new Error('bad');
-  } catch {
-    localStorage.removeItem('svs_admin_token');
-    TOKEN = '';
-    document.getElementById('login').classList.remove('hidden');
-  }
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('app').style.display = '';
+      go('dashboard');
+    } else throw new Error();
+  } catch { localStorage.removeItem('svs_admin_token'); TOKEN=''; showLogin(); }
 }
 
 function login() {
   TOKEN = document.getElementById('tokenInput').value.trim();
   localStorage.setItem('svs_admin_token', TOKEN);
-  checkToken().catch(() => {
-    document.getElementById('loginErr').classList.remove('hidden');
-  });
+  checkToken().catch(() => { document.getElementById('loginErr').style.display=''; });
 }
+function logout() { localStorage.removeItem('svs_admin_token'); location.reload(); }
 
-function logout() {
-  localStorage.removeItem('svs_admin_token');
-  location.reload();
-}
-
-// ── fetch helper ────────────────────────────────────────
+// ── API helpers ──────────────────────────────
 async function api(path, opts = {}) {
   const r = await fetch(API + path, {
-    ...opts,
-    headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  return r.json();
+}
+async function dikidiApi(path, opts = {}) {
+  const r = await fetch(DIKIDI_API + path, {
+    ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
   return r.json();
 }
 
-// ── tabs ────────────────────────────────────────────────
-function show(name) {
-  document.querySelectorAll('[id^=tab-]').forEach(el => el.classList.add('hidden'));
-  document.getElementById('tab-' + name).classList.remove('hidden');
-  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  ({ dashboard: loadDashboard, orders: loadOrders, products: loadProducts, clients: loadClients, sync: loadSync, stock: () => {} }[name] || (() => {}))();
+// ── Navigation ───────────────────────────────
+const pageTitles = {
+  dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
+  orders:'Замовлення', products:'Товари', stock:'Склад',
+  reviews:'Відгуки', promos:'Акції', payroll:'Зарплата',
+  blacklist:'Чорний список', sync:'BeautyPro синхро'
+};
+
+function go(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.page === page));
+  document.getElementById('pageTitle').textContent = pageTitles[page] || page;
+  document.getElementById('sidebar').classList.remove('open');
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
+    orders:loadOrders, products:loadProducts, reviews:loadReviews,
+    promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync };
+  if (loaders[page]) loaders[page]();
 }
 
-// ── debounce ────────────────────────────────────────────
-let timers = {};
-function debounce(fn, ms) {
-  const k = fn.name;
-  clearTimeout(timers[k]);
-  timers[k] = setTimeout(fn, ms);
-}
+// ── Debounce ─────────────────────────────────
+let _timers = {};
+function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = setTimeout(fn, ms); }
 
-// ── DASHBOARD ───────────────────────────────────────────
+// ═══ DASHBOARD ═══════════════════════════════
 async function loadDashboard() {
   const s = await api('/api/admin/stats');
   if (!s.ok) return;
-  const kpi = s.stats;
+  const k = s.stats;
   document.getElementById('kpi').innerHTML = [
-    ['Виручка', kpi.revenue.toLocaleString() + ' ₴', 'bg-green-100'],
-    ['Оплачено', kpi.orders_completed, 'bg-blue-100'],
-    ['В очікуванні', kpi.orders_pending, 'bg-yellow-100'],
-    ['Клієнтів', kpi.clients, 'bg-purple-100'],
-    ['Товарів активних', kpi.products_active, 'bg-pink-100'],
-  ].map(([t, v, bg]) => `
-    <div class="${bg} rounded-xl p-4">
-      <div class="text-xs text-gray-600">${t}</div>
-      <div class="text-2xl font-bold mt-1">${v}</div>
-    </div>`).join('');
+    ['Виручка', k.revenue.toLocaleString() + ' ₴', 'green'],
+    ['Оплачено', k.orders_completed, 'blue'],
+    ['В очікуванні', k.orders_pending, 'orange'],
+    ['Клієнтів', k.clients, 'purple'],
+    ['Товарів', k.products_active, 'pink'],
+  ].map(([l, v, c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+
+  // Badge for new orders
+  if (k.orders_pending > 0) {
+    const b = document.getElementById('badge-orders');
+    b.textContent = k.orders_pending; b.style.display = '';
+  }
 
   const top = await api('/api/admin/stats/top-products');
-  document.getElementById('topBody').innerHTML = top.items?.length
-    ? top.items.map(p => `<tr><td>${p.product_name}</td><td>${p.qty}</td><td>${Number(p.revenue).toLocaleString()} ₴</td></tr>`).join('')
-    : '<tr><td colspan="3" class="text-gray-400">Поки немає продажів</td></tr>';
+  document.getElementById('topBody').innerHTML = (top.items || []).map(p =>
+    `<tr><td>${p.product_name}</td><td>${p.qty}</td><td>${Number(p.revenue).toLocaleString()} ₴</td></tr>`).join('')
+    || '<tr><td colspan="3" class="empty">Поки немає продажів</td></tr>';
 
   const low = await api('/api/admin/stats/low-stock?threshold=5');
-  document.getElementById('lowBody').innerHTML = low.items?.length
-    ? low.items.slice(0, 30).map(p => `<tr><td>${p.product_name}</td><td>${p.volume || ''}</td><td>${p.stock_qty ?? 0}</td></tr>`).join('')
-    : '<tr><td colspan="3" class="text-gray-400">Усі товари в наявності</td></tr>';
+  document.getElementById('lowBody').innerHTML = (low.items || []).slice(0,30).map(p =>
+    `<tr><td>${p.product_name}</td><td>${p.volume||''}</td><td>${p.stock_qty??0}</td></tr>`).join('')
+    || '<tr><td colspan="3" class="empty">Усі товари в наявності</td></tr>';
 }
 
-// ── ORDERS ──────────────────────────────────────────────
+// ═══ JOURNAL ═════════════════════════════════
+function setJournalMode(mode) {
+  journalMode = mode;
+  document.querySelectorAll('.j-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.querySelectorAll('.j-mode').forEach(b => {
+    if (b.dataset.mode === mode) { b.style.background='var(--primary)'; b.style.color='#fff'; b.style.borderColor='var(--primary)'; }
+    else { b.style.background=''; b.style.color=''; b.style.borderColor=''; }
+  });
+  loadJournal();
+}
+
+async function loadJournal() {
+  const container = document.getElementById('journalContent');
+  const date = document.getElementById('journalDate').value;
+  try {
+    // Try to get bookings for today from waitlist/booking API
+    const bookings = await api('/api/admin/orders?limit=50');
+    const items = bookings.items || [];
+
+    if (journalMode === 'list') {
+      container.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Час</th><th>Клієнт</th><th>Телефон</th><th>Статус</th></tr></thead><tbody>${
+        items.map(o => `<tr><td>${new Date(o.created_at).toLocaleString('uk-UA')}</td><td>${o.client_name||'—'}</td><td>${o.phone||'—'}</td><td><span class="badge b-${o.status}">${o.status}</span></td></tr>`).join('')
+      }</tbody></table>` : '<div class="empty"><span class="material-icons-round">event_note</span>Записів немає</div>';
+    } else {
+      container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Журнал записів з BeautyPro — підключається</div>';
+    }
+  } catch { container.innerHTML = '<div class="empty"><span class="material-icons-round">error</span>Помилка завантаження</div>'; }
+}
+
+// ═══ CLIENTS ═════════════════════════════════
+async function loadClients() {
+  const q = document.getElementById('clientSearch').value.trim();
+  const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
+  document.getElementById('clientsBody').innerHTML = (r.items || []).map(c => `
+    <tr><td>${c.name||'—'}</td><td>${c.phone}</td><td>${c.email||'—'}</td>
+    <td>${c.orders_count}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
+    <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
+    || '<tr><td colspan="7"><div class="empty">Клієнтів немає</div></td></tr>';
+}
+
+// ═══ ORDERS ══════════════════════════════════
 async function loadOrders() {
   const st = document.getElementById('orderStatusFilter').value;
   const r = await api('/api/admin/orders' + (st ? `?status=${st}` : ''));
   document.getElementById('ordersBody').innerHTML = (r.items || []).map(o => `
-    <tr class="hover:bg-gray-50 cursor-pointer" onclick="openOrder(${o.id})">
-      <td class="font-mono">#${o.id}</td>
-      <td>${o.client_name || '—'}</td>
-      <td>${o.phone || '—'}</td>
-      <td class="font-semibold">${Number(o.total).toLocaleString()} ₴</td>
-      <td>${o.delivery_type || '—'}</td>
-      <td><span class="badge b-${o.status}">${o.status}</span></td>
+    <tr onclick="openOrder(${o.id})">
+      <td class="font-mono" style="font-family:monospace">#${o.id}</td><td>${o.client_name||'—'}</td>
+      <td>${o.phone||'—'}</td><td style="font-weight:600">${Number(o.total).toLocaleString()} ₴</td>
+      <td>${o.delivery_type||'—'}</td><td><span class="badge b-${o.status}">${o.status}</span></td>
       <td>${new Date(o.created_at).toLocaleString('uk-UA')}</td>
       <td onclick="event.stopPropagation()">${statusButtons(o)}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="text-gray-400">Замовлень немає</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8"><div class="empty">Замовлень немає</div></td></tr>';
 }
 
 function statusButtons(o) {
-  const flow = { new: 'paid', paid: 'packing', packing: 'shipped', shipped: 'delivered' };
+  const flow = { new:'paid', paid:'packing', packing:'shipped', shipped:'delivered' };
   const next = flow[o.status];
-  if (!next) return '';
-  return `<button onclick="setStatus(${o.id},'${next}')" class="text-xs bg-black text-white px-2 py-1 rounded">→ ${next}</button>`;
+  return next ? `<button onclick="setStatus(${o.id},'${next}')" class="btn btn-primary btn-sm">→ ${next}</button>` : '';
 }
 
 async function setStatus(id, status) {
-  const r = await api(`/api/admin/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
-  if (r.ok) {
-    loadOrders();
-    if (!document.getElementById('orderModal').classList.contains('hidden')) openOrder(id);
-  } else {
-    alert('Помилка: ' + (r.error || ''));
-  }
+  const r = await api(`/api/admin/orders/${id}/status`, { method:'PATCH', body:JSON.stringify({status}) });
+  if (r.ok) { loadOrders(); if (document.getElementById('orderModal').style.display !== 'none') openOrder(id); }
+  else alert('Помилка: '+(r.error||''));
 }
 
 async function openOrder(id) {
-  document.getElementById('orderModal').classList.remove('hidden');
+  document.getElementById('orderModal').style.display = '';
   document.getElementById('orderTitle').textContent = `Замовлення #${id}`;
   document.getElementById('orderDetail').innerHTML = 'Завантаження...';
   const r = await api(`/api/admin/orders/${id}`);
   if (!r.ok) { document.getElementById('orderDetail').innerHTML = 'Помилка'; return; }
   const o = r.order;
   document.getElementById('orderDetail').innerHTML = `
-    <div class="space-y-3">
-      <div class="flex justify-between"><span class="text-gray-500">Клієнт</span><span class="font-semibold">${o.client_name || '—'} (${o.phone || '—'})</span></div>
-      <div class="flex justify-between"><span class="text-gray-500">Сума</span><span class="font-semibold">${Number(o.total).toLocaleString()} ₴</span></div>
-      <div class="flex justify-between"><span class="text-gray-500">Статус</span><span class="badge b-${o.status}">${o.status}</span></div>
-      <div class="flex justify-between"><span class="text-gray-500">Доставка</span><span>${o.delivery_type || '—'}</span></div>
-      ${o.delivery_json ? `<pre class="text-xs bg-gray-50 p-2 rounded">${JSON.stringify(o.delivery_json, null, 2)}</pre>` : ''}
-      <div class="border-t pt-3"><b>Позиції</b></div>
-      ${o.items.map(it => `
-        <div class="flex justify-between text-sm py-1 border-b">
-          <span>${it.product_name} ${it.volume ? '(' + it.volume + ')' : ''} × ${it.qty}</span>
-          <span>${Number(it.line_total).toLocaleString()} ₴</span>
-        </div>`).join('')}
-      <div class="flex gap-2 pt-3 flex-wrap">
-        ${['paid','packing','shipped','delivered','cancelled','refunded'].filter(s => s !== o.status).map(s =>
-          `<button onclick="setStatus(${o.id},'${s}')" class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1.5 rounded">→ ${s}</button>`).join('')}
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Клієнт</span><span style="font-weight:600">${o.client_name||'—'} (${o.phone||'—'})</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Сума</span><span style="font-weight:600">${Number(o.total).toLocaleString()} ₴</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Статус</span><span class="badge b-${o.status}">${o.status}</span></div>
+      <div style="border-top:1px solid var(--border);padding-top:12px"><b>Позиції</b></div>
+      ${o.items.map(it => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:13px">
+        <span>${it.product_name} ${it.volume?'('+it.volume+')':''} × ${it.qty}</span><span>${Number(it.line_total).toLocaleString()} ₴</span></div>`).join('')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:8px">
+        ${['paid','packing','shipped','delivered','cancelled','refunded'].filter(s=>s!==o.status).map(s=>
+          `<button onclick="setStatus(${o.id},'${s}')" class="btn btn-outline btn-sm">→ ${s}</button>`).join('')}
       </div>
     </div>`;
 }
+function closeOrder() { document.getElementById('orderModal').style.display = 'none'; }
 
-function closeOrder() { document.getElementById('orderModal').classList.add('hidden'); }
-
-// ── PRODUCTS ────────────────────────────────────────────
+// ═══ PRODUCTS ════════════════════════════════
 async function loadProducts() {
   const q = document.getElementById('productSearch').value.trim();
   const r = await api('/api/admin/products?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
   document.getElementById('productsBody').innerHTML = (r.items || []).map(p => `
-    <tr>
-      <td>${p.name}</td>
-      <td>${p.brand_id}</td>
-      <td>${p.category_id || '—'}</td>
-      <td>${p.variants_count}</td>
-      <td>${p.total_stock ?? 0}</td>
-      <td>${p.price_from ? Number(p.price_from).toLocaleString() + ' ₴' : '—'}</td>
-      <td>${p.active ? '✓' : '—'}</td>
-    </tr>`).join('') || '<tr><td colspan="7" class="text-gray-400">Нічого не знайдено</td></tr>';
+    <tr><td>${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
+    <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
+    <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
+    <td>${p.active ? '✓':'—'}</td></tr>`).join('')
+    || '<tr><td colspan="7"><div class="empty">Нічого не знайдено</div></td></tr>';
 }
 
-// ── CLIENTS ─────────────────────────────────────────────
-async function loadClients() {
-  const q = document.getElementById('clientSearch').value.trim();
-  const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
-  document.getElementById('clientsBody').innerHTML = (r.items || []).map(c => `
-    <tr>
-      <td>${c.name || '—'}</td>
-      <td>${c.phone}</td>
-      <td>${c.email || '—'}</td>
-      <td>${c.orders_count}</td>
-      <td>${Number(c.total_spent).toLocaleString()} ₴</td>
-      <td>${c.loyalty_points}</td>
-      <td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td>
-    </tr>`).join('') || '<tr><td colspan="7" class="text-gray-400">Клієнтів немає</td></tr>';
-}
-
-// ── STOCK ───────────────────────────────────────────────
+// ═══ STOCK ═══════════════════════════════════
 async function addStock() {
   const variant_id = parseInt(document.getElementById('stockVariantId').value, 10);
   const qty = parseInt(document.getElementById('stockQty').value, 10);
   const note = document.getElementById('stockNote').value.trim();
-  if (!variant_id || !qty) { alert('Вкажи ID варіанту та кількість'); return; }
-  const r = await api(`/api/admin/variants/${variant_id}/stock`, {
-    method: 'POST', body: JSON.stringify({ qty, note }),
-  });
+  if (!variant_id || !qty) { alert('Вкажіть ID та кількість'); return; }
+  const r = await api(`/api/admin/variants/${variant_id}/stock`, { method:'POST', body:JSON.stringify({qty,note}) });
   const el = document.getElementById('stockResult');
-  if (r.ok) {
-    el.className = 'text-sm text-green-600';
-    el.textContent = `Залишок оновлено: ${r.variant.stock_qty} шт`;
-  } else {
-    el.className = 'text-sm text-red-600';
-    el.textContent = 'Помилка: ' + (r.error || '');
-  }
+  el.style.color = r.ok ? 'var(--success)' : 'var(--danger)';
+  el.textContent = r.ok ? `Залишок: ${r.variant.stock_qty} шт` : 'Помилка: '+(r.error||'');
 }
 
-// ── SYNC ────────────────────────────────────────────────
+// ═══ REVIEWS ═════════════════════════════════
+async function loadReviews() {
+  try {
+    const master = document.getElementById('reviewMaster').value.trim();
+    const rating = document.getElementById('reviewRating').value;
+    let url = '/api/reviews?';
+    if (master) url += 'master_id=' + encodeURIComponent(master) + '&';
+    if (rating) url += 'min_rating=' + rating + '&max_rating=' + rating;
+    const r = await dikidiApi(url);
+    const items = r.items || [];
+    document.getElementById('reviewsList').innerHTML = items.length ? items.map(rv => `
+      <div style="border-bottom:1px solid var(--border);padding:12px 0;display:flex;gap:16px;align-items:flex-start">
+        <div style="min-width:40px;height:40px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--primary)">${rv.display_name?rv.display_name[0]:'?'}</div>
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between">
+            <span style="font-weight:600">${rv.display_name||'Анонім'}</span>
+            <span style="color:var(--text-secondary);font-size:12px">${new Date(rv.created_at).toLocaleDateString('uk-UA')}</span>
+          </div>
+          <div style="color:#F59E0B;margin:2px 0">${'★'.repeat(rv.rating)}${'☆'.repeat(5-rv.rating)}</div>
+          ${rv.master_name ? `<div style="font-size:12px;color:var(--text-secondary)">Майстер: ${rv.master_name}</div>` : ''}
+          ${rv.text ? `<div style="margin-top:4px;font-size:13px">${rv.text}</div>` : ''}
+        </div>
+      </div>`).join('') : '<div class="empty"><span class="material-icons-round">star_rate</span>Відгуків поки немає</div>';
+  } catch { document.getElementById('reviewsList').innerHTML = '<div class="empty">Сервер відгуків недоступний</div>'; }
+}
+
+// ═══ PROMOS ══════════════════════════════════
+function toggleNewPromo() { const f = document.getElementById('promoForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; }
+async function createPromo() {
+  const body = {
+    title: document.getElementById('p-title').value,
+    discount_pct: parseInt(document.getElementById('p-pct').value) || null,
+    category: document.getElementById('p-category').value,
+    description: document.getElementById('p-desc').value || null,
+    ends_at: document.getElementById('p-ends').value || null,
+  };
+  await dikidiApi('/api/promotions', { method:'POST', body:JSON.stringify(body) });
+  document.getElementById('promoForm').style.display = 'none';
+  loadPromos();
+}
+async function loadPromos() {
+  try {
+    const r = await dikidiApi('/api/promotions');
+    const items = r.items || [];
+    document.getElementById('promosList').innerHTML = items.length ? items.map(p => `
+      <div style="border-bottom:1px solid var(--border);padding:12px 0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:600">${p.title}</div>
+          ${p.description ? `<div style="font-size:12px;color:var(--text-secondary)">${p.description}</div>` : ''}
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
+            ${p.discount_pct ? '-'+p.discount_pct+'%' : ''} · ${p.category}
+            ${p.ends_at ? ' · до '+new Date(p.ends_at).toLocaleDateString('uk-UA') : ''}
+          </div>
+        </div>
+        <span class="badge ${p.is_active?'b-published':'b-hidden'}">${p.is_active?'Активна':'Вимкнена'}</span>
+      </div>`).join('') : '<div class="empty"><span class="material-icons-round">local_offer</span>Акцій немає</div>';
+  } catch { document.getElementById('promosList').innerHTML = '<div class="empty">Сервер акцій недоступний</div>'; }
+}
+
+// ═══ PAYROLL ═════════════════════════════════
+async function loadPayroll() {
+  try {
+    const r = await dikidiApi('/api/payroll/schemes');
+    const items = r.items || [];
+    document.getElementById('payrollList').innerHTML = items.length ? `
+      <table class="tbl"><thead><tr><th>Майстер</th><th>Тип</th><th>%</th><th>Ставка/день</th><th>Оклад/міс</th></tr></thead><tbody>${
+        items.map(s => `<tr><td>${s.master_name||s.master_id}</td><td><span class="badge b-new">${s.scheme_type}</span></td>
+          <td>${s.percent||'—'}</td><td>${s.fixed_per_day||'—'}</td><td>${s.fixed_per_month||'—'}</td></tr>`).join('')
+      }</tbody></table>` : '<div class="empty"><span class="material-icons-round">payments</span>Схеми зарплати не задані</div>';
+  } catch { document.getElementById('payrollList').innerHTML = '<div class="empty">Сервер зарплати недоступний</div>'; }
+}
+
+// ═══ BLACKLIST ════════════════════════════════
+async function loadBlacklist() {
+  try {
+    const r = await dikidiApi('/api/blacklist');
+    document.getElementById('blacklistBody').innerHTML = (r.items || []).map(b => `
+      <tr><td>${b.client_phone}</td><td>${b.reason||'—'}</td>
+      <td>${new Date(b.created_at).toLocaleDateString('uk-UA')}</td>
+      <td><button onclick="removeFromBlacklist('${b.client_phone}')" class="btn btn-outline btn-sm">Видалити</button></td></tr>`).join('')
+      || '<tr><td colspan="4"><div class="empty">Список порожній</div></td></tr>';
+  } catch { document.getElementById('blacklistBody').innerHTML = '<tr><td colspan="4">Сервер недоступний</td></tr>'; }
+}
+async function addToBlacklist() {
+  const phone = document.getElementById('blPhone').value.trim();
+  const reason = document.getElementById('blReason').value.trim();
+  if (!phone) return;
+  await dikidiApi('/api/blacklist', { method:'POST', body:JSON.stringify({client_phone:phone,reason}) });
+  loadBlacklist();
+}
+async function removeFromBlacklist(phone) {
+  await dikidiApi('/api/blacklist/'+encodeURIComponent(phone), { method:'DELETE' });
+  loadBlacklist();
+}
+
+// ═══ SYNC ════════════════════════════════════
 async function loadSync() {
   const r = await api('/api/sync/status');
   if (!r.ok) return;
   const s = r.sync;
-  document.getElementById('syncStats').innerHTML = `
-    <div class="grid grid-cols-3 gap-4">
-      <div><div class="text-xs text-gray-500">Всього клієнтів</div><div class="text-2xl font-bold">${s.total}</div></div>
-      <div><div class="text-xs text-gray-500">Звʼязані з BP</div><div class="text-2xl font-bold text-green-600">${s.linked}</div></div>
-      <div><div class="text-xs text-gray-500">Не звʼязані</div><div class="text-2xl font-bold text-red-600">${s.unlinked}</div></div>
-    </div>`;
+  document.getElementById('syncStats').innerHTML = [
+    ['Всього клієнтів', s.total, 'purple'],
+    ['Звʼязані з BP', s.linked, 'green'],
+    ['Не звʼязані', s.unlinked, 'orange'],
+  ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
 }
-
 async function runSync() {
   document.getElementById('syncLog').textContent = 'Запуск...';
-  const r = await api('/api/sync/all-clients', { method: 'POST' });
+  const r = await api('/api/sync/all-clients', { method:'POST' });
   document.getElementById('syncLog').textContent = JSON.stringify(r, null, 2);
   loadSync();
 }

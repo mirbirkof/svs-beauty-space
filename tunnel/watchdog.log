@@ -65,3 +65,47 @@
 [regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
 [2026-06-07 15:21:20] Tunnel up: https://8a320a5167aa06.lhr.life
    ea57812..64f9753  main -> main
+[2026-06-07 15:40:31] Health check FAILED, restarting tunnel
+[2026-06-07 15:40:31] Starting tunnel...
+[2026-06-07 15:40:31] Health check FAILED, restarting tunnel
+[2026-06-07 15:40:31] Starting tunnel...
+[2026-06-07 15:40:53] Failed to start tunnel after 20s
+[2026-06-07 15:40:53] Restart failed, will retry in 60s
+[2026-06-07 15:40:53] Failed to start tunnel after 20s
+[2026-06-07 15:40:53] Restart failed, will retry in 60s
+[2026-06-07 15:41:54] Health check FAILED, restarting tunnel
+[2026-06-07 15:41:54] Starting tunnel...
+[2026-06-07 15:41:54] Health check FAILED, restarting tunnel
+[2026-06-07 15:41:54] Starting tunnel...
+[2026-06-07 15:41:58] Tunnel up: https://cf0da7eefcda03.lhr.life
+[2026-06-07 15:41:58] Tunnel up: https://cf0da7eefcda03.lhr.life
+[2026-06-07 15:41:58] Loader URL updated to https://cf0da7eefcda03.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   64f9753..b239a3f  main -> main
+[2026-06-07 16:00:29] Health check FAILED, restarting tunnel
+[2026-06-07 16:00:29] Starting tunnel...
+[2026-06-07 16:00:31] Health check FAILED, restarting tunnel
+[2026-06-07 16:00:31] Starting tunnel...
+[2026-06-07 16:00:51] Failed to start tunnel after 20s
+[2026-06-07 16:00:51] Restart failed, will retry in 60s
+[2026-06-07 16:00:53] Failed to start tunnel after 20s
+[2026-06-07 16:00:53] Restart failed, will retry in 60s
+[2026-06-07 16:01:51] Health check FAILED, restarting tunnel
+[2026-06-07 16:01:51] Starting tunnel...
+[2026-06-07 16:01:54] Health check FAILED, restarting tunnel
+[2026-06-07 16:01:54] Starting tunnel...
+[2026-06-07 16:01:57] Tunnel up: https://c9de8df9a74f53.lhr.life
+[2026-06-07 16:01:58] Tunnel up: https://c9de8df9a74f53.lhr.life
+[2026-06-07 16:01:58] Loader URL updated to https://c9de8df9a74f53.lhr.life
+[2026-06-07 16:07:30] Health check FAILED, restarting tunnel
+[2026-06-07 16:07:30] Starting tunnel...
+[2026-06-07 16:07:38] Tunnel up: https://a44a5c3f6ed609.lhr.life
+[2026-06-07 16:10:00] Health check FAILED, restarting tunnel
+[2026-06-07 16:10:00] Starting tunnel...
+[2026-06-07 16:11:27] Failed to start tunnel after 20s
+[2026-06-07 16:11:27] Restart failed, will retry in 60s
+[2026-06-07 16:12:28] Health check FAILED, restarting tunnel
+[2026-06-07 16:12:28] Starting tunnel...
+[2026-06-07 16:12:32] Tunnel up: https://c0c7f5bfec0764.lhr.life
+   b239a3f..573c9a2  main -> main

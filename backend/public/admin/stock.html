@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS Beauty — Склад</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  table { border-collapse: collapse; width: 100% }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px }
+  th { background: #fafafa; font-weight: 600 }
+  .tab { padding: 10px 16px; border-radius: 10px 10px 0 0; cursor: pointer; font-weight:500; color:#6b7280 }
+  .tab.active { background: #111; color: #fff }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-white border-b">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+    <div>
+      <h1 class="text-xl font-bold">Склад</h1>
+      <p class="text-xs text-gray-500">Поставщики · Приходы · Списания материалов</p>
+    </div>
+    <div class="text-xs text-gray-500" id="status">подключение…</div>
+  </div>
+</header>
+
+<div class="max-w-6xl mx-auto px-6 pt-6">
+  <div class="flex gap-1 border-b">
+    <div class="tab active" data-tab="receipts">Приходы</div>
+    <div class="tab" data-tab="suppliers">Поставщики</div>
+    <div class="tab" data-tab="consumption">Списания</div>
+  </div>
+</div>
+
+<main class="max-w-6xl mx-auto px-6 py-6">
+
+  <!-- ПРИХОДЫ -->
+  <section id="t-receipts" class="bg-white rounded-2xl shadow-sm p-6">
+    <h2 class="text-lg font-bold mb-4">Приходные накладные</h2>
+    <form class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4">
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        <select id="r-supplier" class="border rounded-lg px-3 py-2 text-sm"></select>
+        <input id="r-invoice" placeholder="Номер накладной" class="border rounded-lg px-3 py-2 text-sm">
+        <input id="r-notes" placeholder="Комментарий" class="border rounded-lg px-3 py-2 text-sm">
+      </div>
+      <p class="text-xs text-gray-600 mb-2">Позиции:</p>
+      <div id="items-rows" class="space-y-2 mb-3"></div>
+      <button type="button" onclick="addItemRow()" class="text-blue-600 text-sm hover:underline mb-3">+ Добавить позицию</button>
+      <button type="button" onclick="saveReceipt()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm block w-full">Оприходовать</button>
+    </form>
+    <div id="receipts-list">Загрузка…</div>
+  </section>
+
+  <!-- ПОСТАВЩИКИ -->
+  <section id="t-suppliers" class="hidden bg-white rounded-2xl shadow-sm p-6">
+    <h2 class="text-lg font-bold mb-4">Поставщики</h2>
+    <form class="grid grid-cols-2 gap-3 bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4">
+      <input id="sup-name" placeholder="Название" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="sup-phone" placeholder="Телефон" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="sup-email" placeholder="Email" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="sup-notes" placeholder="Комментарий" class="border rounded-lg px-3 py-2 text-sm">
+      <button type="button" onclick="saveSupplier()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm col-span-2">Добавить поставщика</button>
+    </form>
+    <div id="suppliers-list">Загрузка…</div>
+  </section>
+
+  <!-- СПИСАНИЯ -->
+  <section id="t-consumption" class="hidden bg-white rounded-2xl shadow-sm p-6">
+    <h2 class="text-lg font-bold mb-4">Списания материалов</h2>
+    <form class="grid grid-cols-4 gap-3 bg-rose-50 border border-rose-200 p-4 rounded-xl mb-4">
+      <input id="con-master" placeholder="master_id" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="con-prodname" placeholder="Название материала" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="con-qty" type="number" step="0.01" placeholder="Кол-во" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="con-cost" type="number" step="0.01" placeholder="Цена за ед. ₴" class="border rounded-lg px-3 py-2 text-sm">
+      <button type="button" onclick="saveConsumption()" class="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm col-span-4">Списать</button>
+    </form>
+    <div id="consumption-list">Загрузка…</div>
+  </section>
+
+</main>
+
+<script>
+const API = (function() {
+  try { return localStorage.getItem('DIKIDI_API') || 'https://e710158f8a5b88.lhr.life'; }
+  catch(e) { return 'https://e710158f8a5b88.lhr.life'; }
+})();
+
+fetch(API + '/health').then(r => r.json()).then(d => {
+  document.getElementById('status').textContent = d.ok ? '✓ API подключено' : '✗ ошибка';
+}).catch(() => document.getElementById('status').textContent = '✗ нет связи');
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('t-' + t.dataset.tab).classList.remove('hidden');
+});
+
+// === SUPPLIERS ===
+async function saveSupplier() {
+  const body = {
+    name: document.getElementById('sup-name').value.trim(),
+    phone: document.getElementById('sup-phone').value.trim() || null,
+    email: document.getElementById('sup-email').value.trim() || null,
+    notes: document.getElementById('sup-notes').value.trim() || null
+  };
+  if (!body.name) { alert('Название обязательно'); return; }
+  const r = await fetch(API + '/api/suppliers', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  if (r.ok) { ['sup-name','sup-phone','sup-email','sup-notes'].forEach(id => document.getElementById(id).value = ''); loadSuppliers(); }
+  else alert('Ошибка: ' + r.error);
+}
+async function loadSuppliers() {
+  const r = await fetch(API + '/api/suppliers').then(r => r.json());
+  const el = document.getElementById('suppliers-list');
+  if (!r.items?.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Поставщиков нет</p>'; }
+  else el.innerHTML = `<table><thead><tr><th>Название</th><th>Телефон</th><th>Email</th><th>Комментарий</th></tr></thead><tbody>${
+    r.items.map(x => `<tr><td><b>${x.name}</b></td><td>${x.phone||'—'}</td><td>${x.email||'—'}</td><td class="text-xs text-gray-500">${x.notes||''}</td></tr>`).join('')
+  }</tbody></table>`;
+  // обновить селектор в форме прихода
+  const sel = document.getElementById('r-supplier');
+  sel.innerHTML = '<option value="">— без поставщика —</option>' + (r.items||[]).map(x => `<option value="${x.id}">${x.name}</option>`).join('');
+}
+
+// === RECEIPTS ===
+function addItemRow() {
+  const div = document.createElement('div');
+  div.className = 'grid grid-cols-4 gap-2';
+  div.innerHTML = `
+    <input placeholder="Название" class="border rounded-lg px-3 py-2 text-sm i-name">
+    <input type="number" step="0.01" placeholder="Кол-во" class="border rounded-lg px-3 py-2 text-sm i-qty">
+    <input type="number" step="0.01" placeholder="Цена ед. ₴" class="border rounded-lg px-3 py-2 text-sm i-cost">
+    <button type="button" onclick="this.parentElement.remove()" class="text-red-600 text-xs">✕ удалить</button>`;
+  document.getElementById('items-rows').appendChild(div);
+}
+async function saveReceipt() {
+  const items = [...document.querySelectorAll('#items-rows > div')].map(row => ({
+    product_name: row.querySelector('.i-name').value.trim(),
+    qty: parseFloat(row.querySelector('.i-qty').value) || 0,
+    unit_cost: parseFloat(row.querySelector('.i-cost').value) || 0
+  })).filter(i => i.product_name && i.qty > 0);
+  if (!items.length) { alert('Добавьте хотя бы одну позицию'); return; }
+  const body = {
+    supplier_id: document.getElementById('r-supplier').value || null,
+    invoice_no: document.getElementById('r-invoice').value.trim() || null,
+    notes: document.getElementById('r-notes').value.trim() || null,
+    items
+  };
+  const r = await fetch(API + '/api/stock/receipts', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  if (r.ok) {
+    alert('Оприходовано на ' + r.total + ' ₴');
+    document.getElementById('items-rows').innerHTML = '';
+    document.getElementById('r-invoice').value = '';
+    document.getElementById('r-notes').value = '';
+    loadReceipts();
+  } else alert('Ошибка: ' + r.error);
+}
+async function loadReceipts() {
+  const r = await fetch(API + '/api/stock/receipts').then(r => r.json());
+  const el = document.getElementById('receipts-list');
+  if (!r.items?.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Приходов нет</p>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Дата</th><th>Поставщик</th><th>Накладная</th><th>Позиций</th><th>Сумма</th><th>Статус</th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td>${new Date(x.received_at).toLocaleString('ru-UA')}</td>
+        <td>${x.supplier_name||'—'}</td>
+        <td>${x.invoice_no||'—'}</td>
+        <td>${x.items_count}</td>
+        <td><b>${x.total_cost} ₴</b></td>
+        <td>${x.status}</td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+
+// === CONSUMPTION ===
+async function saveConsumption() {
+  const body = {
+    master_id: document.getElementById('con-master').value.trim() || null,
+    product_name: document.getElementById('con-prodname').value.trim(),
+    qty: parseFloat(document.getElementById('con-qty').value) || 0,
+    unit_cost: parseFloat(document.getElementById('con-cost').value) || 0
+  };
+  if (!body.product_name || body.qty <= 0) { alert('Заполните название и количество'); return; }
+  const r = await fetch(API + '/api/stock/consumption', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  if (r.ok) {
+    alert('Списано на ' + r.total_cost + ' ₴');
+    ['con-master','con-prodname','con-qty','con-cost'].forEach(id => document.getElementById(id).value = '');
+    loadConsumption();
+  } else alert('Ошибка: ' + r.error);
+}
+async function loadConsumption() {
+  const r = await fetch(API + '/api/stock/consumption').then(r => r.json());
+  const el = document.getElementById('consumption-list');
+  if (!r.items?.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Списаний нет</p>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Дата</th><th>master</th><th>Материал</th><th>Кол-во</th><th>Цена ед.</th><th>Сумма</th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td>${new Date(x.consumed_at).toLocaleString('ru-UA')}</td>
+        <td>${x.master_id||'—'}</td>
+        <td>${x.product_name||'—'}</td>
+        <td>${x.qty}</td>
+        <td>${x.unit_cost} ₴</td>
+        <td><b>${x.total_cost} ₴</b></td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+
+// init
+addItemRow();
+loadSuppliers();
+loadReceipts();
+loadConsumption();
+</script>
+</body>
+</html>

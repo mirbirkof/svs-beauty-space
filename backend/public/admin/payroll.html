@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS Beauty — Зарплата мастеров</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  table { border-collapse: collapse; width: 100% }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px }
+  th { background: #fafafa; font-weight: 600 }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600 }
+  .b-draft { background:#fef3c7; color:#92400e }
+  .b-appr  { background:#dbeafe; color:#1e40af }
+  .b-paid  { background:#dcfce7; color:#166534 }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-white border-b">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+    <div>
+      <h1 class="text-xl font-bold">Зарплата мастеров</h1>
+      <p class="text-xs text-gray-500">Схемы оплаты · Расчёт за период · История выплат</p>
+    </div>
+    <div class="text-xs text-gray-500" id="status">подключение…</div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-6 space-y-6">
+
+  <!-- СХЕМА -->
+  <section class="bg-white rounded-2xl shadow-sm p-6">
+    <h2 class="text-lg font-bold mb-4">Схемы оплаты</h2>
+    <form id="scheme-form" class="grid grid-cols-2 gap-3 bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4">
+      <input id="s-mid" placeholder="master_id" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="s-mname" placeholder="Имя мастера" class="border rounded-lg px-3 py-2 text-sm">
+      <select id="s-type" class="border rounded-lg px-3 py-2 text-sm">
+        <option value="percent">% от услуг</option>
+        <option value="fixed">Фиксированная ставка</option>
+        <option value="hybrid">Гибрид (% + ставка)</option>
+      </select>
+      <input id="s-percent" type="number" step="0.01" placeholder="% (например 40)" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="s-fixed-day" type="number" step="0.01" placeholder="Ставка за смену ₴" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="s-fixed-mon" type="number" step="0.01" placeholder="Ставка в месяц ₴" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="s-notes" placeholder="Комментарий" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+      <button type="button" onclick="saveScheme()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm col-span-2">Сохранить схему</button>
+    </form>
+    <div id="scheme-list">Загрузка…</div>
+  </section>
+
+  <!-- РАСЧЁТ -->
+  <section class="bg-white rounded-2xl shadow-sm p-6">
+    <h2 class="text-lg font-bold mb-4">Расчёт зарплаты</h2>
+    <div class="grid grid-cols-4 gap-3 mb-4 bg-blue-50 border border-blue-200 p-4 rounded-xl">
+      <input id="c-mid" placeholder="master_id" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="c-from" type="date" class="border rounded-lg px-3 py-2 text-sm">
+      <input id="c-to" type="date" class="border rounded-lg px-3 py-2 text-sm">
+      <button onclick="calcSalary()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Рассчитать</button>
+    </div>
+    <div id="calc-result" class="text-sm text-gray-500">Заполните поля и нажмите "Рассчитать"</div>
+  </section>
+
+  <!-- ИСТОРИЯ -->
+  <section class="bg-white rounded-2xl shadow-sm p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-bold">История начислений</h2>
+      <button onclick="loadRecords()" class="text-sm text-blue-600 hover:underline">Обновить</button>
+    </div>
+    <div id="records-list">Загрузка…</div>
+  </section>
+
+</main>
+
+<script>
+const API = (function() {
+  // авто-определение туннеля dikidi-server
+  try { return localStorage.getItem('DIKIDI_API') || 'https://e710158f8a5b88.lhr.life'; }
+  catch(e) { return 'https://e710158f8a5b88.lhr.life'; }
+})();
+
+fetch(API + '/health').then(r => r.json()).then(d => {
+  document.getElementById('status').textContent = d.ok ? '✓ API подключено' : '✗ ошибка';
+}).catch(() => document.getElementById('status').textContent = '✗ нет связи');
+
+async function saveScheme() {
+  const body = {
+    master_id: document.getElementById('s-mid').value.trim(),
+    master_name: document.getElementById('s-mname').value.trim(),
+    scheme_type: document.getElementById('s-type').value,
+    percent: parseFloat(document.getElementById('s-percent').value) || null,
+    fixed_per_day: parseFloat(document.getElementById('s-fixed-day').value) || null,
+    fixed_per_month: parseFloat(document.getElementById('s-fixed-mon').value) || null,
+    notes: document.getElementById('s-notes').value.trim() || null
+  };
+  if (!body.master_id) { alert('master_id обязателен'); return; }
+  const r = await fetch(API + '/api/payroll/schemes', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  if (r.ok) { alert('Схема сохранена'); loadSchemes(); }
+  else alert('Ошибка: ' + (r.error || 'unknown'));
+}
+
+async function loadSchemes() {
+  const r = await fetch(API + '/api/payroll/schemes').then(r => r.json());
+  const el = document.getElementById('scheme-list');
+  if (!r.items?.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Схем нет</p>'; return; }
+  el.innerHTML = `<table><thead><tr><th>master_id</th><th>Имя</th><th>Тип</th><th>%</th><th>За день</th><th>В месяц</th><th>Комментарий</th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td><code>${x.master_id}</code></td>
+        <td>${x.master_name||'—'}</td>
+        <td>${x.scheme_type}</td>
+        <td>${x.percent ? x.percent + '%' : '—'}</td>
+        <td>${x.fixed_per_day ? x.fixed_per_day + '₴' : '—'}</td>
+        <td>${x.fixed_per_month ? x.fixed_per_month + '₴' : '—'}</td>
+        <td class="text-xs text-gray-500">${x.notes||''}</td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+
+async function calcSalary() {
+  const body = {
+    master_id: document.getElementById('c-mid').value.trim(),
+    period_start: document.getElementById('c-from').value,
+    period_end: document.getElementById('c-to').value
+  };
+  if (!body.master_id || !body.period_start || !body.period_end) { alert('Заполните все поля'); return; }
+  const r = await fetch(API + '/api/payroll/calculate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
+  const el = document.getElementById('calc-result');
+  if (!r.ok) { el.innerHTML = `<p class="text-red-600">Ошибка: ${r.error}</p>`; return; }
+  el.innerHTML = `
+    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+      <p class="text-lg font-bold mb-2">Итого к выплате: <span class="text-emerald-700">${r.total} ₴</span></p>
+      <table class="mt-2"><tbody>
+        <tr><th>Услуг за период</th><td>${r.breakdown.services_count}</td></tr>
+        <tr><th>Выручка по услугам</th><td>${r.breakdown.services_revenue} ₴</td></tr>
+        <tr><th>% часть</th><td>${r.breakdown.percent_part.toFixed(2)} ₴</td></tr>
+        <tr><th>Фиксированная часть</th><td>${r.breakdown.fixed_part.toFixed(2)} ₴</td></tr>
+      </tbody></table>
+      <p class="text-xs text-gray-500 mt-2">record #${r.record_id} создан в статусе draft</p>
+    </div>`;
+  loadRecords();
+}
+
+async function loadRecords() {
+  const r = await fetch(API + '/api/payroll/records').then(r => r.json());
+  const el = document.getElementById('records-list');
+  if (!r.items?.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Начислений нет</p>'; return; }
+  el.innerHTML = `<table><thead><tr><th>master</th><th>Период</th><th>Услуг</th><th>Выручка</th><th>%</th><th>Ставка</th><th>Бонус</th><th>Удерж.</th><th>Итого</th><th>Статус</th><th></th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td><code>${x.master_id}</code><br><span class="text-xs text-gray-500">${x.master_name||''}</span></td>
+        <td>${x.period_start} → ${x.period_end}</td>
+        <td>${x.services_count}</td>
+        <td>${x.services_revenue} ₴</td>
+        <td>${x.percent_part} ₴</td>
+        <td>${x.fixed_part} ₴</td>
+        <td>${x.bonus} ₴</td>
+        <td>${x.deduction} ₴</td>
+        <td><b>${x.total} ₴</b></td>
+        <td><span class="badge b-${x.status==='draft'?'draft':(x.status==='approved'?'appr':'paid')}">${x.status}</span></td>
+        <td>
+          ${x.status==='draft' ? `<button onclick="setStatus(${x.id}, 'approved')" class="text-blue-600 text-xs hover:underline">Утвердить</button>` : ''}
+          ${x.status==='approved' ? `<button onclick="setStatus(${x.id}, 'paid')" class="text-emerald-600 text-xs hover:underline">Оплатить</button>` : ''}
+        </td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+
+async function setStatus(id, status) {
+  const r = await fetch(API + '/api/payroll/records/' + id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status})}).then(r => r.json());
+  if (r.ok) loadRecords();
+  else alert('Ошибка: ' + r.error);
+}
+
+loadSchemes();
+loadRecords();
+</script>
+</body>
+</html>

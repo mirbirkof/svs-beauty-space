@@ -20,6 +20,9 @@ const notifyRoutes = require('./routes/telegram-notify');
 const promoRoutes = require('./routes/promos');
 const exportRoutes = require('./routes/export');
 const waitlistRoutes = require('./routes/waitlist');
+const dikidiRoutes = require('./routes/dikidi-features');
+const payrollRoutes = require('./routes/payroll-stock');
+const loyaltyRoutes = require('./routes/loyalty');
 
 const app = express();
 const PORT = process.env.SHOP_API_PORT || 3011;
@@ -39,6 +42,8 @@ app.use(express.json({ limit: '1mb' }));
 
 // статика админки
 app.use('/admin', express.static(__dirname + '/public/admin'));
+// статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
+app.use('/p', express.static(__dirname + '/public'));
 
 // health + readiness map
 app.get('/api/shop/health', (req, res) => {
@@ -92,6 +97,9 @@ app.use('/api/notify', notifyRoutes);
 app.use('/api/promo', promoRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api', waitlistRoutes);
+app.use('/api', dikidiRoutes);
+app.use('/api', payrollRoutes);
+app.use('/api', loyaltyRoutes);
 
 // Mono Pay placeholder — активируется когда MONO_TOKEN задан
 app.post('/api/pay/mono/invoice', (req, res) => {
