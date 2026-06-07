@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS Beauty — DikiDi модуль</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  .tab { padding: 10px 16px; border-radius: 10px 10px 0 0; cursor: pointer; font-weight:500; color:#6b7280 }
+  .tab.active { background: #111; color: #fff }
+  .star { color:#f59e0b; font-size: 18px }
+  .star.dim { color:#e5e7eb }
+  table { border-collapse: collapse; width: 100% }
+  th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px }
+  th { background: #fafafa; font-weight: 600 }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600 }
+  .b-pub { background:#dcfce7; color:#166534 }
+  .b-hid { background:#fee2e2; color:#991b1b }
+  .b-pen { background:#fef3c7; color:#92400e }
+  .b-on  { background:#dcfce7; color:#166534 }
+  .b-off { background:#f3f4f6; color:#374151 }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-white border-b">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+    <div>
+      <h1 class="text-xl font-bold">SVS Beauty — DikiDi модуль</h1>
+      <p class="text-xs text-gray-500">Отзывы · Избранное · Чёрный список · Акции</p>
+    </div>
+    <div class="text-xs text-gray-500" id="status">подключение…</div>
+  </div>
+</header>
+
+<div class="max-w-6xl mx-auto px-6 pt-6">
+  <div class="flex gap-1 border-b">
+    <div class="tab active" data-tab="reviews">Отзывы</div>
+    <div class="tab" data-tab="promotions">Акции</div>
+    <div class="tab" data-tab="blacklist">Чёрный список</div>
+    <div class="tab" data-tab="favorites">Избранное (по клиенту)</div>
+  </div>
+</div>
+
+<main class="max-w-6xl mx-auto px-6 py-6">
+
+<!-- REVIEWS -->
+<section id="t-reviews" class="bg-white rounded-2xl shadow-sm p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-lg font-bold">Отзывы клиентов</h2>
+    <div class="flex gap-2">
+      <input id="r-master" placeholder="master_id (фильтр)" class="border rounded-lg px-3 py-1.5 text-sm w-48">
+      <select id="r-rating" class="border rounded-lg px-3 py-1.5 text-sm">
+        <option value="">Все рейтинги</option>
+        <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
+      </select>
+      <button onclick="loadReviews()" class="bg-gray-900 text-white px-4 py-1.5 rounded-lg text-sm">Фильтр</button>
+    </div>
+  </div>
+  <div id="r-list">Загрузка…</div>
+</section>
+
+<!-- PROMOTIONS -->
+<section id="t-promotions" class="hidden bg-white rounded-2xl shadow-sm p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-lg font-bold">Акции</h2>
+    <button onclick="toggleNewPromo()" class="bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm">+ Создать акцию</button>
+  </div>
+  <form id="new-promo" class="hidden bg-emerald-50 border border-emerald-200 p-4 rounded-xl mb-4 grid grid-cols-2 gap-3">
+    <input id="p-title" placeholder="Название (Скидка -30% на Raywell)" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+    <input id="p-desc" placeholder="Описание (опционально)" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+    <input id="p-pct" type="number" placeholder="Скидка %" class="border rounded-lg px-3 py-2 text-sm">
+    <select id="p-category" class="border rounded-lg px-3 py-2 text-sm">
+      <option value="shop">Магазин</option>
+      <option value="salon">Салон</option>
+      <option value="combo">Комбо</option>
+    </select>
+    <input id="p-ends" type="datetime-local" class="border rounded-lg px-3 py-2 text-sm col-span-2">
+    <button type="button" onclick="createPromo()" class="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm col-span-2">Создать</button>
+  </form>
+  <div id="p-list">Загрузка…</div>
+</section>
+
+<!-- BLACKLIST -->
+<section id="t-blacklist" class="hidden bg-white rounded-2xl shadow-sm p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-lg font-bold">Чёрный список клиентов</h2>
+  </div>
+  <div class="flex gap-2 mb-4">
+    <input id="bl-phone" placeholder="+380XXXXXXXXX" class="border rounded-lg px-3 py-2 text-sm w-48">
+    <input id="bl-reason" placeholder="Причина (опционально)" class="border rounded-lg px-3 py-2 text-sm flex-1">
+    <button onclick="addBl()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm">Заблокировать</button>
+  </div>
+  <div id="bl-list">Загрузка…</div>
+</section>
+
+<!-- FAVORITES -->
+<section id="t-favorites" class="hidden bg-white rounded-2xl shadow-sm p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-lg font-bold">Избранное клиента</h2>
+    <div class="flex gap-2">
+      <input id="f-phone" placeholder="+380XXXXXXXXX" class="border rounded-lg px-3 py-1.5 text-sm w-48">
+      <button onclick="loadFavs()" class="bg-gray-900 text-white px-4 py-1.5 rounded-lg text-sm">Показать</button>
+    </div>
+  </div>
+  <div id="f-list" class="text-sm text-gray-500">Введите телефон клиента</div>
+</section>
+
+</main>
+
+<script>
+const API = 'https://5071e3cc6935b7.lhr.life';
+
+// табы
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('t-' + t.dataset.tab).classList.remove('hidden');
+});
+
+// health
+fetch(API + '/health').then(r => r.json()).then(d => {
+  document.getElementById('status').textContent = d.ok ? '✓ API подключено' : '✗ ошибка API';
+}).catch(() => document.getElementById('status').textContent = '✗ нет связи с API');
+
+function stars(n) {
+  let s = '';
+  for (let i=1; i<=5; i++) s += `<span class="star ${i<=n?'':'dim'}">★</span>`;
+  return s;
+}
+
+// === REVIEWS ===
+async function loadReviews() {
+  const master = document.getElementById('r-master').value.trim();
+  const rating = document.getElementById('r-rating').value;
+  const params = new URLSearchParams();
+  if (master) params.append('master_id', master);
+  if (rating) params.append('rating', rating);
+  const r = await fetch(`${API}/api/reviews?${params}`).then(r => r.json());
+  const list = document.getElementById('r-list');
+  if (!r.items?.length) { list.innerHTML = '<p class="text-gray-500">Отзывов нет</p>'; return; }
+  list.innerHTML = `<table><thead><tr><th>Дата</th><th>Клиент</th><th>Мастер</th><th>Рейтинг</th><th>Текст</th><th>Статус</th><th></th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td>${new Date(x.created_at).toLocaleString('ru-UA')}</td>
+        <td>${x.display_name}</td>
+        <td>${x.master_name || x.master_id || '—'}</td>
+        <td>${stars(x.rating)}</td>
+        <td>${(x.text||'').replace(/</g,'&lt;')}</td>
+        <td><span class="badge b-pub">опубликован</span></td>
+        <td><button onclick="modReview(${x.id}, 'hidden')" class="text-red-600 text-xs hover:underline">Скрыть</button></td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+async function modReview(id, status) {
+  await fetch(`${API}/api/reviews/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({status})
+  });
+  loadReviews();
+}
+
+// === PROMOTIONS ===
+function toggleNewPromo() { document.getElementById('new-promo').classList.toggle('hidden'); }
+async function createPromo() {
+  const body = {
+    title: document.getElementById('p-title').value.trim(),
+    description: document.getElementById('p-desc').value.trim() || null,
+    discount_pct: parseInt(document.getElementById('p-pct').value) || null,
+    category: document.getElementById('p-category').value,
+    ends_at: document.getElementById('p-ends').value || null
+  };
+  if (!body.title) { alert('Название обязательно'); return; }
+  await fetch(`${API}/api/promotions`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  document.getElementById('new-promo').classList.add('hidden');
+  ['p-title','p-desc','p-pct','p-ends'].forEach(id => document.getElementById(id).value = '');
+  loadPromos();
+}
+async function loadPromos() {
+  const r = await fetch(`${API}/api/promotions`).then(r => r.json());
+  const list = document.getElementById('p-list');
+  if (!r.items?.length) { list.innerHTML = '<p class="text-gray-500">Акций нет</p>'; return; }
+  list.innerHTML = `<table><thead><tr><th>Название</th><th>Скидка</th><th>Категория</th><th>До</th><th>Статус</th><th></th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td><b>${x.title}</b><br><span class="text-xs text-gray-500">${x.description||''}</span></td>
+        <td>${x.discount_pct ? '−'+x.discount_pct+'%' : (x.discount_uah ? '−'+x.discount_uah+'₴' : '—')}</td>
+        <td>${x.category}</td>
+        <td>${x.ends_at ? new Date(x.ends_at).toLocaleDateString('ru-UA') : 'бессрочно'}</td>
+        <td><span class="badge ${x.is_active?'b-on':'b-off'}">${x.is_active?'активна':'выключена'}</span></td>
+        <td><button onclick="togglePromo(${x.id}, ${!x.is_active})" class="text-xs underline">${x.is_active?'Выключить':'Включить'}</button></td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+async function togglePromo(id, on) {
+  await fetch(`${API}/api/promotions/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({is_active: on})
+  });
+  loadPromos();
+}
+
+// === BLACKLIST ===
+async function addBl() {
+  const phone = document.getElementById('bl-phone').value.trim();
+  const reason = document.getElementById('bl-reason').value.trim();
+  if (!phone) { alert('Телефон обязателен'); return; }
+  await fetch(`${API}/api/blacklist`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({client_phone: phone, reason})});
+  document.getElementById('bl-phone').value = '';
+  document.getElementById('bl-reason').value = '';
+  loadBl();
+}
+async function loadBl() {
+  const r = await fetch(`${API}/api/blacklist`).then(r => r.json());
+  const list = document.getElementById('bl-list');
+  if (!r.items?.length) { list.innerHTML = '<p class="text-gray-500">Список пуст</p>'; return; }
+  list.innerHTML = `<table><thead><tr><th>Телефон</th><th>Причина</th><th>Когда</th><th></th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr>
+        <td><code>${x.client_phone}</code></td>
+        <td>${x.reason||'—'}</td>
+        <td>${new Date(x.created_at).toLocaleString('ru-UA')}</td>
+        <td><button onclick="rmBl('${encodeURIComponent(x.client_phone)}')" class="text-emerald-600 text-xs hover:underline">Разблокировать</button></td>
+      </tr>
+    `).join('')
+  }</tbody></table>`;
+}
+async function rmBl(phone) {
+  await fetch(`${API}/api/blacklist/${phone}`, {method:'DELETE'});
+  loadBl();
+}
+
+// === FAVORITES ===
+async function loadFavs() {
+  const phone = document.getElementById('f-phone').value.trim();
+  if (!phone) return;
+  const r = await fetch(`${API}/api/favorites?phone=${encodeURIComponent(phone)}`).then(r => r.json());
+  const list = document.getElementById('f-list');
+  if (!r.items?.length) { list.innerHTML = '<p class="text-gray-500">Избранного нет</p>'; return; }
+  list.innerHTML = `<table><thead><tr><th>Тип</th><th>Название</th><th>ID</th><th>Когда</th></tr></thead><tbody>${
+    r.items.map(x => `
+      <tr><td>${x.kind}</td><td>${x.target_name||'—'}</td><td><code>${x.target_id}</code></td><td>${new Date(x.created_at).toLocaleString('ru-UA')}</td></tr>
+    `).join('')
+  }</tbody></table>`;
+}
+
+// init
+loadReviews();
+loadPromos();
+loadBl();
+</script>
+</body>
+</html>
