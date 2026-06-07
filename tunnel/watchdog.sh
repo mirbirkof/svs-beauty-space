@@ -25,17 +25,20 @@ start_tunnel() {
     if [ -n "$URL" ]; then
       echo "$URL" > "$URL_FILE"
       log "Tunnel up: $URL"
-      # Авто-апдейт URL у loader-і вітрини
+      # 1) Авто-апдейт URL у API-helper'і вітрини
       LOADER="$HOME/workspace/svs-beauty-space/js/shop-data-live.js"
       if [ -f "$LOADER" ]; then
         sed -i "s#https://[a-z0-9]\+\.lhr\.life#$URL#g" "$LOADER"
         log "Loader URL updated to $URL"
-        # Auto-commit + push
-        (cd "$HOME/workspace/svs-beauty-space" && \
-          git add tunnel/current-url.txt js/shop-data-live.js 2>/dev/null && \
-          git commit -m "[watchdog] tunnel rotation: $URL" --quiet 2>/dev/null && \
-          timeout 20 git push origin main 2>&1 | tail -1) >> "$LOG"
       fi
+      # 2) Регенерація статичного каталогу з БД
+      (cd "$HOME/workspace/svs-beauty-space/backend" && \
+        /usr/bin/node scripts/regen-static-catalog.js 2>&1 | tail -2) >> "$LOG"
+      # 3) Auto-commit + push
+      (cd "$HOME/workspace/svs-beauty-space" && \
+        git add tunnel/current-url.txt js/shop-data-live.js js/shop-data.js 2>/dev/null && \
+        git commit -m "[watchdog] tunnel + catalog refresh: $URL" --quiet 2>/dev/null && \
+        timeout 25 git push origin main 2>&1 | tail -1) >> "$LOG"
       return 0
     fi
   done

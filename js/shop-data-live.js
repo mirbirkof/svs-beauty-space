@@ -1,106 +1,51 @@
-/* SVS Beauty Space — LIVE catalog loader
-   Заміняє статичний shop-data.js, тягне дані з backend API в реальному часі.
-   Fallback: якщо API недоступний — намагається завантажити локальний shop-data.js.
+/* SVS Beauty Space — LIVE API helper (без статичних даних)
+   Дані каталогу беремо з статичного shop-data.js (генерується watchdog'ом з БД).
+   Цей файл лише ХЕЛПЕР для API-викликів: створити замовлення, логін, верифікація.
+   Завантажується async — не блокує рендер вітрини.
 */
-
 (function () {
-  var API_URL_FILE = 'tunnel-url.txt'; // optional: file with current tunnel URL
   var FALLBACK_API = 'https://7f1a8aac2d86d9.lhr.life'; // hardcoded fallback
-  var ENDPOINT = '/api/catalog/legacy/all';
 
-  function loadFromAPI(baseUrl) {
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', baseUrl + ENDPOINT, false); // sync
-      xhr.timeout = 5000;
-      xhr.send(null);
-      if (xhr.status !== 200) return null;
-      var data = JSON.parse(xhr.responseText);
-      if (!data || !data.products) return null;
-      return data;
-    } catch (e) {
-      console.warn('[shop-data-live] API error:', e.message);
-      return null;
-    }
+  function api(path, opts) {
+    opts = opts || {};
+    var url = FALLBACK_API + path;
+    return fetch(url, Object.assign({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }, opts)).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'invalid-json' }; }); });
   }
 
-  function applyData(data) {
-    window.SHOP_BRANDS = data.brands || [];
-    window.SHOP_CATEGORIES = data.categories || [];
-    window.SHOP_CATEGORY_GROUPS = data.category_groups || [];
-    // Normalize: legacy adapter returns volumes with .v / .price / .wholesale / .stock
-    window.SHOP_PRODUCTS = (data.products || []).map(function (p) {
-      return {
-        id: p.id,
-        name: p.name,
-        brand: p.brand,
-        category: p.category,
-        photo: p.photo,
-        desc: p.desc || '',
-        volumes: (p.volumes || []).map(function (v) {
-          return {
-            v: v.v,
-            price: v.price,
-            wholesale: v.wholesale,
-            stock: v.stock || 0,
-            variant_id: v.variant_id || null
-          };
-        })
-      };
-    });
-    window.SHOP_DATA_SOURCE = 'live';
-    window.SHOP_DATA_FETCHED_AT = data.generated_at || new Date().toISOString();
-    console.log('[shop-data-live] loaded', window.SHOP_PRODUCTS.length, 'products from API');
-  }
-
-  function loadFallbackStatic() {
-    // Підвантажуємо синхронно старий shop-data.js
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', 'js/shop-data.js', false);
-      xhr.send(null);
-      if (xhr.status === 200) {
-        // eslint-disable-next-line no-eval
-        eval(xhr.responseText);
-        window.SHOP_DATA_SOURCE = 'static-fallback';
-        console.warn('[shop-data-live] using static fallback');
-        return true;
-      }
-    } catch (e) { console.error('[shop-data-live] fallback failed:', e.message); }
-    return false;
-  }
-
-  // Try live first
-  var data = loadFromAPI(FALLBACK_API);
-  if (data) {
-    applyData(data);
-  } else {
-    loadFallbackStatic();
-  }
-
-  // Expose helper for cart -> order via API
   window.SVS_API = {
     baseUrl: FALLBACK_API,
     createOrder: function (payload) {
-      return fetch(FALLBACK_API + '/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function (r) { return r.json(); });
+      return api('/api/orders', { body: JSON.stringify(payload) });
     },
     requestCode: function (phone) {
-      return fetch(FALLBACK_API + '/api/cabinet/request-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone })
-      }).then(function (r) { return r.json(); });
+      return api('/api/cabinet/request-code', { body: JSON.stringify({ phone: phone }) });
     },
     verifyCode: function (phone, code) {
-      return fetch(FALLBACK_API + '/api/cabinet/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone, code: code })
-      }).then(function (r) { return r.json(); });
+      return api('/api/cabinet/verify', { body: JSON.stringify({ phone: phone, code: code }) });
+    },
+    refreshStock: function () {
+      return fetch(FALLBACK_API + '/api/catalog/legacy/all').then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.products || !window.SHOP_PRODUCTS) return;
+          var byId = {};
+          d.products.forEach(function (p) { byId[p.id] = p; });
+          window.SHOP_PRODUCTS.forEach(function (p) {
+            var fresh = byId[p.id];
+            if (!fresh) return;
+            (p.volumes || []).forEach(function (v, i) {
+              var fv = (fresh.volumes || [])[i];
+              if (fv) { v.price = fv.price; v.stock = fv.stock; }
+            });
+          });
+          window.SHOP_DATA_REFRESHED = new Date().toISOString();
+          console.log('[shop-data-live] stock refreshed from API');
+        }).catch(function (e) { console.warn('[shop-data-live] refresh skip:', e.message); });
     }
   };
+
+  // Авто-освіження залишків після завантаження (не блокуюче)
+  setTimeout(function () { try { window.SVS_API.refreshStock(); } catch (e) {} }, 1500);
 })();
