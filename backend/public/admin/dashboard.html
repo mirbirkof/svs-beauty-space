@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Дашборд</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; }
+  .kpi { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+  .kpi .v { font-size: 28px; font-weight: 700; color: #111; }
+  .kpi .l { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
+  .bar { background: linear-gradient(180deg,#22c55e,#16a34a); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .light { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .light.ready { background: #22c55e; box-shadow: 0 0 8px #22c55e88; }
+  .light.awaiting { background: #f59e0b; }
+  .light.error { background: #ef4444; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+<div class="max-w-7xl mx-auto p-4 md:p-8">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">SVS Beauty World — Дашборд</h1>
+    <div class="flex gap-2 text-sm">
+      <a href="index.html" class="px-3 py-2 bg-white border rounded hover:bg-gray-50">Адмінка</a>
+      <a href="promos.html" class="px-3 py-2 bg-white border rounded hover:bg-gray-50">Промокоди</a>
+      <a href="export.html" class="px-3 py-2 bg-white border rounded hover:bg-gray-50">Експорт CSV</a>
+    </div>
+  </div>
+
+  <div id="token-bar" class="mb-4 bg-white p-3 rounded border flex gap-2 items-center text-sm">
+    <span class="text-gray-600">Admin token:</span>
+    <input id="tok" type="password" class="flex-1 border rounded px-2 py-1" placeholder="вставити x-admin-token">
+    <button onclick="saveTok()" class="px-3 py-1 bg-black text-white rounded">Зберегти і завантажити</button>
+  </div>
+
+  <!-- KPI -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="kpi"><div class="l">Виторг</div><div class="v" id="kpi-rev">—</div><div class="text-xs text-gray-400">грн (paid+)</div></div>
+    <div class="kpi"><div class="l">Завершені</div><div class="v" id="kpi-done">—</div><div class="text-xs text-gray-400">замовлень</div></div>
+    <div class="kpi"><div class="l">Очікують</div><div class="v" id="kpi-pending">—</div><div class="text-xs text-gray-400">new</div></div>
+    <div class="kpi"><div class="l">Клієнтів</div><div class="v" id="kpi-clients">—</div><div class="text-xs text-gray-400">всього</div></div>
+    <div class="kpi"><div class="l">Активних SKU</div><div class="v" id="kpi-products">—</div><div class="text-xs text-gray-400">товарів</div></div>
+  </div>
+
+  <!-- Світлофор готовності -->
+  <div class="bg-white border rounded-xl p-4 mb-6">
+    <h2 class="font-semibold mb-3">Світлофор готовності інтеграцій</h2>
+    <div id="readiness" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">завантаження…</div>
+  </div>
+
+  <!-- Графік виторгу -->
+  <div class="bg-white border rounded-xl p-4 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold">Виторг по днях</h2>
+      <select id="days-sel" onchange="loadRevenue()" class="border rounded px-2 py-1 text-sm">
+        <option value="7">7 днів</option>
+        <option value="14" selected>14 днів</option>
+        <option value="30">30 днів</option>
+        <option value="90">90 днів</option>
+      </select>
+    </div>
+    <div id="chart" class="flex items-end gap-2 h-48"></div>
+    <div id="chart-labels" class="flex gap-2 text-xs text-gray-500 mt-2 overflow-x-auto"></div>
+  </div>
+
+  <!-- Топ товари + Низькі залишки -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="bg-white border rounded-xl p-4">
+      <h2 class="font-semibold mb-3">Топ-20 товарів по виторгу</h2>
+      <table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 border-b"><th class="py-1">Товар</th><th class="text-right">Шт</th><th class="text-right">Грн</th></tr></thead>
+        <tbody id="top-tbody"><tr><td colspan="3" class="text-gray-400 py-2">завантаження…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="bg-white border rounded-xl p-4">
+      <h2 class="font-semibold mb-3">Низькі залишки (≤ 5)</h2>
+      <table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 border-b"><th class="py-1">Товар</th><th>Об'єм</th><th class="text-right">Залишок</th><th class="text-right">Резерв</th></tr></thead>
+        <tbody id="low-tbody"><tr><td colspan="4" class="text-gray-400 py-2">завантаження…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p id="err" class="mt-4 text-red-600 text-sm"></p>
+</div>
+
+<script>
+const API = location.origin;
+let TOK = localStorage.getItem('admin_token') || '';
+document.getElementById('tok').value = TOK;
+
+function saveTok() {
+  TOK = document.getElementById('tok').value.trim();
+  localStorage.setItem('admin_token', TOK);
+  loadAll();
+}
+
+function H() { return { 'x-admin-token': TOK }; }
+function showErr(e) { document.getElementById('err').textContent = e || ''; }
+
+async function loadKpi() {
+  const r = await fetch(API + '/api/admin/stats', { headers: H() });
+  if (!r.ok) { showErr('KPI: ' + r.status); return; }
+  const d = (await r.json()).stats || {};
+  document.getElementById('kpi-rev').textContent = Math.round(d.revenue || 0).toLocaleString('uk-UA');
+  document.getElementById('kpi-done').textContent = d.orders_completed || 0;
+  document.getElementById('kpi-pending').textContent = d.orders_pending || 0;
+  document.getElementById('kpi-clients').textContent = d.clients || 0;
+  document.getElementById('kpi-products').textContent = d.products_active || 0;
+}
+
+async function loadReadiness() {
+  const r = await fetch(API + '/api/shop/readiness');
+  const d = await r.json();
+  const labels = {
+    database: 'Postgres БД', admin_token: 'Admin токен', mono_acquiring: 'Mono Pay',
+    nova_poshta: 'Нова Пошта', sms_provider: 'SMS провайдер', telegram_bot: 'Telegram бот',
+    beautypro_crm: 'BeautyPro CRM'
+  };
+  const c = d.components || {};
+  const html = Object.entries(c).map(([k, v]) =>
+    `<div class="flex items-center"><span class="light ${v}"></span>${labels[k] || k}: <b class="ml-1">${v}</b></div>`
+  ).join('');
+  document.getElementById('readiness').innerHTML = html;
+}
+
+async function loadRevenue() {
+  const days = document.getElementById('days-sel').value;
+  const r = await fetch(API + '/api/admin/stats/revenue-by-day?days=' + days, { headers: H() });
+  if (!r.ok) { showErr('Revenue: ' + r.status); return; }
+  const items = (await r.json()).items || [];
+  const max = Math.max(1, ...items.map(x => x.revenue));
+  const chart = document.getElementById('chart'), lab = document.getElementById('chart-labels');
+  chart.innerHTML = ''; lab.innerHTML = '';
+  if (!items.length) { chart.innerHTML = '<div class="text-gray-400 text-sm">немає даних за період</div>'; return; }
+  items.forEach(x => {
+    const h = Math.round((x.revenue / max) * 180);
+    const bar = document.createElement('div');
+    bar.className = 'bar flex-1';
+    bar.style.height = h + 'px';
+    bar.title = `${x.day}: ${Math.round(x.revenue)} грн / ${x.orders} замовл.`;
+    chart.appendChild(bar);
+    const l = document.createElement('div');
+    l.className = 'flex-1 text-center';
+    l.textContent = x.day.slice(5);
+    lab.appendChild(l);
+  });
+}
+
+async function loadTop() {
+  const r = await fetch(API + '/api/admin/stats/top-products', { headers: H() });
+  if (!r.ok) { showErr('Top: ' + r.status); return; }
+  const items = (await r.json()).items || [];
+  document.getElementById('top-tbody').innerHTML = items.length
+    ? items.map(x => `<tr class="border-b"><td class="py-1">${x.product_name}</td><td class="text-right">${x.qty}</td><td class="text-right">${Math.round(x.revenue).toLocaleString('uk-UA')}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="text-gray-400 py-2">немає продажів</td></tr>';
+}
+
+async function loadLow() {
+  const r = await fetch(API + '/api/admin/stats/low-stock?threshold=5', { headers: H() });
+  if (!r.ok) { showErr('Low: ' + r.status); return; }
+  const items = (await r.json()).items || [];
+  document.getElementById('low-tbody').innerHTML = items.length
+    ? items.map(x => `<tr class="border-b"><td class="py-1">${x.product_name}</td><td>${x.volume || '—'}</td><td class="text-right ${x.stock_qty<=2?'text-red-600 font-bold':''}">${x.stock_qty ?? 0}</td><td class="text-right text-gray-500">${x.reserved_qty ?? 0}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="text-gray-400 py-2">залишки в нормі</td></tr>';
+}
+
+async function loadAll() {
+  showErr('');
+  if (!TOK) { showErr('Введи admin token зверху'); return; }
+  await Promise.all([loadKpi(), loadReadiness(), loadRevenue(), loadTop(), loadLow()]);
+}
+
+loadAll();
+setInterval(loadAll, 30000); // auto-refresh кожні 30с
+</script>
+</body>
+</html>

@@ -404,6 +404,25 @@ router.get('/stats/top-products', async (req, res) => {
   } catch (e) { console.error('[admin:top]', e); res.status(500).json({ error: 'internal' }); }
 });
 
+router.get('/stats/revenue-by-day', async (req, res) => {
+  try {
+    const pool = getPool();
+    const days = Math.min(parseInt(req.query.days || '14', 10), 90);
+    const r = await pool.query(
+      `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+              COUNT(*)::int AS orders,
+              COALESCE(SUM(total),0)::float AS revenue
+       FROM orders
+       WHERE created_at >= NOW() - ($1 || ' days')::interval
+         AND status IN ('paid','packing','shipped','delivered')
+       GROUP BY 1
+       ORDER BY 1 ASC`,
+      [String(days)]
+    );
+    res.json({ ok: true, days, items: r.rows });
+  } catch (e) { console.error('[admin:rev-day]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 router.get('/stats/low-stock', async (req, res) => {
   try {
     const pool = getPool();

@@ -5,7 +5,7 @@
 
 (function () {
   var API_URL_FILE = 'tunnel-url.txt'; // optional: file with current tunnel URL
-  var FALLBACK_API = 'https://df8c25eb133af2.lhr.life'; // hardcoded fallback
+  var FALLBACK_API = 'https://07d370ba75b29f.lhr.life'; // hardcoded fallback
   var ENDPOINT = '/api/catalog/legacy/all';
 
   function loadFromAPI(baseUrl) {
