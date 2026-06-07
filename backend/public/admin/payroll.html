@@ -76,8 +76,8 @@
 <script>
 const API = (function() {
   // авто-определение туннеля dikidi-server
-  try { return localStorage.getItem('DIKIDI_API') || 'https://e710158f8a5b88.lhr.life'; }
-  catch(e) { return 'https://e710158f8a5b88.lhr.life'; }
+  try { return localStorage.getItem('DIKIDI_API') || 'https://svs-shop-api.onrender.com'; }
+  catch(e) { return 'https://svs-shop-api.onrender.com'; }
 })();
 
 fetch(API + '/health').then(r => r.json()).then(d => {

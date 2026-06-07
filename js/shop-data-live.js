@@ -4,7 +4,7 @@
    Завантажується async — не блокує рендер вітрини.
 */
 (function () {
-  var FALLBACK_API = 'https://c9de8df9a74f53.lhr.life'; // hardcoded fallback
+  var FALLBACK_API = 'https://svs-shop-api.onrender.com'; // permanent Render URL
 
   function api(path, opts) {
     opts = opts || {};

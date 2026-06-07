@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const API = window.SVS_BOOKING_API || 'https://3fa4d9f6a16609.lhr.life';
+  const API = window.SVS_BOOKING_API || 'https://svs-booking-api.onrender.com';
   const FALLBACK_TUNNEL_FILE = '/tunnel-url.txt'; // якщо туннель оновився
 
   const html = `
