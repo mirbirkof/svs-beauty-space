@@ -19,6 +19,7 @@ const legacyRoutes = require('./routes/catalog-legacy');
 const notifyRoutes = require('./routes/telegram-notify');
 const promoRoutes = require('./routes/promos');
 const exportRoutes = require('./routes/export');
+const waitlistRoutes = require('./routes/waitlist');
 
 const app = express();
 const PORT = process.env.SHOP_API_PORT || 3011;
@@ -90,6 +91,7 @@ app.use('/api/catalog/legacy', legacyRoutes);
 app.use('/api/notify', notifyRoutes);
 app.use('/api/promo', promoRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api', waitlistRoutes);
 
 // Mono Pay placeholder — активируется когда MONO_TOKEN задан
 app.post('/api/pay/mono/invoice', (req, res) => {

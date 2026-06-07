@@ -32,7 +32,13 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'phone-required' });
       }
-      const phone = String(contact.phone).replace(/\D/g, '');
+      // нормализация телефона: единый формат +380XXXXXXXXX (как в waitlist/booking)
+      const digits = String(contact.phone).replace(/\D/g, '');
+      let phone;
+      if (digits.length === 12 && digits.startsWith('380')) phone = '+' + digits;
+      else if (digits.length === 10 && digits.startsWith('0')) phone = '+38' + digits;
+      else if (digits.length === 9) phone = '+380' + digits;
+      else phone = '+' + digits;
       const upd = await client.query(
         `INSERT INTO clients (phone, name, source)
          VALUES ($1, $2, 'shop-guest')

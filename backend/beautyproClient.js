@@ -107,15 +107,14 @@ async function listServices() {
 
 async function listEmployees() {
   const token = await getToken();
-  return request('GET', '/employees', { token, query: { fields: 'name,position,services', archive: 'false', location: LOCATION } });
+  return request('GET', '/employees', { token, query: { fields: 'name,services', archive: 'false', location: LOCATION } });
 }
 
 async function freeTime({ duration, professional, from, to, location }) {
   const token = await getToken();
-  return request('GET', '/employees/free_time', {
-    token,
-    query: { duration, professionals: professional, from, to, location: location || LOCATION, step: 15 },
-  });
+  const query = { duration, from, to, location: location || LOCATION, step: '15m' };
+  if (professional) query.professionals = professional;
+  return request('GET', '/employees/free_time', { token, query });
 }
 
 module.exports = {
