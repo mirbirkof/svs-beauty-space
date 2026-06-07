@@ -1,99 +1,114 @@
-/* SVS Booking Widget — модалка */
-.svs-book-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+/* SVS Booking Widget v2 — Conversational UI */
+.svs-book-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-end; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 .svs-book-modal[hidden] { display: none; }
 .svs-book-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
-.svs-book-dialog { position: relative; background: #fff; color: #1a1a1a; width: min(560px, 94vw); max-height: 92vh; overflow: auto; border-radius: 18px; padding: 30px 28px; box-shadow: 0 25px 70px rgba(0,0,0,.35); animation: svsbk-pop .25s ease; border-top: 3px solid #c9a96e; }
-@keyframes svsbk-pop { from { transform: scale(.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.svs-book-close { position: absolute; top: 10px; right: 14px; background: transparent; border: 0; font-size: 28px; line-height: 1; cursor: pointer; color: #888; }
-.svs-book-close:hover { color: #000; }
-.svs-book-dialog h3 { margin: 0 0 8px; font-size: 22px; }
-.svs-book-sub { color: #666; font-size: 14px; margin: 0 0 18px; }
-.svs-book-dialog label { display: block; margin-bottom: 14px; font-size: 13px; color: #444; }
-.svs-book-dialog input, .svs-book-dialog textarea { width: 100%; padding: 11px 13px; margin-top: 5px; border: 1px solid #d8d8d8; border-radius: 10px; font: inherit; font-size: 15px; background: #fafafa; box-sizing: border-box; }
-.svs-book-dialog input:focus, .svs-book-dialog textarea:focus { outline: none; border-color: #333; background: #fff; }
-.svs-book-submit { width: 100%; padding: 13px; background: #1a1a1a; color: #fff; border: 0; border-radius: 10px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; margin-top: 4px; }
-.svs-book-submit:hover { background: #000; }
-.svs-book-hint { font-size: 12px; color: #888; margin: 12px 0 0; line-height: 1.5; }
-.svs-book-spinner { width: 42px; height: 42px; border: 3px solid #eee; border-top-color: #333; border-radius: 50%; margin: 22px auto; animation: svsbk-spin 1s linear infinite; }
-@keyframes svsbk-spin { to { transform: rotate(360deg); } }
-.svs-book-tg-link { display: inline-block; margin-top: 14px; color: #2481cc; text-decoration: none; font-size: 14px; }
-.svs-book-tg-link:hover { text-decoration: underline; }
-
-/* === 4-step widget extensions === */
-.svs-book-steps { display:flex; gap:6px; margin:0 0 16px; font-size:12px; color:#999; flex-wrap:wrap; }
-.svs-book-steps span { padding:4px 8px; border-radius:4px; background:#f5f5f5; }
-.svs-book-steps span.active { background:#1a1a1a; color:#fff; }
-.svs-book-steps span.done { background:#e8f5e9; color:#2e7d32; }
-.svs-book-back { background:none; border:0; color:#666; font-size:13px; cursor:pointer; padding:4px 0; margin-bottom:8px; }
-.svs-book-back:hover { color:#000; }
-.svs-book-search input { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:12px; }
-.svs-book-list { display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto; }
-.svs-book-card { text-align:left; padding:12px 14px; background:#fafafa; border:1px solid #eee; border-radius:8px; cursor:pointer; transition:.15s; }
-.svs-book-card:hover { background:#f0f0f0; border-color:#ccc; }
-.svs-book-card-title { font-weight:500; }
-.svs-book-card-meta { font-size:12px; color:#888; margin-top:2px; }
-.svs-book-card-any { background:linear-gradient(135deg,#fff7e6,#ffe9b8); border-color:#e6b85c; margin-bottom:8px; }
-.svs-book-card-any:hover { background:linear-gradient(135deg,#ffefcf,#ffdd99); border-color:#d49a3d; }
-.svs-book-card-any .svs-book-card-title { color:#7a4d00; font-weight:600; }
-.svs-book-card-any .svs-book-card-meta { color:#9a6a1f; }
-.svs-book-cat { border:1px solid #eee; border-radius:8px; margin-bottom:6px; background:#fff; }
-.svs-book-cat[open] { border-color:#ccc; }
-.svs-book-cat-title { padding:10px 14px; cursor:pointer; font-weight:500; user-select:none; display:flex; justify-content:space-between; align-items:center; }
-.svs-book-cat-title:hover { background:#f7f7f7; }
-.svs-book-cat-count { background:#eee; color:#666; font-size:11px; padding:2px 8px; border-radius:10px; }
-.svs-book-cat-list { display:flex; flex-direction:column; gap:6px; padding:6px 8px 10px; }
-.svs-book-slots { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; max-height:320px; overflow-y:auto; }
-.svs-book-slot { padding:8px 14px; background:#fafafa; border:1px solid #ddd; border-radius:6px; cursor:pointer; font-size:14px; }
-.svs-book-slot:hover { background:#f0f0f0; }
-.svs-book-slot.chosen { background:#1a1a1a; color:#fff; border-color:#1a1a1a; }
-.svs-book-loading, .svs-book-empty, .svs-book-err { padding:20px; text-align:center; color:#888; font-size:14px; }
-.svs-book-err { color:#c62828; }
-.svs-book-name-block { margin-top:16px; padding-top:16px; border-top:1px solid #eee; }
-.svs-book-submit:disabled { opacity:.4; cursor:not-allowed; }
-.svs-book-calendar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
-.svs-book-day { background: #fff; border: 1.5px solid #e2e2e2; border-radius: 10px; padding: 10px 12px; text-align: left; cursor: pointer; transition: all .15s; font: inherit; color: inherit; }
-.svs-book-day.free:hover { border-color: #1a1a1a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
-.svs-book-day.busy { background: #f5f5f5; color: #999; cursor: not-allowed; opacity: .6; }
-.svs-book-day-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-.svs-book-day-top b { font-size: 16px; }
-.svs-book-day-top span { font-size: 12px; color: #888; text-transform: uppercase; }
-.svs-book-day-bot { font-size: 13px; }
-.svs-book-hint { font-size: 12px; color: #888; margin: 6px 0 0; }
-
-/* Fallback when no schedule is set in CRM */
-.svs-book-fallback { background:#fff8e1; border:1.5px solid #ffd54f; border-radius:12px; padding:24px 18px; text-align:center; margin:12px 0; }
-.svs-book-fallback-icon { font-size:36px; margin-bottom:8px; }
-.svs-book-fallback-title { font-weight:600; font-size:15px; color:#5d4037; margin-bottom:8px; line-height:1.3; }
-.svs-book-fallback-text { font-size:13px; color:#6d4c41; margin-bottom:16px; line-height:1.4; }
-.svs-book-fallback-btn { display:block; padding:12px 16px; margin:8px 0; background:#1a1a1a; color:#fff; text-decoration:none; border-radius:8px; font-weight:500; font-size:14px; transition: background .15s; }
-.svs-book-fallback-btn:hover { background:#333; }
-.svs-book-fallback-btn.alt { background:#2196f3; }
-.svs-book-fallback-btn.alt:hover { background:#1976d2; }
-
-/* Спринт 2: ссылка управления записью + экран manage */
-.svs-book-manage { margin-top:16px; padding:12px; background:#f5f7fa; border-radius:8px; border:1px dashed #c8d4e0; }
-.svs-book-manage-link { display:inline-block; color:#1a5fb4; font-weight:600; text-decoration:none; padding:8px 12px; background:#fff; border-radius:6px; border:1px solid #c8d4e0; }
-.svs-book-manage-link:hover { background:#eef4fb; }
-.svs-book-manage-hint { font-size:12px; color:#6b7785; margin-top:8px; }
-.svs-book-info-row { padding:8px 0; border-bottom:1px solid #eee; display:flex; justify-content:space-between; gap:8px; }
-.svs-book-info-row span { color:#888; }
-.svs-book-manage-actions { display:flex; gap:8px; margin-top:16px; }
-.svs-book-manage-actions button { flex:1; }
-.svs-book-submit.alt { background:#f5f7fa; color:#1a1a1a; border:1px solid #ccc; }
-.svs-book-submit.alt:hover { background:#eef0f3; }
-
-/* iOS Safari: вимикаємо :hover на touch-only пристроях,
-   щоб не вимагало подвійного тапу для click. */
-@media (hover: none), (pointer: coarse) {
-  .svs-book-day.free:hover { border-color: #e2e2e2; transform: none; box-shadow: none; }
-  .svs-book-card:hover { background: #fafafa; border-color: #eee; }
-  .svs-book-card-any:hover { background: linear-gradient(135deg,#fff7e6,#ffe9b8); border-color: #e6b85c; }
-  .svs-book-slot:hover { background: #fafafa; }
-  .svs-book-cat-title:hover { background: transparent; }
-  .svs-book-submit:hover { background: #1a1a1a; }
-  .svs-book-fallback-btn:hover { background: #1a1a1a; }
-  .svs-book-fallback-btn.alt:hover { background: #2196f3; }
-  .svs-book-manage-link:hover { background: #fff; }
+.svs-book-dialog { position: relative; background: #fff; color: #1a1a1a; width: min(480px, 100vw); height: min(85vh, 700px); display: flex; flex-direction: column; border-radius: 20px 20px 0 0; box-shadow: 0 -10px 60px rgba(0,0,0,.3); animation: svsbk-slide .3s cubic-bezier(.16,1,.3,1); overflow: hidden; }
+@media (min-width: 600px) {
+  .svs-book-dialog { border-radius: 20px; height: min(80vh, 680px); align-self: center; margin-bottom: auto; margin-top: auto; }
+  .svs-book-modal { align-items: center; }
 }
-.svs-book-day, .svs-book-card, .svs-book-slot, .svs-book-submit, .svs-book-fallback-btn, .svs-book-cat-title { touch-action: manipulation; -webkit-tap-highlight-color: rgba(0,0,0,.05); }
+@keyframes svsbk-slide { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.svs-book-close { position: absolute; top: 12px; right: 16px; background: rgba(0,0,0,.05); border: 0; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; line-height: 32px; cursor: pointer; color: #666; z-index: 2; transition: .15s; }
+.svs-book-close:hover { background: rgba(0,0,0,.1); color: #000; }
 
+/* Progress dots */
+.svs-book-progress { display: flex; justify-content: center; gap: 6px; padding: 16px 16px 8px; flex-shrink: 0; }
+.svs-dot { width: 8px; height: 8px; border-radius: 50%; background: #e0e0e0; transition: all .3s; }
+.svs-dot.active { width: 24px; border-radius: 4px; background: #1a1a1a; }
+.svs-dot.done { background: #4caf50; }
+
+/* Chat area */
+.svs-book-chat { flex: 1; overflow-y: auto; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+
+/* Messages */
+.svs-msg { max-width: 88%; padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5; animation: svsbk-msg .25s ease; word-wrap: break-word; }
+.svs-msg a { color: #2196f3; text-decoration: none; }
+.svs-msg a:hover { text-decoration: underline; }
+.svs-msg-bot { background: #f0f2f5; border-bottom-left-radius: 4px; align-self: flex-start; }
+.svs-msg-user { background: #1a1a1a; color: #fff; border-bottom-right-radius: 4px; align-self: flex-end; font-weight: 500; }
+.svs-msg-enter { opacity: 0; transform: translateY(10px); transition: opacity .25s, transform .25s; }
+.svs-msg-enter:not(.svs-msg-enter) { opacity: 1; transform: none; }
+@keyframes svsbk-msg { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.svs-meta { font-size: 13px; color: #888; }
+
+/* Typing indicator */
+.svs-msg-loading { padding: 14px 20px; }
+.svs-typing { display: flex; gap: 4px; align-items: center; }
+.svs-typing i { width: 8px; height: 8px; background: #999; border-radius: 50%; animation: svsbk-dot .6s infinite alternate; }
+.svs-typing i:nth-child(2) { animation-delay: .2s; }
+.svs-typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes svsbk-dot { from { opacity: .3; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
+
+/* Button groups */
+.svs-btn-group { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 100%; animation: svsbk-msg .25s ease; }
+.svs-btn-group.svs-answered { opacity: .45; pointer-events: none; transform: scale(.97); transition: .3s; }
+.svs-cats { gap: 8px; }
+.svs-services-list, .svs-dates-list, .svs-masters-list { flex-direction: column; max-height: 50vh; overflow-y: auto; padding-right: 4px; }
+.svs-times-grid { gap: 6px; }
+
+/* Chat buttons */
+.svs-chat-btn { display: flex; flex-direction: column; align-items: flex-start; padding: 12px 16px; background: #fff; border: 1.5px solid #e2e2e2; border-radius: 14px; cursor: pointer; font: inherit; font-size: 14px; text-align: left; transition: all .15s; color: #1a1a1a; min-width: 0; }
+.svs-chat-btn:hover { border-color: #1a1a1a; background: #fafafa; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.06); }
+.svs-chat-btn:active { transform: scale(.97); }
+.svs-btn-icon { font-size: 20px; margin-bottom: 2px; }
+.svs-btn-sub { font-size: 12px; color: #888; margin-top: 2px; }
+.svs-btn-outline { background: transparent; border-style: dashed; }
+.svs-btn-outline:hover { background: #f5f5f5; }
+.svs-btn-service { width: 100%; }
+.svs-btn-time { padding: 10px 16px; font-size: 15px; font-weight: 500; min-width: 70px; text-align: center; align-items: center; }
+.svs-btn-any { background: linear-gradient(135deg,#fff7e6,#ffe9b8); border-color: #e6b85c; width: 100%; }
+.svs-btn-any:hover { background: linear-gradient(135deg,#ffefcf,#ffdd99); border-color: #d49a3d; }
+.svs-btn-confirm { background: #1a1a1a !important; color: #fff !important; border: none !important; padding: 14px !important; border-radius: 12px !important; font-size: 16px !important; font-weight: 600 !important; width: 100%; cursor: pointer; margin-top: 4px; }
+.svs-btn-confirm:hover { background: #333 !important; }
+.svs-btn-confirm:disabled { opacity: .4; cursor: not-allowed; }
+.svs-btn-tg { background: #2196f3; color: #fff; border-color: #2196f3; width: 100%; text-align: center; align-items: center; font-weight: 600; }
+.svs-btn-tg:hover { background: #1976d2; border-color: #1976d2; }
+.svs-btn-danger { background: #c1361d; color: #fff; border-color: #c1361d; }
+.svs-btn-danger:hover { background: #a02d17; border-color: #a02d17; }
+
+/* Input groups */
+.svs-input-group { width: 100%; animation: svsbk-msg .25s ease; }
+.svs-confirm-form { display: flex; flex-direction: column; gap: 10px; }
+.svs-confirm-form input { width: 100%; padding: 13px 16px; border: 1.5px solid #e2e2e2; border-radius: 12px; font: inherit; font-size: 15px; background: #fafafa; box-sizing: border-box; transition: .15s; }
+.svs-confirm-form input:focus { outline: none; border-color: #1a1a1a; background: #fff; }
+.svs-hint { font-size: 12px; color: #999; text-align: center; margin: 4px 0 0; }
+
+/* Search */
+.svs-search-wrap { display: flex; flex-direction: column; gap: 8px; }
+.svs-search-wrap input { width: 100%; padding: 13px 16px; border: 1.5px solid #e2e2e2; border-radius: 12px; font: inherit; font-size: 15px; background: #fafafa; box-sizing: border-box; }
+.svs-search-wrap input:focus { outline: none; border-color: #1a1a1a; background: #fff; }
+.svs-search-results { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.svs-search-empty { padding: 12px; color: #999; text-align: center; font-size: 14px; }
+
+/* Summary card */
+.svs-summary { background: #f8f9fb; border: 1px solid #e8ebf0; border-radius: 12px; padding: 14px 16px; margin: 8px 0 4px; }
+.svs-summary-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+.svs-summary-row:last-child { border-bottom: none; }
+.svs-summary-row span { color: #888; }
+
+/* Success */
+.svs-success { text-align: center; padding: 8px 0; }
+.svs-success-icon { font-size: 48px; color: #4caf50; margin-bottom: 8px; }
+.svs-success-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.svs-success-detail { font-size: 14px; color: #555; line-height: 1.5; }
+.svs-manage-link { display: inline-block; margin-top: 12px; padding: 8px 16px; background: #f5f7fa; border: 1px solid #dce3eb; border-radius: 8px; color: #1a5fb4; text-decoration: none; font-size: 13px; font-weight: 500; }
+.svs-manage-link:hover { background: #eef3fa; }
+
+/* Shake animation for validation */
+@keyframes svsbk-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.svs-shake { animation: svsbk-shake .3s; border-color: #c62828 !important; }
+
+/* Touch optimization */
+@media (hover: none), (pointer: coarse) {
+  .svs-chat-btn:hover { border-color: #e2e2e2; background: #fff; transform: none; box-shadow: none; }
+  .svs-btn-any:hover { background: linear-gradient(135deg,#fff7e6,#ffe9b8); border-color: #e6b85c; }
+  .svs-btn-confirm:hover { background: #1a1a1a !important; }
+  .svs-btn-tg:hover { background: #2196f3; }
+}
+.svs-chat-btn, .svs-btn-confirm, .svs-book-close { touch-action: manipulation; -webkit-tap-highlight-color: rgba(0,0,0,.05); }
+
+/* Scrollbar */
+.svs-book-chat::-webkit-scrollbar { width: 4px; }
+.svs-book-chat::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+.svs-services-list::-webkit-scrollbar, .svs-dates-list::-webkit-scrollbar, .svs-search-results::-webkit-scrollbar { width: 3px; }
+.svs-services-list::-webkit-scrollbar-thumb, .svs-dates-list::-webkit-scrollbar-thumb, .svs-search-results::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }

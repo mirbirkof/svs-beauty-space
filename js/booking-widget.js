@@ -1,12 +1,11 @@
 /* ═══════════════════════════════════════════════════════
-   SVS Booking Widget — 4 кроки: послуга → майстер → дата → час
-   Дані з BeautyPro CRM. Підтвердження через Telegram-бот.
+   SVS Booking Widget v2 — Conversational UI
+   Чат-стиль: один крок за раз, кнопки, анімації
    ═══════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
   const API = window.SVS_BOOKING_API || 'https://svs-booking-api.onrender.com';
-  const FALLBACK_TUNNEL_FILE = '/tunnel-url.txt'; // якщо туннель оновився
 
   const html = `
     <div id="svs-book-modal" class="svs-book-modal" hidden>
@@ -14,91 +13,18 @@
       <div class="svs-book-dialog" role="dialog" aria-modal="true">
         <button class="svs-book-close" data-close aria-label="Закрити">×</button>
 
-        <!-- step indicator -->
-        <div class="svs-book-steps">
-          <span data-pin="service" class="active">1. Послуга</span>
-          <span data-pin="date">2. Дата</span>
-          <span data-pin="time">3. Час</span>
-          <span data-pin="master">4. Майстер</span>
+        <!-- Progress dots -->
+        <div class="svs-book-progress">
+          <span class="svs-dot active"></span>
+          <span class="svs-dot"></span>
+          <span class="svs-dot"></span>
+          <span class="svs-dot"></span>
+          <span class="svs-dot"></span>
         </div>
 
-        <!-- Step 1: service -->
-        <div class="svs-book-step" data-step="service">
-          <h3>Оберіть послугу</h3>
-          <div class="svs-book-search">
-            <input type="text" id="svs-search" placeholder="Пошук послуги…">
-          </div>
-          <div id="svs-services" class="svs-book-list">
-            <div class="svs-book-loading">Завантаження…</div>
-          </div>
-        </div>
-
-        <!-- Step 2: master -->
-        <div class="svs-book-step" data-step="master" hidden>
-          <button class="svs-book-back" data-goto="service">← Послуга</button>
-          <h3>Оберіть майстра</h3>
-          <p class="svs-book-sub" id="svs-svc-summary"></p>
-          <div id="svs-masters" class="svs-book-list">
-            <div class="svs-book-loading">Завантаження…</div>
-          </div>
-        </div>
-
-        <!-- Step 3: date (calendar grid with availability) -->
-        <div class="svs-book-step" data-step="date" hidden>
-          <button class="svs-book-back" data-goto="master">← Майстер</button>
-          <h3>Оберіть дату</h3>
-          <p class="svs-book-sub" id="svs-mst-summary"></p>
-          <div id="svs-calendar" class="svs-book-calendar">
-            <div class="svs-book-loading">Шукаю вільні дні…</div>
-          </div>
-          <p class="svs-book-hint">Сірі дні — повністю зайняті</p>
-        </div>
-
-        <!-- Step 4: time -->
-        <div class="svs-book-step" data-step="time" hidden>
-          <button class="svs-book-back" data-goto="date">← Дата</button>
-          <h3>Вільний час</h3>
-          <p class="svs-book-sub" id="svs-date-summary"></p>
-          <div id="svs-slots" class="svs-book-slots">
-            <div class="svs-book-loading">Завантаження…</div>
-          </div>
-          <div class="svs-book-name-block">
-            <label>Ваше імʼя
-              <input type="text" id="svs-name" placeholder="Як до вас звертатись?">
-            </label>
-            <label>Телефон
-              <input type="tel" id="svs-phone" placeholder="+380XXXXXXXXX" autocomplete="tel">
-            </label>
-            <button class="svs-book-submit" data-action="confirm" disabled>Записатись</button>
-            <p class="svs-book-hint">Натискаючи кнопку, ви погоджуєтесь на запис у CRM салону</p>
-          </div>
-        </div>
-
-        <!-- waiting -->
-        <div class="svs-book-step" data-step="wait" hidden>
-          <h3>Очікуємо підтвердження…</h3>
-          <div class="svs-book-spinner"></div>
-          <p>У боті натисніть <b>«📱 Поділитись номером»</b>. Сторінка оновиться автоматично.</p>
-          <a class="svs-book-tg-link" id="svs-link" target="_blank" rel="noopener">Відкрити бота повторно</a>
-        </div>
-        <div class="svs-book-step" data-step="tgconfirm" hidden>
-          <button class="svs-book-back" data-goto="time">← Час</button>
-          <h3>Майже все ✨</h3>
-          <p class="svs-book-sub" id="svs-tg-summary"></p>
-          <p>Натисніть кнопку нижче — відкриється Telegram-бот <b>@Svs_beautybot</b>. Якщо ви вже ділились номером — запис буде створено автоматично. Якщо ні — бот попросить поділитись номером, це займе 5 секунд.</p>
-          <button class="svs-book-submit" data-action="toTg">📲 Підтвердити в Telegram</button>
-          <p class="svs-book-hint">Бот працює як друга страховка: ви точно отримаєте нагадування і зможете перенести запис.</p>
-        </div>
-        <div class="svs-book-step" data-step="done" hidden>
-          <h3>✓ Запис підтверджено</h3>
-          <p id="svs-done-summary"></p>
-          <p>Чекаємо вас у салоні!</p>
-          <button class="svs-book-submit" data-close>Закрити</button>
-        </div>
-        <div class="svs-book-step" data-step="error" hidden>
-          <h3>Не вдалось зберегти</h3>
-          <p id="svs-err">Спробуйте ще раз або зателефонуйте: <a href="tel:+380991283375">+380 99 128 33 75</a></p>
-          <button class="svs-book-submit" data-action="reset">Спробувати знову</button>
+        <!-- Chat area -->
+        <div class="svs-book-chat" id="svs-chat">
+          <!-- Messages will be appended here -->
         </div>
       </div>
     </div>`;
@@ -112,34 +38,99 @@
     date: null,
     slot: null,
     name: '',
+    _idemKey: null,
+    _rawSlots: [],
+    _slotAvailableMasters: [],
+    step: 0,
   };
 
   const $ = (s, r) => (r || root).querySelector(s);
   const $$ = (s, r) => Array.from((r || root).querySelectorAll(s));
 
-  function show(step) {
-    $$('.svs-book-step').forEach(el => el.hidden = el.dataset.step !== step);
-    $$('.svs-book-steps span').forEach(s => {
-      const map = { service: 0, date: 1, time: 2, master: 3 };
-      const cur = map[step];
-      const my = map[s.dataset.pin];
-      s.classList.toggle('active', my === cur);
-      s.classList.toggle('done', my != null && cur != null && my < cur);
+  // ── Progress dots ──────────────────────────────────────
+  function updateProgress(step) {
+    state.step = step;
+    $$('.svs-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === step);
+      d.classList.toggle('done', i < step);
     });
   }
 
+  // ── Chat message helpers ───────────────────────────────
+  function chatEl() { return $('#svs-chat'); }
+
+  function addMessage(text, type = 'bot') {
+    const chat = chatEl();
+    const msg = document.createElement('div');
+    msg.className = `svs-msg svs-msg-${type} svs-msg-enter`;
+    msg.innerHTML = text;
+    chat.appendChild(msg);
+    chat.scrollTop = chat.scrollHeight;
+    requestAnimationFrame(() => msg.classList.remove('svs-msg-enter'));
+    return msg;
+  }
+
+  function addButtons(buttons, className = '') {
+    const chat = chatEl();
+    const wrap = document.createElement('div');
+    wrap.className = `svs-btn-group svs-msg-enter ${className}`;
+    wrap.innerHTML = buttons.map(b =>
+      `<button class="svs-chat-btn ${b.cls || ''}" ${b.data}>${b.icon ? '<span class="svs-btn-icon">' + b.icon + '</span>' : ''}${b.label}${b.sub ? '<span class="svs-btn-sub">' + b.sub + '</span>' : ''}</button>`
+    ).join('');
+    chat.appendChild(wrap);
+    chat.scrollTop = chat.scrollHeight;
+    requestAnimationFrame(() => wrap.classList.remove('svs-msg-enter'));
+    return wrap;
+  }
+
+  function addInput(fields) {
+    const chat = chatEl();
+    const wrap = document.createElement('div');
+    wrap.className = 'svs-input-group svs-msg-enter';
+    wrap.innerHTML = fields;
+    chat.appendChild(wrap);
+    chat.scrollTop = chat.scrollHeight;
+    requestAnimationFrame(() => wrap.classList.remove('svs-msg-enter'));
+    return wrap;
+  }
+
+  function clearChat() {
+    const chat = chatEl();
+    if (chat) chat.innerHTML = '';
+  }
+
+  function addUserChoice(text) {
+    addMessage(text, 'user');
+  }
+
+  function addLoading() {
+    const chat = chatEl();
+    const msg = document.createElement('div');
+    msg.className = 'svs-msg svs-msg-bot svs-msg-loading';
+    msg.innerHTML = '<span class="svs-typing"><i></i><i></i><i></i></span>';
+    chat.appendChild(msg);
+    chat.scrollTop = chat.scrollHeight;
+    return msg;
+  }
+
+  function removeLoading() {
+    const el = $('.svs-msg-loading');
+    if (el) el.remove();
+  }
+
+  // ── Open / Close ───────────────────────────────────────
   function open() {
     if (!root) mount();
     root.hidden = false;
     document.body.style.overflow = 'hidden';
-    // Скидаємо стан попередньої сесії запису
     _submitting = false;
     state.service = state.master = state.date = state.slot = null;
-    const btn = $('button[data-action="confirm"]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Записатись'; }
-    show('service');
-    loadServices();
+    state._idemKey = null;
+    clearChat();
+    updateProgress(0);
+    startConversation();
   }
+
   function close() {
     if (!root) return;
     root.hidden = true;
@@ -148,345 +139,356 @@
     currentToken = null;
   }
 
-  async function api(path) {
+  async function apiFetch(path) {
     const r = await fetch(API + path);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }
 
-  // ── Step 1: services ───────────────────────────────────
-  async function loadServices() {
+  // ── Step 0: Greeting + Categories ─────────────────────
+  async function startConversation() {
+    addMessage('Привіт! 👋 Що хочеш зробити?');
+
+    const loader = addLoading();
     try {
-      const list = await api('/api/booking/services');
+      const list = await apiFetch('/api/booking/services');
       state.services = Array.isArray(list) ? list : [];
-      renderServices('');
     } catch (e) {
-      $('#svs-services').innerHTML = `<div class="svs-book-err">Не вдалося завантажити: ${e.message}</div>`;
+      removeLoading();
+      addMessage('Не вдалось завантажити послуги 😕 Спробуй пізніше або зателефонуй: <a href="tel:+380632407847">+38 063 240 7847</a>');
+      return;
     }
+    removeLoading();
+
+    // Show categories as big buttons
+    const cats = categorizeServices();
+    const catBtns = [];
+    if (cats.hair.length) catBtns.push({ icon: '💇', label: 'Перукарська', sub: cats.hair.length + ' послуг', data: 'data-cat="hair"' });
+    if (cats.nails.length) catBtns.push({ icon: '💅', label: 'Нігтьовий сервіс', sub: cats.nails.length + ' послуг', data: 'data-cat="nails"' });
+    if (cats.face.length) catBtns.push({ icon: '✨', label: 'Візаж та лешмейк', sub: cats.face.length + ' послуг', data: 'data-cat="face"' });
+    if (cats.massage.length) catBtns.push({ icon: '💆', label: 'Масаж', sub: cats.massage.length + ' послуг', data: 'data-cat="massage"' });
+    if (cats.other.length) catBtns.push({ icon: '🔮', label: 'Інше', sub: cats.other.length + ' послуг', data: 'data-cat="other"' });
+
+    addButtons(catBtns, 'svs-cats');
+
+    // Also add search option
+    addButtons([{ icon: '🔍', label: 'Знайти по назві', data: 'data-action="search"', cls: 'svs-btn-outline' }]);
   }
-  function renderServices(filter) {
-    const f = (filter || '').toLowerCase();
-    const items = state.services.filter(s => !f || s.name.toLowerCase().includes(f));
-    if (!items.length) { $('#svs-services').innerHTML = '<div class="svs-book-empty">Нічого не знайдено</div>'; return; }
 
-    const renderCard = s => {
-      const price = s.price ? Object.values(s.price)[0] : null;
-      return `<button class="svs-book-card" data-svc="${s.id}">
-        <div class="svs-book-card-title">${s.name}</div>
-        <div class="svs-book-card-meta">${s.duration || '?'} хв${price ? ' · ' + price + ' грн' : ''}</div>
-      </button>`;
-    };
+  // ── Categorize services (same logic as before) ────────
+  function categorizeServices() {
+    const buckets = { hair: [], nails: [], face: [], massage: [], other: [] };
+    const RX_NAILS = /(манік|маник|педик|нігт|ногт|гель[\-\s]?лак|шелак|шеллак|nail|френч|втирк|укріпленн|зняття|дизайн)/i;
+    const RX_FACE = /(бров|брів|вій|ресн|лешм|lash|депіл|депил|шугар|віск|воск|макіяж|макияж|обличч|лиц|пілінг|пилинг|чист(ка|ку|ою)|перманент|татуаж|мікроблейд|microblad|перм|premium\s*\d?\s*d|hollywood|класика|контуринг|консультац)/i;
+    const RX_HAIR = /(волос|стрижк|стриж|фарб|мелір|мелир|тон(ування|ирование|уванн)|укладк|blow|hair|омбре|балаяж|шатуш|ламін|ламин|ботокс|кератин|нанопласт|боярдо|боярдеї|освітленн|осветлен|колорування|колорирование|біовирівн|біозавив|вихід з чорного|накрутк|вкладанн|чубчик|голови та вкладан|миття голови|зачіск|холодне відновленн|biomimetic|довжина)/i;
+    const RX_MASSAGE = /(масаж|massage|sculpt|lymphat|лімфодрен|лимфодрен|bdsm|booty|body|detox|aponeuros|face[\s\-]?lift|alginate|ліфтинг.?масаж|глибокотканин|архітектурн.{0,12}ліфтинг)/i;
 
-    // Якщо йде пошук — плоский список (до 50)
-    if (f) {
-      $('#svs-services').innerHTML = items.slice(0, 50).map(renderCard).join('');
+    const CAT_HAIR = new Set(['88de9f81-ba4e-ec40-2721-6e895218a30b','88de9f81-ba4e-ec40-2721-6e890940ef12','88de9f81-ba4e-ec40-2721-6e89464791b2','88de9f81-ba4e-ca1e-2721-6e8915aaac8e','88deba75-de0a-5172-500e-323d51507ece','88deba75-ddf9-9eaa-57ac-e23d1325ae90','88deba75-de29-4fcd-57ac-e23d7b0da276','88deba75-dde8-ecf0-783f-1287064f794a','88de9f81-ba4f-3ae7-2721-6e891864f1eb','88de9f81-ba4f-3ae7-2721-6e89242af004']);
+    const CAT_NAILS = new Set(['88de9f81-ba86-ef50-2721-6e891d076fb3','88deba75-de18-9c79-57ac-e23d3877784d','88deba75-de39-fda4-500e-323d0962e307','88de9f81-ba86-ef50-2721-6e8940dd1cbc','88de9f81-ba86-ef50-2721-6e896814c8cf']);
+    const CAT_FACE = new Set(['88deba75-de48-4b92-57ac-e23d0ef4a3f1','88deba75-de67-48b4-500e-323d315989c2','88de9f81-ba12-e930-2721-6e8900c1746f','88deba75-de77-fa8f-57ac-e23d54c5a8fc','88deba75-de58-fbf4-57ac-e23d46888bbe']);
+
+    state.services.forEach(s => {
+      if (s.widget_category && buckets[s.widget_category]) { buckets[s.widget_category].push(s); return; }
+      const cid = typeof s.category === 'string' ? s.category : (s.category && s.category.id ? s.category.id : null);
+      if (cid && CAT_HAIR.has(cid)) { buckets.hair.push(s); return; }
+      if (cid && CAT_NAILS.has(cid)) { buckets.nails.push(s); return; }
+      if (cid && CAT_FACE.has(cid)) { buckets.face.push(s); return; }
+      const n = s.name || '';
+      if (RX_MASSAGE.test(n)) buckets.massage.push(s);
+      else if (RX_NAILS.test(n)) buckets.nails.push(s);
+      else if (RX_FACE.test(n)) buckets.face.push(s);
+      else if (RX_HAIR.test(n)) buckets.hair.push(s);
+      else buckets.other.push(s);
+    });
+    return buckets;
+  }
+
+  // ── Step 1: Show services in category ─────────────────
+  function showCategoryServices(catKey) {
+    const cats = categorizeServices();
+    const items = cats[catKey] || [];
+    const catNames = { hair: '💇 Перукарська', nails: '💅 Нігті', face: '✨ Візаж', massage: '💆 Масаж', other: '🔮 Інше' };
+
+    addUserChoice(catNames[catKey] || catKey);
+    updateProgress(1);
+
+    if (!items.length) {
+      addMessage('Тут поки порожньо. Спробуй іншу категорію.');
       return;
     }
 
-    // Без пошуку — 3 фіксовані категорії
-    // Розподіл по ключових словах в назві (BeautyPro повертає тільки category id)
-    const buckets = {
-      hair:    { title: 'Перукарські послуги', items: [] },
-      nails:   { title: 'Ногтьовий сервіс',    items: [] },
-      face:    { title: 'Візаж та лешмейк',    items: [] },
-      massage: { title: 'Масаж та body sculpt', items: [] },
-      other:   { title: 'Інші послуги',        items: [] },
-    };
-    const RX_NAILS = /(манік|маник|педик|нігт|ногт|гель[\-\s]?лак|шелак|шеллак|nail|френч|втирк|укріпленн|зняття|дизайн)/i;
-    const RX_FACE  = /(бров|брів|вій|ресн|лешм|lash|депіл|депил|шугар|віск|воск|макіяж|макияж|обличч|лиц|пілінг|пилинг|чист(ка|ку|ою)|перманент|татуаж|мікроблейд|microblad|перм|premium\s*\d?\s*d|hollywood|класика|контуринг|консультац)/i;
-    const RX_HAIR  = /(волос|стрижк|стриж|фарб|мелір|мелир|тон(ування|ирование|уванн)|укладк|blow|hair|омбре|балаяж|шатуш|ламін|ламин|ботокс|кератин|нанопласт|боярдо|боярдеї|освітленн|осветлен|колорування|колорирование|біовирівн|біозавив|вихід з чорного|накрутк|вкладанн|чубчик|голови та вкладан|миття голови|зачіск|холодне відновленн|biomimetic|довжина)/i;
-    const RX_MASSAGE = /(масаж|massage|sculpt|lymphat|лімфодрен|лимфодрен|bdsm|booty|body|detox|aponeuros|face[\s\-]?lift|alginate|ліфтинг.?масаж|глибокотканин|архітектурн.{0,12}ліфтинг)/i;
-
-    // Жорсткий маппінг по GUID категорії з BeautyPro (06.06)
-    const CAT_HAIR = new Set([
-      '88de9f81-ba4e-ec40-2721-6e895218a30b','88de9f81-ba4e-ec40-2721-6e890940ef12',
-      '88de9f81-ba4e-ec40-2721-6e89464791b2','88de9f81-ba4e-ca1e-2721-6e8915aaac8e',
-      '88deba75-de0a-5172-500e-323d51507ece','88deba75-ddf9-9eaa-57ac-e23d1325ae90',
-      '88deba75-de29-4fcd-57ac-e23d7b0da276','88deba75-dde8-ecf0-783f-1287064f794a',
-      '88de9f81-ba4f-3ae7-2721-6e891864f1eb','88de9f81-ba4f-3ae7-2721-6e89242af004',
-    ]);
-    const CAT_NAILS = new Set([
-      '88de9f81-ba86-ef50-2721-6e891d076fb3','88deba75-de18-9c79-57ac-e23d3877784d',
-      '88deba75-de39-fda4-500e-323d0962e307','88de9f81-ba86-ef50-2721-6e8940dd1cbc',
-      '88de9f81-ba86-ef50-2721-6e896814c8cf',
-    ]);
-    const CAT_FACE = new Set([
-      '88deba75-de48-4b92-57ac-e23d0ef4a3f1','88deba75-de67-48b4-500e-323d315989c2',
-      '88de9f81-ba12-e930-2721-6e8900c1746f','88deba75-de77-fa8f-57ac-e23d54c5a8fc',
-      '88deba75-de58-fbf4-57ac-e23d46888bbe',
-    ]);
-    items.forEach(s => {
-      // 1) Primary — від сервера (за позицією мастера: Стилист/Визажист/Мастер маникюра)
-      if (s.widget_category && buckets[s.widget_category]) {
-        buckets[s.widget_category].items.push(s);
-        return;
-      }
-      // 2) Fallback — старий GUID-маппінг по категоріях BeautyPro
-      const cid = typeof s.category === 'string' ? s.category : (s.category && s.category.id ? s.category.id : null);
-      if (cid && CAT_HAIR.has(cid))  { buckets.hair.items.push(s);  return; }
-      if (cid && CAT_NAILS.has(cid)) { buckets.nails.items.push(s); return; }
-      if (cid && CAT_FACE.has(cid))  { buckets.face.items.push(s);  return; }
-      // 3) Fallback 2 — regex по назві
-      const n = s.name || '';
-      if (RX_MASSAGE.test(n))    buckets.massage.items.push(s);
-      else if (RX_NAILS.test(n)) buckets.nails.items.push(s);
-      else if (RX_FACE.test(n))  buckets.face.items.push(s);
-      else if (RX_HAIR.test(n))  buckets.hair.items.push(s);
-      else                       buckets.other.items.push(s);
+    addMessage('Обирай послугу:');
+    const btns = items.slice(0, 30).map(s => {
+      const price = s.price ? Object.values(s.price)[0] : null;
+      const meta = `${s.duration || '?'} хв${price ? ' · ' + price + ' грн' : ''}`;
+      return { label: s.name, sub: meta, data: `data-svc="${s.id}"`, cls: 'svs-btn-service' };
     });
-
-    const order = ['hair','nails','face','massage','other'];
-    const visible = order.filter(k => buckets[k].items.length);
-    $('#svs-services').innerHTML = visible.map((k) => `
-      <details class="svs-book-cat">
-        <summary class="svs-book-cat-title">${buckets[k].title} <span class="svs-book-cat-count">${buckets[k].items.length}</span></summary>
-        <div class="svs-book-cat-list">${buckets[k].items.map(renderCard).join('')}</div>
-      </details>
-    `).join('');
+    addButtons(btns, 'svs-services-list');
   }
 
-  // ── Step 2: date (calendar of ALL masters availability) ─
+  // ── Search mode ────────────────────────────────────────
+  function showSearch() {
+    addUserChoice('🔍 Пошук');
+    const wrap = addInput(`
+      <div class="svs-search-wrap">
+        <input type="text" id="svs-search-input" placeholder="Назва послуги…" autocomplete="off">
+        <div id="svs-search-results" class="svs-search-results"></div>
+      </div>
+    `);
+    const input = wrap.querySelector('#svs-search-input');
+    const results = wrap.querySelector('#svs-search-results');
+    input.focus();
+    input.addEventListener('input', () => {
+      const q = input.value.toLowerCase().trim();
+      if (q.length < 2) { results.innerHTML = ''; return; }
+      const found = state.services.filter(s => s.name.toLowerCase().includes(q)).slice(0, 15);
+      if (!found.length) { results.innerHTML = '<div class="svs-search-empty">Нічого не знайдено</div>'; return; }
+      results.innerHTML = found.map(s => {
+        const price = s.price ? Object.values(s.price)[0] : null;
+        return `<button class="svs-chat-btn svs-btn-service" data-svc="${s.id}">${s.name}<span class="svs-btn-sub">${s.duration || '?'} хв${price ? ' · ' + price + ' грн' : ''}</span></button>`;
+      }).join('');
+    });
+  }
+
+  // ── Step 2: Pick service → ask when ───────────────────
   async function pickService(svcId) {
     state.service = state.services.find(s => s.id === svcId);
     if (!state.service) return;
     state.master = null; state.date = null; state.slot = null;
-    $('#svs-svc-summary').textContent = `${state.service.name} · ${state.service.duration} хв`;
-    show('date');
-    loadAvailability();
-    loadMastersBg(svcId); // у фоні: щоб знати імʼя для останнього кроку
+
+    const price = state.service.price ? Object.values(state.service.price)[0] : null;
+    addUserChoice(state.service.name);
+    updateProgress(2);
+
+    addMessage(`<b>${state.service.name}</b><br><span class="svs-meta">${state.service.duration || '?'} хв${price ? ' · ' + price + ' грн' : ''}</span><br><br>Коли зручно?`);
+
+    // Quick date buttons
+    const today = new Date();
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const dayAfter = new Date(today); dayAfter.setDate(today.getDate() + 2);
+
+    const fmtDate = d => d.toISOString().slice(0, 10);
+    const dayNames = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+    const fmtLabel = d => `${d.getDate()}.${String(d.getMonth()+1).padStart(2,'0')} (${dayNames[d.getDay()]})`;
+
+    addButtons([
+      { icon: '📅', label: 'Сьогодні', sub: fmtLabel(today), data: `data-qdate="${fmtDate(today)}"` },
+      { icon: '📅', label: 'Завтра', sub: fmtLabel(tomorrow), data: `data-qdate="${fmtDate(tomorrow)}"` },
+      { icon: '📅', label: 'Післязавтра', sub: fmtLabel(dayAfter), data: `data-qdate="${fmtDate(dayAfter)}"` },
+      { icon: '📋', label: 'Всі вільні дні', data: 'data-action="allDates"', cls: 'svs-btn-outline' },
+    ]);
+
+    // Load masters in background
+    loadMastersBg(svcId);
   }
+
   async function loadMastersBg(svcId) {
     try {
-      const list = await api('/api/booking/masters?service_id=' + encodeURIComponent(svcId));
+      const list = await apiFetch('/api/booking/masters?service_id=' + encodeURIComponent(svcId));
       const all = Array.isArray(list) ? list : [];
       const filtered = all.filter(m => Array.isArray(m.services) && m.services.some(x => x.id === svcId));
       state.masters = filtered.length ? filtered : all;
     } catch { state.masters = []; }
   }
-  async function loadAvailability() {
-    $('#svs-calendar').innerHTML = '<div class="svs-book-loading">Шукаю вільні дні…</div>';
+
+  // ── Step 2b: Show all available dates ─────────────────
+  async function showAllDates() {
+    addUserChoice('Всі вільні дні');
+    const loader = addLoading();
     try {
       const url = `/api/booking/availability?service_id=${encodeURIComponent(state.service.id)}&days=14&format=v2`;
-      const resp = await api(url);
+      const resp = await apiFetch(url);
       const days = resp && Array.isArray(resp.days) ? resp.days : (Array.isArray(resp) ? resp : []);
       const noSchedule = resp && resp.noSchedule === true;
-      renderCalendar(days, noSchedule);
+      removeLoading();
+
+      if (noSchedule) {
+        addMessage('Графік ще не складено на найближчі 2 тижні 😕<br>Зателефонуй: <a href="tel:+380632407847">+38 063 240 7847</a>');
+        return;
+      }
+
+      const freeDays = days.filter(d => d.count > 0);
+      if (!freeDays.length) {
+        addMessage('На найближчі 2 тижні немає вільних місць 😕<br>Спробуй зателефонувати: <a href="tel:+380632407847">+38 063 240 7847</a>');
+        return;
+      }
+
+      addMessage('Ось вільні дні:');
+      const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
+      const wd = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+      const btns = freeDays.map(d => {
+        const [y, m, dd] = d.date.split('-').map(Number);
+        const date = new Date(y, m - 1, dd);
+        return {
+          icon: '🟢',
+          label: `${dd} ${mn[m-1]} (${wd[date.getDay()]})`,
+          sub: `${d.count} вікон${d.first ? ' · ' + d.first + '–' + d.last : ''}`,
+          data: `data-date="${d.date}"`
+        };
+      });
+      addButtons(btns, 'svs-dates-list');
     } catch (e) {
-      $('#svs-calendar').innerHTML = `<div class="svs-book-err">Не вдалося завантажити: ${e.message}</div>`;
+      removeLoading();
+      addMessage('Помилка завантаження: ' + e.message);
     }
-  }
-  function renderCalendar(days, noSchedule) {
-    if (noSchedule) {
-      $('#svs-calendar').innerHTML = `
-        <div class="svs-book-fallback">
-          <div class="svs-book-fallback-icon">📞</div>
-          <div class="svs-book-fallback-title">Графік на найближчі 2 тижні ще не складено</div>
-          <div class="svs-book-fallback-text">Майстри ще не виставили зміни. Щоб записатись — будь ласка, зателефонуйте або напишіть:</div>
-          <a class="svs-book-fallback-btn" href="tel:+380632407847">📞 +38 063 240 7847</a>
-          <a class="svs-book-fallback-btn alt" href="https://t.me/Svsf1rstbot" target="_blank">💬 Написати в Telegram</a>
-        </div>`;
-      return;
-    }
-    // Показуємо ТІЛЬКИ дні з вільними вікнами — занятих не відображаємо
-    const freeDays = days.filter(d => d.count > 0);
-    if (!freeDays.length) {
-      $('#svs-calendar').innerHTML = '<div class="svs-book-empty">На найближчі 2 тижні вільних днів немає. Зателефонуйте салону.</div>';
-      return;
-    }
-    const wd = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
-    const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
-    $('#svs-calendar').innerHTML = freeDays.map(d => {
-      const [y, m, dd] = d.date.split('-').map(Number);
-      const date = new Date(y, m - 1, dd);
-      const dayLabel = `${dd} ${mn[m - 1]}`;
-      const wdLabel = wd[date.getDay()];
-      const slotsLabel = `🟢 ${d.count} вікон${d.first ? ' · ' + d.first + '-' + d.last : ''}`;
-      return `<button class="svs-book-day free" data-date="${d.date}">
-        <div class="svs-book-day-top"><b>${dayLabel}</b> <span>${wdLabel}</span></div>
-        <div class="svs-book-day-bot">${slotsLabel}</div>
-      </button>`;
-    }).join('');
-  }
-  function pickDate(dateStr) {
-    state.date = dateStr;
-    loadSlots();
   }
 
-  // ── Step 3: slots (з усіма майстрами) ─────────────────
+  // ── Quick date check ──────────────────────────────────
+  async function pickQuickDate(dateStr) {
+    const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
+    const [y, m, d] = dateStr.split('-').map(Number);
+    addUserChoice(`${d} ${mn[m-1]}`);
+    state.date = dateStr;
+    updateProgress(3);
+    await loadSlots();
+  }
+
+  async function pickDate(dateStr) {
+    const mn = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
+    const [y, m, d] = dateStr.split('-').map(Number);
+    addUserChoice(`${d} ${mn[m-1]}`);
+    state.date = dateStr;
+    updateProgress(3);
+    await loadSlots();
+  }
+
+  // ── Step 3: Load time slots ───────────────────────────
   async function loadSlots() {
-    if (!state.date) { alert('Оберіть дату'); return; }
-    $('#svs-date-summary').textContent = `${state.service.name} · ${state.date}`;
-    show('time');
-    $('#svs-slots').innerHTML = '<div class="svs-book-loading">Шукаю вільний час…</div>';
+    const loader = addLoading();
     try {
       const url = `/api/booking/slots?service_id=${encodeURIComponent(state.service.id)}&date=${state.date}`;
-      const data = await api(url);
-      renderSlots(data);
+      const data = await apiFetch(url);
+      removeLoading();
+
+      let slots = [];
+      if (Array.isArray(data)) slots = data;
+      else if (data && Array.isArray(data.free_time)) slots = data.free_time;
+      else if (data && Array.isArray(data.slots)) slots = data.slots;
+      else if (data && typeof data === 'object') {
+        const arr = Object.values(data).find(v => Array.isArray(v));
+        if (arr) slots = arr;
+      }
+      state._rawSlots = slots;
+
+      if (!slots.length) {
+        addMessage('На цю дату вже все зайнято 😕 Обери іншу:');
+        addButtons([{ icon: '📋', label: 'Інші дні', data: 'data-action="allDates"' }]);
+        return;
+      }
+
+      addMessage('О котрій годині?');
+      const btns = slots.slice(0, 30).map((s, i) => {
+        const from = s.from || s.start || s.time || s;
+        const label = typeof from === 'string' ? from.slice(11, 16) || from : String(from);
+        return { label, data: `data-slot="${i}"`, cls: 'svs-btn-time' };
+      });
+      addButtons(btns, 'svs-times-grid');
     } catch (e) {
-      $('#svs-slots').innerHTML = `<div class="svs-book-err">Помилка: ${e.message}</div>`;
+      removeLoading();
+      addMessage('Помилка: ' + e.message);
     }
-  }
-  function renderSlots(data) {
-    // BeautyPro повертає масив { from, to } або {free_time:[...]}
-    let slots = [];
-    if (Array.isArray(data)) slots = data;
-    else if (data && Array.isArray(data.free_time)) slots = data.free_time;
-    else if (data && Array.isArray(data.slots)) slots = data.slots;
-    else if (data && typeof data === 'object') {
-      // пробуем найти первый массив внутри
-      const arr = Object.values(data).find(v => Array.isArray(v));
-      if (arr) slots = arr;
-    }
-    if (!slots.length) {
-      $('#svs-slots').innerHTML = '<div class="svs-book-empty">На цю дату вільного часу немає. Оберіть іншу.</div>';
-      return;
-    }
-    $('#svs-slots').innerHTML = slots.slice(0, 40).map((s, i) => {
-      const from = s.from || s.start || s.time || s;
-      const label = typeof from === 'string' ? from.slice(11, 16) || from : String(from);
-      return `<button class="svs-book-slot" data-slot="${i}">${label}</button>`;
-    }).join('');
-    state._rawSlots = slots;
   }
 
+  // ── Step 4: Pick slot → ask who ───────────────────────
   function pickSlot(idx) {
     state.slot = state._rawSlots[idx];
-    $$('.svs-book-slot').forEach(b => b.classList.toggle('chosen', b.dataset.slot === String(idx)));
-    // Step 4: вибір майстра серед тих, хто вільний у цей слот
+    const from = state.slot.from || state.slot.start || state.slot.time || state.slot;
+    const label = typeof from === 'string' ? from.slice(11, 16) || from : String(from);
+    addUserChoice(label);
+    updateProgress(4);
+
+    // Filter masters available at this slot
     const slotEmployees = Array.isArray(state.slot.employees) ? state.slot.employees : [];
     const available = (state.masters || []).filter(m => slotEmployees.includes(m.id));
     const list = available.length ? available : (state.masters || []);
-    const slotLabel = state.slot.time || (state.slot.from || '').slice(11, 16);
-    $('#svs-mst-summary').textContent = `${state.service.name} · ${state.date} · ${slotLabel}`;
-    state._slotAvailableMasters = list;  // для опції "Будь-який вільний"
+    state._slotAvailableMasters = list;
+
     if (!list.length) {
-      $('#svs-masters').innerHTML = '<div class="svs-book-empty">На цей час майстрів немає. Оберіть інший час.</div>';
-    } else {
-      // Кнопка "Будь-який вільний майстер" зверху списку - підставляє першого вільного
-      const anyMasterCard = list.length > 1 ? `
-        <button class="svs-book-card svs-book-card-any" data-mst="__any__">
-          <div class="svs-book-card-title">🎲 Будь-який вільний майстер</div>
-          <div class="svs-book-card-meta">Підберемо першого вільного на цей час</div>
-        </button>` : '';
-      $('#svs-masters').innerHTML = anyMasterCard + list.map(m => `
-        <button class="svs-book-card" data-mst="${m.id}">
-          <div class="svs-book-card-title">${m.name}</div>
-        </button>`).join('');
+      // No master selection needed — go straight to confirm
+      state.master = null;
+      showConfirmStep();
+      return;
     }
-    show('master');
-    $('button[data-action="confirm"]').disabled = true;
+
+    addMessage('До кого записатись?');
+    const btns = [];
+    if (list.length > 1) {
+      btns.push({ icon: '🎲', label: 'Будь-хто вільний', sub: 'Підберемо першого', data: 'data-mst="__any__"', cls: 'svs-btn-any' });
+    }
+    list.forEach(m => {
+      btns.push({ icon: '👤', label: m.name, data: `data-mst="${m.id}"` });
+    });
+    addButtons(btns, 'svs-masters-list');
   }
+
+  // ── Step 5: Pick master → confirm ─────────────────────
   function pickMaster(mstId) {
     if (mstId === '__any__') {
-      // "Будь-який вільний майстер" - беремо першого з доступних на цей слот
       const pool = state._slotAvailableMasters || state.masters || [];
       state.master = pool[0];
-      if (!state.master) return;
-      $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === '__any__'));
+      addUserChoice('🎲 Будь-хто');
     } else {
       state.master = (state.masters || []).find(m => m.id === mstId);
-      if (!state.master) return;
-      $$('.svs-book-card[data-mst]').forEach(b => b.classList.toggle('chosen', b.dataset.mst === mstId));
+      addUserChoice(state.master ? state.master.name : '?');
     }
-    const cBtn = $('button[data-action="confirm"]');
-    if (cBtn) cBtn.disabled = false;
-    // Після вибору майстра — одразу переходимо на екран підтвердження через Telegram
-    const slotLabel = state.slot.time || (state.slot.from || '').slice(11, 16);
-    const sum = $('#svs-tg-summary');
-    if (sum) sum.textContent = `${state.service.name} · ${state.date} · ${slotLabel} · ${state.master.name}`;
-    show('tgconfirm');
+    if (!state.master) return;
+    showConfirmStep();
   }
 
-  // ── Step 5: відправити в бота для підтвердження ────────
-  async function toTg() {
-    if (!state.service || !state.master || !state.slot) { alert('Оберіть послугу, майстра і час'); return; }
-    const from = state.slot.from || state.slot.start || state.slot;
-    const dur = state.service.duration || 60;
-    const fromIso = toUaIso(typeof from === 'string' ? from : new Date(from));
-    const toIso = toUaIso(new Date(new Date(fromIso).getTime() + dur * 60000));
-    const btn = $('button[data-action="toTg"]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Відкриваємо Telegram…'; }
-    try {
-      const r = await fetch(API + '/api/booking/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service_id: state.service.id,
-          employee_id: state.master.id,
-          date_from: fromIso,
-          date_to: toIso,
-          client_name: state.name || '',
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok || !data.deep_link) throw new Error(data.error || 'init failed');
-      // Telegram WebApp: openTelegramLink, інакше — звичайний перехід
-      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
-        window.Telegram.WebApp.openTelegramLink(data.deep_link);
-      } else {
-        window.location.href = data.deep_link;
-      }
-    } catch (e) {
-      if (btn) { btn.disabled = false; btn.textContent = '📲 Підтвердити в Telegram'; }
-      alert('Не вдалось створити запис: ' + e.message);
-    }
+  // ── Final step: name + phone + confirm ────────────────
+  function showConfirmStep() {
+    const slotFrom = state.slot.from || state.slot.start || state.slot.time || state.slot;
+    const timeLabel = typeof slotFrom === 'string' ? slotFrom.slice(11, 16) : '';
+    const price = state.service.price ? Object.values(state.service.price)[0] : null;
+
+    const summary = `<div class="svs-summary">
+      <div class="svs-summary-row"><span>Послуга:</span> <b>${state.service.name}</b></div>
+      ${state.master ? `<div class="svs-summary-row"><span>Майстер:</span> <b>${state.master.name}</b></div>` : ''}
+      <div class="svs-summary-row"><span>Коли:</span> <b>${state.date} · ${timeLabel}</b></div>
+      ${price ? `<div class="svs-summary-row"><span>Ціна:</span> <b>${price} грн</b></div>` : ''}
+      <div class="svs-summary-row"><span>Тривалість:</span> <b>~${state.service.duration || '?'} хв</b></div>
+    </div>`;
+
+    addMessage(`Майже все! Перевір:<br>${summary}`);
+
+    addInput(`
+      <div class="svs-confirm-form">
+        <input type="text" id="svs-name" placeholder="Твоє імʼя" autocomplete="name">
+        <input type="tel" id="svs-phone" placeholder="+380 __ ___ ____" autocomplete="tel">
+        <button class="svs-chat-btn svs-btn-confirm" data-action="confirm">✓ Записатись</button>
+        <p class="svs-hint">Натискаючи — погоджуєшся на запис у CRM салону</p>
+      </div>
+    `);
+
+    const nameInput = $('#svs-name');
+    if (nameInput) nameInput.focus();
   }
 
-  // ── Helpers: нормалізація телефону (UA) і таймзони ────
-  function normalizePhone(raw) {
-    let d = String(raw || '').replace(/\D/g, '');
-    if (!d) return null;
-    // UA: 0XXXXXXXXX (10 цифр) → +380XXXXXXXXX
-    if (d.length === 10 && d.startsWith('0')) return '+380' + d.slice(1);
-    // UA: 380XXXXXXXXX (12 цифр) → +380XXXXXXXXX
-    if (d.length === 12 && d.startsWith('380')) return '+' + d;
-    // Інтернаціонал: 11-15 цифр з кодом країни → "+"+d
-    if (d.length >= 11 && d.length <= 15) return '+' + d;
-    return null;
-  }
-  // ISO з явною UA-зоною (+03:00 літо / +02:00 зима) — щоб дата не зʼїхала
-  function toUaIso(date) {
-    const d = new Date(date);
-    const offMin = -d.getTimezoneOffset(); // браузер клієнта вже у його зоні
-    const sign = offMin >= 0 ? '+' : '-';
-    const hh = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
-    const mm = String(Math.abs(offMin) % 60).padStart(2, '0');
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${hh}:${mm}`;
-  }
-
-  // ── Confirm: пряма запис у CRM (з fallback на Telegram) ─
+  // ── Confirm booking ───────────────────────────────────
   let _submitting = false;
   async function confirm() {
-    if (_submitting) return; // bug-fix #1: захист від подвійного кліку
+    if (_submitting) return;
     state.name = ($('#svs-name').value || '').trim();
     const phoneRaw = ($('#svs-phone').value || '').trim();
-    const phone = normalizePhone(phoneRaw); // bug-fix #2: нормалізація
-    if (!state.name) { alert('Введіть імʼя'); return; }
-    if (!phone) { alert('Введіть коректний телефон (наприклад 0991234567)'); return; }
-    if (!state.slot) { alert('Оберіть час'); return; }
+    const phone = normalizePhone(phoneRaw);
+    if (!state.name) { shakeInput('#svs-name'); return; }
+    if (!phone) { shakeInput('#svs-phone'); return; }
 
     _submitting = true;
-    const btn = $('button[data-action="confirm"]');
-    if (btn) { btn.disabled = true; btn.dataset._origText = btn.textContent; btn.textContent = 'Записуємо…'; }
+    const btn = $('[data-action="confirm"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Записуємо…'; }
 
     const from = state.slot.from || state.slot.start || state.slot;
     const dur = state.service.duration || 60;
-    // bug-fix #3: ISO з зоною клієнта замість UTC
     const fromIso = toUaIso(typeof from === 'string' ? from : new Date(from));
     const toIso = toUaIso(new Date(new Date(fromIso).getTime() + dur * 60000));
 
-    const restoreBtn = () => {
-      _submitting = false;
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset._origText || 'Записатись'; }
-    };
-
-    // 1) Спроба прямого запису у CRM
-    // idempotency_key — UUID-подібний рядок; зберігаємо у state щоб retry використав той самий
     if (!state._idemKey) {
       state._idemKey = (crypto.randomUUID && crypto.randomUUID()) ||
         (Date.now().toString(36) + Math.random().toString(36).slice(2));
     }
+
+    // 1) Direct CRM booking
     try {
       const r = await fetch(API + '/api/booking/direct', {
         method: 'POST',
@@ -496,8 +498,8 @@
           name: state.name,
           service_id: state.service.id,
           service_name: state.service.name,
-          employee_id: state.master.id,
-          master_name: state.master.name,
+          employee_id: state.master ? state.master.id : null,
+          master_name: state.master ? state.master.name : null,
           date_from: fromIso,
           date_to: toIso,
           idempotency_key: state._idemKey,
@@ -505,35 +507,22 @@
       });
       const data = await r.json();
       if (r.ok && data.ok) {
-        const slotLabel = (typeof from === 'string' ? from.slice(11, 16) : '');
-        const when = `${state.date}${slotLabel ? ' · ' + slotLabel : ''}`;
-        $('#svs-done-summary').innerHTML =
-          `<b>${state.service.name}</b><br>` +
-          `${state.master.name} · ${when}` +
-          (data.cancel_token
-            ? `<div class="svs-book-manage">
-                 <a class="svs-book-manage-link" href="?booking=${data.cancel_token}" target="_blank">
-                   ✏ Перенести або скасувати
-                 </a>
-                 <div class="svs-book-manage-hint">Збережіть це посилання — без нього доведеться телефонувати в салон</div>
-               </div>`
-            : '');
-        show('done');
-        return; // _submitting лишається true до закриття — захист від повторної відправки
+        showSuccess(data.cancel_token);
+        return;
       }
       throw new Error(data.error || 'CRM error');
     } catch (e) {
       console.warn('[svs-book] direct failed, fallback to TG:', e.message);
     }
 
-    // 2) Fallback: підтвердження через Telegram
+    // 2) Fallback: Telegram confirmation
     try {
       const r = await fetch(API + '/api/booking/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_id: state.service.id,
-          employee_id: state.master.id,
+          employee_id: state.master ? state.master.id : null,
           date_from: fromIso,
           date_to: toIso,
           client_name: state.name,
@@ -542,24 +531,52 @@
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'init failed');
       currentToken = data.token;
-      // bug-fix #4: НЕ window.open() після await (блокують моб. браузери) — показуємо клікабельне посилання
-      $('#svs-link').href = data.deep_link;
-      $('#svs-link').textContent = '👉 Відкрити бота для підтвердження';
-      show('wait');
+
+      addMessage('Залишився один крок — підтвердження в Telegram 📲');
+      addButtons([{ icon: '📲', label: 'Відкрити Telegram', data: `data-deeplink="${data.deep_link}"`, cls: 'svs-btn-tg' }]);
       poll();
     } catch (e) {
-      $('#svs-err').textContent = 'Помилка: ' + e.message;
-      show('error');
-      restoreBtn();
+      addMessage('Не вдалось 😕 ' + e.message + '<br><a href="tel:+380632407847">Зателефонувати</a>');
+      _submitting = false;
     }
   }
+
+  function showSuccess(cancelToken) {
+    const slotFrom = state.slot.from || state.slot.start || state.slot.time || state.slot;
+    const timeLabel = typeof slotFrom === 'string' ? slotFrom.slice(11, 16) : '';
+
+    let msg = `<div class="svs-success">
+      <div class="svs-success-icon">✓</div>
+      <div class="svs-success-title">Записано!</div>
+      <div class="svs-success-detail">
+        <b>${state.service.name}</b><br>
+        ${state.master ? state.master.name + ' · ' : ''}${state.date} · ${timeLabel}
+      </div>`;
+    if (cancelToken) {
+      msg += `<a class="svs-manage-link" href="?booking=${cancelToken}">✏ Перенести або скасувати</a>
+        <p class="svs-hint">Збережи це посилання</p>`;
+    }
+    msg += `</div>`;
+    addMessage(msg);
+    addButtons([{ label: 'Закрити', data: 'data-close', cls: 'svs-btn-outline' }]);
+  }
+
+  function shakeInput(sel) {
+    const el = $(sel);
+    if (!el) return;
+    el.classList.add('svs-shake');
+    el.focus();
+    setTimeout(() => el.classList.remove('svs-shake'), 500);
+  }
+
+  // ── Poll for Telegram confirmation ────────────────────
   function poll() {
     let tries = 0;
     pollTimer = setInterval(async () => {
       if (++tries > 180) {
         clearInterval(pollTimer);
-        $('#svs-err').textContent = 'Час очікування вичерпано. Спробуйте ще раз.';
-        show('error');
+        addMessage('Час вичерпано. Спробуй ще раз.');
+        _submitting = false;
         return;
       }
       try {
@@ -568,122 +585,111 @@
         const data = await r.json();
         if (data.status === 'confirmed') {
           clearInterval(pollTimer);
-          $('#svs-done-summary').textContent = `${state.service.name} · ${state.master.name} · ${state.date}`;
-          show('done');
+          showSuccess();
         } else if (data.status === 'failed') {
           clearInterval(pollTimer);
-          $('#svs-err').textContent = 'CRM: ' + (data.error || 'невідома помилка');
-          show('error');
+          addMessage('Не вдалось: ' + (data.error || 'невідома помилка'));
+          _submitting = false;
         }
       } catch {}
     }, 2000);
   }
 
-  function reset() {
-    state.service = state.master = state.date = state.slot = null;
-    show('service');
+  // ── Helpers ────────────────────────────────────────────
+  function normalizePhone(raw) {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (!d) return null;
+    if (d.length === 10 && d.startsWith('0')) return '+380' + d.slice(1);
+    if (d.length === 12 && d.startsWith('380')) return '+' + d;
+    if (d.length >= 11 && d.length <= 15) return '+' + d;
+    return null;
   }
 
+  function toUaIso(date) {
+    const d = new Date(date);
+    const offMin = -d.getTimezoneOffset();
+    const sign = offMin >= 0 ? '+' : '-';
+    const hh = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
+    const mm = String(Math.abs(offMin) % 60).padStart(2, '0');
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${hh}:${mm}`;
+  }
+
+  // ── Mount + Event delegation ──────────────────────────
   function mount() {
     const div = document.createElement('div');
     div.innerHTML = html;
     root = div.firstElementChild;
     document.body.appendChild(root);
+
     root.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-close],[data-action],[data-goto],[data-svc],[data-mst],[data-date],[data-slot]');
+      const t = e.target.closest('[data-close],[data-action],[data-cat],[data-svc],[data-mst],[data-date],[data-qdate],[data-slot],[data-deeplink]');
       if (!t) return;
+      // Prevent double-tap
+      if (t.classList.contains('svs-btn-used')) return;
+
+      // Mark parent group as "answered"
+      const group = t.closest('.svs-btn-group, .svs-input-group');
+
       if (t.dataset.close !== undefined) return close();
-      if (t.dataset.goto) return show(t.dataset.goto);
-      if (t.dataset.svc) return pickService(t.dataset.svc);
-      if (t.dataset.mst) return pickMaster(t.dataset.mst);
-      if (t.dataset.date) return pickDate(t.dataset.date);
-      if (t.dataset.slot != null) return pickSlot(Number(t.dataset.slot));
-      if (t.dataset.action === 'loadSlots') return loadSlots();
-      if (t.dataset.action === 'confirm') return confirm();
-      if (t.dataset.action === 'toTg') return toTg();
-      if (t.dataset.action === 'reset') return reset();
+      if (t.dataset.cat) { disableGroup(group); showCategoryServices(t.dataset.cat); return; }
+      if (t.dataset.svc) { disableGroup(group); pickService(t.dataset.svc); return; }
+      if (t.dataset.qdate) { disableGroup(group); pickQuickDate(t.dataset.qdate); return; }
+      if (t.dataset.date) { disableGroup(group); pickDate(t.dataset.date); return; }
+      if (t.dataset.slot != null) { disableGroup(group); pickSlot(Number(t.dataset.slot)); return; }
+      if (t.dataset.mst) { disableGroup(group); pickMaster(t.dataset.mst); return; }
+      if (t.dataset.action === 'search') { disableGroup(group); showSearch(); return; }
+      if (t.dataset.action === 'allDates') { disableGroup(group); showAllDates(); return; }
+      if (t.dataset.action === 'confirm') { confirm(); return; }
+      if (t.dataset.deeplink) { window.open(t.dataset.deeplink, '_blank'); return; }
     });
-    root.addEventListener('input', (e) => {
-      if (e.target.id === 'svs-search') renderServices(e.target.value);
-    });
+
+    // Open triggers
     document.querySelectorAll('[data-svs-book], a[href*="bookon.ua"]').forEach(a => {
       a.addEventListener('click', (e) => { e.preventDefault(); open(); });
     });
   }
 
-  // ── Manage booking screen (?booking=TOKEN) ───────────────
+  function disableGroup(group) {
+    if (!group) return;
+    group.classList.add('svs-answered');
+  }
+
+  // ── Manage booking (same as before) ───────────────────
   async function handleManageUrl() {
     const params = new URLSearchParams(location.search);
     const token = params.get('booking');
     if (!token) return;
     if (!root) mount();
-
-    // Окремий екран замість стандартного флоу
-    const dialog = root.querySelector('.svs-book-dialog');
-    if (!dialog) return;
     root.hidden = false;
     document.body.style.overflow = 'hidden';
-    dialog.innerHTML = `
-      <button class="svs-book-close" data-close aria-label="Закрити">×</button>
-      <h3>Ваш запис</h3>
-      <div id="svs-manage-body"><div class="svs-book-loading">Завантаження…</div></div>
-    `;
-    // Закрытие
-    dialog.querySelector('[data-close]').addEventListener('click', () => {
-      root.hidden = true;
-      document.body.style.overflow = '';
-      history.replaceState(null, '', location.pathname);
-    });
 
-    const body = dialog.querySelector('#svs-manage-body');
+    clearChat();
+    const loader = addLoading();
     try {
       const r = await fetch(API + '/api/booking/info/' + encodeURIComponent(token));
       const info = await r.json();
-      if (!r.ok) {
-        body.innerHTML = `<div class="svs-book-err">${info.error || 'Запис не знайдено'}</div>`;
-        return;
-      }
+      removeLoading();
+      if (!r.ok) { addMessage('Запис не знайдено 😕'); return; }
       if (info.status === 'used') {
-        body.innerHTML = `<div class="svs-book-empty">Запис вже ${info.used_action === 'cancel' ? 'скасовано' : 'перенесено'}.</div>`;
+        addMessage(`Запис вже ${info.used_action === 'cancel' ? 'скасовано' : 'перенесено'}.`);
         return;
       }
       const startLocal = new Date(info.start_at).toLocaleString('uk-UA', {
         day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
       });
-      body.innerHTML = `
-        <div class="svs-book-info-row"><span>Послуга:</span> <b>${info.service_name || '—'}</b></div>
-        <div class="svs-book-info-row"><span>Майстер:</span> <b>${info.master_name || '—'}</b></div>
-        <div class="svs-book-info-row"><span>Коли:</span> <b>${startLocal}</b></div>
-        <div class="svs-book-manage-actions">
-          <button class="svs-book-submit" id="svs-do-cancel" style="background:#c1361d">✖ Скасувати</button>
-          <button class="svs-book-submit alt" id="svs-do-reschedule">↻ Перенести</button>
-        </div>
-        <p class="svs-book-hint">Скасування/перенос можливі не пізніше ніж за 2 години до запису</p>
-      `;
-      dialog.querySelector('#svs-do-cancel').addEventListener('click', async () => {
-        if (!confirm('Точно скасувати запис?')) return;
-        const cr = await fetch(API + '/api/booking/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
-        });
-        const cd = await cr.json();
-        if (cr.ok) {
-          body.innerHTML = `<div class="svs-book-empty">✓ Запис скасовано. Чекаємо вас наступного разу.</div>`;
-        } else {
-          alert(cd.error || 'Не вдалося скасувати');
-        }
-      });
-      dialog.querySelector('#svs-do-reschedule').addEventListener('click', () => {
-        // Перенос: закриваємо манаге, відкриваємо звичайний флоу на ту ж послугу
-        // (повний UX-flow перенесення — Спринт 3+)
-        alert('Перенос: відкривається звичайний віджет, оберіть нову дату. Старий запис скасується автоматично після нової.');
-        root.hidden = true;
-        history.replaceState(null, '', location.pathname);
-        window.SVSBooking.open();
-      });
+      addMessage(`<div class="svs-summary">
+        <div class="svs-summary-row"><span>Послуга:</span> <b>${info.service_name || '—'}</b></div>
+        <div class="svs-summary-row"><span>Майстер:</span> <b>${info.master_name || '—'}</b></div>
+        <div class="svs-summary-row"><span>Коли:</span> <b>${startLocal}</b></div>
+      </div>`);
+      addButtons([
+        { icon: '✖', label: 'Скасувати', data: `data-action="cancelBooking" data-token="${token}"`, cls: 'svs-btn-danger' },
+        { icon: '↻', label: 'Перенести', data: `data-action="reschedule" data-token="${token}"`, cls: 'svs-btn-outline' },
+      ]);
     } catch (e) {
-      body.innerHTML = `<div class="svs-book-err">Помилка: ${e.message}</div>`;
+      removeLoading();
+      addMessage('Помилка: ' + e.message);
     }
   }
 
