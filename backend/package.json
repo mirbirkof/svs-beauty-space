@@ -2,10 +2,10 @@
   "name": "svs-shop-backend",
   "version": "1.0.0",
   "description": "SVS Beauty Space — Shop Backend (Auth + Stripe)",
-  "main": "server.js",
+  "main": "shop-api.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node shop-api.js",
+    "dev": "node --watch shop-api.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
