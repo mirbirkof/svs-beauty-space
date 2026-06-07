@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><body>
+<script src="js/shop-data-live.js"></script>
+<script>
+  document.body.innerHTML = `
+    <h1>Loader test</h1>
+    <p>Source: ${window.SHOP_DATA_SOURCE}</p>
+    <p>Brands: ${(window.SHOP_BRANDS||[]).length}</p>
+    <p>Categories: ${(window.SHOP_CATEGORIES||[]).length}</p>
+    <p>Products: ${(window.SHOP_PRODUCTS||[]).length}</p>
+    <p>First product: ${JSON.stringify(window.SHOP_PRODUCTS && window.SHOP_PRODUCTS[0], null, 2)}</p>
+  `;
+</script>
+</body></html>

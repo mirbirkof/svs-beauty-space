@@ -1,0 +1,5 @@
+[2026-06-07 12:52:23] === Watchdog started, pid=3438683 ===
+[2026-06-07 12:55:53] === Watchdog started, pid=3440146 ===
+[2026-06-07 13:00:56] Health check FAILED, restarting tunnel
+[2026-06-07 13:00:56] Starting tunnel...
+[2026-06-07 13:01:00] Tunnel up: https://403c70b5f23dcf.lhr.life
