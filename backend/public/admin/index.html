@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS Beauty World — Адмін</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; }
+  .tab.active { background:#111; color:#fff }
+  table { border-collapse: collapse; width: 100% }
+  th, td { padding: 8px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px }
+  th { background: #fafafa; font-weight: 600 }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600 }
+  .b-new { background:#dbeafe; color:#1e40af }
+  .b-paid { background:#dcfce7; color:#166534 }
+  .b-packing { background:#fef3c7; color:#92400e }
+  .b-shipped { background:#e0e7ff; color:#3730a3 }
+  .b-delivered { background:#d1fae5; color:#065f46 }
+  .b-cancelled { background:#fee2e2; color:#991b1b }
+  .b-refunded { background:#f3e8ff; color:#6b21a8 }
+</style>
+</head>
+<body class="bg-gray-50">
+
+<!-- LOGIN -->
+<div id="login" class="min-h-screen flex items-center justify-center hidden">
+  <div class="bg-white shadow-xl rounded-2xl p-8 w-96">
+    <h1 class="text-2xl font-bold mb-2">SVS Beauty World</h1>
+    <p class="text-sm text-gray-500 mb-6">Адмін-панель</p>
+    <input id="tokenInput" type="password" placeholder="Admin token" class="w-full border rounded-lg px-3 py-2 mb-3">
+    <button onclick="login()" class="w-full bg-black text-white py-2 rounded-lg">Увійти</button>
+    <p id="loginErr" class="text-red-600 text-sm mt-3 hidden">Невірний токен</p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header class="bg-white shadow-sm">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <h1 class="text-lg font-bold">SVS Beauty World — Адмін</h1>
+      <button onclick="logout()" class="text-sm text-gray-500 hover:text-black">Вийти</button>
+    </div>
+    <nav class="max-w-7xl mx-auto px-6 flex gap-2 pb-3 overflow-x-auto">
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="dashboard" onclick="show('dashboard')">Дашборд</button>
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="orders" onclick="show('orders')">Замовлення</button>
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="products" onclick="show('products')">Товари</button>
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="clients" onclick="show('clients')">Клієнти</button>
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="stock" onclick="show('stock')">Склад</button>
+      <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="sync" onclick="show('sync')">Синхро BeautyPro</button>
+    </nav>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-6">
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="space-y-6">
+      <h2 class="text-xl font-bold">KPI</h2>
+      <div id="kpi" class="grid grid-cols-2 md:grid-cols-5 gap-4"></div>
+      <h3 class="text-lg font-bold mt-8">Топ товарів за виручкою</h3>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table><thead><tr><th>Товар</th><th>Шт</th><th>Виручка</th></tr></thead><tbody id="topBody"></tbody></table>
+      </div>
+      <h3 class="text-lg font-bold mt-8">Низький залишок (≤ 5 шт)</h3>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table><thead><tr><th>Товар</th><th>Об'єм</th><th>Залишок</th></tr></thead><tbody id="lowBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ORDERS -->
+    <section id="tab-orders" class="hidden space-y-4">
+      <div class="flex items-center gap-3">
+        <h2 class="text-xl font-bold">Замовлення</h2>
+        <select id="orderStatusFilter" onchange="loadOrders()" class="border rounded-lg px-3 py-1.5 text-sm">
+          <option value="">Усі статуси</option>
+          <option value="new">Нові</option>
+          <option value="paid">Оплачені</option>
+          <option value="packing">У пакуванні</option>
+          <option value="shipped">Відправлено</option>
+          <option value="delivered">Доставлено</option>
+          <option value="cancelled">Скасовано</option>
+        </select>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table>
+          <thead><tr><th>#</th><th>Клієнт</th><th>Телефон</th><th>Сума</th><th>Доставка</th><th>Статус</th><th>Створено</th><th>Дії</th></tr></thead>
+          <tbody id="ordersBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PRODUCTS -->
+    <section id="tab-products" class="hidden space-y-4">
+      <div class="flex items-center gap-3">
+        <h2 class="text-xl font-bold">Товари</h2>
+        <input id="productSearch" placeholder="Пошук..." class="border rounded-lg px-3 py-1.5 text-sm" oninput="debounce(loadProducts,400)">
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table>
+          <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>Активний</th></tr></thead>
+          <tbody id="productsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CLIENTS -->
+    <section id="tab-clients" class="hidden space-y-4">
+      <div class="flex items-center gap-3">
+        <h2 class="text-xl font-bold">Клієнти</h2>
+        <input id="clientSearch" placeholder="Телефон або імʼя..." class="border rounded-lg px-3 py-1.5 text-sm" oninput="debounce(loadClients,400)">
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table>
+          <thead><tr><th>Імʼя</th><th>Телефон</th><th>Email</th><th>Замовлень</th><th>Витрачено</th><th>Бонуси</th><th>Зареєстр.</th></tr></thead>
+          <tbody id="clientsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- STOCK -->
+    <section id="tab-stock" class="hidden space-y-4">
+      <h2 class="text-xl font-bold">Прихід товару</h2>
+      <div class="bg-white rounded-xl shadow-sm p-4 max-w-2xl space-y-3">
+        <input id="stockVariantId" type="number" placeholder="ID варіанту (з вкладки Товари)" class="w-full border rounded-lg px-3 py-2 text-sm">
+        <input id="stockQty" type="number" placeholder="Кількість (+ прихід, − списання)" class="w-full border rounded-lg px-3 py-2 text-sm">
+        <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="w-full border rounded-lg px-3 py-2 text-sm">
+        <button onclick="addStock()" class="bg-black text-white px-4 py-2 rounded-lg text-sm">Внести</button>
+        <p id="stockResult" class="text-sm"></p>
+      </div>
+    </section>
+
+    <!-- SYNC -->
+    <section id="tab-sync" class="hidden space-y-4">
+      <h2 class="text-xl font-bold">Синхронізація з BeautyPro</h2>
+      <div id="syncStats" class="bg-white rounded-xl shadow-sm p-4 max-w-2xl"></div>
+      <button onclick="runSync()" class="bg-black text-white px-4 py-2 rounded-lg text-sm">Запустити синхро всіх клієнтів</button>
+      <pre id="syncLog" class="bg-white rounded-xl shadow-sm p-4 text-xs overflow-x-auto max-h-96"></pre>
+    </section>
+  </main>
+
+  <!-- ORDER DETAIL MODAL -->
+  <div id="orderModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target===this) closeOrder()">
+    <div class="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-bold" id="orderTitle">Замовлення</h3>
+        <button onclick="closeOrder()" class="text-gray-400 hover:text-black">✕</button>
+      </div>
+      <div id="orderDetail"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = location.origin.includes('localhost') || location.origin.includes('127.0.0.1')
+  ? location.origin
+  : location.origin; // используем тот же origin что и сама страница
+let TOKEN = localStorage.getItem('svs_admin_token') || '';
+
+// ── auth ────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (TOKEN) {
+    checkToken();
+  } else {
+    document.getElementById('login').classList.remove('hidden');
+  }
+});
+
+async function checkToken() {
+  try {
+    const r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } });
+    if (r.status === 200) {
+      document.getElementById('login').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      show('dashboard');
+    } else throw new Error('bad');
+  } catch {
+    localStorage.removeItem('svs_admin_token');
+    TOKEN = '';
+    document.getElementById('login').classList.remove('hidden');
+  }
+}
+
+function login() {
+  TOKEN = document.getElementById('tokenInput').value.trim();
+  localStorage.setItem('svs_admin_token', TOKEN);
+  checkToken().catch(() => {
+    document.getElementById('loginErr').classList.remove('hidden');
+  });
+}
+
+function logout() {
+  localStorage.removeItem('svs_admin_token');
+  location.reload();
+}
+
+// ── fetch helper ────────────────────────────────────────
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  return r.json();
+}
+
+// ── tabs ────────────────────────────────────────────────
+function show(name) {
+  document.querySelectorAll('[id^=tab-]').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  ({ dashboard: loadDashboard, orders: loadOrders, products: loadProducts, clients: loadClients, sync: loadSync, stock: () => {} }[name] || (() => {}))();
+}
+
+// ── debounce ────────────────────────────────────────────
+let timers = {};
+function debounce(fn, ms) {
+  const k = fn.name;
+  clearTimeout(timers[k]);
+  timers[k] = setTimeout(fn, ms);
+}
+
+// ── DASHBOARD ───────────────────────────────────────────
+async function loadDashboard() {
+  const s = await api('/api/admin/stats');
+  if (!s.ok) return;
+  const kpi = s.stats;
+  document.getElementById('kpi').innerHTML = [
+    ['Виручка', kpi.revenue.toLocaleString() + ' ₴', 'bg-green-100'],
+    ['Оплачено', kpi.orders_completed, 'bg-blue-100'],
+    ['В очікуванні', kpi.orders_pending, 'bg-yellow-100'],
+    ['Клієнтів', kpi.clients, 'bg-purple-100'],
+    ['Товарів активних', kpi.products_active, 'bg-pink-100'],
+  ].map(([t, v, bg]) => `
+    <div class="${bg} rounded-xl p-4">
+      <div class="text-xs text-gray-600">${t}</div>
+      <div class="text-2xl font-bold mt-1">${v}</div>
+    </div>`).join('');
+
+  const top = await api('/api/admin/stats/top-products');
+  document.getElementById('topBody').innerHTML = top.items?.length
+    ? top.items.map(p => `<tr><td>${p.product_name}</td><td>${p.qty}</td><td>${Number(p.revenue).toLocaleString()} ₴</td></tr>`).join('')
+    : '<tr><td colspan="3" class="text-gray-400">Поки немає продажів</td></tr>';
+
+  const low = await api('/api/admin/stats/low-stock?threshold=5');
+  document.getElementById('lowBody').innerHTML = low.items?.length
+    ? low.items.slice(0, 30).map(p => `<tr><td>${p.product_name}</td><td>${p.volume || ''}</td><td>${p.stock_qty ?? 0}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="text-gray-400">Усі товари в наявності</td></tr>';
+}
+
+// ── ORDERS ──────────────────────────────────────────────
+async function loadOrders() {
+  const st = document.getElementById('orderStatusFilter').value;
+  const r = await api('/api/admin/orders' + (st ? `?status=${st}` : ''));
+  document.getElementById('ordersBody').innerHTML = (r.items || []).map(o => `
+    <tr class="hover:bg-gray-50 cursor-pointer" onclick="openOrder(${o.id})">
+      <td class="font-mono">#${o.id}</td>
+      <td>${o.client_name || '—'}</td>
+      <td>${o.phone || '—'}</td>
+      <td class="font-semibold">${Number(o.total).toLocaleString()} ₴</td>
+      <td>${o.delivery_type || '—'}</td>
+      <td><span class="badge b-${o.status}">${o.status}</span></td>
+      <td>${new Date(o.created_at).toLocaleString('uk-UA')}</td>
+      <td onclick="event.stopPropagation()">${statusButtons(o)}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="text-gray-400">Замовлень немає</td></tr>';
+}
+
+function statusButtons(o) {
+  const flow = { new: 'paid', paid: 'packing', packing: 'shipped', shipped: 'delivered' };
+  const next = flow[o.status];
+  if (!next) return '';
+  return `<button onclick="setStatus(${o.id},'${next}')" class="text-xs bg-black text-white px-2 py-1 rounded">→ ${next}</button>`;
+}
+
+async function setStatus(id, status) {
+  const r = await api(`/api/admin/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (r.ok) {
+    loadOrders();
+    if (!document.getElementById('orderModal').classList.contains('hidden')) openOrder(id);
+  } else {
+    alert('Помилка: ' + (r.error || ''));
+  }
+}
+
+async function openOrder(id) {
+  document.getElementById('orderModal').classList.remove('hidden');
+  document.getElementById('orderTitle').textContent = `Замовлення #${id}`;
+  document.getElementById('orderDetail').innerHTML = 'Завантаження...';
+  const r = await api(`/api/admin/orders/${id}`);
+  if (!r.ok) { document.getElementById('orderDetail').innerHTML = 'Помилка'; return; }
+  const o = r.order;
+  document.getElementById('orderDetail').innerHTML = `
+    <div class="space-y-3">
+      <div class="flex justify-between"><span class="text-gray-500">Клієнт</span><span class="font-semibold">${o.client_name || '—'} (${o.phone || '—'})</span></div>
+      <div class="flex justify-between"><span class="text-gray-500">Сума</span><span class="font-semibold">${Number(o.total).toLocaleString()} ₴</span></div>
+      <div class="flex justify-between"><span class="text-gray-500">Статус</span><span class="badge b-${o.status}">${o.status}</span></div>
+      <div class="flex justify-between"><span class="text-gray-500">Доставка</span><span>${o.delivery_type || '—'}</span></div>
+      ${o.delivery_json ? `<pre class="text-xs bg-gray-50 p-2 rounded">${JSON.stringify(o.delivery_json, null, 2)}</pre>` : ''}
+      <div class="border-t pt-3"><b>Позиції</b></div>
+      ${o.items.map(it => `
+        <div class="flex justify-between text-sm py-1 border-b">
+          <span>${it.product_name} ${it.volume ? '(' + it.volume + ')' : ''} × ${it.qty}</span>
+          <span>${Number(it.line_total).toLocaleString()} ₴</span>
+        </div>`).join('')}
+      <div class="flex gap-2 pt-3 flex-wrap">
+        ${['paid','packing','shipped','delivered','cancelled','refunded'].filter(s => s !== o.status).map(s =>
+          `<button onclick="setStatus(${o.id},'${s}')" class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1.5 rounded">→ ${s}</button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function closeOrder() { document.getElementById('orderModal').classList.add('hidden'); }
+
+// ── PRODUCTS ────────────────────────────────────────────
+async function loadProducts() {
+  const q = document.getElementById('productSearch').value.trim();
+  const r = await api('/api/admin/products?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
+  document.getElementById('productsBody').innerHTML = (r.items || []).map(p => `
+    <tr>
+      <td>${p.name}</td>
+      <td>${p.brand_id}</td>
+      <td>${p.category_id || '—'}</td>
+      <td>${p.variants_count}</td>
+      <td>${p.total_stock ?? 0}</td>
+      <td>${p.price_from ? Number(p.price_from).toLocaleString() + ' ₴' : '—'}</td>
+      <td>${p.active ? '✓' : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="text-gray-400">Нічого не знайдено</td></tr>';
+}
+
+// ── CLIENTS ─────────────────────────────────────────────
+async function loadClients() {
+  const q = document.getElementById('clientSearch').value.trim();
+  const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
+  document.getElementById('clientsBody').innerHTML = (r.items || []).map(c => `
+    <tr>
+      <td>${c.name || '—'}</td>
+      <td>${c.phone}</td>
+      <td>${c.email || '—'}</td>
+      <td>${c.orders_count}</td>
+      <td>${Number(c.total_spent).toLocaleString()} ₴</td>
+      <td>${c.loyalty_points}</td>
+      <td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="text-gray-400">Клієнтів немає</td></tr>';
+}
+
+// ── STOCK ───────────────────────────────────────────────
+async function addStock() {
+  const variant_id = parseInt(document.getElementById('stockVariantId').value, 10);
+  const qty = parseInt(document.getElementById('stockQty').value, 10);
+  const note = document.getElementById('stockNote').value.trim();
+  if (!variant_id || !qty) { alert('Вкажи ID варіанту та кількість'); return; }
+  const r = await api(`/api/admin/variants/${variant_id}/stock`, {
+    method: 'POST', body: JSON.stringify({ qty, note }),
+  });
+  const el = document.getElementById('stockResult');
+  if (r.ok) {
+    el.className = 'text-sm text-green-600';
+    el.textContent = `Залишок оновлено: ${r.variant.stock_qty} шт`;
+  } else {
+    el.className = 'text-sm text-red-600';
+    el.textContent = 'Помилка: ' + (r.error || '');
+  }
+}
+
+// ── SYNC ────────────────────────────────────────────────
+async function loadSync() {
+  const r = await api('/api/sync/status');
+  if (!r.ok) return;
+  const s = r.sync;
+  document.getElementById('syncStats').innerHTML = `
+    <div class="grid grid-cols-3 gap-4">
+      <div><div class="text-xs text-gray-500">Всього клієнтів</div><div class="text-2xl font-bold">${s.total}</div></div>
+      <div><div class="text-xs text-gray-500">Звʼязані з BP</div><div class="text-2xl font-bold text-green-600">${s.linked}</div></div>
+      <div><div class="text-xs text-gray-500">Не звʼязані</div><div class="text-2xl font-bold text-red-600">${s.unlinked}</div></div>
+    </div>`;
+}
+
+async function runSync() {
+  document.getElementById('syncLog').textContent = 'Запуск...';
+  const r = await api('/api/sync/all-clients', { method: 'POST' });
+  document.getElementById('syncLog').textContent = JSON.stringify(r, null, 2);
+  loadSync();
+}
+</script>
+</body>
+</html>
