@@ -12,5 +12,8 @@ app.get('/health', (_req, res) => res.json({ ok: true, service: 'dikidi-features
 
 app.use('/api', require('./routes/dikidi-features'));
 
+// статика — публичные страницы (promotions.html, my.html, ...)
+app.use(express.static(__dirname + '/public'));
+
 const PORT = process.env.DIKIDI_PORT || 3012;
 app.listen(PORT, '0.0.0.0', () => console.log(`[dikidi-server] :${PORT}`));
