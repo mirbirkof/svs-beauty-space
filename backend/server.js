@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payments');
 const bookingRoutes = require('./routes/booking');
+const catalogRoutes = require('./routes/catalog');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +49,7 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/auth/sms', smsLimiter);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/booking', bookingRoutes);
+app.use('/api/catalog', catalogRoutes);
 
 // ── Health check ───────────────────────────────────────
 app.get('/api/health', (req, res) => {
