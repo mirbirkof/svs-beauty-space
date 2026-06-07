@@ -4,7 +4,7 @@
    Завантажується async — не блокує рендер вітрини.
 */
 (function () {
-  var FALLBACK_API = 'https://7f1a8aac2d86d9.lhr.life'; // hardcoded fallback
+  var FALLBACK_API = 'https://d47cdd9104d2e7.lhr.life'; // hardcoded fallback
 
   function api(path, opts) {
     opts = opts || {};
