@@ -3,3 +3,7 @@
 [2026-06-07 13:00:56] Health check FAILED, restarting tunnel
 [2026-06-07 13:00:56] Starting tunnel...
 [2026-06-07 13:01:00] Tunnel up: https://403c70b5f23dcf.lhr.life
+[2026-06-07 13:21:14] Health check FAILED, restarting tunnel
+[2026-06-07 13:21:14] Starting tunnel...
+[2026-06-07 13:21:18] Tunnel up: https://df8c25eb133af2.lhr.life
+[2026-06-07 13:30:04] === Watchdog started, pid=3455303 ===

@@ -25,6 +25,17 @@ start_tunnel() {
     if [ -n "$URL" ]; then
       echo "$URL" > "$URL_FILE"
       log "Tunnel up: $URL"
+      # Авто-апдейт URL у loader-і вітрини
+      LOADER="$HOME/workspace/svs-beauty-space/js/shop-data-live.js"
+      if [ -f "$LOADER" ]; then
+        sed -i "s#https://[a-z0-9]\+\.lhr\.life#$URL#g" "$LOADER"
+        log "Loader URL updated to $URL"
+        # Auto-commit + push
+        (cd "$HOME/workspace/svs-beauty-space" && \
+          git add tunnel/current-url.txt js/shop-data-live.js 2>/dev/null && \
+          git commit -m "[watchdog] tunnel rotation: $URL" --quiet 2>/dev/null && \
+          timeout 20 git push origin main 2>&1 | tail -1) >> "$LOG"
+      fi
       return 0
     fi
   done
