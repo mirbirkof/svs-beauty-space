@@ -39,7 +39,12 @@
   <header class="bg-white shadow-sm">
     <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
       <h1 class="text-lg font-bold">SVS Beauty World — Адмін</h1>
-      <button onclick="logout()" class="text-sm text-gray-500 hover:text-black">Вийти</button>
+      <div class="flex gap-2 items-center text-sm">
+        <a href="dashboard.html" class="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700">📊 Аналітика</a>
+        <a href="promos.html" class="text-gray-500 hover:text-black">Промо</a>
+        <a href="export.html" class="text-gray-500 hover:text-black">Експорт</a>
+        <button onclick="logout()" class="text-gray-500 hover:text-black ml-2">Вийти</button>
+      </div>
     </div>
     <nav class="max-w-7xl mx-auto px-6 flex gap-2 pb-3 overflow-x-auto">
       <button class="tab px-4 py-2 rounded-lg text-sm whitespace-nowrap" data-tab="dashboard" onclick="show('dashboard')">Дашборд</button>

@@ -93,6 +93,43 @@ async function notifyOrderStatus(orderId, newStatus, ttn) {
   }
 }
 
+async function notifyAdminNewOrder(orderId) {
+  const chat = process.env.ADMIN_TG_CHAT;
+  if (!chat) return { ok: false, reason: 'no-admin-chat' };
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT o.id, o.total, o.delivery_type, o.notes, o.created_at,
+            c.name, c.phone, c.email,
+            COALESCE(json_agg(json_build_object('name', oi.product_name, 'qty', oi.qty, 'price', oi.unit_price))
+                     FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+     FROM orders o
+     LEFT JOIN clients c ON c.id = o.client_id
+     LEFT JOIN order_items oi ON oi.order_id = o.id
+     WHERE o.id = $1
+     GROUP BY o.id, c.name, c.phone, c.email`,
+    [orderId]
+  );
+  if (!r.rowCount) return { ok: false, reason: 'order-not-found' };
+  const o = r.rows[0];
+  const items = (o.items || []).map(i => `• ${i.name} ×${i.qty} = ${Math.round(i.price * i.qty)} грн`).join('\n');
+  const text =
+    `🛒 <b>Новий заказ №${o.id}</b>\n` +
+    `Клієнт: ${o.name || '—'}\n` +
+    `Телефон: ${o.phone || '—'}\n` +
+    (o.email ? `Email: ${o.email}\n` : '') +
+    `Доставка: ${o.delivery_type || 'pickup'}\n` +
+    (o.notes ? `Коментар: ${o.notes}\n` : '') +
+    `\n<b>Сума: ${Math.round(o.total)} грн</b>\n\n` +
+    items;
+  try {
+    await tgSend(chat, text);
+    return { ok: true };
+  } catch (e) {
+    console.error('[notify-admin]', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 router.post('/order/:id', adminOnly, async (req, res) => {
   try {
     const result = await notifyOrderStatus(parseInt(req.params.id, 10), req.body?.status, req.body?.ttn);
@@ -123,4 +160,5 @@ router.get('/health', (req, res) => {
 
 module.exports = router;
 module.exports.notifyOrderStatus = notifyOrderStatus;
+module.exports.notifyAdminNewOrder = notifyAdminNewOrder;
 module.exports.tgSend = tgSend;

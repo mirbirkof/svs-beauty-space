@@ -116,6 +116,11 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
     }
 
     await client.query('COMMIT');
+    // алерт Боссу в Telegram (fire-and-forget — не блокируем ответ клиенту)
+    try {
+      const { notifyAdminNewOrder } = require('./telegram-notify');
+      notifyAdminNewOrder(orderId).catch(e => console.error('[notify-admin]', e.message));
+    } catch (e) { console.error('[notify-admin:load]', e.message); }
     res.status(201).json({
       ok: true,
       order: {
