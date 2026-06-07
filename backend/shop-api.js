@@ -25,7 +25,7 @@ const payrollRoutes = require('./routes/payroll-stock');
 const loyaltyRoutes = require('./routes/loyalty');
 
 const app = express();
-const PORT = process.env.SHOP_API_PORT || 3011;
+const PORT = process.env.PORT || process.env.SHOP_API_PORT || 3011;
 
 app.use(cors({
   origin: [
@@ -34,6 +34,9 @@ app.use(cors({
     /\.github\.io$/,
     /\.lhr\.life$/,
     /\.pinggy\.link$/,
+    /\.onrender\.com$/,
+    'https://svsbeautyworld.com',
+    'https://www.svsbeautyworld.com',
   ],
   credentials: true,
 }));
@@ -44,6 +47,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(__dirname + '/public/admin'));
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
 app.use('/p', express.static(__dirname + '/public'));
+
+// Render health check (root + /health)
+app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
+app.get('/health', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
 
 // health + readiness map
 app.get('/api/shop/health', (req, res) => {

@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: svs-shop-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node shop-api.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: BEAUTYPRO_ID_KEY
+        sync: false
+      - key: BEAUTYPRO_SECRET_KEY
+        sync: false
+      - key: BEAUTYPRO_DATABASE_CODE
+        sync: false
+      - key: BEAUTYPRO_LOCATION_ID
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_NOTIFY_TOKEN
+        sync: false
+      - key: ADMIN_CHAT_ID
+        sync: false
+      - key: NOVAPOSHTA_API_KEY
+        sync: false
+      - key: MONO_TOKEN
+        sync: false
+      - key: SMS_PROVIDER
+        sync: false
