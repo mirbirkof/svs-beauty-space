@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS CRM — Каса, Звіти, Інвентар, Філії, Користувачі</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<style>
+:root{--p:#5B5FC7;--bg:#F4F5FA;--card:#fff;--text:#1E1F2B;--muted:#6E7191;--bd:#E4E6F0;--ok:#2DC96F;--warn:#F5A623;--dng:#E5484D}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+header{background:#1E1F2B;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:16px;font-weight:700}
+header .token{display:flex;gap:8px;align-items:center}
+header input{padding:6px 10px;border-radius:8px;border:1px solid #444;background:#2A2B3A;color:#fff;font-size:12px;width:280px}
+header button{background:var(--p);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+nav.tabs{display:flex;background:#fff;border-bottom:1px solid var(--bd);padding:0 24px;overflow-x:auto}
+nav.tabs button{background:none;border:none;padding:12px 16px;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:6px}
+nav.tabs button.active{color:var(--p);border-bottom-color:var(--p)}
+nav.tabs button:hover{color:var(--text)}
+main{padding:24px;max-width:1400px;margin:0 auto}
+.tab{display:none}
+.tab.active{display:block}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h2 .badge{background:var(--p);color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}
+.grid{display:grid;gap:14px}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+@media(max-width:900px){.grid-4,.grid-3,.grid-2{grid-template-columns:1fr}}
+.metric{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+.metric .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.metric .value{font-size:24px;font-weight:700;margin-top:6px}
+.metric .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.metric.ok .value{color:var(--ok)}
+.metric.warn .value{color:var(--warn)}
+.metric.dng .value{color:var(--dng)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+table th,table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd)}
+table th{background:#FAFBFC;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+table tr:hover{background:#FAFBFC}
+.btn{background:var(--p);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
+.btn:hover{background:#4B4FB7}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.danger{background:var(--dng)}
+.btn.ghost{background:transparent;color:var(--p);border:1px solid var(--p)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+input,select{padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
+input:focus,select:focus{outline:none;border-color:var(--p)}
+.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.pill.ok{background:#E0F8EB;color:#0F8E48}
+.pill.warn{background:#FEF3DC;color:#9D6A0C}
+.pill.dng{background:#FCE7E8;color:#A8252C}
+.pill.info{background:#E3EAFC;color:#2E54B9}
+.pill.gray{background:#EEF0F4;color:#5C6275}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.status{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px}
+.status.ok{background:#E0F8EB;color:#0F8E48}
+.status.err{background:#FCE7E8;color:#A8252C}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SVS CRM <span style="opacity:.6;font-weight:400;font-size:12px">— каса, звіти, інвентаризація, філії, користувачі</span></h1>
+  </div>
+  <div class="token">
+    <span style="font-size:11px;opacity:.6">Token:</span>
+    <input id="token" type="password" placeholder="ADMIN_TOKEN або Bearer">
+    <button onclick="saveToken()">OK</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="active" data-tab="cashbox"><span class="material-icons-round" style="font-size:18px">point_of_sale</span> Каса</button>
+  <button data-tab="reports"><span class="material-icons-round" style="font-size:18px">insights</span> Звіти</button>
+  <button data-tab="inventory"><span class="material-icons-round" style="font-size:18px">inventory_2</span> Інвентаризація</button>
+  <button data-tab="branches"><span class="material-icons-round" style="font-size:18px">store</span> Філії</button>
+  <button data-tab="users"><span class="material-icons-round" style="font-size:18px">manage_accounts</span> Користувачі</button>
+  <button data-tab="audit"><span class="material-icons-round" style="font-size:18px">history</span> Аудит</button>
+</nav>
+
+<main>
+
+<!-- ═══════════ КАССА ═══════════ -->
+<section id="tab-cashbox" class="tab active">
+  <div class="card">
+    <h2><span class="material-icons-round">point_of_sale</span> Поточна зміна <span id="cb-status" class="badge">—</span></h2>
+    <div id="cb-current"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="openShift()">Відкрити зміну</button>
+      <button class="btn danger" onclick="closeShift()">Закрити (Z-звіт)</button>
+      <button class="btn ghost" onclick="loadCashbox()">Оновити</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Швидка операція</h2>
+    <div class="row">
+      <select id="op-type"><option value="in">+ Прихід</option><option value="out">- Розхід</option></select>
+      <select id="op-cat">
+        <option value="sale_service">Послуга</option>
+        <option value="sale_product">Товар</option>
+        <option value="prepayment">Передоплата</option>
+        <option value="salary">Зарплата</option>
+        <option value="supplier">Постачальник</option>
+        <option value="rent">Оренда</option>
+        <option value="utilities">Комуналка</option>
+        <option value="encashment_out">Інкасація</option>
+        <option value="other_in">Інше +</option>
+        <option value="other_out">Інше -</option>
+      </select>
+      <select id="op-method">
+        <option value="cash">Готівка</option><option value="card">Картка</option>
+        <option value="transfer">Переказ</option><option value="mono">Mono</option>
+      </select>
+      <input id="op-amount" type="number" placeholder="Сума, ₴" style="width:130px">
+      <input id="op-desc" placeholder="Коментар" style="flex:1;min-width:200px">
+      <button class="btn" onclick="addOp()">Додати</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Операції зміни</h2>
+    <table><thead><tr><th>Час</th><th>Тип</th><th>Категорія</th><th>Спосіб</th><th>Сума</th><th>Коментар</th></tr></thead><tbody id="cb-ops"></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Z-звіти</h2>
+    <table><thead><tr><th>№</th><th>Період</th><th>Прихід</th><th>Розхід</th><th>Готівка факт</th><th>Розбіжність</th></tr></thead><tbody id="cb-zlist"></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ ОТЧЁТЫ ═══════════ -->
+<section id="tab-reports" class="tab">
+  <div class="card">
+    <h2>Період</h2>
+    <div class="row">
+      <input id="r-from" type="date">
+      <input id="r-to" type="date">
+      <button class="btn" onclick="loadReports()">Оновити</button>
+      <button class="btn ghost" onclick="setRange(7)">7 днів</button>
+      <button class="btn ghost" onclick="setRange(30)">30 днів</button>
+      <button class="btn ghost" onclick="setRange(90)">90 днів</button>
+    </div>
+  </div>
+
+  <div class="grid grid-4" id="r-dashboard"></div>
+
+  <div class="card"><h2>P&amp;L — фінансовий результат</h2><div id="r-pnl"></div></div>
+  <div class="card"><h2>KPI майстрів</h2><div id="r-masters"></div></div>
+  <div class="card"><h2>RFM-сегментація клієнтів</h2><div id="r-rfm"></div></div>
+  <div class="card"><h2>Відтік (>90 днів)</h2><div id="r-churn"></div></div>
+</section>
+
+<!-- ═══════════ ИНВЕНТАРИЗАЦИЯ ═══════════ -->
+<section id="tab-inventory" class="tab">
+  <div class="card">
+    <h2>Новий акт</h2>
+    <div class="row">
+      <select id="inv-scope">
+        <option value="full">Повна інвентаризація</option>
+        <option value="category">По категорії</option>
+        <option value="brand">По бренду</option>
+      </select>
+      <input id="inv-filter-id" type="number" placeholder="ID категорії/бренду (опц.)" style="width:200px">
+      <input id="inv-notes" placeholder="Коментар">
+      <button class="btn" onclick="createAudit()">Створити акт</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Акти інвентаризації</h2>
+    <table><thead><tr><th>№</th><th>Старт</th><th>Статус</th><th>Позицій</th><th>Підраховано</th><th>Розбіжності</th><th>Сума розб.</th><th></th></tr></thead><tbody id="inv-list"></tbody></table>
+  </div>
+  <div class="card" id="inv-detail-card" style="display:none">
+    <h2>Деталі акту <span id="inv-detail-no"></span></h2>
+    <div style="max-height:500px;overflow:auto">
+      <table><thead><tr><th>Товар</th><th>SKU</th><th>Облік</th><th>Факт</th><th>Δ</th><th>Причина</th><th></th></tr></thead><tbody id="inv-items"></tbody></table>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" onclick="completeAudit()">Закрити акт + застосувати корективи</button>
+      <button class="btn danger" onclick="cancelAudit()">Скасувати</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ФИЛИАЛЫ ═══════════ -->
+<section id="tab-branches" class="tab">
+  <div class="card">
+    <h2>Новий філіал</h2>
+    <div class="row">
+      <input id="b-code" placeholder="код (main, satellite-1)" style="width:200px">
+      <input id="b-name" placeholder="Назва" style="flex:1">
+      <input id="b-city" placeholder="Місто" style="width:160px">
+      <input id="b-addr" placeholder="Адреса" style="flex:1">
+      <button class="btn" onclick="createBranch()">Додати</button>
+    </div>
+  </div>
+  <div class="card"><h2>Філії</h2><table><thead><tr><th>Код</th><th>Назва</th><th>Місто</th><th>Адреса</th><th>Активний</th></tr></thead><tbody id="b-list"></tbody></table></div>
+  <div class="card"><h2>Огляд по філіях (30 днів)</h2><table><thead><tr><th>Філіал</th><th>Замовлень</th><th>Дохід</th><th>Запис</th><th>Майстрів</th></tr></thead><tbody id="b-stats"></tbody></table></div>
+</section>
+
+<!-- ═══════════ ПОЛЬЗОВАТЕЛИ ═══════════ -->
+<section id="tab-users" class="tab">
+  <div class="card">
+    <h2>Новий користувач</h2>
+    <div class="row">
+      <input id="u-name" placeholder="Ім'я" style="width:200px">
+      <input id="u-phone" placeholder="Телефон" style="width:160px">
+      <input id="u-email" placeholder="Email" style="width:200px">
+      <select id="u-role">
+        <option value="owner">Власник</option>
+        <option value="admin">Адмін</option>
+        <option value="manager">Менеджер</option>
+        <option value="master">Майстер</option>
+        <option value="reception">Рецепшен</option>
+        <option value="readonly">Тільки чтение</option>
+      </select>
+      <button class="btn" onclick="createUser()">Створити</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Користувачі</h2>
+    <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Телефон</th><th>Email</th><th>Філіал</th><th>Активний</th><th></th></tr></thead><tbody id="u-list"></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ АУДИТ ═══════════ -->
+<section id="tab-audit" class="tab">
+  <div class="card">
+    <h2>Журнал дій (останні 100)</h2>
+    <button class="btn ghost sm" onclick="loadAudit()">Оновити</button>
+    <table style="margin-top:12px"><thead><tr><th>Час</th><th>Хто</th><th>Дія</th><th>Об'єкт</th><th>ID</th><th>Деталі</th></tr></thead><tbody id="audit-list"></tbody></table>
+  </div>
+</section>
+
+</main>
+
+<script>
+const API = location.origin;
+let TOKEN = localStorage.getItem('svs_token') || '';
+let CURRENT_SHIFT = null;
+let CURRENT_AUDIT = null;
+document.getElementById('token').value = TOKEN;
+
+function saveToken(){ TOKEN = document.getElementById('token').value.trim(); localStorage.setItem('svs_token', TOKEN); init(); }
+
+async function api(path, opts={}){
+  const h = opts.headers || {};
+  h['Content-Type']='application/json';
+  if(TOKEN) h['Authorization']='Bearer '+TOKEN;
+  if(TOKEN) h['X-Admin-Token']=TOKEN;
+  const r = await fetch(API+path, {...opts, headers:h});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+  return j;
+}
+
+// tabs
+document.querySelectorAll('nav.tabs button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('tab-'+b.dataset.tab).classList.add('active');
+    onTab(b.dataset.tab);
+  };
+});
+
+function onTab(t){
+  if(t==='cashbox') loadCashbox();
+  if(t==='reports') loadReports();
+  if(t==='inventory') loadInventory();
+  if(t==='branches') loadBranches();
+  if(t==='users') loadUsers();
+  if(t==='audit') loadAudit();
+}
+
+// ─────── CASHBOX ───────
+async function loadCashbox(){
+  try{
+    const c = await api('/api/cashbox/shifts/current');
+    const box = document.getElementById('cb-current');
+    const badge = document.getElementById('cb-status');
+    if(!c.shift){ box.innerHTML='<div class="empty">Зміна закрита</div>'; badge.textContent='ЗАКРИТО'; badge.style.background='#888'; CURRENT_SHIFT=null; document.getElementById('cb-ops').innerHTML=''; return; }
+    CURRENT_SHIFT = c.shift.id;
+    badge.textContent='ВІДКРИТА'; badge.style.background='var(--ok)';
+    box.innerHTML = `
+      <div class="grid grid-4">
+        <div class="metric"><div class="label">Відкрита</div><div class="value" style="font-size:14px">${new Date(c.shift.opened_at).toLocaleString('uk')}</div></div>
+        <div class="metric ok"><div class="label">Прихід</div><div class="value">${(+c.totals.total_in).toFixed(2)} ₴</div></div>
+        <div class="metric dng"><div class="label">Розхід</div><div class="value">${(+c.totals.total_out).toFixed(2)} ₴</div></div>
+        <div class="metric"><div class="label">Очікувано в касі</div><div class="value">${(+c.expected_cash).toFixed(2)} ₴</div></div>
+      </div>`;
+    const ops = await api('/api/cashbox/operations?shift_id='+CURRENT_SHIFT);
+    document.getElementById('cb-ops').innerHTML = ops.items.map(o=>`
+      <tr>
+        <td>${new Date(o.created_at).toLocaleTimeString('uk')}</td>
+        <td><span class="pill ${o.type==='in'?'ok':'dng'}">${o.type==='in'?'+':'−'}</span></td>
+        <td>${o.category}</td><td>${o.method}</td>
+        <td><b>${(+o.amount).toFixed(2)} ₴</b></td>
+        <td>${o.description||''}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">Операцій ще немає</td></tr>';
+    const z = await api('/api/cashbox/z-reports');
+    document.getElementById('cb-zlist').innerHTML = z.items.map(r=>`
+      <tr>
+        <td>#${r.report_no}</td>
+        <td>${new Date(r.period_start).toLocaleString('uk')} — ${new Date(r.period_end).toLocaleString('uk')}</td>
+        <td>${(+r.total_in).toFixed(2)}</td>
+        <td>${(+r.total_out).toFixed(2)}</td>
+        <td>${(+r.closing_cash).toFixed(2)}</td>
+        <td><b style="color:${+r.difference===0?'var(--ok)':'var(--dng)'}">${(+r.difference).toFixed(2)}</b></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="empty">Z-звітів немає</td></tr>';
+  }catch(e){ alert('Каса: '+e.message); }
+}
+async function openShift(){
+  const cash = prompt('Початкова готівка в касі, ₴:', '0');
+  if(cash===null) return;
+  try{ await api('/api/cashbox/shifts/open',{method:'POST',body:JSON.stringify({opening_cash:+cash})}); loadCashbox(); }catch(e){ alert(e.message); }
+}
+async function closeShift(){
+  if(!CURRENT_SHIFT) return alert('Немає відкритої зміни');
+  const cash = prompt('Фактична готівка в касі (для звірки):');
+  if(cash===null) return;
+  try{ const r = await api('/api/cashbox/shifts/'+CURRENT_SHIFT+'/close',{method:'POST',body:JSON.stringify({closing_cash:+cash})}); alert('Z-звіт #'+r.z_report.report_no+' створений. Розбіжність: '+r.z_report.difference+' ₴'); loadCashbox(); }catch(e){ alert(e.message); }
+}
+async function addOp(){
+  const t = document.getElementById('op-type').value;
+  const c = document.getElementById('op-cat').value;
+  const m = document.getElementById('op-method').value;
+  const a = +document.getElementById('op-amount').value;
+  const d = document.getElementById('op-desc').value;
+  if(!a) return alert('Сума > 0');
+  try{ await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type:t,category:c,method:m,amount:a,description:d})}); document.getElementById('op-amount').value=''; document.getElementById('op-desc').value=''; loadCashbox(); }catch(e){ alert(e.message); }
+}
+
+// ─────── REPORTS ───────
+function setRange(days){
+  const to = new Date(); const from = new Date(to.getTime()-days*86400*1000);
+  document.getElementById('r-from').value = from.toISOString().slice(0,10);
+  document.getElementById('r-to').value = to.toISOString().slice(0,10);
+  loadReports();
+}
+async function loadReports(){
+  try{
+    const d = await api('/api/reports/dashboard');
+    document.getElementById('r-dashboard').innerHTML = `
+      <div class="metric ok"><div class="label">Дохід сьогодні</div><div class="value">${(+d.revenue_today).toFixed(0)} ₴</div></div>
+      <div class="metric"><div class="label">Дохід місяць</div><div class="value">${(+d.revenue_month).toFixed(0)} ₴</div></div>
+      <div class="metric warn"><div class="label">Низькі залишки</div><div class="value">${d.low_stock_items}</div></div>
+      <div class="metric dng"><div class="label">Клієнти у відтоку</div><div class="value">${d.churn_clients}</div></div>`;
+    const from = document.getElementById('r-from').value;
+    const to = document.getElementById('r-to').value;
+    const q = (from && to) ? `?from=${from}&to=${to}` : '';
+    const p = await api('/api/reports/pnl'+q);
+    document.getElementById('r-pnl').innerHTML = `
+      <div class="grid grid-3">
+        <div class="metric ok"><div class="label">Дохід</div><div class="value">${(+p.revenue.total).toFixed(0)} ₴</div><div class="sub">товари ${(+p.revenue.products).toFixed(0)} · послуги ${(+p.revenue.services).toFixed(0)}</div></div>
+        <div class="metric"><div class="label">Валовий прибуток</div><div class="value">${(+p.gross_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.gross_margin_pct}%</div></div>
+        <div class="metric ${(+p.net_profit)>=0?'ok':'dng'}"><div class="label">Чистий прибуток</div><div class="value">${(+p.net_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.net_margin_pct}%</div></div>
+      </div>
+      <div style="margin-top:12px"><b>Витрати по категоріях:</b><br>` +
+      (p.expenses.length ? p.expenses.map(e=>`<span class="pill gray">${e.category}: ${(+e.sum).toFixed(0)} ₴</span> `).join('') : '<span class="empty">немає</span>') + '</div>';
+    const m = await api('/api/reports/masters'+q);
+    document.getElementById('r-masters').innerHTML = m.items.length ?
+      `<table><thead><tr><th>Майстер</th><th>Сеансів</th><th>Унік.клієнтів</th><th>Дохід</th><th>Сер.чек</th><th>% відмін</th><th>ЗП</th></tr></thead><tbody>${m.items.map(r=>`<tr><td>${r.name||'#'+r.id}</td><td>${r.total_appts||0}</td><td>${r.unique_clients||0}</td><td><b>${(+r.revenue||0).toFixed(0)} ₴</b></td><td>${(+r.avg_ticket||0).toFixed(0)}</td><td>${(+r.cancel_rate_pct||0).toFixed(1)}%</td><td>${(+r.payroll_sum||0).toFixed(0)}</td></tr>`).join('')}</tbody></table>` :
+      '<div class="empty">Даних за період немає</div>';
+    const rfm = await api('/api/reports/rfm');
+    const sumHtml = Object.entries(rfm.summary).map(([k,v])=>`<span class="pill ${k==='champion'?'ok':k==='lost'?'dng':k==='at_risk'?'warn':'info'}">${k}: ${v.count} (${(+v.revenue).toFixed(0)} ₴)</span> `).join('');
+    document.getElementById('r-rfm').innerHTML = `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
+      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th>R/F/M</th><th>Днів тому</th><th>Покупок</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,50).map(r=>`<tr><td>${r.name||r.phone}</td><td><span class="pill ${r.segment==='champion'?'ok':r.segment==='lost'?'dng':'info'}">${r.segment}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
+    const ch = await api('/api/reports/churn?days=90');
+    document.getElementById('r-churn').innerHTML = ch.items.length ?
+      `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||r.phone}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
+      '<div class="empty">Клієнтів у відтоку немає</div>';
+  }catch(e){ alert('Звіти: '+e.message); }
+}
+
+// ─────── INVENTORY ───────
+async function loadInventory(){
+  try{
+    const r = await api('/api/inventory/audits');
+    document.getElementById('inv-list').innerHTML = r.items.length ?
+      r.items.map(a=>`<tr><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ghost" onclick="openAudit(${a.id})">Відкр.</button></td></tr>`).join('') :
+      '<tr><td colspan="8" class="empty">Актів немає</td></tr>';
+  }catch(e){ alert(e.message); }
+}
+async function createAudit(){
+  const scope = document.getElementById('inv-scope').value;
+  const fid = document.getElementById('inv-filter-id').value;
+  const notes = document.getElementById('inv-notes').value;
+  const body = { scope, notes };
+  if(scope==='category' && fid) body.scope_filter = { category_id: +fid };
+  if(scope==='brand' && fid) body.scope_filter = { brand_id: +fid };
+  try{ const r = await api('/api/inventory/audits',{method:'POST',body:JSON.stringify(body)}); alert('Акт #'+r.audit_id+' створений. Позицій: '+r.items); loadInventory(); openAudit(r.audit_id); }catch(e){ alert(e.message); }
+}
+async function openAudit(id){
+  CURRENT_AUDIT = id;
+  const r = await api('/api/inventory/audits/'+id);
+  document.getElementById('inv-detail-card').style.display='block';
+  document.getElementById('inv-detail-no').textContent = '#'+id+' ('+r.audit.status+')';
+  document.getElementById('inv-items').innerHTML = r.items.map(it=>`
+    <tr>
+      <td>${it.product_name||''}</td><td>${it.sku||''}</td><td>${it.expected_qty}</td>
+      <td><input type="number" value="${it.actual_qty??''}" data-id="${it.id}" class="inv-actual" style="width:80px"></td>
+      <td>${it.actual_qty!=null?(it.actual_qty-it.expected_qty):'—'}</td>
+      <td><select class="inv-reason" data-id="${it.id}" style="width:120px"><option value="">—</option><option value="damage">пошкодж.</option><option value="theft">крадіжка</option><option value="miscount">пересорт</option><option value="expired">прострочка</option><option value="other">інше</option></select></td>
+      <td><button class="btn sm" onclick="saveItem(${it.id})">Зберегти</button></td>
+    </tr>`).join('');
+}
+async function saveItem(id){
+  const actual = document.querySelector(`.inv-actual[data-id="${id}"]`).value;
+  const reason = document.querySelector(`.inv-reason[data-id="${id}"]`).value;
+  if(actual==='') return alert('Введіть фактичну кількість');
+  try{ await api('/api/inventory/items/'+id,{method:'PATCH',body:JSON.stringify({actual_qty:+actual, reason})}); openAudit(CURRENT_AUDIT); }catch(e){ alert(e.message); }
+}
+async function completeAudit(){
+  if(!confirm('Закрити акт і застосувати корективи до залишків?')) return;
+  try{ const r = await api('/api/inventory/audits/'+CURRENT_AUDIT+'/complete',{method:'POST',body:'{}'}); alert('Закрито. Скориговано '+r.adjusted+' позицій. Сума: '+(+r.total_diff).toFixed(2)+' ₴'); loadInventory(); document.getElementById('inv-detail-card').style.display='none'; }catch(e){ alert(e.message); }
+}
+async function cancelAudit(){
+  if(!confirm('Скасувати акт без застосування?')) return;
+  try{ await api('/api/inventory/audits/'+CURRENT_AUDIT,{method:'DELETE'}); loadInventory(); document.getElementById('inv-detail-card').style.display='none'; }catch(e){ alert(e.message); }
+}
+
+// ─────── BRANCHES ───────
+async function loadBranches(){
+  try{
+    const r = await api('/api/branches');
+    document.getElementById('b-list').innerHTML = r.items.map(b=>`
+      <tr><td><code>${b.code}</code></td><td>${b.name}</td><td>${b.city||'—'}</td><td>${b.address||'—'}</td>
+          <td><span class="pill ${b.is_active?'ok':'gray'}">${b.is_active?'так':'ні'}</span></td></tr>`).join('');
+    const s = await api('/api/branches/stats/overview').catch(()=>({items:[]}));
+    document.getElementById('b-stats').innerHTML = s.items.map(b=>`
+      <tr><td>${b.name}</td><td>${b.orders_30d}</td><td><b>${(+b.revenue_30d).toFixed(0)} ₴</b></td><td>${b.appts_30d}</td><td>${b.masters}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">—</td></tr>';
+  }catch(e){ alert(e.message); }
+}
+async function createBranch(){
+  const code = document.getElementById('b-code').value.trim();
+  const name = document.getElementById('b-name').value.trim();
+  if(!code||!name) return alert('code + name обовʼязкові');
+  try{ await api('/api/branches',{method:'POST',body:JSON.stringify({code, name, city:document.getElementById('b-city').value, address:document.getElementById('b-addr').value})}); document.getElementById('b-code').value=''; document.getElementById('b-name').value=''; loadBranches(); }catch(e){ alert(e.message); }
+}
+
+// ─────── USERS ───────
+async function loadUsers(){
+  try{
+    const r = await api('/api/users');
+    document.getElementById('u-list').innerHTML = r.items.map(u=>`
+      <tr><td>${u.display_name}</td><td><span class="pill info">${u.role}</span></td>
+          <td>${u.phone||''}</td><td>${u.email||''}</td><td>${u.branch_id||'—'}</td>
+          <td><span class="pill ${u.is_active?'ok':'gray'}">${u.is_active?'так':'ні'}</span></td>
+          <td><button class="btn sm" onclick="issueToken(${u.id})">Token</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Користувачів немає</td></tr>';
+  }catch(e){ alert(e.message); }
+}
+async function createUser(){
+  const display_name = document.getElementById('u-name').value.trim();
+  const phone = document.getElementById('u-phone').value.trim();
+  const email = document.getElementById('u-email').value.trim();
+  const role_code = document.getElementById('u-role').value;
+  if(!display_name) return alert('Імʼя обовʼязкове');
+  try{ await api('/api/users',{method:'POST',body:JSON.stringify({display_name, phone, email, role_code})}); document.getElementById('u-name').value=''; loadUsers(); }catch(e){ alert(e.message); }
+}
+async function issueToken(uid){
+  const label = prompt('Мітка токена (напр. "iPad ресепшен"):', 'main');
+  if(!label) return;
+  try{ const r = await api('/api/users/'+uid+'/tokens',{method:'POST',body:JSON.stringify({label, ttl_days:365})}); prompt('Скопіюй токен (показується один раз):', r.token); }catch(e){ alert(e.message); }
+}
+
+// ─────── AUDIT ───────
+async function loadAudit(){
+  try{
+    const r = await api('/api/users/audit/log?limit=100');
+    document.getElementById('audit-list').innerHTML = r.items.map(a=>`
+      <tr><td>${new Date(a.created_at).toLocaleString('uk')}</td>
+          <td>${a.user_label||'—'}</td>
+          <td><code>${a.action}</code></td>
+          <td>${a.entity||''}</td><td>${a.entity_id||''}</td>
+          <td style="max-width:300px;font-size:11px;color:var(--muted)">${a.meta?JSON.stringify(a.meta):''}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Записів немає</td></tr>';
+  }catch(e){ alert(e.message); }
+}
+
+function init(){ setRange(30); onTab('cashbox'); }
+init();
+</script>
+</body>
+</html>
