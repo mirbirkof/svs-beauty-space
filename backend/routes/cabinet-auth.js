@@ -77,11 +77,26 @@ router.post('/request-code', async (req, res) => {
       [phone, code, expires]
     );
 
-    // TODO: при подключении SMS-провайдера — отправить sms
+    // Отправка кода: Telegram (если клиент есть) → SMS (если провайдер) → dev-fallback
+    let mode = 'dev';
+    if (process.env.SMS_PROVIDER) {
+      // TODO: Twilio / TurboSMS
+      mode = 'sms';
+    } else {
+      // Попробуем через Telegram если клиент уже известен
+      try {
+        const cl = await pool.query('SELECT telegram_id FROM clients WHERE phone LIKE $1 LIMIT 1', ['%' + phone.slice(-10)]);
+        if (cl.rows[0]?.telegram_id) {
+          const { tgSend } = require('./telegram-notify');
+          await tgSend(String(cl.rows[0].telegram_id), `🔑 Ваш код для входу: <b>${code}</b>\nДійсний 5 хвилин.`);
+          mode = 'telegram';
+        }
+      } catch (tgErr) { /* fallback to dev */ }
+    }
     res.json({
       ok: true,
-      mode: process.env.SMS_PROVIDER ? 'sms' : 'dev',
-      hint: process.env.SMS_PROVIDER ? null : `dev-code: ${DEV_CODE}`,
+      mode,
+      hint: mode === 'dev' ? `dev-code: ${DEV_CODE}` : null,
     });
   } catch (e) {
     console.error('[auth:request]', e);

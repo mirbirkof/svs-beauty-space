@@ -15,6 +15,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { tgSend } = require('./telegram-notify');
+const { requirePerm } = require('../lib/rbac');
 
 const CRON_INTERVAL = 15 * 60 * 1000; // 15 мин
 let cronRef = null;
@@ -188,8 +189,8 @@ router.get('/status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/reminders/run — ручной запуск (для теста)
-router.post('/run', async (req, res) => {
+// POST /api/reminders/run — ручной запуск (для теста, только admin)
+router.post('/run', requirePerm('reminders.manage'), async (req, res) => {
   try {
     const scheduled = await scheduleReminders();
     const delivery = await sendPending();

@@ -101,6 +101,7 @@ app.use('/api/cabinet', cabinetRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/sync', syncRoutes);
+try { app.use('/api/sync', require('./routes/beautypro-sync-v2')); } catch(e) { /* v2 optional */ }
 app.use('/api/np', npRoutes);
 app.use('/api/catalog/legacy', legacyRoutes);
 app.use('/api/notify', notifyRoutes);

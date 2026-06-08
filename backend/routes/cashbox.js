@@ -2,9 +2,16 @@
    Финансовый учёт салона — приход/расход кассы по сменам.
    Подключается как /api/cashbox в shop-api.js */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
+
+// Авторизация: read на GET, write на мутации
+router.use((req, res, next) => {
+  const perm = req.method === 'GET' ? 'cashbox.read' : 'cashbox.write';
+  return requirePerm(perm)(req, res, next);
+});
 
 // ── helpers ────────────────────────────────────────────
 async function getOpenShift(branchId) {

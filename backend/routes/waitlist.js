@@ -10,20 +10,11 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const bp = require('../beautyproClient');
+const { requirePerm } = require('../lib/rbac');
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-
-function isAdmin(req) {
-  const t = req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '');
-  return t && t === ADMIN_TOKEN;
-}
+const pool = getPool();
 
 function normalizePhone(p) {
   if (!p) return null;
@@ -84,8 +75,7 @@ router.post('/waitlist', async (req, res) => {
 });
 
 // GET /api/waitlist — admin
-router.get('/waitlist', async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+router.get('/waitlist', requirePerm('waitlist.read'), async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT * FROM waitlist
@@ -110,8 +100,7 @@ router.get('/waitlist/mine', async (req, res) => {
 });
 
 // PATCH /api/waitlist/:id — admin
-router.patch('/waitlist/:id', async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+router.patch('/waitlist/:id', requirePerm('waitlist.write'), async (req, res) => {
   try {
     const { status, offered_slot, note } = req.body;
     const patches = [];
@@ -234,8 +223,7 @@ router.get('/booking/history', async (req, res) => {
 });
 
 // GET /api/booking/admin/all — admin: все online_bookings
-router.get('/booking/admin/all', async (req, res) => {
-  if (!isAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+router.get('/booking/admin/all', requirePerm('booking.read'), async (req, res) => {
   try {
     const r = await pool.query(`
       SELECT * FROM online_bookings

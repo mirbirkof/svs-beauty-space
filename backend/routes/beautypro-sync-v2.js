@@ -25,11 +25,7 @@ const HOST = 'api.aihelps.com';
 let cachedToken = null;
 let tokenExpiry = 0;
 
-function adminOnly(req, res, next) {
-  const t = req.headers['x-admin-token'];
-  if (!t || t !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
-  next();
-}
+const { requirePerm } = require('../lib/rbac');
 
 function httpsRequest(method, path, { token, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -151,7 +147,7 @@ router.get('/health', async (req, res) => {
   }
 });
 
-router.post('/client', adminOnly, async (req, res) => {
+router.post('/client', requirePerm('sync.write'), async (req, res) => {
   const { phone, client_id } = req.body || {};
   let local;
   if (client_id) {
@@ -177,7 +173,7 @@ router.post('/client', adminOnly, async (req, res) => {
   res.json(result);
 });
 
-router.post('/all-clients', adminOnly, async (req, res) => {
+router.post('/all-clients', requirePerm('sync.write'), async (req, res) => {
   const r = await pool.query(
     `SELECT id, phone, name, email FROM clients
      WHERE beautypro_id IS NULL AND phone IS NOT NULL LIMIT 50`
@@ -192,7 +188,7 @@ router.post('/all-clients', adminOnly, async (req, res) => {
   res.json({ ok: true, processed: results.length, linked, results });
 });
 
-router.get('/status', adminOnly, async (req, res) => {
+router.get('/status', requirePerm('sync.write'), async (req, res) => {
   const r = await pool.query(
     `SELECT
        COUNT(*) FILTER (WHERE beautypro_id IS NOT NULL) AS linked,

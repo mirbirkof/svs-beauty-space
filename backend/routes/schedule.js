@@ -2,7 +2,14 @@
    Подключается как /api/schedule */
 const express = require('express');
 const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
 const router = express.Router();
+
+// GET = schedule.read, мутации = schedule.write
+router.use((req, res, next) => {
+  const perm = req.method === 'GET' ? 'schedule.read' : 'schedule.write';
+  return requirePerm(perm)(req, res, next);
+});
 
 // ── GET /api/schedule/masters — все активные мастера с расписанием ──
 router.get('/masters', async (req, res) => {

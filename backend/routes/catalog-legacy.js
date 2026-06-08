@@ -10,6 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const pg = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
 
 let cache = null;
 let cachedAt = 0;
@@ -78,10 +79,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
-router.post('/invalidate', (req, res) => {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+router.post('/invalidate', requirePerm('catalog.write'), (req, res) => {
   cache = null;
   res.json({ ok: true, cleared: true });
 });

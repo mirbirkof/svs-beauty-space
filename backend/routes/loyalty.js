@@ -1,10 +1,16 @@
 // Программа лояльности: уровни, рефералы, бонусы ко дню рождения
 const express = require('express');
 const router = express.Router();
-const {Client} = require('pg');
+const { requirePerm } = require('../lib/rbac');
+const { getPool } = require('../db-pg');
 
-const DB = process.env.DATABASE_URL;
-const pool = new (require('pg').Pool)({ connectionString: DB, max: 5 });
+const pool = getPool();
+
+// Авторизация: read на GET, write на мутации
+router.use((req, res, next) => {
+  const perm = req.method === 'GET' ? 'loyalty.read' : 'loyalty.write';
+  return requirePerm(perm)(req, res, next);
+});
 
 function normalizePhone(p) {
   if (!p) return null;

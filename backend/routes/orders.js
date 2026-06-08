@@ -10,6 +10,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { authClient } = require('./cabinet-auth');
+const { requirePerm } = require('../lib/rbac');
 
 const STATUSES = ['new', 'paid', 'packing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
@@ -190,10 +191,7 @@ router.get('/', authClient(), async (req, res) => {
 });
 
 // ── смена статуса (admin) ───────────────────────────────
-router.patch('/:id/status', async (req, res) => {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+router.patch('/:id/status', requirePerm('order.write'), async (req, res) => {
   const { status } = req.body || {};
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'bad-status' });
   try {

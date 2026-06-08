@@ -29,18 +29,10 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
+const { requirePerm } = require('../lib/rbac');
 
-// ── middleware: проверка ADMIN_TOKEN ────────────────────
-router.use((req, res, next) => {
-  const token = req.headers['x-admin-token'];
-  if (!process.env.ADMIN_TOKEN) {
-    return res.status(503).json({ error: 'admin-not-configured' });
-  }
-  if (token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  next();
-});
+// ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
+router.use(requirePerm('admin.*'));
 
 // ═══════════════════════════════════════════════════════
 //   ТОВАРЫ И ВАРИАНТЫ
@@ -463,6 +455,239 @@ router.get('/stats/low-stock', async (req, res) => {
     );
     res.json({ ok: true, threshold, items: r.rows });
   } catch (e) { console.error('[admin:low]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ═══════════════════════════════════════════════════════
+//   СПРАВОЧНИКИ: brands, categories, masters, services, roles
+// ═══════════════════════════════════════════════════════
+
+// --- BRANDS ---
+router.get('/brands', async (req, res) => {
+  try {
+    const r = await getPool().query('SELECT * FROM brands ORDER BY name');
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/brands', async (req, res) => {
+  try {
+    const { id, name, logo, about } = req.body || {};
+    if (!id || !name) return res.status(400).json({ error: 'id and name required' });
+    const r = await getPool().query(
+      'INSERT INTO brands (id, name, logo, about) VALUES ($1,$2,$3,$4) RETURNING *',
+      [id, name, logo || null, about || null]
+    );
+    res.status(201).json({ ok: true, brand: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/brands/:id', async (req, res) => {
+  try {
+    const { name, logo, about } = req.body || {};
+    const r = await getPool().query(
+      `UPDATE brands SET name=COALESCE($2,name), logo=COALESCE($3,logo), about=COALESCE($4,about) WHERE id=$1 RETURNING *`,
+      [req.params.id, name, logo, about]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, brand: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/brands/:id', async (req, res) => {
+  try {
+    const r = await getPool().query('DELETE FROM brands WHERE id=$1 RETURNING id', [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deleted: req.params.id });
+  } catch (e) {
+    if (e.code === '23503') return res.status(409).json({ error: 'has-linked-products' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- CATEGORIES ---
+router.get('/categories', async (req, res) => {
+  try {
+    const r = await getPool().query('SELECT * FROM categories ORDER BY group_name, name');
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/categories', async (req, res) => {
+  try {
+    const { id, name, icon, group_name } = req.body || {};
+    if (!id || !name) return res.status(400).json({ error: 'id and name required' });
+    const r = await getPool().query(
+      'INSERT INTO categories (id, name, icon, group_name) VALUES ($1,$2,$3,$4) RETURNING *',
+      [id, name, icon || null, group_name || null]
+    );
+    res.status(201).json({ ok: true, category: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/categories/:id', async (req, res) => {
+  try {
+    const { name, icon, group_name } = req.body || {};
+    const r = await getPool().query(
+      `UPDATE categories SET name=COALESCE($2,name), icon=COALESCE($3,icon), group_name=COALESCE($4,group_name) WHERE id=$1 RETURNING *`,
+      [req.params.id, name, icon, group_name]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, category: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/categories/:id', async (req, res) => {
+  try {
+    const r = await getPool().query('DELETE FROM categories WHERE id=$1 RETURNING id', [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deleted: req.params.id });
+  } catch (e) {
+    if (e.code === '23503') return res.status(409).json({ error: 'has-linked-products' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- MASTERS ---
+router.get('/masters', async (req, res) => {
+  try {
+    const r = await getPool().query('SELECT * FROM masters ORDER BY name');
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/masters', async (req, res) => {
+  try {
+    const { name, phone, specialty, bio, avatar, beautypro_id, commission_pct } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await getPool().query(
+      `INSERT INTO masters (name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
+      [name, phone || null, specialty || null, bio || null, avatar || null, beautypro_id || null, commission_pct || null]
+    );
+    res.status(201).json({ ok: true, master: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/masters/:id', async (req, res) => {
+  try {
+    const { name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active } = req.body || {};
+    const r = await getPool().query(
+      `UPDATE masters SET
+         name=COALESCE($2,name), phone=COALESCE($3,phone), specialty=COALESCE($4,specialty),
+         bio=COALESCE($5,bio), avatar=COALESCE($6,avatar), beautypro_id=COALESCE($7,beautypro_id),
+         commission_pct=COALESCE($8,commission_pct), active=COALESCE($9,active)
+       WHERE id=$1 RETURNING *`,
+      [parseInt(req.params.id), name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, master: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/masters/:id', async (req, res) => {
+  try {
+    const r = await getPool().query(
+      'UPDATE masters SET active=false WHERE id=$1 RETURNING id', [parseInt(req.params.id)]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deactivated: r.rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- SERVICES ---
+router.get('/services', async (req, res) => {
+  try {
+    const r = await getPool().query('SELECT * FROM services ORDER BY category, name');
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/services', async (req, res) => {
+  try {
+    const { name, category, duration_min, price, beautypro_id, description } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const r = await getPool().query(
+      `INSERT INTO services (name, category, duration_min, price, beautypro_id, description, active)
+       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
+      [name, category || null, duration_min || null, price || null, beautypro_id || null, description || null]
+    );
+    res.status(201).json({ ok: true, service: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.patch('/services/:id', async (req, res) => {
+  try {
+    const { name, category, duration_min, price, beautypro_id, description, active } = req.body || {};
+    const r = await getPool().query(
+      `UPDATE services SET
+         name=COALESCE($2,name), category=COALESCE($3,category), duration_min=COALESCE($4,duration_min),
+         price=COALESCE($5,price), beautypro_id=COALESCE($6,beautypro_id), description=COALESCE($7,description),
+         active=COALESCE($8,active)
+       WHERE id=$1 RETURNING *`,
+      [parseInt(req.params.id), name, category, duration_min, price, beautypro_id, description, active]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, service: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/services/:id', async (req, res) => {
+  try {
+    const r = await getPool().query(
+      'UPDATE services SET active=false WHERE id=$1 RETURNING id', [parseInt(req.params.id)]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deactivated: r.rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- ROLES ---
+router.get('/roles', async (req, res) => {
+  try {
+    const r = await getPool().query('SELECT * FROM roles ORDER BY level DESC, name');
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/roles', async (req, res) => {
+  try {
+    const { code, name, level, permissions } = req.body || {};
+    if (!code || !name) return res.status(400).json({ error: 'code and name required' });
+    const r = await getPool().query(
+      `INSERT INTO roles (code, name, level, permissions) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [code, name, level || 0, JSON.stringify(permissions || [])]
+    );
+    res.status(201).json({ ok: true, role: r.rows[0] });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'code-already-exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.patch('/roles/:id', async (req, res) => {
+  try {
+    const { code, name, level, permissions } = req.body || {};
+    const r = await getPool().query(
+      `UPDATE roles SET
+         code=COALESCE($2,code), name=COALESCE($3,name), level=COALESCE($4,level),
+         permissions=COALESCE($5,permissions)
+       WHERE id=$1 RETURNING *`,
+      [parseInt(req.params.id), code, name, level, permissions ? JSON.stringify(permissions) : null]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, role: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/roles/:id', async (req, res) => {
+  try {
+    const r = await getPool().query('DELETE FROM roles WHERE id=$1 RETURNING id', [parseInt(req.params.id)]);
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deleted: r.rows[0].id });
+  } catch (e) {
+    if (e.code === '23503') return res.status(409).json({ error: 'has-linked-users' });
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

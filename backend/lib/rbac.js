@@ -2,8 +2,7 @@
    Использует Bearer token из header Authorization или X-Admin-Token (legacy).
    Совместимо со старым ADMIN_TOKEN — он = owner-level. */
 const crypto = require('crypto');
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { getPool } = require('../db-pg');
 
 function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
@@ -29,7 +28,7 @@ async function resolveUserByToken(token) {
   }
   // 2) user_tokens
   const hash = sha256(token);
-  const r = await pool.query(
+  const r = await getPool().query(
     `SELECT u.id, u.display_name, u.branch_id, u.master_id, u.is_active,
             r.code AS role, r.permissions
        FROM user_tokens t
@@ -42,7 +41,7 @@ async function resolveUserByToken(token) {
   if (!r.rows[0]) return null;
   if (!r.rows[0].is_active) return null;
   // обновить last_used (fire-and-forget)
-  pool.query(`UPDATE user_tokens SET last_used=NOW() WHERE token_hash=$1`, [hash]).catch(()=>{});
+  getPool().query(`UPDATE user_tokens SET last_used=NOW() WHERE token_hash=$1`, [hash]).catch(()=>{});
   return r.rows[0];
 }
 
@@ -68,7 +67,7 @@ function requirePerm(perm) {
 
 async function logAction({ user, action, entity, entity_id, ip, meta }) {
   try {
-    await pool.query(
+    await getPool().query(
       `INSERT INTO audit_log (user_id, user_label, action, entity, entity_id, ip, meta)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [user?.id || null, user?.display_name || 'anon', action, entity || null, entity_id || null, ip || null, meta ? JSON.stringify(meta) : null]

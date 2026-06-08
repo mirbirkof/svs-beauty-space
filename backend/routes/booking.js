@@ -12,43 +12,39 @@ const crypto = require('crypto');
 const https = require('https');
 const router = express.Router();
 const bp = require('../beautyproClient');
-const { Pool } = require('pg');
-
-// Postgres pending bookings — общая БД для бота, сайта, магазина
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const { getPool } = require('../db-pg');
 
 const db = {
   async insert(token, row) {
-    await pool.query(
+    await getPool().query(
       `INSERT INTO booking_pending (token, service_id, employee_id, date_from, date_to, client_name, channel)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [token, row.service_id, row.employee_id, row.date_from, row.date_to, row.client_name || null, row.channel || 'site_salon']
     );
   },
   async get(token) {
-    const r = await pool.query('SELECT * FROM booking_pending WHERE token = $1', [token]);
+    const r = await getPool().query('SELECT * FROM booking_pending WHERE token = $1', [token]);
     return r.rows[0] || null;
   },
   async byTgUser(uid) {
-    const r = await pool.query(
+    const r = await getPool().query(
       `SELECT * FROM booking_pending WHERE tg_user_id = $1 AND status = 'pending'
        ORDER BY created_at DESC LIMIT 1`, [uid]);
     return r.rows[0] || null;
   },
   async update(token, patch) {
+    const ALLOWED = ['status', 'phone', 'appointment_id', 'error', 'client_name', 'verified_at', 'tg_user_id'];
     const cols = [];
     const vals = [];
     let i = 1;
     for (const k of Object.keys(patch)) {
+      if (!ALLOWED.includes(k)) continue;
       cols.push(`${k} = $${i++}`);
       vals.push(patch[k]);
     }
     if (!cols.length) return;
     vals.push(token);
-    await pool.query(`UPDATE booking_pending SET ${cols.join(', ')} WHERE token = $${i}`, vals);
+    await getPool().query(`UPDATE booking_pending SET ${cols.join(', ')} WHERE token = $${i}`, vals);
   },
 };
 
@@ -174,7 +170,7 @@ router.post('/telegram', async (req, res) => {
         // Запись в общий журнал online_bookings — для unified history по телефону
         try {
           // upsert клиента
-          const cl = await pool.query(
+          const cl = await getPool().query(
             `INSERT INTO clients (phone, name, telegram_id, source)
              VALUES ($1, $2, $3, 'bot-salon')
              ON CONFLICT (phone) DO UPDATE SET
@@ -183,7 +179,7 @@ router.post('/telegram', async (req, res) => {
              RETURNING id`,
             [phone, row.client_name || msg.from.first_name || null, msg.from.id]
           );
-          await pool.query(
+          await getPool().query(
             `INSERT INTO online_bookings
               (client_id, client_phone, client_name, service_id, master_id,
                date_from, date_to, channel, bp_appointment_id, status,

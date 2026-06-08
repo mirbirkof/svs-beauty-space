@@ -14,6 +14,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { tgSend } = require('./telegram-notify');
+const { requirePerm } = require('../lib/rbac');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_VISITS = 2;          // минимум 2 визита чтобы считать интервал
@@ -126,8 +127,8 @@ router.get('/candidates', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/repeat-visits/run — ручной запуск
-router.post('/run', async (req, res) => {
+// POST /api/repeat-visits/run — ручной запуск (только admin)
+router.post('/run', requirePerm('reminders.manage'), async (req, res) => {
   try {
     const result = await scheduleRepeatVisits();
     res.json({ ok: true, ...result });

@@ -1,11 +1,11 @@
 /* Users + tokens management. Только owner/admin */
 const express = require('express');
 const crypto = require('crypto');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const { requirePerm, sha256, logAction } = require('../lib/rbac');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
 
 // GET /api/users — список
 router.get('/', requirePerm('users.read'), async (req, res) => {

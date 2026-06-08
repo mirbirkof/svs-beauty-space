@@ -14,13 +14,7 @@ const express = require('express');
 const https = require('https');
 const router = express.Router();
 const { getPool } = require('../db-pg');
-
-function adminOnly(req, res, next) {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  next();
-}
+const { requirePerm } = require('../lib/rbac');
 
 function getBotToken() {
   return process.env.TELEGRAM_NOTIFY_TOKEN
@@ -130,7 +124,7 @@ async function notifyAdminNewOrder(orderId) {
   }
 }
 
-router.post('/order/:id', adminOnly, async (req, res) => {
+router.post('/order/:id', requirePerm('notify.write'), async (req, res) => {
   try {
     const result = await notifyOrderStatus(parseInt(req.params.id, 10), req.body?.status, req.body?.ttn);
     res.json(result);
@@ -139,7 +133,7 @@ router.post('/order/:id', adminOnly, async (req, res) => {
   }
 });
 
-router.post('/test', adminOnly, async (req, res) => {
+router.post('/test', requirePerm('notify.write'), async (req, res) => {
   try {
     const chat = req.body?.chat_id || process.env.ADMIN_TG_CHAT;
     if (!chat) return res.status(400).json({ error: 'no-chat-id' });

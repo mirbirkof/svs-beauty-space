@@ -1,9 +1,9 @@
 /* DikiDi-like features: reviews, favorites, blacklist, promotions
    Подключается в shop-api.js: app.use('/api', require('./routes/dikidi-features')) */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
 
 function normPhone(p) {
   if (!p) return null;

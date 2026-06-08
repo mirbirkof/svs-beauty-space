@@ -41,7 +41,8 @@ const {
 } = require('../lib/auth-core');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { getPool } = require('../db-pg');
+const pool = getPool();
 
 // ── helpers ─────────────────────────────────────────────
 function parseCookies(req) {

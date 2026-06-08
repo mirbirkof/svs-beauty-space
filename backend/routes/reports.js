@@ -1,11 +1,11 @@
 /* Reports: P&L, KPI мастеров, RFM-сегментация, отток
    Все эндпоинты требуют reports.read */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
 
 function parsePeriod(q) {
   const end   = q.to   ? new Date(q.to)   : new Date();
@@ -190,10 +190,10 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
          FROM clients c
          JOIN appointments a ON a.client_id=c.id AND a.status='completed'
         GROUP BY c.id, c.name, c.phone
-        HAVING MAX(a.starts_at) < NOW() - INTERVAL '${days} days'
+        HAVING MAX(a.starts_at) < NOW() - make_interval(days => $1)
            AND COUNT(a.id) >= 2
         ORDER BY MAX(a.starts_at) ASC
-        LIMIT 500`
+        LIMIT 500`, [days]
     );
     res.json({ threshold_days: days, items: r.rows, count: r.rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }

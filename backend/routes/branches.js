@@ -1,10 +1,10 @@
 /* Branches: справочник филиалов + назначение мастеров */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
 
 router.get('/', async (req, res) => {
   try {

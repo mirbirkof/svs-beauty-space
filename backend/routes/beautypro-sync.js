@@ -13,13 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const bp = require('../beautyproClient');
-
-function adminOnly(req, res, next) {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  next();
-}
+const { requirePerm } = require('../lib/rbac');
 
 // ── один клиент по телефону ─────────────────────────────
 async function syncOneClient(phone, fallbackName) {
@@ -93,7 +87,7 @@ router.post('/client', async (req, res) => {
   }
 });
 
-router.post('/all-clients', adminOnly, async (req, res) => {
+router.post('/all-clients', requirePerm('sync.write'), async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(
@@ -114,7 +108,7 @@ router.post('/all-clients', adminOnly, async (req, res) => {
   }
 });
 
-router.get('/status', adminOnly, async (req, res) => {
+router.get('/status', requirePerm('sync.write'), async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(

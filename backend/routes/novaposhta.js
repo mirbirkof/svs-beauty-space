@@ -51,12 +51,7 @@ function call(modelName, calledMethod, methodProperties = {}) {
   });
 }
 
-function adminOnly(req, res, next) {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  next();
-}
+const { requirePerm } = require('../lib/rbac');
 
 router.get('/cities', async (req, res) => {
   try {
@@ -111,10 +106,12 @@ router.post('/calculate', async (req, res) => {
   }
 });
 
-router.post('/ttn', adminOnly, async (req, res) => {
+router.post('/ttn', requirePerm('novaposhta.write'), async (req, res) => {
   try {
-    // полная реализация после получения ключей и настройки отправителя
-    res.status(501).json({ error: 'not-implemented-yet', hint: 'нужны NP API ключ + sender ref' });
+    // TODO: реализовать когда Босс получит NOVAPOSHTA_API_KEY и настроит отправителя в кабинете НП.
+    // Нужно: SenderRef (из кабинета), ContactSender, SendersPhone, PayerType, PaymentMethod.
+    // API метод: InternetDocument.save
+    res.status(501).json({ error: 'not-implemented-yet', hint: 'Потрібно: NOVAPOSHTA_API_KEY + налаштувати відправника в кабінеті НП' });
   } catch (e) {
     res.status(500).json({ error: 'np-failed', detail: e.message });
   }

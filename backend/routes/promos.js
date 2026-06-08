@@ -11,6 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
 
 let bootstrapped = false;
 async function bootstrap() {
@@ -30,13 +31,6 @@ async function bootstrap() {
     )
   `);
   bootstrapped = true;
-}
-
-function adminOnly(req, res, next) {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  next();
 }
 
 // клиентский: проверить промокод и получить скидку
@@ -75,7 +69,7 @@ router.post('/validate', async (req, res) => {
 // ═══════════════════════════════════════════════════════
 //   ADMIN
 // ═══════════════════════════════════════════════════════
-router.get('/admin/list', adminOnly, async (req, res) => {
+router.get('/admin/list', requirePerm('promo.write'), async (req, res) => {
   try {
     await bootstrap();
     const pool = getPool();
@@ -86,7 +80,7 @@ router.get('/admin/list', adminOnly, async (req, res) => {
   }
 });
 
-router.post('/admin/create', adminOnly, async (req, res) => {
+router.post('/admin/create', requirePerm('promo.write'), async (req, res) => {
   try {
     await bootstrap();
     const { code, type, value, min_total, max_uses, valid_until } = req.body || {};
@@ -105,7 +99,7 @@ router.post('/admin/create', adminOnly, async (req, res) => {
   }
 });
 
-router.delete('/admin/:code', adminOnly, async (req, res) => {
+router.delete('/admin/:code', requirePerm('promo.write'), async (req, res) => {
   try {
     await bootstrap();
     const pool = getPool();

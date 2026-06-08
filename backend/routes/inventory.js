@@ -1,11 +1,11 @@
 /* Inventory audits: акты пересчёта, фиксация расхождений, авто-корректировка остатков
    Подключается как /api/inventory */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
 
 // POST /api/inventory/audits — создать акт + наполнить позициями по scope
 router.post('/audits', requirePerm('stock.write'), async (req, res) => {

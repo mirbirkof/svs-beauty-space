@@ -1,9 +1,17 @@
 /* Payroll + Stock operations: схемы ЗП мастеров, начисления, поставки, списания материалов
    Подключается в dikidi-server.js */
 const express = require('express');
-const { Pool } = require('pg');
+const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
 const router = express.Router();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = getPool();
+
+// Авторизация: read на GET, write на мутации
+router.use((req, res, next) => {
+  const area = req.path.startsWith('/stock') ? 'stock' : 'payroll';
+  const perm = req.method === 'GET' ? `${area}.read` : `${area}.write`;
+  return requirePerm(perm)(req, res, next);
+});
 
 /* ═══════════════ PAYROLL SCHEMES ═══════════════ */
 
