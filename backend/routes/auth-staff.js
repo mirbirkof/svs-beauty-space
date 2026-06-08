@@ -20,6 +20,30 @@ const { tgSend } = require('./telegram-notify');
 
 const router = express.Router();
 
+// Fallback URL для отправки TG через svs-booking-api (у него есть BOT_TOKEN)
+// Используется если локальный TELEGRAM_NOTIFY_TOKEN отсутствует/не работает.
+const BOOKING_RELAY_URL = process.env.BOOKING_RELAY_URL
+  || 'https://svs-booking-api.onrender.com/api/internal/tg-send-by-phone';
+
+// Универсальная отправка: пробуем локально, если no-bot-token → через booking-api по phone
+async function sendOtpToUser({ telegram_id, phone, text }) {
+  try {
+    await tgSend(telegram_id, text);
+    return { via: 'local' };
+  } catch (e) {
+    if (!/no-bot-token/.test(e.message)) throw e;
+    // Локального токена нет — fallback через booking-api
+    const r = await fetch(BOOKING_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, text }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(`relay-failed: ${j.error || r.status}`);
+    return { via: 'booking-api-relay' };
+  }
+}
+
 const CODE_TTL_MIN = 5;
 const SESSION_TTL_DAYS = 14;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -181,11 +205,14 @@ router.post('/request', async (req, res) => {
     const expiresAt = new Date(Date.now() + CODE_TTL_MIN * 60_000);
 
     try {
-      await tgSend(user.telegram_id,
-        `<b>SVS CRM — код входу</b>\n` +
-        `<code>${code}</code>\n` +
-        `Дійсний ${CODE_TTL_MIN} хв. Якщо це були не ви — проігноруйте.`
-      );
+      const result = await sendOtpToUser({
+        telegram_id: user.telegram_id,
+        phone,
+        text: `<b>SVS CRM — код входу</b>\n` +
+              `<code>${code}</code>\n` +
+              `Дійсний ${CODE_TTL_MIN} хв. Якщо це були не ви — проігноруйте.`,
+      });
+      console.log('[auth-staff:request] tg-sent via', result.via);
     } catch (e) {
       console.error('[auth-staff:request] tg-send-failed', e.message);
       return res.status(503).json({
