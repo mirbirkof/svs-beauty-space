@@ -134,7 +134,7 @@ router.post('/sync-beautypro', async (req, res) => {
     let synced = 0;
     const errors = [];
     for (const emp of employees) {
-      const bpId = parseInt(emp.id, 10);
+      const bpId = String(emp.id || '').trim();
       if (!bpId || !emp.name) continue;
       // Upsert: проверяем есть ли уже мастер с таким beautypro_id
       const existing = await pool.query(
@@ -158,9 +158,7 @@ router.post('/sync-beautypro', async (req, res) => {
       }
     }
 
-    // Debug: count in DB after sync
-    const countR = await pool.query('SELECT count(*) FROM masters');
-    res.json({ ok: true, synced, dbCount: parseInt(countR.rows[0].count), errors: errors.length ? errors : undefined, employeesFromBP: employees.length, sample: employees.slice(0, 3).map(e => ({id: e.id, name: e.name})) });
+    res.json({ ok: true, synced, errors: errors.length ? errors : undefined });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
