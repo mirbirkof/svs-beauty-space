@@ -106,13 +106,98 @@ router.post('/calculate', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/np/ttn — створення ТТН
+ * body: {
+ *   recipient_name, recipient_phone,
+ *   city_recipient_ref, warehouse_recipient_ref,  (або recipient_address для адресної доставки)
+ *   weight=0.5, cost, description='Косметика',
+ *   payer='Recipient'|'Sender', payment_method='Cash'|'NonCash',
+ *   order_id (optional — для логу)
+ * }
+ * env: NOVAPOSHTA_SENDER_REF, NP_SENDER_CONTACT_REF, NP_SENDER_PHONE,
+ *      NP_SENDER_CITY_REF, NP_SENDER_WAREHOUSE_REF
+ */
 router.post('/ttn', requirePerm('novaposhta.write'), async (req, res) => {
   try {
-    // TODO: реализовать когда Босс получит NOVAPOSHTA_API_KEY и настроит отправителя в кабинете НП.
-    // Нужно: SenderRef (из кабинета), ContactSender, SendersPhone, PayerType, PaymentMethod.
-    // API метод: InternetDocument.save
-    res.status(501).json({ error: 'not-implemented-yet', hint: 'Потрібно: NOVAPOSHTA_API_KEY + налаштувати відправника в кабінеті НП' });
+    const {
+      recipient_name, recipient_phone,
+      city_recipient_ref, warehouse_recipient_ref,
+      weight = 0.5, cost, description = 'Косметика SVS Beauty World',
+      payer = 'Recipient', payment_method = 'Cash',
+      order_id,
+    } = req.body || {};
+
+    // Перевірки даних
+    if (!recipient_name || !recipient_phone) return res.status(400).json({ error: 'recipient_name+phone required' });
+    if (!city_recipient_ref || !warehouse_recipient_ref) return res.status(400).json({ error: 'city_recipient_ref+warehouse_recipient_ref required' });
+    if (!cost) return res.status(400).json({ error: 'cost (вартість товару) required' });
+
+    // Перевірки env-конфігурації відправника
+    const senderRef = process.env.NOVAPOSHTA_SENDER_REF;
+    const senderContactRef = process.env.NP_SENDER_CONTACT_REF;
+    const senderPhone = process.env.NP_SENDER_PHONE;
+    const senderCityRef = process.env.NP_SENDER_CITY_REF;
+    const senderWarehouseRef = process.env.NP_SENDER_WAREHOUSE_REF;
+    const missing = [];
+    if (!senderRef) missing.push('NOVAPOSHTA_SENDER_REF');
+    if (!senderContactRef) missing.push('NP_SENDER_CONTACT_REF');
+    if (!senderPhone) missing.push('NP_SENDER_PHONE');
+    if (!senderCityRef) missing.push('NP_SENDER_CITY_REF');
+    if (!senderWarehouseRef) missing.push('NP_SENDER_WAREHOUSE_REF');
+    if (missing.length) {
+      return res.status(503).json({ error: 'sender-not-configured', missing, hint: 'Налаштуйте відправника в кабінеті НП → візьміть Ref-и → додайте в Render env' });
+    }
+
+    // Сьогоднішня дата у форматі DD.MM.YYYY
+    const d = new Date();
+    const dateStr = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+
+    const data = await call('InternetDocument', 'save', {
+      PayerType: payer,                   // 'Sender' або 'Recipient'
+      PaymentMethod: payment_method,      // 'Cash' або 'NonCash'
+      DateTime: dateStr,
+      CargoType: 'Parcel',
+      Weight: weight,
+      ServiceType: 'WarehouseWarehouse',
+      SeatsAmount: 1,
+      Description: description,
+      Cost: cost,
+      // Відправник (з env)
+      CitySender: senderCityRef,
+      Sender: senderRef,
+      SenderAddress: senderWarehouseRef,
+      ContactSender: senderContactRef,
+      SendersPhone: senderPhone,
+      // Отримувач (з тіла запиту)
+      CityRecipient: city_recipient_ref,
+      RecipientAddress: warehouse_recipient_ref,
+      RecipientsPhone: recipient_phone,
+      RecipientType: 'PrivatePerson',
+      Recipient: '',                      // для PrivatePerson передаємо через NewAddress модель або порожньо
+      ContactRecipient: '',
+      // Дані фіз-особи отримувача (НП створить контакт автоматом)
+      RecipientName: recipient_name,
+    });
+
+    // Записати ТТН в замовлення якщо order_id переданий
+    const ttn = data[0]?.IntDocNumber;
+    const ref = data[0]?.Ref;
+    if (order_id && ttn) {
+      try {
+        const { getPool } = require('../db-pg');
+        await getPool().query(
+          `UPDATE orders SET shipping_ttn = $1, shipping_provider = 'novaposhta', updated_at = NOW() WHERE id = $2`,
+          [ttn, order_id]
+        );
+      } catch (e) { console.error('[np/ttn] failed to update order', e.message); }
+    }
+
+    res.json({ ok: true, ttn, ref, raw: data[0] });
   } catch (e) {
+    if (e.message.includes('not configured')) {
+      return res.status(503).json({ error: 'np-not-configured' });
+    }
     res.status(500).json({ error: 'np-failed', detail: e.message });
   }
 });

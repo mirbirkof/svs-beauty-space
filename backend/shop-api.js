@@ -89,7 +89,7 @@ app.get('/api/shop/readiness', (req, res) => {
       promos: 'ready',
       csv_export: 'ready',
       notifications: 'ready (needs telegram_id on client)',
-      beautypro_sync: 'ready (needs fields param fix)',
+      beautypro_sync: 'ready (fields param OK, awaiting BEAUTYPRO env keys)',
       nova_poshta: 'ready (awaiting api key)',
       mono_pay: 'stub (awaiting api key)',
     },
