@@ -57,6 +57,20 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
   margin-left:auto; background:var(--danger); color:#fff;
   font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; min-width:18px; text-align:center;
 }
+.sidebar-group { margin:2px 0; }
+.sidebar-group-header {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 16px; margin:1px 8px; border-radius:var(--radius-sm);
+  color:#fff; cursor:pointer; font-size:13px; font-weight:600;
+  background:rgba(255,255,255,.04); user-select:none;
+}
+.sidebar-group-header:hover { background:rgba(255,255,255,.08); }
+.sidebar-group-header .chevron { margin-left:auto; font-size:18px; transition:transform .15s; }
+.sidebar-group.open .sidebar-group-header .chevron { transform:rotate(90deg); }
+.sidebar-group-items { display:none; padding:2px 0 4px; }
+.sidebar-group.open .sidebar-group-items { display:block; }
+.sidebar-group-items .sidebar-item { padding-left:42px; font-size:12.5px; margin:1px 8px 1px 16px; }
+.sidebar-group-items .sidebar-item .material-icons-round { font-size:17px; }
 .sidebar-footer { padding:12px 16px; border-top:1px solid rgba(255,255,255,.08); }
 .sidebar-footer button {
   display:flex; align-items:center; gap:8px; background:none; border:none;
@@ -217,53 +231,81 @@ select.input { background:var(--card); }
         <span class="material-icons-round">people</span> Клієнти
       </a>
 
-      <div class="sidebar-section">Магазин</div>
-      <a class="sidebar-item" data-page="orders" onclick="go('orders')">
-        <span class="material-icons-round">shopping_bag</span> Замовлення
-        <span class="sidebar-badge" id="badge-orders" style="display:none">0</span>
+      <div class="sidebar-section">Салон</div>
+      <a class="sidebar-item" href="/admin/crm-extra.html#schedule">
+        <span class="material-icons-round">calendar_month</span> Розклад майстрів
       </a>
-      <a class="sidebar-item" data-page="products" onclick="go('products')">
-        <span class="material-icons-round">inventory_2</span> Товари
-      </a>
-      <a class="sidebar-item" data-page="stock" onclick="go('stock')">
-        <span class="material-icons-round">warehouse</span> Склад
-      </a>
-
-      <div class="sidebar-section">Маркетинг</div>
-      <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
-        <span class="material-icons-round">star_rate</span> Відгуки
-      </a>
-      <a class="sidebar-item" data-page="promos" onclick="go('promos')">
-        <span class="material-icons-round">local_offer</span> Акції
-      </a>
-
-      <div class="sidebar-section">Управління</div>
       <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
         <span class="material-icons-round">payments</span> Зарплата
       </a>
       <a class="sidebar-item" data-page="blacklist" onclick="go('blacklist')">
         <span class="material-icons-round">block</span> Чорний список
       </a>
-      <a class="sidebar-item" data-page="sync" onclick="go('sync')">
-        <span class="material-icons-round">sync</span> BeautyPro
-      </a>
-      <div class="sidebar-section">CRM-ЯДРО</div>
+
+      <div class="sidebar-section">Магазин Raywell</div>
+      <div class="sidebar-group open" id="shop-group">
+        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="material-icons-round">storefront</span> Магазин
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="orders" onclick="go('orders')">
+            <span class="material-icons-round">shopping_bag</span> Замовлення
+            <span class="sidebar-badge" id="badge-orders" style="display:none">0</span>
+          </a>
+          <a class="sidebar-item" data-page="products" onclick="go('products')">
+            <span class="material-icons-round">inventory_2</span> Товари
+          </a>
+          <a class="sidebar-item" data-page="stock" onclick="go('stock')">
+            <span class="material-icons-round">warehouse</span> Склад
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#inventory">
+            <span class="material-icons-round">fact_check</span> Інвентаризація
+          </a>
+          <a class="sidebar-item" data-page="promos" onclick="go('promos')">
+            <span class="material-icons-round">local_offer</span> Акції / Промокоди
+          </a>
+          <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
+            <span class="material-icons-round">star_rate</span> Відгуки
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#loyalty">
+            <span class="material-icons-round">card_giftcard</span> Лояльність / Бонуси
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#cashbox">
+            <span class="material-icons-round">point_of_sale</span> Каса магазину
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#novaposhta">
+            <span class="material-icons-round">local_shipping</span> Нова Пошта
+          </a>
+          <a class="sidebar-item" href="https://svs-beauty-space.vercel.app" target="_blank">
+            <span class="material-icons-round">language</span> Вітрина (сайт)
+            <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:.4">open_in_new</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="sidebar-section">Фінанси</div>
       <a class="sidebar-item" href="/admin/crm-extra.html">
-        <span class="material-icons-round">point_of_sale</span> Каса
+        <span class="material-icons-round">point_of_sale</span> Каса (загальна)
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#reports" onclick="location.href='/admin/crm-extra.html'">
+      <a class="sidebar-item" href="/admin/crm-extra.html#reports">
         <span class="material-icons-round">insights</span> Звіти (P&amp;L, RFM)
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#inventory" onclick="location.href='/admin/crm-extra.html'">
-        <span class="material-icons-round">inventory_2</span> Інвентаризація
+      <a class="sidebar-item" href="/admin/crm-extra.html#export">
+        <span class="material-icons-round">file_download</span> Експорт CSV
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#branches" onclick="location.href='/admin/crm-extra.html'">
+
+      <div class="sidebar-section">Система</div>
+      <a class="sidebar-item" href="/admin/crm-extra.html#branches">
         <span class="material-icons-round">store</span> Філії
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#users" onclick="location.href='/admin/crm-extra.html'">
+      <a class="sidebar-item" href="/admin/crm-extra.html#users">
         <span class="material-icons-round">manage_accounts</span> Користувачі
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#audit" onclick="location.href='/admin/crm-extra.html'">
+      <a class="sidebar-item" data-page="sync" onclick="go('sync')">
+        <span class="material-icons-round">sync</span> BeautyPro синхро
+      </a>
+      <a class="sidebar-item" href="/admin/crm-extra.html#audit">
         <span class="material-icons-round">history</span> Аудит
       </a>
     </nav>
