@@ -235,6 +235,16 @@ select.input { background:var(--card); }
       <a class="sidebar-item" href="/admin/crm-extra.html#schedule">
         <span class="material-icons-round">calendar_month</span> Розклад майстрів
       </a>
+      <a class="sidebar-item" data-page="waitlist" onclick="go('waitlist')">
+        <span class="material-icons-round">queue</span> Лист очікування
+        <span class="sidebar-badge" id="badge-waitlist" style="display:none">0</span>
+      </a>
+      <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
+        <span class="material-icons-round">notifications_active</span> Нагадування
+      </a>
+      <a class="sidebar-item" data-page="repeat" onclick="go('repeat')">
+        <span class="material-icons-round">replay</span> Повторні візити
+      </a>
       <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
         <span class="material-icons-round">payments</span> Зарплата
       </a>
@@ -505,6 +515,58 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ WAITLIST ═══ -->
+      <div class="page" id="page-waitlist">
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+          <button onclick="loadWaitlist()" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <span id="waitlistCount" style="color:var(--text-secondary);font-size:13px"></span>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Дата</th><th>Клієнт</th><th>Телефон</th><th>Послуга</th><th>Майстер</th><th>Період</th><th>Канал</th><th>Статус</th><th>Дії</th></tr></thead>
+              <tbody id="waitlistBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ REMINDERS ═══ -->
+      <div class="page" id="page-reminders">
+        <div class="kpi-grid" id="remStats" style="max-width:800px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button onclick="loadReminders()" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <button onclick="runReminders()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Розіслати зараз</button>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Заплановані нагадування</h3></div>
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Коли</th><th>Клієнт</th><th>Телефон</th><th>Тип</th><th>Канал</th><th>Статус</th></tr></thead>
+              <tbody id="remBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ REPEAT VISITS ═══ -->
+      <div class="page" id="page-repeat">
+        <div class="kpi-grid" id="repStats" style="max-width:800px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button onclick="loadRepeat()" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <button onclick="runRepeat()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Запустити кампанію</button>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Кандидати на повторний візит</h3></div>
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Клієнт</th><th>Телефон</th><th>Останній візит</th><th>Послуга</th><th>Сума</th><th>Дій</th></tr></thead>
+              <tbody id="repBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ SYNC ═══ -->
       <div class="page" id="page-sync">
         <div class="kpi-grid" id="syncStats" style="max-width:600px"></div>
@@ -586,7 +648,8 @@ const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата',
-  blacklist:'Чорний список', sync:'BeautyPro синхро'
+  blacklist:'Чорний список', sync:'BeautyPro синхро',
+  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити'
 };
 
 function go(page) {
@@ -598,8 +661,99 @@ function go(page) {
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
-    promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync };
+    promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync,
+    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat };
   if (loaders[page]) loaders[page]();
+}
+
+// ═══ WAITLIST ═════════════════════════════════
+async function loadWaitlist() {
+  try {
+    const r = await api('/api/waitlist');
+    const items = r.items || [];
+    document.getElementById('waitlistCount').textContent = items.length ? `Всього в черзі: ${items.length}` : 'Черга порожня';
+    const b = document.getElementById('badge-waitlist');
+    if (items.length) { b.textContent = items.length; b.style.display=''; } else { b.style.display='none'; }
+    document.getElementById('waitlistBody').innerHTML = items.length ? items.map(w => `
+      <tr>
+        <td style="white-space:nowrap">${new Date(w.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${w.client_name || '—'}</td>
+        <td><a href="tel:${w.client_phone}">${w.client_phone||''}</a></td>
+        <td>${w.service_name || w.service_id}</td>
+        <td>${w.master_name || '—'}</td>
+        <td style="font-size:11px">${new Date(w.preferred_from).toLocaleDateString('uk-UA')}<br>—<br>${new Date(w.preferred_to).toLocaleDateString('uk-UA')}</td>
+        <td>${w.channel || '—'}</td>
+        <td><span class="badge b-${w.status}">${w.status}</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm" onclick="waitlistOffer(${w.id})" title="Запропонувати слот">📅</button>
+          <button class="btn btn-sm" onclick="waitlistSet(${w.id},'confirmed')" title="Підтверджено">✓</button>
+          <button class="btn btn-sm btn-danger" onclick="waitlistSet(${w.id},'cancelled')" title="Скасувати">✕</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="9" class="empty">У черзі порожньо</td></tr>';
+  } catch(e) { document.getElementById('waitlistBody').innerHTML = `<tr><td colspan="9" class="empty">Помилка: ${e.message}</td></tr>`; }
+}
+async function waitlistSet(id, status) {
+  if (status === 'cancelled' && !confirm('Скасувати позицію в черзі?')) return;
+  await api(`/api/waitlist/${id}`, { method:'PATCH', body: JSON.stringify({ status }) });
+  loadWaitlist();
+}
+async function waitlistOffer(id) {
+  const slot = prompt('Запропонований слот (YYYY-MM-DD HH:MM):');
+  if (!slot) return;
+  await api(`/api/waitlist/${id}`, { method:'PATCH', body: JSON.stringify({ status:'offered', offered_slot: slot }) });
+  loadWaitlist();
+}
+
+// ═══ REMINDERS ════════════════════════════════
+async function loadReminders() {
+  try {
+    const [st, pend] = await Promise.all([
+      api('/api/reminders/status'),
+      api('/api/reminders/pending?limit=100'),
+    ]);
+    const k = st.stats || {};
+    document.getElementById('remStats').innerHTML = [
+      ['Заплановано', k.scheduled ?? '—', 'blue'],
+      ['Надіслано сьогодні', k.sent_today ?? '—', 'green'],
+      ['Помилок', k.failed ?? '—', 'orange'],
+      ['Cron', st.cron_enabled ? 'on' : 'off', 'purple'],
+    ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+    const items = pend.items || [];
+    document.getElementById('remBody').innerHTML = items.length ? items.map(r => `
+      <tr><td>${new Date(r.scheduled_at).toLocaleString('uk-UA')}</td><td>${r.client_name||'—'}</td><td>${r.client_phone||''}</td><td>${r.type}</td><td>${r.channel}</td><td><span class="badge b-${r.status}">${r.status}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty">Запланованих нагадувань немає</td></tr>';
+  } catch(e) { document.getElementById('remBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
+}
+async function runReminders() {
+  if (!confirm('Розіслати всі заплановані нагадування зараз?')) return;
+  const r = await api('/api/reminders/run', { method:'POST' });
+  alert(`Розіслано: ${r.sent ?? 0}, помилок: ${r.failed ?? 0}`);
+  loadReminders();
+}
+
+// ═══ REPEAT VISITS ════════════════════════════
+async function loadRepeat() {
+  try {
+    const [st, cand] = await Promise.all([
+      api('/api/repeat-visits/stats'),
+      api('/api/repeat-visits/candidates?limit=100'),
+    ]);
+    const k = st.stats || {};
+    document.getElementById('repStats').innerHTML = [
+      ['Кандидатів', k.candidates ?? '—', 'orange'],
+      ['Відправлено', k.sent_total ?? '—', 'blue'],
+      ['Конверсія', (k.conversion ?? '0') + '%', 'green'],
+      ['Виручка повторних', (k.revenue_back ?? 0).toLocaleString() + ' ₴', 'purple'],
+    ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+    const items = cand.items || [];
+    document.getElementById('repBody').innerHTML = items.length ? items.map(c => `
+      <tr><td>${c.client_name||'—'}</td><td>${c.client_phone||''}</td><td>${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'}</td><td>${c.service_name||'—'}</td><td>${(c.total||0).toLocaleString()} ₴</td><td>${c.days_since||'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Кандидатів немає</td></tr>';
+  } catch(e) { document.getElementById('repBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
+}
+async function runRepeat() {
+  if (!confirm('Запустити кампанію повторних візитів зараз?')) return;
+  const r = await api('/api/repeat-visits/run', { method:'POST' });
+  alert(`Відправлено: ${r.sent ?? 0}, помилок: ${r.failed ?? 0}`);
+  loadRepeat();
 }
 
 // ── Debounce ─────────────────────────────────
