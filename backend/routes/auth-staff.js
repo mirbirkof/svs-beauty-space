@@ -35,7 +35,9 @@ function gen6() {
 }
 
 function normalizePhone(p) {
-  return String(p || '').replace(/[^\d+]/g, '');
+  // Только цифры. Плюс, пробелы, скобки, дефисы — убираем.
+  // Это нормализует "+380000000000" и "380000000000" к одному виду.
+  return String(p || '').replace(/\D/g, '');
 }
 
 async function throttle(pool, key) {
@@ -161,29 +163,22 @@ router.post('/request', async (req, res) => {
       `SELECT id, display_name, telegram_id, is_active FROM users WHERE phone = $1`,
       [phone]
     );
-    // Намеренно НЕ раскрываем существует ли юзер — возвращаем ok=true всегда
-    // (защита от перебора телефонов сотрудников)
-    if (!u.rowCount || !u.rows[0].is_active || !u.rows[0].telegram_id) {
-      return res.json({ ok: true, message: 'Якщо телефон зареєстрований і Telegram прив\'язано — код прийде в чат' });
+    if (!u.rowCount) {
+      return res.status(404).json({ error: 'user-not-found', message: 'Користувача з таким телефоном не знайдено. Зверніться до власника.' });
+    }
+    if (!u.rows[0].is_active) {
+      return res.status(403).json({ error: 'user-disabled', message: 'Акаунт деактивовано.' });
+    }
+    if (!u.rows[0].telegram_id) {
+      return res.status(400).json({ error: 'no-telegram-linked', message: 'Telegram не привʼязано. Зверніться до власника.' });
     }
     const user = u.rows[0];
 
-    // Деактивируем все предыдущие неиспользованные коды этого юзера
-    await pool.query(
-      `UPDATE staff_otp_codes SET used_at = NOW()
-       WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()`,
-      [user.id]
-    );
-
+    // Сначала ПРОБУЕМ отправить код в Telegram. И ТОЛЬКО при успехе —
+    // инвалидируем старые и вставляем новый. Иначе юзер навсегда без кода.
     const code = gen6();
     const codeHash = sha256(code);
     const expiresAt = new Date(Date.now() + CODE_TTL_MIN * 60_000);
-
-    await pool.query(
-      `INSERT INTO staff_otp_codes (user_id, code_hash, expires_at, ip)
-       VALUES ($1, $2, $3, $4)`,
-      [user.id, codeHash, expiresAt, ip]
-    );
 
     try {
       await tgSend(user.telegram_id,
@@ -192,11 +187,27 @@ router.post('/request', async (req, res) => {
         `Дійсний ${CODE_TTL_MIN} хв. Якщо це були не ви — проігноруйте.`
       );
     } catch (e) {
-      // Не раскрываем ошибку клиенту — всё равно вернём ok=true
       console.error('[auth-staff:request] tg-send-failed', e.message);
+      return res.status(503).json({
+        error: 'tg-send-failed',
+        message: 'Не вдалося відправити код у Telegram. Спробуйте ще раз або зверніться до власника.',
+        detail: e.message,
+      });
     }
 
-    res.json({ ok: true, message: 'Якщо телефон зареєстрований і Telegram прив\'язано — код прийде в чат' });
+    // TG ОК — инвалидируем старые и вставляем новый
+    await pool.query(
+      `UPDATE staff_otp_codes SET used_at = NOW()
+       WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()`,
+      [user.id]
+    );
+    await pool.query(
+      `INSERT INTO staff_otp_codes (user_id, code_hash, expires_at, ip)
+       VALUES ($1, $2, $3, $4)`,
+      [user.id, codeHash, expiresAt, ip]
+    );
+
+    res.json({ ok: true, message: 'Код відправлено у Telegram' });
   } catch (e) {
     console.error('[auth-staff:request]', e);
     res.status(500).json({ error: 'internal', detail: e.message });
