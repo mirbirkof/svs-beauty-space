@@ -110,6 +110,7 @@ app.use('/api', waitlistRoutes);
 app.use('/api', dikidiRoutes);
 app.use('/api', payrollRoutes);
 app.use('/api', loyaltyRoutes);
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/auth/staff', require('./routes/auth-staff'));
 app.use('/api/cashbox', require('./routes/cashbox'));
 app.use('/api/users', require('./routes/users'));
