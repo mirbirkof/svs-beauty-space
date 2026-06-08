@@ -68,39 +68,71 @@ function adminOnly(req, res, next) {
 }
 
 // ── POST /api/auth/staff/link  (admin) ───────────────────────────────
-// Босс линкует Telegram chat_id к существующему юзеру.
-// Юзер ДОЛЖЕН первым нажать /start у уведомлятельного бота
-// и сообщить Боссу свой chat_id (или получить его из /api/notify админкой).
+// Босс линкует Telegram chat_id к юзеру. UPSERT: если юзера с таким
+// телефоном нет — СОЗДАЁТ нового с переданным display_name + role_code
+// (или 'master' по умолчанию). Если есть — обновляет telegram_id.
+// Юзер ДОЛЖЕН первым нажать /start у уведомлятельного бота.
 router.post('/link', adminOnly, async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     const telegram_id = parseInt(req.body?.telegram_id, 10);
+    const display_name = (req.body?.display_name || '').trim();
+    const role_code = (req.body?.role_code || 'master').trim();
     if (!phone || !telegram_id) return res.status(400).json({ error: 'phone-and-telegram_id-required' });
 
     const pool = getPool();
-    const r = await pool.query(
-      `UPDATE users SET telegram_id = $1, updated_at = NOW() WHERE phone = $2 RETURNING id, display_name, role_id`,
+
+    // Сначала пытаемся обновить существующего
+    let r = await pool.query(
+      `UPDATE users SET telegram_id = $1, updated_at = NOW()
+       WHERE phone = $2 RETURNING id, display_name, role_id, false AS created`,
       [telegram_id, phone]
     );
-    if (!r.rowCount) return res.status(404).json({ error: 'user-not-found' });
+
+    // Если нет — создаём
+    if (!r.rowCount) {
+      if (!display_name) return res.status(400).json({
+        error: 'display_name-required-for-new-user',
+        hint: 'Користувача з таким телефоном не знайдено — для створення передайте display_name та опціонально role_code (default: master)'
+      });
+      const role = await pool.query(`SELECT id FROM roles WHERE code = $1`, [role_code]);
+      if (!role.rowCount) return res.status(400).json({ error: 'bad-role-code', hint: 'owner|admin|manager|master|reception|readonly' });
+
+      r = await pool.query(
+        `INSERT INTO users (phone, display_name, role_id, telegram_id, is_active)
+         VALUES ($1, $2, $3, $4, TRUE)
+         RETURNING id, display_name, role_id, true AS created`,
+        [phone, display_name, role.rows[0].id, telegram_id]
+      );
+
+      // Логируем создание
+      await pool.query(
+        `INSERT INTO audit_log (user_label, action, entity, entity_id, meta)
+         VALUES ($1, 'user.create', 'user', $2, $3)`,
+        ['admin (link)', r.rows[0].id, JSON.stringify({ phone, display_name, role_code, via: 'auth-staff/link' })]
+      );
+    }
 
     // Шлём подтверждение в Telegram чтобы убедиться что chat_id живой
     try {
       await tgSend(telegram_id,
         `<b>Telegram прив'язано до акаунту SVS CRM</b>\n` +
-        `Тепер ви можете логінитися через OTP-код.\n` +
-        `Виклик: введіть телефон ${phone} на сторінці входу — отримаєте код тут.`
+        `Ласкаво просимо, ${r.rows[0].display_name}!\n\n` +
+        `Тепер ви можете логінитися через OTP-код:\n` +
+        `<a href="https://svs-shop-api.onrender.com/admin/login.html">Відкрити сторінку входу</a>\n\n` +
+        `Введіть телефон <code>${phone}</code> — код прийде сюди.`
       );
     } catch (e) {
       // chat_id неверный или юзер не начал диалог
       return res.status(400).json({
         error: 'telegram-send-failed',
         detail: e.message,
-        hint: 'Спочатку напишіть боту /start, потім спробуйте ще раз'
+        hint: 'Користувача створено/оновлено, але повідомлення не дійшло. Попросіть його написати боту /start',
+        user: r.rows[0]
       });
     }
 
-    res.json({ ok: true, user: r.rows[0] });
+    res.json({ ok: true, user: r.rows[0], created: r.rows[0].created });
   } catch (e) {
     console.error('[auth-staff:link]', e);
     res.status(500).json({ error: 'internal', detail: e.message });
