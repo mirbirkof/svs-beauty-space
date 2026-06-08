@@ -68,19 +68,33 @@ async function getToken() {
 
 async function findClientByPhone(phone) {
   const token = await getToken();
-  const res = await request('GET', '/clients', { token, query: { phone } });
+  // BP теперь требует fields= на каждом GET. id всегда возвращается, в fields его указывать НЕЛЬЗЯ.
+  const res = await request('GET', '/clients', {
+    token,
+    query: { phone, fields: 'firstname,lastname,phone,email' },
+  });
   const list = res.data || res.items || res;
   return Array.isArray(list) && list.length ? list[0] : null;
 }
 
-async function createClient({ phone, name, email }) {
+function splitName(full) {
+  const s = String(full || '').trim();
+  if (!s) return { firstname: 'Клієнт', lastname: '' };
+  const parts = s.split(/\s+/);
+  return { firstname: parts[0], lastname: parts.slice(1).join(' ') };
+}
+
+async function createClient({ phone, name, firstname, lastname, email }) {
   const existing = await findClientByPhone(phone);
   if (existing) return existing;
   const token = await getToken();
-  return request('POST', '/clients', {
-    token,
-    body: { phone, name: name || 'Клієнт', email: email || null },
-  });
+  // BP запретил поле name в POST /clients — оно read-only. Только firstname + lastname.
+  const fn = firstname || (name ? splitName(name).firstname : 'Клієнт');
+  const ln = lastname  || (name ? splitName(name).lastname  : '');
+  const body = { phone, firstname: fn };
+  if (ln)    body.lastname = ln;
+  if (email) body.email = email;
+  return request('POST', '/clients', { token, body });
 }
 
 async function createAppointment({ client_id, service_id, employee_id, date_from, date_to, location_id, note }) {

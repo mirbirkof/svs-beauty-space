@@ -114,6 +114,22 @@ router.patch('/payroll/records/:id', async (req, res) => {
     if (!sets.length) return res.json({ ok: true, noop: true });
     args.push(req.params.id);
     await pool.query(`UPDATE payroll_records SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
+
+    // авто-расход в открытую кассовую смену при выплате ЗП
+    if (status === 'paid') {
+      try {
+        const rec = await pool.query(`SELECT id, master_id, master_name, total FROM payroll_records WHERE id=$1`, [req.params.id]);
+        const sh  = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (rec.rows[0] && sh.rows[0] && +rec.rows[0].total > 0) {
+          await pool.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+             VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
+            [sh.rows[0].id, rec.rows[0].total, rec.rows[0].id, rec.rows[0].master_id, `ЗП ${rec.rows[0].master_name||'#'+rec.rows[0].master_id}`]
+          );
+        }
+      } catch (e) { console.warn('[payroll-cashbox]', e.message); }
+    }
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

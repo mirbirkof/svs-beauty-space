@@ -275,6 +275,17 @@ router.patch('/orders/:id/status', async (req, res) => {
          VALUES ($1, FLOOR($2 * 0.03)::int, 'order-paid', $3)`,
         [cur.rows[0].client_id, cur.rows[0].total, String(orderId)]
       );
+      // авто-приход в открытую кассовую смену (если есть)
+      try {
+        const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (sh.rows[0]) {
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, description)
+             VALUES ($1,'in','sale_product',$2,'card','order',$3,$4)`,
+            [sh.rows[0].id, cur.rows[0].total, orderId, `Замовлення #${orderId}`]
+          );
+        }
+      } catch (e) { console.warn('[cashbox-auto]', e.message); }
     }
 
     // переход paid → refunded: возвращаем товар, отзываем бонусы
@@ -298,6 +309,17 @@ router.patch('/orders/:id/status', async (req, res) => {
          WHERE id = $1`,
         [cur.rows[0].client_id, cur.rows[0].total]
       );
+      // авто-расход (возврат денег) в открытую смену
+      try {
+        const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (sh.rows[0]) {
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, description)
+             VALUES ($1,'out','refund',$2,'card','order',$3,$4)`,
+            [sh.rows[0].id, cur.rows[0].total, orderId, `Повернення замовлення #${orderId}`]
+          );
+        }
+      } catch (e) { console.warn('[cashbox-auto-refund]', e.message); }
     }
 
     const r = await client.query(
