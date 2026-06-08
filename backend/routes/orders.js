@@ -97,11 +97,13 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       );
     }
 
-    // создаём заказ
+    // создаём заказ (branch_id: из body или дефолтный)
     const ord = await client.query(
       `INSERT INTO orders (client_id, total, wholesale_total, status, payment_method,
-                           delivery_type, delivery_json, notes)
-       VALUES ($1,$2,$3,'new','mono',$4,$5,$6) RETURNING id, created_at, status`,
+                           delivery_type, delivery_json, notes, branch_id)
+       VALUES ($1,$2,$3,'new','mono',$4,$5,$6,
+               COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
+       RETURNING id, created_at, status, branch_id`,
       [
         clientId,
         total,
@@ -109,6 +111,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
         delivery?.type || 'pickup',
         delivery ? JSON.stringify(delivery) : null,
         notes || null,
+        req.body?.branch_id || null,
       ]
     );
     const orderId = ord.rows[0].id;

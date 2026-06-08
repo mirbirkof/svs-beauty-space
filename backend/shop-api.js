@@ -23,9 +23,10 @@ const waitlistRoutes = require('./routes/waitlist');
 const dikidiRoutes = require('./routes/dikidi-features');
 const payrollRoutes = require('./routes/payroll-stock');
 const loyaltyRoutes = require('./routes/loyalty');
+const scheduleRoutes = require('./routes/schedule');
 
 const app = express();
-const PORT = process.env.PORT || process.env.SHOP_API_PORT || 3011;
+const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
 
 app.use(cors({
   origin: [
@@ -111,6 +112,7 @@ app.use('/api/cashbox', require('./routes/cashbox'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/inventory', require('./routes/inventory'));
+app.use('/api/schedule', scheduleRoutes);
 app.use('/api/branches', require('./routes/branches'));
 
 // Mono Pay placeholder — активируется когда MONO_TOKEN задан

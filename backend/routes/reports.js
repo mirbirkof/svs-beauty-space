@@ -86,14 +86,15 @@ router.get('/masters', requirePerm('reports.read'), async (req, res) => {
                 COUNT(DISTINCT client_id)::int   AS unique_clients,
                 COALESCE(SUM(price),0)::numeric  AS revenue
            FROM appointments
-          WHERE start_at BETWEEN $1 AND $2
+          WHERE starts_at BETWEEN $1 AND $2
           GROUP BY master_id
        ),
        payroll AS (
-         SELECT master_id, COALESCE(SUM(amount),0)::numeric AS payroll_sum
+         SELECT master_id::int AS master_id, COALESCE(SUM(total),0)::numeric AS payroll_sum
            FROM payroll_records
           WHERE period_start >= $1::date AND period_end <= $2::date
-          GROUP BY master_id
+            AND master_id ~ '^\d+$'
+          GROUP BY master_id::int
        )
        SELECT m.id, m.name,
               a.total_appts, a.done_appts, a.canceled_appts, a.no_show_appts,
@@ -125,7 +126,7 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
     const r = await pool.query(
       `WITH base AS (
          SELECT c.id, c.name, c.phone,
-                COALESCE(MAX(o.created_at), MAX(a.start_at)) AS last_activity,
+                COALESCE(MAX(o.created_at), MAX(a.starts_at)) AS last_activity,
                 COUNT(DISTINCT o.id) + COUNT(DISTINCT a.id)  AS frequency,
                 COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
                 + COALESCE(SUM(a.price) FILTER (WHERE a.status='completed'),0) AS monetary
@@ -183,15 +184,15 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
     const days = Math.max(Number(req.query.days) || 90, 30);
     const r = await pool.query(
       `SELECT c.id, c.name, c.phone,
-              MAX(a.start_at) AS last_visit,
+              MAX(a.starts_at) AS last_visit,
               COUNT(a.id)     AS total_visits,
-              EXTRACT(EPOCH FROM (NOW()-MAX(a.start_at)))/86400 AS days_since
+              EXTRACT(EPOCH FROM (NOW()-MAX(a.starts_at)))/86400 AS days_since
          FROM clients c
          JOIN appointments a ON a.client_id=c.id AND a.status='completed'
         GROUP BY c.id, c.name, c.phone
-        HAVING MAX(a.start_at) < NOW() - INTERVAL '${days} days'
+        HAVING MAX(a.starts_at) < NOW() - INTERVAL '${days} days'
            AND COUNT(a.id) >= 2
-        ORDER BY MAX(a.start_at) ASC
+        ORDER BY MAX(a.starts_at) ASC
         LIMIT 500`
     );
     res.json({ threshold_days: days, items: r.rows, count: r.rows.length });
@@ -214,7 +215,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
          SELECT c.id FROM clients c
          JOIN appointments a ON a.client_id=c.id AND a.status='completed'
          GROUP BY c.id
-         HAVING MAX(a.start_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
+         HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
        ) t`),
     ]);
 

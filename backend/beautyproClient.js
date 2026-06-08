@@ -14,6 +14,7 @@ const DATABASE_CODE = process.env.BEAUTYPRO_DATABASE_CODE || '664684';
 const LOCATION = process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499';
 
 let cache = { token: null, expiresAt: 0, refreshToken: null };
+let pendingAuth = null; // dedup concurrent getToken() calls
 
 function request(method, path, { token, body, query } = {}) {
   return new Promise((resolve, reject) => {
@@ -52,83 +53,140 @@ async function getToken() {
   const now = Date.now();
   if (cache.token && cache.expiresAt > now + 60_000) return cache.token;
 
-  // GET /auth/database?application_id&application_secret&database_code
-  const res = await request('GET', '/auth/database', {
-    query: {
-      application_id: APP_ID,
-      application_secret: SECRET,
-      database_code: DATABASE_CODE,
-    },
-  });
-  cache.token = res.access_token || res.token;
-  cache.refreshToken = res.refresh_token;
-  cache.expiresAt = now + (res.expires_in ? res.expires_in * 1000 : 23 * 3600 * 1000);
-  return cache.token;
+  // Dedup: if auth is already in-flight, wait for that same promise
+  if (pendingAuth) return pendingAuth;
+
+  pendingAuth = (async () => {
+    const res = await request('GET', '/auth/database', {
+      query: {
+        application_id: APP_ID,
+        application_secret: SECRET,
+        database_code: DATABASE_CODE,
+      },
+    });
+    cache.token = res.access_token || res.token;
+    cache.refreshToken = res.refresh_token;
+    cache.expiresAt = Date.now() + (res.expires_in ? res.expires_in * 1000 : 23 * 3600 * 1000);
+    return cache.token;
+  })();
+
+  try { return await pendingAuth; } finally { pendingAuth = null; }
+}
+
+// BP API tightening (verified 2026-06-08): `fields` is required on every request,
+// `id` is implicit and rejected in fields list, and `name` is read-only on clients
+// (must use firstname/lastname).
+const CLIENT_FIELDS = 'firstname,lastname,phone,email';
+const APPT_FIELDS = 'date_from,date_to,services,client,location,status';
+
+function splitName(raw) {
+  const s = String(raw || 'Клієнт').trim();
+  const parts = s.split(/\s+/);
+  return { firstname: parts[0] || 'Клієнт', lastname: parts.slice(1).join(' ') || null };
 }
 
 async function findClientByPhone(phone) {
   const token = await getToken();
-  // BP теперь требует fields= на каждом GET. id всегда возвращается, в fields его указывать НЕЛЬЗЯ.
-  const res = await request('GET', '/clients', {
-    token,
-    query: { phone, fields: 'firstname,lastname,phone,email' },
-  });
+  const res = await request('GET', '/clients', { token, query: { phone, fields: CLIENT_FIELDS } });
   const list = res.data || res.items || res;
   return Array.isArray(list) && list.length ? list[0] : null;
 }
 
-function splitName(full) {
-  const s = String(full || '').trim();
-  if (!s) return { firstname: 'Клієнт', lastname: '' };
-  const parts = s.split(/\s+/);
-  return { firstname: parts[0], lastname: parts.slice(1).join(' ') };
-}
-
-async function createClient({ phone, name, firstname, lastname, email }) {
+async function createClient({ phone, name, email }) {
   const existing = await findClientByPhone(phone);
   if (existing) return existing;
   const token = await getToken();
-  // BP запретил поле name в POST /clients — оно read-only. Только firstname + lastname.
-  const fn = firstname || (name ? splitName(name).firstname : 'Клієнт');
-  const ln = lastname  || (name ? splitName(name).lastname  : '');
-  const body = { phone, firstname: fn };
-  if (ln)    body.lastname = ln;
+  const { firstname, lastname } = splitName(name);
+  const body = { phone, firstname };
+  if (lastname) body.lastname = lastname;
   if (email) body.email = email;
-  return request('POST', '/clients', { token, body });
+  return request('POST', '/clients', {
+    token,
+    body,
+    query: { fields: CLIENT_FIELDS },
+  });
 }
 
+// BP schema (verified 2026-06-08):
+//   date = 'YYYY-MM-DD'  (date only, no time)
+//   services = [{ service, employee, start: 'YYYY-MM-DDTHH:MM:SS', duration }]
+// Старый интерфейс booking-server передаёт date_from / date_to (ISO datetime).
+// Внутри конвертируем в date + start + duration_minutes.
 async function createAppointment({ client_id, service_id, employee_id, date_from, date_to, location_id, note }) {
   const token = await getToken();
+  const dt = new Date(date_from);
+  const dtEnd = new Date(date_to);
+  if (Number.isNaN(dt.getTime()) || Number.isNaN(dtEnd.getTime())) {
+    throw new Error('createAppointment: invalid date_from / date_to');
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateOnly = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+  const startIso = `${dateOnly}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+  const duration = Math.max(15, Math.round((dtEnd - dt) / 60000));
+  // Назначение мастера идёт через `professional`, а не `employee`
+  // (employee — служебное поле BP, возвращается null).
+  const fields = 'date,client,location,state,services(start,service,professional,duration)';
   return request('POST', '/appointments', {
     token,
     body: {
       client: client_id,
-      services: [{ service: service_id, professional: employee_id }],
-      date_from,
-      date_to,
       location: location_id || LOCATION,
-      note: note || 'Онлайн-запис з сайту (підтверджено Telegram)',
+      date: dateOnly,
+      services: [{ service: service_id, professional: employee_id, start: startIso, duration }],
+      // 'note' BP больше не принимает на верхнем уровне
     },
-    query: { force: 'true' },
+    query: { force: 'true', fields },
   });
 }
 
+// Retry wrapper: on 401 invalidate cache and retry once
+async function withRetry(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (e.message && e.message.includes('401')) {
+      cache.token = null; cache.expiresAt = 0;
+      return fn();
+    }
+    throw e;
+  }
+}
+
 async function listServices() {
-  const token = await getToken();
-  // BeautyPro API requires explicit fields= param
-  return request('GET', '/services', { token, query: { fields: 'name,duration,price,category', archive: 'false' } });
+  return withRetry(async () => {
+    const token = await getToken();
+    return request('GET', '/services', { token, query: { fields: 'name,duration,price,category', archive: 'false' } });
+  });
 }
 
 async function listEmployees() {
-  const token = await getToken();
-  return request('GET', '/employees', { token, query: { fields: 'name,services', archive: 'false', location: LOCATION } });
+  return withRetry(async () => {
+    const token = await getToken();
+    return request('GET', '/employees', { token, query: { fields: 'name,services,positions', archive: 'false', location: LOCATION } });
+  });
 }
 
 async function freeTime({ duration, professional, from, to, location }) {
   const token = await getToken();
-  const query = { duration, from, to, location: location || LOCATION, step: '15m' };
-  if (professional) query.professionals = professional;
-  return request('GET', '/employees/free_time', { token, query });
+  return request('GET', '/employees/free_time', {
+    token,
+    query: { duration, professionals: professional, from, to, location: location || LOCATION, step: '15m' },
+  });
+}
+
+// GET /schedule?from=YYYY-MM-DD&to=YYYY-MM-DD&location=...
+// Повертає робочі зміни майстрів — це справжнє джерело графіків (worktime в /employees порожній).
+// Структура: { columns: [{ professional, date, worktime:[{start,end}], reserves, appointments:[apptId] }], appointments: {id: {...}} }
+async function getSchedule({ from, to, location } = {}) {
+  const token = await getToken();
+  return request('GET', '/schedule', {
+    token,
+    query: { from, to, location: location || LOCATION },
+  });
+}
+
+async function raw(method, path, query, body) {
+  const token = await getToken();
+  return request(method, path, { token, query, body });
 }
 
 module.exports = {
@@ -138,4 +196,7 @@ module.exports = {
   listServices,
   listEmployees,
   freeTime,
+  getSchedule,
+  getToken,
+  raw,
 };

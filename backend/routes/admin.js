@@ -123,13 +123,15 @@ router.delete('/products/:id', async (req, res) => {
 
 router.post('/products/:id/variants', async (req, res) => {
   try {
-    const { volume, price, wholesale, sku, stock_qty = 0 } = req.body || {};
+    const { volume, price, wholesale, sku, stock_qty = 0, branch_id } = req.body || {};
     if (!volume || price == null) return res.status(400).json({ error: 'volume-price-required' });
     const pool = getPool();
     const r = await pool.query(
-      `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active)
-       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
-      [req.params.id, volume, price, wholesale || price, sku, stock_qty]
+      `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active, branch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,true,
+               COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
+       RETURNING *`,
+      [req.params.id, volume, price, wholesale || price, sku, stock_qty, branch_id || null]
     );
     res.status(201).json({ ok: true, variant: r.rows[0] });
   } catch (e) { console.error('[admin:add-variant]', e); res.status(500).json({ error: 'internal', detail: e.message }); }
