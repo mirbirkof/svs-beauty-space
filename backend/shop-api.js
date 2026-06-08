@@ -107,6 +107,11 @@ app.use('/api', waitlistRoutes);
 app.use('/api', dikidiRoutes);
 app.use('/api', payrollRoutes);
 app.use('/api', loyaltyRoutes);
+app.use('/api/cashbox', require('./routes/cashbox'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/reports', require('./routes/reports'));
+app.use('/api/inventory', require('./routes/inventory'));
+app.use('/api/branches', require('./routes/branches'));
 
 // Mono Pay placeholder — активируется когда MONO_TOKEN задан
 app.post('/api/pay/mono/invoice', (req, res) => {
