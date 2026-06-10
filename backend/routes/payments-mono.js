@@ -23,7 +23,7 @@ async function applyInvoiceStatus(data) {
   if (!invoiceId) return { ok: false, reason: 'no-invoice-id' };
 
   const cur = await pool.query(
-    `SELECT id, order_id, status FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
+    `SELECT id, order_id, booking_id, amount, status FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
   );
   if (!cur.rowCount) return { ok: false, reason: 'unknown-invoice' };
@@ -38,7 +38,32 @@ async function applyInvoiceStatus(data) {
     [data.status, data.failureReason || null, JSON.stringify(data), p.id]
   );
 
-  if (data.status === 'success') {
+  if (data.status === 'success' && p.booking_id) {
+    // ── предоплата за онлайн-запись ──
+    const paid = data.amount ? data.amount / 100 : p.amount;
+    const upd = await pool.query(
+      `UPDATE online_bookings SET prepaid_amount = $1, prepaid_at = NOW(), updated_at = NOW()
+       WHERE id = $2 AND prepaid_at IS NULL
+       RETURNING id, client_name, client_phone, service_name, date_from, telegram_id`,
+      [paid, p.booking_id]
+    );
+    if (upd.rowCount) {
+      const b = upd.rows[0];
+      const when = b.date_from ? new Date(b.date_from).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      // клиенту — через booking-бот (он точно с ним общался)
+      if (b.telegram_id) {
+        bookingBotSend(b.telegram_id,
+          `✅ Передоплату ${Math.round(paid)} грн отримано!\nВаш запис${b.service_name ? ` на «${b.service_name}»` : ''}${when ? ` ${when}` : ''} підтверджено повністю. До зустрічі!`)
+          .catch(e => console.error('[mono:booking-notify-client]', e.message));
+      }
+      if (process.env.ADMIN_TG_CHAT) {
+        const { tgSend } = require('./telegram-notify');
+        tgSend(process.env.ADMIN_TG_CHAT,
+          `💳 <b>Передоплата за запис</b>\n${b.client_name || ''} ${b.client_phone || ''}\n${b.service_name || ''}${when ? `, ${when}` : ''}\nMono: ${Math.round(paid)} грн`)
+          .catch(e => console.error('[mono:booking-notify-admin]', e.message));
+      }
+    }
+  } else if (data.status === 'success') {
     const upd = await pool.query(
       `UPDATE orders SET status = 'paid', updated_at = NOW()
        WHERE id = $1 AND status = 'new' RETURNING id`,
@@ -98,6 +123,70 @@ async function createInvoiceForOrder(orderId) {
     [orderId, inv.invoiceId, inv.pageUrl, order.total]
   );
   return { invoiceId: inv.invoiceId, pageUrl: inv.pageUrl };
+}
+
+// ── предоплата за онлайн-запись (online_bookings) ──
+const DEPOSIT_PERCENT = Math.min(100, Math.max(0, parseInt(process.env.BOOKING_DEPOSIT_PERCENT || '30', 10) || 0));
+
+// отправка через booking-бота (клиент гарантированно начинал с ним диалог)
+function bookingBotSend(chatId, text, opts = {}) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return Promise.reject(new Error('no-booking-bot-token'));
+  return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, ...opts }),
+    signal: AbortSignal.timeout(10000),
+  }).then(async r => {
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.description || 'tg-send-failed');
+    return j;
+  });
+}
+
+async function createInvoiceForBooking(bookingId) {
+  if (!DEPOSIT_PERCENT) return null; // предоплата выключена
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT b.id, b.status, b.service_name, b.client_name, b.telegram_id, b.prepaid_at,
+            s.price, s.name AS local_service_name
+     FROM online_bookings b
+     LEFT JOIN services s ON s.beautypro_id = b.service_id
+     WHERE b.id = $1`,
+    [bookingId]
+  );
+  if (!r.rowCount) { const e = new Error('booking-not-found'); e.code = 404; throw e; }
+  const b = r.rows[0];
+  if (b.prepaid_at) return { alreadyPaid: true };
+  if (!b.price || Number(b.price) <= 0) return null; // цена неизвестна — без предоплаты
+
+  const deposit = Math.max(1, Math.round(Number(b.price) * DEPOSIT_PERCENT / 100));
+  const serviceName = b.service_name || b.local_service_name || 'послугу';
+
+  // идемпотентность: живой pending-инвойс не дублируем
+  const existing = await pool.query(
+    `SELECT invoice_id, page_url FROM payments
+     WHERE booking_id = $1 AND provider = 'mono'
+       AND status IN ('created','processing','hold')
+       AND created_at > NOW() - INTERVAL '24 hours'
+     ORDER BY id DESC LIMIT 1`,
+    [bookingId]
+  );
+  if (existing.rowCount && existing.rows[0].page_url) {
+    return { invoiceId: existing.rows[0].invoice_id, pageUrl: existing.rows[0].page_url, amount: deposit, serviceName, reused: true };
+  }
+
+  const inv = await mono.createInvoice({
+    amountUah: deposit,
+    orderId: `appt-${bookingId}`,
+    destination: `Передоплата за запис: ${serviceName} — SVS Beauty Space`.slice(0, 280),
+  });
+  await pool.query(
+    `INSERT INTO payments (booking_id, provider, invoice_id, page_url, amount, status)
+     VALUES ($1, 'mono', $2, $3, $4, 'created')`,
+    [bookingId, inv.invoiceId, inv.pageUrl, deposit]
+  );
+  return { invoiceId: inv.invoiceId, pageUrl: inv.pageUrl, amount: deposit, serviceName };
 }
 
 // ── отправить клиенту ссылку на оплату в TG (если привязан) ──
@@ -211,6 +300,8 @@ function startCron() {
 
 module.exports = router;
 module.exports.createInvoiceForOrder = createInvoiceForOrder;
+module.exports.createInvoiceForBooking = createInvoiceForBooking;
+module.exports.bookingBotSend = bookingBotSend;
 module.exports.sendPayLinkToClient = sendPayLinkToClient;
 module.exports.applyInvoiceStatus = applyInvoiceStatus;
 module.exports.startCron = startCron;

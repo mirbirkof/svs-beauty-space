@@ -155,6 +155,7 @@ router.post('/telegram', async (req, res) => {
         return tg('sendMessage', { chat_id: msg.chat.id, text: 'Активних записів немає.' });
       }
 
+      let bookingId = null;
       try {
         const client = await bp.createClient({ phone, name: row.client_name || msg.from.first_name });
         const appt = await bp.createAppointment({
@@ -179,16 +180,18 @@ router.post('/telegram', async (req, res) => {
              RETURNING id`,
             [phone, row.client_name || msg.from.first_name || null, msg.from.id]
           );
-          await getPool().query(
+          const ob = await getPool().query(
             `INSERT INTO online_bookings
               (client_id, client_phone, client_name, service_id, master_id,
                date_from, date_to, channel, bp_appointment_id, status,
                source_token, telegram_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',$10,$11)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',$10,$11)
+             RETURNING id`,
             [cl.rows[0].id, phone, row.client_name || msg.from.first_name || null,
              row.service_id, row.employee_id, row.date_from, row.date_to,
              row.channel || 'bot', bp_id, row.token, msg.from.id]
           );
+          bookingId = ob.rows[0].id;
         } catch (logErr) {
           console.error('[booking/log]', logErr.message);
         }
@@ -198,6 +201,24 @@ router.post('/telegram', async (req, res) => {
           text: '✅ Запис підтверджено! Чекаємо вас у салоні. До зустрічі.',
           reply_markup: { remove_keyboard: true },
         });
+
+        // предоплата через Mono — fire-and-forget, запись уже подтверждена
+        if (bookingId && process.env.MONO_TOKEN) {
+          const chatId = msg.chat.id;
+          setImmediate(async () => {
+            try {
+              const monoPay = require('./payments-mono');
+              const inv = await monoPay.createInvoiceForBooking(bookingId);
+              if (inv && inv.pageUrl) {
+                await tg('sendMessage', {
+                  chat_id: chatId,
+                  text: `💳 Передоплата за запис: ${inv.amount} грн\nОплатіть онлайн (картка / Apple Pay / Google Pay):`,
+                  reply_markup: { inline_keyboard: [[{ text: `Оплатити ${inv.amount} грн`, url: inv.pageUrl }]] },
+                });
+              }
+            } catch (e) { console.error('[booking/prepay]', e.message); }
+          });
+        }
       } catch (e) {
         console.error('[booking/bp-push]', e.message);
         await db.update(row.token, { status: 'failed', error: e.message.slice(0, 200) });
