@@ -131,6 +131,18 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       const { notifyAdminNewOrder } = require('./telegram-notify');
       notifyAdminNewOrder(orderId).catch(e => console.error('[notify-admin]', e.message));
     } catch (e) { console.error('[notify-admin:load]', e.message); }
+
+    // Mono: сразу создаём инвойс и шлём ссылку клиенту в TG (заказ создан даже если Mono упал)
+    let payUrl = null;
+    if (process.env.MONO_TOKEN) {
+      try {
+        const monoPay = require('./payments-mono');
+        const inv = await monoPay.createInvoiceForOrder(orderId);
+        payUrl = inv.pageUrl;
+        monoPay.sendPayLinkToClient(orderId, payUrl).catch(() => {});
+      } catch (e) { console.error('[orders:mono-invoice]', e.message); }
+    }
+
     res.status(201).json({
       ok: true,
       order: {
@@ -140,7 +152,8 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
         status: 'new',
         items: lines,
         created_at: ord.rows[0].created_at,
-        next: 'pay-with-mono',
+        pay_url: payUrl,
+        next: payUrl ? 'pay-with-mono' : 'mono-unavailable-retry-via-/api/pay/mono/invoice',
       },
     });
   } catch (e) {

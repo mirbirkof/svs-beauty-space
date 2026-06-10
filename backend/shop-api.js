@@ -44,7 +44,8 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '1mb' }));
+// rawBody нужен для верификации X-Sign вебхука Mono (подпись считается от байтов как есть)
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 // ── Rate limiting ───────────────────────────────────────
 // За туннелем/Render реальный IP приходит в X-Forwarded-For (1 hop)
@@ -115,7 +116,7 @@ app.get('/api/shop/readiness', (req, res) => {
       notifications: 'ready (needs telegram_id on client)',
       beautypro_sync: 'ready (fields param OK, awaiting BEAUTYPRO env keys)',
       nova_poshta: 'ready (awaiting api key)',
-      mono_pay: 'stub (awaiting api key)',
+      mono_pay: 'ready (invoice + webhook + poller)',
     },
   });
 });
@@ -123,6 +124,11 @@ app.get('/api/shop/readiness', (req, res) => {
 // Tenant context (SAS-01): резолв тенанта до всех роутов; текущий трафик → дефолтный тенант
 const { tenantMiddleware } = require('./lib/tenant');
 app.use(tenantMiddleware());
+
+// Mono Acquiring (M29) — ДО роутеров на общем /api (payroll/loyalty вешают
+// requirePerm на всё что до них дошло — вебхук Mono был бы заблокирован)
+const monoPayRoutes = require('./routes/payments-mono');
+app.use('/api/pay/mono', monoPayRoutes);
 
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/cabinet', cabinetRoutes);
@@ -152,17 +158,7 @@ app.use('/api/reminders', remindersRoutes);
 app.use('/api/repeat-visits', repeatVisitsRoutes);
 app.use('/api/branches', require('./routes/branches'));
 
-// Mono Pay placeholder — активируется когда MONO_TOKEN задан
-app.post('/api/pay/mono/invoice', (req, res) => {
-  if (!process.env.MONO_TOKEN) {
-    return res.status(503).json({
-      error: 'mono-not-configured',
-      message: 'Ожидаются API ключи Mono Acquiring',
-    });
-  }
-  // TODO: создать инвойс через Mono API когда придут ключи
-  res.status(501).json({ error: 'not-implemented-yet' });
-});
+// (Mono routes смонтированы выше — до catch-all /api роутеров)
 
 app.use((err, req, res, next) => {
   console.error('[shop-api]', err);
@@ -175,5 +171,7 @@ app.listen(PORT, '0.0.0.0', () => {
   // Запуск cron напоминаний
   if (process.env.DATABASE_URL) {
     remindersRoutes.startCron();
+    // страховка вебхуков Mono: поллинг pending-инвойсов
+    if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
 });
