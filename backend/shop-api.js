@@ -96,6 +96,10 @@ app.get('/api/shop/readiness', (req, res) => {
   });
 });
 
+// Tenant context (SAS-01): резолв тенанта до всех роутов; текущий трафик → дефолтный тенант
+const { tenantMiddleware } = require('./lib/tenant');
+app.use(tenantMiddleware());
+
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/cabinet', cabinetRoutes);
 app.use('/api/orders', ordersRoutes);
