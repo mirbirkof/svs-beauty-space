@@ -10,9 +10,17 @@
  * Контракт для нового кода: каждый INSERT обязан писать req.tenant_id,
  * каждый SELECT — фильтровать по нему. Старый код работает через DEFAULT в схеме.
  */
+const { AsyncLocalStorage } = require('async_hooks');
 const { getPool } = require('../db-pg');
 
 const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+// Контекст тенанта для всего async-дерева запроса (читает db-pg.js)
+const tenantContext = new AsyncLocalStorage();
+function getTenantId() {
+  const store = tenantContext.getStore();
+  return store ? store.tenantId : null;
+}
 
 // slug → {id, status}, кэш 5 мин
 const cache = new Map();
@@ -46,13 +54,13 @@ function tenantMiddleware() {
       } else {
         req.tenant_id = DEFAULT_TENANT_ID;
       }
-      next();
+      tenantContext.run({ tenantId: req.tenant_id }, next);
     } catch (e) {
       // не валим запрос из-за сбоя резолва — фолбэк на дефолтный тенант
       req.tenant_id = DEFAULT_TENANT_ID;
-      next();
+      tenantContext.run({ tenantId: DEFAULT_TENANT_ID }, next);
     }
   };
 }
 
-module.exports = { tenantMiddleware, DEFAULT_TENANT_ID };
+module.exports = { tenantMiddleware, getTenantId, DEFAULT_TENANT_ID };
