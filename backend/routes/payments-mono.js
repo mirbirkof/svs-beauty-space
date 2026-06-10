@@ -292,6 +292,27 @@ function startCron() {
           await applyInvoiceStatus(live);
         } catch (e) { console.error('[mono:cron]', row.invoice_id, e.message); }
       }
+
+      // новые подтверждённые записи (из TG-бота) без предоплаты и без инвойса →
+      // создать инвойс и прислать кнопку «Оплатити» прямо в чат клиента
+      const nb = await pool.query(
+        `SELECT b.id, b.telegram_id FROM online_bookings b
+         WHERE b.status = 'confirmed' AND b.prepaid_at IS NULL AND b.telegram_id IS NOT NULL
+           AND b.created_at > NOW() - INTERVAL '6 hours'
+           AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.provider = 'mono')
+         LIMIT 20`
+      );
+      for (const b of nb.rows) {
+        try {
+          const inv = await createInvoiceForBooking(b.id);
+          if (inv && inv.pageUrl) {
+            await bookingBotSend(b.telegram_id,
+              `💳 Передоплата за запис: ${inv.amount} грн\nОплатіть онлайн (картка / Apple Pay / Google Pay):`,
+              { reply_markup: { inline_keyboard: [[{ text: `Оплатити ${inv.amount} грн`, url: inv.pageUrl }]] } });
+            console.log('[mono:prepay-scan] invoice sent, booking', b.id);
+          }
+        } catch (e) { console.error('[mono:prepay-scan]', b.id, e.message); }
+      }
     } catch (e) { console.error('[mono:cron]', e.message); }
   }, 3 * 60 * 1000);
   _cronTimer.unref();
