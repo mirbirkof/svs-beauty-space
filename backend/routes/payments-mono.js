@@ -23,7 +23,7 @@ async function applyInvoiceStatus(data) {
   if (!invoiceId) return { ok: false, reason: 'no-invoice-id' };
 
   const cur = await pool.query(
-    `SELECT id, order_id, booking_id, amount, status FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
+    `SELECT id, order_id, booking_id, amount, status, purpose FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
   );
   if (!cur.rowCount) return { ok: false, reason: 'unknown-invoice' };
@@ -38,7 +38,30 @@ async function applyInvoiceStatus(data) {
     [data.status, data.failureReason || null, JSON.stringify(data), p.id]
   );
 
-  if (data.status === 'success' && p.booking_id) {
+  if (data.status === 'success' && p.booking_id && p.purpose === 'visit') {
+    // ── оплата послуги ПІСЛЯ візиту ──
+    const paid = data.amount ? data.amount / 100 : p.amount;
+    const upd = await pool.query(
+      `UPDATE online_bookings SET visit_paid_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND visit_paid_at IS NULL
+       RETURNING id, client_name, client_phone, service_name, telegram_id`,
+      [p.booking_id]
+    );
+    if (upd.rowCount) {
+      const b = upd.rows[0];
+      if (b.telegram_id) {
+        bookingBotSend(b.telegram_id,
+          `✅ Оплату ${Math.round(paid)} грн отримано. Дякуємо, що ви з нами! 💛`)
+          .catch(e => console.error('[mono:visit-notify-client]', e.message));
+      }
+      if (process.env.ADMIN_TG_CHAT) {
+        const { tgSend } = require('./telegram-notify');
+        tgSend(process.env.ADMIN_TG_CHAT,
+          `💳 <b>Оплата візиту онлайн</b>\n${b.client_name || ''} ${b.client_phone || ''}\n${b.service_name || ''}\nMono: ${Math.round(paid)} грн`)
+          .catch(e => console.error('[mono:visit-notify-admin]', e.message));
+      }
+    }
+  } else if (data.status === 'success' && p.booking_id) {
     // ── предоплата за онлайн-запись ──
     const paid = data.amount ? data.amount / 100 : p.amount;
     const upd = await pool.query(
@@ -189,6 +212,52 @@ async function createInvoiceForBooking(bookingId) {
   return { invoiceId: inv.invoiceId, pageUrl: inv.pageUrl, amount: deposit, serviceName };
 }
 
+// ── оплата послуги ПІСЛЯ візиту: інвойс на повну суму ──
+async function createInvoiceForVisit(bookingId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT b.id, b.service_name, b.telegram_id, b.visit_paid_at,
+            a.price AS visit_price, s.price AS svc_price, s.name AS local_service_name
+     FROM online_bookings b
+     LEFT JOIN appointments a ON a.beautypro_id = b.bp_appointment_id
+     LEFT JOIN services s ON s.beautypro_id = b.service_id
+     WHERE b.id = $1`,
+    [bookingId]
+  );
+  if (!r.rowCount) { const e = new Error('booking-not-found'); e.code = 404; throw e; }
+  const b = r.rows[0];
+  if (b.visit_paid_at) return { alreadyPaid: true };
+  // цена закрытого визита из BP приоритетна (там реальный чек), fallback — прайс услуги
+  const amount = Math.round(Number(b.visit_price || b.svc_price || 0));
+  if (!amount || amount <= 0) return null;
+  const serviceName = b.service_name || b.local_service_name || 'послугу';
+
+  // идемпотентность: живой pending-инвойс не дублируем
+  const existing = await pool.query(
+    `SELECT invoice_id, page_url FROM payments
+     WHERE booking_id = $1 AND provider = 'mono' AND purpose = 'visit'
+       AND status IN ('created','processing','hold')
+       AND created_at > NOW() - INTERVAL '7 days'
+     ORDER BY id DESC LIMIT 1`,
+    [bookingId]
+  );
+  if (existing.rowCount && existing.rows[0].page_url) {
+    return { invoiceId: existing.rows[0].invoice_id, pageUrl: existing.rows[0].page_url, amount, serviceName, reused: true };
+  }
+
+  const inv = await mono.createInvoice({
+    amountUah: amount,
+    orderId: `visit-${bookingId}`,
+    destination: `Оплата послуги: ${serviceName} — SVS Beauty Space`.slice(0, 280),
+  });
+  await pool.query(
+    `INSERT INTO payments (booking_id, provider, invoice_id, page_url, amount, status, purpose)
+     VALUES ($1, 'mono', $2, $3, $4, 'created', 'visit')`,
+    [bookingId, inv.invoiceId, inv.pageUrl, amount]
+  );
+  return { invoiceId: inv.invoiceId, pageUrl: inv.pageUrl, amount, serviceName };
+}
+
 // ── отправить клиенту ссылку на оплату в TG (если привязан) ──
 async function sendPayLinkToClient(orderId, pageUrl) {
   const pool = getPool();
@@ -277,6 +346,8 @@ router.get('/health', async (req, res) => {
 let _cronTimer = null;
 function startCron() {
   if (_cronTimer) return;
+  // Миграция применена 10.06.2026 под owner-ролью (app_tenant не владеет таблицами):
+  //   payments.purpose TEXT; online_bookings.visit_invoice_sent_at/visit_paid_at TIMESTAMPTZ
   _cronTimer = setInterval(async () => {
     try {
       const pool = getPool();
@@ -313,6 +384,30 @@ function startCron() {
           }
         } catch (e) { console.error('[mono:prepay-scan]', b.id, e.message); }
       }
+      // ── оплата ПІСЛЯ візиту: BP закрыл визит (done/completed, НЕ paid — те
+      //    рассчитались на месте) → шлём ссылку на полную сумму, один раз ──
+      const fv = await pool.query(
+        `SELECT b.id, b.telegram_id FROM online_bookings b
+         JOIN appointments a ON a.beautypro_id = b.bp_appointment_id
+         WHERE a.status = 'done' AND LOWER(COALESCE(a.bp_state,'')) <> 'paid'
+           AND b.telegram_id IS NOT NULL
+           AND b.visit_paid_at IS NULL AND b.visit_invoice_sent_at IS NULL
+           AND a.ends_at > NOW() - INTERVAL '3 days' AND a.ends_at < NOW()
+         LIMIT 20`
+      );
+      for (const b of fv.rows) {
+        try {
+          const inv = await createInvoiceForVisit(b.id);
+          if (inv && inv.pageUrl) {
+            await bookingBotSend(b.telegram_id,
+              `💛 Дякуємо за візит!\n\nЗа бажанням можете оплатити послугу онлайн — ${inv.amount} грн (картка / Apple Pay / Google Pay).\nЯкщо ви вже розрахувалися в салоні — просто проігноруйте це повідомлення.`,
+              { reply_markup: { inline_keyboard: [[{ text: `💳 Оплатити ${inv.amount} грн`, url: inv.pageUrl }]] } });
+          }
+          // помечаем в любом случае (нет цены/уже оплачено) — чтобы не долбить каждые 3 мин
+          await pool.query(`UPDATE online_bookings SET visit_invoice_sent_at = NOW() WHERE id = $1`, [b.id]);
+          if (inv && inv.pageUrl) console.log('[mono:visit-scan] pay link sent, booking', b.id);
+        } catch (e) { console.error('[mono:visit-scan]', b.id, e.message); }
+      }
     } catch (e) { console.error('[mono:cron]', e.message); }
   }, 3 * 60 * 1000);
   _cronTimer.unref();
@@ -322,6 +417,7 @@ function startCron() {
 module.exports = router;
 module.exports.createInvoiceForOrder = createInvoiceForOrder;
 module.exports.createInvoiceForBooking = createInvoiceForBooking;
+module.exports.createInvoiceForVisit = createInvoiceForVisit;
 module.exports.bookingBotSend = bookingBotSend;
 module.exports.sendPayLinkToClient = sendPayLinkToClient;
 module.exports.applyInvoiceStatus = applyInvoiceStatus;
