@@ -173,7 +173,7 @@ router.post('/telegram', async (req, res) => {
           const cl = await getPool().query(
             `INSERT INTO clients (phone, name, telegram_id, source)
              VALUES ($1, $2, $3, 'bot-salon')
-             ON CONFLICT (phone) DO UPDATE SET
+             ON CONFLICT (tenant_id, phone) DO UPDATE SET
                telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
                name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
              RETURNING id`,

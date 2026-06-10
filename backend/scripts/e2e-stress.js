@@ -36,7 +36,7 @@ async function run() {
   const setup = await T('Setup: тестовый клиент + товар', async () => {
     const c = await pool.query(
       `INSERT INTO clients (phone, name, email) VALUES ('+380999000001','E2E Test Client','e2e@test.local')
-       ON CONFLICT (phone) DO UPDATE SET name=EXCLUDED.name RETURNING id`);
+       ON CONFLICT (tenant_id, phone) DO UPDATE SET name=EXCLUDED.name RETURNING id`);
 
     let prod = await pool.query(`SELECT id FROM products LIMIT 1`);
     if (!prod.rows[0]) throw new Error('нет товаров в БД');

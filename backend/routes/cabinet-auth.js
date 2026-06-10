@@ -133,7 +133,7 @@ router.post('/verify', async (req, res) => {
     // апсёрт клиента
     const cl = await pool.query(
       `INSERT INTO clients (phone, source) VALUES ($1, 'cabinet')
-       ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone
+       ON CONFLICT (tenant_id, phone) DO UPDATE SET phone = EXCLUDED.phone
        RETURNING id, phone, name, email, loyalty_points`,
       [phone]
     );

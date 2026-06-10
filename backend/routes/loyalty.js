@@ -57,7 +57,7 @@ router.get('/loyalty/profile/:phone', async (req, res) => {
     await pool.query(
       `INSERT INTO client_loyalty (client_phone, total_spent, tier_name, updated_at)
        VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (client_phone) DO UPDATE SET total_spent=$2, tier_name=$3, updated_at=NOW()`,
+       ON CONFLICT (tenant_id, client_phone) DO UPDATE SET total_spent=$2, tier_name=$3, updated_at=NOW()`,
       [phone, total, t.name]
     );
 
@@ -107,7 +107,7 @@ router.post('/loyalty/referrals', async (req, res) => {
     await pool.query(
       `INSERT INTO client_loyalty (client_phone, invited_by, updated_at)
        VALUES ($1, $2, NOW())
-       ON CONFLICT (client_phone) DO UPDATE SET invited_by=$2, updated_at=NOW()`,
+       ON CONFLICT (tenant_id, client_phone) DO UPDATE SET invited_by=$2, updated_at=NOW()`,
       [invited, referrer]
     );
     res.json({ ok: true, id: r.rows[0].id });
@@ -152,7 +152,7 @@ router.post('/loyalty/birthday', async (req, res) => {
     await pool.query(
       `INSERT INTO client_loyalty (client_phone, birthday, updated_at)
        VALUES ($1, $2, NOW())
-       ON CONFLICT (client_phone) DO UPDATE SET birthday=$2, updated_at=NOW()`,
+       ON CONFLICT (tenant_id, client_phone) DO UPDATE SET birthday=$2, updated_at=NOW()`,
       [phone, birthday]
     );
     res.json({ ok: true });

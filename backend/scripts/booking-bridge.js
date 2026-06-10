@@ -33,7 +33,7 @@ async function getClientId(phone, name) {
   const r = await pool.query(
     `INSERT INTO clients (phone, name, source)
      VALUES ($1, $2, 'bridge')
-     ON CONFLICT (phone) DO UPDATE SET name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
+     ON CONFLICT (tenant_id, phone) DO UPDATE SET name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
      RETURNING id`,
     [ph, name || null]
   );

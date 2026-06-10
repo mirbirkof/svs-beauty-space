@@ -96,7 +96,7 @@ router.post('/favorites', async (req, res) => {
     const r = await pool.query(
       `INSERT INTO favorites (client_phone, kind, target_id, target_name)
        VALUES ($1,$2,$3,$4)
-       ON CONFLICT (client_phone, kind, target_id) DO NOTHING
+       ON CONFLICT (tenant_id, client_phone, kind, target_id) DO NOTHING
        RETURNING id`,
       [phone, kind, target_id, target_name || null]
     );
@@ -144,7 +144,7 @@ router.post('/blacklist', async (req, res) => {
     if (!phone) return res.status(400).json({ error: 'phone required' });
     const r = await pool.query(
       `INSERT INTO blacklist (client_phone, reason, created_by) VALUES ($1,$2,$3)
-       ON CONFLICT (client_phone) DO UPDATE SET reason=$2, created_by=$3
+       ON CONFLICT (tenant_id, client_phone) DO UPDATE SET reason=$2, created_by=$3
        RETURNING id, created_at`,
       [phone, reason || null, created_by || 'admin']
     );

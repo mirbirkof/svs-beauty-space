@@ -43,7 +43,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       const upd = await client.query(
         `INSERT INTO clients (phone, name, source)
          VALUES ($1, $2, 'shop-guest')
-         ON CONFLICT (phone) DO UPDATE SET name = COALESCE(EXCLUDED.name, clients.name)
+         ON CONFLICT (tenant_id, phone) DO UPDATE SET name = COALESCE(EXCLUDED.name, clients.name)
          RETURNING id`,
         [phone, contact.name || null]
       );
