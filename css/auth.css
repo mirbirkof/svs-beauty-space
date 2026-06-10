@@ -597,3 +597,33 @@
     font-size: 18px;
   }
 }
+
+/* ── Cabinet (M20) ─────────────────────────────────── */
+.cab-loyalty {
+  background: linear-gradient(135deg, #2b2026, #4a3340);
+  color: #f5eee8;
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin: 18px 0 6px;
+}
+.cab-loyalty__tier { font-family: 'Playfair Display', serif; font-size: 1.15rem; margin-bottom: 12px; }
+.cab-loyalty__row { display: flex; justify-content: space-between; font-size: .92rem; margin: 6px 0; opacity: .95; }
+.cab-loyalty__next { margin-top: 12px; font-size: .8rem; opacity: .75; }
+.cab-section { margin-top: 26px; }
+.cab-section h2 { font-family: 'Playfair Display', serif; font-size: 1.05rem; margin-bottom: 10px; }
+.cab-empty { font-size: .85rem; color: #9a8f88; }
+.cab-visit {
+  position: relative;
+  background: #faf7f4;
+  border: 1px solid #eee4dc;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  font-size: .88rem;
+  line-height: 1.45;
+}
+.cab-visit--next { border-color: #c9a387; background: #fdf6f0; }
+.cab-visit__price { position: absolute; right: 14px; top: 12px; font-weight: 600; font-size: .85rem; }
+.cab-status { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: #eee4dc; }
+.cab-status.status-paid { background: #d9efdb; color: #1f6b2d; }
+.cab-order__items { font-size: .8rem; color: #7a6f68; margin: 4px 0; }
