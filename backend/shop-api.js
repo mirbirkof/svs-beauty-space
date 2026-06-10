@@ -132,6 +132,7 @@ app.use('/api/pay/mono', monoPayRoutes);
 
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/cabinet', cabinetRoutes);
+app.use('/api/cabinet', require('./routes/cabinet')); // M20: visits/orders/loyalty/summary
 app.use('/api/orders', ordersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/sync', syncRoutes);
