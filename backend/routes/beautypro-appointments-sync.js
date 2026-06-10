@@ -1,0 +1,308 @@
+/*
+ * BeautyPro Appointments Sync — наполнение локального зеркала записей
+ *
+ * Причина создания: таблица appointments была пуста (beautypro_id был INTEGER,
+ * BP отдаёт GUID). Из-за этого reminders / repeat-visits работали вхолостую.
+ *
+ * Endpoints (все под sync.write):
+ *   POST /api/sync/v2/appointments?from=YYYY-MM-DD&to=YYYY-MM-DD — синк записей
+ *   POST /api/sync/v2/services                                    — синк каталога услуг
+ *   GET  /api/sync/v2/appointments/status                         — статистика зеркала
+ *
+ * Cron: каждые 30 мин подтягивает окно [-1 день .. +14 дней].
+ */
+const express = require('express');
+const https = require('https');
+const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
+
+const router = express.Router();
+
+const APP_ID = process.env.BEAUTYPRO_ID_KEY;
+const SECRET = process.env.BEAUTYPRO_SECRET_KEY;
+const DATABASE_CODE = process.env.BEAUTYPRO_DATABASE_CODE || '664684';
+const HOST = 'api.aihelps.com';
+
+let cachedToken = null;
+let tokenExpiry = 0;
+
+function httpsRequest(method, path, { token, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const headers = { Accept: 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    if (body) headers['Content-Type'] = 'application/json';
+    const req = https.request({ hostname: HOST, path: '/v1' + path, method, headers, timeout: 20000 }, (res) => {
+      let buf = '';
+      res.on('data', (c) => (buf += c));
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(buf); } catch (_) {}
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
+        else {
+          const err = new Error(`BeautyPro ${res.statusCode}: ${buf.slice(0, 300)}`);
+          err.status = res.statusCode;
+          reject(err);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function getToken() {
+  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
+  if (!APP_ID || !SECRET) throw new Error('BeautyPro keys missing in env');
+  const path = `/auth/database?application_id=${encodeURIComponent(APP_ID)}` +
+    `&application_secret=${encodeURIComponent(SECRET)}&database_code=${encodeURIComponent(DATABASE_CODE)}`;
+  const r = await httpsRequest('GET', path);
+  if (!r || !r.access_token) throw new Error('No token in BP response');
+  cachedToken = r.access_token;
+  tokenExpiry = Date.now() + 20 * 60 * 60 * 1000;
+  return cachedToken;
+}
+
+// BP state → локальный статус (схема: booked|confirmed|done|cancelled|noshow)
+function mapState(s) {
+  switch (String(s || '').toLowerCase()) {
+    case 'confirmed': return 'confirmed';
+    case 'done': case 'completed': case 'paid': return 'done';
+    case 'cancelled': case 'canceled': return 'cancelled';
+    case 'missed': case 'noshow': case 'no_show': return 'noshow';
+    default: return 'booked'; // created/new/прочее
+  }
+}
+
+// BP price бывает числом или объектом {locationGuid: price} → нормализуем в число
+function numPrice(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'object') {
+    const vals = Object.values(v).map(Number).filter((x) => !isNaN(x));
+    return vals.length ? vals[0] : null;
+  }
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+// минуты от полуночи → 'YYYY-MM-DD HH:MM'; BP допускает start >= 24:00 (за полночь) → перенос на след. день
+function fmtLocal(date, mins) {
+  let d = new Date(date + 'T00:00:00Z');
+  d = new Date(d.getTime() + mins * 60000);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+// "2026-06-01" + "10:00" + duration → {startsLocal, endsLocal} строки 'YYYY-MM-DD HH:MM' (Kyiv)
+function calcWindow(date, services) {
+  let minStart = null, maxEnd = null;
+  for (const s of services || []) {
+    if (!s.start) continue;
+    const [h, m] = s.start.split(':').map(Number);
+    const startMin = h * 60 + m;
+    const endMin = startMin + (Number(s.duration) || 0);
+    if (minStart === null || startMin < minStart) minStart = startMin;
+    if (maxEnd === null || endMin > maxEnd) maxEnd = endMin;
+  }
+  if (minStart === null) { minStart = 0; maxEnd = 0; }
+  return { startsLocal: fmtLocal(date, minStart), endsLocal: fmtLocal(date, Math.max(maxEnd, minStart)) };
+}
+
+async function syncServicesCatalog() {
+  const pool = getPool();
+  const token = await getToken();
+  const list = await httpsRequest('GET', `/services?fields=${encodeURIComponent('name,duration,price,category')}&archive=false`, { token });
+  const items = Array.isArray(list) ? list : (list && list.data) || [];
+  let upserted = 0;
+  for (const s of items) {
+    if (!s.id || !s.name) continue;
+    const cat = (s.category && s.category.name) || (typeof s.category === 'string' ? s.category : null);
+    const ex = await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.id]);
+    if (ex.rows.length) {
+      await pool.query('UPDATE services SET name=$1, category=$2, duration_min=$3, price=$4 WHERE beautypro_id=$5',
+        [s.name, cat, s.duration || null, numPrice(s.price) ?? 0, s.id]);
+    } else {
+      await pool.query('INSERT INTO services (name, category, duration_min, price, beautypro_id, active) VALUES ($1,$2,$3,$4,$5,TRUE)',
+        [s.name, cat, s.duration || null, numPrice(s.price) ?? 0, s.id]);
+    }
+    upserted++;
+  }
+  return { total: items.length, upserted };
+}
+
+async function syncAppointments(from, to) {
+  const pool = getPool();
+  const token = await getToken();
+  const fields = encodeURIComponent('date,client,location,state,services(start,service,professional,duration,price)');
+  const list = await httpsRequest('GET', `/appointments?fields=${fields}&from=${from}&to=${to}`, { token });
+  const items = Array.isArray(list) ? list : (list && list.data) || [];
+
+  let created = 0, updated = 0, unlinkedClients = 0;
+  for (const a of items) {
+    if (!a.id || !a.date) continue;
+    const services = a.services || [];
+    const { startsLocal, endsLocal } = calcWindow(a.date, services);
+    const status = mapState(a.state);
+    const totalPrice = services.reduce((s, x) => s + (numPrice(x.price) || 0), 0);
+
+    // линковка client / master / первая услуга по beautypro_id
+    const cl = a.client ? await pool.query('SELECT id FROM clients WHERE beautypro_id = $1', [a.client]) : { rows: [] };
+    if (a.client && !cl.rows.length) unlinkedClients++;
+    const firstSvc = services[0] || {};
+    const ms = firstSvc.professional ? await pool.query('SELECT id FROM masters WHERE beautypro_id = $1', [firstSvc.professional]) : { rows: [] };
+    const sv = firstSvc.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [firstSvc.service]) : { rows: [] };
+
+    const ex = await pool.query('SELECT id FROM appointments WHERE beautypro_id = $1', [a.id]);
+    let apptId;
+    if (ex.rows.length) {
+      apptId = ex.rows[0].id;
+      await pool.query(
+        `UPDATE appointments SET client_id=$1, master_id=$2, service_id=$3,
+           starts_at=($4::timestamp AT TIME ZONE 'Europe/Kyiv'),
+           ends_at=($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
+           status=$6, bp_state=$7, price=$8, bp_client=$9, synced_at=NOW(), updated_at=NOW()
+         WHERE id=$10`,
+        [cl.rows[0]?.id || null, ms.rows[0]?.id || null, sv.rows[0]?.id || null,
+         startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.client || null, apptId]
+      );
+      updated++;
+    } else {
+      const ins = await pool.query(
+        `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, bp_state, price, source, beautypro_id, bp_client, synced_at)
+         VALUES ($1,$2,$3,($4::timestamp AT TIME ZONE 'Europe/Kyiv'),($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7,$8,'beautypro',$9,$10,NOW())
+         RETURNING id`,
+        [cl.rows[0]?.id || null, ms.rows[0]?.id || null, sv.rows[0]?.id || null,
+         startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.id, a.client || null]
+      );
+      apptId = ins.rows[0].id;
+      created++;
+    }
+
+    // мульти-услуги: полная перезапись строк услуг записи
+    await pool.query('DELETE FROM appointment_services WHERE appointment_id = $1', [apptId]);
+    for (const s of services) {
+      const svcRow = s.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.service]) : { rows: [] };
+      const mstRow = s.professional ? await pool.query('SELECT id FROM masters WHERE beautypro_id = $1', [s.professional]) : { rows: [] };
+      let startLocal = startsLocal;
+      if (s.start) {
+        const [h, m] = s.start.split(':').map(Number);
+        startLocal = fmtLocal(a.date, h * 60 + m); // h может быть >= 24 (за полночь)
+      }
+      await pool.query(
+        `INSERT INTO appointment_services (appointment_id, service_id, master_id, beautypro_id, starts_at, duration_min, price)
+         VALUES ($1,$2,$3,$4,($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7)`,
+        [apptId, svcRow.rows[0]?.id || null, mstRow.rows[0]?.id || null, s.id || null,
+         startLocal, Number(s.duration) || null, Number(s.price) || null]
+      );
+    }
+  }
+  return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients };
+}
+
+// Backfill клиентов BP→local: для записей без client_id тянем клиента из BP и создаём карточку
+async function backfillClients(limit = 500) {
+  const pool = getPool();
+  const token = await getToken();
+  const distinct = await pool.query(
+    `SELECT DISTINCT bp_client FROM appointments WHERE client_id IS NULL AND bp_client IS NOT NULL LIMIT $1`, [limit]);
+  let createdC = 0, linked = 0, failed = 0;
+  for (const row of distinct.rows) {
+    const guid = row.bp_client;
+    try {
+      // вдруг уже есть локально (появился после прошлого прогона)
+      let local = await pool.query('SELECT id FROM clients WHERE beautypro_id = $1', [guid]);
+      if (!local.rows.length) {
+        const bp = await httpsRequest('GET', `/clients/${guid}?fields=${encodeURIComponent('name,firstname,lastname,phone,email,birthday')}`, { token });
+        const name = bp.name || [bp.firstname, bp.lastname].filter(Boolean).join(' ') || 'Клієнт BP';
+        const phone = Array.isArray(bp.phone) ? (bp.phone[0] || null) : (bp.phone || null);
+        const phoneNorm = phone ? String(phone).replace(/\D/g, '') : null;
+        const email = (bp.email && String(bp.email).trim()) || null; // пустые строки бьются об UNIQUE(email)
+        if (phoneNorm) {
+          // защитимся от дубля по телефону
+          const byPhone = await pool.query('SELECT id FROM clients WHERE regexp_replace(phone, \'\\D\', \'\', \'g\') = $1 LIMIT 1', [phoneNorm]);
+          if (byPhone.rows.length) {
+            await pool.query('UPDATE clients SET beautypro_id = $1 WHERE id = $2', [guid, byPhone.rows[0].id]);
+            local = byPhone;
+          }
+        }
+        if (!local.rows.length && email) {
+          const byEmail = await pool.query('SELECT id FROM clients WHERE email = $1 LIMIT 1', [email]);
+          if (byEmail.rows.length) {
+            await pool.query('UPDATE clients SET beautypro_id = $1 WHERE id = $2', [guid, byEmail.rows[0].id]);
+            local = byEmail;
+          }
+        }
+        if (!local.rows.length) {
+          local = await pool.query(
+            `INSERT INTO clients (name, phone, email, birthday, source, beautypro_id) VALUES ($1,$2,$3,$4,'beautypro',$5) RETURNING id`,
+            [name, phoneNorm, email, bp.birthday || null, guid]);
+          createdC++;
+        }
+      }
+      const r = await pool.query('UPDATE appointments SET client_id = $1 WHERE bp_client = $2 AND client_id IS NULL', [local.rows[0].id, guid]);
+      linked += r.rowCount;
+    } catch (e) {
+      failed++;
+      if (failed <= 3) console.error('[bp-appt-sync] backfill err', guid, e.message.slice(0, 120));
+    }
+  }
+  return { candidates: distinct.rows.length, clients_created: createdC, appointments_linked: linked, failed };
+}
+
+// ===== ROUTES =====
+
+router.post('/v2/clients-backfill', requirePerm('sync.write'), async (req, res) => {
+  try { res.json({ ok: true, ...(await backfillClients(Number(req.query.limit) || 500)) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+router.post('/v2/services', requirePerm('sync.write'), async (req, res) => {
+  try { res.json({ ok: true, ...(await syncServicesCatalog()) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+router.post('/v2/appointments', requirePerm('sync.write'), async (req, res) => {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const from = req.query.from || iso(new Date(today.getTime() - 30 * 864e5));
+  const to = req.query.to || iso(new Date(today.getTime() + 60 * 864e5));
+  try { res.json({ ok: true, from, to, ...(await syncAppointments(from, to)) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+router.get('/v2/appointments/status', requirePerm('sync.write'), async (req, res) => {
+  try {
+    const pool = getPool();
+    const a = await pool.query(`SELECT count(*)::int total,
+        count(*) FILTER (WHERE starts_at > NOW())::int upcoming,
+        count(*) FILTER (WHERE client_id IS NULL)::int unlinked,
+        max(synced_at) last_sync FROM appointments`);
+    const s = await pool.query('SELECT count(*)::int c FROM appointment_services');
+    res.json({ ok: true, appointments: a.rows[0], appointment_services: s.rows[0].c });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ===== CRON: окно [-1 .. +14 дней] каждые 30 мин =====
+let cronRef = null;
+async function cronTick() {
+  try {
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const now = new Date();
+    const r = await syncAppointments(iso(new Date(now.getTime() - 864e5)), iso(new Date(now.getTime() + 14 * 864e5)));
+    if (r.created || r.updated) console.log(`[bp-appt-sync] +${r.created} new, ~${r.updated} upd`);
+  } catch (e) {
+    console.error('[bp-appt-sync] cron error:', e.message);
+  }
+}
+function startCron() {
+  if (cronRef) return;
+  setTimeout(cronTick, 20 * 1000); // первый прогон через 20с после старта
+  cronRef = setInterval(cronTick, 30 * 60 * 1000);
+  cronRef.unref();
+  console.log('[bp-appt-sync] cron started (every 30 min)');
+}
+startCron();
+
+module.exports = router;

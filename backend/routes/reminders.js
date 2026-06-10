@@ -35,7 +35,7 @@ async function scheduleReminders() {
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
     LEFT JOIN services s ON s.id = a.service_id
-    WHERE a.status IN ('confirmed', 'pending')
+    WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '23 hours' AND NOW() + interval '25 hours'
       AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (
@@ -64,7 +64,7 @@ async function scheduleReminders() {
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
     LEFT JOIN services s ON s.id = a.service_id
-    WHERE a.status IN ('confirmed', 'pending')
+    WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '90 minutes' AND NOW() + interval '150 minutes'
       AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (
