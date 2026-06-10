@@ -12,3 +12,4 @@ backend/shop.db-*
 # случайная папка с тильдой (playwright dump)
 ~/
 
+backend/uploads/
