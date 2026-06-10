@@ -46,6 +46,30 @@ app.use(cors({
 
 app.use(express.json({ limit: '1mb' }));
 
+// ── Rate limiting ───────────────────────────────────────
+// За туннелем/Render реальный IP приходит в X-Forwarded-For (1 hop)
+app.set('trust proxy', 1);
+const rateLimit = require('express-rate-limit');
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 300,            // 300 req/мин с IP
+  standardHeaders: true, legacyHeaders: false,
+  skip: (req) => req.path === '/health' || req.path === '/' || req.path.startsWith('/p/') || req.path.startsWith('/admin'),
+  message: { error: 'too-many-requests' },
+});
+const authLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 15,         // 15 попыток за 5 мин (OTP/login)
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'too-many-auth-attempts' },
+});
+const uploadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 30,         // 30 загрузок за 5 мин
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'too-many-uploads' },
+});
+app.use('/api', globalLimiter);
+app.use('/api/cabinet', authLimiter);
+app.use('/api/files/upload', uploadLimiter);
+
 // статика админки
 app.use('/admin', express.static(__dirname + '/public/admin'));
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
