@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — 3D Concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:#C9A96E; --gold-soft:rgba(201,169,110,.55);
+    --ink:#0A0908; --cream:#F5F0EB; --muted:rgba(245,240,235,.55);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink);color:var(--cream);font-family:Inter,sans-serif;overflow-x:hidden}
+  #gl{position:fixed;inset:0;z-index:0;display:block}
+  .vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(5,4,3,.75) 100%)}
+  main{position:relative;z-index:2}
+  section{min-height:100vh;display:flex;align-items:center;padding:0 8vw}
+  .tag{font-size:11px;letter-spacing:.5em;text-transform:uppercase;color:var(--gold);margin-bottom:24px}
+  h1{font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(44px,8vw,118px);line-height:1.04}
+  h1 em{font-style:italic;color:var(--gold)}
+  h2{font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(32px,5vw,68px);line-height:1.1;margin-bottom:22px}
+  h2 em{font-style:italic;color:var(--gold)}
+  p.lead{max-width:46ch;color:var(--muted);font-weight:300;font-size:17px;line-height:1.8;margin-top:26px}
+  .hero-inner{max-width:1100px}
+  .right{justify-content:flex-end;text-align:right}
+  .right .block{max-width:560px}
+  .center{justify-content:center;text-align:center}
+  .btn{display:inline-block;margin-top:38px;padding:18px 46px;border:1px solid var(--gold-soft);
+    color:var(--cream);text-decoration:none;font-size:12px;letter-spacing:.35em;text-transform:uppercase;
+    backdrop-filter:blur(6px);background:rgba(201,169,110,.06);transition:.45s}
+  .btn:hover{background:var(--gold);color:var(--ink)}
+  .nav{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;justify-content:space-between;
+    align-items:center;padding:26px 8vw;mix-blend-mode:difference}
+  .logo{font-family:'Playfair Display',serif;font-size:21px;letter-spacing:.12em;color:var(--cream);text-decoration:none}
+  .logo span{display:block;font-family:Inter;font-size:9px;letter-spacing:.55em;text-transform:uppercase;color:var(--gold)}
+  .nav a.lnk{color:var(--cream);text-decoration:none;font-size:11px;letter-spacing:.3em;text-transform:uppercase;margin-left:34px;opacity:.7;transition:.3s}
+  .nav a.lnk:hover{opacity:1}
+  .scroll-hint{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:4;
+    font-size:10px;letter-spacing:.45em;text-transform:uppercase;color:var(--muted);
+    animation:pulse 2.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.85}}
+  .reveal{opacity:0;transform:translateY(46px);transition:opacity 1.1s cubic-bezier(.2,.7,.2,1),transform 1.1s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  .stats{display:flex;gap:8vw;margin-top:46px;flex-wrap:wrap}
+  .stat b{font-family:'Playfair Display',serif;font-size:46px;font-weight:500;color:var(--gold);display:block}
+  .stat i{font-style:normal;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted)}
+  footer{position:relative;z-index:2;padding:60px 8vw;text-align:center;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted)}
+  @media (max-width:640px){ .nav a.lnk{margin-left:18px} section{padding:0 7vw} }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<div class="vignette"></div>
+
+<header class="nav">
+  <a class="logo" href="#">SVS<span>Beauty Space</span></a>
+  <nav>
+    <a class="lnk" href="#craft">Послуги</a>
+    <a class="lnk" href="#shop">Магазин</a>
+    <a class="lnk" href="#book">Запис</a>
+  </nav>
+</header>
+
+<main>
+  <section id="hero">
+    <div class="hero-inner">
+      <div class="tag reveal">Суми · салон краси</div>
+      <h1 class="reveal">Краса, яка<br><em>відчувається</em><br>на дотик</h1>
+      <p class="lead reveal">Фарбування, біовирівнювання, Airtouch, Brazilian Blond.
+        Преміальна косметика та майстри, що працюють зі світлом і кольором, як зі скульптурою.</p>
+      <a class="btn reveal" href="#book">Записатися</a>
+    </div>
+  </section>
+
+  <section id="craft" class="right">
+    <div class="block">
+      <div class="tag reveal">Ремесло</div>
+      <h2 class="reveal">Колір — це<br><em>архітектура</em> світла</h2>
+      <p class="lead reveal" style="margin-left:auto">Кожне пасмо — траєкторія. Балаяж, шатуш,
+        тотал-блонд: ми будуємо переходи кольору так само плавно, як рухаються ці стрічки за вашим курсором.</p>
+    </div>
+  </section>
+
+  <section id="shop">
+    <div class="block">
+      <div class="tag reveal">SVS Beauty World</div>
+      <h2 class="reveal">Догляд, який<br>працює <em>вдома</em></h2>
+      <p class="lead reveal">Магазин професійної косметики: Raywell та ще три бренди,
+        відібрані майстрами салону. Те, чим працюємо ми — доступне й вам.</p>
+      <div class="stats">
+        <div class="stat reveal"><b>4</b><i>бренди</i></div>
+        <div class="stat reveal"><b>120+</b><i>позицій</i></div>
+        <div class="stat reveal"><b>24/7</b><i>онлайн-запис</i></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" class="center">
+    <div>
+      <div class="tag reveal">Один крок</div>
+      <h2 class="reveal">Ваш час — <em>сьогодні</em></h2>
+      <p class="lead reveal" style="margin-inline:auto">Онлайн-запис через Telegram-бот за 30 секунд:
+        майстер, послуга, зручний час. Без дзвінків.</p>
+      <a class="btn reveal" href="https://t.me/" target="_blank" rel="noopener">Відкрити бот</a>
+    </div>
+  </section>
+</main>
+
+<div class="scroll-hint" id="hint">Гортайте</div>
+<footer>SVS Beauty Space · Concept «Golden Silk» · WebGL</footer>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x0a0908, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0908, 0.055);
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, .1, 100);
+camera.position.set(0, 0, 9);
+
+/* ---------- Golden silk ribbons (custom shader) ---------- */
+const ribbonUniforms = [];
+function makeRibbon({y=0, z=0, amp=1, speed=1, hue=0, width=1.4, phase=0}) {
+  const geo = new THREE.PlaneGeometry(30, width, 260, 14);
+  const uniforms = {
+    uTime:{value:0}, uAmp:{value:amp}, uSpeed:{value:speed},
+    uPhase:{value:phase}, uMouse:{value:new THREE.Vector2(0,0)},
+    uColorA:{value:new THREE.Color().setHSL(0.10+hue, .52, .52)},
+    uColorB:{value:new THREE.Color().setHSL(0.08+hue, .60, .30)},
+    uOpacity:{value:0.45}
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent:true, side:THREE.DoubleSide,
+    blending:THREE.AdditiveBlending, depthWrite:false,
+    vertexShader:`
+      uniform float uTime, uAmp, uSpeed, uPhase;
+      uniform vec2 uMouse;
+      varying vec2 vUv; varying float vGlow;
+      void main(){
+        vUv = uv;
+        vec3 p = position;
+        float t = uTime * uSpeed + uPhase;
+        float along = p.x * 0.35;
+        // layered waves = silk flow
+        float w = sin(along*1.2 + t)*0.9
+                + sin(along*2.3 - t*1.4)*0.35
+                + sin(along*0.5 + t*0.6)*1.2;
+        p.y += w * uAmp;
+        p.z += cos(along*1.6 + t*0.8) * uAmp * 0.8;
+        // twist the ribbon around its spine
+        float tw = sin(along*0.9 + t*0.7) * 1.1;
+        float yy = p.y; float zz = p.z;
+        p.y = yy + uv.y*0.0;
+        p.z = zz + sin(tw) * (uv.y-0.5) * 1.6;
+        p.y += cos(tw) * (uv.y-0.5) * 0.35;
+        // mouse repulsion — silk reacts to cursor
+        vec2 m = uMouse * 6.0;
+        float d = distance(vec2(p.x, p.y), m);
+        float push = smoothstep(3.0, 0.0, d) * 0.9;
+        p.y += push * sign(p.y - m.y + 0.001);
+        vGlow = abs(cos(tw)) * 0.7 + push;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader:`
+      uniform vec3 uColorA, uColorB; uniform float uOpacity, uTime;
+      varying vec2 vUv; varying float vGlow;
+      void main(){
+        float edge = smoothstep(0.0,0.18,vUv.y)*smoothstep(1.0,0.82,vUv.y);
+        float shimmer = 0.6 + 0.4*sin(vUv.x*40.0 - uTime*2.0);
+        vec3 col = mix(uColorB, uColorA, vUv.y*0.6 + vGlow*0.5);
+        col += vec3(1.0,0.92,0.75) * vGlow * 0.10 * shimmer;
+        float a = edge * uOpacity * (0.35 + vGlow*0.65);
+        gl_FragColor = vec4(col, a);
+      }`
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, y, z);
+  scene.add(mesh);
+  ribbonUniforms.push(uniforms);
+  return mesh;
+}
+makeRibbon({y: 0.4, z:-1,  amp:.9,  speed:.55, width:1.6, phase:0});
+makeRibbon({y:-1.2, z:-2.5,amp:1.2, speed:.4,  width:1.1, phase:2.1, hue:-0.01});
+makeRibbon({y: 1.8, z:-4,  amp:1.4, speed:.32, width:2.2, phase:4.0, hue:0.012});
+makeRibbon({y:-2.6, z:-5.5,amp:1.1, speed:.5,  width:0.8, phase:1.2});
+makeRibbon({y:-4.0, z:-3,  amp:1.3, speed:.38, width:1.8, phase:5.3, hue:0.01});
+
+/* ---------- Golden dust particles ---------- */
+const N = 900;
+const pGeo = new THREE.BufferGeometry();
+const pos = new Float32Array(N*3), seed = new Float32Array(N);
+for(let i=0;i<N;i++){
+  pos[i*3]   = (Math.random()-.5)*26;
+  pos[i*3+1] = (Math.random()-.5)*14;
+  pos[i*3+2] = (Math.random()-.5)*12 - 2;
+  seed[i] = Math.random()*100;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+pGeo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+const pUniforms = { uTime:{value:0}, uPixelRatio:{value:renderer.getPixelRatio()} };
+const pMat = new THREE.ShaderMaterial({
+  uniforms:pUniforms, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    uniform float uTime, uPixelRatio; attribute float aSeed;
+    varying float vA;
+    void main(){
+      vec3 p = position;
+      p.y += sin(uTime*0.3 + aSeed)*0.6;
+      p.x += cos(uTime*0.2 + aSeed*1.7)*0.5;
+      vec4 mv = modelViewMatrix * vec4(p,1.0);
+      gl_Position = projectionMatrix * mv;
+      float tw = 0.5 + 0.5*sin(uTime*1.5 + aSeed*3.0);
+      vA = tw;
+      gl_PointSize = (1.5 + tw*2.5) * uPixelRatio * (8.0 / -mv.z);
+    }`,
+  fragmentShader:`
+    varying float vA;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.0, d) * vA * 0.7;
+      gl_FragColor = vec4(1.0, 0.85, 0.55, a);
+    }`
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+/* ---------- Bloom ---------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.85, 0.35);
+composer.addPass(bloom);
+
+/* ---------- Interaction: mouse + scroll-driven camera ---------- */
+const mouse = new THREE.Vector2(0,0), mouseT = new THREE.Vector2(0,0);
+addEventListener('pointermove', e=>{
+  mouseT.set((e.clientX/innerWidth)*2-1, -((e.clientY/innerHeight)*2-1));
+});
+let scrollP = 0;
+function onScroll(){
+  const max = document.body.scrollHeight - innerHeight;
+  scrollP = max>0 ? scrollY/max : 0;
+  document.getElementById('hint').style.opacity = scrollY>80 ? 0 : '';
+}
+addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+const clock = new THREE.Clock();
+let reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Adaptive quality: если устройство не тянет — снижаем качество, UI важнее эффектов */
+let quality = 2;            // 2 = bloom, 1 = без bloom, 0 = низкое разрешение
+let frames = 0, slow = 0, lastT = performance.now();
+function degrade(){
+  if(quality === 2){ quality = 1; }
+  else if(quality === 1){ quality = 0; renderer.setPixelRatio(Math.min(devicePixelRatio,1)*0.6); renderer.setSize(innerWidth, innerHeight); }
+  slow = 0;
+}
+
+function tick(){
+  const now = performance.now();
+  const dt = now - lastT; lastT = now;
+  if(frames++ > 10){ if(dt > 90) slow++; else if(slow>0) slow--; if(slow > 8 && quality > 0) degrade(); }
+  const t = clock.getElapsedTime();
+  mouse.lerp(mouseT, 0.05);
+  for(const u of ribbonUniforms){ u.uTime.value = reduced? 0 : t; u.uMouse.value.copy(mouse); }
+  pUniforms.uTime.value = reduced? 0 : t;
+  // camera journey down the silk as you scroll
+  camera.position.x = Math.sin(scrollP*Math.PI*1.2)*1.8 + mouse.x*0.6;
+  camera.position.y = -scrollP*2.6 + mouse.y*0.5;
+  camera.position.z = 9 - scrollP*1.8;
+  camera.lookAt(0, -scrollP*2.4, -2);
+  if(quality === 2) composer.render(); else renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+/* ---------- Reveal on scroll (rect-based — надёжнее IO при тяжёлом рендере) ---------- */
+const revealEls = [...document.querySelectorAll('.reveal')];
+revealEls.forEach((el,i)=> el.style.transitionDelay = (i%5)*0.12+'s');
+function checkReveal(){
+  for(const el of revealEls){
+    if(el.classList.contains('in')) continue;
+    if(el.getBoundingClientRect().top < innerHeight*0.88) el.classList.add('in');
+  }
+}
+addEventListener('scroll', checkReveal, {passive:true});
+checkReveal();
+</script>
+</body>
+</html>
