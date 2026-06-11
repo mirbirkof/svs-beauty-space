@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Atelier · 3D Concept v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:#CDA86B; --gold-dim:rgba(205,168,107,.5);
+    --ink:#070605; --cream:#F3EDE4; --muted:rgba(243,237,228,.5);
+    --serif:'Cormorant Garamond',serif; --sans:Inter,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:auto}
+  body{background:var(--ink);color:var(--cream);font-family:var(--sans);overflow-x:hidden}
+  ::selection{background:var(--gold);color:var(--ink)}
+
+  #gl{position:fixed;inset:0;z-index:0;display:block}
+  .vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%, transparent 50%, rgba(4,3,2,.82) 100%)}
+  .grain{position:fixed;inset:-100%;z-index:3;pointer-events:none;opacity:.07;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    animation:grain 7s steps(10) infinite}
+  @keyframes grain{
+    0%,100%{transform:translate(0,0)}10%{transform:translate(-3%,2%)}20%{transform:translate(2%,-4%)}
+    30%{transform:translate(-4%,-2%)}40%{transform:translate(3%,3%)}50%{transform:translate(-2%,4%)}
+    60%{transform:translate(4%,-3%)}70%{transform:translate(-3%,-4%)}80%{transform:translate(2%,2%)}90%{transform:translate(-4%,3%)}}
+
+  /* ---------- Preloader ---------- */
+  #loader{position:fixed;inset:0;z-index:50;background:var(--ink);display:flex;
+    flex-direction:column;align-items:center;justify-content:center;gap:26px;
+    transition:opacity .9s ease, visibility .9s}
+  #loader.done{opacity:0;visibility:hidden}
+  #loader .word{font-family:var(--serif);font-size:clamp(26px,4vw,44px);letter-spacing:.14em;
+    color:var(--cream);font-weight:500}
+  #loader .word em{font-style:italic;color:var(--gold)}
+  #loader .bar{width:min(280px,60vw);height:1px;background:rgba(243,237,228,.14);position:relative;overflow:hidden}
+  #loader .bar i{position:absolute;inset:0;background:var(--gold);transform-origin:left;transform:scaleX(0);
+    transition:transform .25s ease}
+  #loader .pct{font-size:11px;letter-spacing:.4em;color:var(--muted)}
+
+  /* ---------- Header ---------- */
+  header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;
+    align-items:center;padding:26px 5vw;mix-blend-mode:difference}
+  .logo{font-family:var(--serif);font-size:19px;letter-spacing:.32em;font-weight:600}
+  nav{display:flex;gap:34px}
+  nav a{color:var(--cream);text-decoration:none;font-size:11px;letter-spacing:.34em;text-transform:uppercase;
+    position:relative;padding:4px 0}
+  nav a::after{content:'';position:absolute;left:0;bottom:0;height:1px;width:100%;background:var(--cream);
+    transform:scaleX(0);transform-origin:right;transition:transform .5s cubic-bezier(.7,0,.2,1)}
+  nav a:hover::after{transform:scaleX(1);transform-origin:left}
+  #progress{position:fixed;top:0;left:0;height:2px;width:100%;z-index:11;background:transparent}
+  #progress i{display:block;height:100%;background:var(--gold);transform-origin:left;transform:scaleX(0)}
+
+  /* ---------- Layout ---------- */
+  main{position:relative;z-index:2}
+  section{min-height:100vh;display:flex;align-items:center;padding:14vh 7vw}
+  .idx{font-size:11px;letter-spacing:.5em;color:var(--gold);display:flex;align-items:center;gap:14px;margin-bottom:30px}
+  .idx::after{content:'';width:54px;height:1px;background:var(--gold-dim)}
+  h1{font-family:var(--serif);font-weight:500;font-size:clamp(50px,9.5vw,150px);line-height:.98;letter-spacing:-.01em}
+  h1 em,h2 em{font-style:italic;color:var(--gold);font-weight:400}
+  h2{font-family:var(--serif);font-weight:500;font-size:clamp(36px,5.6vw,84px);line-height:1.04;margin-bottom:30px}
+  p.lead{max-width:44ch;color:var(--muted);font-weight:300;font-size:16px;line-height:1.9}
+  .right{justify-content:flex-end}.right .inner{text-align:right}.right p.lead{margin-left:auto}
+  .center{justify-content:center;text-align:center}
+
+  /* line reveal */
+  .line{display:block;overflow:hidden;padding-bottom:.08em;margin-bottom:-.08em}
+  .line>span{display:block;transform:translateY(115%);transition:transform 1.15s cubic-bezier(.16,1,.3,1)}
+  .in .line>span{transform:translateY(0)}
+  .fade{opacity:0;transform:translateY(34px);transition:opacity 1.1s ease,transform 1.1s cubic-bezier(.16,1,.3,1)}
+  .fade.in{opacity:1;transform:none}
+
+  /* ---------- Marquee ---------- */
+  .marquee{position:relative;z-index:2;overflow:hidden;padding:30px 0;border-top:1px solid rgba(243,237,228,.08);
+    border-bottom:1px solid rgba(243,237,228,.08);white-space:nowrap}
+  .marquee .track{display:inline-block;animation:mq 30s linear infinite}
+  .marquee span{font-family:var(--serif);font-size:clamp(22px,3vw,38px);font-style:italic;color:var(--gold-dim);
+    margin:0 38px;letter-spacing:.04em}
+  @keyframes mq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  /* ---------- Service rows ---------- */
+  .services{display:flex;flex-direction:column;width:100%;max-width:1150px;margin:0 auto}
+  .srow{display:grid;grid-template-columns:70px 1fr auto;gap:26px;align-items:baseline;
+    padding:42px 8px;border-bottom:1px solid rgba(243,237,228,.1);cursor:default;
+    transition:padding .5s cubic-bezier(.16,1,.3,1)}
+  .srow:hover{padding-left:26px}
+  .srow .n{font-size:12px;letter-spacing:.3em;color:var(--gold)}
+  .srow .t{font-family:var(--serif);font-size:clamp(26px,4vw,52px);font-weight:500;line-height:1.05;
+    transition:color .4s}
+  .srow:hover .t{color:var(--gold)}
+  .srow .d{font-size:12px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+
+  /* ---------- Stats ---------- */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:5vw;width:100%;max-width:1000px;margin:0 auto}
+  .stat{text-align:center}
+  .stat b{font-family:var(--serif);font-weight:500;font-size:clamp(46px,7vw,96px);color:var(--cream);display:block}
+  .stat b em{color:var(--gold);font-style:normal}
+  .stat span{font-size:11px;letter-spacing:.4em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---------- CTA ---------- */
+  .btn{display:inline-block;margin-top:48px;padding:22px 64px;border:1px solid var(--gold-dim);
+    color:var(--cream);text-decoration:none;font-size:12px;letter-spacing:.42em;text-transform:uppercase;
+    position:relative;overflow:hidden;transition:color .45s;will-change:transform}
+  .btn i{position:absolute;inset:0;background:var(--gold);transform:translateY(101%);
+    transition:transform .55s cubic-bezier(.7,0,.2,1);z-index:-1;font-style:normal}
+  .btn:hover{color:var(--ink)}
+  .btn:hover i{transform:translateY(0)}
+
+  footer{position:relative;z-index:2;padding:34px 7vw;display:flex;justify-content:space-between;
+    font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:rgba(243,237,228,.3)}
+
+  /* ---------- Custom cursor (desktop) ---------- */
+  #cur,#curR{position:fixed;top:0;left:0;z-index:40;pointer-events:none;border-radius:50%;display:none}
+  #cur{width:6px;height:6px;background:var(--gold);transform:translate(-50%,-50%)}
+  #curR{width:38px;height:38px;border:1px solid var(--gold-dim);transform:translate(-50%,-50%);
+    transition:width .3s,height .3s}
+  @media (pointer:fine){ #cur,#curR{display:block} }
+
+  .scroll-hint{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:5;
+    font-size:10px;letter-spacing:.5em;text-transform:uppercase;color:var(--muted);transition:opacity .6s}
+  @media (max-width:700px){
+    nav{display:none}
+    .srow{grid-template-columns:50px 1fr;gap:14px}
+    .srow .d{grid-column:2}
+    .stats{grid-template-columns:1fr;gap:48px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .line>span{transition:none;transform:none}.fade{transition:none;opacity:1;transform:none}
+    .marquee .track{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="word">SVS <em>Beauty</em> Space</div>
+  <div class="bar"><i id="lbar"></i></div>
+  <div class="pct" id="lpct">0%</div>
+</div>
+
+<canvas id="gl"></canvas>
+<div class="vignette"></div>
+<div class="grain"></div>
+<div id="progress"><i id="pbar"></i></div>
+
+<header>
+  <div class="logo">SVS</div>
+  <nav>
+    <a href="#manifest">Студія</a>
+    <a href="#services">Послуги</a>
+    <a href="#shop">Магазин</a>
+    <a href="#book">Запис</a>
+  </nav>
+</header>
+
+<main>
+  <section id="hero">
+    <div class="inner">
+      <div class="idx fade">Суми &middot; Салон краси</div>
+      <h1>
+        <span class="line"><span>Колір — це</span></span>
+        <span class="line"><span><em>мова,</em> якою</span></span>
+        <span class="line"><span>говорить світло</span></span>
+      </h1>
+      <p class="lead fade" style="margin-top:34px">Авторське фарбування, Airtouch, Brazilian Blond.
+        Кожна робота — як нитка золота: її ведуть рукою, а закінчує світло.</p>
+    </div>
+  </section>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="track">
+      <span>Airtouch</span><span>Фарбування</span><span>Brazilian Blond</span><span>Біовирівнювання</span>
+      <span>Стрижки</span><span>Догляд</span><span>Airtouch</span><span>Фарбування</span>
+      <span>Brazilian Blond</span><span>Біовирівнювання</span><span>Стрижки</span><span>Догляд</span>
+    </div>
+  </div>
+
+  <section id="manifest" class="right">
+    <div class="inner">
+      <div class="idx fade" style="justify-content:flex-end">01 &middot; Маніфест</div>
+      <h2>
+        <span class="line"><span>Ми не фарбуємо</span></span>
+        <span class="line"><span>волосся. Ми <em>ліпимо</em></span></span>
+        <span class="line"><span>ним світло</span></span>
+      </h2>
+      <p class="lead fade">Кожен відтінок підбирається під шкіру, очі та характер.
+        Тому два однакових фарбування у нас неможливі — як два однакових почерки.</p>
+    </div>
+  </section>
+
+  <section id="services" class="center">
+    <div style="width:100%">
+      <div class="idx fade" style="justify-content:center">02 &middot; Послуги</div>
+      <div class="services">
+        <div class="srow fade"><span class="n">/01</span><span class="t">Складне фарбування</span><span class="d">Airtouch &middot; Shatush &middot; Total</span></div>
+        <div class="srow fade"><span class="n">/02</span><span class="t">Реконструкція</span><span class="d">Brazilian Blond &middot; Біовирівнювання</span></div>
+        <div class="srow fade"><span class="n">/03</span><span class="t">Стрижки та форма</span><span class="d">Жіночі &middot; Чоловічі &middot; Дитячі</span></div>
+        <div class="srow fade"><span class="n">/04</span><span class="t">Домашній догляд</span><span class="d">Підбір майстром</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shop" class="center">
+    <div>
+      <div class="idx fade" style="justify-content:center">03 &middot; Магазин</div>
+      <h2 class="fade">Те, чим працюємо ми —<br><em>доступне й вам</em></h2>
+      <div class="stats" style="margin-top:60px">
+        <div class="stat fade"><b>4</b><span>Бренди</span></div>
+        <div class="stat fade"><b>120<em>+</em></b><span>Позицій</span></div>
+        <div class="stat fade"><b>24/7</b><span>Онлайн-запис</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" class="center">
+    <div>
+      <div class="idx fade" style="justify-content:center">04 &middot; Запис</div>
+      <h2>
+        <span class="line"><span>Ваш колір</span></span>
+        <span class="line"><span><em>вже чекає</em></span></span>
+      </h2>
+      <a class="btn fade magnetic" href="https://t.me/" target="_blank" rel="noopener">Записатися<i></i></a>
+    </div>
+  </section>
+</main>
+
+<div class="scroll-hint" id="hint">Гортайте</div>
+<footer><span>SVS Beauty Space</span><span>Concept v2 «Atelier» &middot; WebGL</span></footer>
+
+<div id="cur"></div><div id="curR"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x070605, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x070605, 0.045);
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, .1, 100);
+camera.position.set(0, 0, 10);
+
+/* =========================================================
+   Golden thread field — сотни нитей, три формации:
+   0 — шёлковый поток (герой)
+   1 — вихрь/спираль (середина)
+   2 — восходящая вуаль (финал)
+   Формации смешиваются в вершинном шейдере по uMorph.
+   ========================================================= */
+const STRANDS = 480, SEGS = 56;
+const verts = STRANDS * SEGS * 2;
+const aT = new Float32Array(verts), aSeed = new Float32Array(verts);
+let v = 0;
+for(let s=0; s<STRANDS; s++){
+  const seed = Math.random();
+  for(let i=0; i<SEGS; i++){
+    aT[v]=i/SEGS;     aSeed[v]=seed; v++;
+    aT[v]=(i+1)/SEGS; aSeed[v]=seed; v++;
+  }
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts*3), 3)); // placeholder
+geo.setAttribute('aT', new THREE.BufferAttribute(aT, 1));
+geo.setAttribute('aSeed', new THREE.BufferAttribute(aSeed, 1));
+geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0,0,-2), 30);
+
+const U = {
+  uTime:{value:0}, uMorph:{value:0}, uMouse:{value:new THREE.Vector2(99,99)},
+  uOpacity:{value:0.5}
+};
+const mat = new THREE.ShaderMaterial({
+  uniforms:U, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    attribute float aT; attribute float aSeed;
+    uniform float uTime, uMorph; uniform vec2 uMouse;
+    varying float vT; varying float vSeed; varying float vShine; varying float vDim;
+
+    vec3 stream(float t, float s){
+      float y = (s-0.5)*7.0;
+      float ph = s*17.0;
+      y += sin(t*7.0 + uTime*0.55 + ph)*0.85*(0.4+s*0.8);
+      y += sin(t*13.0 - uTime*0.35 + ph*1.7)*0.28;
+      float z = -2.0 - s*6.0 + sin(t*5.0+ph)*0.5;
+      return vec3(mix(-16.0,16.0,t), y, z);
+    }
+    vec3 vortex(float t, float s){
+      float ang = t*9.0 + s*6.2831 + uTime*0.22;
+      float r = 2.6 + s*6.5 + sin(uTime*0.5 + s*20.0)*0.3;
+      float y = (t-0.5)*13.0 + sin(ang*0.5)*0.4;
+      return vec3(cos(ang)*r, y, sin(ang)*r - 8.0);
+    }
+    vec3 veil(float t, float s){
+      /* кулисы: нити раздвинуты от центра, текст остаётся чистым */
+      float side = s < 0.5 ? -1.0 : 1.0;
+      float x = side*(3.2 + fract(s*13.7)*8.5) + sin(t*4.0 + uTime*0.4 + s*30.0)*0.6;
+      float y = mix(-7.0, 8.0, t) + sin(uTime*0.3 + s*11.0)*0.5;
+      float z = -2.5 - fract(s*7.31)*7.0;
+      return vec3(x, y, z);
+    }
+    void main(){
+      vT = aT; vSeed = aSeed;
+      float m1 = smoothstep(0.0, 1.0, uMorph);
+      float m2 = smoothstep(1.0, 2.0, uMorph);
+      vec3 p = mix(mix(stream(aT,aSeed), vortex(aT,aSeed), m1), veil(aT,aSeed), m2);
+      // в плотных формациях приглушаем, чтобы аддитив не выгорал в белое
+      vDim = 1.0 - m1*0.45 + m2*0.15;
+
+      // курсор расталкивает нити (в плоскости экрана)
+      vec4 mv0 = modelViewMatrix * vec4(p,1.0);
+      vec4 clip = projectionMatrix * mv0;
+      vec2 ndc = clip.xy / clip.w;
+      float md = length(ndc - uMouse);
+      float push = smoothstep(0.45, 0.0, md) * 0.9;
+      p.xy += normalize(p.xy - vec2(uMouse.x*6.0, uMouse.y*3.0) + 0.001) * push;
+
+      vShine = 0.5 + 0.5*sin(aT*40.0 - uTime*1.6 + aSeed*50.0);
+      vec4 mv = modelViewMatrix * vec4(p,1.0);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader:`
+    uniform float uOpacity;
+    varying float vT; varying float vSeed; varying float vShine; varying float vDim;
+    void main(){
+      vec3 deep = vec3(0.42, 0.30, 0.14);
+      vec3 lite = vec3(0.95, 0.80, 0.52);
+      vec3 col = mix(deep, lite, vSeed*0.5 + vShine*0.5);
+      float a = sin(vT*3.14159) * uOpacity * (0.25 + vShine*0.75) * vDim;
+      gl_FragColor = vec4(col, a);
+    }`
+});
+scene.add(new THREE.LineSegments(geo, mat));
+
+/* ---------- Dust ---------- */
+const N = 700;
+const pGeo = new THREE.BufferGeometry();
+const pos = new Float32Array(N*3), seed = new Float32Array(N);
+for(let i=0;i<N;i++){
+  pos[i*3]=(Math.random()-.5)*30; pos[i*3+1]=(Math.random()-.5)*16; pos[i*3+2]=(Math.random()-.5)*12-2;
+  seed[i]=Math.random()*100;
+}
+pGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+pGeo.setAttribute('aSeed', new THREE.BufferAttribute(seed,1));
+const pU = { uTime:{value:0}, uPR:{value:renderer.getPixelRatio()} };
+const pMat = new THREE.ShaderMaterial({
+  uniforms:pU, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader:`
+    uniform float uTime,uPR; attribute float aSeed; varying float vA;
+    void main(){
+      vec3 p = position;
+      p.y += sin(uTime*0.25+aSeed)*0.7; p.x += cos(uTime*0.18+aSeed*1.7)*0.6;
+      vec4 mv = modelViewMatrix*vec4(p,1.0);
+      gl_Position = projectionMatrix*mv;
+      float tw = 0.5+0.5*sin(uTime*1.4+aSeed*3.0); vA = tw;
+      gl_PointSize = (1.2+tw*2.2)*uPR*(8.0/-mv.z);
+    }`,
+  fragmentShader:`
+    varying float vA;
+    void main(){
+      float d = length(gl_PointCoord-0.5);
+      gl_FragColor = vec4(1.0,0.86,0.58, smoothstep(0.5,0.0,d)*vA*0.6);
+    }`
+});
+scene.add(new THREE.Points(pGeo, pMat));
+
+/* ---------- Post ---------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.28, 0.85, 0.42);
+composer.addPass(bloom);
+
+/* Mobile tuning — урок v1: на узких экранах аддитив пересвечивает текст */
+let camBaseZ = 10;
+function applyViewportTuning(){
+  const mobile = innerWidth < 700;
+  U.uOpacity.value = mobile ? 0.26 : 0.42;
+  bloom.strength = mobile ? 0.14 : 0.28;
+  camBaseZ = mobile ? 12.5 : 10;
+}
+applyViewportTuning();
+
+/* ---------- Scroll & mouse (lerped) ---------- */
+let scrollP = 0, scrollT = 0;
+function onScroll(){
+  const max = document.body.scrollHeight - innerHeight;
+  scrollT = max>0 ? scrollY/max : 0;
+  document.getElementById('hint').style.opacity = scrollY>80 ? 0 : '';
+  document.getElementById('pbar').style.transform = `scaleX(${scrollT})`;
+}
+addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+/* параллакс-мышь стартует с нуля (на тач-устройствах камера остаётся по центру),
+   а repel-униформа держится «за экраном» пока курсор не появился */
+const mouse = new THREE.Vector2(0,0), mouseT = new THREE.Vector2(0,0);
+let hasPointer = false;
+addEventListener('pointermove', e=>{
+  hasPointer = true;
+  mouseT.set((e.clientX/innerWidth)*2-1, -((e.clientY/innerHeight)*2-1));
+});
+
+/* ---------- Adaptive quality (как v1) ---------- */
+let quality = 2, frames = 0, slow = 0, lastT = performance.now();
+function degrade(){
+  if(quality===2){ quality=1; }
+  else if(quality===1){ quality=0; renderer.setPixelRatio(Math.min(devicePixelRatio,1)*0.6); renderer.setSize(innerWidth,innerHeight); }
+  slow=0;
+}
+
+const clock = new THREE.Clock();
+function tick(){
+  const now = performance.now(); const dt = now-lastT; lastT = now;
+  if(frames++>10){ if(dt>90) slow++; else if(slow>0) slow--; if(slow>8 && quality>0) degrade(); }
+
+  const t = reduced ? 8 : clock.getElapsedTime();
+  /* time-based lerp: одинаковая скорость на 120fps и на 15fps */
+  const k = 1 - Math.pow(0.94, dt/16.7), km = 1 - Math.pow(0.92, dt/16.7);
+  scrollP += (scrollT-scrollP)*k;
+  mouse.x += (mouseT.x-mouse.x)*km; mouse.y += (mouseT.y-mouse.y)*km;
+
+  U.uTime.value = t; pU.uTime.value = t;
+  U.uMorph.value = scrollP*2.0;
+  if(hasPointer) U.uMouse.value.copy(mouse); else U.uMouse.value.set(99,99);
+
+  camera.position.x = Math.sin(scrollP*Math.PI)*2.2 + mouse.x*0.5;
+  camera.position.y = -scrollP*1.6 + mouse.y*0.4;
+  camera.position.z = camBaseZ - Math.sin(scrollP*Math.PI)*2.0;
+  camera.lookAt(0, -scrollP*1.4, -3);
+
+  if(quality===2) composer.render(); else renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- Reveal (rect-based) ---------- */
+const revealEls = [...document.querySelectorAll('.fade'), ...document.querySelectorAll('h1,h2')];
+revealEls.forEach((el,i)=> el.style.transitionDelay = (i%4)*0.1+'s');
+document.querySelectorAll('h1 .line>span, h2 .line>span').forEach((el,i)=> el.style.transitionDelay = i*0.12+'s');
+function checkReveal(){
+  for(const el of revealEls){
+    if(el.classList.contains('in')) continue;
+    if(el.getBoundingClientRect().top < innerHeight*0.88) el.classList.add('in');
+  }
+}
+addEventListener('scroll', checkReveal, {passive:true});
+
+/* ---------- Custom cursor + magnetic ---------- */
+const cur = document.getElementById('cur'), curR = document.getElementById('curR');
+let cx=0, cy=0, rx=0, ry=0, px=0, py=0;
+addEventListener('pointermove', e=>{ px=e.clientX; py=e.clientY; });
+(function cursorLoop(){
+  cx += (px-cx)*0.6; cy += (py-cy)*0.6; rx += (px-rx)*0.16; ry += (py-ry)*0.16;
+  cur.style.transform = `translate(${cx-3}px,${cy-3}px)`;
+  curR.style.transform = `translate(${rx-19}px,${ry-19}px)`;
+  requestAnimationFrame(cursorLoop);
+})();
+document.querySelectorAll('a,.srow').forEach(el=>{
+  el.addEventListener('pointerenter', ()=>{ curR.style.width='62px'; curR.style.height='62px'; });
+  el.addEventListener('pointerleave', ()=>{ curR.style.width='38px'; curR.style.height='38px'; });
+});
+document.querySelectorAll('.magnetic').forEach(el=>{
+  el.addEventListener('pointermove', e=>{
+    const r = el.getBoundingClientRect();
+    el.style.transform = `translate(${(e.clientX-r.left-r.width/2)*0.25}px,${(e.clientY-r.top-r.height/2)*0.35}px)`;
+  });
+  el.addEventListener('pointerleave', ()=>{ el.style.transform=''; });
+});
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  applyViewportTuning();
+});
+
+/* ---------- Preloader → старт ---------- */
+const loader = document.getElementById('loader'), lbar = document.getElementById('lbar'), lpct = document.getElementById('lpct');
+/* по времени через rAF — не зависит от тиков таймера на слабом железе */
+const loadStart = performance.now(), LOAD_MS = 1300;
+let loaderDone = false;
+function finishLoader(){
+  if(loaderDone) return; loaderDone = true;
+  lbar.style.transform = 'scaleX(1)'; lpct.textContent = '100%';
+  setTimeout(()=>{
+    loader.classList.add('done');
+    checkReveal();
+    document.querySelector('#hero h1')?.classList.add('in');
+    document.querySelectorAll('#hero .fade').forEach(el=>el.classList.add('in'));
+  }, 200);
+}
+(function loadLoop(){
+  if(loaderDone) return;
+  const p = Math.min(1, (performance.now()-loadStart)/LOAD_MS);
+  lbar.style.transform = `scaleX(${p})`;
+  lpct.textContent = Math.round(p*100)+'%';
+  if(p>=1) finishLoader(); else requestAnimationFrame(loadLoop);
+})();
+setTimeout(finishLoader, 4000); // страховка
+
+tick();
+</script>
+</body>
+</html>
