@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Noir · 3D Concept v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0C0C0E; --fg:#EDEDEA; --red:#E32213; --dim:rgba(237,237,234,.45);
+    --hair:rgba(237,237,234,.12);
+    --disp:'Unbounded',sans-serif; --mono:'JetBrains Mono',monospace; --sans:Inter,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);overflow-x:hidden}
+  ::selection{background:var(--red);color:var(--bg)}
+
+  #gl{position:fixed;inset:0;z-index:1;display:block}
+  /* сетка как у печатного макета */
+  .grid{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      linear-gradient(90deg, var(--hair) 1px, transparent 1px) 0 0/25% 100%,
+      linear-gradient(var(--hair) 1px, transparent 1px) 0 0/100% 25%}
+  .grain{position:fixed;inset:-100%;z-index:3;pointer-events:none;opacity:.08;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation:grain 7s steps(10) infinite}
+  @keyframes grain{0%,100%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-2%)}}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;
+    align-items:center;padding:22px 4vw;border-bottom:1px solid var(--hair);background:rgba(12,12,14,.55);
+    backdrop-filter:blur(8px)}
+  .logo{font-family:var(--disp);font-weight:900;font-size:16px;letter-spacing:.1em}
+  .logo sup{color:var(--red);font-size:9px}
+  nav{display:flex;gap:30px}
+  nav a{color:var(--fg);text-decoration:none;font-family:var(--mono);font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase}
+  nav a:hover{color:var(--red)}
+
+  main{position:relative;z-index:2}
+  section{min-height:100vh;position:relative;padding:16vh 4vw 10vh;display:flex;flex-direction:column;justify-content:space-between}
+  .meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .meta .red{color:var(--red)}
+  .big{font-family:var(--disp);font-weight:900;text-transform:uppercase;line-height:.95;
+    font-size:clamp(34px,7.2vw,108px);letter-spacing:-.01em}
+  .big .ghost{color:transparent;-webkit-text-stroke:1px rgba(237,237,234,.4)}
+  .big .red{color:var(--red)}
+  .caption{max-width:40ch;color:var(--dim);font-weight:300;font-size:15px;line-height:1.85}
+  .bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:30px}
+  .num{font-family:var(--disp);font-weight:900;font-size:clamp(60px,10vw,150px);
+    color:transparent;-webkit-text-stroke:1px rgba(237,237,234,.22);line-height:1}
+
+  .fade{opacity:0;transform:translateY(26px);transition:opacity .9s ease,transform .9s cubic-bezier(.16,1,.3,1)}
+  .fade.in{opacity:1;transform:none}
+
+  .ticker{position:relative;z-index:2;overflow:hidden;padding:16px 0;border-top:1px solid var(--hair);
+    border-bottom:1px solid var(--hair);white-space:nowrap;background:var(--red)}
+  .ticker .track{display:inline-block;animation:tk 22s linear infinite}
+  .ticker span{font-family:var(--disp);font-weight:700;font-size:14px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--bg);margin:0 30px}
+  @keyframes tk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  .list{width:100%;border-top:1px solid var(--hair)}
+  .lrow{display:grid;grid-template-columns:90px 1fr auto;gap:20px;align-items:center;
+    padding:26px 0;border-bottom:1px solid var(--hair);transition:background .3s,padding .3s}
+  .lrow:hover{background:rgba(227,34,19,.07);padding-left:16px}
+  .lrow .i{font-family:var(--mono);font-size:11px;color:var(--red)}
+  .lrow .t{font-family:var(--disp);font-weight:700;font-size:clamp(17px,2.6vw,30px);text-transform:uppercase}
+  .lrow .d{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--dim);text-transform:uppercase}
+
+  .btn{display:inline-block;padding:20px 56px;background:var(--red);color:var(--bg);text-decoration:none;
+    font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.22em;text-transform:uppercase;
+    transition:transform .3s,box-shadow .3s}
+  .btn:hover{transform:translate(-3px,-3px);box-shadow:6px 6px 0 var(--fg)}
+
+  footer{position:relative;z-index:2;padding:26px 4vw;display:flex;justify-content:space-between;
+    font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+    border-top:1px solid var(--hair)}
+
+  .scroll-hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:5;
+    font-family:var(--mono);font-size:10px;letter-spacing:.4em;text-transform:uppercase;color:var(--dim);
+    transition:opacity .6s}
+
+  @media (max-width:700px){
+    nav{display:none}
+    .lrow{grid-template-columns:60px 1fr;gap:12px}.lrow .d{grid-column:2}
+    .bottom{flex-direction:column;align-items:flex-start}
+  }
+  @media (prefers-reduced-motion: reduce){ .fade{transition:none;opacity:1;transform:none} .ticker .track{animation:none} }
+</style>
+</head>
+<body>
+
+<div class="grid"></div>
+<canvas id="gl"></canvas>
+<div class="grain"></div>
+
+<header>
+  <div class="logo">SVS<sup>®</sup> BEAUTY SPACE</div>
+  <nav>
+    <a href="#s1">Студія</a>
+    <a href="#s2">Послуги</a>
+    <a href="#s3">Магазин</a>
+    <a href="#s4">Запис</a>
+  </nav>
+</header>
+
+<main>
+  <!-- слова в центре экранов собирают ЧАСТИЦЫ, HTML держит края -->
+  <section id="s0">
+    <div class="meta fade"><span>Суми, Україна</span><span class="red">Est. салон краси</span><span>50.91° N, 34.80° E</span></div>
+    <div class="bottom">
+      <div class="big fade"><span class="ghost">Краса</span><br>без<br>компромісів<span class="red">.</span></div>
+      <p class="caption fade">Фарбування &middot; Airtouch &middot; Brazilian Blond.<br>Гортайте — простір реагує.</p>
+    </div>
+  </section>
+
+  <section id="s1">
+    <div class="meta fade"><span class="red">01 / Колір</span><span>Маніфест</span></div>
+    <div class="bottom">
+      <p class="caption fade">Колір ми не «наносимо» — його будуємо: під шкіру, очі та характер.
+        Два однакових результати у нас неможливі.</p>
+      <div class="num fade">01</div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <div class="meta fade"><span class="red">02 / Форма</span><span>Послуги</span></div>
+    <div class="list fade">
+      <div class="lrow"><span class="i">[01]</span><span class="t">Складне фарбування</span><span class="d">Airtouch / Shatush / Total</span></div>
+      <div class="lrow"><span class="i">[02]</span><span class="t">Реконструкція</span><span class="d">Brazilian Blond / Біовирівнювання</span></div>
+      <div class="lrow"><span class="i">[03]</span><span class="t">Стрижки</span><span class="d">Жіночі / Чоловічі / Дитячі</span></div>
+      <div class="lrow"><span class="i">[04]</span><span class="t">Догляд</span><span class="d">Підбір майстром</span></div>
+    </div>
+  </section>
+
+  <section id="s3">
+    <div class="meta fade"><span class="red">03 / Сяйво</span><span>Магазин</span></div>
+    <div class="bottom">
+      <p class="caption fade">Raywell та ще три бренди, відібрані майстрами.
+        4 бренди / 120+ позицій / доставка по Україні.</p>
+      <div class="num fade">03</div>
+    </div>
+  </section>
+
+  <section id="s4">
+    <div class="meta fade"><span class="red">04 / Запис</span><span>24/7 онлайн</span></div>
+    <div class="bottom">
+      <div class="big fade">Ваш хід<span class="red">.</span></div>
+      <a class="btn fade" href="https://t.me/" target="_blank" rel="noopener">Записатися</a>
+    </div>
+  </section>
+</main>
+
+<div class="ticker" aria-hidden="true">
+  <div class="track">
+    <span>Airtouch</span><span>Фарбування</span><span>Brazilian Blond</span><span>Стрижки</span><span>Догляд</span><span>Raywell</span>
+    <span>Airtouch</span><span>Фарбування</span><span>Brazilian Blond</span><span>Стрижки</span><span>Догляд</span><span>Raywell</span>
+  </div>
+</div>
+
+<div class="scroll-hint" id="hint">Scroll</div>
+<footer><span>SVS Beauty Space</span><span>Concept v4 «Noir» / WebGL Particles</span></footer>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:false, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, .1, 60);
+camera.position.set(0, 0, 12);
+
+/* =========================================================
+   14 000 частиц. Каждая секция = слово. При скролле частицы
+   разлетаются и пересобираются в следующее слово.
+   ========================================================= */
+const WORDS = ['SVS', 'КОЛІР', 'ФОРМА', 'СЯЙВО', 'ЗАПИС'];
+const P = 14000;
+
+const positions = new Float32Array(P*3);
+const targets   = new Float32Array(P*3);
+const seeds     = new Float32Array(P);
+for(let i=0;i<P;i++){
+  positions[i*3]   = (Math.random()-.5)*30;
+  positions[i*3+1] = (Math.random()-.5)*18;
+  positions[i*3+2] = (Math.random()-.5)*8;
+  seeds[i] = Math.random();
+}
+
+const geo = new THREE.BufferGeometry();
+const posAttr = new THREE.BufferAttribute(positions, 3);
+posAttr.setUsage(THREE.DynamicDrawUsage);
+geo.setAttribute('position', posAttr);
+geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0,0,0), 40);
+
+const mat = new THREE.ShaderMaterial({
+  uniforms:{ uTime:{value:0}, uPR:{value:renderer.getPixelRatio()} },
+  transparent:true, depthWrite:false,
+  vertexShader:`
+    uniform float uTime, uPR; attribute float aSeed; varying float vSeed; varying float vTw;
+    void main(){
+      vSeed = aSeed;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mv;
+      vTw = 0.6 + 0.4*sin(uTime*2.0 + aSeed*40.0);
+      gl_PointSize = (1.0 + aSeed*1.6) * uPR * (10.0 / -mv.z);
+    }`,
+  fragmentShader:`
+    varying float vSeed; varying float vTw;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      if(d > 0.5) discard;
+      vec3 white = vec3(0.93, 0.93, 0.91);
+      vec3 red   = vec3(0.89, 0.13, 0.07);
+      vec3 col = mix(white, red, step(0.86, vSeed));   /* ~14% частиц красные */
+      gl_FragColor = vec4(col, smoothstep(0.5, 0.1, d) * vTw);
+    }`
+});
+scene.add(new THREE.Points(geo, mat));
+
+/* ---------- Сэмплинг слова в точки ---------- */
+const wc = document.createElement('canvas'); wc.width = 1200; wc.height = 400;
+const wctx = wc.getContext('2d', { willReadFrequently:true });
+
+function sampleWord(word){
+  wctx.clearRect(0,0,wc.width,wc.height);
+  let fs = 300;
+  wctx.font = `900 ${fs}px Unbounded, Arial, sans-serif`;
+  let tw = wctx.measureText(word).width;
+  if(tw > wc.width*0.94){ fs = Math.floor(fs * wc.width*0.94/tw); wctx.font = `900 ${fs}px Unbounded, Arial, sans-serif`; tw = wctx.measureText(word).width; }
+  wctx.fillStyle = '#fff'; wctx.textAlign='center'; wctx.textBaseline='middle';
+  wctx.fillText(word, wc.width/2, wc.height/2);
+  const img = wctx.getImageData(0,0,wc.width,wc.height).data;
+  const pts = [];
+  const stride = 3;
+  for(let y=0; y<wc.height; y+=stride){
+    for(let x=0; x<wc.width; x+=stride){
+      if(img[(y*wc.width+x)*4+3] > 120) pts.push(x, y);
+    }
+  }
+  return { pts, tw, fs };
+}
+
+/* мир: ширина видимой области на z=0 */
+function worldWidth(){ return 2 * Math.tan(THREE.MathUtils.degToRad(22.5)) * 12 * camera.aspect; }
+
+let wordCache = {};
+function setTargets(word){
+  const key = word + '|' + innerWidth;
+  if(!wordCache[key]) wordCache[key] = sampleWord(word);
+  const { pts, tw } = wordCache[key];
+  const n = pts.length/2;
+  const scale = (worldWidth()*0.82) / tw;            /* слово занимает 82% ширины экрана */
+  for(let i=0;i<P;i++){
+    const j = (i % n) * 2;
+    const jitter = 0.5;
+    targets[i*3]   = (pts[j]   - wc.width/2) * scale + (Math.random()-.5)*scale*jitter;
+    targets[i*3+1] = -(pts[j+1] - wc.height/2) * scale + (Math.random()-.5)*scale*jitter;
+    targets[i*3+2] = (Math.random()-.5)*1.2;
+  }
+}
+
+let wordIdx = -1, burst = 0;
+function maybeSwitchWord(p){
+  const idx = Math.min(WORDS.length-1, Math.round(p * (WORDS.length-1)));
+  if(idx !== wordIdx){
+    wordIdx = idx;
+    setTargets(WORDS[idx]);
+    burst = 1;                                        /* разлёт при смене слова */
+  }
+}
+
+/* ---------- Скролл и мышь ---------- */
+let scrollP = 0, scrollT = 0;
+function onScroll(){
+  const max = document.body.scrollHeight - innerHeight;
+  scrollT = max>0 ? scrollY/max : 0;
+  document.getElementById('hint').style.opacity = scrollY>80 ? 0 : '';
+}
+addEventListener('scroll', onScroll, {passive:true}); onScroll();
+
+let hasPointer = false;
+const mouseW = new THREE.Vector2(0,0);
+addEventListener('pointermove', e=>{
+  hasPointer = true;
+  const ww = worldWidth(), wh = ww/camera.aspect;
+  mouseW.set(((e.clientX/innerWidth)*2-1)*ww/2, -((e.clientY/innerHeight)*2-1)*wh/2);
+});
+
+/* ---------- Цикл ---------- */
+const clock = new THREE.Clock();
+let lastT = performance.now();
+function tick(){
+  const now = performance.now(); const dt = now-lastT; lastT = now;
+  const t = reduced ? 5 : clock.getElapsedTime();
+  const k = 1 - Math.pow(0.9, dt/16.7);
+  scrollP += (scrollT-scrollP)*(1 - Math.pow(0.93, dt/16.7));
+  maybeSwitchWord(scrollP);
+  burst = Math.max(0, burst - dt/700);
+
+  mat.uniforms.uTime.value = t;
+  const arr = posAttr.array;
+  const wob = reduced ? 0 : 0.012;
+  for(let i=0;i<P;i++){
+    const i3 = i*3, s = seeds[i];
+    let tx = targets[i3], ty = targets[i3+1], tz = targets[i3+2];
+    if(burst > 0){                                    /* при смене слова — вихрь наружу */
+      const a = s*6.28 + t;
+      tx += Math.cos(a) * burst * (2.0 + s*6.0);
+      ty += Math.sin(a) * burst * (2.0 + s*6.0);
+      tz += (s-0.5) * burst * 6.0;
+    }
+    if(hasPointer){                                   /* курсор продавливает облако */
+      const dx = arr[i3]-mouseW.x, dy = arr[i3+1]-mouseW.y;
+      const d2 = dx*dx+dy*dy;
+      if(d2 < 2.2){ const f = (2.2-d2)*0.5; tx += dx*f; ty += dy*f; }
+    }
+    arr[i3]   += (tx - arr[i3])   * k * (0.5 + s*0.8);
+    arr[i3+1] += (ty - arr[i3+1]) * k * (0.5 + s*0.8);
+    arr[i3+2] += (tz - arr[i3+2]) * k * (0.5 + s*0.8);
+    arr[i3]   += Math.sin(t*1.3 + s*50.0) * wob;
+    arr[i3+1] += Math.cos(t*1.1 + s*70.0) * wob;
+  }
+  posAttr.needsUpdate = true;
+
+  camera.position.x = mouseW.x * 0.04;
+  camera.position.y = mouseW.y * 0.04;
+  camera.lookAt(0,0,0);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* стартуем после загрузки шрифта — чтобы слово собралось в Unbounded, а не fallback */
+document.fonts.ready.then(()=>{ wordCache = {}; maybeSwitchWord(0); });
+maybeSwitchWord(0);
+tick();
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  wordCache = {}; if(wordIdx>=0) setTargets(WORDS[wordIdx]);
+});
+
+/* ---------- Reveal ---------- */
+const revealEls = [...document.querySelectorAll('.fade')];
+revealEls.forEach((el,i)=> el.style.transitionDelay = (i%3)*0.12+'s');
+function checkReveal(){
+  for(const el of revealEls){
+    if(el.classList.contains('in')) continue;
+    if(el.getBoundingClientRect().top < innerHeight*0.9) el.classList.add('in');
+  }
+}
+addEventListener('scroll', checkReveal, {passive:true});
+checkReveal();
+</script>
+</body>
+</html>
