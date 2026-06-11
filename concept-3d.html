@@ -249,6 +249,17 @@ composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.85, 0.35);
 composer.addPass(bloom);
 
+/* Mobile tuning: на узких экранах ленты ближе к камере → аддитивное золото пересвечивает текст.
+   Приглушаем прозрачность, bloom и отводим камеру. */
+let camBaseZ = 9;
+function applyViewportTuning(){
+  const mobile = innerWidth < 700;
+  ribbonUniforms.forEach(u => u.uOpacity.value = mobile ? 0.26 : 0.45);
+  bloom.strength = mobile ? 0.16 : 0.3;
+  camBaseZ = mobile ? 11.5 : 9;
+}
+applyViewportTuning();
+
 /* ---------- Interaction: mouse + scroll-driven camera ---------- */
 const mouse = new THREE.Vector2(0,0), mouseT = new THREE.Vector2(0,0);
 addEventListener('pointermove', e=>{
@@ -285,7 +296,7 @@ function tick(){
   // camera journey down the silk as you scroll
   camera.position.x = Math.sin(scrollP*Math.PI*1.2)*1.8 + mouse.x*0.6;
   camera.position.y = -scrollP*2.6 + mouse.y*0.5;
-  camera.position.z = 9 - scrollP*1.8;
+  camera.position.z = camBaseZ - scrollP*1.8;
   camera.lookAt(0, -scrollP*2.4, -2);
   if(quality === 2) composer.render(); else renderer.render(scene, camera);
   requestAnimationFrame(tick);
@@ -297,6 +308,7 @@ addEventListener('resize', ()=>{
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
+  applyViewportTuning();
 });
 
 /* ---------- Reveal on scroll (rect-based — надёжнее IO при тяжёлом рендере) ---------- */
