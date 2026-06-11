@@ -85,13 +85,19 @@ router.post('/payroll/calculate', async (req, res) => {
     let sales_revenue = 0, sales_part = 0;
     const salesPct = parseFloat(s.sales_commission_pct || 0);
     if (salesPct > 0) {
+      // считаем по строкам заказа: расходники (краски, окисники, знебарвлення, пігменти, завивка) комиссию не дают
       const so = await pool.query(
-        `SELECT COALESCE(SUM(total), 0)::numeric AS revenue
-         FROM orders
-         WHERE seller_master_id = $1::int
-           AND status NOT IN ('cancelled', 'refunded')
-           AND created_at >= $2::date
-           AND created_at <  ($3::date + INTERVAL '1 day')`,
+        `SELECT COALESCE(SUM(oi.line_total), 0)::numeric AS revenue
+         FROM orders o
+         JOIN order_items oi ON oi.order_id = o.id
+         LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE o.seller_master_id = $1::int
+           AND o.status NOT IN ('cancelled', 'refunded')
+           AND o.created_at >= $2::date
+           AND o.created_at <  ($3::date + INTERVAL '1 day')
+           AND COALESCE(c.commissionable, TRUE) = TRUE`,
         [master_id, period_start, period_end]
       );
       sales_revenue = parseFloat(so.rows[0]?.revenue || 0);
