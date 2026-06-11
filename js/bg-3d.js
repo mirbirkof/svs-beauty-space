@@ -11,6 +11,8 @@
   var canvas = document.createElement('canvas');
   canvas.className = 'bg3d';
   canvas.setAttribute('aria-hidden', 'true');
+  /* inline styles — не зависим от кеша CSS */
+  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;display:block;';
   document.body.insertBefore(canvas, document.body.firstChild);
 
   var gl = canvas.getContext('webgl', { alpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'low-power' });
@@ -39,7 +41,7 @@
     'float silk(vec2 p, float t){',
     '  float h = 0.0;',
     '  h += sin(p.x*1.4 + t*0.32 + sin(p.y*1.1 + t*0.21)*1.6) * 0.55;',
-    '  h += sin(p.y*1.9 - t*0.26 + sin(p.x*1.6 - t*0.16)*1.3) * 0.35;',
+    '  h += sin(p.y*1.9 - t*0.26 + sin(p.x*1.6 - t*0.16)*1.3) * 0.65;',
     '  h += sin((p.x+p.y)*2.6 + t*0.42) * 0.16;',
     '  h += noise(p*1.8 + vec2(t*0.05, -t*0.04)) * 0.22;',
     '  return h;',
@@ -73,20 +75,20 @@
     '  vec3 goldSoft = vec3(0.831, 0.733, 0.541);',
     '',
     '  vec3 col = base;',
-    '  col += gold * dif * 0.055;',
-    '  col += goldSoft * spec * 0.11;',
-    '  col += gold * rim * 0.03;',
-    '  col += gold * smoothstep(0.6, 1.3, h) * 0.03;',
+    '  col += gold * dif * 0.13;',
+    '  col += goldSoft * spec * 0.30;',
+    '  col += gold * rim * 0.07;',
+    '  col += gold * smoothstep(0.5, 1.3, h) * 0.07;',
     '',
     '  /* floating gold dust */',
     '  vec2 dp = p*7.0 + vec2(t*0.06, t*0.10);',
     '  float dust = step(0.985, hash(floor(dp)));',
     '  float tw = 0.5 + 0.5*sin(t*1.7 + hash(floor(dp))*40.0);',
-    '  col += gold * dust * tw * smoothstep(0.9, 0.0, length(fract(dp)-0.5)) * 0.35;',
+    '  col += gold * dust * tw * smoothstep(0.18, 0.0, length(fract(dp)-0.5)) * 0.65;',
     '',
     '  /* vignette so content stays readable */',
     '  float vig = smoothstep(1.25, 0.35, length(p));',
-    '  col *= mix(0.7, 1.0, vig);',
+    '  col *= mix(0.8, 1.0, vig);',
     '',
     '  /* fade strength toward page center-top where text sits */',
     '  float alpha = 0.85;',
