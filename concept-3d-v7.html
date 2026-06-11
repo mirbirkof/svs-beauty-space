@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Aurora · Concept v7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --night:#06080F; --ice:#E9F1F6; --muted:rgba(233,241,246,.5);
+    --cyan:#6FE3D0; --violet:#9D8CFF; --hair:rgba(233,241,246,.12);
+    --serif:'Cormorant Garamond',serif; --sans:Inter,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--night);color:var(--ice);font-family:var(--sans);overflow-x:hidden}
+  ::selection{background:var(--cyan);color:var(--night)}
+  #gl{position:fixed;inset:0;z-index:0;display:block}
+  .stars{position:fixed;inset:0;z-index:1;pointer-events:none}
+  .vig{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 60%, transparent 50%, rgba(2,3,7,.8) 100%)}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;
+    align-items:center;padding:26px 5vw}
+  .logo{font-family:var(--serif);font-size:19px;letter-spacing:.3em;font-weight:600}
+  nav{display:flex;gap:34px}
+  nav a{color:var(--ice);text-decoration:none;font-size:11px;letter-spacing:.32em;text-transform:uppercase}
+  nav a:hover{color:var(--cyan)}
+
+  main{position:relative;z-index:2}
+  section{min-height:100vh;display:flex;align-items:center;padding:14vh 7vw}
+  .idx{font-size:11px;letter-spacing:.5em;display:flex;align-items:center;gap:14px;margin-bottom:28px;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:uppercase}
+  h1{font-family:var(--serif);font-weight:500;font-size:clamp(46px,8.4vw,126px);line-height:1.0}
+  h1 em,h2 em{font-style:italic;font-weight:400;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-family:var(--serif);font-weight:500;font-size:clamp(34px,5.4vw,78px);line-height:1.06;margin-bottom:26px}
+  p.lead{max-width:42ch;color:var(--muted);font-weight:300;font-size:16px;line-height:1.9}
+  .center{justify-content:center;text-align:center}
+  .right{justify-content:flex-end}.right .inner{text-align:right}.right p.lead{margin-left:auto}
+
+  .fade{opacity:0;transform:translateY(30px);transition:opacity 1s ease,transform 1s cubic-bezier(.16,1,.3,1)}
+  .fade.in{opacity:1;transform:none}
+
+  /* стеклянные карточки */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;width:100%;max-width:1050px;margin:0 auto}
+  .card{padding:38px 34px;border-radius:22px;border:1px solid var(--hair);
+    background:rgba(233,241,246,.045);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    transition:transform .45s cubic-bezier(.16,1,.3,1),border-color .45s,background .45s}
+  .card:hover{transform:translateY(-8px);border-color:rgba(111,227,208,.45);background:rgba(233,241,246,.07)}
+  .card .n{font-size:11px;letter-spacing:.3em;color:var(--cyan);display:block;margin-bottom:16px}
+  .card .t{font-family:var(--serif);font-size:clamp(24px,2.8vw,38px);font-weight:500;display:block;margin-bottom:12px}
+  .card .d{font-size:12px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;line-height:1.8}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;width:100%;max-width:900px;margin:54px auto 0}
+  .stat{padding:34px 10px;border-radius:22px;border:1px solid var(--hair);
+    background:rgba(233,241,246,.045);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);text-align:center}
+  .stat b{font-family:var(--serif);font-weight:500;font-size:clamp(40px,5.6vw,76px);display:block}
+  .stat span{font-size:10px;letter-spacing:.4em;text-transform:uppercase;color:var(--muted)}
+
+  .btn{display:inline-block;margin-top:44px;padding:22px 64px;border-radius:60px;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));color:var(--night);text-decoration:none;
+    font-size:12px;letter-spacing:.4em;text-transform:uppercase;font-weight:500;
+    transition:transform .35s,box-shadow .35s}
+  .btn:hover{transform:translateY(-4px);box-shadow:0 16px 44px rgba(111,227,208,.35)}
+
+  footer{position:relative;z-index:2;padding:30px 7vw;display:flex;justify-content:space-between;
+    font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted)}
+  .scroll-hint{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:5;
+    font-size:10px;letter-spacing:.5em;text-transform:uppercase;color:var(--muted);transition:opacity .6s}
+  @media (max-width:700px){ nav{display:none} .cards{grid-template-columns:1fr} .stats{grid-template-columns:1fr} }
+  @media (prefers-reduced-motion: reduce){ .fade{transition:none;opacity:1;transform:none} }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+<canvas class="stars" id="stars"></canvas>
+<div class="vig"></div>
+
+<header>
+  <div class="logo">SVS</div>
+  <nav><a href="#manifest">Студія</a><a href="#services">Послуги</a><a href="#shop">Магазин</a><a href="#book">Запис</a></nav>
+</header>
+
+<main>
+  <section id="hero">
+    <div class="inner" style="max-width:800px">
+      <div class="idx fade">Суми &middot; Салон краси</div>
+      <h1 class="fade">Сяйво, яке<br>буває раз<br><em>на північ ночі</em></h1>
+      <p class="lead fade" style="margin-top:30px">Фарбування, Airtouch, Brazilian Blond.
+        Кожен відтінок — як аврора: неможливо повторити, можна тільки створити для вас.</p>
+    </div>
+  </section>
+
+  <section id="manifest" class="right">
+    <div class="inner" style="max-width:680px">
+      <div class="idx fade" style="justify-content:flex-end">01 &middot; Підхід</div>
+      <h2 class="fade">Колір — це фізика<br><em>плюс інтуїція</em></h2>
+      <p class="lead fade">Ми знаємо, як світло живе у волоссі. І знаємо, як змусити його танцювати —
+        делікатно, без шкоди, надовго.</p>
+    </div>
+  </section>
+
+  <section id="services" class="center">
+    <div style="width:100%">
+      <div class="idx fade" style="justify-content:center">02 &middot; Послуги</div>
+      <div class="cards">
+        <div class="card fade"><span class="n">/01</span><span class="t">Складне фарбування</span><span class="d">Airtouch &middot; Shatush &middot; Total Blond</span></div>
+        <div class="card fade"><span class="n">/02</span><span class="t">Реконструкція</span><span class="d">Brazilian Blond &middot; Біовирівнювання</span></div>
+        <div class="card fade"><span class="n">/03</span><span class="t">Стрижки та форма</span><span class="d">Жіночі &middot; Чоловічі &middot; Дитячі</span></div>
+        <div class="card fade"><span class="n">/04</span><span class="t">Домашній догляд</span><span class="d">Підбір майстром під ваш тип</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="shop" class="center">
+    <div style="width:100%">
+      <div class="idx fade" style="justify-content:center">03 &middot; Магазин</div>
+      <h2 class="fade">Те, чим працюємо ми —<br><em>доступне й вам</em></h2>
+      <div class="stats">
+        <div class="stat fade"><b>4</b><span>Бренди</span></div>
+        <div class="stat fade"><b>120+</b><span>Позицій</span></div>
+        <div class="stat fade"><b>24/7</b><span>Онлайн-запис</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" class="center">
+    <div>
+      <div class="idx fade" style="justify-content:center">04 &middot; Запис</div>
+      <h2 class="fade">Ваше сяйво<br><em>вже на горизонті</em></h2>
+      <a class="btn fade" href="https://t.me/" target="_blank" rel="noopener">Записатися</a>
+    </div>
+  </section>
+</main>
+
+<div class="scroll-hint" id="hint">Гортайте</div>
+<footer><span>SVS Beauty Space</span><span>Concept v7 «Aurora» &middot; FBM Shader</span></footer>
+
+<script>
+/* ====== Аврора: fbm с доменным искажением, чистый WebGL ====== */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias:false });
+const DPR = Math.min(devicePixelRatio, 1.5);
+
+const VS = `attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
+const FS = `
+precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform float uScroll; uniform vec2 uMouse;
+
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x), u.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for(int i=0;i<5;i++){ v += a*noise(p); p = p*2.03 + vec2(1.7,9.2); a *= 0.5; }
+  return v;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 p = uv * vec2(uRes.x/uRes.y, 1.0);
+  float t = uTime*0.06;
+
+  /* доменное искажение — занавеси */
+  vec2 q = vec2(fbm(p*1.4 + t), fbm(p*1.4 - t*0.7));
+  float curtain = fbm(p*vec2(2.2,0.9) + q*1.6 + vec2(0.0, uScroll*1.5) + uMouse*0.15);
+
+  /* вертикальная маска: сияние живёт в верхней половине и опускается со скроллом */
+  float band = smoothstep(0.15, 0.75, uv.y + uScroll*0.35) * smoothstep(1.15, 0.55, uv.y);
+  float a = pow(curtain, 2.2) * band * 1.6;
+
+  vec3 cyan   = vec3(0.18, 0.85, 0.74);
+  vec3 violet = vec3(0.52, 0.42, 1.0);
+  vec3 pink   = vec3(0.95, 0.45, 0.75);
+  vec3 col = mix(cyan, violet, smoothstep(0.2, 0.8, uv.x + q.x*0.3));
+  col = mix(col, pink, smoothstep(0.75, 1.0, curtain) * 0.45);
+
+  vec3 bg = mix(vec3(0.012,0.02,0.05), vec3(0.03,0.05,0.11), uv.y);
+  gl_FragColor = vec4(bg + col * a, 1.0);
+}`;
+function sh(t,s){ const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o);
+  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; }
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER,FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog,'p');
+gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+const uRes=gl.getUniformLocation(prog,'uRes'), uTime=gl.getUniformLocation(prog,'uTime'),
+      uScroll=gl.getUniformLocation(prog,'uScroll'), uMouse=gl.getUniformLocation(prog,'uMouse');
+
+/* ====== Звёзды: лёгкий canvas2d ====== */
+const sc = document.getElementById('stars'), sctx = sc.getContext('2d');
+let stars = [];
+function makeStars(){
+  sc.width = innerWidth; sc.height = innerHeight;
+  stars = Array.from({length:130}, ()=>({
+    x:Math.random()*sc.width, y:Math.random()*sc.height*0.8,
+    r:Math.random()*1.3+0.3, ph:Math.random()*6.28, sp:0.3+Math.random()*1.2
+  }));
+}
+makeStars();
+
+function resize(){
+  canvas.width = innerWidth*DPR; canvas.height = innerHeight*DPR;
+  canvas.style.width = innerWidth+'px'; canvas.style.height = innerHeight+'px';
+  gl.viewport(0,0,canvas.width,canvas.height);
+  makeStars();
+}
+resize(); addEventListener('resize', resize);
+
+let st=0, sp=0, mx=0, my=0, mtx=0, mty=0;
+addEventListener('scroll', ()=>{
+  const max = document.body.scrollHeight - innerHeight;
+  st = max>0 ? scrollY/max : 0;
+  document.getElementById('hint').style.opacity = scrollY>80 ? 0 : '';
+}, {passive:true});
+addEventListener('pointermove', e=>{ mtx=(e.clientX/innerWidth)*2-1; mty=(e.clientY/innerHeight)*2-1; });
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let lastT = performance.now(), t0 = lastT;
+(function tick(now){
+  now = now || performance.now();
+  const dt = now-lastT; lastT = now;
+  const k = 1 - Math.pow(0.93, dt/16.7);
+  sp += (st-sp)*k; mx += (mtx-mx)*k; my += (mty-my)*k;
+
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uTime, reduced ? 30 : (now-t0)/1000);
+  gl.uniform1f(uScroll, sp);
+  gl.uniform2f(uMouse, mx, my);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  const t = (now-t0)/1000;
+  sctx.clearRect(0,0,sc.width,sc.height);
+  sctx.fillStyle = '#E9F1F6';
+  for(const s of stars){
+    const a = 0.25 + 0.55*Math.abs(Math.sin(t*s.sp + s.ph));
+    sctx.globalAlpha = a;
+    sctx.beginPath(); sctx.arc(s.x, s.y, s.r, 0, 6.28); sctx.fill();
+  }
+  sctx.globalAlpha = 1;
+  requestAnimationFrame(tick);
+})();
+
+/* Reveal */
+const els = [...document.querySelectorAll('.fade')];
+els.forEach((el,i)=> el.style.transitionDelay = (i%4)*0.1+'s');
+function reveal(){ for(const el of els){ if(!el.classList.contains('in') && el.getBoundingClientRect().top < innerHeight*0.88) el.classList.add('in'); } }
+addEventListener('scroll', reveal, {passive:true}); reveal();
+</script>
+</body>
+</html>

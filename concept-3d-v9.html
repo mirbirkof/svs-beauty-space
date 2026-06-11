@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Chrome · Concept v9</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#E6E0F2; --ink:#1B1430; --vio:#7B5CFF; --pink:#FF7BCD;
+    --disp:'Unbounded',sans-serif; --sans:Inter,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);overflow-x:hidden}
+  ::selection{background:var(--vio);color:#fff}
+  #bg{position:fixed;inset:0;z-index:0}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;
+    align-items:center;padding:22px 5vw;mix-blend-mode:multiply}
+  .logo{font-family:var(--disp);font-weight:800;font-size:18px;letter-spacing:.18em}
+  .pill{font-size:10px;letter-spacing:.3em;text-transform:uppercase;border:1.5px solid var(--ink);
+    padding:9px 20px;border-radius:40px}
+
+  main{position:relative;z-index:2}
+  section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:100px 7vw}
+
+  .tag{display:inline-flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.4em;
+    text-transform:uppercase;color:var(--vio);margin-bottom:24px}
+  .tag::before{content:'✦'}
+  h1{font-family:var(--disp);font-weight:800;font-size:clamp(34px,7.4vw,104px);line-height:1.04;text-transform:uppercase}
+  h1 .grad, h2 .grad{background:linear-gradient(110deg,#7B5CFF 10%,#FF7BCD 50%,#5CC8FF 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-family:var(--disp);font-weight:600;font-size:clamp(26px,4.6vw,62px);line-height:1.1;margin-bottom:20px;text-transform:uppercase}
+  p.lead{max-width:44ch;font-weight:300;font-size:16px;line-height:1.9;opacity:.75}
+
+  .chips{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px;max-width:760px}
+  .chip{border:1.5px solid var(--ink);border-radius:50px;padding:16px 28px;font-size:13px;
+    letter-spacing:.06em;background:rgba(255,255,255,.45);backdrop-filter:blur(6px);
+    transition:transform .3s,background .3s}
+  .chip b{font-family:var(--disp);font-weight:600;font-size:12px;margin-right:8px;color:var(--vio)}
+  .chip:hover{transform:translateY(-4px);background:#fff}
+
+  .stats{display:flex;flex-wrap:wrap;gap:8vw;margin-top:40px}
+  .stat b{font-family:var(--disp);font-weight:800;font-size:clamp(36px,5.6vw,76px);display:block;
+    background:linear-gradient(120deg,var(--vio),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat span{font-size:10px;letter-spacing:.34em;text-transform:uppercase;opacity:.6}
+
+  .btn{display:inline-block;margin-top:40px;padding:22px 60px;border-radius:60px;color:#fff;
+    background:linear-gradient(110deg,#7B5CFF,#FF7BCD);text-decoration:none;font-family:var(--disp);
+    font-size:12px;letter-spacing:.3em;text-transform:uppercase;font-weight:600;
+    box-shadow:0 12px 34px rgba(123,92,255,.4);transition:transform .35s,box-shadow .35s}
+  .btn:hover{transform:translateY(-4px) scale(1.02);box-shadow:0 18px 44px rgba(255,123,205,.5)}
+
+  .reveal{opacity:0;transform:translateY(40px);transition:opacity .85s,transform .85s cubic-bezier(.16,1,.3,1)}
+  .reveal.on{opacity:1;transform:none}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1;transform:none;transition:none} }
+
+  footer{position:relative;z-index:2;padding:34px 7vw;font-size:10px;letter-spacing:.3em;
+    text-transform:uppercase;opacity:.55;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<header>
+  <div class="logo">SVS</div>
+  <div class="pill">Суми · салон краси</div>
+</header>
+
+<main>
+  <section>
+    <div class="tag reveal">Beauty · Future · Now</div>
+    <h1 class="reveal">Блиск, який<br><span class="grad">неможливо</span><br>ігнорувати</h1>
+    <p class="lead reveal" style="margin-top:26px">Складне фарбування та реконструкція волосся.
+      Рідкий метал на екрані — приблизно так виглядає ваше волосся після нас.</p>
+  </section>
+
+  <section>
+    <div class="tag reveal">01 · Послуги</div>
+    <h2 class="reveal">Меню <span class="grad">сяйва</span></h2>
+    <div class="chips">
+      <div class="chip reveal"><b>/01</b>Airtouch</div>
+      <div class="chip reveal"><b>/02</b>Shatush</div>
+      <div class="chip reveal"><b>/03</b>Total Blond</div>
+      <div class="chip reveal"><b>/04</b>Brazilian Blond</div>
+      <div class="chip reveal"><b>/05</b>Біовирівнювання</div>
+      <div class="chip reveal"><b>/06</b>Стрижки</div>
+      <div class="chip reveal"><b>/07</b>Догляд додому</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="tag reveal">02 · Магазин</div>
+    <h2 class="reveal">Те саме, що у кріслі —<br><span class="grad">у вашій ванній</span></h2>
+    <p class="lead reveal">Професійна косметика, якою працюють наші майстри.
+      Підбір — безкоштовно, під ваш тип волосся.</p>
+    <div class="stats">
+      <div class="stat reveal"><b>4</b><span>бренди</span></div>
+      <div class="stat reveal"><b>120+</b><span>позицій</span></div>
+      <div class="stat reveal"><b>24/7</b><span>запис онлайн</span></div>
+    </div>
+  </section>
+
+  <section style="text-align:center;align-items:center">
+    <div class="tag reveal">03 · Запис</div>
+    <h2 class="reveal">Готові до<br><span class="grad">апгрейду?</span></h2>
+    <a class="btn reveal" href="https://t.me/" target="_blank" rel="noopener">Записатися</a>
+  </section>
+</main>
+
+<footer><span>SVS Beauty Space · Суми</span><span>Concept v9 «Chrome» · three.js</span></footer>
+
+<script>
+const io = new IntersectionObserver(es=>{
+  es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('on'); io.unobserve(e.target);} });
+},{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const cv = document.getElementById('bg');
+const renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, alpha:true});
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+cam.position.set(0,0,8);
+
+const mobile = () => innerWidth < 700;
+function fit(){
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, mobile() ? 1.4 : 1.8));
+  cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix();
+}
+fit(); addEventListener('resize', fit);
+
+/* хром-блоб: симплекс-шум по вершинам + фейковое хром-отражение
+   (вектор отражения -> голографическая палитра) */
+const uniforms = {
+  uTime:{value:0}, uAmp:{value:0.5}, uScroll:{value:0}
+};
+const vsh = `
+uniform float uTime; uniform float uAmp;
+varying vec3 vN; varying vec3 vV;
+// simplex noise (Ashima)
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x,289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+  i=mod(i,289.0);
+  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=1.0/7.0; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+void main(){
+  float n = snoise(normal*1.6 + uTime*0.35) * uAmp
+          + snoise(normal*4.2 - uTime*0.2) * uAmp*0.25;
+  vec3 pos = position + normal*n;
+  // пересчёт нормали через соседние сэмплы (приближение)
+  float e = 0.12;
+  vec3 t1 = normalize(cross(normal, vec3(0.0,1.0,0.0)) + vec3(0.0001));
+  vec3 t2 = normalize(cross(normal, t1));
+  float n1 = snoise((normal+t1*e)*1.6 + uTime*0.35)*uAmp;
+  float n2 = snoise((normal+t2*e)*1.6 + uTime*0.35)*uAmp;
+  vec3 dn = normalize(normal - t1*(n1-n)/e*0.6 - t2*(n2-n)/e*0.6);
+  vec4 mv = modelViewMatrix * vec4(pos,1.0);
+  vN = normalize(normalMatrix * dn);
+  vV = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}`;
+const fsh = `
+precision highp float;
+uniform float uTime;
+varying vec3 vN; varying vec3 vV;
+void main(){
+  vec3 N = normalize(vN), V = normalize(vV);
+  vec3 R = reflect(-V, N);
+  // голографическая палитра по вектору отражения = фейковый хром
+  float ph = R.x*1.6 + R.y*2.2 + sin(R.z*3.0)*0.5 + uTime*0.08;
+  vec3 holo = 0.5 + 0.5*cos(6.28318*(ph*0.35 + vec3(0.0,0.33,0.67)));
+  // металлический серый базис + холо переливы
+  float fres = pow(1.0 - max(dot(N,V),0.0), 2.2);
+  vec3 base = mix(vec3(0.82,0.8,0.9), vec3(1.0), smoothstep(0.2,0.9,R.y));
+  vec3 col = mix(base, holo, 0.55 + fres*0.35);
+  // блик
+  vec3 L = normalize(vec3(0.5,0.8,0.6));
+  float spec = pow(max(dot(R,L),0.0), 24.0);
+  col += spec*0.8;
+  col = mix(col, vec3(1.0), fres*0.25);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const blob = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(2.1, 96),
+  new THREE.ShaderMaterial({vertexShader:vsh, fragmentShader:fsh, uniforms})
+);
+scene.add(blob);
+
+/* мелкие спутники-сферы */
+const sats = [];
+for(let i=0;i<5;i++){
+  const s = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.16+Math.random()*0.2, 32),
+    new THREE.ShaderMaterial({vertexShader:vsh, fragmentShader:fsh,
+      uniforms:{uTime:uniforms.uTime, uAmp:{value:0.12}, uScroll:uniforms.uScroll}})
+  );
+  s.userData = {a: Math.random()*6.28, r: 3.1+Math.random()*1.4, sp: 0.12+Math.random()*0.2, y:(Math.random()-0.5)*2.4};
+  scene.add(s); sats.push(s);
+}
+
+/* хореография по скроллу: блоб мигрирует, чтобы не лезть под текст */
+const KEYS = [
+  {x: 2.7, y:-0.2, z: 0,    s:1.0},
+  {x:-2.9, y: 0.2, z:-1,    s:0.8},
+  {x: 2.5, y: 0.0, z:-2,    s:0.75},
+  {x: 0.0, y: 2.7, z:-2.5, s:0.4}
+];
+let st=0, sp=0, lastT=performance.now();
+addEventListener('scroll', ()=>{
+  const m = document.body.scrollHeight - innerHeight;
+  st = m>0 ? scrollY/m : 0;
+},{passive:true});
+
+let mx=0,my=0;
+if(matchMedia('(pointer:fine)').matches){
+  addEventListener('pointermove', e=>{
+    mx = e.clientX/innerWidth*2-1; my = e.clientY/innerHeight*2-1;
+  },{passive:true});
+}
+
+let frameT = 16, lowMode = false;
+(function tick(now){
+  requestAnimationFrame(tick);
+  now = now || performance.now();
+  const dt = now-lastT; lastT = now;
+  frameT = frameT*0.9 + dt*0.1;
+  if(!lowMode && frameT>80){ lowMode=true; renderer.setPixelRatio(1); }
+
+  sp += (st-sp)*(1 - Math.pow(0.93, dt/16.7));
+  uniforms.uTime.value = now*0.001;
+  uniforms.uScroll.value = sp;
+
+  const f = Math.min(sp,0.9999)*(KEYS.length-1);
+  const i = Math.floor(f), t = f-i, tt = t*t*(3-2*t);
+  const A = KEYS[i], B = KEYS[Math.min(i+1,KEYS.length-1)];
+  const mk = innerWidth<700 ? 0.6 : 1;
+  blob.position.set((A.x+(B.x-A.x)*tt)*mk, A.y+(B.y-A.y)*tt, A.z+(B.z-A.z)*tt);
+  const sc = (A.s+(B.s-A.s)*tt)*(innerWidth<700?0.72:1);
+  blob.scale.setScalar(sc);
+  blob.rotation.y = now*0.00012 + sp*2.2;
+  blob.rotation.x = Math.sin(now*0.0001)*0.2;
+  uniforms.uAmp.value = 0.42 + Math.sin(sp*9.42)*0.18;
+
+  sats.forEach(s=>{
+    const u = s.userData;
+    const a = u.a + now*0.001*u.sp + sp*3.0;
+    s.position.set(blob.position.x + Math.cos(a)*u.r*sc, blob.position.y + u.y*sc + Math.sin(a*0.7)*0.5, blob.position.z + Math.sin(a)*u.r*sc*0.6);
+  });
+
+  cam.position.x += (mx*0.5 - cam.position.x)*0.04;
+  cam.position.y += (-my*0.35 - cam.position.y)*0.04;
+  cam.lookAt(0,0,-1);
+
+  renderer.render(scene, cam);
+})();
+</script>
+</body>
+</html>

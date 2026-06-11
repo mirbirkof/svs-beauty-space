@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Collage · Concept v8</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Playfair+Display:ital,wght@0,600;1,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3EBDD; --ink:#2B2117; --red:#C84B31; --blue:#3E5C76;
+    --hand:'Caveat',cursive; --serif:'Playfair Display',serif; --sans:Inter,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);overflow-x:hidden}
+  ::selection{background:var(--red);color:#fff}
+
+  /* бумажная текстура */
+  body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.42 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+  #draw{position:fixed;inset:0;z-index:1;pointer-events:none}
+
+  header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:space-between;
+    align-items:center;padding:22px 5vw}
+  .logo{font-family:var(--serif);font-size:20px;letter-spacing:.26em;font-weight:600}
+  .hnote{font-family:var(--hand);font-size:20px;color:var(--red);transform:rotate(-3deg)}
+
+  main{position:relative;z-index:2;max-width:1180px;margin:0 auto;padding:0 5vw}
+  section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;position:relative;padding:90px 0}
+
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(44px,8vw,116px);line-height:1.02}
+  h1 .mark, h2 .mark{position:relative;white-space:nowrap}
+  h1 .mark::after, h2 .mark::after{content:'';position:absolute;left:-3%;right:-3%;bottom:6%;height:38%;
+    background:rgba(200,75,49,.32);z-index:-1;transform:rotate(-1.2deg);border-radius:3px}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(32px,5vw,68px);line-height:1.08;margin-bottom:18px}
+  .hand{font-family:var(--hand);font-size:clamp(22px,3vw,34px);color:var(--blue)}
+  p.lead{max-width:46ch;font-weight:300;font-size:16px;line-height:1.9;opacity:.8;margin-top:18px}
+
+  /* полароиды */
+  .board{display:flex;flex-wrap:wrap;gap:4vw;justify-content:center;margin-top:30px}
+  .pol{background:#fff;padding:14px 14px 58px;box-shadow:0 10px 28px rgba(43,33,23,.18);
+    width:min(280px,72vw);position:relative;transition:transform .45s cubic-bezier(.16,1,.3,1)}
+  .pol:hover{transform:rotate(0deg) scale(1.05) !important;z-index:5}
+  .pol .ph{aspect-ratio:1/1.05;display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-size:60px;color:#fff}
+  .pol .cap{position:absolute;left:0;right:0;bottom:12px;text-align:center;
+    font-family:var(--hand);font-size:24px;color:var(--ink)}
+  .tape{position:absolute;top:-14px;left:50%;transform:translateX(-50%) rotate(-4deg);
+    width:96px;height:30px;background:rgba(222,205,160,.8);box-shadow:0 2px 5px rgba(0,0,0,.1)}
+  .tape::before,.tape::after{content:'';position:absolute;top:0;bottom:0;width:5px;
+    background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.5) 3px 6px)}
+  .tape::before{left:0}.tape::after{right:0}
+
+  /* список услуг как чек-лист */
+  .check{margin-top:26px;max-width:560px}
+  .check li{list-style:none;display:flex;gap:16px;align-items:baseline;padding:16px 0;
+    border-bottom:2px dashed rgba(43,33,23,.22)}
+  .check .box{font-family:var(--hand);font-size:26px;color:var(--red);flex:none}
+  .check .nm{font-family:var(--serif);font-size:clamp(20px,2.6vw,30px);font-weight:600}
+  .check .pr{margin-left:auto;font-family:var(--hand);font-size:22px;color:var(--blue);white-space:nowrap}
+
+  .sticker{position:absolute;font-family:var(--hand);font-size:clamp(18px,2.4vw,28px);
+    color:var(--red);pointer-events:none}
+  .arrow{stroke:var(--red);stroke-width:2.4;fill:none;stroke-linecap:round}
+
+  .btn{display:inline-block;margin-top:36px;padding:20px 56px;background:var(--ink);color:var(--paper);
+    text-decoration:none;font-size:12px;letter-spacing:.36em;text-transform:uppercase;
+    transform:rotate(-1.4deg);box-shadow:5px 6px 0 var(--red);transition:transform .3s,box-shadow .3s}
+  .btn:hover{transform:rotate(0) translateY(-3px);box-shadow:7px 9px 0 var(--red)}
+
+  .reveal{opacity:0;transform:translateY(36px) rotate(var(--r,0deg));transition:opacity .8s,transform .8s cubic-bezier(.16,1,.3,1)}
+  .reveal.on{opacity:1;transform:translateY(0) rotate(var(--r,0deg))}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1;transform:none;transition:none} }
+
+  footer{position:relative;z-index:2;text-align:center;padding:40px 0 60px;font-family:var(--hand);font-size:20px;opacity:.65}
+</style>
+</head>
+<body>
+
+<canvas id="draw"></canvas>
+
+<header>
+  <div class="logo">SVS</div>
+  <div class="hnote">щоденник краси ✎</div>
+</header>
+
+<main>
+  <section>
+    <div class="hand reveal" style="--r:-2deg">Суми · салон краси</div>
+    <h1 class="reveal">Краса — це<br><span class="mark">щоденник</span>,<br>який ми ведемо разом</h1>
+    <p class="lead reveal">Кожен візит — нова сторінка. Фарбування, стрижки, догляд —
+      приклеюємо найкращі моменти просто сюди.</p>
+    <div class="sticker" style="right:6vw;top:24vh;transform:rotate(8deg)">це про вас →</div>
+  </section>
+
+  <section>
+    <h2 class="reveal">Сторінка 01 · <span class="mark">що вміємо</span></h2>
+    <ul class="check">
+      <li class="reveal"><span class="box">✓</span><span class="nm">Складне фарбування</span><span class="pr">Airtouch · Shatush</span></li>
+      <li class="reveal"><span class="box">✓</span><span class="nm">Brazilian Blond</span><span class="pr">реконструкція</span></li>
+      <li class="reveal"><span class="box">✓</span><span class="nm">Стрижки</span><span class="pr">жін · чол · діти</span></li>
+      <li class="reveal"><span class="box">✓</span><span class="nm">Домашній догляд</span><span class="pr">підбір майстром</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="reveal">Сторінка 02 · <span class="mark">фотокартки</span></h2>
+    <div class="board">
+      <div class="pol reveal" style="--r:-5deg;transform:rotate(-5deg)"><span class="tape"></span>
+        <div class="ph" style="background:linear-gradient(135deg,#C84B31,#E8A87C)">Aa</div>
+        <div class="cap">airtouch ♡</div></div>
+      <div class="pol reveal" style="--r:3deg;transform:rotate(3deg)"><span class="tape"></span>
+        <div class="ph" style="background:linear-gradient(135deg,#3E5C76,#93B5C6)">Bb</div>
+        <div class="cap">brazilian blond</div></div>
+      <div class="pol reveal" style="--r:-2deg;transform:rotate(-2deg)"><span class="tape"></span>
+        <div class="ph" style="background:linear-gradient(135deg,#6B7F59,#C9D5B5)">Cc</div>
+        <div class="cap">форма і стиль</div></div>
+    </div>
+    <p class="lead reveal" style="margin:34px auto 0;text-align:center">Тут будуть справжні роботи наших майстрів —
+      ці картки лише тримають місце.</p>
+  </section>
+
+  <section style="align-items:flex-start">
+    <h2 class="reveal">Сторінка 03 · <span class="mark">магазин</span></h2>
+    <p class="lead reveal">Професійні засоби, якими працюємо самі: 4 бренди, 120+ позицій.
+      Майстер підбере догляд саме під ваше волосся.</p>
+    <div class="hand reveal" style="--r:-2deg;margin-top:22px;font-size:clamp(24px,3.4vw,38px)">
+      «беріть те саме, що у кріслі» — наш головний секрет</div>
+  </section>
+
+  <section style="text-align:center;align-items:center">
+    <h2 class="reveal">Остання сторінка —<br><span class="mark">ваша</span></h2>
+    <p class="lead reveal" style="margin-left:auto;margin-right:auto">Запишіться, і наступну сторінку
+      цього щоденника ми заповнимо вашим новим кольором.</p>
+    <a class="btn reveal" href="https://t.me/" target="_blank" rel="noopener">Записатися</a>
+  </section>
+</main>
+
+<footer>SVS Beauty Space · Суми · concept v8 «Collage»</footer>
+
+<script>
+/* reveal по скроллу */
+const io = new IntersectionObserver(es=>{
+  es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('on'); io.unobserve(e.target);} });
+},{threshold:.18});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* рисующий маркер за курсором — линия чернил, затухающая */
+const cv = document.getElementById('draw'), ctx = cv.getContext('2d');
+let pts = [];
+function fit(){ cv.width = innerWidth*devicePixelRatio; cv.height = innerHeight*devicePixelRatio;
+  cv.style.width = innerWidth+'px'; cv.style.height = innerHeight+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); }
+fit(); addEventListener('resize', fit);
+
+const fine = matchMedia('(pointer:fine)').matches;
+if(fine){
+  addEventListener('pointermove', e=>{
+    pts.push({x:e.clientX, y:e.clientY, t:performance.now()});
+    if(pts.length>140) pts.shift();
+  }, {passive:true});
+}
+(function loop(){
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  const now = performance.now();
+  pts = pts.filter(p => now - p.t < 900);
+  if(pts.length>2){
+    for(let i=1;i<pts.length;i++){
+      const a = pts[i-1], b = pts[i];
+      const age = (now - b.t)/900;
+      ctx.strokeStyle = `rgba(200,75,49,${(1-age)*0.55})`;
+      ctx.lineWidth = (1-age)*3.4 + 0.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
