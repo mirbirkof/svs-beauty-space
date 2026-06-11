@@ -189,6 +189,75 @@ async function raw(method, path, query, body) {
   return request(method, path, { token, query, body });
 }
 
+// ── Провести визит в BP: чеки на счёт TG-бота + зелёный цвет записи ──
+// BP API не умеет связывать sale↔appointment_service (read-only, только их UI),
+// поэтому "проведено" = чеки в кассе + color записи (verified 11.06.2026).
+const TGBOT_ACCOUNT = process.env.BEAUTYPRO_TGBOT_ACCOUNT || '88dec726-eeae-eee4-2129-4c1a590157a6';
+const PAID_COLOR = '#00C853';
+
+async function closeAppointmentAsPaid(appointmentId, paidSum) {
+  return withRetry(async () => {
+    const token = await getToken();
+    const appt = await request('GET', `/appointments/${appointmentId}`, {
+      token,
+      query: { fields: 'date,state,client,services(start,duration,service,professional,price)' },
+    });
+    const services = (appt.services || []).filter(s => s.service && s.professional);
+    if (!appt.client || !services.length) {
+      return { ok: false, reason: 'no-client-or-services' };
+    }
+
+    const totalPrice = services.reduce((acc, s) => acc + (Number(s.price) || 0), 0);
+    // если оплачено меньше прайса — разница раскидывается скидкой пропорционально
+    const discountTotal = Math.max(0, totalPrice - (Number(paidSum) || totalPrice));
+
+    const sales = [];
+    let discountLeft = discountTotal;
+    for (let i = 0; i < services.length; i++) {
+      const s = services[i];
+      const price = Number(s.price) || 0;
+      // последняя услуга забирает остаток скидки (без потери копеек)
+      const disc = (i === services.length - 1)
+        ? Math.min(discountLeft, price)
+        : Math.min(discountLeft, Math.round(discountTotal * (price / (totalPrice || 1))));
+      discountLeft -= disc;
+      // start приходит как "15:30" (time-only) — собираем полный timestamp из даты записи
+      const calDate = /^\d{2}:\d{2}/.test(s.start)
+        ? `${String(appt.date).slice(0, 10)}T${s.start.length === 5 ? s.start + ':00' : s.start}.000Z`
+        : s.start;
+      const item = {
+        service: s.service,
+        professional: s.professional,
+        appointment: appointmentId,
+        calendar_date: calDate,
+        duration: s.duration,
+      };
+      if (disc > 0) {
+        item.one_time_discount = { sum: disc, max_percent: 100, reason: 'Оплата через TG-бот (Mono)' };
+      }
+      // multi-item bug в BP: 2+ items в одном purchase → 500, поэтому по одному
+      const sale = await request('POST', '/sales/purchase', {
+        token,
+        body: {
+          location: LOCATION,
+          client: appt.client,
+          items: [item],
+          payments: [{ account: TGBOT_ACCOUNT, sum: price - disc }],
+        },
+      });
+      sales.push(sale);
+    }
+
+    // зелёный цвет = визуальный маркер "оплачено" в календаре BP
+    await request('PUT', `/appointments/${appointmentId}`, {
+      token,
+      body: { color: PAID_COLOR },
+    });
+
+    return { ok: true, sales: sales.length, total: totalPrice - discountTotal };
+  });
+}
+
 module.exports = {
   createClient,
   createAppointment,
@@ -199,4 +268,5 @@ module.exports = {
   getSchedule,
   getToken,
   raw,
+  closeAppointmentAsPaid,
 };

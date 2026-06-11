@@ -52,6 +52,18 @@ function httpsRequest(method, path, { token, body } = {}) {
   });
 }
 
+// BP инвалидирует старые токены при выдаче новых (/auth/database) →
+// кэш может умереть до tokenExpiry. На 401 сбрасываем и повторяем 1 раз.
+function invalidateToken() { cachedToken = null; tokenExpiry = 0; }
+
+async function withAuthRetry(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (e.status === 401) { invalidateToken(); return fn(); }
+    throw e;
+  }
+}
+
 async function getToken() {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
   if (!APP_ID || !SECRET) throw new Error('BeautyPro keys missing in env');
@@ -190,9 +202,13 @@ async function syncAppointments(from, to) {
         const [h, m] = s.start.split(':').map(Number);
         startLocal = fmtLocal(a.date, h * 60 + m); // h может быть >= 24 (за полночь)
       }
+      // ON CONFLICT: услуга могла переехать в другую запись в BP (uq_appt_services_bp) — переносим строку
       await pool.query(
         `INSERT INTO appointment_services (appointment_id, service_id, master_id, beautypro_id, starts_at, duration_min, price)
-         VALUES ($1,$2,$3,$4,($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7)`,
+         VALUES ($1,$2,$3,$4,($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7)
+         ON CONFLICT (beautypro_id) WHERE beautypro_id IS NOT NULL DO UPDATE SET
+           appointment_id=EXCLUDED.appointment_id, service_id=EXCLUDED.service_id, master_id=EXCLUDED.master_id,
+           starts_at=EXCLUDED.starts_at, duration_min=EXCLUDED.duration_min, price=EXCLUDED.price`,
         [apptId, svcRow.rows[0]?.id || null, mstRow.rows[0]?.id || null, s.id || null,
          startLocal, Number(s.duration) || null, Number(s.price) || null]
       );
@@ -254,12 +270,12 @@ async function backfillClients(limit = 500) {
 // ===== ROUTES =====
 
 router.post('/v2/clients-backfill', requirePerm('sync.write'), async (req, res) => {
-  try { res.json({ ok: true, ...(await backfillClients(Number(req.query.limit) || 500)) }); }
+  try { res.json({ ok: true, ...(await withAuthRetry(() => backfillClients(Number(req.query.limit) || 500))) }); }
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
 router.post('/v2/services', requirePerm('sync.write'), async (req, res) => {
-  try { res.json({ ok: true, ...(await syncServicesCatalog()) }); }
+  try { res.json({ ok: true, ...(await withAuthRetry(syncServicesCatalog)) }); }
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
@@ -268,7 +284,7 @@ router.post('/v2/appointments', requirePerm('sync.write'), async (req, res) => {
   const iso = (d) => d.toISOString().slice(0, 10);
   const from = req.query.from || iso(new Date(today.getTime() - 30 * 864e5));
   const to = req.query.to || iso(new Date(today.getTime() + 60 * 864e5));
-  try { res.json({ ok: true, from, to, ...(await syncAppointments(from, to)) }); }
+  try { res.json({ ok: true, from, to, ...(await withAuthRetry(() => syncAppointments(from, to))) }); }
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
@@ -290,7 +306,7 @@ async function cronTick() {
   try {
     const iso = (d) => d.toISOString().slice(0, 10);
     const now = new Date();
-    const r = await syncAppointments(iso(new Date(now.getTime() - 864e5)), iso(new Date(now.getTime() + 14 * 864e5)));
+    const r = await withAuthRetry(() => syncAppointments(iso(new Date(now.getTime() - 864e5)), iso(new Date(now.getTime() + 14 * 864e5))));
     if (r.created || r.updated) console.log(`[bp-appt-sync] +${r.created} new, ~${r.updated} upd`);
   } catch (e) {
     console.error('[bp-appt-sync] cron error:', e.message);

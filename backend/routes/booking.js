@@ -149,7 +149,8 @@ router.post('/telegram', async (req, res) => {
       if (msg.contact.user_id !== msg.from.id) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '❌ Можна поділитись лише власним номером.' });
       }
-      const phone = '+' + msg.contact.phone_number.replace(/\D/g, '');
+      const phoneDigits = msg.contact.phone_number.replace(/\D/g, ''); // локальная БД хранит цифры (380...)
+      const phone = '+' + phoneDigits; // для BeautyPro — с плюсом
       const row = await db.byTgUser(msg.from.id);
       if (!row) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: 'Активних записів немає.' });
@@ -170,16 +171,28 @@ router.post('/telegram', async (req, res) => {
 
         // Запись в общий журнал online_bookings — для unified history по телефону
         try {
-          // upsert клиента
-          const cl = await getPool().query(
-            `INSERT INTO clients (phone, name, telegram_id, source)
-             VALUES ($1, $2, $3, 'bot-salon')
-             ON CONFLICT (tenant_id, phone) DO UPDATE SET
-               telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
-               name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
-             RETURNING id`,
-            [phone, row.client_name || msg.from.first_name || null, msg.from.id]
+          // upsert клиента: ищем по НОРМАЛИЗОВАННОМУ номеру (в БД встречаются и '380...' и '+380...')
+          let cl = await getPool().query(
+            `SELECT id FROM clients WHERE regexp_replace(phone, '\\D', '', 'g') = $1 LIMIT 1`,
+            [phoneDigits]
           );
+          if (cl.rows.length) {
+            await getPool().query(
+              `UPDATE clients SET telegram_id = COALESCE(telegram_id, $2),
+                 name = COALESCE(NULLIF(name,''), $3) WHERE id = $1`,
+              [cl.rows[0].id, msg.from.id, row.client_name || msg.from.first_name || null]
+            );
+          } else {
+            cl = await getPool().query(
+              `INSERT INTO clients (phone, name, telegram_id, source)
+               VALUES ($1, $2, $3, 'bot-salon')
+               ON CONFLICT (tenant_id, phone) DO UPDATE SET
+                 telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
+                 name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
+               RETURNING id`,
+              [phoneDigits, row.client_name || msg.from.first_name || null, msg.from.id]
+            );
+          }
           const ob = await getPool().query(
             `INSERT INTO online_bookings
               (client_id, client_phone, client_name, service_id, master_id,

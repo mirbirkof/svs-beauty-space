@@ -16,6 +16,15 @@ const mono = require('../lib/mono');
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
 
+// телефон владельца личного кабинета (clients.phone по client_id); fallback — что записано в брони
+async function cabinetPhone(pool, clientId, fallback) {
+  if (!clientId) return fallback || '';
+  try {
+    const r = await pool.query('SELECT phone FROM clients WHERE id = $1', [clientId]);
+    return (r.rows[0] && r.rows[0].phone) || fallback || '';
+  } catch (_) { return fallback || ''; }
+}
+
 // ── применить статус инвойса (вебхук И поллинг идут сюда — один путь) ──
 async function applyInvoiceStatus(data) {
   const pool = getPool();
@@ -44,11 +53,20 @@ async function applyInvoiceStatus(data) {
     const upd = await pool.query(
       `UPDATE online_bookings SET visit_paid_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND visit_paid_at IS NULL
-       RETURNING id, client_name, client_phone, service_name, telegram_id`,
+       RETURNING id, client_id, client_name, client_phone, service_name, telegram_id, bp_appointment_id`,
       [p.booking_id]
     );
     if (upd.rowCount) {
       const b = upd.rows[0];
+      // телефон в уведомлении = телефон владельца кабинета (clients.phone), не телефон из карточки BP
+      b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
+      // провести в BeautyPro: чеки на счёт TG-бот + зелёная запись (fire-and-forget)
+      if (b.bp_appointment_id) {
+        const bp = require('../beautyproClient');
+        bp.closeAppointmentAsPaid(b.bp_appointment_id, paid)
+          .then(r => console.log('[mono:bp-close]', b.bp_appointment_id, JSON.stringify(r)))
+          .catch(e => console.error('[mono:bp-close]', b.bp_appointment_id, e.message));
+      }
       if (b.telegram_id) {
         bookingBotSend(b.telegram_id,
           `✅ Оплату ${Math.round(paid)} грн отримано. Дякуємо, що ви з нами! 💛`)
@@ -67,11 +85,12 @@ async function applyInvoiceStatus(data) {
     const upd = await pool.query(
       `UPDATE online_bookings SET prepaid_amount = $1, prepaid_at = NOW(), updated_at = NOW()
        WHERE id = $2 AND prepaid_at IS NULL
-       RETURNING id, client_name, client_phone, service_name, date_from, telegram_id`,
+       RETURNING id, client_id, client_name, client_phone, service_name, date_from, telegram_id`,
       [paid, p.booking_id]
     );
     if (upd.rowCount) {
       const b = upd.rows[0];
+      b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
       const when = b.date_from ? new Date(b.date_from).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
       // клиенту — через booking-бот (он точно с ним общался)
       if (b.telegram_id) {

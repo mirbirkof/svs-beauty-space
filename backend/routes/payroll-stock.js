@@ -18,15 +18,15 @@ router.use((req, res, next) => {
 // POST /api/payroll/schemes — создать/обновить схему
 router.post('/payroll/schemes', async (req, res) => {
   try {
-    const { master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, notes } = req.body || {};
+    const { master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes } = req.body || {};
     if (!master_id || !scheme_type) return res.status(400).json({ error: 'master_id, scheme_type required' });
     if (!['percent', 'fixed', 'hybrid'].includes(scheme_type)) return res.status(400).json({ error: 'bad scheme_type' });
     // деактивируем старые схемы для этого мастера
     await pool.query(`UPDATE payroll_schemes SET is_active=FALSE WHERE master_id=$1`, [master_id]);
     const r = await pool.query(
-      `INSERT INTO payroll_schemes (master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, notes, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE) RETURNING id`,
-      [master_id, master_name || null, scheme_type, percent || null, fixed_per_day || null, fixed_per_month || null, notes || null]
+      `INSERT INTO payroll_schemes (master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE) RETURNING id`,
+      [master_id, master_name || null, scheme_type, percent || null, fixed_per_day || null, fixed_per_month || null, sales_commission_pct || 0, notes || null]
     );
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -81,15 +81,33 @@ router.post('/payroll/calculate', async (req, res) => {
       }
     }
 
+    // 3b. комиссия с продаж продукции (orders.seller_master_id за период)
+    let sales_revenue = 0, sales_part = 0;
+    const salesPct = parseFloat(s.sales_commission_pct || 0);
+    if (salesPct > 0) {
+      const so = await pool.query(
+        `SELECT COALESCE(SUM(total), 0)::numeric AS revenue
+         FROM orders
+         WHERE seller_master_id = $1::int
+           AND status NOT IN ('cancelled', 'refunded')
+           AND created_at >= $2::date
+           AND created_at <  ($3::date + INTERVAL '1 day')`,
+        [master_id, period_start, period_end]
+      );
+      sales_revenue = parseFloat(so.rows[0]?.revenue || 0);
+      sales_part = sales_revenue * (salesPct / 100);
+    }
+
     // 4. записать в payroll_records (draft)
     const rec = await pool.query(
       `INSERT INTO payroll_records (master_id, master_name, period_start, period_end,
-                                    services_count, services_revenue, percent_part, fixed_part, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft') RETURNING id, total`,
-      [master_id, s.master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part]
+                                    services_count, services_revenue, percent_part, fixed_part,
+                                    sales_revenue, sales_part, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'draft') RETURNING id, total`,
+      [master_id, s.master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, sales_revenue, sales_part]
     );
     res.json({ ok: true, record_id: rec.rows[0].id, total: rec.rows[0].total,
-               breakdown: { services_count, services_revenue, percent_part, fixed_part } });
+               breakdown: { services_count, services_revenue, percent_part, fixed_part, sales_revenue, sales_part } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

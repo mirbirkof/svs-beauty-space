@@ -28,7 +28,9 @@ function normalizePhone(p) {
 async function getOrCreateClient(phone, name, telegram_id) {
   const ph = normalizePhone(phone);
   if (!ph) return null;
-  const existing = await pool.query('SELECT id FROM clients WHERE phone = $1', [ph]);
+  const phDigits = ph.replace(/\D/g, ''); // БД хранит цифры (380...) — сравниваем нормализованно
+  const existing = await pool.query(
+    `SELECT id FROM clients WHERE regexp_replace(phone, '\\D', '', 'g') = $1 LIMIT 1`, [phDigits]);
   if (existing.rows.length) {
     if (telegram_id) {
       await pool.query('UPDATE clients SET telegram_id = COALESCE(telegram_id, $1), name = COALESCE(NULLIF(name,\'\'), $2) WHERE id = $3', [telegram_id, name, existing.rows[0].id]);
@@ -37,7 +39,7 @@ async function getOrCreateClient(phone, name, telegram_id) {
   }
   const r = await pool.query(
     'INSERT INTO clients (phone, name, telegram_id) VALUES ($1, $2, $3) RETURNING id',
-    [ph, name || null, telegram_id || null]
+    [phDigits, name || null, telegram_id || null]
   );
   return r.rows[0].id;
 }
