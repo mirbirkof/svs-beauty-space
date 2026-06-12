@@ -1,0 +1,127 @@
+/* SVS Beauty CRM — единый стиль админки. Эталон: admin/index.html */
+:root {
+  --primary: #5B5FC7;
+  --primary-hover: #4B4FB7;
+  --primary-light: #EDEDFA;
+  --sidebar-bg: #1E1F2B;
+  --sidebar-text: #A0A3BD;
+  --sidebar-active: #5B5FC7;
+  --sidebar-active-text: #fff;
+  --bg: #F4F5FA;
+  --card: #fff;
+  --text: #1E1F2B;
+  --text-secondary: #6E7191;
+  --border: #E4E6F0;
+  --success: #2DC96F;
+  --warning: #F5A623;
+  --danger: #E5484D;
+  --info: #3B82F6;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+
+/* SIDEBAR */
+.sidebar {
+  position:fixed; left:0; top:0; bottom:0; width:240px;
+  background:var(--sidebar-bg); display:flex; flex-direction:column;
+  z-index:100; transition:transform .2s;
+}
+.sidebar-logo { padding:20px 20px 16px; border-bottom:1px solid rgba(255,255,255,.08); }
+.sidebar-logo h1 { color:#fff; font-size:16px; font-weight:700; }
+.sidebar-logo span { color:var(--sidebar-text); font-size:11px; display:block; margin-top:2px; }
+.sidebar-nav { flex:1; overflow-y:auto; padding:12px 0; }
+.sidebar-section { padding:6px 16px; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:rgba(255,255,255,.3); margin-top:8px; }
+.sidebar-item {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 16px; margin:1px 8px; border-radius:var(--radius-sm);
+  color:var(--sidebar-text); cursor:pointer; font-size:13px; font-weight:500;
+  transition:all .15s; text-decoration:none;
+}
+.sidebar-item:hover { background:rgba(255,255,255,.06); color:#fff; }
+.sidebar-item.active { background:var(--sidebar-active); color:var(--sidebar-active-text); }
+.sidebar-item .material-icons-round { font-size:20px; }
+.sidebar-badge {
+  margin-left:auto; background:var(--danger); color:#fff;
+  font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; min-width:18px; text-align:center;
+}
+.sidebar-group-header {
+  display:flex; align-items:center; gap:10px; padding:9px 16px; margin:1px 8px;
+  border-radius:var(--radius-sm); color:var(--sidebar-text); cursor:pointer;
+  font-size:13px; font-weight:500;
+}
+.sidebar-group-header:hover { background:rgba(255,255,255,.06); color:#fff; }
+.sidebar-group-header .chevron { margin-left:auto; transition:transform .15s; }
+.sidebar-group.open .chevron { transform:rotate(90deg); }
+.sidebar-group-items { display:none; }
+.sidebar-group.open .sidebar-group-items { display:block; }
+.sidebar-group-items .sidebar-item { padding-left:28px; }
+.sidebar-footer { padding:12px; border-top:1px solid rgba(255,255,255,.08); }
+.sidebar-footer button {
+  width:100%; display:flex; align-items:center; gap:8px; justify-content:center;
+  background:rgba(255,255,255,.06); border:none; color:var(--sidebar-text);
+  padding:9px; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-family:inherit;
+}
+.sidebar-footer button:hover { background:rgba(255,255,255,.12); color:#fff; }
+
+/* MAIN + TOPBAR */
+.main { margin-left:240px; min-height:100vh; }
+.topbar {
+  position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:12px;
+  background:var(--card); border-bottom:1px solid var(--border); padding:12px 24px;
+}
+.topbar h2 { font-size:17px; font-weight:700; flex:1; }
+.topbar-btn {
+  display:inline-flex; align-items:center; gap:6px; background:var(--card);
+  border:1px solid var(--border); color:var(--text); padding:7px 12px;
+  border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-weight:500; font-family:inherit;
+}
+.topbar-btn:hover { background:var(--bg); }
+.burger { display:none; background:none; border:none; cursor:pointer; color:var(--text); }
+.content { padding:24px; max-width:1280px; }
+
+/* КОМПОНЕНТЫ */
+.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px; }
+.card h3 { font-size:14px; font-weight:700; margin-bottom:12px; }
+.grid { display:grid; gap:16px; }
+.grid-2 { grid-template-columns:repeat(2,1fr); }
+.grid-3 { grid-template-columns:repeat(3,1fr); }
+.grid-4 { grid-template-columns:repeat(4,1fr); }
+.stat { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
+.stat .label { font-size:12px; color:var(--text-secondary); }
+.stat .value { font-size:22px; font-weight:700; margin-top:4px; }
+table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+table.tbl th { text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:11px; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid var(--border); }
+table.tbl td { padding:9px 10px; border-bottom:1px solid var(--border); }
+table.tbl tr:hover td { background:var(--bg); }
+.btn {
+  display:inline-flex; align-items:center; gap:6px; background:var(--primary); color:#fff;
+  border:none; padding:8px 14px; border-radius:var(--radius-sm); cursor:pointer;
+  font-size:13px; font-weight:600; font-family:inherit;
+}
+.btn:hover { background:var(--primary-hover); }
+.btn.secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
+.btn.secondary:hover { background:var(--bg); }
+.btn.danger { background:var(--danger); }
+.badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+.badge.ok { background:#E6F9EF; color:var(--success); }
+.badge.warn { background:#FEF4E2; color:var(--warning); }
+.badge.err { background:#FDECEC; color:var(--danger); }
+.badge.info { background:#E8F1FE; color:var(--info); }
+input.inp, select.inp, textarea.inp {
+  width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  font-size:13px; font-family:inherit; background:var(--card); color:var(--text);
+}
+input.inp:focus, select.inp:focus, textarea.inp:focus { outline:none; border-color:var(--primary); }
+.muted { color:var(--text-secondary); }
+
+/* MOBILE */
+@media (max-width: 900px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); }
+  .main { margin-left:0; }
+  .burger { display:inline-flex; }
+  .content { padding:16px; }
+  .grid-2,.grid-3,.grid-4 { grid-template-columns:1fr; }
+}

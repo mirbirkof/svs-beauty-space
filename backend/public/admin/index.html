@@ -232,9 +232,6 @@ select.input { background:var(--card); }
       </a>
 
       <div class="sidebar-section">Салон</div>
-      <a class="sidebar-item" href="/admin/crm-extra.html#schedule">
-        <span class="material-icons-round">calendar_month</span> Розклад майстрів
-      </a>
       <a class="sidebar-item" data-page="waitlist" onclick="go('waitlist')">
         <span class="material-icons-round">queue</span> Лист очікування
         <span class="sidebar-badge" id="badge-waitlist" style="display:none">0</span>
@@ -250,6 +247,9 @@ select.input { background:var(--card); }
       </a>
       <a class="sidebar-item" data-page="blacklist" onclick="go('blacklist')">
         <span class="material-icons-round">block</span> Чорний список
+      </a>
+      <a class="sidebar-item" href="/admin/dikidi.html">
+        <span class="material-icons-round">reviews</span> Відгуки / Промо (запис)
       </a>
 
       <div class="sidebar-section">SVS Beauty World</div>
@@ -278,14 +278,8 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
             <span class="material-icons-round">star_rate</span> Відгуки
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#loyalty">
-            <span class="material-icons-round">card_giftcard</span> Лояльність / Бонуси
-          </a>
           <a class="sidebar-item" href="/admin/crm-extra.html#cashbox">
             <span class="material-icons-round">point_of_sale</span> Каса магазину
-          </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#novaposhta">
-            <span class="material-icons-round">local_shipping</span> Нова Пошта
           </a>
           <a class="sidebar-item" href="https://svs-beauty-space.vercel.app" target="_blank">
             <span class="material-icons-round">language</span> Вітрина (сайт)
@@ -301,11 +295,14 @@ select.input { background:var(--card); }
       <a class="sidebar-item" href="/admin/crm-extra.html#reports">
         <span class="material-icons-round">insights</span> Звіти (P&amp;L, RFM)
       </a>
-      <a class="sidebar-item" href="/admin/crm-extra.html#export">
+      <a class="sidebar-item" href="/admin/export.html">
         <span class="material-icons-round">file_download</span> Експорт CSV
       </a>
 
       <div class="sidebar-section">Система</div>
+      <a class="sidebar-item" href="/admin/dashboard.html">
+        <span class="material-icons-round">monitor_heart</span> Системний статус
+      </a>
       <a class="sidebar-item" href="/admin/crm-extra.html#branches">
         <span class="material-icons-round">store</span> Філії
       </a>
@@ -617,7 +614,8 @@ async function checkToken() {
     if (r.status === 200) {
       document.getElementById('login').style.display = 'none';
       document.getElementById('app').style.display = '';
-      go('dashboard');
+      const h = location.hash.replace('#','');
+      go(document.getElementById('page-' + h) ? h : 'dashboard');
     } else throw new Error();
   } catch { localStorage.removeItem('svs_admin_token'); TOKEN=''; showLogin(); }
 }
@@ -652,8 +650,14 @@ const pageTitles = {
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити'
 };
 
+window.addEventListener('hashchange', () => {
+  const h = location.hash.replace('#','');
+  if (h && h !== currentPage && document.getElementById('page-' + h)) go(h);
+});
+
 function go(page) {
   currentPage = page;
+  if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.page === page));

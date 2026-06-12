@@ -6,11 +6,13 @@
 <title>SVS CRM — Каса, Звіти, Інвентар, Філії, Користувачі</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
 <style>
-:root{--p:#5B5FC7;--bg:#F4F5FA;--card:#fff;--text:#1E1F2B;--muted:#6E7191;--bd:#E4E6F0;--ok:#2DC96F;--warn:#F5A623;--dng:#E5484D}
+/* Локальні псевдоніми → токени каркаса (admin-shell.css). Світла тема. */
+:root{--p:var(--primary);--muted:var(--text-secondary);--bd:var(--border);--ok:var(--success);--warn:var(--warning);--dng:var(--danger)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
-header{background:#1E1F2B;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+header{background:var(--sidebar-bg);color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
 header h1{font-size:16px;font-weight:700}
 header .token{display:flex;gap:8px;align-items:center}
 header input{padding:6px 10px;border-radius:8px;border:1px solid #444;background:#2A2B3A;color:#fff;font-size:12px;width:280px}
@@ -42,7 +44,7 @@ table th,table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(
 table th{background:#FAFBFC;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 table tr:hover{background:#FAFBFC}
 .btn{background:var(--p);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
-.btn:hover{background:#4B4FB7}
+.btn:hover{background:var(--primary-hover)}
 .btn.sm{padding:5px 10px;font-size:12px}
 .btn.danger{background:var(--dng)}
 .btn.ghost{background:transparent;color:var(--p);border:1px solid var(--p)}
@@ -263,9 +265,18 @@ document.querySelectorAll('nav.tabs button').forEach(b=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     document.getElementById('tab-'+b.dataset.tab).classList.add('active');
+    history.replaceState(null,'','#'+b.dataset.tab);
     onTab(b.dataset.tab);
   };
 });
+
+// прямые ссылки на вкладку: crm-extra.html#reports и т.п.
+function openHashTab(){
+  const h=location.hash.replace('#','');
+  const btn=document.querySelector('nav.tabs button[data-tab="'+h+'"]');
+  if(btn) btn.onclick();
+}
+window.addEventListener('hashchange', openHashTab);
 
 function onTab(t){
   if(t==='cashbox') loadCashbox();
@@ -480,7 +491,7 @@ async function loadAudit(){
   }catch(e){ alert(e.message); }
 }
 
-function init(){ setRange(30); onTab('cashbox'); }
+function init(){ setRange(30); if(location.hash && document.querySelector('nav.tabs button[data-tab="'+location.hash.slice(1)+'"]')) openHashTab(); else onTab('cashbox'); }
 init();
 </script>
 </body>
