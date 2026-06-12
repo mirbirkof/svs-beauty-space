@@ -72,9 +72,38 @@
       api('/api/cabinet/request-code', { method: 'POST', body: JSON.stringify({ phone: phone }) })
         .then(function (d) {
           if (d.ok === false || d.error) throw new Error(d.error || 'failed');
+          if (d.mode === 'telegram-link-required') return renderLinkTelegram(phone, d);
           renderCode(phone);
         })
         .catch(function () { btn.disabled = false; btn.textContent = 'Отримати код'; showError('Не вдалось надіслати код. Спробуйте ще раз.'); });
+    });
+  }
+
+  // ── screen: привʼязка Telegram ─────────────────────────
+  function renderLinkTelegram(phone, d) {
+    var botUrl = (d && d.bot_url) || 'https://t.me/Svs_beautybot';
+    var botName = (d && d.bot) || '@Svs_beautybot';
+    render(
+      '<div class="auth-card">' +
+        '<h1 class="auth-card__title">Підтвердіть номер у Telegram</h1>' +
+        '<p class="auth-card__subtitle">Щоб увійти в кабінет, відкрийте нашого бота ' + esc(botName) +
+          ', натисніть «Старт» і поділіться номером телефону. Це потрібно один раз.</p>' +
+        '<a class="auth-btn-primary" style="display:block;text-align:center;text-decoration:none" href="' + botUrl + '" target="_blank" rel="noopener">Відкрити бота</a>' +
+        '<button class="auth-btn-primary" id="retryBtn" style="margin-top:12px;background:transparent;border:1px solid currentColor">Я поділився номером — надіслати код</button>' +
+        '<a class="auth-back" href="#" id="backBtn">← Змінити номер</a>' +
+      '</div>'
+    );
+    document.getElementById('backBtn').addEventListener('click', function (e) { e.preventDefault(); renderLogin(); });
+    document.getElementById('retryBtn').addEventListener('click', function () {
+      var btn = document.getElementById('retryBtn');
+      btn.disabled = true; btn.textContent = 'Надсилаємо…';
+      api('/api/cabinet/request-code', { method: 'POST', body: JSON.stringify({ phone: phone }) })
+        .then(function (d2) {
+          if (d2.mode === 'telegram') return renderCode(phone);
+          btn.disabled = false; btn.textContent = 'Я поділився номером — надіслати код';
+          showError('Номер ще не привʼязано. Відкрийте бота і поділіться номером.');
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = 'Я поділився номером — надіслати код'; showError('Не вдалось надіслати код. Спробуйте ще раз.'); });
     });
   }
 
@@ -83,9 +112,9 @@
     render(
       '<div class="auth-card">' +
         '<h1 class="auth-card__title">Введіть код</h1>' +
-        '<p class="auth-card__subtitle">Надіслали код на +' + esc(phone) + '</p>' +
+        '<p class="auth-card__subtitle">Надіслали код у Telegram (номер +' + esc(phone) + ')</p>' +
         '<div class="auth-error" id="authError" style="display:none"></div>' +
-        '<div class="auth-field"><label>Код із SMS</label>' +
+        '<div class="auth-field"><label>Код із Telegram</label>' +
           '<input type="text" inputmode="numeric" maxlength="4" id="codeInput" placeholder="••••" autocomplete="one-time-code"></div>' +
         '<button class="auth-btn-primary" id="verifyBtn">Увійти</button>' +
         '<a class="auth-back" href="#" id="backBtn">← Змінити номер</a>' +

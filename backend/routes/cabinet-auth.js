@@ -63,41 +63,76 @@ function authClient({ optional = false } = {}) {
 }
 
 // ── запрос кода ─────────────────────────────────────────
+// Доставка ТОЛЬКО через Telegram (бот @Svs_beautybot).
+// DEV-режим (код 0000) — только при явном ALLOW_DEV_LOGIN=1 (локальная разработка).
+const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Svs_beautybot';
+const MAX_VERIFY_ATTEMPTS = 5;
+
 router.post('/request-code', async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     if (phone.length < 9) return res.status(400).json({ error: 'bad-phone' });
 
     const pool = getPool();
-    const code = process.env.SMS_PROVIDER ? genCode() : DEV_CODE;
+
+    // Rate limit: не больше 3 кодов в минуту на телефон
+    const recent = await pool.query(
+      `SELECT COUNT(*) FROM sms_codes WHERE phone = $1 AND created_at > NOW() - INTERVAL '60 seconds'`,
+      [phone]
+    ).catch(() => null);
+    if (recent && Number(recent.rows[0].count) >= 3) {
+      return res.status(429).json({ error: 'too-many-requests', retry_after_seconds: 60 });
+    }
+
     const expires = new Date(Date.now() + 5 * 60 * 1000);
 
+    // DEV-режим: только по явному флагу, НИКОГДА в проде
+    if (process.env.ALLOW_DEV_LOGIN === '1') {
+      await pool.query(
+        `INSERT INTO sms_codes (phone, code, expires_at, used) VALUES ($1,$2,$3,false)`,
+        [phone, DEV_CODE, expires]
+      );
+      return res.json({ ok: true, mode: 'dev', hint: `dev-code: ${DEV_CODE}` });
+    }
+
+    // Ищем клиента с привязанным Telegram
+    const cl = await pool.query(
+      'SELECT id, telegram_id FROM clients WHERE phone LIKE $1 AND telegram_id IS NOT NULL LIMIT 1',
+      ['%' + phone.slice(-10)]
+    );
+    if (!cl.rows[0]) {
+      // Telegram не привязан — вход невозможен, объясняем как привязать
+      return res.json({
+        ok: true,
+        mode: 'telegram-link-required',
+        bot: '@' + BOT_USERNAME,
+        bot_url: `https://t.me/${BOT_USERNAME}`,
+        message: `Щоб увійти, відкрийте бота @${BOT_USERNAME}, натисніть «Старт» і поділіться номером телефону. Після цього запросіть код ще раз.`,
+      });
+    }
+
+    // Сначала шлём код, и только при успехе сохраняем — иначе клиент без кода
+    const code = genCode();
+    try {
+      const { tgSend } = require('./telegram-notify');
+      await tgSend(String(cl.rows[0].telegram_id),
+        `🔑 Ваш код для входу в кабінет: <b>${code}</b>\nДійсний 5 хвилин. Якщо це були не ви — проігноруйте.`);
+    } catch (tgErr) {
+      console.error('[auth:request] tg-send-failed', tgErr.message);
+      return res.status(503).json({
+        error: 'tg-send-failed',
+        message: 'Не вдалося надіслати код у Telegram. Спробуйте пізніше.',
+      });
+    }
+
+    // Инвалидируем старые активные коды и сохраняем новый
+    await pool.query(`UPDATE sms_codes SET used = true WHERE phone = $1 AND used = false`, [phone]);
     await pool.query(
       `INSERT INTO sms_codes (phone, code, expires_at, used) VALUES ($1,$2,$3,false)`,
       [phone, code, expires]
     );
 
-    // Отправка кода: Telegram (если клиент есть) → SMS (если провайдер) → dev-fallback
-    let mode = 'dev';
-    if (process.env.SMS_PROVIDER) {
-      // TODO: Twilio / TurboSMS
-      mode = 'sms';
-    } else {
-      // Попробуем через Telegram если клиент уже известен
-      try {
-        const cl = await pool.query('SELECT telegram_id FROM clients WHERE phone LIKE $1 LIMIT 1', ['%' + phone.slice(-10)]);
-        if (cl.rows[0]?.telegram_id) {
-          const { tgSend } = require('./telegram-notify');
-          await tgSend(String(cl.rows[0].telegram_id), `🔑 Ваш код для входу: <b>${code}</b>\nДійсний 5 хвилин.`);
-          mode = 'telegram';
-        }
-      } catch (tgErr) { /* fallback to dev */ }
-    }
-    res.json({
-      ok: true,
-      mode,
-      hint: mode === 'dev' ? `dev-code: ${DEV_CODE}` : null,
-    });
+    res.json({ ok: true, mode: 'telegram' });
   } catch (e) {
     console.error('[auth:request]', e);
     res.status(500).json({ error: 'internal' });
@@ -113,19 +148,31 @@ router.post('/verify', async (req, res) => {
 
     const pool = getPool();
 
-    // в dev-режиме принимаем DEV_CODE без проверки sms_codes
+    // DEV-код принимается ТОЛЬКО при явном ALLOW_DEV_LOGIN=1 (локальная разработка)
     let codeOk = false;
-    if (!process.env.SMS_PROVIDER && code === DEV_CODE) {
+    if (process.env.ALLOW_DEV_LOGIN === '1' && code === DEV_CODE) {
       codeOk = true;
     } else {
+      // Берём последний активный код и сверяем с защитой от перебора
       const r = await pool.query(
-        `SELECT id FROM sms_codes WHERE phone=$1 AND code=$2 AND used=false AND expires_at > NOW()
+        `SELECT id, code, attempts FROM sms_codes
+         WHERE phone=$1 AND used=false AND expires_at > NOW()
          ORDER BY id DESC LIMIT 1`,
-        [phone, code]
+        [phone]
       );
       if (r.rowCount > 0) {
-        await pool.query(`UPDATE sms_codes SET used=true WHERE id=$1`, [r.rows[0].id]);
-        codeOk = true;
+        const row = r.rows[0];
+        if (row.attempts >= MAX_VERIFY_ATTEMPTS) {
+          await pool.query(`UPDATE sms_codes SET used=true WHERE id=$1`, [row.id]);
+          return res.status(401).json({ error: 'max-attempts-exceeded' });
+        }
+        if (row.code === code) {
+          await pool.query(`UPDATE sms_codes SET used=true WHERE id=$1`, [row.id]);
+          codeOk = true;
+        } else {
+          await pool.query(`UPDATE sms_codes SET attempts = attempts + 1 WHERE id=$1`, [row.id]);
+          return res.status(401).json({ error: 'bad-code', attempts_left: MAX_VERIFY_ATTEMPTS - row.attempts - 1 });
+        }
       }
     }
     if (!codeOk) return res.status(401).json({ error: 'bad-code' });
