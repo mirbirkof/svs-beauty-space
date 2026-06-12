@@ -176,3 +176,20 @@ app.listen(PORT, '0.0.0.0', () => {
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
 });
+
+// ── Render keep-alive: free tier засыпает после 15 мин простоя ──
+// Пингуем себя и booking-сервис каждые 10 мин. Пока жив хоть один — не спят оба.
+if (process.env.RENDER_EXTERNAL_URL) {
+  const KEEPALIVE_URLS = [
+    process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/health',
+    'https://svs-booking-api.onrender.com/api/health',
+  ];
+  setInterval(() => {
+    for (const url of KEEPALIVE_URLS) {
+      fetch(url, { signal: AbortSignal.timeout(60000) })
+        .then((r) => { if (!r.ok) console.warn('[keepalive]', url, '->', r.status); })
+        .catch((e) => console.warn('[keepalive]', url, 'failed:', e.message));
+    }
+  }, 10 * 60 * 1000).unref();
+  console.log('[shop-api] keep-alive enabled:', KEEPALIVE_URLS.join(', '));
+}

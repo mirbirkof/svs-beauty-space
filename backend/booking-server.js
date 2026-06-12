@@ -40,7 +40,7 @@ app.listen(PORT, '0.0.0.0', () => {
 if (process.env.RENDER_EXTERNAL_URL) {
   const KEEPALIVE_URLS = [
     process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/api/health',
-    'https://svs-shop-api.onrender.com/api/health',
+    'https://svs-shop-api.onrender.com/health',
   ];
   setInterval(() => {
     for (const url of KEEPALIVE_URLS) {
