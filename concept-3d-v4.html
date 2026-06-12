@@ -216,8 +216,8 @@ const mat = new THREE.ShaderMaterial({
       vSeed = aSeed;
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * mv;
-      vTw = 0.82 + 0.18*sin(uTime*2.0 + aSeed*40.0);
-      gl_PointSize = (1.25 + aSeed*1.6) * uPR * (10.0 / -mv.z);
+      vTw = 0.9 + 0.1*sin(uTime*2.0 + aSeed*40.0);
+      gl_PointSize = (1.5 + aSeed*1.4) * uPR * (10.0 / -mv.z);
     }`,
   fragmentShader:`
     varying float vSeed; varying float vTw;
@@ -227,7 +227,7 @@ const mat = new THREE.ShaderMaterial({
       vec3 white = vec3(0.93, 0.93, 0.91);
       vec3 red   = vec3(0.89, 0.13, 0.07);
       vec3 col = mix(white, red, step(0.86, vSeed));   /* ~14% частиц красные */
-      gl_FragColor = vec4(col, smoothstep(0.5, 0.1, d) * vTw);
+      gl_FragColor = vec4(col, smoothstep(0.5, 0.34, d) * vTw);
     }`
 });
 scene.add(new THREE.Points(geo, mat));
@@ -267,10 +267,10 @@ function setTargets(word){
   const scale = (worldWidth()*0.82) / tw;            /* слово занимает 82% ширины экрана */
   for(let i=0;i<P;i++){
     const j = (i % n) * 2;
-    const jitter = 0.18;
+    const jitter = 0.06;
     targets[i*3]   = (pts[j]   - wc.width/2) * scale + (Math.random()-.5)*scale*jitter;
     targets[i*3+1] = -(pts[j+1] - wc.height/2) * scale + (Math.random()-.5)*scale*jitter;
-    targets[i*3+2] = (Math.random()-.5)*0.5;
+    targets[i*3+2] = (Math.random()-.5)*0.2;
   }
 }
 
