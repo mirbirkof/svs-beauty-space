@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Акции — SVS Beauty Space</title>
+<title>Акції — SVS Beauty Space</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { font-family: system-ui, -apple-system, sans-serif; }
@@ -19,33 +19,34 @@
 
 <header class="bg-white border-b">
   <div class="max-w-5xl mx-auto px-6 py-5 flex justify-between items-center">
-    <a href="/" class="text-xl font-bold">SVS Beauty Space</a>
+    <a href="https://mirbirkof.github.io/svs-beauty-space/" class="text-xl font-bold">SVS Beauty Space</a>
     <nav class="text-sm flex gap-5">
-      <a href="/promotions.html" class="text-slate-900 font-semibold">Акции</a>
-      <a href="/my.html" class="text-slate-600 hover:text-slate-900">Кабинет</a>
+      <a href="/p/promotions.html" class="text-slate-900 font-semibold">Акції</a>
+      <a href="/p/my.html" class="text-slate-600 hover:text-slate-900">Кабінет</a>
+      <a href="https://mirbirkof.github.io/svs-beauty-space/" class="text-slate-600 hover:text-slate-900">Записатися</a>
     </nav>
   </div>
 </header>
 
 <main class="max-w-5xl mx-auto px-6 py-10">
-  <h1 class="text-3xl font-bold mb-2">Акции</h1>
-  <p class="text-slate-500 mb-8">Скидки и спецпредложения от салона и магазина</p>
+  <h1 class="text-3xl font-bold mb-2">Акції</h1>
+  <p class="text-slate-500 mb-8">Знижки та спецпропозиції від салону і магазину</p>
 
   <div class="flex gap-2 mb-6">
-    <button onclick="filterCat('')" class="filter-btn bg-slate-900 text-white px-4 py-2 rounded-lg text-sm" data-c="">Все</button>
+    <button onclick="filterCat('')" class="filter-btn bg-slate-900 text-white px-4 py-2 rounded-lg text-sm" data-c="">Всі</button>
     <button onclick="filterCat('shop')" class="filter-btn bg-slate-100 px-4 py-2 rounded-lg text-sm" data-c="shop">Магазин</button>
     <button onclick="filterCat('salon')" class="filter-btn bg-slate-100 px-4 py-2 rounded-lg text-sm" data-c="salon">Салон</button>
     <button onclick="filterCat('combo')" class="filter-btn bg-slate-100 px-4 py-2 rounded-lg text-sm" data-c="combo">Комбо</button>
     <div class="flex-1"></div>
     <select id="sort" onchange="load()" class="border rounded-lg px-3 py-2 text-sm bg-white">
-      <option value="newest">Новые сверху</option>
-      <option value="discount">Большая скидка</option>
-      <option value="ending">Скоро закончатся</option>
+      <option value="newest">Нові зверху</option>
+      <option value="discount">Більша знижка</option>
+      <option value="ending">Скоро закінчаться</option>
     </select>
   </div>
 
   <div id="list" class="grid md:grid-cols-2 gap-5">
-    <p class="text-slate-500 col-span-2">Загрузка…</p>
+    <p class="text-slate-500 col-span-2">Завантаження…</p>
   </div>
 </main>
 
@@ -69,14 +70,14 @@ async function load() {
   const r = await fetch(`${API}/api/promotions?${params}`).then(r => r.json()).catch(() => ({items:[]}));
   const list = document.getElementById('list');
   if (!r.items?.length) {
-    list.innerHTML = '<p class="text-slate-500 col-span-2 py-12 text-center">Акций сейчас нет — заходите позже</p>';
+    list.innerHTML = '<p class="text-slate-500 col-span-2 py-12 text-center">Акцій зараз немає — завітайте пізніше</p>';
     return;
   }
   list.innerHTML = r.items.map(p => {
     const catLabel = p.category==='shop'?'Магазин':p.category==='salon'?'Салон':'Комбо';
     const catClass = 'b-'+p.category;
     const discount = p.discount_pct ? `−${p.discount_pct}%` : (p.discount_uah ? `−${p.discount_uah}₴` : '🎁');
-    const ends = p.ends_at ? `до ${new Date(p.ends_at).toLocaleDateString('ru-UA')}` : 'бессрочно';
+    const ends = p.ends_at ? `до ${new Date(p.ends_at).toLocaleDateString('uk-UA')}` : 'безстроково';
     return `
       <article class="promo-card bg-white rounded-2xl border border-slate-200 p-5">
         <div class="flex justify-between mb-3">
