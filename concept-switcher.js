@@ -1,11 +1,12 @@
-/* Concept switcher — floating panel to jump between the 10 design concepts.
-   Selection persists in localStorage; demo.html redirects to it (default v2). */
+/* Concept switcher — floating panel to switch between live design variants.
+   Selection persists in localStorage; index.html/demo.html redirect to it (default v2).
+   Production shows only v2 & v4 (favourites); add ?all=1 to URL to browse all 10 drafts. */
 (function () {
-  var CONCEPTS = [
+  var ALL = [
     { file: 'concept-3d.html',     n: 'v1',  name: 'Golden Silk', c: '#d4af37', bg: '#0a0a0c' },
-    { file: 'concept-3d-v2.html',  n: 'v2',  name: 'Atelier',     c: '#e8c87a', bg: '#0b0b10' },
+    { file: 'concept-3d-v2.html',  n: 'v2',  name: 'Atelier',     c: '#e8c87a', bg: '#0b0b10', prod: true },
     { file: 'concept-3d-v3.html',  n: 'v3',  name: 'Porcelaine',  c: '#b8869a', bg: '#f5f1ec' },
-    { file: 'concept-3d-v4.html',  n: 'v4',  name: 'Noir',        c: '#e32213', bg: '#060606' },
+    { file: 'concept-3d-v4.html',  n: 'v4',  name: 'Noir',        c: '#e32213', bg: '#060606', prod: true },
     { file: 'concept-3d-v5.html',  n: 'v5',  name: 'Mercure',     c: '#7ef0c2', bg: '#04130d' },
     { file: 'concept-3d-v6.html',  n: 'v6',  name: 'Soleil',      c: '#ff9d5c', bg: '#1a0f08' },
     { file: 'concept-3d-v7.html',  n: 'v7',  name: 'Aurora',      c: '#8be9fd', bg: '#050810' },
@@ -13,11 +14,15 @@
     { file: 'concept-3d-v9.html',  n: 'v9',  name: 'Chrome',      c: '#c8d4e8', bg: '#0d0d14' },
     { file: 'concept-3d-v10.html', n: 'v10', name: 'Sumi',        c: '#1a1a1a', bg: '#faf8f4' }
   ];
+  var showAll = /[?&]all=1/.test(location.search);
+  var CONCEPTS = showAll ? ALL : ALL.filter(function (c) { return c.prod; });
   var KEY = 'svs-concept-choice';
   var current = (location.pathname.split('/').pop() || 'concept-3d-v2.html');
 
-  // Remember the page being viewed so demo.html follows the visitor
-  try { localStorage.setItem(KEY, current); } catch (e) {}
+  // Remember the page being viewed so index/demo follow the visitor.
+  // Draft concepts (non-prod) are never persisted — index must only land on v2/v4.
+  var isProd = ALL.some(function (c) { return c.prod && c.file === current; });
+  if (isProd) { try { localStorage.setItem(KEY, current); } catch (e) {} }
 
   var css = [
     '#svs-sw-btn{position:fixed;right:16px;bottom:16px;z-index:99999;width:48px;height:48px;border-radius:50%;',
@@ -63,7 +68,8 @@
     var html = '<div class="sw-title">Варианты дизайна</div>';
     CONCEPTS.forEach(function (cp) {
       var active = cp.file === current ? ' active' : '';
-      html += '<a class="svs-sw-item' + active + '" href="' + cp.file + '">' +
+      var href = cp.file + (showAll ? '?all=1' : '');
+      html += '<a class="svs-sw-item' + active + '" href="' + href + '">' +
         '<span class="svs-sw-dot" style="background:' + cp.bg + '"><i style="background:linear-gradient(135deg,' +
         cp.c + ' 0%,transparent 65%);opacity:.85"></i></span>' +
         '<span class="svs-sw-txt"><b>' + cp.name + '</b><span>' + cp.n +
@@ -80,7 +86,11 @@
     });
     panel.addEventListener('click', function (e) {
       var a = e.target.closest('a.svs-sw-item');
-      if (a) { try { localStorage.setItem(KEY, a.getAttribute('href')); } catch (err) {} }
+      if (a) {
+        var f = a.getAttribute('href').split('?')[0];
+        var prod = ALL.some(function (c) { return c.prod && c.file === f; });
+        if (prod) { try { localStorage.setItem(KEY, f); } catch (err) {} }
+      }
     });
 
     document.body.appendChild(btn);

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>SVS Beauty Space — Салон краси Суми | Фарбування, біовирівнювання, манікюр</title>
+  <meta name="description" content="SVS Beauty Space — преміальний салон краси в Сумах. Фарбування, біовирівнювання, балаяж, Airtouch, Brazilian Blond, манікюр, педикюр. Професійна косметика Raywell, Schwarzkopf.">
+  <meta name="keywords" content="салон краси Суми, фарбування волосся Суми, біовирівнювання Суми, балаяж Суми, манікюр Суми, SVS Beauty Space">
+  <meta name="theme-color" content="#0A0908">
+
+  <meta property="og:title" content="SVS Beauty Space — Салон краси Суми">
+  <meta property="og:description" content="Краса, яка відчувається. Преміальний салон в Сумах — фарбування, біовирівнювання, манікюр.">
+  <meta property="og:type" content="website">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/sections.css">
+  <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+</head>
+<body>
+
+  <!-- Grain overlay -->
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Custom cursor follower -->
+  <div class="cursor" aria-hidden="true">
+    <div class="cursor__dot"></div>
+    <div class="cursor__ring"></div>
+  </div>
+
+  <!-- SVG Hair Flow Lines -->
+  <svg class="hair-flow" aria-hidden="true" viewBox="0 0 1440 900" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="hairGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:rgba(201,169,110,0);"/>
+        <stop offset="30%" style="stop-color:rgba(201,169,110,0.12);"/>
+        <stop offset="70%" style="stop-color:rgba(201,169,110,0.08);"/>
+        <stop offset="100%" style="stop-color:rgba(201,169,110,0);"/>
+      </linearGradient>
+      <linearGradient id="hairGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:rgba(245,240,235,0);"/>
+        <stop offset="40%" style="stop-color:rgba(245,240,235,0.06);"/>
+        <stop offset="60%" style="stop-color:rgba(245,240,235,0.04);"/>
+        <stop offset="100%" style="stop-color:rgba(245,240,235,0);"/>
+      </linearGradient>
+    </defs>
+    <path class="hair-line hair-line--1" d="M-100,200 C200,180 400,320 720,280 S1100,200 1540,240" stroke="url(#hairGrad1)" fill="none" stroke-width="1.5"/>
+    <path class="hair-line hair-line--2" d="M-100,400 C300,380 500,480 720,440 S1000,380 1540,420" stroke="url(#hairGrad2)" fill="none" stroke-width="1"/>
+    <path class="hair-line hair-line--3" d="M-100,600 C250,580 450,680 720,650 S1050,580 1540,620" stroke="url(#hairGrad1)" fill="none" stroke-width="1.2"/>
+    <path class="hair-line hair-line--4" d="M-100,100 C350,90 550,180 800,150 S1150,100 1540,130" stroke="url(#hairGrad2)" fill="none" stroke-width="0.8"/>
+  </svg>
+
+  <!-- Soft floating light -->
+  <div class="ambient-light" aria-hidden="true">
+    <div class="ambient-light__orb ambient-light__orb--1"></div>
+    <div class="ambient-light__orb ambient-light__orb--2"></div>
+    <div class="ambient-light__orb ambient-light__orb--3"></div>
+  </div>
+
+  <!-- NAV -->
+  <header class="nav" id="nav">
+    <div class="nav__inner container">
+      <a href="#" class="nav__logo">
+        <span class="nav__logo-main">
+          <canvas class="nav__lotus" id="navLotus" aria-hidden="true"></canvas>
+          SVS
+        </span>
+        <span class="nav__logo-sub">Beauty Space</span>
+      </a>
+
+      <nav class="nav__links" id="navLinks">
+        <a href="#services" class="nav__link" data-i18n="nav_services">Послуги</a>
+        <a href="shop.html" class="nav__link" data-i18n="nav_shop">Магазин</a>
+        <a href="#results" class="nav__link" data-i18n="nav_results">Результати</a>
+        <a href="#about" class="nav__link" data-i18n="nav_about">Про нас</a>
+        <a href="#contact" class="nav__link" data-i18n="nav_contact">Контакти</a>
+        <div class="nav__langs nav__langs--mobile">
+          <button class="nav__lang nav__lang--active" data-lang="ua">UA</button>
+          <button class="nav__lang" data-lang="en">EN</button>
+          <button class="nav__lang" data-lang="ru">RU</button>
+        </div>
+      </nav>
+
+      <div class="nav__right">
+        <div class="nav__langs nav__langs--desktop">
+          <button class="nav__lang nav__lang--active" data-lang="ua">UA</button>
+          <button class="nav__lang" data-lang="en">EN</button>
+          <button class="nav__lang" data-lang="ru">RU</button>
+        </div>
+        <a href="#" data-svs-book class="btn nav__cta" data-i18n="nav_book">Записатися</a>
+        <button class="nav__burger" id="navBurger" aria-label="Menu">
+          <span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 1. HERO — fullscreen with silk reveal -->
+  <section class="hero" id="hero">
+    <div class="hero__bg">
+      <img src="img/hero.jpg" alt="SVS Beauty Space" loading="eager" fetchpriority="high">
+    </div>
+    <div class="hero__overlay"></div>
+    <!-- Silk layer — blurs away on scroll -->
+    <div class="hero__silk" id="heroSilk"></div>
+    <div class="hero__content container">
+      <p class="hero__overline t-overline rv rv--blur">SVS Beauty Space</p>
+      <h1 class="hero__title">
+        <span class="hero__line hero__line--1" data-i18n="hero_line1">Краса,</span>
+        <span class="hero__line hero__line--2" data-i18n="hero_line2">яка відчувається</span>
+      </h1>
+      <p class="hero__sub rv rv--blur rv--d2" data-i18n="hero_sub">Преміальний простір краси та естетики</p>
+      <div class="hero__buttons rv rv--blur rv--d3">
+        <a href="#" data-svs-book class="btn btn--filled btn--hero-lg" data-i18n="hero_cta">Записатися</a>
+        <a href="shop.html" class="btn btn--shop">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
+          <span data-i18n="hero_shop">Магазин</span>
+        </a>
+      </div>
+    </div>
+    <div class="hero__scroll">
+      <svg width="16" height="24" viewBox="0 0 16 24" fill="none"><path d="M8 0v20m0 0l6-6m-6 6l-6-6" stroke="currentColor" stroke-width="1.5"/></svg>
+    </div>
+  </section>
+
+  <!-- MARQUEE TICKER -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee__track">
+      <span>Фарбування</span><span class="marquee__dot"></span>
+      <span>Біовирівнювання</span><span class="marquee__dot"></span>
+      <span>Балаяж</span><span class="marquee__dot"></span>
+      <span>Стрижки</span><span class="marquee__dot"></span>
+      <span>Манікюр</span><span class="marquee__dot"></span>
+      <span>Педикюр</span><span class="marquee__dot"></span>
+      <span>Airtouch</span><span class="marquee__dot"></span>
+      <span>Brazilian Blond</span><span class="marquee__dot"></span>
+      <span>Нарощування вій</span><span class="marquee__dot"></span>
+      <span>Фарбування</span><span class="marquee__dot"></span>
+      <span>Біовирівнювання</span><span class="marquee__dot"></span>
+      <span>Балаяж</span><span class="marquee__dot"></span>
+      <span>Стрижки</span><span class="marquee__dot"></span>
+      <span>Манікюр</span><span class="marquee__dot"></span>
+      <span>Педикюр</span><span class="marquee__dot"></span>
+      <span>Airtouch</span><span class="marquee__dot"></span>
+      <span>Brazilian Blond</span><span class="marquee__dot"></span>
+      <span>Нарощування вій</span><span class="marquee__dot"></span>
+    </div>
+  </div>
+
+  <!-- 2. SERVICES — editorial overlay cards -->
+  <section class="services" id="services">
+    <div class="services__header container">
+      <p class="t-overline rv rv--blur" data-i18n="svc_overline">Послуги</p>
+      <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="svc_title">Індивідуальна краса у деталях</h2>
+    </div>
+    <div class="services__carousel">
+      <div class="swiper" id="servicesSwiper">
+        <div class="swiper-wrapper">
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-color.jpg" alt="Coloring" loading="lazy">
+              </div>
+              <div class="svc-card__overlay">
+                <h3 class="svc-card__title" data-i18n="rit_color_title">Фарбування</h3>
+                <p class="svc-card__text" data-i18n="rit_color_text">Блонд, балаяж, омбре. Авторська техніка Foiled Cashmere.</p>
+              </div>
+            </article>
+          </div>
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-care.jpg" alt="Restoration" loading="lazy">
+              </div>
+              <div class="svc-card__overlay">
+                <h3 class="svc-card__title" data-i18n="rit_care_title">Відновлення</h3>
+                <p class="svc-card__text" data-i18n="rit_care_text">Біовирівнювання, ботокс, реконструкція. Глибоке відновлення здоров'я волосся.</p>
+              </div>
+            </article>
+          </div>
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-cut.jpg" alt="Haircuts" loading="lazy">
+              </div>
+              <div class="svc-card__overlay">
+                <h3 class="svc-card__title" data-i18n="rit_cut_title">Стрижки</h3>
+                <p class="svc-card__text" data-i18n="rit_cut_text">Від класичних ліній до сучасних текстур.</p>
+              </div>
+            </article>
+          </div>
+          <div class="swiper-slide">
+            <article class="svc-card">
+              <div class="svc-card__img">
+                <img src="img/svc-style.jpg" alt="Styling" loading="lazy">
+              </div>
+              <div class="svc-card__overlay">
+                <h3 class="svc-card__title" data-i18n="rit_style_title">Зачіски</h3>
+                <p class="svc-card__text" data-i18n="rit_style_text">Вечірні та весільні образи.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+      <div class="services__nav container">
+        <button class="swiper-btn swiper-btn--prev" id="svcPrev" aria-label="Previous">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M13 4l-6 6 6 6" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <div class="swiper-pagination" id="svcPagination"></div>
+        <button class="swiper-btn swiper-btn--next" id="svcNext" aria-label="Next">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. RESULTS — before/after + stats -->
+  <section class="results" id="results">
+    <div class="container">
+      <div class="results__header">
+        <p class="t-overline rv rv--blur" data-i18n="tr_overline">Результати</p>
+        <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="tr_title">Реальні перетворення</h2>
+      </div>
+      <div class="results__grid">
+        <div class="results__slider">
+          <div class="transform rv rv--blur rv--d2" data-transform>
+            <img src="img/before-1.jpg?v=2" alt="Before" class="transform__before" loading="lazy">
+            <img src="img/after-1.jpg?v=2" alt="After" class="transform__after" loading="lazy">
+            <div class="transform__handle">
+              <div class="transform__handle-line"></div>
+              <div class="transform__handle-dot">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8H1M12 8h3M4 8l2-3M4 8l2 3M12 8l-2-3M12 8l-2 3" stroke="white" stroke-width="1.2"/></svg>
+              </div>
+              <div class="transform__handle-line"></div>
+            </div>
+            <span class="transform__label transform__label--before" data-i18n="tr_before">До</span>
+            <span class="transform__label transform__label--after" data-i18n="tr_after">Після</span>
+          </div>
+        </div>
+        <div class="results__stats">
+          <div class="stat rv rv--blur">
+            <span class="stat__num" data-count="9">9+</span>
+            <span class="stat__label" data-i18n="stat_years">років досвіду</span>
+          </div>
+          <div class="stat rv rv--blur rv--d1">
+            <span class="stat__num" data-count="5000">5000+</span>
+            <span class="stat__label" data-i18n="stat_clients">задоволених клієнтів</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. ABOUT + EXPERTS -->
+  <section class="about" id="about">
+    <div class="container">
+      <div class="about__inner">
+        <div class="about__text">
+          <p class="t-overline rv rv--blur" data-i18n="about_overline">Про нас</p>
+          <h2 class="t-h2 rv rv--blur rv--d1" data-i18n="about_title">Ми не робимо зачіски. Ми створюємо відчуття.</h2>
+          <p class="t-body-sm rv rv--blur rv--d2" data-i18n="about_text">SVS Beauty Space — це місце, де кожна деталь продумана. Від підбору техніки до індивідуального догляду. Преміальна косметика світових брендів. Авторські методики. Простір, створений для вас.</p>
+          <div class="about__expert rv rv--blur rv--d3">
+            <p class="t-overline" data-i18n="spec_overline">Експерти</p>
+            <p class="t-h3" data-i18n="spec_headline">Досвід. Чуттєвість. Майстерність.</p>
+            <p class="t-body-sm" data-i18n="spec_text">Наша команда — це експерти, які живуть красою та створюють її щодня.</p>
+          </div>
+        </div>
+        <div class="about__media about__media--logo rv rv--blur rv--d1">
+          <canvas class="about__lotus-canvas" id="aboutLotus" width="240" height="240" aria-hidden="true"></canvas>
+          <span class="about__brand">SVS</span>
+          <span class="about__brand-sub">Beauty Space</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. CONTACT + MAP -->
+  <section class="contact" id="contact">
+    <div class="container">
+      <div class="contact__inner">
+        <div class="contact__cta">
+          <p class="t-overline rv rv--blur" data-i18n="book_overline">Запис</p>
+          <h2 class="contact__big-title rv rv--blur rv--d1" data-i18n="book_title">Готові до змін?</h2>
+          <p class="t-body-sm rv rv--blur rv--d2" data-i18n="book_text">Запишіться на консультацію — разом підберемо ідеальне рішення.</p>
+          <a href="#" data-svs-book class="btn btn--filled rv rv--blur rv--d3" data-i18n="book_cta" aria-label="Записатися онлайн через захищений віджет">Записатися онлайн</a>
+          <a href="tel:+380991283375" class="contact__tap-hint rv rv--blur rv--d4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14m0 0l-6-6m6 6l6-6"/></svg>
+            <span data-i18n="contact_hint">Натисни щоб зв'язатись</span>
+          </a>
+        </div>
+        <div class="contact__info rv rv--blur rv--d2">
+          <div class="contact__block">
+            <p class="t-caption" data-i18n="contact_hours_title">Графік</p>
+            <p data-i18n="contact_hours">Пн — Нд: 8:00 — 19:00</p>
+          </div>
+          <div class="contact__block">
+            <p class="t-caption" data-i18n="contact_address_title">Адреса</p>
+            <a href="https://maps.app.goo.gl/egrsbNv2eTxV2EzG6" target="_blank" rel="noopener" class="contact__address" data-i18n="contact_address">1-ша Набережна р. Стрілка, 50, Суми</a>
+          </div>
+          <div class="contact__block">
+            <a href="tel:+380991283375" class="contact__phone">+38 (099) 128-33-75</a>
+          </div>
+          <a href="https://instagram.com/svs_beauty_space" target="_blank" rel="noopener" class="contact__ig">@svs_beauty_space</a>
+        </div>
+      </div>
+      <a href="https://maps.app.goo.gl/egrsbNv2eTxV2EzG6" target="_blank" rel="noopener" class="contact__map rv rv--blur rv--d3" aria-label="Open directions in Google Maps">
+        <div class="contact__map-placeholder">
+          <!-- Stylized dark map with streets -->
+          <svg class="contact__map-svg" viewBox="0 0 800 280" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+            <!-- River -->
+            <path d="M0 180 C150 160, 300 200, 500 170 C600 155, 700 190, 800 175" stroke="#1a2a3a" stroke-width="28" fill="none" opacity="0.5"/>
+            <path d="M0 180 C150 160, 300 200, 500 170 C600 155, 700 190, 800 175" stroke="#15202d" stroke-width="16" fill="none" opacity="0.6"/>
+            <!-- Main roads -->
+            <line x1="0" y1="100" x2="800" y2="95" stroke="#2a2a28" stroke-width="3"/>
+            <line x1="0" y1="140" x2="800" y2="145" stroke="#2a2a28" stroke-width="2.5"/>
+            <line x1="200" y1="0" x2="220" y2="280" stroke="#2a2a28" stroke-width="2.5"/>
+            <line x1="450" y1="0" x2="430" y2="280" stroke="#2a2a28" stroke-width="3"/>
+            <line x1="620" y1="0" x2="640" y2="280" stroke="#2a2a28" stroke-width="2"/>
+            <!-- Small streets -->
+            <line x1="100" y1="0" x2="110" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="320" y1="0" x2="330" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="540" y1="0" x2="535" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="720" y1="0" x2="730" y2="280" stroke="#222220" stroke-width="1.2"/>
+            <line x1="0" y1="60" x2="800" y2="55" stroke="#222220" stroke-width="1.2"/>
+            <line x1="0" y1="220" x2="800" y2="225" stroke="#222220" stroke-width="1.2"/>
+            <!-- Blocks -->
+            <rect x="110" y="60" width="85" height="35" rx="2" fill="#1a1a18" opacity="0.6"/>
+            <rect x="230" y="100" width="85" height="38" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <rect x="460" y="55" width="70" height="40" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <rect x="545" y="100" width="70" height="38" rx="2" fill="#1a1a18" opacity="0.4"/>
+            <rect x="650" y="60" width="65" height="32" rx="2" fill="#1a1a18" opacity="0.5"/>
+            <!-- Pin marker -->
+            <circle cx="420" cy="130" r="18" fill="rgba(201,169,110,0.15)"/>
+            <circle cx="420" cy="130" r="8" fill="rgba(201,169,110,0.3)"/>
+            <circle cx="420" cy="130" r="3.5" fill="var(--c-gold)"/>
+            <!-- Pin pulse -->
+            <circle cx="420" cy="130" r="18" fill="none" stroke="var(--c-gold)" stroke-width="1" opacity="0.4">
+              <animate attributeName="r" from="12" to="28" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" from="0.4" to="0" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+        </div>
+        <span class="contact__map-label">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 7a2 2 0 110-4 2 2 0 010 4z" fill="currentColor"/></svg>
+          <span data-i18n="contact_directions">Прокласти маршрут</span>
+        </span>
+      </a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__inner">
+        <span class="footer__logo">SVS</span>
+        <span class="t-caption" data-i18n="footer_copy">&copy; 2026 SVS Beauty Space</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BeautySalon",
+    "name": "SVS Beauty Space",
+    "image": "https://svs-beauty-space.com/img/hero.jpg",
+    "url": "https://svs-beauty-space.com",
+    "telephone": "+380991283375",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "1-ша Набережна р. Стрілка, 50",
+      "addressLocality": "Суми",
+      "addressCountry": "UA"
+    },
+    "geo": {
+      "@type": "GeoCoordinates",
+      "latitude": 50.9077,
+      "longitude": 34.7981
+    },
+    "openingHoursSpecification": {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+      "opens": "08:00",
+      "closes": "19:00"
+    },
+    "priceRange": "$$",
+    "sameAs": ["https://instagram.com/svs_beauty_space"],
+    "hasOfferCatalog": {
+      "@type": "OfferCatalog",
+      "name": "Послуги",
+      "itemListElement": [
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Фарбування волосся"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Біовирівнювання"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Балаяж"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Airtouch"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Манікюр"}},
+        {"@type": "Offer", "itemOffered": {"@type": "Service", "name": "Педикюр"}}
+      ]
+    }
+  }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+  <script src="js/bg-3d.js?v=2" defer></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/lotus.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/scroll-animations.js"></script>
+  <link rel="stylesheet" href="css/booking-widget.css?v=1780868500">
+  <!-- SVS_BOOKING_API: permanent Render URL (no more tunnel rotation) -->
+  <script>window.SVS_BOOKING_API = "https://svs-booking-api.onrender.com";</script>
+  <script src="js/booking-widget.js?v=1780868500" defer></script>
+</body>
+</html>
