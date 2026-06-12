@@ -177,6 +177,21 @@ app.listen(PORT, '0.0.0.0', () => {
   }
 });
 
+// ── Авто-миграции при старте: БД, в которую смотрит ЭТОТ процесс, всегда догоняет код ──
+// Причина: 12.06 verify падал 42P10 — на Render-базе не было clients_tenant_phone_key
+// (миграция 016 была применена только к локальной базе). Не блокирует и не роняет сервис.
+if (process.env.DATABASE_URL) {
+  const { execFile } = require('child_process');
+  const path = require('path');
+  execFile(process.execPath, [path.join(__dirname, 'scripts', 'apply-migrations.js')],
+    { env: process.env, timeout: 120000 },
+    (err, stdout, stderr) => {
+      if (stdout) console.log('[migrate]', stdout.trim());
+      if (err) console.error('[migrate] FAILED (сервис продолжает работать):', (stderr || err.message).trim());
+      else console.log('[migrate] схема БД актуальна');
+    });
+}
+
 // ── Render keep-alive: free tier засыпает после 15 мин простоя ──
 // Пингуем себя и booking-сервис каждые 10 мин. Пока жив хоть один — не спят оба.
 if (process.env.RENDER_EXTERNAL_URL) {
