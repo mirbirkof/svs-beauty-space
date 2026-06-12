@@ -75,7 +75,7 @@ async function syncOneClient(phone, fallbackName) {
   };
 }
 
-router.post('/client', async (req, res) => {
+router.post('/client', requirePerm('sync.write'), async (req, res) => {
   try {
     const { phone, name } = req.body || {};
     if (!phone) return res.status(400).json({ error: 'phone-required' });

@@ -90,7 +90,8 @@ async function scheduleRepeatVisits() {
       await pool.query(
         `INSERT INTO scheduled_notifications
            (appointment_id, telegram_chat_id, client_phone, event, scheduled_at, payload_json, status)
-         VALUES ($1, $2, $3, 'repeat_visit', NOW(), $4, 'pending')`,
+         VALUES ($1, $2, $3, 'repeat_visit', NOW(), $4, 'pending')
+         ON CONFLICT (appointment_id, event) DO NOTHING`,
         [
           `repeat_${cl.client_id}_${new Date().toISOString().slice(0, 10)}`,
           String(cl.telegram_id),

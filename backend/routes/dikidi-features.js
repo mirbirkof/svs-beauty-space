@@ -2,6 +2,8 @@
    Подключается в shop-api.js: app.use('/api', require('./routes/dikidi-features')) */
 const express = require('express');
 const { getPool } = require('../db-pg');
+const { requirePerm } = require('../lib/rbac');
+const { authClient } = require('./cabinet-auth');
 const router = express.Router();
 const pool = getPool();
 
@@ -15,19 +17,35 @@ function normPhone(p) {
 
 /* ═══════════════ REVIEWS ═══════════════ */
 
-// POST /api/reviews — клиент оставляет отзыв
+// POST /api/reviews — клиент оставляет отзыв.
+// Эндпоинт публичный (форма my.html без токена), поэтому:
+// 1) отзыв попадает в 'pending' — публикует персонал через PATCH (модерация в админке)
+// 2) rate limit: max 3 отзыва за 10 мин с одного IP
+const reviewRate = new Map(); // ip -> { count, windowStart }
 router.post('/reviews', async (req, res) => {
   try {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const now = Date.now();
+    const slot = reviewRate.get(ip);
+    if (slot && now - slot.windowStart < 10 * 60 * 1000) {
+      if (slot.count >= 3) return res.status(429).json({ error: 'too many reviews, try later' });
+      slot.count++;
+    } else {
+      reviewRate.set(ip, { count: 1, windowStart: now });
+      if (reviewRate.size > 5000) reviewRate.clear(); // не растём бесконечно
+    }
+
     const { client_phone, master_id, master_name, service_id, service_name,
             rating, text, is_anonymous } = req.body || {};
     if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'rating 1-5 required' });
+    if (text && String(text).length > 2000) return res.status(400).json({ error: 'text too long (max 2000)' });
     const phone = normPhone(client_phone);
     const r = await pool.query(
       `INSERT INTO reviews (client_phone, master_id, master_name, service_id, service_name,
                             rating, text, is_anonymous, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'published') RETURNING id, created_at`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING id, created_at`,
       [phone, master_id || null, master_name || null, service_id || null, service_name || null,
-       rating, text || null, !!is_anonymous]
+       rating, String(text || '').slice(0, 2000) || null, !!is_anonymous]
     );
     res.json({ ok: true, id: r.rows[0].id, created_at: r.rows[0].created_at });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -74,8 +92,8 @@ router.get('/reviews/stats/:master_id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /api/reviews/:id — модерация (админ)
-router.patch('/reviews/:id', async (req, res) => {
+// PATCH /api/reviews/:id — модерация (только персонал)
+router.patch('/reviews/:id', requirePerm('reviews.write'), async (req, res) => {
   try {
     const { status } = req.body || {};
     if (!['published', 'hidden', 'pending'].includes(status)) return res.status(400).json({ error: 'bad status' });
@@ -86,13 +104,13 @@ router.patch('/reviews/:id', async (req, res) => {
 
 /* ═══════════════ FAVORITES ═══════════════ */
 
-// POST /api/favorites — добавить в избранное
-router.post('/favorites', async (req, res) => {
+// POST /api/favorites — добавить в избранное (телефон берём из сессии кабинета)
+router.post('/favorites', authClient(), async (req, res) => {
   try {
-    const { client_phone, kind, target_id, target_name } = req.body || {};
-    if (!client_phone || !kind || !target_id) return res.status(400).json({ error: 'client_phone, kind, target_id required' });
+    const { kind, target_id, target_name } = req.body || {};
+    if (!kind || !target_id) return res.status(400).json({ error: 'kind, target_id required' });
     if (!['master', 'service', 'product'].includes(kind)) return res.status(400).json({ error: 'bad kind' });
-    const phone = normPhone(client_phone);
+    const phone = normPhone(req.client.phone);
     const r = await pool.query(
       `INSERT INTO favorites (client_phone, kind, target_id, target_name)
        VALUES ($1,$2,$3,$4)
@@ -104,11 +122,11 @@ router.post('/favorites', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/favorites — убрать из избранного
-router.delete('/favorites', async (req, res) => {
+// DELETE /api/favorites — убрать из избранного (только своё, по сессии)
+router.delete('/favorites', authClient(), async (req, res) => {
   try {
-    const { client_phone, kind, target_id } = req.body || {};
-    const phone = normPhone(client_phone);
+    const { kind, target_id } = req.body || {};
+    const phone = normPhone(req.client.phone);
     await pool.query(
       `DELETE FROM favorites WHERE client_phone=$1 AND kind=$2 AND target_id=$3`,
       [phone, kind, target_id]
@@ -117,10 +135,20 @@ router.delete('/favorites', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/favorites?phone=...&kind=master
-router.get('/favorites', async (req, res) => {
+// ВАЖНО: req.client в Node — встроенный алиас сокета, он есть ВСЕГДА.
+// Поэтому авторизованного клиента кабинета определяем по req.client.id (ставит authClient).
+function cabClient(req) {
+  return req.client && typeof req.client.id !== 'undefined' && req.client.phone ? req.client : null;
+}
+
+// GET /api/favorites — клиент видит своё (по сессии), персонал — любого (по ?phone=)
+router.get('/favorites', authClient({ optional: true }), (req, res, next) => {
+  if (cabClient(req)) return next();
+  return requirePerm('favorites.read')(req, res, next);
+}, async (req, res) => {
   try {
-    const phone = normPhone(req.query.phone);
+    const me = cabClient(req);
+    const phone = me ? normPhone(me.phone) : normPhone(req.query.phone);
     if (!phone) return res.status(400).json({ error: 'phone required' });
     const { kind } = req.query;
     const args = [phone];
@@ -136,8 +164,8 @@ router.get('/favorites', async (req, res) => {
 
 /* ═══════════════ BLACKLIST ═══════════════ */
 
-// POST /api/blacklist — добавить (админ)
-router.post('/blacklist', async (req, res) => {
+// POST /api/blacklist — добавить (только персонал)
+router.post('/blacklist', requirePerm('blacklist.write'), async (req, res) => {
   try {
     const { client_phone, reason, created_by } = req.body || {};
     const phone = normPhone(client_phone);
@@ -152,8 +180,8 @@ router.post('/blacklist', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/blacklist/:phone — убрать
-router.delete('/blacklist/:phone', async (req, res) => {
+// DELETE /api/blacklist/:phone — убрать (только персонал)
+router.delete('/blacklist/:phone', requirePerm('blacklist.write'), async (req, res) => {
   try {
     const phone = normPhone(req.params.phone);
     await pool.query(`DELETE FROM blacklist WHERE client_phone=$1`, [phone]);
@@ -161,16 +189,16 @@ router.delete('/blacklist/:phone', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/blacklist — список (админ)
-router.get('/blacklist', async (req, res) => {
+// GET /api/blacklist — список (только персонал: телефоны и причины = персональные данные)
+router.get('/blacklist', requirePerm('blacklist.read'), async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM blacklist ORDER BY created_at DESC`);
     res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/blacklist/check/:phone — проверка перед записью
-router.get('/blacklist/check/:phone', async (req, res) => {
+// GET /api/blacklist/check/:phone — проверка перед записью (только персонал)
+router.get('/blacklist/check/:phone', requirePerm('blacklist.read'), async (req, res) => {
   try {
     const phone = normPhone(req.params.phone);
     const r = await pool.query(`SELECT 1 FROM blacklist WHERE client_phone=$1`, [phone]);
@@ -180,8 +208,8 @@ router.get('/blacklist/check/:phone', async (req, res) => {
 
 /* ═══════════════ PROMOTIONS ═══════════════ */
 
-// POST /api/promotions — создать (админ)
-router.post('/promotions', async (req, res) => {
+// POST /api/promotions — создать (только персонал)
+router.post('/promotions', requirePerm('promo.write'), async (req, res) => {
   try {
     const { title, description, discount_pct, discount_uah, category,
             service_category, starts_at, ends_at, banner_url } = req.body || {};
@@ -214,8 +242,8 @@ router.get('/promotions', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /api/promotions/:id
-router.patch('/promotions/:id', async (req, res) => {
+// PATCH /api/promotions/:id (только персонал)
+router.patch('/promotions/:id', requirePerm('promo.write'), async (req, res) => {
   try {
     const { is_active, title, discount_pct, ends_at } = req.body || {};
     const sets = [];

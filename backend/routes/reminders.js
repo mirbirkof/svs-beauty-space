@@ -117,7 +117,8 @@ async function insertNotification(pool, row, event, text, appointmentTime) {
     await pool.query(
       `INSERT INTO scheduled_notifications
          (appointment_id, telegram_chat_id, client_phone, event, scheduled_at, payload_json, status)
-       VALUES ($1, $2, $3, $4, NOW(), $5, 'pending')`,
+       VALUES ($1, $2, $3, $4, NOW(), $5, 'pending')
+       ON CONFLICT (appointment_id, event) DO NOTHING`,
       [String(row.id), String(row.telegram_id), row.phone || null, event, JSON.stringify({ text })]
     );
   } catch (e) {
@@ -128,6 +129,19 @@ async function insertNotification(pool, row, event, text, appointmentTime) {
 // ── Отправка pending уведомлений ──
 async function sendPending() {
   const pool = getPool();
+
+  // Запись отменили после планирования напоминания → не слать
+  await pool.query(`
+    UPDATE scheduled_notifications sn SET status = 'cancelled'
+    WHERE sn.status = 'pending'
+      AND sn.event IN ('remind_24h', 'remind_2h')
+      AND EXISTS (
+        SELECT 1 FROM appointments a
+        WHERE a.id::text = sn.appointment_id
+          AND a.status NOT IN ('confirmed', 'pending', 'booked', 'completed')
+      )
+  `);
+
   const pending = await pool.query(
     `SELECT id, telegram_chat_id, payload_json, event, attempts
      FROM scheduled_notifications
