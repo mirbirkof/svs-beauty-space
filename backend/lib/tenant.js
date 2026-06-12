@@ -39,12 +39,16 @@ function tenantMiddleware() {
   return async function (req, res, next) {
     try {
       let slug = req.headers['x-tenant-slug'] || null;
-      if (!slug) {
-        // сабдомен: beauty.example.com → 'beauty' (www/api/localhost игнорируем)
+      if (!slug && process.env.TENANT_BASE_DOMAIN) {
+        // сабдомен: {slug}.TENANT_BASE_DOMAIN → slug. Включается ТОЛЬКО на нашем
+        // SaaS-домене (SAS-09). Иначе хосты платформ (svs-shop-api.onrender.com)
+        // ошибочно резолвятся как slug → tenant-not-found на ВСЕХ запросах (баг 12.06).
         const host = String(req.headers.host || '').split(':')[0];
-        const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(host) || host === 'localhost';
-        const parts = host.split('.');
-        if (!isIp && parts.length >= 3 && !['www', 'api'].includes(parts[0])) slug = parts[0];
+        const base = '.' + process.env.TENANT_BASE_DOMAIN;
+        if (host.endsWith(base)) {
+          const sub = host.slice(0, -base.length);
+          if (sub && !sub.includes('.') && !['www', 'api'].includes(sub)) slug = sub;
+        }
       }
       if (slug) {
         const t = await resolveBySlug(slug);
