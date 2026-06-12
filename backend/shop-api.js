@@ -78,7 +78,10 @@ app.use('/p', express.static(__dirname + '/public'));
 
 // Render health check (root + /health)
 app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
-app.get('/health', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
+app.get('/health', (req, res) => res.json({
+  ok: true, service: 'svs-shop-api', time: new Date().toISOString(),
+  rev: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),  // какой код реально задеплоен
+}));
 
 // health + readiness map
 app.get('/api/shop/health', (req, res) => {
