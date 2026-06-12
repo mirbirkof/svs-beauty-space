@@ -84,6 +84,12 @@ router.post('/init', async (req, res) => {
     if (!service_id || !employee_id || !date_from || !date_to) {
       return res.status(400).json({ error: 'service_id, employee_id, date_from, date_to обовʼязкові' });
     }
+    // валидация дат: не в прошлом, конец после начала, не дальше года вперёд
+    const from = new Date(date_from), to = new Date(date_to);
+    if (isNaN(from) || isNaN(to)) return res.status(400).json({ error: 'Невірний формат дати' });
+    if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
+    if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
+    if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
     const token = genToken();
     await db.insert(token, { service_id, employee_id, date_from, date_to, client_name: client_name || null, channel: channel || 'site_salon' });
 
@@ -158,6 +164,21 @@ router.post('/telegram', async (req, res) => {
 
       let bookingId = null;
       try {
+        // слот мог занять кто-то другой пока клиент подтверждал — проверяем пересечение
+        try {
+          const busy = await getPool().query(
+            `SELECT 1 FROM online_bookings
+             WHERE master_id = $1 AND status = 'confirmed'
+               AND date_from < $3 AND date_to > $2
+             LIMIT 1`,
+            [row.employee_id, row.date_from, row.date_to]
+          );
+          if (busy.rowCount) {
+            await db.update(row.token, { status: 'error', error: 'slot-taken' });
+            return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 На жаль, цей час щойно зайняли. Поверніться на сайт і оберіть інший слот.' });
+          }
+        } catch (slotErr) { console.error('[booking/slot-check]', slotErr.message); }
+
         const client = await bp.createClient({ phone, name: row.client_name || msg.from.first_name });
         const appt = await bp.createAppointment({
           client_id: client.id || client.client_id,

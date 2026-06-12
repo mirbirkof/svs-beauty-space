@@ -37,8 +37,13 @@ async function getOrCreateClient(phone, name, telegram_id) {
     }
     return existing.rows[0].id;
   }
+  // ON CONFLICT: два параллельных запроса с одним телефоном не создадут дубль
   const r = await pool.query(
-    'INSERT INTO clients (phone, name, telegram_id) VALUES ($1, $2, $3) RETURNING id',
+    `INSERT INTO clients (phone, name, telegram_id) VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, phone) DO UPDATE SET
+       telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
+       name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
+     RETURNING id`,
     [phDigits, name || null, telegram_id || null]
   );
   return r.rows[0].id;
@@ -164,8 +169,25 @@ router.post('/booking/confirm', async (req, res) => {
     if (!phone || !service_id || !master_id || !date_from || !date_to) {
       return res.status(400).json({ error: 'phone, service_id, master_id, date_from, date_to обовʼязкові' });
     }
+    // валидация дат: не в прошлом, конец после начала, не дальше года
+    const from = new Date(date_from), to = new Date(date_to);
+    if (isNaN(from) || isNaN(to)) return res.status(400).json({ error: 'Невірний формат дати' });
+    if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
+    if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
+    if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
+
     const ph = normalizePhone(phone);
     const client_id = await getOrCreateClient(ph, name, telegram_id);
+
+    // слот занят подтверждённой записью? (защита от двойного бронирования)
+    const busy = await pool.query(
+      `SELECT 1 FROM online_bookings
+       WHERE master_id = $1 AND status = 'confirmed'
+         AND date_from < $3 AND date_to > $2
+       LIMIT 1`,
+      [master_id, date_from, date_to]
+    );
+    if (busy.rowCount) return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
 
     // BP: ensure client + create appointment
     let bp_appointment_id = null;

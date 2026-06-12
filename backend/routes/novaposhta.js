@@ -45,6 +45,7 @@ function call(modelName, calledMethod, methodProperties = {}) {
         } catch (e) { reject(e); }
       });
     });
+    req.setTimeout(15000, () => req.destroy(new Error('timeout 15s')));
     req.on('error', reject);
     req.write(data);
     req.end();
