@@ -273,5 +273,6 @@ els.forEach((el,i)=> el.style.transitionDelay = (i%4)*0.1+'s');
 function reveal(){ for(const el of els){ if(!el.classList.contains('in') && el.getBoundingClientRect().top < innerHeight*0.88) el.classList.add('in'); } }
 addEventListener('scroll', reveal, {passive:true}); reveal();
 </script>
+<script src="concept-switcher.js"></script>
 </body>
 </html>
