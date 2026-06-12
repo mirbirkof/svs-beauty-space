@@ -66,4 +66,21 @@ app.listen(PORT, () => {
   console.log('[SVS-Shop] Backend running on port', PORT);
 });
 
+// ── Render keep-alive: free tier засыпает после 15 мин простоя ──
+// Пингуем себя и соседний сервис каждые 10 мин. Пока жив хоть один — не спят оба.
+if (process.env.RENDER_EXTERNAL_URL) {
+  const KEEPALIVE_URLS = [
+    process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/api/health',
+    'https://svs-booking-api.onrender.com/api/health',
+  ];
+  setInterval(() => {
+    for (const url of KEEPALIVE_URLS) {
+      fetch(url, { signal: AbortSignal.timeout(60000) })
+        .then((r) => { if (!r.ok) console.warn('[keepalive]', url, '->', r.status); })
+        .catch((e) => console.warn('[keepalive]', url, 'failed:', e.message));
+    }
+  }, 10 * 60 * 1000).unref();
+  console.log('[SVS-Shop] keep-alive enabled:', KEEPALIVE_URLS.join(', '));
+}
+
 module.exports = app;
