@@ -42,6 +42,26 @@ async function applyInvoiceStatus(data) {
   if (FINAL.includes(p.status)) return { ok: true, status: p.status, dedup: true };
   if (p.status === data.status) return { ok: true, status: p.status, unchanged: true };
 
+  // сверка суммы: success с суммой МЕНЬШЕ счёта = аномалия (недоплата/частичная оплата) —
+  // не подтверждаем автоматом, фиксируем и зовём админа
+  if (data.status === 'success' && data.amount != null) {
+    const expectedKop = Math.round(Number(p.amount) * 100);
+    if (expectedKop > 0 && Number(data.amount) < expectedKop) {
+      await pool.query(
+        `UPDATE payments SET status = 'amount_mismatch', failure_reason = $1, raw = $2, updated_at = NOW() WHERE id = $3`,
+        [`paid ${data.amount} kop, expected ${expectedKop} kop`, JSON.stringify(data), p.id]
+      );
+      console.error(`[mono] AMOUNT MISMATCH invoice ${invoiceId}: paid ${data.amount}, expected ${expectedKop}`);
+      if (process.env.ADMIN_TG_CHAT) {
+        const { tgSend } = require('./telegram-notify');
+        tgSend(process.env.ADMIN_TG_CHAT,
+          `⚠️ <b>Mono: сума не збігається</b>\nІнвойс ${invoiceId}\nОчікували ${(expectedKop / 100).toFixed(2)} грн, прийшло ${(Number(data.amount) / 100).toFixed(2)} грн\nЗамовлення/запис НЕ підтверджено автоматично — перевірте вручну.`)
+          .catch(() => {});
+      }
+      return { ok: true, status: 'amount_mismatch' };
+    }
+  }
+
   await pool.query(
     `UPDATE payments SET status = $1, failure_reason = $2, raw = $3, updated_at = NOW() WHERE id = $4`,
     [data.status, data.failureReason || null, JSON.stringify(data), p.id]

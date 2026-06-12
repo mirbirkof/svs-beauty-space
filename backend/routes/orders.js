@@ -19,7 +19,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
   const pool = getPool();
   const client = await pool.connect();
   try {
-    const { items, delivery, notes, contact } = req.body || {};
+    const { items, delivery, notes, contact, promo_code } = req.body || {};
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'no-items' });
     }
@@ -98,12 +98,39 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       );
     }
 
+    // промокод: применяется ЗДЕСЬ, сервер-сайд, атомарно (uses++ и проверка лимита одним UPDATE)
+    let discount = 0;
+    let appliedPromo = null;
+    if (promo_code) {
+      const claim = await client.query(
+        `UPDATE promos SET uses = COALESCE(uses, 0) + 1
+         WHERE code = $1 AND active = TRUE
+           AND (valid_until IS NULL OR valid_until > NOW())
+           AND (max_uses IS NULL OR COALESCE(uses, 0) < max_uses)
+           AND COALESCE(min_total, 0) <= $2
+         RETURNING code, type, value`,
+        [String(promo_code).toUpperCase().trim(), total]
+      );
+      if (!claim.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'invalid-promo' });
+      }
+      const pr = claim.rows[0];
+      discount = pr.type === 'percent'
+        ? Math.round(total * Number(pr.value)) / 100
+        : Math.min(Number(pr.value), total);
+      discount = Math.round(discount * 100) / 100;
+      total = Math.round((total - discount) * 100) / 100;
+      appliedPromo = pr.code;
+    }
+
     // создаём заказ (branch_id: из body или дефолтный)
     const ord = await client.query(
       `INSERT INTO orders (client_id, total, wholesale_total, status, payment_method,
-                           delivery_type, delivery_json, notes, branch_id)
+                           delivery_type, delivery_json, notes, branch_id, promo_code, discount)
        VALUES ($1,$2,$3,'new','mono',$4,$5,$6,
-               COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
+               COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)),
+               $8, $9)
        RETURNING id, created_at, status, branch_id`,
       [
         clientId,
@@ -113,6 +140,8 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
         delivery ? JSON.stringify(delivery) : null,
         notes || null,
         req.body?.branch_id || null,
+        appliedPromo,
+        discount,
       ]
     );
     const orderId = ord.rows[0].id;
