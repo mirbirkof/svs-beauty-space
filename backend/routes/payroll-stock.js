@@ -8,6 +8,9 @@ const pool = getPool();
 
 // Авторизация: read на GET, write на мутации
 router.use((req, res, next) => {
+  // Роутер смонтирован на общий '/api' — охраняем ТОЛЬКО свои пути,
+  // иначе guard глушит все /api/* роуты, смонтированные ниже (логин и т.д.)
+  if (!/^\/(payroll|stock|suppliers)(\/|$)/.test(req.path)) return next();
   const area = req.path.startsWith('/stock') ? 'stock' : 'payroll';
   const perm = req.method === 'GET' ? `${area}.read` : `${area}.write`;
   return requirePerm(perm)(req, res, next);

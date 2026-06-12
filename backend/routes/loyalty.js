@@ -8,6 +8,8 @@ const pool = getPool();
 
 // Авторизация: read на GET, write на мутации
 router.use((req, res, next) => {
+  // Роутер на общем '/api' — охраняем только /loyalty/*, чужое пропускаем
+  if (!/^\/loyalty(\/|$)/.test(req.path)) return next();
   const perm = req.method === 'GET' ? 'loyalty.read' : 'loyalty.write';
   return requirePerm(perm)(req, res, next);
 });
