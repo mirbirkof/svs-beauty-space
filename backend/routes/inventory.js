@@ -95,6 +95,9 @@ router.patch('/items/:id', requirePerm('stock.write'), async (req, res) => {
     const id = Number(req.params.id);
     const { actual_qty, reason, notes } = req.body || {};
     if (actual_qty == null) return res.status(400).json({ error: 'actual_qty required' });
+    if (!Number.isFinite(Number(actual_qty)) || Number(actual_qty) < 0) {
+      return res.status(400).json({ error: 'actual_qty must be >= 0' });
+    }
     const it = await pool.query(`SELECT cost_per_unit, expected_qty FROM inventory_audit_items WHERE id=$1`, [id]);
     if (!it.rows[0]) return res.status(404).json({ error: 'not-found' });
     const diffVal = (Number(actual_qty) - Number(it.rows[0].expected_qty)) * Number(it.rows[0].cost_per_unit || 0);
