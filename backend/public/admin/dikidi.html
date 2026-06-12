@@ -120,6 +120,27 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.getElementById('t-' + t.dataset.tab).classList.remove('hidden');
 });
 
+// Авторизация персонала: тот же токен, что в главной админке (svs_admin_token / admin_token)
+const ADMIN_TOKEN = localStorage.getItem('svs_admin_token') || localStorage.getItem('admin_token') || '';
+const _fetch = window.fetch.bind(window);
+window.fetch = function (url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers || {}, ADMIN_TOKEN ? { 'X-Admin-Token': ADMIN_TOKEN } : {});
+  return _fetch(url, opts).then(r => {
+    if (r.status === 401 && ADMIN_TOKEN && !window.__reauthAsked) {
+      window.__reauthAsked = true;
+      // токен протух — сброс и повторный ввод
+      localStorage.removeItem('svs_admin_token');
+      const t = prompt('Токен недійсний. Введіть admin-токен заново:');
+      if (t) { localStorage.setItem('svs_admin_token', t.trim()); location.reload(); }
+    }
+    return r;
+  });
+};
+if (!ADMIN_TOKEN) {
+  const t = prompt('Введіть admin-токен (як у головній адмінці):');
+  if (t) { localStorage.setItem('svs_admin_token', t.trim()); location.reload(); }
+}
+
 // health
 fetch(API + '/health').then(r => r.json()).then(d => {
   document.getElementById('status').textContent = d.ok ? '✓ API подключено' : '✗ ошибка API';
