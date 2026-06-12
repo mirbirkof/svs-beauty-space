@@ -109,6 +109,11 @@ function render() {
         <h2 class="checkout-section-title">Ваше замовлення</h2>
         <div class="checkout-items" id="checkoutItems"></div>
         ${renderDeliveryForm()}
+        <div class="checkout-field" style="margin-top:16px">
+          <label>Промокод (якщо є)</label>
+          <input type="text" id="promoCode" placeholder="Наприклад: SVS10"
+            autocomplete="off" autocapitalize="characters" style="text-transform:uppercase">
+        </div>
         <div class="checkout-total-row">
           <span>Разом${isMaster ? ' (оптова ціна)' : ''}:</span>
           <strong id="checkoutTotal">${total.toLocaleString('uk-UA')} ₴</strong>
@@ -358,12 +363,19 @@ async function handlePay() {
     return;
   }
 
-  // Dev mode (no Stripe) — order confirmation
+  // Основной путь (без Stripe) — реальный заказ на сервер
   if (!stripe || !elements) {
     btn.disabled = true;
     btn.innerHTML = '<span class="checkout-spinner-sm"></span>Оформлення...';
-    // Simulate order processing
-    setTimeout(() => showSuccess(), 800);
+    hideError();
+    try {
+      const order = await submitOrder();
+      showSuccess(order);
+    } catch (err) {
+      showError(err.message);
+      btn.disabled = false;
+      btn.textContent = `Оформити замовлення · ${getCartTotal().toLocaleString('uk-UA')} ₴`;
+    }
     return;
   }
 
@@ -395,19 +407,79 @@ async function handlePay() {
   showSuccess();
 }
 
-function showSuccess() {
+// ── Реальный сабмит заказа на сервер ─────────────────────
+async function submitOrder() {
+  if (!window.SVS_API) throw new Error('Сервіс тимчасово недоступний. Оновіть сторінку.');
+
+  // 1) свежий каталог с variant_id (vid) — маппим корзину на БД
+  let catalog;
+  try {
+    const r = await fetch(window.SVS_API.baseUrl + '/api/catalog/legacy/all');
+    catalog = await r.json();
+  } catch {
+    throw new Error('Немає зв\'язку з сервером. Перевірте інтернет і спробуйте ще раз.');
+  }
+  const byId = {};
+  (catalog.products || []).forEach((p) => { byId[p.id] = p; });
+
+  const items = [];
+  for (const item of cart) {
+    const fresh = byId[item.id];
+    const vol = fresh?.volumes?.[item.volIdx ?? 0];
+    if (!vol || !vol.vid) {
+      throw new Error(`Товар «${item.product?.name || item.id}» більше недоступний. Видаліть його з кошика.`);
+    }
+    items.push({ variant_id: vol.vid, qty: item.qty });
+  }
+
+  // 2) payload
+  const delivery = getDeliveryData();
+  const promo = document.getElementById('promoCode')?.value?.trim();
+  const payload = {
+    items,
+    contact: { name: delivery.name, phone: delivery.phone },
+    delivery: { type: delivery.method, name: delivery.name, phone: delivery.phone, address: delivery.address || '' },
+  };
+  if (promo) payload.promo_code = promo;
+
+  // 3) отправка
+  const res = await window.SVS_API.createOrder(payload);
+  if (res && res.ok && res.order) return res.order;
+  throw new Error(translateOrderError(res));
+}
+
+function translateOrderError(res) {
+  const code = res?.error || 'unknown';
+  const map = {
+    'invalid-promo': 'Промокод недійсний або вже вичерпаний. Приберіть його або введіть інший.',
+    'insufficient-stock': 'Деяких товарів недостатньо на складі. Зменшіть кількість у кошику.',
+    'phone-required': 'Вкажіть номер телефону.',
+    'variant-not-found': 'Один із товарів більше недоступний. Оновіть кошик.',
+    'no-items': 'Кошик порожній.',
+    'invalid-json': 'Сервер не відповідає. Спробуйте за хвилину.',
+  };
+  return map[code] || 'Не вдалося оформити замовлення. Спробуйте ще раз або зателефонуйте нам: +38 (099) 128-33-75';
+}
+
+function showSuccess(order) {
   // Clear cart
   localStorage.removeItem(STORAGE_CART);
 
-  const devOrderId = 'SVS-' + Date.now().toString(36).toUpperCase();
+  const orderNo = order?.id ? `SVS-${order.id}` : 'SVS-' + Date.now().toString(36).toUpperCase();
+  const discountLine = order?.total != null
+    ? `<p class="checkout-success__id">До сплати: <strong>${Number(order.total).toLocaleString('uk-UA')} ₴</strong></p>` : '';
+  const payBtn = order?.pay_url
+    ? `<a href="${order.pay_url}" class="checkout-empty-btn" style="margin-right:12px">Сплатити онлайн</a>` : '';
   const page = document.getElementById('checkoutPage');
   page.innerHTML = `
     <div class="container checkout-success">
       <div class="checkout-success__icon">✓</div>
       <h2>Замовлення оформлено!</h2>
       <p>Дякуємо за покупку. Менеджер зв'яжеться з вами для підтвердження деталей доставки та оплати.</p>
-      <p class="checkout-success__id">№ замовлення: <strong>${devOrderId}</strong></p>
+      <p class="checkout-success__id">№ замовлення: <strong>${orderNo}</strong></p>
+      ${discountLine}
       <div class="checkout-success__actions">
+        ${payBtn}
         <a href="shop.html" class="checkout-empty-btn">Продовжити покупки</a>
       </div>
     </div>
