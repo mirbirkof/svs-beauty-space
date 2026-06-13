@@ -372,8 +372,56 @@ router.get('/clients/:id', async (req, res) => {
       `SELECT id, total, status, created_at FROM orders WHERE client_id = $1 ORDER BY id DESC`,
       [id]
     );
-    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows } });
+    // Візити салону (записи BeautyPro/CRM)
+    const appts = await pool.query(
+      `SELECT a.id, a.starts_at, a.status, a.price, a.services_text, a.payment_method,
+              m.name AS master_name
+         FROM appointments a
+         LEFT JOIN masters m ON m.id = a.master_id
+        WHERE a.client_id = $1
+        ORDER BY a.starts_at DESC NULLS LAST
+        LIMIT 200`,
+      [id]
+    );
+    const visits = appts.rows;
+    const doneVisits = visits.filter(v => v.status === 'done');
+    const stats = {
+      visits_total: visits.length,
+      visits_done: doneVisits.length,
+      visits_spent: doneVisits.reduce((s, v) => s + Number(v.price || 0), 0),
+      orders_count: orders.rowCount,
+      orders_spent: orders.rows.filter(o => ['paid','packing','shipped','delivered'].includes(o.status))
+                                .reduce((s, o) => s + Number(o.total || 0), 0),
+      last_visit_at: visits[0] ? visits[0].starts_at : (c.rows[0].last_visit_at || null),
+    };
+    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, stats } });
   } catch (e) { console.error('[admin:client]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── PATCH /api/admin/clients/:id — редактирование карточки клиента ──
+// Body: { name, phone, email, birthday (YYYY-MM-DD|null), notes }
+router.patch('/clients/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const allowed = ['name', 'phone', 'email', 'birthday', 'notes'];
+    const sets = [], vals = [];
+    for (const f of allowed) {
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
+        let v = req.body[f];
+        if (f === 'birthday' && (v === '' || v == null)) v = null;
+        vals.push(v); sets.push(`${f} = $${vals.length}`);
+      }
+    }
+    if (!sets.length) return res.status(400).json({ error: 'no fields' });
+    vals.push(id);
+    const r = await pool.query(
+      `UPDATE clients SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${vals.length} RETURNING *`,
+      vals
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, client: r.rows[0] });
+  } catch (e) { console.error('[admin:client:patch]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // ═══════════════════════════════════════════════════════

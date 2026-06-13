@@ -125,6 +125,9 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .tbl td { padding:10px 16px; border-bottom:1px solid #f0f1f5; font-size:13px; vertical-align:middle; }
 .tbl tr:hover td { background:#FAFBFC; }
 .tbl tr { cursor:pointer; }
+.tbl th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+.tbl th.sortable:hover { background:#eef0f5; color:var(--primary,#7c5cff); }
+.tbl th .sort-ind { font-size:10px; color:var(--primary,#7c5cff); margin-left:2px; }
 
 /* BADGES */
 .badge { display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; }
@@ -678,8 +681,16 @@ select.input { background:var(--card); }
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
-            <table class="tbl">
-              <thead><tr><th>Імʼя</th><th>Телефон</th><th>Email</th><th>Замовлень</th><th>Витрачено</th><th>Бонуси</th><th>Зареєстр.</th></tr></thead>
+            <table class="tbl" id="clientsTable">
+              <thead><tr>
+                <th class="sortable" onclick="sortClients('name')">Імʼя <span class="sort-ind" data-k="name"></span></th>
+                <th class="sortable" onclick="sortClients('phone')">Телефон <span class="sort-ind" data-k="phone"></span></th>
+                <th class="sortable" onclick="sortClients('email')">Email <span class="sort-ind" data-k="email"></span></th>
+                <th class="sortable" onclick="sortClients('orders_count')">Замовлень <span class="sort-ind" data-k="orders_count"></span></th>
+                <th class="sortable" onclick="sortClients('total_spent')">Витрачено <span class="sort-ind" data-k="total_spent"></span></th>
+                <th class="sortable" onclick="sortClients('loyalty_points')">Бонуси <span class="sort-ind" data-k="loyalty_points"></span></th>
+                <th class="sortable" onclick="sortClients('created_at')">Зареєстр. <span class="sort-ind" data-k="created_at"></span></th>
+              </tr></thead>
               <tbody id="clientsBody"></tbody>
             </table>
           </div>
@@ -793,11 +804,20 @@ select.input { background:var(--card); }
 
       <!-- ═══ ПЛАН МІСЯЦЯ ТА АНАЛІТИКА ═══ -->
       <div class="page" id="page-plan">
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm plan-tab active" data-pt="month" onclick="planTab('month')">План місяця</button>
-          <button class="btn btn-outline btn-sm plan-tab" data-pt="util" onclick="planTab('util')">Завантаження салону</button>
-          <button class="btn btn-outline btn-sm plan-tab" data-pt="master" onclick="planTab('master')">Аналітика майстра</button>
-          <button class="btn btn-outline btn-sm plan-tab" data-pt="goods" onclick="planTab('goods')">Продажі товарів</button>
+        <style>
+          .plan-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;background:var(--bg-secondary,#f1f2f6);padding:6px;border-radius:14px}
+          .plan-tab{flex:1 1 auto;min-width:140px;padding:12px 18px;border:2px solid transparent;border-radius:10px;
+            background:#fff;color:var(--text-secondary,#555);font-size:14px;font-weight:700;cursor:pointer;
+            transition:all .15s;box-shadow:0 1px 2px rgba(0,0,0,.05);display:flex;align-items:center;justify-content:center;gap:8px}
+          .plan-tab:hover{border-color:var(--primary,#7c5cff);color:var(--primary,#7c5cff)}
+          .plan-tab.active{background:var(--primary,#7c5cff);color:#fff;border-color:var(--primary,#7c5cff);box-shadow:0 4px 12px rgba(124,92,255,.35)}
+          .plan-tab .material-icons-round{font-size:18px}
+        </style>
+        <div class="plan-tabs">
+          <button class="plan-tab active" data-pt="month" onclick="planTab('month')"><span class="material-icons-round">flag</span>План місяця</button>
+          <button class="plan-tab" data-pt="util" onclick="planTab('util')"><span class="material-icons-round">donut_large</span>Завантаження салону</button>
+          <button class="plan-tab" data-pt="master" onclick="planTab('master')"><span class="material-icons-round">person_search</span>Аналітика майстра</button>
+          <button class="plan-tab" data-pt="goods" onclick="planTab('goods')"><span class="material-icons-round">inventory_2</span>Продажі товарів</button>
         </div>
 
         <!-- План місяця -->
@@ -1267,6 +1287,26 @@ select.input { background:var(--card); }
         <button class="modal-close" onclick="closeAppt()">✕</button>
       </div>
       <div class="modal-body" id="apptDetail"></div>
+    </div>
+  </div>
+
+  <div id="clientCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeClientCard()">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-header">
+        <h3 id="clientCardTitle">Картка клієнта</h3>
+        <button class="modal-close" onclick="closeClientCard()">✕</button>
+      </div>
+      <div class="modal-body" id="clientCardBody"></div>
+    </div>
+  </div>
+
+  <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-header">
+        <h3 id="masterCardTitle">Портфоліо майстра</h3>
+        <button class="modal-close" onclick="closeMasterCard()">✕</button>
+      </div>
+      <div class="modal-body" id="masterCardBody"></div>
     </div>
   </div>
 
@@ -2133,7 +2173,9 @@ function exportClientsByService(){
 
 // ═══ Сторінка "План місяця та аналітика" ══════
 let _planInited = false;
+let _curPlanTab = 'month';
 function planTab(t){
+  _curPlanTab = t;
   document.querySelectorAll('.plan-tab').forEach(b=>b.classList.toggle('active', b.dataset.pt===t));
   document.querySelectorAll('.plan-pane').forEach(p=>p.style.display='none');
   document.getElementById('pt-'+t).style.display='';
@@ -2156,7 +2198,10 @@ async function loadPlanPage(){
     ['mdTo','psTo'].forEach(id=>document.getElementById(id).value=mb.to);
     // майстри для аналітики
     try{ const r=await api('/api/schedule/masters?all=1'); const ms=(r.items||r.masters||[]);
-      document.getElementById('mdMaster').innerHTML=ms.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+      const act=ms.filter(m=>m.active), inact=ms.filter(m=>!m.active);
+      let html=act.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+      if(inact.length) html+=`<optgroup label="Звільнені">`+inact.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')+`</optgroup>`;
+      document.getElementById('mdMaster').innerHTML=html;
     }catch{}
   }
   planTab('month');
@@ -2176,7 +2221,7 @@ async function loadMonthlyPlan(){
       const pctColor=m.pct==null?'var(--text-secondary)':m.pct>=100?'#10b981':m.pct>=70?'#f59e0b':'#ef4444';
       const shiftSrc=m.has_schedule?'графік':'факт';
       return `<tr>
-        <td style="font-weight:600">${m.name}</td>
+        <td><a href="#" onclick="openMasterCard(${m.master_id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${m.name}</a></td>
         <td><input type="number" class="input btn-sm pl-pershift" data-mid="${m.master_id}" value="${m.plan_per_shift||''}" style="width:110px" placeholder="0"></td>
         <td>${m.shifts_used} <span style="color:var(--text-secondary);font-size:11px">(${shiftSrc})</span></td>
         <td style="font-weight:600">${_money2(m.plan_total)}</td>
@@ -2224,7 +2269,8 @@ async function loadUtilization(){
       const pct=m.util_pct==null?'—':m.util_pct+'%';
       const col=m.util_pct==null?'var(--text-secondary)':m.util_pct>=70?'#10b981':m.util_pct>=40?'#f59e0b':'#ef4444';
       const bar=m.util_pct==null?'':`<div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden;margin-top:4px"><div style="height:100%;width:${Math.min(100,m.util_pct)}%;background:${col}"></div></div>`;
-      return `<tr><td style="font-weight:600">${m.name}</td><td>${m.shifts}</td><td>${m.appts}</td><td>${(m.busy_min/60).toFixed(1)} год</td><td>${m.avail_min?(m.avail_min/60).toFixed(1)+' год':'—'}</td><td style="font-weight:700;color:${col}">${pct}${bar}</td></tr>`;
+      const nm=m.master_id?`<a href="#" onclick="openMasterCard(${m.master_id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${m.name}</a>`:`<span style="font-weight:600">${m.name}</span>`;
+      return `<tr><td>${nm}</td><td>${m.shifts}</td><td>${m.appts}</td><td>${(m.busy_min/60).toFixed(1)} год</td><td>${m.avail_min?(m.avail_min/60).toFixed(1)+' год':'—'}</td><td style="font-weight:700;color:${col}">${pct}${bar}</td></tr>`;
     }).join('');
     box.innerHTML=`<div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px;font-size:15px">Завантаження салону: <b style="font-size:20px">${salon}</b></div>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Майстер</th><th>Змін</th><th>Записів</th><th>Зайнято</th><th>Робочий час</th><th>Завантаження</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -2977,14 +3023,180 @@ async function saveAppt(id) {
 }
 
 // ═══ CLIENTS ═════════════════════════════════
+let _clientsData = [];
+let _clientSort = { key: 'created_at', dir: 'desc' };
 async function loadClients() {
   const q = document.getElementById('clientSearch').value.trim();
   const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
-  document.getElementById('clientsBody').innerHTML = (r.items || []).map(c => `
-    <tr><td>${c.name||'—'}</td><td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
+  _clientsData = r.items || [];
+  renderClientsTable();
+}
+function sortClients(key) {
+  if (_clientSort.key === key) { _clientSort.dir = _clientSort.dir === 'asc' ? 'desc' : 'asc'; }
+  else { _clientSort.key = key; _clientSort.dir = (key === 'name' || key === 'email' || key === 'phone') ? 'asc' : 'desc'; }
+  renderClientsTable();
+}
+function renderClientsTable() {
+  const { key, dir } = _clientSort;
+  const numKeys = ['orders_count', 'total_spent', 'loyalty_points'];
+  const arr = _clientsData.slice().sort((a, b) => {
+    let va, vb;
+    if (key === 'created_at') { va = new Date(a.created_at || 0).getTime(); vb = new Date(b.created_at || 0).getTime(); }
+    else if (numKeys.includes(key)) { va = Number(a[key] || 0); vb = Number(b[key] || 0); }
+    else { va = (a[key] || '').toString().toLowerCase(); vb = (b[key] || '').toString().toLowerCase(); }
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+  document.getElementById('clientsBody').innerHTML = arr.map(c => `
+    <tr><td><a href="#" onclick="openClientCard(${c.id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a></td>
+    <td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
     <td>${c.orders_count}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
     <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
     || '<tr><td colspan="7"><div class="empty">Клієнтів немає</div></td></tr>';
+  document.querySelectorAll('#clientsTable .sort-ind').forEach(s => {
+    s.textContent = (s.dataset.k === key) ? (dir === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
+// ═══ КАРТКА КЛІЄНТА ══════════════════════════════════
+let _ccId = null;
+function closeClientCard(){ document.getElementById('clientCardModal').style.display='none'; _ccId=null; }
+async function openClientCard(id){
+  _ccId = id;
+  const m = document.getElementById('clientCardModal');
+  document.getElementById('clientCardBody').innerHTML = '<div class="empty">Завантаження…</div>';
+  m.style.display='flex';
+  try {
+    const r = await api('/api/admin/clients/'+id);
+    const c = r.client; const st = c.stats || {};
+    const bday = c.birthday ? new Date(c.birthday).toISOString().slice(0,10) : '';
+    const visitsHtml = (c.visits||[]).slice(0,15).map(v=>`
+      <tr><td>${v.starts_at?new Date(v.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
+      <td>${v.services_text||'—'}</td><td>${v.master_name||'—'}</td>
+      <td>${Number(v.price||0).toLocaleString()} ₴</td>
+      <td><span class="badge b-${v.status}">${v.status}</span></td></tr>`).join('')
+      || '<tr><td colspan="5"><div class="empty">Візитів немає</div></td></tr>';
+    document.getElementById('clientCardTitle').textContent = c.name || 'Картка клієнта';
+    document.getElementById('clientCardBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+        ${kpiBox('Візитів', st.visits_done||0)}
+        ${kpiBox('Витрачено в салоні', (st.visits_spent||0).toLocaleString()+' ₴')}
+        ${kpiBox('Замовлень', st.orders_count||0)}
+        ${kpiBox('Бонуси', c.loyalty_points||0)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+        <div><label style="font-size:12px;color:var(--text-secondary)">Імʼя</label><input id="ccName" class="input" value="${(c.name||'').replace(/"/g,'&quot;')}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">Телефон</label><input id="ccPhone" class="input" value="${c.phone||''}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">Email</label><input id="ccEmail" class="input" value="${c.email||''}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">День народження</label><input id="ccBday" type="date" class="input" value="${bday}"></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Особисті нотатки</label>
+        <textarea id="ccNotes" class="input" rows="3" placeholder="Уподобання, алергії, важливі деталі…">${c.notes||''}</textarea></div>
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <button class="btn btn-primary btn-sm" onclick="saveClientCard()">Зберегти</button>
+        ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);align-self:center">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
+      </div>
+      <h4 style="margin:0 0 8px;font-size:14px">Історія візитів</h4>
+      <table class="tbl"><thead><tr><th>Дата</th><th>Послуга</th><th>Майстер</th><th>Сума</th><th>Статус</th></tr></thead>
+      <tbody>${visitsHtml}</tbody></table>`;
+  } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+async function saveClientCard(){
+  if(!_ccId) return;
+  const body = {
+    name: document.getElementById('ccName').value.trim(),
+    phone: document.getElementById('ccPhone').value.trim(),
+    email: document.getElementById('ccEmail').value.trim(),
+    birthday: document.getElementById('ccBday').value || null,
+    notes: document.getElementById('ccNotes').value.trim(),
+  };
+  try {
+    const r = await api('/api/admin/clients/'+_ccId, { method:'PATCH', body: JSON.stringify(body) });
+    if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
+    alert('Збережено');
+    closeClientCard();
+    if (typeof loadClients==='function' && currentPage==='clients') loadClients();
+  } catch(e){ alert('Помилка збереження'); }
+}
+
+// ═══ ПОРТФОЛІО МАЙСТРА ══════════════════════════════════
+let _mcId = null;
+function closeMasterCard(){ document.getElementById('masterCardModal').style.display='none'; _mcId=null; }
+async function openMasterCard(id){
+  _mcId = id;
+  const m = document.getElementById('masterCardModal');
+  document.getElementById('masterCardBody').innerHTML = '<div class="empty">Завантаження…</div>';
+  m.style.display='flex';
+  try {
+    const r = await api('/api/schedule/masters/'+id+'/portfolio');
+    const ms = r.master; const s = r.stats || {};
+    const topHtml = (r.top_services||[]).map(t=>`
+      <tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
+      || '<tr><td colspan="3"><div class="empty">Немає даних</div></td></tr>';
+    const recHtml = (r.recent||[]).slice(0,12).map(a=>`
+      <tr><td>${a.starts_at?new Date(a.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
+      <td>${a.client_name||'—'}</td><td>${a.services_text||'—'}</td>
+      <td>${Number(a.price||0).toLocaleString()} ₴</td>
+      <td><span class="badge b-${a.status}">${a.status}</span></td></tr>`).join('')
+      || '<tr><td colspan="5"><div class="empty">Записів немає</div></td></tr>';
+    document.getElementById('masterCardTitle').textContent = ms.name || 'Портфоліо майстра';
+    document.getElementById('masterCardBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+        ${kpiBox('Виконано (всього)', s.done_total||0)}
+        ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
+        ${kpiBox('За 30 днів', s.done_30||0)}
+        ${kpiBox('Клієнтів', s.clients_total||0)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+        <div><label style="font-size:12px;color:var(--text-secondary)">Імʼя</label><input id="mcName" class="input" value="${(ms.name||'').replace(/"/g,'&quot;')}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">Спеціальність</label><input id="mcSpec" class="input" value="${(ms.specialty||'').replace(/"/g,'&quot;')}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">Телефон</label><input id="mcPhone" class="input" value="${ms.phone||''}"></div>
+        <div><label style="font-size:12px;color:var(--text-secondary)">Комісія, %</label><input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}"></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Біо / опис</label>
+        <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
+      <div style="display:flex;gap:8px;margin-bottom:18px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти</button>
+        <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+        <span style="font-size:12px;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
+      </div>
+      <h4 style="margin:0 0 8px;font-size:14px">Топ послуг</h4>
+      <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${topHtml}</tbody></table>
+      <h4 style="margin:16px 0 8px;font-size:14px">Останні записи</h4>
+      <table class="tbl"><thead><tr><th>Дата</th><th>Клієнт</th><th>Послуга</th><th>Сума</th><th>Статус</th></tr></thead><tbody>${recHtml}</tbody></table>`;
+  } catch(e){ document.getElementById('masterCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+async function saveMasterCard(){
+  if(!_mcId) return;
+  const body = {
+    name: document.getElementById('mcName').value.trim(),
+    specialty: document.getElementById('mcSpec').value.trim(),
+    phone: document.getElementById('mcPhone').value.trim(),
+    bio: document.getElementById('mcBio').value.trim(),
+    commission_pct: document.getElementById('mcComm').value || null,
+  };
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
+    if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
+    alert('Збережено');
+    closeMasterCard();
+  } catch(e){ alert('Помилка збереження'); }
+}
+async function toggleMasterActive(id, makeActive){
+  if(!confirm(makeActive?'Відновити майстра? Він знову зʼявиться у графіку, записах та плані.':'Звільнити майстра? Він зникне з графіка, журналу, плану місяця та онлайн-запису (статистика збережеться).')) return;
+  try {
+    const r = await api('/api/schedule/masters/'+id, { method:'PATCH', body: JSON.stringify({ active: makeActive }) });
+    if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
+    closeMasterCard();
+    if (typeof loadMonthlyPlan==='function' && currentPage==='plan') planTab(_curPlanTab||'month');
+    _planInited = false; // перевантажити списки майстрів
+  } catch(e){ alert('Помилка'); }
+}
+function kpiBox(label, val){
+  return `<div style="background:var(--bg-secondary,#f6f7fb);border-radius:10px;padding:10px 12px">
+    <div style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.03em">${label}</div>
+    <div style="font-size:19px;font-weight:700;margin-top:2px">${val}</div></div>`;
 }
 
 // ═══ ORDERS ══════════════════════════════════

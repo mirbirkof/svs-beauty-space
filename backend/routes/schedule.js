@@ -53,6 +53,61 @@ router.get('/masters/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/schedule/masters/:id/portfolio — портфолио мастера (профиль + статистика) ──
+router.get('/masters/:id/portfolio', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const m = await pool.query('SELECT * FROM masters WHERE id = $1', [id]);
+    if (!m.rows[0]) return res.status(404).json({ error: 'master not found' });
+    // Статистика за 30 дней и за всё время
+    const stat = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status='done')::int AS done_total,
+         COALESCE(SUM(price) FILTER (WHERE status='done'),0)::float AS revenue_total,
+         COUNT(*) FILTER (WHERE status='done' AND starts_at >= NOW() - INTERVAL '30 days')::int AS done_30,
+         COALESCE(SUM(price) FILTER (WHERE status='done' AND starts_at >= NOW() - INTERVAL '30 days'),0)::float AS revenue_30,
+         COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int AS clients_total
+       FROM appointments WHERE master_id = $1`, [id]);
+    const topServices = await pool.query(
+      `SELECT COALESCE(NULLIF(services_text,''),'Послуга') AS service, COUNT(*)::int AS cnt,
+              COALESCE(SUM(price),0)::float AS sum
+         FROM appointments WHERE master_id = $1 AND status='done'
+         GROUP BY 1 ORDER BY cnt DESC LIMIT 10`, [id]);
+    const recent = await pool.query(
+      `SELECT a.id, a.starts_at, a.status, a.price, a.services_text,
+              COALESCE(a.client_name, c.name) AS client_name
+         FROM appointments a LEFT JOIN clients c ON c.id = a.client_id
+        WHERE a.master_id = $1 ORDER BY a.starts_at DESC NULLS LAST LIMIT 30`, [id]);
+    res.json({ ok: true, master: m.rows[0], stats: stat.rows[0],
+               top_services: topServices.rows, recent: recent.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/schedule/masters/:id/profile — редактирование профиля мастера ──
+// Body: { name, specialty, bio, phone, commission_pct }
+router.patch('/masters/:id/profile', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const allowed = ['name', 'specialty', 'bio', 'phone', 'commission_pct'];
+    const sets = [], vals = [];
+    for (const f of allowed) {
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
+        let v = req.body[f];
+        if (f === 'commission_pct' && (v === '' || v == null)) v = null;
+        vals.push(v); sets.push(`${f} = $${vals.length}`);
+      }
+    }
+    if (!sets.length) return res.status(400).json({ error: 'no fields' });
+    vals.push(id);
+    const r = await pool.query(
+      `UPDATE masters SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
+    res.json({ ok: true, master: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── PUT /api/schedule/masters/:id/schedule — обновить расписание мастера ──
 // Body: { schedule: { mon: { start: "09:00", end: "18:00" }, tue: {...}, ... } }
 // Выходной = null или отсутствует. Пример: { mon: { start: "09:00", end: "18:00" }, tue: null, wed: {...} }
