@@ -12,7 +12,7 @@
 <!-- LOGIN -->
 <section id="login" class="bg-white rounded-2xl shadow-sm p-6 mt-8 hidden">
   <h1 class="text-2xl font-bold mb-1">Вхід до кабінету</h1>
-  <p class="text-sm text-slate-500 mb-5">Введіть номер телефону — надішлемо код підтвердження</p>
+  <p class="text-sm text-slate-500 mb-5">Введіть номер телефону — надішлемо код підтвердження в Telegram</p>
 
   <div id="step-phone">
     <label class="text-xs uppercase text-slate-500">Телефон</label>
@@ -21,7 +21,7 @@
   </div>
 
   <div id="step-code" class="hidden">
-    <label class="text-xs uppercase text-slate-500">Код з SMS</label>
+    <label class="text-xs uppercase text-slate-500">Код з Telegram</label>
     <input id="code" inputmode="numeric" maxlength="4" placeholder="0000" class="w-full border rounded-xl px-4 py-3 mt-1 text-2xl tracking-widest text-center">
     <p id="devHint" class="text-xs text-amber-700 mt-2 hidden">Dev-режим: код завжди <code class="font-bold">0000</code></p>
     <button id="verifyCode" class="w-full bg-slate-900 text-white rounded-xl py-3 mt-4 font-semibold">Увійти</button>
@@ -158,6 +158,18 @@ async function api(path, opts = {}) {
 }
 
 // === LOGIN ===
+// людські повідомлення замість сирих кодів помилок
+const ERR_MAP = {
+  'bad-code': 'Невірний код. Перевірте останнє повідомлення від бота і спробуйте ще раз.',
+  'max-attempts-exceeded': 'Забагато спроб. Запросіть новий код.',
+  'bad-phone': 'Перевірте номер телефону — здається, він введений неповністю.',
+  'phone-and-code-required': 'Введіть номер і код.',
+  'too-many-requests': 'Ви запитували код надто часто. Зачекайте хвилину і спробуйте знову.',
+  'tg-send-failed': 'Не вдалося надіслати код у Telegram. Спробуйте ще раз за хвилину.',
+  'internal': 'Технічна помилка. Спробуйте пізніше.',
+};
+const humanErr = (code) => ERR_MAP[code] || 'Сталася помилка. Спробуйте ще раз.';
+
 $('sendCode').onclick = async () => {
   const phone = $('phone').value.trim();
   if (!phone) return;
@@ -175,7 +187,7 @@ $('sendCode').onclick = async () => {
     }
     $('loginMsg').className = 'text-sm mt-3';
     $('loginMsg').textContent = '';
-  } else $('loginMsg').textContent = r.error || 'Помилка';
+  } else { $('loginMsg').className = 'text-sm mt-3 text-red-600'; $('loginMsg').textContent = humanErr(r.error); }
 };
 
 $('verifyCode').onclick = async () => {
@@ -188,7 +200,7 @@ $('verifyCode').onclick = async () => {
     showCabinet();
   } else {
     $('loginMsg').className = 'text-sm mt-3 text-red-600';
-    $('loginMsg').textContent = r.error || 'Невірний код';
+    $('loginMsg').textContent = humanErr(r.error);
   }
 };
 
