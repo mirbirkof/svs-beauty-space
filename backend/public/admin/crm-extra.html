@@ -68,10 +68,14 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 
 <header>
   <div class="token">
-    <span style="font-size:11px;opacity:.6">Token:</span>
-    <input id="token" type="password" placeholder="ADMIN_TOKEN або Bearer">
-    <button onclick="saveToken()">OK</button>
+    <span id="whoami" style="font-size:13px;opacity:.85"></span>
     <a href="/admin/profile.html" style="margin-left:14px;font-size:13px;text-decoration:none;opacity:.8">Мій кабінет</a>
+    <a href="#" id="logout-link" style="margin-left:12px;font-size:13px;text-decoration:none;opacity:.8">Вийти</a>
+    <a href="#" id="token-toggle" title="Ввести токен вручну" style="margin-left:10px;font-size:13px;text-decoration:none;opacity:.45">⚙</a>
+    <span id="token-box" style="display:none;margin-left:10px">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN або Bearer" style="width:160px">
+      <button onclick="saveToken()">OK</button>
+    </span>
   </div>
 </header>
 
@@ -244,6 +248,39 @@ let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let CURRENT_SHIFT = null;
 let CURRENT_AUDIT = null;
 document.getElementById('token').value = TOKEN;
+
+// Ручной ввод токена (скрыт по умолчанию — для сервисных случаев)
+document.getElementById('token-toggle').addEventListener('click', (e) => {
+  e.preventDefault();
+  const box = document.getElementById('token-box');
+  box.style.display = box.style.display === 'none' ? 'inline' : 'none';
+});
+
+// Выход: гасим сессию и уводим на страницу входа
+document.getElementById('logout-link').addEventListener('click', async (e) => {
+  e.preventDefault();
+  try { await fetch(API + '/api/auth/staff/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN } }); } catch (_) {}
+  localStorage.removeItem('svs_admin_token');
+  localStorage.removeItem('svs_user');
+  location.href = '/admin/login.html';
+});
+
+// Проверка сессии: кто я. Если токена/сессии нет — на вход.
+async function checkSession() {
+  if (!TOKEN) { location.href = '/admin/login.html'; return; }
+  try {
+    const r = await fetch(API + '/api/auth/staff/me', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+    if (r.ok) {
+      const d = await r.json();
+      const u = d.user || {};
+      document.getElementById('whoami').textContent = 'Ви: ' + (u.display_name || '—') + (u.role_code ? ' · ' + u.role_code : '');
+    } else if (r.status === 401) {
+      // Возможно это legacy ADMIN_TOKEN (не session). Оставляем работать, но без имени.
+      document.getElementById('whoami').textContent = 'Сервісний доступ';
+    }
+  } catch (_) { /* сеть — не блокируем */ }
+}
+checkSession();
 
 function saveToken(){ TOKEN = document.getElementById('token').value.trim(); localStorage.setItem('svs_admin_token', TOKEN); init(); }
 
