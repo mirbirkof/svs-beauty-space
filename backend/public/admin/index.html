@@ -1860,12 +1860,13 @@ function renderMiniCal() {
 }
 
 // ── Бублик каси за день (нал / безнал / разом) — видно адміну ──
-async function loadCashGauge() {
+async function loadCashGauge(forDate) {
   const box = document.getElementById('jCashGauge');
   if (!box) return;
+  const date = forDate || document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
   box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-sub">завантаження…</div>`;
   let d;
-  try { d = await api('/api/cashbox/today'); }
+  try { d = await api('/api/cashbox/today?date=' + date); }
   catch { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">Каса недоступна</div>`; return; }
   if (d.error) { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">${d.message||'Недоступно'}</div>`; return; }
   const cash=Number(d.cash||0), cashless=Number(d.cashless||0), total=Number(d.total||0);

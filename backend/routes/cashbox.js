@@ -73,10 +73,17 @@ router.get('/shifts/current', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/cashbox/today — зведення каси за СЬОГОДНІ (готівка/безготівка/разом)
-// Доступно адміну: лише поточний день, без історії.
+// GET /api/cashbox/today?date=YYYY-MM-DD — зведення каси за день (готівка/безготівка/разом)
+// Без date — поточний день (доступно адміну). З date в минулому — лише власник (історія).
 router.get('/today', async (req, res) => {
   try {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const reqDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : todayStr;
+    // минулі/майбутні дні — це історія, доступна лише власнику (cashbox.history)
+    if (reqDate !== todayStr && !hasPermission(req.user?.permissions || [], 'cashbox.history')) {
+      return res.status(403).json({ error: 'forbidden', need: 'cashbox.history',
+        message: 'Каса за минулі дні доступна лише власнику' });
+    }
     const r = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN type='in'  AND method='cash' THEN amount ELSE 0 END),0)::float AS cash,
@@ -85,11 +92,12 @@ router.get('/today', async (req, res) => {
          COALESCE(SUM(CASE WHEN type='out' THEN amount ELSE 0 END),0)::float AS total_out,
          COUNT(*) FILTER (WHERE type='in')::int AS ops_in
        FROM cash_operations
-       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'`
+       WHERE created_at >= $1::date AND created_at < ($1::date + INTERVAL '1 day')`,
+      [reqDate]
     );
     const row = r.rows[0];
     res.json({
-      date: new Date().toISOString().slice(0,10),
+      date: reqDate,
       cash: row.cash,
       cashless: row.cashless,
       total: row.total_in,            // загальна каса за день (прихід)
