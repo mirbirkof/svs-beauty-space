@@ -209,7 +209,8 @@ select.input { background:var(--card); }
 .jgrid { display:flex; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--card); }
 .jgrid-time { flex:0 0 56px; border-right:1px solid var(--border); background:var(--bg); position:sticky; left:0; z-index:3; }
 .jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
-.jslot-label { height:var(--jh,42px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }
+.jslot-label { height:var(--jh,21px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }
+.jslot-label.hh { font-weight:600; color:var(--text); }                 /* мітка на годині — жирніша */
 .jcol { flex:1 0 180px; border-right:1px solid var(--border); position:relative; }
 .jcol:last-child { border-right:none; }
 .jcol-head { height:64px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 10px; position:sticky; top:0; background:var(--card); z-index:2; }
@@ -218,8 +219,9 @@ select.input { background:var(--card); }
 .jcol-head .nm { font-size:13px; font-weight:600; line-height:1.1; }
 .jcol-head .sp { font-size:11px; color:var(--text-secondary); }
 .jcol-body { position:relative; }
-.jslot { height:var(--jh,42px); border-bottom:1px dashed var(--border); box-sizing:border-box; }
-.jslot.hour { border-bottom:1px solid var(--border); }
+.jslot { height:var(--jh,21px); box-sizing:border-box; }                /* 15-хв слот — без лінії */
+.jslot.half { border-top:1px solid var(--border); }                     /* 30-хв — тонка лінія */
+.jslot.hour { border-top:2px solid #c2c8d2; }                           /* година — жирна лінія */
 .joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; pointer-events:none; }
 .joff-part { inset:auto; left:0; right:0; }
 .jslot.jbook { cursor:pointer; }
@@ -542,7 +544,7 @@ select.input { background:var(--card); }
             <span class="material-icons-round">monitor_heart</span> Системний статус
           </a>
           <a class="sidebar-item" href="/admin/crm-extra.html#branches">
-            <span class="material-icons-round">store</span> Філії
+            <span class="material-icons-round">store</span> Управління магазинами
           </a>
           <a class="sidebar-item" data-page="sync" onclick="go('sync')">
             <span class="material-icons-round">sync</span> BeautyPro синхро
@@ -1958,7 +1960,7 @@ function renderJournalDay(container, data) {
   let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
   appts.forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); });
   minM = Math.floor(minM/60)*60; maxM = Math.ceil(maxM/60)*60;     // вирівнюємо по годинах
-  const slots = (maxM-minM)/30;
+  const slots = (maxM-minM)/15;                                    // сітка по 15 хв (як у DIKIDI)
   const colH = (maxM-minM)*J_PX_PER_MIN;
 
   const apptByMaster = {};
@@ -1966,7 +1968,7 @@ function renderJournalDay(container, data) {
 
   // часова колонка
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
-  for (let i=0;i<slots;i++){ const m=minM+i*30; timeCol += `<div class="jslot-label">${_toHHMM(m)}</div>`; }
+  for (let i=0;i<slots;i++){ const m=minM+i*15; const lbl = m%60===0 ? _toHHMM(m) : (m%30===0 ? _toHHMM(m) : ''); timeCol += `<div class="jslot-label${m%60===0?' hh':''}">${lbl}</div>`; }
   timeCol += '</div>';
 
   // колонки майстрів
@@ -1987,9 +1989,10 @@ function renderJournalDay(container, data) {
     let body = '';
     // ряди сітки: робочий час — клікабельний для броні «в моменті»
     for (let i=0;i<slots;i++){
-      const m2=minM+i*30;
+      const m2=minM+i*15;
+      const lineCls = m2%60===0 ? ' hour' : (m2%30===0 ? ' half' : '');
       const bookable = m.working && m2>=wStart && m2<wEnd;
-      body += `<div class="jslot${m2%60===0?' hour':''}${bookable?' jbook':''}"${bookable?` onclick="openCreate(${m.id},'${dateStr}',${m2})"`:''}></div>`;
+      body += `<div class="jslot${lineCls}${bookable?' jbook':''}"${bookable?` onclick="openCreate(${m.id},'${dateStr}',${m2})"`:''}></div>`;
     }
     // вихідний — затіняємо всю колонку
     if (!m.working) body += `<div class="joff">${m.day_off_reason||'Вихідний'}</div>`;
@@ -2034,7 +2037,7 @@ function renderJournalDay(container, data) {
     </div>`;
   }).join('');
 
-  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>
+  container.innerHTML = `<div class="jgrid" style="--jh:${15*J_PX_PER_MIN}px">${timeCol}${cols}</div>
     <div class="jlegend">
       <span><i style="background:#6366f1"></i>Заплановано</span>
       <span><i style="background:#0ea5e9"></i>Підтверджено</span>
@@ -2093,7 +2096,7 @@ async function renderJournalWeek(container, dateStr) {
     const ds = d.toISOString().slice(0,10);
     const appts = (results[di].appointments||[]).slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
     let body='';
-    for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':''}"></div>`; }
+    for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':' half'}"></div>`; }
     // прості рядки-картки (тиждень = огляд, без позиціювання по майстрах)
     appts.forEach(a => {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
