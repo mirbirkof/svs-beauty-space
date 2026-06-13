@@ -3135,6 +3135,30 @@ async function saveClientCard(){
 // ═══ ПОРТФОЛІО МАЙСТРА ══════════════════════════════════
 let _mcId = null;
 function closeMasterCard(){ document.getElementById('masterCardModal').style.display='none'; _mcId=null; }
+// аватар-кружок: фото або ініціали
+function _mcAvatar(ms){
+  const init = (ms.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+  const grad = 'linear-gradient(135deg,#7c5cff,#b18cff)';
+  if (ms.avatar) return `<img src="${ms.avatar}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;flex:none">`;
+  return `<div style="width:72px;height:72px;border-radius:18px;flex:none;background:${grad};color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700">${init||'★'}</div>`;
+}
+// тиждневий графік з schedule_json
+function _mcSchedule(sj){
+  let sched = sj; try { if (typeof sj === 'string') sched = JSON.parse(sj); } catch(_){ sched = null; }
+  const days = [['mon','Пн'],['tue','Вт'],['wed','Ср'],['thu','Чт'],['fri','Пт'],['sat','Сб'],['sun','Нд']];
+  if (!sched || typeof sched !== 'object' || !Object.keys(sched).length)
+    return `<div class="empty" style="padding:8px 0;font-size:13px">Графік не заданий — задайте у розділі «Графік роботи»</div>`;
+  const cells = days.map(([k,lbl])=>{
+    const d = sched[k];
+    const on = d && (d.start||d.from) && (d.end||d.to);
+    const txt = on ? `${d.start||d.from}–${d.end||d.to}` : 'вих.';
+    return `<div style="text-align:center;flex:1;min-width:54px">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px">${lbl}</div>
+      <div style="font-size:11px;font-weight:600;padding:5px 2px;border-radius:8px;background:${on?'rgba(124,92,255,.10)':'var(--bg-secondary,#f3f4f6)'};color:${on?'#7c5cff':'#9ca3af'}">${txt}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div>`;
+}
 async function openMasterCard(id){
   _mcId = id;
   const m = document.getElementById('masterCardModal');
@@ -3143,6 +3167,7 @@ async function openMasterCard(id){
   try {
     const r = await api('/api/schedule/masters/'+id+'/portfolio');
     const ms = r.master; const s = r.stats || {};
+    const avg = (s.done_total>0) ? Math.round((s.revenue_total||0)/s.done_total) : 0;
     const topHtml = (r.top_services||[]).map(t=>`
       <tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
       || '<tr><td colspan="3"><div class="empty">Немає даних</div></td></tr>';
@@ -3152,27 +3177,49 @@ async function openMasterCard(id){
       <td>${Number(a.price||0).toLocaleString()} ₴</td>
       <td><span class="badge b-${a.status}">${a.status}</span></td></tr>`).join('')
       || '<tr><td colspan="5"><div class="empty">Записів немає</div></td></tr>';
-    document.getElementById('masterCardTitle').textContent = ms.name || 'Портфоліо майстра';
+    const phoneTxt = ms.phone ? `<a href="tel:${ms.phone}" style="color:#7c5cff;text-decoration:none;font-weight:600">${fmtPhone?fmtPhone(ms.phone):ms.phone}</a>` : '<span style="color:#9ca3af">телефон не вказано</span>';
+    const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
+    document.getElementById('masterCardTitle').textContent = ms.name || 'Профіль майстра';
     document.getElementById('masterCardBody').innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:16px">
+        ${_mcAvatar(ms)}
+        <div style="min-width:0">
+          <div style="font-size:20px;font-weight:700;line-height:1.2">${ms.name||'—'}</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
+            <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
+            ${bpBadge}
+            <span style="font-size:12px;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
+          </div>
+          <div style="margin-top:6px;font-size:13px">📞 ${phoneTxt}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
         ${kpiBox('Виконано (всього)', s.done_total||0)}
         ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
-        ${kpiBox('За 30 днів', s.done_30||0)}
+        ${kpiBox('Середній чек', avg.toLocaleString()+' ₴')}
+        ${kpiBox('Виручка 30 днів', (s.revenue_30||0).toLocaleString()+' ₴')}
+        ${kpiBox('Послуг 30 днів', s.done_30||0)}
         ${kpiBox('Клієнтів', s.clients_total||0)}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-        <div><label style="font-size:12px;color:var(--text-secondary)">Імʼя</label><input id="mcName" class="input" value="${(ms.name||'').replace(/"/g,'&quot;')}"></div>
-        <div><label style="font-size:12px;color:var(--text-secondary)">Спеціальність</label><input id="mcSpec" class="input" value="${(ms.specialty||'').replace(/"/g,'&quot;')}"></div>
-        <div><label style="font-size:12px;color:var(--text-secondary)">Телефон</label><input id="mcPhone" class="input" value="${ms.phone||''}"></div>
-        <div><label style="font-size:12px;color:var(--text-secondary)">Комісія, %</label><input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}"></div>
-      </div>
-      <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Біо / опис</label>
-        <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
-      <div style="display:flex;gap:8px;margin-bottom:18px;align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти</button>
-        <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
-        <span style="font-size:12px;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
-      </div>
+      <h4 style="margin:0 0 8px;font-size:14px">Графік роботи</h4>
+      <div style="margin-bottom:16px">${_mcSchedule(ms.schedule_json)}</div>
+      <details style="margin-bottom:16px">
+        <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:6px 0">✎ Редагувати профіль</summary>
+        <div style="padding-top:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+            <div><label style="font-size:12px;color:var(--text-secondary)">Імʼя</label><input id="mcName" class="input" value="${(ms.name||'').replace(/"/g,'&quot;')}"></div>
+            <div><label style="font-size:12px;color:var(--text-secondary)">Спеціальність</label><input id="mcSpec" class="input" value="${(ms.specialty||'').replace(/"/g,'&quot;')}"></div>
+            <div><label style="font-size:12px;color:var(--text-secondary)">Телефон</label><input id="mcPhone" class="input" value="${ms.phone||''}"></div>
+            <div><label style="font-size:12px;color:var(--text-secondary)">Комісія, %</label><input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}"></div>
+          </div>
+          <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Біо / опис</label>
+            <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти</button>
+            <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+          </div>
+        </div>
+      </details>
       <h4 style="margin:0 0 8px;font-size:14px">Топ послуг</h4>
       <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${topHtml}</tbody></table>
       <h4 style="margin:16px 0 8px;font-size:14px">Останні записи</h4>
