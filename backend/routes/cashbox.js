@@ -100,6 +100,81 @@ router.get('/today', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Людські назви категорій операцій (DIKIDI-style)
+const FIN_CAT_LABELS = {
+  sale_service: 'Послуги', sale_product: 'Продажі товарів', prepayment: 'Передоплата',
+  return: 'Повернення коштів', encashment_in: 'Внесення в касу', other_in: 'Інші надходження',
+  salary: 'Виплата зарплати', supplier: 'Товари / постачальники', rent: 'Оренда',
+  utilities: 'Комунальні послуги', refund: 'Повернення клієнту', encashment_out: 'Інкасація',
+  other_out: 'Інші витрати',
+};
+
+// GET /api/cashbox/finance?from=YYYY-MM-DD&to=YYYY-MM-DD — фінансовий огляд (DIKIDI-style)
+// Залишок на початок + Доходи/Витрати за категоріями + залишок на кінець + операції.
+// Доступ — лише власник (cashbox.history): це загальна фінансова статистика.
+router.get('/finance', requireHistory, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    let { from, to } = req.query;
+    if (!from) from = today.slice(0, 8) + '01';   // початок поточного місяця
+    if (!to) to = today;
+    const params = [from, to];
+
+    // залишок на початок: усі in − out до дати from (розділ готівка / безготівка)
+    const open = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN method='cash'  AND type='in' THEN amount WHEN method='cash'  AND type='out' THEN -amount ELSE 0 END),0)::float AS cash,
+         COALESCE(SUM(CASE WHEN method<>'cash' AND type='in' THEN amount WHEN method<>'cash' AND type='out' THEN -amount ELSE 0 END),0)::float AS cashless
+       FROM cash_operations WHERE created_at < $1::date`, [from]);
+
+    // доходи/витрати в періоді за категоріями + спосіб оплати
+    const cats = await pool.query(
+      `SELECT type, category,
+              SUM(amount)::float AS amount,
+              SUM(CASE WHEN method='cash'  THEN amount ELSE 0 END)::float AS cash,
+              SUM(CASE WHEN method<>'cash' THEN amount ELSE 0 END)::float AS cashless
+       FROM cash_operations
+       WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
+       GROUP BY type, category`, params);
+
+    // список операцій
+    const ops = await pool.query(
+      `SELECT o.id, o.type, o.category, o.amount::float AS amount, o.method, o.description, o.created_at,
+              m.name AS master_name
+       FROM cash_operations o LEFT JOIN masters m ON m.id = o.master_id
+       WHERE o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
+       ORDER BY o.created_at DESC LIMIT 300`, params);
+
+    const income = { total: 0, cash: 0, cashless: 0, by_category: [] };
+    const expense = { total: 0, cash: 0, cashless: 0, by_category: [] };
+    for (const r of cats.rows) {
+      const b = r.type === 'in' ? income : expense;
+      b.total += r.amount; b.cash += r.cash; b.cashless += r.cashless;
+      b.by_category.push({ category: r.category, label: FIN_CAT_LABELS[r.category] || r.category, amount: r.amount });
+    }
+    income.by_category.sort((a, b) => b.amount - a.amount);
+    expense.by_category.sort((a, b) => b.amount - a.amount);
+
+    const o = open.rows[0];
+    const opening = { cash: o.cash, cashless: o.cashless, total: o.cash + o.cashless };
+    const closing = {
+      cash: opening.cash + income.cash - expense.cash,
+      cashless: opening.cashless + income.cashless - expense.cashless,
+    };
+    closing.total = closing.cash + closing.cashless;
+
+    res.json({
+      from, to, opening, income, expense, closing,
+      result: income.total - expense.total,
+      transactions: ops.rows.map(t => ({
+        id: t.id, type: t.type, category: t.category, label: FIN_CAT_LABELS[t.category] || t.category,
+        method: t.method, amount: t.amount, description: t.description,
+        master_name: t.master_name, created_at: t.created_at,
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/cashbox/shifts — история смен (только владелец)
 router.get('/shifts', requireHistory, async (req, res) => {
   try {

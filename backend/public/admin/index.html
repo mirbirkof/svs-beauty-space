@@ -337,6 +337,37 @@ select.input { background:var(--card); }
   .jt-right { order:2; margin-left:auto; }
   .jt-date { min-width:140px; font-size:13px; }
 }
+/* ── Фінанси: Доходи і Витрати ── */
+.fin-toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.fin-periods { display:inline-flex; background:var(--card-bg,#fff); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.fin-per { border:none; background:transparent; padding:8px 16px; font-size:13px; cursor:pointer; color:var(--text-secondary); border-right:1px solid var(--border); }
+.fin-per:last-child { border-right:none; }
+.fin-per.active { background:var(--primary,#6366f1); color:#fff; }
+.fin-dates { display:flex; align-items:center; gap:6px; }
+.fin-dates .input { width:150px; }
+.fin-actions { margin-left:auto; display:flex; gap:8px; }
+.fin-donuts { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
+.fin-card { background:var(--card-bg,#fff); border:1px solid var(--border); border-radius:14px; padding:18px; }
+.fin-card h4 { margin:0 0 12px; font-size:13px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+.fin-card-top { display:flex; align-items:center; gap:14px; }
+.fin-donut { flex:0 0 96px; position:relative; }
+.fin-donut svg { transform:rotate(-90deg); }
+.fin-donut-center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; }
+.fin-legend { flex:1 1 auto; display:flex; flex-direction:column; gap:5px; min-width:0; }
+.fin-leg { display:flex; align-items:center; gap:7px; font-size:12.5px; }
+.fin-leg .dot { width:9px; height:9px; border-radius:2px; flex:0 0 auto; }
+.fin-leg .lab { flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); }
+.fin-leg .val { font-weight:600; }
+.fin-bigval { font-size:24px; font-weight:700; margin-top:4px; }
+.fin-table { width:100%; border-collapse:collapse; font-size:13px; }
+.fin-table th { text-align:left; padding:10px 14px; background:var(--bg,#f8fafc); color:var(--text-secondary); font-weight:600; font-size:12px; border-bottom:1px solid var(--border); position:sticky; top:0; }
+.fin-table td { padding:10px 14px; border-bottom:1px solid var(--border); }
+.fin-table tr:hover td { background:var(--primary-light,#f5f5ff); }
+.fin-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:20px; font-size:11.5px; font-weight:600; }
+.fin-pill.in { background:#dcfce7; color:#166534; }
+.fin-pill.out { background:#fee2e2; color:#991b1b; }
+@media(max-width:1100px){ .fin-donuts { grid-template-columns:repeat(2,1fr); } }
+@media(max-width:640px){ .fin-donuts { grid-template-columns:1fr; } .fin-actions { margin-left:0; width:100%; } }
 </style>
 </head>
 <body>
@@ -453,8 +484,14 @@ select.input { background:var(--card); }
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="finance" onclick="go('finance')">
+            <span class="material-icons-round">swap_vert</span> Доходи і Витрати
+          </a>
           <a class="sidebar-item" href="/admin/crm-extra.html">
-            <span class="material-icons-round">point_of_sale</span> Каса (загальна)
+            <span class="material-icons-round">point_of_sale</span> Рахунки і каси
+          </a>
+          <a class="sidebar-item" data-page="contractors" onclick="go('contractors')">
+            <span class="material-icons-round">groups</span> Контрагенти
           </a>
           <a class="sidebar-item" href="/admin/crm-extra.html#reports">
             <span class="material-icons-round">insights</span> Звіти (P&amp;L, RFM)
@@ -799,6 +836,59 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ FINANCE (Доходи і Витрати, DIKIDI-style) ═══ -->
+      <div class="page" id="page-finance">
+        <div class="fin-toolbar">
+          <div class="fin-periods" id="finPeriods">
+            <button class="fin-per active" data-per="day" onclick="finSetPeriod('day')">Сьогодні</button>
+            <button class="fin-per" data-per="week" onclick="finSetPeriod('week')">Тиждень</button>
+            <button class="fin-per" data-per="month" onclick="finSetPeriod('month')">Місяць</button>
+            <button class="fin-per" data-per="year" onclick="finSetPeriod('year')">Рік</button>
+          </div>
+          <div class="fin-dates">
+            <input id="finFrom" type="date" class="input" onchange="finCustom()">
+            <span style="opacity:.5">—</span>
+            <input id="finTo" type="date" class="input" onchange="finCustom()">
+          </div>
+          <div class="fin-actions">
+            <a class="btn btn-sm" style="background:#dcfce7;color:#166534" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round" style="font-size:16px">add</span> Дохід</a>
+            <a class="btn btn-sm" style="background:#fee2e2;color:#991b1b" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round" style="font-size:16px">remove</span> Витрата</a>
+          </div>
+        </div>
+        <div class="fin-donuts" id="finDonuts">
+          <div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Рух коштів</h3></div>
+          <div class="card-body" style="padding:0;overflow:auto">
+            <table class="fin-table" id="finTable">
+              <thead><tr>
+                <th>Тип</th><th>Стаття</th><th>Спосіб</th><th>Майстер</th>
+                <th style="text-align:right">Сума</th><th>Примітка</th><th>Створено</th>
+              </tr></thead>
+              <tbody id="finTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CONTRACTORS (Контрагенти) ═══ -->
+      <div class="page" id="page-contractors">
+        <div class="card" style="max-width:640px">
+          <div class="card-header"><h3>Контрагенти</h3></div>
+          <div class="card-body">
+            <p style="font-size:14px;color:var(--muted);line-height:1.6">
+              Контрагенти — це постачальники товарів, орендодавці та інші партнери, з якими ведуться взаєморозрахунки.
+              Облік взаєморозрахунків ведеться у касі через статті «Товари / постачальники», «Оренда», «Комунальні послуги».
+            </p>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+              <a class="btn btn-sm btn-primary" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round" style="font-size:16px">point_of_sale</span> Перейти до каси</a>
+              <button class="btn btn-sm" onclick="go('finance')"><span class="material-icons-round" style="font-size:16px">swap_vert</span> Доходи і Витрати</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ SETTINGS (DIKIDI-style: ліве підменю + панелі) ═══ -->
       <div class="page" id="page-settings">
         <div class="settings-layout">
@@ -1025,6 +1115,7 @@ const pageTitles = {
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
+  finance:'Доходи і Витрати', contractors:'Контрагенти',
   settings:'Налаштування'
 };
 
@@ -1044,9 +1135,74 @@ function go(page) {
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync,
-    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat, settings:loadSettings };
+    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
+    finance:loadFinance, contractors:loadContractors, settings:loadSettings };
   if (loaders[page]) loaders[page]();
 }
+
+// ═══ FINANCE (Доходи і Витрати) ═══════════════
+const FIN_PALETTE = ['#6366f1','#10b981','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#ec4899','#84cc16','#f97316','#14b8a6'];
+function _finMoney(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
+function finSetPeriod(per){
+  document.querySelectorAll('.fin-per').forEach(b=>b.classList.toggle('active', b.dataset.per===per));
+  const now = new Date(); const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  let from, to=fmt(now);
+  if(per==='day'){ from=to; }
+  else if(per==='week'){ const d=new Date(now); const wd=(d.getDay()+6)%7; d.setDate(d.getDate()-wd); from=fmt(d); }
+  else if(per==='month'){ from=fmt(new Date(now.getFullYear(),now.getMonth(),1)); }
+  else if(per==='year'){ from=fmt(new Date(now.getFullYear(),0,1)); }
+  document.getElementById('finFrom').value=from;
+  document.getElementById('finTo').value=to;
+  loadFinance();
+}
+function finCustom(){
+  document.querySelectorAll('.fin-per').forEach(b=>b.classList.remove('active'));
+  loadFinance();
+}
+function _finDonut(segments, centerLabel){
+  const R=42, C=2*Math.PI*R; let total=segments.reduce((s,x)=>s+Math.max(0,x.value),0);
+  let off=0, arcs='';
+  if(total<=0){ arcs='<circle cx="48" cy="48" r="'+R+'" fill="none" stroke="#e5e7eb" stroke-width="12"/>'; }
+  else { for(const s of segments){ const v=Math.max(0,s.value); if(!v) continue; const len=C*v/total;
+    arcs+='<circle cx="48" cy="48" r="'+R+'" fill="none" stroke="'+s.color+'" stroke-width="12" stroke-dasharray="'+len+' '+(C-len)+'" stroke-dashoffset="'+(-off)+'"/>'; off+=len; } }
+  return '<div class="fin-donut"><svg width="96" height="96" viewBox="0 0 96 96">'+arcs+'</svg><div class="fin-donut-center">'+centerLabel+'</div></div>';
+}
+function _finCard(title, segments, centerLabel, legend){
+  let leg = (legend||segments).map(s=>'<div class="fin-leg"><span class="dot" style="background:'+s.color+'"></span><span class="lab">'+s.label+'</span><span class="val">'+_finMoney(s.value)+'</span></div>').join('');
+  return '<div class="fin-card"><h4>'+title+'</h4><div class="fin-card-top">'+_finDonut(segments,centerLabel)+'<div class="fin-legend">'+leg+'</div></div></div>';
+}
+async function loadFinance(){
+  const box=document.getElementById('finDonuts');
+  if(!document.getElementById('finFrom').value){ finSetPeriod('day'); return; }
+  const from=document.getElementById('finFrom').value, to=document.getElementById('finTo').value;
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r=await api('/api/cashbox/finance?from='+from+'&to='+to);
+    if(r.error){ box.innerHTML='<div class="empty"><span class="material-icons-round">lock</span>'+(r.error==='forbidden'?'Доступно лише власнику':r.error)+'</div>'; document.getElementById('finTableBody').innerHTML=''; return; }
+    const op=r.opening, inc=r.income, exp=r.expense, cl=r.closing;
+    const openSeg=[{label:'Готівка',value:op.cash,color:'#10b981'},{label:'Безготівка',value:op.cashless,color:'#6366f1'}];
+    const closeSeg=[{label:'Готівка',value:cl.cash,color:'#10b981'},{label:'Безготівка',value:cl.cashless,color:'#6366f1'}];
+    const incSeg=(inc.by_category||[]).map((c,i)=>({label:c.label,value:c.amount,color:FIN_PALETTE[i%FIN_PALETTE.length]}));
+    const expSeg=(exp.by_category||[]).map((c,i)=>({label:c.label,value:c.amount,color:FIN_PALETTE[i%FIN_PALETTE.length]}));
+    box.innerHTML =
+      _finCard('Залишок на початок', openSeg, _finMoney(op.total), openSeg) +
+      _finCard('Доходи', incSeg.length?incSeg:[{label:'—',value:0,color:'#e5e7eb'}], _finMoney(inc.total), incSeg.slice(0,5)) +
+      _finCard('Витрати', expSeg.length?expSeg:[{label:'—',value:0,color:'#e5e7eb'}], _finMoney(exp.total), expSeg.slice(0,5)) +
+      _finCard('Залишок на кінець', closeSeg, _finMoney(cl.total), closeSeg);
+    const rows=(r.transactions||[]).map(t=>{
+      const d=new Date(t.created_at); const pad=n=>String(n).padStart(2,'0');
+      const dt=pad(d.getDate())+'.'+pad(d.getMonth()+1)+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+      const methods={cash:'Готівка',card:'Картка',transfer:'Переказ',mono:'Mono',other:'Інше'};
+      return '<tr><td><span class="fin-pill '+(t.type==='in'?'in':'out')+'">'+(t.type==='in'?'Дохід':'Витрата')+'</span></td>'+
+        '<td>'+(t.label||t.category||'—')+'</td><td>'+(methods[t.method]||t.method||'—')+'</td>'+
+        '<td>'+(t.master_name||'—')+'</td><td style="text-align:right;font-weight:600;color:'+(t.type==='in'?'#166534':'#991b1b')+'">'+(t.type==='in'?'+':'−')+_finMoney(t.amount)+'</td>'+
+        '<td style="color:var(--text-secondary)">'+(t.description||'')+'</td><td style="white-space:nowrap;color:var(--text-secondary)">'+dt+'</td></tr>';
+    }).join('');
+    document.getElementById('finTableBody').innerHTML = rows || '<tr><td colspan="7" class="empty" style="padding:24px">Немає операцій за період</td></tr>';
+  }catch(e){ box.innerHTML='<div class="empty"><span class="material-icons-round">error</span>'+e.message+'</div>'; }
+}
+function loadContractors(){ /* статична сторінка */ }
 
 // ═══ SETTINGS ═════════════════════════════════
 function setTab(tab) {
