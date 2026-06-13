@@ -516,7 +516,9 @@ router.get('/utilization', requirePerm('reports.read'), async (req, res) => {
       const b = busyMap.get(m.id) || { busy_min: 0, appts: 0 };
       const busyMin = Math.round(Number(b.busy_min));
       const availMin = sc.minutes;
-      salonBusy += busyMin; salonAvail += availMin;
+      // В салонную загрузку берём только мастеров с заданным графиком,
+      // иначе busy без avail задирает % выше 100.
+      if (availMin > 0) { salonBusy += busyMin; salonAvail += availMin; }
       return {
         master_id: m.id, name: m.name,
         shifts: sc.shifts, has_schedule: sc.hasSchedule,

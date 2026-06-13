@@ -460,6 +460,11 @@ select.input { background:var(--card); }
         <span class="material-icons-round">payments</span> Зарплата
       </a>
 
+      <!-- План місяця та аналітика -->
+      <a class="sidebar-item" data-page="plan" onclick="go('plan')">
+        <span class="material-icons-round">flag</span> План місяця
+      </a>
+
       <!-- Продажі -->
       <div class="sidebar-group" id="grp-sales">
         <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
@@ -597,6 +602,26 @@ select.input { background:var(--card); }
             <div class="card-body" style="padding:0">
               <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th>Залишок</th></tr></thead><tbody id="lowBody"></tbody></table>
             </div>
+          </div>
+        </div>
+
+        <!-- ═══ Клієнти за послугами ═══ -->
+        <div class="card" style="margin-top:24px">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px">
+            <h3>Клієнти за послугами</h3>
+            <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+              <input type="date" id="cbsFrom" class="input btn-sm" style="max-width:150px">
+              <span style="color:var(--text-secondary)">–</span>
+              <input type="date" id="cbsTo" class="input btn-sm" style="max-width:150px">
+              <button class="btn btn-outline btn-sm" onclick="loadClientsByService()">Показати</button>
+              <button class="btn btn-primary btn-sm" onclick="exportClientsByService()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <p class="set-p" style="margin-top:0">Оберіть послугу — система покаже клієнтів, які її роблять. Кнопка «−» поряд виключає послугу (напр.: роблять манікюр, але <b>не</b> роблять педикюр).</p>
+            <div id="cbsButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+            <div id="cbsSummary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+            <div id="cbsResult"></div>
           </div>
         </div>
       </div>
@@ -754,6 +779,97 @@ select.input { background:var(--card); }
           <div class="card-header"><h3>Схеми зарплати майстрів</h3></div>
           <div class="card-body" id="payrollList">
             <div class="empty"><span class="material-icons-round">payments</span>Завантаження...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ ПЛАН МІСЯЦЯ ТА АНАЛІТИКА ═══ -->
+      <div class="page" id="page-plan">
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm plan-tab active" data-pt="month" onclick="planTab('month')">План місяця</button>
+          <button class="btn btn-outline btn-sm plan-tab" data-pt="util" onclick="planTab('util')">Завантаження салону</button>
+          <button class="btn btn-outline btn-sm plan-tab" data-pt="master" onclick="planTab('master')">Аналітика майстра</button>
+          <button class="btn btn-outline btn-sm plan-tab" data-pt="goods" onclick="planTab('goods')">Продажі товарів</button>
+        </div>
+
+        <!-- План місяця -->
+        <div class="plan-pane" id="pt-month">
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px">
+              <h3>План обороту на місяць</h3>
+              <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <select id="planMonth" class="input btn-sm" style="max-width:140px" onchange="loadMonthlyPlan()"></select>
+                <select id="planYear" class="input btn-sm" style="max-width:100px" onchange="loadMonthlyPlan()"></select>
+                <button class="btn btn-primary btn-sm" onclick="exportMonthlyPlan()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="set-p" style="margin-top:0">Задайте план на одну зміну — загальний план місяця порахується автоматично за кількістю змін майстра (з графіка, або за фактично відпрацьованими днями якщо графік не заданий). % показує виконання плану за фактичним оборотом (послуги + товари).</p>
+              <div id="planResult"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Завантаження салону -->
+        <div class="plan-pane" id="pt-util" style="display:none">
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px">
+              <h3>Завантаження салону</h3>
+              <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <input type="date" id="utilFrom" class="input btn-sm" style="max-width:150px">
+                <span style="color:var(--text-secondary)">–</span>
+                <input type="date" id="utilTo" class="input btn-sm" style="max-width:150px">
+                <button class="btn btn-outline btn-sm" onclick="loadUtilization()">Показати</button>
+                <button class="btn btn-primary btn-sm" onclick="exportUtilization()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="set-p" style="margin-top:0">Завантаження = зайнятий записами час ÷ робочий час за графіком. Без заданого графіка % не рахується (показано «—»).</p>
+              <div id="utilResult"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Аналітика майстра -->
+        <div class="plan-pane" id="pt-master" style="display:none">
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px">
+              <h3>Аналітика по майстру</h3>
+              <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <select id="mdMaster" class="input btn-sm" style="max-width:200px"></select>
+                <input type="date" id="mdFrom" class="input btn-sm" style="max-width:150px">
+                <span style="color:var(--text-secondary)">–</span>
+                <input type="date" id="mdTo" class="input btn-sm" style="max-width:150px">
+                <button class="btn btn-outline btn-sm" onclick="loadMasterDetail()">Показати</button>
+                <button class="btn btn-primary btn-sm" onclick="exportMasterDetail()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="set-p" style="margin-top:0">Які послуги й товари продав майстер за період і на яку суму.</p>
+              <div id="mdResult"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Продажі товарів -->
+        <div class="plan-pane" id="pt-goods" style="display:none">
+          <div class="card">
+            <div class="card-header" style="flex-wrap:wrap;gap:10px">
+              <h3>Продажі товарів</h3>
+              <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <select id="psBrand" class="input btn-sm" style="max-width:160px"><option value="">Усі бренди</option></select>
+                <select id="psBranch" class="input btn-sm" style="max-width:160px"><option value="">Усі склади</option></select>
+                <input type="date" id="psFrom" class="input btn-sm" style="max-width:150px">
+                <span style="color:var(--text-secondary)">–</span>
+                <input type="date" id="psTo" class="input btn-sm" style="max-width:150px">
+                <button class="btn btn-outline btn-sm" onclick="loadProductSales()">Показати</button>
+                <button class="btn btn-primary btn-sm" onclick="exportProductSales()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="set-p" style="margin-top:0">Фільтр продажів товарів магазину за брендом, складом і періодом.</p>
+              <div id="psResult"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1229,7 +1345,7 @@ async function dikidiApi(path, opts = {}) {
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
-  reviews:'Відгуки', promos:'Акції', payroll:'Зарплата',
+  reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
@@ -1251,7 +1367,7 @@ function go(page) {
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
-    promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync,
+    promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
     finance:loadFinance, contractors:loadContractors, settings:loadSettings };
   if (loaders[page]) loaders[page]();
@@ -1459,8 +1575,26 @@ async function loadSchMasters() {
     const r = await api('/api/schedule/masters?all=1');
     _schMastersCache = (r.items || r.masters || []);
     sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
+      `<option value="__all__"${keep==='__all__'?' selected':''}>👥 Усі майстри (огляд)</option>` +
       _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(keep)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
   } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }
+}
+// Зведений огляд графіка всіх майстрів (тільки перегляд)
+function renderScheduleOverview(grid) {
+  const masters = (_schMastersCache||[]).filter(m => m.active !== false);
+  if (!masters.length) { grid.innerHTML = '<p class="set-p">Немає активних майстрів.</p>'; return; }
+  const head = '<th style="text-align:left">Майстер</th>' + _SCH_DAYS.map(([k,l])=>`<th>${l}</th>`).join('');
+  const rows = masters.map(m => {
+    const s = m.schedule_json || {};
+    const cells = _SCH_DAYS.map(([k]) => {
+      const d = s[k];
+      return d ? `<td style="white-space:nowrap;font-size:12px">${d.start}–${d.end}</td>`
+               : `<td style="color:var(--text-secondary)">—</td>`;
+    }).join('');
+    return `<tr><td style="font-weight:600;cursor:pointer;color:var(--primary)" onclick="document.getElementById('schMaster').value='${m.id}';loadSchedule()">${m.name}</td>${cells}</tr>`;
+  }).join('');
+  grid.innerHTML = `<div class="card-body" style="padding:0;overflow-x:auto"><table class="tbl" style="min-width:560px"><thead><tr style="text-align:center">${head}</tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="set-p" style="margin-top:10px">Натисніть на імʼя майстра, щоб відредагувати його графік.</p>`;
 }
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
@@ -1474,7 +1608,8 @@ async function schToggleActive(id, makeActive) {
 function loadSchedule() {
   const id = document.getElementById('schMaster').value;
   const grid = document.getElementById('schGrid');
-  if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати графік.</p>'; return; }
+  if (id === '__all__') { renderScheduleOverview(grid); return; }
+  if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати графік, або «Усі майстри» для огляду.</p>'; return; }
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id));
   const sched = (m && m.schedule_json) || {};
   const isActive = !m || m.active !== false;
@@ -1777,6 +1912,257 @@ async function loadDashboard() {
   document.getElementById('lowBody').innerHTML = (low.items || []).slice(0,30).map(p =>
     `<tr><td>${p.product_name}</td><td>${p.volume||''}</td><td>${p.stock_qty??0}</td></tr>`).join('')
     || '<tr><td colspan="3" class="empty">Усі товари в наявності</td></tr>';
+
+  initClientsByService();
+}
+
+// ═══ Спільні утиліти аналітики ════════════════
+const SVC_LABELS = { manicure:'Манікюр', pedicure:'Педикюр', coloring:'Фарбування', lashes:'Вії/нарощення', brows:'Брови', hair:'Перукарські', other:'Інше' };
+function _money2(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
+function _ym2(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+function _monthBounds(){ const n=new Date(); return { from:_ym2(new Date(n.getFullYear(),n.getMonth(),1)), to:_ym2(n) }; }
+// Експорт у CSV (Excel відкриває з UTF-8 BOM коректно з кирилицею)
+function downloadCSV(filename, headers, rows){
+  const esc = v => { if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n;]/.test(s)?`"${s}"`:s; };
+  const sep = ';';
+  const body = [headers.join(sep), ...rows.map(r=>r.map(esc).join(sep))].join('\r\n');
+  const blob = new Blob(['\ufeff'+body], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+
+// ═══ Клієнти за послугами (Дашборд) ═══════════
+let _cbsInc = new Set(), _cbsExc = new Set(), _cbsData = null;
+function initClientsByService(){
+  if (document.getElementById('cbsButtons').dataset.init) return;
+  document.getElementById('cbsButtons').dataset.init = '1';
+  const mb = _monthBounds();
+  document.getElementById('cbsFrom').value = mb.from;
+  document.getElementById('cbsTo').value = mb.to;
+  renderCbsButtons();
+  loadClientsByService();
+}
+function renderCbsButtons(){
+  const box = document.getElementById('cbsButtons');
+  box.innerHTML = Object.entries(SVC_LABELS).map(([k,l])=>{
+    const inc = _cbsInc.has(k), exc = _cbsExc.has(k);
+    const bg = inc ? 'background:var(--primary);color:#fff' : exc ? 'background:#ef4444;color:#fff' : '';
+    return `<span style="display:inline-flex;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <button class="btn btn-sm" style="${bg};border:none;border-radius:0" onclick="cbsToggle('${k}','inc')">${l}${inc?' ✓':''}</button>
+      <button class="btn btn-sm" title="Виключити (НЕ роблять цю послугу)" style="${exc?'background:#ef4444;color:#fff':''};border:none;border-left:1px solid var(--border);border-radius:0;padding:0 8px" onclick="cbsToggle('${k}','exc')">−</button>
+    </span>`;
+  }).join('');
+}
+function cbsToggle(k, mode){
+  if (mode==='inc'){ if(_cbsInc.has(k)){_cbsInc.delete(k);} else {_cbsInc.add(k);_cbsExc.delete(k);} }
+  else { if(_cbsExc.has(k)){_cbsExc.delete(k);} else {_cbsExc.add(k);_cbsInc.delete(k);} }
+  renderCbsButtons(); renderCbsResult();
+}
+async function loadClientsByService(){
+  const from=document.getElementById('cbsFrom').value, to=document.getElementById('cbsTo').value;
+  const box=document.getElementById('cbsResult');
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r = await api(`/api/reports/clients-by-service?from=${from}&to=${to}`);
+    if(r.error){ box.innerHTML='<div class="empty">'+r.error+'</div>'; return; }
+    _cbsData = r;
+    const sum = document.getElementById('cbsSummary');
+    sum.innerHTML = Object.entries(r.summary||{}).map(([k,v])=>
+      `<div style="padding:6px 12px;border-radius:8px;background:var(--bg-secondary);font-size:13px"><b>${SVC_LABELS[k]||k}:</b> ${v.clients} кл · ${_money2(v.sum)}</div>`).join('');
+    renderCbsResult();
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+function cbsFiltered(){
+  if(!_cbsData) return [];
+  return _cbsData.items.filter(c=>{
+    for(const k of _cbsInc) if(!(c.buckets[k]?.count>0)) return false;
+    for(const k of _cbsExc) if(c.buckets[k]?.count>0) return false;
+    return true;
+  });
+}
+function renderCbsResult(){
+  const box=document.getElementById('cbsResult'); if(!_cbsData) return;
+  const items=cbsFiltered();
+  const rows=items.slice(0,300).map(c=>{
+    const did=c.did.map(b=>SVC_LABELS[b]||b).join(', ');
+    return `<tr><td>${c.name||'—'}</td><td>${c.phone||''}</td><td>${c.total_visits}</td><td>${_money2(c.total_sum)}</td><td style="color:var(--text-secondary);font-size:12px">${did}</td></tr>`;
+  }).join('');
+  box.innerHTML = `<div style="margin-bottom:8px;color:var(--text-secondary)">Знайдено клієнтів: <b>${items.length}</b></div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Клієнт</th><th>Телефон</th><th>Візитів</th><th>Сума</th><th>Послуги</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">Немає клієнтів за фільтром</td></tr>'}</tbody></table></div>`;
+}
+function exportClientsByService(){
+  const items=cbsFiltered();
+  if(!items.length) return alert('Немає даних для вивантаження');
+  downloadCSV(`clients-by-service-${document.getElementById('cbsFrom').value}.csv`,
+    ['Клієнт','Телефон','Візитів','Сума,грн','Послуги'],
+    items.map(c=>[c.name||'', c.phone||'', c.total_visits, c.total_sum, c.did.map(b=>SVC_LABELS[b]||b).join(', ')]));
+}
+
+// ═══ Сторінка "План місяця та аналітика" ══════
+let _planInited = false;
+function planTab(t){
+  document.querySelectorAll('.plan-tab').forEach(b=>b.classList.toggle('active', b.dataset.pt===t));
+  document.querySelectorAll('.plan-pane').forEach(p=>p.style.display='none');
+  document.getElementById('pt-'+t).style.display='';
+  if(t==='month') loadMonthlyPlan();
+  else if(t==='util') { if(!document.getElementById('utilFrom').value){ const mb=_monthBounds(); document.getElementById('utilFrom').value=mb.from; document.getElementById('utilTo').value=mb.to; } loadUtilization(); }
+  else if(t==='master') loadMasterDetail();
+  else if(t==='goods') loadProductSales();
+}
+async function loadPlanPage(){
+  // ініціалізація селекторів періоду/майстрів один раз
+  if(!_planInited){
+    _planInited = true;
+    const now=new Date();
+    const ySel=document.getElementById('planYear'), mSel=document.getElementById('planMonth');
+    const months=['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+    mSel.innerHTML=months.map((m,i)=>`<option value="${i+1}"${i===now.getMonth()?' selected':''}>${m}</option>`).join('');
+    ySel.innerHTML=[now.getFullYear(),now.getFullYear()-1].map(y=>`<option value="${y}">${y}</option>`).join('');
+    const mb=_monthBounds();
+    ['mdFrom','psFrom'].forEach(id=>document.getElementById(id).value=mb.from);
+    ['mdTo','psTo'].forEach(id=>document.getElementById(id).value=mb.to);
+    // майстри для аналітики
+    try{ const r=await api('/api/schedule/masters?all=1'); const ms=(r.items||r.masters||[]);
+      document.getElementById('mdMaster').innerHTML=ms.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+    }catch{}
+  }
+  planTab('month');
+}
+
+let _planData=null;
+async function loadMonthlyPlan(){
+  const year=document.getElementById('planYear').value, month=document.getElementById('planMonth').value;
+  const box=document.getElementById('planResult');
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r=await api(`/api/reports/monthly-plan?year=${year}&month=${month}`);
+    if(r.error){ box.innerHTML='<div class="empty">'+r.error+'</div>'; return; }
+    _planData=r;
+    const rows=r.items.map(m=>{
+      const pct=m.pct==null?'—':m.pct+'%';
+      const pctColor=m.pct==null?'var(--text-secondary)':m.pct>=100?'#10b981':m.pct>=70?'#f59e0b':'#ef4444';
+      const shiftSrc=m.has_schedule?'графік':'факт';
+      return `<tr>
+        <td style="font-weight:600">${m.name}</td>
+        <td><input type="number" class="input btn-sm pl-pershift" data-mid="${m.master_id}" value="${m.plan_per_shift||''}" style="width:110px" placeholder="0"></td>
+        <td>${m.shifts_used} <span style="color:var(--text-secondary);font-size:11px">(${shiftSrc})</span></td>
+        <td style="font-weight:600">${_money2(m.plan_total)}</td>
+        <td>${_money2(m.revenue)}</td>
+        <td style="font-weight:700;color:${pctColor}">${pct}</td>
+      </tr>`;
+    }).join('');
+    box.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+      <thead><tr><th>Майстер</th><th>План на зміну</th><th>Змін</th><th>План місяця</th><th>Факт оборот</th><th>%</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <div class="set-actions" style="margin-top:14px"><button class="btn btn-primary" onclick="saveMonthlyPlans()">Зберегти плани</button><span id="planSaveMsg" class="set-msg"></span></div>`;
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+async function saveMonthlyPlans(){
+  const year=Number(document.getElementById('planYear').value), month=Number(document.getElementById('planMonth').value);
+  const msg=document.getElementById('planSaveMsg'); msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try{
+    const inputs=document.querySelectorAll('.pl-pershift');
+    for(const inp of inputs){
+      const v=Number(inp.value)||0;
+      await api('/api/reports/monthly-plan',{method:'POST',body:JSON.stringify({master_id:Number(inp.dataset.mid),year,month,plan_per_shift:v,auto_from_shifts:true})});
+    }
+    msg.style.color='#10b981'; msg.textContent='Збережено ✓';
+    loadMonthlyPlan();
+  }catch(e){ msg.style.color='#ef4444'; msg.textContent='Помилка'; }
+}
+function exportMonthlyPlan(){
+  if(!_planData) return alert('Немає даних');
+  downloadCSV(`plan-${_planData.year}-${_planData.month}.csv`,
+    ['Майстер','План на зміну','Змін','План місяця','Факт оборот','% виконання'],
+    _planData.items.map(m=>[m.name,m.plan_per_shift,m.shifts_used,m.plan_total,m.revenue,m.pct==null?'':m.pct]));
+}
+
+let _utilData=null;
+async function loadUtilization(){
+  const from=document.getElementById('utilFrom').value, to=document.getElementById('utilTo').value;
+  const box=document.getElementById('utilResult');
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r=await api(`/api/reports/utilization?from=${from}&to=${to}`);
+    if(r.error){ box.innerHTML='<div class="empty">'+r.error+'</div>'; return; }
+    _utilData=r;
+    const salon=r.salon_util_pct==null?'—':r.salon_util_pct+'%';
+    const rows=r.items.map(m=>{
+      const pct=m.util_pct==null?'—':m.util_pct+'%';
+      const col=m.util_pct==null?'var(--text-secondary)':m.util_pct>=70?'#10b981':m.util_pct>=40?'#f59e0b':'#ef4444';
+      const bar=m.util_pct==null?'':`<div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden;margin-top:4px"><div style="height:100%;width:${Math.min(100,m.util_pct)}%;background:${col}"></div></div>`;
+      return `<tr><td style="font-weight:600">${m.name}</td><td>${m.shifts}</td><td>${m.appts}</td><td>${(m.busy_min/60).toFixed(1)} год</td><td>${m.avail_min?(m.avail_min/60).toFixed(1)+' год':'—'}</td><td style="font-weight:700;color:${col}">${pct}${bar}</td></tr>`;
+    }).join('');
+    box.innerHTML=`<div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px;font-size:15px">Завантаження салону: <b style="font-size:20px">${salon}</b></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Майстер</th><th>Змін</th><th>Записів</th><th>Зайнято</th><th>Робочий час</th><th>Завантаження</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+function exportUtilization(){
+  if(!_utilData) return alert('Немає даних');
+  downloadCSV('utilization.csv',
+    ['Майстер','Змін','Записів','Зайнято,год','Робочий час,год','Завантаження,%'],
+    _utilData.items.map(m=>[m.name,m.shifts,m.appts,(m.busy_min/60).toFixed(1),m.avail_min?(m.avail_min/60).toFixed(1):'',m.util_pct==null?'':m.util_pct]));
+}
+
+let _mdData=null;
+async function loadMasterDetail(){
+  const mid=document.getElementById('mdMaster').value;
+  if(!mid){ document.getElementById('mdResult').innerHTML='<p class="set-p">Оберіть майстра.</p>'; return; }
+  const from=document.getElementById('mdFrom').value, to=document.getElementById('mdTo').value;
+  const box=document.getElementById('mdResult');
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r=await api(`/api/reports/master-detail?master_id=${mid}&from=${from}&to=${to}`);
+    if(r.error){ box.innerHTML='<div class="empty">'+r.error+'</div>'; return; }
+    _mdData=r;
+    const sRows=r.services.items.map(s=>`<tr><td>${s.name}</td><td>${s.count}</td><td>${_money2(s.sum)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає</td></tr>';
+    const pRows=r.products.items.map(s=>`<tr><td>${s.name}</td><td>${s.count}</td><td>${_money2(s.sum)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає прив\u02bcязаних до майстра продажів товарів</td></tr>';
+    box.innerHTML=`<div class="grid-2" style="gap:20px">
+      <div><h4 style="margin:0 0 8px">Послуги · ${_money2(r.services.total)} (${r.services.count})</h4>
+        <table class="tbl"><thead><tr><th>Послуга</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${sRows}</tbody></table></div>
+      <div><h4 style="margin:0 0 8px">Товари · ${_money2(r.products.total)} (${r.products.count})</h4>
+        <table class="tbl"><thead><tr><th>Товар</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${pRows}</tbody></table></div>
+    </div>`;
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+function exportMasterDetail(){
+  if(!_mdData) return alert('Немає даних');
+  const rows=[['ПОСЛУГИ','','']].concat(_mdData.services.items.map(s=>[s.name,s.count,s.sum]))
+    .concat([['ТОВАРИ','','']]).concat(_mdData.products.items.map(s=>[s.name,s.count,s.sum]));
+  downloadCSV(`master-${_mdData.master.name}.csv`,['Назва','К-сть','Сума,грн'],rows);
+}
+
+let _psData=null;
+async function loadProductSales(){
+  const from=document.getElementById('psFrom').value, to=document.getElementById('psTo').value;
+  const brand=document.getElementById('psBrand').value, branch=document.getElementById('psBranch').value;
+  const box=document.getElementById('psResult');
+  box.innerHTML='<div class="empty"><span class="material-icons-round">hourglass_empty</span>Завантаження...</div>';
+  try{
+    const r=await api(`/api/reports/product-sales?from=${from}&to=${to}${brand?'&brand='+encodeURIComponent(brand):''}${branch?'&branch='+branch:''}`);
+    if(r.error){ box.innerHTML='<div class="empty">'+r.error+'</div>'; return; }
+    _psData=r;
+    // заповнити фільтри один раз
+    const bSel=document.getElementById('psBrand');
+    if(bSel.options.length<=1 && r.brands?.length) bSel.innerHTML='<option value="">Усі бренди</option>'+r.brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+    const brSel=document.getElementById('psBranch');
+    if(brSel.options.length<=1 && r.branches?.length) brSel.innerHTML='<option value="">Усі склади</option>'+r.branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+    const brandRows=r.by_brand.map(b=>`<tr><td>${b.brand}</td><td>${b.qty}</td><td>${_money2(b.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає продажів</td></tr>';
+    const prodRows=r.by_product.map(p=>`<tr><td>${p.name}</td><td style="color:var(--text-secondary);font-size:12px">${p.brand||''}</td><td>${p.qty}</td><td>${_money2(p.revenue)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Немає продажів</td></tr>';
+    box.innerHTML=`<div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Усього: <b style="font-size:18px">${_money2(r.total)}</b></div>
+      ${(!r.by_brand.length)?'<p class="set-p" style="color:#f59e0b">Деталізовані продажі товарів (з брендом) ведуться лише через замовлення інтернет-магазину. Салонні продажі з BeautyPro приходять однією сумою без розбивки по товару.</p>':''}
+      <div class="grid-2" style="gap:20px">
+        <div><h4 style="margin:0 0 8px">За брендами</h4><table class="tbl"><thead><tr><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${brandRows}</tbody></table></div>
+        <div><h4 style="margin:0 0 8px">За товарами</h4><table class="tbl"><thead><tr><th>Товар</th><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${prodRows}</tbody></table></div>
+      </div>`;
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+function exportProductSales(){
+  if(!_psData) return alert('Немає даних');
+  downloadCSV('product-sales.csv',['Товар','Бренд','Шт','Сума,грн'],
+    _psData.by_product.map(p=>[p.name,p.brand||'',p.qty,p.revenue]));
 }
 
 // ═══ JOURNAL ═════════════════════════════════
