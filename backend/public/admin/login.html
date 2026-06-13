@@ -23,13 +23,25 @@
   .step.active { display:block; }
   .code-input { letter-spacing:.4em; text-align:center; font-size:22px; font-weight:600; }
   .back { margin-top:14px; color:var(--text-secondary); font-size:13px; text-align:center; cursor:pointer; text-decoration:underline; }
+  .tabs { display:flex; gap:8px; margin-bottom:18px; }
+  .tab { flex:1; text-align:center; padding:9px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; cursor:pointer; background:var(--bg-secondary,#f3f4f8); color:var(--text-secondary); border:1px solid transparent; }
+  .tab.active { background:var(--bg-card,#fff); color:var(--text-primary,#1e1f2b); border-color:var(--border,#e3e4ec); font-weight:600; }
+  .remember { display:flex; align-items:center; gap:8px; margin-top:16px; font-size:13px; color:var(--text-secondary); cursor:pointer; }
+  .remember input { width:16px; height:16px; margin:0; cursor:pointer; }
+  .remember label { margin:0; cursor:pointer; }
 </style>
 </head>
 <body>
   <div class="card login-card">
     <h1>SVS CRM</h1>
-    <div class="sub">Вхід для співробітників через Telegram-код</div>
+    <div class="sub">Вхід для співробітників</div>
 
+    <div class="tabs">
+      <div class="tab active" id="tab-tg" data-method="tg">Telegram-код</div>
+      <div class="tab" id="tab-pwd" data-method="pwd">Пароль</div>
+    </div>
+
+    <!-- Спосіб 1: Telegram-код -->
     <div id="step-phone" class="step active">
       <label for="phone">Номер телефону</label>
       <input id="phone" class="inp" type="tel" placeholder="+380XXXXXXXXX" autocomplete="tel">
@@ -40,9 +52,28 @@
     <div id="step-code" class="step">
       <label for="code">Код з Telegram</label>
       <input id="code" class="inp code-input" type="tel" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+      <div class="remember">
+        <input type="checkbox" id="remember-tg" checked>
+        <label for="remember-tg">Запам'ятати назавжди (не виходити)</label>
+      </div>
       <button id="btn-verify" class="btn">Увійти</button>
       <div id="msg2" class="msg"></div>
       <div class="back" id="back">Змінити телефон</div>
+    </div>
+
+    <!-- Спосіб 2: Пароль -->
+    <div id="step-pwd" class="step">
+      <label for="pwd-phone">Номер телефону</label>
+      <input id="pwd-phone" class="inp" type="tel" placeholder="+380XXXXXXXXX" autocomplete="tel">
+      <label for="pwd-pass">Пароль</label>
+      <input id="pwd-pass" class="inp" type="password" placeholder="••••" autocomplete="current-password">
+      <div class="remember">
+        <input type="checkbox" id="remember-pwd" checked>
+        <label for="remember-pwd">Запам'ятати назавжди (не виходити)</label>
+      </div>
+      <button id="btn-pwd" class="btn">Увійти</button>
+      <div id="msg3" class="msg"></div>
+      <div class="back" id="pwd-hint">Немає пароля? Увійдіть через Telegram-код і встановіть його в кабінеті.</div>
     </div>
   </div>
 
@@ -61,6 +92,19 @@ function setStep(name) {
 }
 
 let savedPhone = '';
+
+// Переключение вкладок: Telegram-код / Пароль
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  if (t.dataset.method === 'pwd') setStep('pwd');
+  else setStep('phone');
+}));
+
+function saveSession(data) {
+  localStorage.setItem('svs_admin_token', data.token);
+  localStorage.setItem('svs_user', JSON.stringify(data.user));
+}
 
 $('btn-request').addEventListener('click', async () => {
   const phone = $('phone').value.trim();
@@ -98,12 +142,11 @@ $('btn-verify').addEventListener('click', async () => {
     const r = await fetch(API + '/api/auth/staff/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: savedPhone, code })
+      body: JSON.stringify({ phone: savedPhone, code, remember: $('remember-tg').checked })
     });
     const data = await r.json();
     if (data.ok && data.token) {
-      localStorage.setItem('svs_admin_token', data.token);
-      localStorage.setItem('svs_user', JSON.stringify(data.user));
+      saveSession(data);
       showMsg($('msg2'), 'ok', 'Вхід виконано. Перенаправлення...');
       setTimeout(() => location.href = '/admin/crm-extra.html', 600);
     } else {
@@ -117,6 +160,38 @@ $('btn-verify').addEventListener('click', async () => {
   }
 });
 
+$('btn-pwd').addEventListener('click', async () => {
+  const phone = $('pwd-phone').value.trim();
+  const password = $('pwd-pass').value;
+  if (!phone || !password) { showMsg($('msg3'), 'err', 'Введіть телефон і пароль'); return; }
+  $('btn-pwd').disabled = true;
+  try {
+    const r = await fetch(API + '/api/auth/staff/login-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password, remember: $('remember-pwd').checked })
+    });
+    const data = await r.json();
+    if (data.ok && data.token) {
+      saveSession(data);
+      showMsg($('msg3'), 'ok', 'Вхід виконано. Перенаправлення...');
+      setTimeout(() => location.href = '/admin/crm-extra.html', 600);
+    } else if (r.status === 429) {
+      showMsg($('msg3'), 'err', 'Забагато спроб. Спробуйте через хвилину.');
+    } else if (data.error === 'password-not-set') {
+      showMsg($('msg3'), 'err', data.message || 'Пароль не встановлено. Увійдіть через Telegram-код.');
+    } else if (data.error === 'invalid-credentials') {
+      showMsg($('msg3'), 'err', 'Невірний телефон або пароль');
+    } else {
+      showMsg($('msg3'), 'err', data.error || 'Помилка входу');
+    }
+  } catch (e) {
+    showMsg($('msg3'), 'err', 'Мережева помилка: ' + e.message);
+  } finally {
+    $('btn-pwd').disabled = false;
+  }
+});
+
 $('back').addEventListener('click', () => {
   setStep('phone');
   $('code').value = '';
@@ -126,6 +201,7 @@ $('back').addEventListener('click', () => {
 // Enter submits
 $('phone').addEventListener('keypress', e => { if (e.key === 'Enter') $('btn-request').click(); });
 $('code').addEventListener('keypress', e => { if (e.key === 'Enter') $('btn-verify').click(); });
+$('pwd-pass').addEventListener('keypress', e => { if (e.key === 'Enter') $('btn-pwd').click(); });
 </script>
 </body>
 </html>

@@ -17,6 +17,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { tgSend } = require('./telegram-notify');
+const { hashPassword, verifyPassword } = require('../lib/auth-core');
 
 const router = express.Router();
 
@@ -50,6 +51,43 @@ async function sendOtpToUser({ telegram_id, phone, text }) {
 
 const CODE_TTL_MIN = 5;
 const SESSION_TTL_DAYS = 14;
+const REMEMBER_TTL_DAYS = 3650; // «запомнить навсегда» = 10 лет
+
+// Выдать session-токен пользователю. Единая точка для OTP- и пароль-входа.
+async function issueSessionToken(pool, { userId, displayName, roleId, req, ttlDays, method }) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = sha256(token);
+  const expiresAt = new Date(Date.now() + ttlDays * 86_400_000);
+  const ua = (req.headers['user-agent'] || '').slice(0, 80);
+  await pool.query(
+    `INSERT INTO user_tokens (user_id, token_hash, label, expires_at) VALUES ($1, $2, $3, $4)`,
+    [userId, tokenHash, `${method} from ${ua}`, expiresAt]
+  );
+  await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [userId]);
+  await pool.query(
+    `INSERT INTO audit_log (user_id, user_label, action, entity, entity_id, ip, meta)
+     VALUES ($1, $2, 'auth.login', 'user', $3, $4, $5)`,
+    [userId, displayName, userId,
+     (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
+     JSON.stringify({ method })]
+  );
+  return { token, expiresAt };
+}
+
+// Резолв юзера по Bearer-токену сессии (для authed эндпоинтов кабинета).
+async function userByBearer(pool, req) {
+  const auth = req.headers.authorization || '';
+  const m = auth.match(/^Bearer\s+([a-f0-9]{64})$/i);
+  if (!m) return null;
+  const tokenHash = sha256(m[1]);
+  const r = await pool.query(
+    `SELECT u.id, u.phone, u.display_name, u.role_id, u.password_hash, u.is_active
+       FROM user_tokens t JOIN users u ON u.id = t.user_id
+      WHERE t.token_hash = $1 AND (t.expires_at IS NULL OR t.expires_at > NOW()) AND u.is_active = true`,
+    [tokenHash]
+  );
+  return r.rows[0] || null;
+}
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 3;
 
@@ -283,32 +321,12 @@ router.post('/verify', async (req, res) => {
     // Код верный — помечаем использованным, выдаём session token
     await pool.query(`UPDATE staff_otp_codes SET used_at = NOW() WHERE id = $1`, [row.id]);
 
-    const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = sha256(token);
-    const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
-
-    await pool.query(
-      `INSERT INTO user_tokens (user_id, token_hash, label, expires_at)
-       VALUES ($1, $2, $3, $4)`,
-      [row.user_id, tokenHash, `otp-login from ${(req.headers['user-agent'] || '').slice(0, 80)}`, expiresAt]
-    );
-
-    // Логируем удачный вход
-    await pool.query(
-      `UPDATE users SET last_login_at = NOW() WHERE id = $1`,
-      [row.user_id]
-    );
-    await pool.query(
-      `INSERT INTO audit_log (user_id, user_label, action, entity, entity_id, ip, meta)
-       VALUES ($1, $2, 'auth.login', 'user', $3, $4, $5)`,
-      [
-        row.user_id,
-        row.display_name,
-        row.user_id,
-        (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(),
-        JSON.stringify({ method: 'telegram-otp' }),
-      ]
-    );
+    // remember=true → «запомнить навсегда» (10 лет), иначе 14 дней
+    const ttlDays = req.body?.remember ? REMEMBER_TTL_DAYS : SESSION_TTL_DAYS;
+    const { token, expiresAt } = await issueSessionToken(pool, {
+      userId: row.user_id, displayName: row.display_name, roleId: row.role_id,
+      req, ttlDays, method: 'telegram-otp',
+    });
 
     res.json({
       ok: true,
@@ -352,7 +370,8 @@ router.get('/me', async (req, res) => {
     const tokenHash = sha256(m[1]);
     const pool = getPool();
     const r = await pool.query(
-      `SELECT u.id, u.phone, u.display_name, u.role_id, u.branch_id, r.code as role_code, r.permissions
+      `SELECT u.id, u.phone, u.display_name, u.role_id, u.branch_id, r.code as role_code, r.permissions,
+              (u.password_hash IS NOT NULL) AS has_password
        FROM user_tokens t
        JOIN users u ON u.id = t.user_id
        JOIN roles r ON r.id = u.role_id
@@ -368,6 +387,84 @@ router.get('/me', async (req, res) => {
   } catch (e) {
     console.error('[auth-staff:me]', e);
     res.status(500).json({ error: 'internal' });
+  }
+});
+
+// ── POST /api/auth/staff/login-password ──────────────────────────────
+// Быстрый вход по телефону + паролю (альтернатива OTP). Пароль задаётся
+// в кабинете. remember=true → сессия на 10 лет.
+router.post('/login-password', async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const password = String(req.body?.password || '');
+    if (!phone || !password) return res.status(400).json({ error: 'phone-and-password-required' });
+
+    const pool = getPool();
+    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+
+    // Тот же rate-limit что и у OTP: 3/мин на phone и на ip
+    const phoneAttempts = await throttle(pool, `pwd:phone:${phone}`);
+    const ipAttempts = await throttle(pool, `pwd:ip:${ip || 'unknown'}`);
+    if (phoneAttempts > RATE_LIMIT_MAX || ipAttempts > RATE_LIMIT_MAX) {
+      return res.status(429).json({ error: 'too-many-requests', retry_after_seconds: 60 });
+    }
+
+    const u = await pool.query(
+      `SELECT id, display_name, role_id, password_hash, is_active FROM users WHERE phone = $1`,
+      [phone]
+    );
+    // Единый ответ при любой неудаче — не раскрываем, есть ли юзер/пароль
+    const fail = () => res.status(401).json({ error: 'invalid-credentials' });
+    if (!u.rowCount) return fail();
+    const user = u.rows[0];
+    if (!user.is_active) return res.status(403).json({ error: 'user-disabled' });
+    if (!user.password_hash) return res.status(400).json({ error: 'password-not-set', message: 'Пароль не встановлено. Увійдіть через Telegram-код і встановіть пароль у кабінеті.' });
+    const ok = await verifyPassword(password, user.password_hash);
+    if (!ok) return fail();
+
+    const ttlDays = req.body?.remember ? REMEMBER_TTL_DAYS : SESSION_TTL_DAYS;
+    const { token, expiresAt } = await issueSessionToken(pool, {
+      userId: user.id, displayName: user.display_name, roleId: user.role_id,
+      req, ttlDays, method: 'password',
+    });
+    res.json({ ok: true, token, expires_at: expiresAt.toISOString(),
+      user: { id: user.id, display_name: user.display_name, role_id: user.role_id } });
+  } catch (e) {
+    console.error('[auth-staff:login-password]', e);
+    res.status(500).json({ error: 'internal', detail: e.message });
+  }
+});
+
+// ── POST /api/auth/staff/set-password ────────────────────────────────
+// Сменить/установить собственный пароль. Требует активной сессии (Bearer).
+// Если пароль уже стоял — нужен current_password. Минимум 4 символа.
+router.post('/set-password', async (req, res) => {
+  try {
+    const pool = getPool();
+    const me = await userByBearer(pool, req);
+    if (!me) return res.status(401).json({ error: 'unauthorized' });
+
+    const next = String(req.body?.password || '');
+    if (next.length < 4) return res.status(400).json({ error: 'password-too-short', message: 'Мінімум 4 символи' });
+
+    // Если пароль уже установлен — проверяем текущий (защита от смены чужой открытой сессией)
+    if (me.password_hash) {
+      const cur = String(req.body?.current_password || '');
+      const ok = cur && await verifyPassword(cur, me.password_hash);
+      if (!ok) return res.status(403).json({ error: 'current-password-wrong', message: 'Невірний поточний пароль' });
+    }
+
+    const hash = await hashPassword(next);
+    await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [hash, me.id]);
+    await pool.query(
+      `INSERT INTO audit_log (user_id, user_label, action, entity, entity_id, meta)
+       VALUES ($1, $2, 'auth.set_password', 'user', $3, $4)`,
+      [me.id, me.display_name, me.id, JSON.stringify({ changed: !!me.password_hash })]
+    );
+    res.json({ ok: true, message: me.password_hash ? 'Пароль змінено' : 'Пароль встановлено' });
+  } catch (e) {
+    console.error('[auth-staff:set-password]', e);
+    res.status(500).json({ error: 'internal', detail: e.message });
   }
 });
 

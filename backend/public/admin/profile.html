@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS CRM — Мій кабінет</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  body { min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:32px 20px; }
+  .wrap { max-width:460px; width:100%; }
+  .card { padding:28px; margin-bottom:20px; box-shadow:0 8px 32px rgba(30,31,43,.06); }
+  .card h1 { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .card h2 { font-size:16px; font-weight:600; margin-bottom:16px; }
+  .sub { color:var(--text-secondary); font-size:14px; margin-bottom:22px; }
+  .row { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border,#eef0f4); font-size:14px; }
+  .row:last-child { border-bottom:none; }
+  .row .k { color:var(--text-secondary); }
+  .row .v { font-weight:600; }
+  label { display:block; font-size:13px; color:var(--text-secondary); margin-bottom:6px; margin-top:14px; }
+  .btn { width:100%; justify-content:center; padding:12px; font-size:15px; margin-top:18px; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.ghost { background:var(--bg-secondary,#f3f4f8); color:var(--text-primary,#1e1f2b); }
+  .msg { margin-top:14px; padding:10px 12px; border-radius:var(--radius-sm); font-size:13px; display:none; }
+  .msg.ok { background:#E6F9EF; color:var(--success); display:block; }
+  .msg.err { background:#FDECEC; color:var(--danger); display:block; }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .back-link { font-size:13px; color:var(--text-secondary); text-decoration:none; }
+  #cur-wrap { display:none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a href="/admin/crm-extra.html" class="back-link">← До CRM</a>
+      <a href="#" id="logout" class="back-link">Вийти</a>
+    </div>
+
+    <div class="card">
+      <h1>Мій кабінет</h1>
+      <div class="sub" id="hello">Завантаження…</div>
+      <div class="row"><span class="k">Ім'я</span><span class="v" id="i-name">—</span></div>
+      <div class="row"><span class="k">Телефон</span><span class="v" id="i-phone">—</span></div>
+      <div class="row"><span class="k">Роль</span><span class="v" id="i-role">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2 id="pwd-title">Пароль</h2>
+      <div class="sub" id="pwd-sub">Встановіть пароль, щоб входити швидко без Telegram-коду.</div>
+
+      <div id="cur-wrap">
+        <label for="cur">Поточний пароль</label>
+        <input id="cur" class="inp" type="password" placeholder="••••" autocomplete="current-password">
+      </div>
+
+      <label for="np">Новий пароль (мінімум 4 символи)</label>
+      <input id="np" class="inp" type="password" placeholder="••••" autocomplete="new-password">
+
+      <label for="np2">Повторіть новий пароль</label>
+      <input id="np2" class="inp" type="password" placeholder="••••" autocomplete="new-password">
+
+      <button id="save" class="btn">Зберегти пароль</button>
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+
+<script>
+const API = '';
+const $ = (id) => document.getElementById(id);
+const token = localStorage.getItem('svs_admin_token');
+if (!token) location.href = '/admin/login.html';
+
+function showMsg(type, text) { const el = $('msg'); el.className = 'msg ' + type; el.textContent = text; }
+const AUTH = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+let hasPassword = false;
+
+async function loadMe() {
+  try {
+    const r = await fetch(API + '/api/auth/staff/me', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (r.status === 401) { localStorage.removeItem('svs_admin_token'); location.href = '/admin/login.html'; return; }
+    const data = await r.json();
+    if (!data.ok) return;
+    const u = data.user;
+    $('hello').textContent = 'Вітаю, ' + (u.display_name || 'співробітник') + '!';
+    $('i-name').textContent = u.display_name || '—';
+    $('i-phone').textContent = u.phone || '—';
+    $('i-role').textContent = u.role_code || ('role#' + u.role_id);
+    hasPassword = !!u.has_password;
+    reflectState();
+  } catch (e) { showMsg('err', 'Не вдалося завантажити профіль: ' + e.message); }
+}
+
+$('save').addEventListener('click', async () => {
+  const np = $('np').value, np2 = $('np2').value;
+  if (np.length < 4) { showMsg('err', 'Пароль мінімум 4 символи'); return; }
+  if (np !== np2) { showMsg('err', 'Паролі не співпадають'); return; }
+  $('save').disabled = true;
+  try {
+    const body = { password: np };
+    if (hasPassword) body.current_password = $('cur').value;
+    const r = await fetch(API + '/api/auth/staff/set-password', {
+      method: 'POST', headers: AUTH, body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showMsg('ok', data.message || 'Пароль збережено');
+      $('np').value = ''; $('np2').value = ''; $('cur').value = '';
+      hasPassword = true; reflectState();
+    } else if (data.error === 'current-password-wrong') {
+      showMsg('err', 'Невірний поточний пароль');
+    } else if (data.error === 'password-too-short') {
+      showMsg('err', 'Пароль мінімум 4 символи');
+    } else if (r.status === 401) {
+      localStorage.removeItem('svs_admin_token'); location.href = '/admin/login.html';
+    } else {
+      showMsg('err', data.message || data.error || 'Помилка');
+    }
+  } catch (e) {
+    showMsg('err', 'Мережева помилка: ' + e.message);
+  } finally { $('save').disabled = false; }
+});
+
+// При первой установке текущий пароль не нужен; после установки — показываем поле.
+// Состояние hasPassword берём оптимистично с false, бэкенд сам решит.
+function reflectState() {
+  if (hasPassword) {
+    $('pwd-title').textContent = 'Змінити пароль';
+    $('pwd-sub').textContent = 'Введіть поточний і новий пароль.';
+    $('cur-wrap').style.display = 'block';
+    $('save').textContent = 'Змінити пароль';
+  }
+}
+
+$('logout').addEventListener('click', async (e) => {
+  e.preventDefault();
+  try { await fetch(API + '/api/auth/staff/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch (_) {}
+  localStorage.removeItem('svs_admin_token');
+  localStorage.removeItem('svs_user');
+  location.href = '/admin/login.html';
+});
+
+loadMe();
+</script>
+</body>
+</html>
