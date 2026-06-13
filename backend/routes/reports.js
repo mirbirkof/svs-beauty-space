@@ -427,27 +427,29 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
     const mr = await pool.query(`SELECT id, name FROM masters WHERE id=$1`, [masterId]);
     if (!mr.rows.length) return res.status(404).json({ error: 'master not found' });
 
-    // Услуги — по выполненным записям мастера, сгруппированы по названию
+    // Услуги — из реально проведённых продаж кассы (BeautyPro /sales), как и план месяца.
+    // Раньше брали appointments.status='done', но BeautyPro не присылает 'done'
+    // (записи остаются confirmed) → отчёт показывал почти ноль. Касса = источник правды.
     const services = await pool.query(
-      `SELECT COALESCE(s.name,'(без послуги)') AS name,
+      `SELECT COALESCE(NULLIF(description,''),'(без назви)') AS name,
               COUNT(*)::int AS count,
-              COALESCE(SUM(a.price),0)::numeric AS sum
-         FROM appointments a
-         LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.master_id = $1 AND a.status = 'done'
-          AND a.starts_at BETWEEN $2 AND $3
-        GROUP BY s.name ORDER BY sum DESC`,
+              COALESCE(SUM(amount),0)::numeric AS sum
+         FROM cash_operations
+        WHERE master_id = $1 AND type='in' AND category='sale_service'
+          AND created_at BETWEEN $2 AND $3
+        GROUP BY description ORDER BY sum DESC`,
       [masterId, from, to]
     );
 
-    // Товары — позиційні продажі мастера (salon_product_sales з BeautyPro)
+    // Товары — продажи товаров мастером из кассы (то же, что в BeautyPro)
     const products = await pool.query(
-      `SELECT product_name AS name,
-              SUM(qty)::numeric AS count,
-              COALESCE(SUM(total_price),0)::numeric AS sum
-         FROM salon_product_sales
-        WHERE master_id=$1 AND sale_date BETWEEN $2 AND $3
-        GROUP BY product_name ORDER BY sum DESC`,
+      `SELECT COALESCE(NULLIF(description,''),'(без назви)') AS name,
+              COUNT(*)::int AS count,
+              COALESCE(SUM(amount),0)::numeric AS sum
+         FROM cash_operations
+        WHERE master_id = $1 AND type='in' AND category='sale_product'
+          AND created_at BETWEEN $2 AND $3
+        GROUP BY description ORDER BY sum DESC`,
       [masterId, from, to]
     );
 

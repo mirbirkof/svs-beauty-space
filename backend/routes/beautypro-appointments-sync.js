@@ -309,6 +309,14 @@ async function syncSales(from, to) {
   // имя мастера → id (для привязки операции)
   const mres = await pool.query('SELECT id, name FROM masters');
   const mmap = new Map(mres.rows.map((r) => [String(r.name).trim(), r.id]));
+  // Алиасы: в /sales BeautyPro мастер может фигурировать под другим именем,
+  // чем в карточке. Иначе продажи падают в "ничьи" (master_id=null).
+  // 'Перукар Світлана' = та же людина, що 'Скібенко Світлана'.
+  const NAME_ALIASES = { 'Перукар Світлана': 'Скібенко Світлана' };
+  for (const [alias, real] of Object.entries(NAME_ALIASES)) {
+    const id = mmap.get(real);
+    if (id && !mmap.has(alias)) mmap.set(alias, id);
+  }
 
   let posted = 0, skipped = 0, shifts = 0;
   const days = [];

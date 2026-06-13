@@ -70,10 +70,13 @@ router.patch('/:id', async (req, res) => {
     if (!['open', 'done'].includes(status)) return res.status(400).json({ error: 'bad-status' });
     let r;
     if (status === 'done') {
+      // Имя закрывшего: явно переданное (напр. "Jarvis 🤖" при авто-закрытии) либо текущий юзер
+      const doneByName = (req.body?.done_by_name && String(req.body.done_by_name).slice(0, 100))
+        || req.user?.display_name || null;
       r = await pool.query(
         `UPDATE crm_notes SET status='done', done_by=$2, done_by_name=$3, done_at=NOW()
            WHERE id=$1 RETURNING *`,
-        [id, req.user?.id ?? null, req.user?.display_name || null]
+        [id, req.user?.id ?? null, doneByName]
       );
     } else {
       r = await pool.query(

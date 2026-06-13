@@ -81,13 +81,19 @@
     '.svsN-item.done{border-left-color:#2ecc71;opacity:.72}',
     '.svsN-item .txt{font-size:14px;white-space:pre-wrap;word-break:break-word}',
     '.svsN-item.done .txt{text-decoration:line-through;color:#9aa0b4}',
+    /* статус-бейдж: активная заметка = "ждёт", чтобы не путали с выполненной */
+    '.svsN-badge{display:inline-flex;align-items:center;gap:4px;font:700 10.5px Inter,sans-serif;padding:2px 8px;border-radius:20px;margin-bottom:7px;letter-spacing:.02em}',
+    '.svsN-badge.wait{background:rgba(255,159,67,.16);color:#ff9f43}',
+    '.svsN-badge.ok{background:rgba(46,204,113,.16);color:#2ecc71}',
     '.svsN-meta{font-size:11px;color:#8f95a8;margin-top:7px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
     '.svsN-meta a{color:#8aa9ff;text-decoration:none}',
-    '.svsN-acts{display:flex;gap:6px;margin-top:9px}',
-    '.svsN-acts button{flex:0 0 auto;padding:6px 10px;border:none;border-radius:8px;cursor:pointer;font:600 12px Inter,sans-serif}',
-    '.svsN-done{background:#2ecc71;color:#08311a}',
-    '.svsN-reopen{background:#3a3f4d;color:#cdd2e0}',
-    '.svsN-del{background:transparent;color:#ff6b6b;border:1px solid #4a2f33!important}',
+    '.svsN-acts{display:flex;gap:14px;margin-top:9px;align-items:center}',
+    /* ручные действия — скромные текстовые ссылки, НЕ кнопки-индикаторы */
+    '.svsN-link{background:none;border:none;padding:0;cursor:pointer;font:600 11.5px Inter,sans-serif;color:#7b8094;text-decoration:none}',
+    '.svsN-link:hover{text-decoration:underline}',
+    '.svsN-link.close:hover{color:#2ecc71}',
+    '.svsN-link.reopen:hover{color:#8aa9ff}',
+    '.svsN-link.del:hover{color:#ff6b6b}',
     '.svsN-empty{text-align:center;color:#7b8094;font-size:13px;padding:26px 10px}',
   ].join('');
   document.head.appendChild(css);
@@ -113,6 +119,7 @@
       '<button class="svsN-tab active" data-tab="open">Активні<span class="cnt" id="svsNCntOpen">0</span></button>' +
       '<button class="svsN-tab" data-tab="done">Виконані<span class="cnt" id="svsNCntDone">0</span></button>' +
     '</div>' +
+    '<div style="font-size:11px;color:#7b8094;padding:7px 14px 0;line-height:1.45">Залиште задачу — Jarvis виконає і сам перенесе у «Виконані» з позначкою хто та коли.</div>' +
     '<div class="svsN-list" id="svsNList"></div>';
 
   document.body.appendChild(fab);
@@ -144,17 +151,22 @@
         ? '<a href="' + esc(n.page_path) + '" title="' + esc(n.page_label || '') + '">📍 ' + esc(n.page_label || n.page_path) + '</a>'
         : '';
       var who = n.created_by_name ? esc(n.created_by_name) : '';
+      var badge = n.status === 'open'
+        ? '<div class="svsN-badge wait">⏳ Очікує виконання</div>'
+        : '<div class="svsN-badge ok">✓ Виконано' + (n.done_by_name ? ' · ' + esc(n.done_by_name) : '') + '</div>';
       var meta = '<div class="svsN-meta">' + pageLink +
         '<span>' + (who ? who + ' · ' : '') + fmtDate(n.created_at) + '</span>' +
-        (n.status === 'done' && n.done_at ? '<span style="color:#2ecc71">✓ ' + fmtDate(n.done_at) + (n.done_by_name ? ' · ' + esc(n.done_by_name) : '') + '</span>' : '') +
+        (n.status === 'done' && n.done_at ? '<span style="color:#2ecc71">' + fmtDate(n.done_at) + '</span>' : '') +
         '</div>';
+      // Активная заметка: помечать выконаною — задача Jarvis (он сам закрывает после выполнения).
+      // Боссу даём только скромную ручную опцию, без яркой кнопки-индикатора.
       var acts = n.status === 'open'
-        ? '<div class="svsN-acts"><button class="svsN-done" data-done="' + n.id + '">✓ Виконано</button>' +
-          '<button class="svsN-del" data-del="' + n.id + '">Видалити</button></div>'
-        : '<div class="svsN-acts"><button class="svsN-reopen" data-reopen="' + n.id + '">↩ Повернути</button>' +
-          '<button class="svsN-del" data-del="' + n.id + '">Видалити</button></div>';
+        ? '<div class="svsN-acts"><button class="svsN-link close" data-done="' + n.id + '">Закрити вручну</button>' +
+          '<button class="svsN-link del" data-del="' + n.id + '">Видалити</button></div>'
+        : '<div class="svsN-acts"><button class="svsN-link reopen" data-reopen="' + n.id + '">↩ Повернути в активні</button>' +
+          '<button class="svsN-link del" data-del="' + n.id + '">Видалити</button></div>';
       return '<div class="svsN-item ' + (n.status === 'done' ? 'done' : '') + '">' +
-        '<div class="txt">' + esc(n.body) + '</div>' + meta + acts + '</div>';
+        badge + '<div class="txt">' + esc(n.body) + '</div>' + meta + acts + '</div>';
     }).join('');
   }
 
