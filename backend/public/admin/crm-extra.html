@@ -566,6 +566,18 @@ async function loadUsers(){
           </td></tr>`).join('') || '<tr><td colspan="7" class="empty">Співробітників немає</td></tr>';
   }catch(e){ alert(e.message); }
 }
+function pwIssues(p){
+  const e=[];
+  if((p||'').length<8) e.push('мін. 8 символів');
+  if(!/[A-ZА-ЯҐІЇЄ]/.test(p||'')) e.push('велика літера');
+  if(!/[a-zа-яґіїє]/.test(p||'')) e.push('мала літера');
+  if(!/[0-9]/.test(p||'')) e.push('цифра');
+  return e;
+}
+function pwError(e){
+  if(e && e.message==='weak-password') return 'Пароль заслабкий. Потрібно: мін. 8 символів, велика та мала літера, цифра. Напр.: Salon2026';
+  return (e&&e.message)||'Помилка';
+}
 async function createUser(){
   const display_name = document.getElementById('u-name').value.trim();
   const phone = document.getElementById('u-phone').value.trim();
@@ -576,19 +588,22 @@ async function createUser(){
   const specialty = document.getElementById('u-specialty').value.trim();
   const commission_pct = parseFloat(document.getElementById('u-commission').value)||40;
   if(!display_name) return alert('Імʼя обовʼязкове');
+  if(password){ const iss=pwIssues(password); if(iss.length) return alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад надійного: Salon2026'); }
   const body = { display_name, phone, email, role_code, username, password };
   if(role_code==='master'){ body.specialty = specialty; body.commission_pct = commission_pct; }
   try{
     await api('/api/users',{method:'POST',body:JSON.stringify(body)});
     ['u-name','u-phone','u-email','u-username','u-password','u-specialty'].forEach(id=>document.getElementById(id).value='');
+    alert('Користувача створено');
     loadUsers();
-  }catch(e){ alert(e.message); }
+  }catch(e){ alert(pwError(e)); }
 }
 async function setPassword(uid){
   const password = prompt('Новий пароль (мін. 8 символів, велика+мала літера, цифра):');
   if(!password) return;
+  const iss=pwIssues(password); if(iss.length) return alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад: Salon2026');
   try{ await api('/api/users/'+uid+'/password',{method:'POST',body:JSON.stringify({password})}); alert('Пароль встановлено'); loadUsers(); }
-  catch(e){ alert(e.message); }
+  catch(e){ alert(pwError(e)); }
 }
 async function deactivateUser(uid){
   if(!confirm('Деактивувати співробітника? Він втратить доступ.')) return;
