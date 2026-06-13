@@ -57,6 +57,9 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 .pill.dng{background:#FCE7E8;color:#A8252C}
 .pill.info{background:#E3EAFC;color:#2E54B9}
 .pill.gray{background:#EEF0F4;color:#5C6275}
+.lnk{color:#2E54B9;text-decoration:none;font-weight:600;cursor:pointer}
+.lnk:hover{text-decoration:underline}
+.btn.sm.active,.btn.ghost.sm.active{background:#2E54B9;color:#fff}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .status{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px}
 .status.ok{background:#E0F8EB;color:#0F8E48}
@@ -236,10 +239,28 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
     <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мін. 8 символів, велика+мала літера, цифра. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
   </div>
   <div class="card">
-    <h2>Співробітники</h2>
+    <h2>Майстри салону <span id="m-count" style="font-size:13px;color:#888;font-weight:400"></span></h2>
+    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Майстри підтягуються автоматично з BeautyPro — вони працюють у графіку та звітах без окремого логіна. Логін потрібен лише тим, хто заходить в адмінку. Натисни на ім'я, щоб переглянути картку.</div>
+    <div class="row" style="gap:6px;margin-bottom:8px">
+      <button class="btn ghost sm" id="m-filter-active" onclick="MASTERS_ALL=false;loadMasters()">Працюючі</button>
+      <button class="btn ghost sm" id="m-filter-all" onclick="MASTERS_ALL=true;loadMasters()">Усі (вкл. звільнених)</button>
+    </div>
+    <table><thead><tr><th>Ім'я</th><th>Спеціальність</th><th>Джерело</th><th>Статус</th><th>Дії</th></tr></thead><tbody id="m-list"></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Доступи до системи (логіни)</h2>
+    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Тут лише ті, хто має пароль/токен для входу в адмінку. Майстру логін не обов'язковий.</div>
     <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Логін/Тел</th><th>Email</th><th>Пароль</th><th>Активний</th><th>Дії</th></tr></thead><tbody id="u-list"></tbody></table>
   </div>
 </section>
+
+<!-- модалка картки майстра/користувача -->
+<div id="cardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeCard()">
+  <div style="background:#fff;border-radius:14px;max-width:460px;width:92%;max-height:85vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+    <div id="cardBody">—</div>
+    <button class="btn ghost" style="width:100%;margin-top:14px" onclick="closeCard()">Закрити</button>
+  </div>
+</div>
 
 <!-- ═══════════ АУДИТ ═══════════ -->
 <section id="tab-audit" class="tab">
@@ -332,7 +353,7 @@ function onTab(t){
   if(t==='reports') loadReports();
   if(t==='inventory') loadInventory();
   if(t==='branches') loadBranches();
-  if(t==='users') loadUsers();
+  if(t==='users'){ loadMasters(); loadUsers(); }
   if(t==='audit') loadAudit();
 }
 
@@ -568,11 +589,82 @@ function toggleMasterFields(){
   const isMaster = document.getElementById('u-role').value === 'master';
   document.getElementById('u-master-fields').style.display = isMaster ? 'inline-flex' : 'none';
 }
+let MASTERS_ALL=false, USERS_CACHE=[], MASTERS_CACHE=[];
+async function loadMasters(){
+  try{
+    const r = await api('/api/schedule/masters'+(MASTERS_ALL?'?all=1':''));
+    MASTERS_CACHE = r.items||[];
+    const act = MASTERS_CACHE.filter(m=>m.active).length;
+    document.getElementById('m-count').textContent = `· ${MASTERS_CACHE.length} ${MASTERS_ALL?'усього':'працюючих'}`;
+    document.getElementById('m-filter-active').classList.toggle('active', !MASTERS_ALL);
+    document.getElementById('m-filter-all').classList.toggle('active', MASTERS_ALL);
+    document.getElementById('m-list').innerHTML = MASTERS_CACHE.map(m=>`
+      <tr>
+        <td><a href="#" class="lnk" onclick="openMasterCard(${m.id});return false">${m.name}</a></td>
+        <td>${m.specialty||'<span style="color:#bbb">—</span>'}</td>
+        <td>${m.beautypro_id?'<span class="pill info">BeautyPro</span>':'<span class="pill gray">вручну</span>'}</td>
+        <td><span class="pill ${m.active?'ok':'gray'}">${m.active?'працює':'звільнений'}</span></td>
+        <td style="white-space:nowrap">
+          ${m.active
+            ? `<button class="btn sm ghost" onclick="setMasterActive(${m.id},false)">Звільнити</button>`
+            : `<button class="btn sm" onclick="setMasterActive(${m.id},true)">Повернути</button>`}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">Майстрів немає</td></tr>';
+  }catch(e){ document.getElementById('m-list').innerHTML='<tr><td colspan="5" class="empty">'+e.message+'</td></tr>'; }
+}
+async function setMasterActive(id, active){
+  if(!confirm(active?'Повернути майстра у графік?':'Звільнити майстра? Він зникне з графіку та онлайн-запису, але лишиться у звітах.')) return;
+  try{ await api('/api/schedule/masters/'+id,{method:'PATCH',body:JSON.stringify({active})}); loadMasters(); }
+  catch(e){ alert(e.message); }
+}
+function closeCard(){ document.getElementById('cardModal').style.display='none'; }
+async function openMasterCard(id){
+  const m = MASTERS_CACHE.find(x=>x.id===id) || {};
+  const box=document.getElementById('cardModal'); box.style.display='flex';
+  document.getElementById('cardBody').innerHTML = `<h2 style="margin:0 0 8px">${m.name||'Майстер'}</h2><div style="color:#888">Завантаження…</div>`;
+  try{
+    const p = await api('/api/schedule/masters/'+id+'/portfolio');
+    const st = p.stats||{};
+    document.getElementById('cardBody').innerHTML = `
+      <h2 style="margin:0 0 4px">${m.name}</h2>
+      <div style="color:#888;font-size:13px;margin-bottom:12px">${m.specialty||'Спеціальність не вказана'} · ${m.beautypro_id?'синхр. з BeautyPro':'додано вручну'} · ${m.active?'працює':'звільнений'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="metric"><div class="label">Виконано (всього)</div><div class="value">${st.done_total||0}</div></div>
+        <div class="metric ok"><div class="label">Дохід (всього)</div><div class="value" style="font-size:18px">${fmtUAH(st.revenue_total||0)}</div></div>
+        <div class="metric"><div class="label">За 30 днів</div><div class="value">${st.done_30||0}</div></div>
+        <div class="metric"><div class="label">Клієнтів</div><div class="value">${st.clients_total||0}</div></div>
+      </div>
+      ${(p.top_services&&p.top_services.length)?`<h3 style="margin:14px 0 6px;font-size:14px">Топ послуги</h3>`+p.top_services.slice(0,5).map(s=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span>${s.service}</span><span style="color:#888">${s.cnt}× · ${fmtUAH(s.sum)}</span></div>`).join(''):''}`;
+  }catch(e){
+    document.getElementById('cardBody').innerHTML = `<h2 style="margin:0 0 4px">${m.name}</h2>
+      <div style="color:#888;font-size:13px;margin-bottom:12px">${m.specialty||'Спеціальність не вказана'} · ${m.beautypro_id?'синхр. з BeautyPro':'вручну'}</div>
+      <div style="color:#c00">Статистика недоступна: ${e.message}</div>`;
+  }
+}
+function openUserCard(id){
+  const u = USERS_CACHE.find(x=>x.id===id) || {};
+  document.getElementById('cardModal').style.display='flex';
+  document.getElementById('cardBody').innerHTML = `
+    <h2 style="margin:0 0 4px">${u.display_name||'Користувач'}</h2>
+    <div style="color:#888;font-size:13px;margin-bottom:14px"><span class="pill info">${u.role_name||u.role||''}</span></div>
+    <div style="font-size:14px;line-height:2">
+      <div><b>Логін/Тел:</b> ${u.username||fmtPhone(u.phone)}</div>
+      <div><b>Email:</b> ${u.email||'—'}</div>
+      <div><b>Пароль:</b> ${u.has_password?'встановлено':'нема'}</div>
+      <div><b>Активний:</b> ${u.is_active?'так':'ні'}</div>
+      <div><b>Останній вхід:</b> ${u.last_login_at?new Date(u.last_login_at).toLocaleString('uk'):'—'}</div>
+      ${u.master_id?`<div><b>Картка майстра:</b> #${u.master_id}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <button class="btn sm" onclick="closeCard();setPassword(${u.id})">Змінити пароль</button>
+      <button class="btn sm ghost" onclick="closeCard();issueToken(${u.id})">Видати токен</button>
+    </div>`;
+}
 async function loadUsers(){
   try{
-    const r = await api('/api/users');
+    const r = await api('/api/users'); USERS_CACHE = r.items||[];
     document.getElementById('u-list').innerHTML = r.items.map(u=>`
-      <tr><td>${u.display_name}</td><td><span class="pill info">${u.role_name||u.role}</span></td>
+      <tr><td><a href="#" class="lnk" onclick="openUserCard(${u.id});return false">${u.display_name}</a></td><td><span class="pill info">${u.role_name||u.role}</span></td>
           <td>${u.username||fmtPhone(u.phone)}</td><td>${u.email||''}</td>
           <td><span class="pill ${u.has_password?'ok':'gray'}">${u.has_password?'є':'нема'}</span></td>
           <td><span class="pill ${u.is_active?'ok':'gray'}">${u.is_active?'так':'ні'}</span></td>

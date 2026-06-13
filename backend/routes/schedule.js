@@ -60,20 +60,28 @@ router.get('/masters/:id/portfolio', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const m = await pool.query('SELECT * FROM masters WHERE id = $1', [id]);
     if (!m.rows[0]) return res.status(404).json({ error: 'master not found' });
-    // Статистика за 30 дней и за всё время
+    // Статистика — з каси (реально оплачене). BeautyPro не присилає статус 'done',
+    // тому рахуємо за cash_operations(sale_service/sale_product), а не за appointments.status.
     const stat = await pool.query(
       `SELECT
-         COUNT(*) FILTER (WHERE status='done')::int AS done_total,
-         COALESCE(SUM(price) FILTER (WHERE status='done'),0)::float AS revenue_total,
-         COUNT(*) FILTER (WHERE status='done' AND starts_at >= NOW() - INTERVAL '30 days')::int AS done_30,
-         COALESCE(SUM(price) FILTER (WHERE status='done' AND starts_at >= NOW() - INTERVAL '30 days'),0)::float AS revenue_30,
-         COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int AS clients_total
-       FROM appointments WHERE master_id = $1`, [id]);
+         (SELECT COUNT(*) FROM cash_operations
+            WHERE master_id=$1 AND type='in' AND category='sale_service')::int AS done_total,
+         (SELECT COALESCE(SUM(amount),0) FROM cash_operations
+            WHERE master_id=$1 AND type='in' AND category IN ('sale_service','sale_product'))::float AS revenue_total,
+         (SELECT COUNT(*) FROM cash_operations
+            WHERE master_id=$1 AND type='in' AND category='sale_service'
+              AND created_at >= NOW() - INTERVAL '30 days')::int AS done_30,
+         (SELECT COALESCE(SUM(amount),0) FROM cash_operations
+            WHERE master_id=$1 AND type='in' AND category IN ('sale_service','sale_product')
+              AND created_at >= NOW() - INTERVAL '30 days')::float AS revenue_30,
+         (SELECT COUNT(DISTINCT client_id) FROM appointments WHERE master_id=$1)::int AS clients_total`,
+      [id]);
     const topServices = await pool.query(
-      `SELECT COALESCE(NULLIF(services_text,''),'Послуга') AS service, COUNT(*)::int AS cnt,
-              COALESCE(SUM(price),0)::float AS sum
-         FROM appointments WHERE master_id = $1 AND status='done'
-         GROUP BY 1 ORDER BY cnt DESC LIMIT 10`, [id]);
+      `SELECT COALESCE(NULLIF(description,''),'Послуга') AS service, COUNT(*)::int AS cnt,
+              COALESCE(SUM(amount),0)::float AS sum
+         FROM cash_operations
+        WHERE master_id = $1 AND type='in' AND category='sale_service'
+        GROUP BY 1 ORDER BY sum DESC LIMIT 10`, [id]);
     const recent = await pool.query(
       `SELECT a.id, a.starts_at, a.status, a.price, a.services_text,
               COALESCE(a.client_name, c.name) AS client_name
