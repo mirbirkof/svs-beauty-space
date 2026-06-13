@@ -3,7 +3,7 @@
    Подключается как /api/cashbox в shop-api.js */
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, hasPermission } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
 
@@ -12,6 +12,15 @@ router.use((req, res, next) => {
   const perm = req.method === 'GET' ? 'cashbox.read' : 'cashbox.write';
   return requirePerm(perm)(req, res, next);
 });
+
+// доступ к истории/агрегатам кассы (прошлые смены, Z-отчёты, налоги).
+// admin по умолчанию НЕ имеет — видит только сегодняшнюю кассу.
+// owner ('*') и роли с 'cashbox.history' — видят всё.
+function requireHistory(req, res, next) {
+  if (hasPermission(req.user?.permissions || [], 'cashbox.history')) return next();
+  return res.status(403).json({ error: 'forbidden', need: 'cashbox.history',
+    message: 'Перегляд історії та фінансової статистики доступний лише власнику' });
+}
 
 // ── helpers ────────────────────────────────────────────
 async function getOpenShift(branchId) {
@@ -64,8 +73,8 @@ router.get('/shifts/current', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/cashbox/shifts — история смен
-router.get('/shifts', async (req, res) => {
+// GET /api/cashbox/shifts — история смен (только владелец)
+router.get('/shifts', requireHistory, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const r = await pool.query(
@@ -84,6 +93,10 @@ router.get('/shifts/:id', async (req, res) => {
     const id = Number(req.params.id);
     const s = await pool.query(`SELECT * FROM cash_shifts WHERE id=$1`, [id]);
     if (!s.rows[0]) return res.status(404).json({ error: 'not-found' });
+    // закрытую (прошлую) смену видит только владелец
+    if (s.rows[0].status !== 'open' && !hasPermission(req.user?.permissions || [], 'cashbox.history')) {
+      return res.status(403).json({ error: 'forbidden', need: 'cashbox.history', message: 'Минулі зміни доступні лише власнику' });
+    }
     const ops = await pool.query(
       `SELECT * FROM cash_operations WHERE shift_id=$1 ORDER BY created_at`,
       [id]
@@ -198,6 +211,11 @@ router.get('/operations', async (req, res) => {
   try {
     const shiftId = Number(req.query.shift_id);
     if (!shiftId) return res.status(400).json({ error: 'shift_id required' });
+    // операции прошлой (закрытой) смены — только владелец
+    const sh = await pool.query(`SELECT status FROM cash_shifts WHERE id=$1`, [shiftId]);
+    if (sh.rows[0] && sh.rows[0].status !== 'open' && !hasPermission(req.user?.permissions || [], 'cashbox.history')) {
+      return res.status(403).json({ error: 'forbidden', need: 'cashbox.history', message: 'Минулі операції доступні лише власнику' });
+    }
     const r = await pool.query(
       `SELECT * FROM cash_operations WHERE shift_id=$1 ORDER BY created_at`,
       [shiftId]
@@ -223,8 +241,8 @@ router.delete('/operations/:id', async (req, res) => {
 
 // ── Z-REPORTS ──────────────────────────────────────────
 
-// GET /api/cashbox/z-reports — список
-router.get('/z-reports', async (req, res) => {
+// GET /api/cashbox/z-reports — список (только владелец)
+router.get('/z-reports', requireHistory, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 30, 200);
     const r = await pool.query(
@@ -234,8 +252,8 @@ router.get('/z-reports', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/cashbox/z-reports/:id
-router.get('/z-reports/:id', async (req, res) => {
+// GET /api/cashbox/z-reports/:id (только владелец)
+router.get('/z-reports/:id', requireHistory, async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM z_reports WHERE id=$1`, [Number(req.params.id)]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
@@ -245,7 +263,7 @@ router.get('/z-reports/:id', async (req, res) => {
 
 // ── TAXES ──────────────────────────────────────────────
 
-router.get('/taxes', async (req, res) => {
+router.get('/taxes', requireHistory, async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM tax_records ORDER BY period_start DESC`);
     res.json({ items: r.rows, count: r.rows.length });

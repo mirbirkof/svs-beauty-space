@@ -269,4 +269,53 @@ router.patch('/appointments/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── POST /api/schedule/appointments — створення запису адміном «в моменті» ──
+router.post('/appointments', async (req, res) => {
+  try {
+    const pool = getPool();
+    let { master_id, service_id, starts_at, ends_at, client_id, client_name, client_phone, room_id, notes } = req.body || {};
+    if (!master_id || !service_id || !starts_at) {
+      return res.status(400).json({ error: 'master_id, service_id, starts_at обовʼязкові' });
+    }
+    // послуга → ціна + тривалість
+    const sv = await pool.query('SELECT price, duration_min FROM services WHERE id=$1', [Number(service_id)]);
+    if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
+    const dur = Number(sv.rows[0].duration_min) || 30;
+    const startDate = new Date(starts_at);
+    if (isNaN(startDate)) return res.status(400).json({ error: 'bad-starts_at' });
+    const endDate = ends_at ? new Date(ends_at) : new Date(startDate.getTime() + dur * 60000);
+
+    // клієнт: за id, або за телефоном (знайти/створити), або тільки імʼя
+    let cid = client_id ? Number(client_id) : null;
+    if (!cid && client_phone) {
+      const digits = String(client_phone).replace(/\D/g, '');
+      if (digits) {
+        const ex = await pool.query('SELECT id FROM clients WHERE phone=$1', [digits]);
+        if (ex.rows[0]) cid = ex.rows[0].id;
+        else {
+          const nc = await pool.query(
+            `INSERT INTO clients (phone, name, source) VALUES ($1,$2,'salon') RETURNING id`,
+            [digits, client_name || null]
+          );
+          cid = nc.rows[0].id;
+        }
+      }
+    } else if (!cid && client_name) {
+      const nc = await pool.query(
+        `INSERT INTO clients (name, source) VALUES ($1,'salon') RETURNING id`, [client_name]
+      );
+      cid = nc.rows[0].id;
+    }
+
+    const r = await pool.query(
+      `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
+       VALUES ($1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8)
+       RETURNING id`,
+      [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
+       sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]
+    );
+    res.json({ ok: true, id: r.rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -2,7 +2,7 @@
    Все эндпоинты требуют reports.read */
 const express = require('express');
 const { getPool } = require('../db-pg');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, hasPermission } = require('../lib/rbac');
 
 const router = express.Router();
 const pool = getPool();
@@ -15,7 +15,7 @@ function parsePeriod(q) {
 
 // ── P&L (Profit & Loss) ─────────────────────────────────
 // GET /api/reports/pnl?from=&to=
-router.get('/pnl', requirePerm('reports.read'), async (req, res) => {
+router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
 
@@ -74,7 +74,7 @@ router.get('/pnl', requirePerm('reports.read'), async (req, res) => {
 
 // ── KPI мастеров ────────────────────────────────────────
 // GET /api/reports/masters?from=&to=
-router.get('/masters', requirePerm('reports.read'), async (req, res) => {
+router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
 
@@ -203,14 +203,16 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
 
 // ── Сводный дашборд (одним запросом) ────────────────────
 // GET /api/reports/dashboard
+// Дашборд видит любой с reports.read (домашняя страница админа).
+// Месячную выручку и общую фин.статистику отдаём ТОЛЬКО при reports.finance.
 router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
   try {
+    const canFinance = hasPermission(req.user.permissions, 'reports.finance');
     const today = new Date(); today.setHours(0,0,0,0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const [todayRev, monthRev, lowStock, openShifts, churnCnt] = await Promise.all([
+    const [todayRev, lowStock, openShifts, churnCnt] = await Promise.all([
       pool.query(`SELECT COALESCE(SUM(total),0)::numeric AS rev FROM orders WHERE status='paid' AND created_at >= $1`, [today.toISOString()]),
-      pool.query(`SELECT COALESCE(SUM(total),0)::numeric AS rev FROM orders WHERE status='paid' AND created_at >= $1`, [monthStart.toISOString()]),
       pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE stock <= COALESCE(low_stock_threshold,5)`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`),
       pool.query(`SELECT COUNT(*)::int AS n FROM (
@@ -221,19 +223,28 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
        ) t`),
     ]);
 
-    res.json({
+    const out = {
       revenue_today: Number(todayRev.rows[0].rev),
-      revenue_month: Number(monthRev.rows[0].rev),
       low_stock_items: lowStock.rows[0].n,
       open_shifts: openShifts.rows[0].n,
       churn_clients: churnCnt.rows[0].n,
-    });
+      finance_locked: !canFinance,
+    };
+    // Месячная выручка — только для владельца / при reports.finance
+    if (canFinance) {
+      const monthRev = await pool.query(
+        `SELECT COALESCE(SUM(total),0)::numeric AS rev FROM orders WHERE status='paid' AND created_at >= $1`,
+        [monthStart.toISOString()]
+      );
+      out.revenue_month = Number(monthRev.rows[0].rev);
+    }
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Дневная динамика выручки (для графика) ──────────────
 // GET /api/reports/revenue-series?from=&to=
-router.get('/revenue-series', requirePerm('reports.read'), async (req, res) => {
+router.get('/revenue-series', requirePerm('reports.finance'), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
     const r = await pool.query(

@@ -186,6 +186,17 @@ select.input { background:var(--card); }
   .main { margin-left:0; }
   .mobile-toggle { display:flex; }
   .kpi-grid { grid-template-columns:1fr 1fr; }
+  /* журнал на мобільному: вужча колонка часу, компактні картки */
+  .jgrid-time { flex:0 0 40px; }
+  .jslot-label { font-size:10px; padding-right:4px; }
+  .jcol { flex:1 0 130px; }
+  .jcol-head { padding:0 6px; gap:6px; }
+  .jcol-head .av { width:28px; height:28px; font-size:11px; }
+  .jcol-head .nm { font-size:12px; }
+  .jappt { left:2px; right:2px; padding:4px 5px; font-size:11px; }
+  .jappt .t { font-size:10px; }
+  .journal-toolbar { flex-wrap:wrap; }
+  .journal-toolbar .btn-sm { flex:1; }
 }
 
 /* SCROLLBAR */
@@ -211,7 +222,11 @@ select.input { background:var(--card); }
 .jcol-body { position:relative; }
 .jslot { height:var(--jh,42px); border-bottom:1px dashed var(--border); box-sizing:border-box; }
 .jslot.hour { border-bottom:1px solid var(--border); }
-.joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; }
+.joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; pointer-events:none; }
+.joff-part { inset:auto; left:0; right:0; }
+.jslot.jbook { cursor:pointer; }
+.jslot.jbook:hover { background:var(--primary-light); box-shadow:inset 0 0 0 1px var(--primary); }
+.jslot.jbook:hover::after { content:'+'; color:var(--primary); font-weight:700; display:flex; align-items:center; justify-content:center; height:100%; font-size:16px; }
 .jbreak { position:absolute; left:0; right:0; background:repeating-linear-gradient(45deg,rgba(0,0,0,.04),rgba(0,0,0,.04) 6px,transparent 6px,transparent 12px); z-index:1; }
 .jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; }
 .jappt:hover { transform:scale(1.015); z-index:5; }
@@ -396,10 +411,12 @@ select.input { background:var(--card); }
 
       <!-- ═══ JOURNAL ═══ -->
       <div class="page" id="page-journal">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div class="journal-toolbar" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
           <button class="btn btn-outline btn-sm j-mode active" data-mode="day" onclick="setJournalMode('day')">День</button>
-          <button class="btn btn-outline btn-sm j-mode" data-mode="month" onclick="setJournalMode('month')">Місяць</button>
           <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
+          <select id="journalFocus" class="input btn-sm" style="max-width:170px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
+            <option value="">Усі майстри</option>
+          </select>
           <input type="date" id="journalDate" class="input" style="margin-left:auto" onchange="loadJournal()">
         </div>
         <div class="card">
@@ -1013,6 +1030,9 @@ function setJournalMode(mode) {
 }
 
 let journalData = null;             // кеш останнього завантаження
+const JOURNAL_OPEN = 8*60;          // салон відкривається о 08:00
+const JOURNAL_CLOSE = 22*60;        // зачиняється о 22:00
+let journalFocusMaster = '';        // фокус на одному майстрі (зручно на мобільному)
 const J_PX_PER_MIN = 1.4;           // висота сітки: 1 хв = 1.4px → 30хв ≈ 42px
 const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
 
@@ -1062,15 +1082,24 @@ function renderJournalDay(container, data) {
   if (!masters.length) masters = data.masters || [];
   if (!masters.length) { container.innerHTML = '<div class="empty"><span class="material-icons-round">groups</span>Немає активних майстрів. Додайте майстрів у розділі «Майстри».</div>'; return; }
 
+  // селектор фокусу на одному майстрі (зручно на мобільному)
+  const focusSel = document.getElementById('journalFocus');
+  if (focusSel) {
+    const cur = journalFocusMaster;
+    focusSel.innerHTML = '<option value="">Усі майстри</option>' +
+      masters.map(m=>`<option value="${m.id}"${String(m.id)===String(cur)?' selected':''}>${m.name}</option>`).join('');
+  }
+  if (journalFocusMaster) masters = masters.filter(m => String(m.id) === String(journalFocusMaster));
+  if (!masters.length) masters = data.masters || [];
+
   // нормалізуємо робочий час: приймаємо лише валідний формат HH:MM
   const validT = (t) => /^\d{1,2}:\d{2}$/.test(String(t||''));
   masters.forEach(m => { if (m.working && !(validT(m.start) && validT(m.end))) { m.working = false; m.start=null; m.end=null; } });
 
-  // межі сітки: від найранішого старту до найпізнішого кінця (робочий час + записи)
-  let minM = 24*60, maxM = 0;
-  masters.forEach(m => { if (m.working) { minM=Math.min(minM,_hm2(m.start)); maxM=Math.max(maxM,_hm2(m.end)); } });
+  // межі сітки: фіксований робочий день салону 08:00–22:00
+  // (розширюємо лише якщо є запис поза межами — щоб нічого не загубити)
+  let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
   appts.forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); });
-  if (minM>=maxM) { minM=9*60; maxM=21*60; }
   minM = Math.floor(minM/60)*60; maxM = Math.ceil(maxM/60)*60;     // вирівнюємо по годинах
   const slots = (maxM-minM)/30;
   const colH = (maxM-minM)*J_PX_PER_MIN;
@@ -1084,12 +1113,25 @@ function renderJournalDay(container, data) {
   timeCol += '</div>';
 
   // колонки майстрів
+  const dateStr = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
   const cols = masters.map(m => {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0];
+    const wStart = m.working ? _hm2(m.start) : null;
+    const wEnd   = m.working ? _hm2(m.end)   : null;
     let body = '';
-    for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':''}"></div>`; }
-    // вихідний
+    // ряди сітки: робочий час — клікабельний для броні «в моменті»
+    for (let i=0;i<slots;i++){
+      const m2=minM+i*30;
+      const bookable = m.working && m2>=wStart && m2<wEnd;
+      body += `<div class="jslot${m2%60===0?' hour':''}${bookable?' jbook':''}"${bookable?` onclick="openCreate(${m.id},'${dateStr}',${m2})"`:''}></div>`;
+    }
+    // вихідний — затіняємо всю колонку
     if (!m.working) body += `<div class="joff">${m.day_off_reason||'Вихідний'}</div>`;
+    // не робочі години в межах 08–22 (до початку та після кінця зміни)
+    if (m.working) {
+      if (wStart>minM) body += `<div class="joff joff-part" style="top:0;height:${(wStart-minM)*J_PX_PER_MIN}px"></div>`;
+      if (wEnd<maxM)   body += `<div class="joff joff-part" style="top:${(wEnd-minM)*J_PX_PER_MIN}px;bottom:0"></div>`;
+    }
     // обідня перерва
     if (m.working && m.break_start && m.break_end) {
       const bs=_hm2(m.break_start), be=_hm2(m.break_end);
@@ -1225,6 +1267,97 @@ async function uploadApptPhoto(apptId, kind, input) {
 async function delApptPhoto(fileId, kind, apptId) {
   await api('/api/files/' + fileId, { method:'DELETE' });
   loadApptPhotos(apptId, kind);
+}
+
+// ── Створення запису «в моменті» (клік по вільному слоту) ──
+let _svcCache = null;
+async function getServices() {
+  if (_svcCache) return _svcCache;
+  try { const r = await api('/api/admin/services'); _svcCache = (r.items||[]).filter(s=>s.active!==false); }
+  catch { _svcCache = []; }
+  return _svcCache;
+}
+let _createCtx = null;
+async function openCreate(masterId, dateStr, minutes) {
+  const master = (journalData?.masters||[]).find(m=>m.id===masterId);
+  const services = await getServices();
+  const hh = String(Math.floor(minutes/60)).padStart(2,'0'), mm = String(minutes%60).padStart(2,'0');
+  _createCtx = { masterId, dateStr };
+  document.getElementById('apptTitle').textContent = `Новий запис · ${master?master.name:''}`;
+  document.getElementById('apptDetail').innerHTML = `
+    <div style="display:grid;gap:10px">
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Час початку</span>
+        <input id="ncTime" type="time" class="input" value="${hh}:${mm}">
+      </div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Послуга</span>
+        <select id="ncSvc" class="input">
+          ${services.map(s=>`<option value="${s.id}">${s.name} · ${s.duration_min}хв · ${_money(s.price)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
+        <input id="ncClientSearch" class="input" placeholder="Пошук за іменем або телефоном…" oninput="ncSearchClient()" autocomplete="off">
+        <div id="ncClientResults" style="display:grid;gap:4px;margin-top:4px"></div>
+        <div id="ncClientPicked" style="font-size:13px;margin-top:4px"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="ncNewName" class="input" placeholder="…або нове імʼя">
+        <input id="ncNewPhone" class="input" placeholder="…і телефон">
+      </div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Замітка</span>
+        <textarea id="ncNote" class="input" rows="2" placeholder="Напр.: перший візит"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
+        <button class="btn btn-primary" onclick="saveCreate()">Записати</button>
+      </div>
+      <div id="ncMsg" style="font-size:13px"></div>
+    </div>`;
+  document.getElementById('apptModal').style.display = 'flex';
+  _createCtx.clientId = null;
+}
+let _ncTimer = null;
+function ncSearchClient() {
+  clearTimeout(_ncTimer);
+  _ncTimer = setTimeout(async () => {
+    const q = document.getElementById('ncClientSearch').value.trim();
+    const box = document.getElementById('ncClientResults');
+    if (q.length < 2) { box.innerHTML=''; return; }
+    const r = await api('/api/admin/clients?limit=8&search=' + encodeURIComponent(q));
+    box.innerHTML = (r.items||[]).map(c=>`<div style="padding:6px 8px;border:1px dashed var(--border);border-radius:8px;cursor:pointer" onclick="ncPickClient(${c.id},'${(c.name||'').replace(/'/g,'')}','${c.phone||''}')">${c.name||'—'} · ${fmtPhone(c.phone)}</div>`).join('')
+      || '<span style="font-size:12px;color:var(--text-secondary)">Не знайдено — заповніть імʼя+телефон нижче</span>';
+  }, 300);
+}
+function ncPickClient(id, name, phone) {
+  _createCtx.clientId = id;
+  document.getElementById('ncClientPicked').innerHTML = `Обрано: <b>${name||'—'}</b> ${phone?'· '+fmtPhone(phone):''} <span style="color:var(--primary);cursor:pointer" onclick="_createCtx.clientId=null;document.getElementById('ncClientPicked').innerHTML=''">змінити</span>`;
+  document.getElementById('ncClientResults').innerHTML = '';
+  document.getElementById('ncClientSearch').value = '';
+  document.getElementById('ncNewName').value = '';
+  document.getElementById('ncNewPhone').value = '';
+}
+async function saveCreate() {
+  const msg = document.getElementById('ncMsg');
+  const svc = Number(document.getElementById('ncSvc').value);
+  const time = document.getElementById('ncTime').value;
+  const note = document.getElementById('ncNote').value;
+  const newName = document.getElementById('ncNewName').value.trim();
+  const newPhone = document.getElementById('ncNewPhone').value.trim();
+  if (!svc || !time) { msg.style.color='#ef4444'; msg.textContent='Оберіть послугу і час'; return; }
+  if (!_createCtx.clientId && !newName && !newPhone) { msg.style.color='#ef4444'; msg.textContent='Оберіть клієнта або введіть імʼя/телефон'; return; }
+  const starts_at = `${_createCtx.dateStr}T${time}:00`;
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  const body = { master_id: _createCtx.masterId, service_id: svc, starts_at, notes: note };
+  if (_createCtx.clientId) body.client_id = _createCtx.clientId;
+  else { body.client_name = newName; body.client_phone = newPhone; }
+  try {
+    const r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify(body) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Записано ✓'; setTimeout(()=>{ closeAppt(); loadJournal(); }, 600); }
+    else { msg.style.color='#ef4444'; msg.textContent = r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
 
 async function saveAppt(id) {
