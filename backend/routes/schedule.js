@@ -169,4 +169,82 @@ router.post('/sync-beautypro', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/schedule/journal?date=YYYY-MM-DD ──────────────
+// Журнал записів на день у стилі DIKIDI: майстри-колонки + записи з усіма деталями.
+router.get('/journal', async (req, res) => {
+  try {
+    const pool = getPool();
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'bad-date (YYYY-MM-DD)' });
+    const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(date + 'T00:00:00').getDay()];
+
+    // майстри + їх робочий час на цей день тижня
+    const mRes = await pool.query(
+      `SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true ORDER BY name`
+    );
+    const masters = mRes.rows.map(m => {
+      const s = m.schedule_json || {};
+      const off = !!(s.exceptions && s.exceptions[date] && s.exceptions[date].off);
+      const wd = (!off && s[dayKey]) ? s[dayKey] : null;
+      return {
+        id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar,
+        working: !!wd,
+        start: wd ? wd.start : null, end: wd ? wd.end : null,
+        break_start: wd ? (wd.break_start || null) : null,
+        break_end: wd ? (wd.break_end || null) : null,
+        day_off_reason: off ? (s.exceptions[date].reason || 'Вихідний') : null,
+      };
+    });
+
+    // записи на день: appointment + майстер + послуга + клієнт
+    const aRes = await pool.query(
+      `SELECT a.id, a.master_id, a.service_id, a.client_id,
+              a.starts_at, a.ends_at, a.status, a.notes,
+              COALESCE(a.price, s.price) AS price,
+              s.name AS service_name,
+              COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
+              m.name AS master_name,
+              COALESCE(NULLIF(c.name,''), a.bp_client, 'Клієнт') AS client_name,
+              c.phone AS client_phone
+         FROM appointments a
+         LEFT JOIN masters  m ON m.id = a.master_id
+         LEFT JOIN services s ON s.id = a.service_id
+         LEFT JOIN clients  c ON c.id = a.client_id
+        WHERE a.starts_at >= $1::date
+          AND a.starts_at <  ($1::date + INTERVAL '1 day')
+          AND COALESCE(a.status,'') NOT IN ('cancelled')
+        ORDER BY a.starts_at`,
+      [date]
+    );
+
+    res.json({ date, day: dayKey, masters, appointments: aRes.rows, count: aRes.rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/schedule/appointments/:id — заметка / статус ──
+router.patch('/appointments/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { notes, status } = req.body || {};
+    if (notes === undefined && status === undefined) {
+      return res.status(400).json({ error: 'nothing-to-update' });
+    }
+    const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
+    if (status !== undefined && !allowed.includes(status)) {
+      return res.status(400).json({ error: 'bad-status' });
+    }
+    const r = await pool.query(
+      `UPDATE appointments
+          SET notes = COALESCE($2, notes),
+              status = COALESCE($3, status),
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, notes, status`,
+      [req.params.id, notes ?? null, status ?? null]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    res.json({ ok: true, appointment: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -195,6 +195,37 @@ select.input { background:var(--card); }
 /* EMPTY STATE */
 .empty { text-align:center; padding:40px; color:var(--text-secondary); }
 .empty .material-icons-round { font-size:48px; opacity:.3; display:block; margin-bottom:8px; }
+
+/* JOURNAL — DIKIDI-style day grid */
+.jgrid { display:flex; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+.jgrid-time { flex:0 0 56px; border-right:1px solid var(--border); background:var(--bg); position:sticky; left:0; z-index:3; }
+.jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
+.jslot-label { height:var(--jh,42px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }
+.jcol { flex:1 0 180px; border-right:1px solid var(--border); position:relative; }
+.jcol:last-child { border-right:none; }
+.jcol-head { height:64px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 10px; position:sticky; top:0; background:var(--card); z-index:2; }
+.jcol-head .av { width:34px; height:34px; border-radius:50%; background:var(--primary-light); color:var(--primary); font-weight:700; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; overflow:hidden; }
+.jcol-head .av img { width:100%; height:100%; object-fit:cover; }
+.jcol-head .nm { font-size:13px; font-weight:600; line-height:1.1; }
+.jcol-head .sp { font-size:11px; color:var(--text-secondary); }
+.jcol-body { position:relative; }
+.jslot { height:var(--jh,42px); border-bottom:1px dashed var(--border); box-sizing:border-box; }
+.jslot.hour { border-bottom:1px solid var(--border); }
+.joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; }
+.jbreak { position:absolute; left:0; right:0; background:repeating-linear-gradient(45deg,rgba(0,0,0,.04),rgba(0,0,0,.04) 6px,transparent 6px,transparent 12px); z-index:1; }
+.jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; }
+.jappt:hover { transform:scale(1.015); z-index:5; }
+.jappt .t { font-weight:700; font-size:11px; opacity:.95; }
+.jappt .s { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.jappt .c { opacity:.92; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.jappt .p { font-weight:700; }
+.jappt .note-dot { position:absolute; top:5px; right:6px; font-size:11px; }
+.jst-booked   { background:#6366f1; }
+.jst-confirmed{ background:#0ea5e9; }
+.jst-done     { background:#10b981; }
+.jst-noshow   { background:#9ca3af; }
+.jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
+.jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
 </style>
 </head>
 <body>
@@ -591,6 +622,16 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <div id="apptModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeAppt()">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h3 id="apptTitle">Запис</h3>
+        <button class="modal-close" onclick="closeAppt()">✕</button>
+      </div>
+      <div class="modal-body" id="apptDetail"></div>
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <script>
@@ -807,22 +848,156 @@ function setJournalMode(mode) {
   loadJournal();
 }
 
+let journalData = null;             // кеш останнього завантаження
+const J_PX_PER_MIN = 1.4;           // висота сітки: 1 хв = 1.4px → 30хв ≈ 42px
+const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
+
+const _hm = (d) => { const x = new Date(d); return x.getHours()*60 + x.getMinutes(); };
+const _toHHMM = (m) => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+const _money = (v) => v != null ? Number(v).toLocaleString('uk-UA') + ' ₴' : '';
+
 async function loadJournal() {
   const container = document.getElementById('journalContent');
-  const date = document.getElementById('journalDate').value;
+  const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   try {
-    // Try to get bookings for today from waitlist/booking API
-    const bookings = await api('/api/admin/orders?limit=50');
-    const items = bookings.items || [];
+    const data = await api('/api/schedule/journal?date=' + date);
+    journalData = data;
+    if (data.error) { container.innerHTML = `<div class="empty"><span class="material-icons-round">error</span>${data.error}</div>`; return; }
+    if (journalMode === 'list') renderJournalList(container, data);
+    else renderJournalDay(container, data);
+  } catch (e) {
+    container.innerHTML = '<div class="empty"><span class="material-icons-round">error</span>Помилка завантаження журналу</div>';
+  }
+}
 
-    if (journalMode === 'list') {
-      container.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Час</th><th>Клієнт</th><th>Телефон</th><th>Статус</th></tr></thead><tbody>${
-        items.map(o => `<tr><td>${new Date(o.created_at).toLocaleString('uk-UA')}</td><td>${o.client_name||'—'}</td><td>${fmtPhone(o.phone)}</td><td><span class="badge b-${o.status}">${o.status}</span></td></tr>`).join('')
-      }</tbody></table>` : '<div class="empty"><span class="material-icons-round">event_note</span>Записів немає</div>';
-    } else {
-      container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Журнал записів з BeautyPro — підключається</div>';
+function renderJournalList(container, data) {
+  const appts = (data.appointments || []).slice().sort((a,b)=> new Date(a.starts_at)-new Date(b.starts_at));
+  if (!appts.length) { container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>На цей день записів немає</div>'; return; }
+  container.innerHTML = `<table class="tbl"><thead><tr>
+      <th>Час</th><th>Майстер</th><th>Послуга</th><th>Клієнт</th><th>Ціна</th><th>Статус</th><th></th>
+    </tr></thead><tbody>${appts.map(a => {
+      const s=_hm(a.starts_at), e=_hm(a.ends_at);
+      return `<tr style="cursor:pointer" onclick="openAppt(${a.id})">
+        <td>${_toHHMM(s)}–${_toHHMM(e)}</td>
+        <td>${a.master_name||'—'}</td>
+        <td>${a.service_name||'—'} <span style="color:var(--text-secondary)">· ${Math.round(a.duration_min)}хв</span></td>
+        <td>${a.client_name||'—'}${a.client_phone?'<br><span style="color:var(--text-secondary);font-size:11px">'+fmtPhone(a.client_phone)+'</span>':''}</td>
+        <td style="font-weight:600">${_money(a.price)}</td>
+        <td><span class="badge">${ST_LABEL[a.status]||a.status||'—'}</span></td>
+        <td>${a.notes?'<span class="material-icons-round" style="font-size:16px;color:var(--primary)" title="Є замітка">sticky_note_2</span>':''}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function renderJournalDay(container, data) {
+  const masters = data.masters || [];
+  const appts = data.appointments || [];
+  if (!masters.length) { container.innerHTML = '<div class="empty"><span class="material-icons-round">groups</span>Немає активних майстрів. Додайте майстрів у розділі «Майстри».</div>'; return; }
+
+  // нормалізуємо робочий час: приймаємо лише валідний формат HH:MM
+  const validT = (t) => /^\d{1,2}:\d{2}$/.test(String(t||''));
+  masters.forEach(m => { if (m.working && !(validT(m.start) && validT(m.end))) { m.working = false; m.start=null; m.end=null; } });
+
+  // межі сітки: від найранішого старту до найпізнішого кінця (робочий час + записи)
+  let minM = 24*60, maxM = 0;
+  masters.forEach(m => { if (m.working) { minM=Math.min(minM,_hm2(m.start)); maxM=Math.max(maxM,_hm2(m.end)); } });
+  appts.forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); });
+  if (minM>=maxM) { minM=9*60; maxM=21*60; }
+  minM = Math.floor(minM/60)*60; maxM = Math.ceil(maxM/60)*60;     // вирівнюємо по годинах
+  const slots = (maxM-minM)/30;
+  const colH = (maxM-minM)*J_PX_PER_MIN;
+
+  const apptByMaster = {};
+  appts.forEach(a => { (apptByMaster[a.master_id] = apptByMaster[a.master_id]||[]).push(a); });
+
+  // часова колонка
+  let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
+  for (let i=0;i<slots;i++){ const m=minM+i*30; timeCol += `<div class="jslot-label">${_toHHMM(m)}</div>`; }
+  timeCol += '</div>';
+
+  // колонки майстрів
+  const cols = masters.map(m => {
+    const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0];
+    let body = '';
+    for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':''}"></div>`; }
+    // вихідний
+    if (!m.working) body += `<div class="joff">${m.day_off_reason||'Вихідний'}</div>`;
+    // обідня перерва
+    if (m.working && m.break_start && m.break_end) {
+      const bs=_hm2(m.break_start), be=_hm2(m.break_end);
+      body += `<div class="jbreak" style="top:${(bs-minM)*J_PX_PER_MIN}px;height:${(be-bs)*J_PX_PER_MIN}px"></div>`;
     }
-  } catch { container.innerHTML = '<div class="empty"><span class="material-icons-round">error</span>Помилка завантаження</div>'; }
+    // картки записів
+    (apptByMaster[m.id]||[]).forEach(a => {
+      const s=_hm(a.starts_at), e=_hm(a.ends_at);
+      const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
+      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" onclick="openAppt(${a.id})">
+        ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
+        <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
+        <div class="s">${a.service_name||'Послуга'}</div>
+        <div class="c">${a.client_name||'—'}</div>
+        ${h>56?`<div class="p">${_money(a.price)}</div>`:''}
+      </div>`;
+    });
+    return `<div class="jcol">
+      <div class="jcol-head"><div class="av">${av}</div><div><div class="nm">${m.name}</div><div class="sp">${m.working?(m.start+'–'+m.end):'вихідний'}</div></div></div>
+      <div class="jcol-body" style="height:${colH}px">${body}</div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>
+    <div class="jlegend">
+      <span><i style="background:#6366f1"></i>Заплановано</span>
+      <span><i style="background:#0ea5e9"></i>Підтверджено</span>
+      <span><i style="background:#10b981"></i>Виконано</span>
+      <span><i style="background:#9ca3af"></i>Не прийшов</span>
+    </div>`;
+}
+const _hm2 = (hhmm) => { const [h,m]=String(hhmm||'0:0').split(':').map(Number); return h*60+(m||0); };
+
+// ── модалка запису: деталі + замітка + статус ──
+function openAppt(id) {
+  const a = (journalData?.appointments||[]).find(x => x.id===id);
+  if (!a) return;
+  document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
+  document.getElementById('apptDetail').innerHTML = `
+    <div style="display:grid;gap:10px">
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${Math.round(a.duration_min)}хв · ${_money(a.price)}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Клієнт</span><div style="font-weight:600">${a.client_name||'—'} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div></div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Статус</span>
+        <select id="apptStatus" class="input">
+          ${['booked','confirmed','done','noshow','cancelled'].map(s=>`<option value="${s}"${a.status===s?' selected':''}>${ST_LABEL[s]}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Замітка</span>
+        <textarea id="apptNote" class="input" rows="3" placeholder="Напр.: алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
+        <button class="btn btn-primary" onclick="saveAppt(${a.id})">Зберегти</button>
+      </div>
+      <div id="apptMsg" style="font-size:13px"></div>
+    </div>`;
+  document.getElementById('apptModal').style.display = 'flex';
+}
+function closeAppt() { document.getElementById('apptModal').style.display = 'none'; }
+async function saveAppt(id) {
+  const notes = document.getElementById('apptNote').value;
+  const status = document.getElementById('apptStatus').value;
+  const msg = document.getElementById('apptMsg');
+  msg.textContent = 'Збереження…'; msg.style.color = 'var(--text-secondary)';
+  try {
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ notes, status }) });
+    if (r.ok) {
+      const a = (journalData?.appointments||[]).find(x => x.id===id);
+      if (a) { a.notes = r.appointment.notes; a.status = r.appointment.status; }
+      msg.textContent = 'Збережено ✓'; msg.style.color = '#10b981';
+      setTimeout(() => { closeAppt(); loadJournal(); }, 500);
+    } else { msg.textContent = r.error || 'Помилка'; msg.style.color = '#ef4444'; }
+  } catch (e) { msg.textContent = 'Помилка мережі'; msg.style.color = '#ef4444'; }
 }
 
 // ═══ CLIENTS ═════════════════════════════════
