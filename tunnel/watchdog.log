@@ -109,3 +109,662 @@
 [2026-06-07 16:12:28] Starting tunnel...
 [2026-06-07 16:12:32] Tunnel up: https://c0c7f5bfec0764.lhr.life
    b239a3f..573c9a2  main -> main
+[2026-06-13 15:48:23] === Watchdog started, pid=2681278 ===
+[2026-06-13 15:48:24] Health check FAILED, restarting tunnel
+[2026-06-13 15:48:24] Starting tunnel...
+[2026-06-13 15:48:30] Tunnel up: https://3556c618bab5c2.lhr.life
+[2026-06-13 15:48:30] Loader URL updated to https://3556c618bab5c2.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   2df8054..ef6f44b  main -> main
+[2026-06-13 16:00:40] Health check FAILED, restarting tunnel
+[2026-06-13 16:00:40] Starting tunnel...
+[2026-06-13 16:00:50] Tunnel up: https://38d687299da5c0.lhr.life
+[2026-06-13 16:00:50] Loader URL updated to https://38d687299da5c0.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   ef6f44b..8f733dc  main -> main
+[2026-06-13 16:21:03] Health check FAILED, restarting tunnel
+[2026-06-13 16:21:03] Starting tunnel...
+[2026-06-13 16:21:07] Tunnel up: https://3b7f11dd7cf1ad.lhr.life
+[2026-06-13 16:21:07] Loader URL updated to https://3b7f11dd7cf1ad.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   8f733dc..a05b2ab  main -> main
+[2026-06-13 16:41:20] Health check FAILED, restarting tunnel
+[2026-06-13 16:41:20] Starting tunnel...
+[2026-06-13 16:41:24] Tunnel up: https://8423fff64f9abb.lhr.life
+[2026-06-13 16:41:24] Loader URL updated to https://8423fff64f9abb.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   a05b2ab..1695b21  main -> main
+[2026-06-13 16:51:40] Health check FAILED, restarting tunnel
+[2026-06-13 16:51:40] Starting tunnel...
+[2026-06-13 16:52:02] Failed to start tunnel after 20s
+[2026-06-13 16:52:02] Restart failed, will retry in 60s
+[2026-06-13 16:53:02] Health check FAILED, restarting tunnel
+[2026-06-13 16:53:02] Starting tunnel...
+[2026-06-13 16:53:08] Tunnel up: https://a72418cb62760e.lhr.life
+[2026-06-13 16:53:08] Loader URL updated to https://a72418cb62760e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   1695b21..0299886  main -> main
+[2026-06-13 17:01:14] Health check FAILED, restarting tunnel
+[2026-06-13 17:01:14] Starting tunnel...
+[2026-06-13 17:01:18] Tunnel up: https://3a892e1af5f8ab.lhr.life
+[2026-06-13 17:01:18] Loader URL updated to https://3a892e1af5f8ab.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   0299886..c991682  main -> main
+[2026-06-13 17:12:26] Health check FAILED, restarting tunnel
+[2026-06-13 17:12:26] Starting tunnel...
+[2026-06-13 17:12:30] Tunnel up: https://b16d62ecd39be4.lhr.life
+[2026-06-13 17:12:30] Loader URL updated to https://b16d62ecd39be4.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c991682..d7db317  main -> main
+[2026-06-13 17:13:32] Health check FAILED, restarting tunnel
+[2026-06-13 17:13:32] Starting tunnel...
+[2026-06-13 17:13:36] Tunnel up: https://be36fbc3fc9bdf.lhr.life
+[2026-06-13 17:13:36] Loader URL updated to https://be36fbc3fc9bdf.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   d7db317..28e0681  main -> main
+[2026-06-13 17:14:38] Health check FAILED, restarting tunnel
+[2026-06-13 17:14:38] Starting tunnel...
+[2026-06-13 17:14:42] Tunnel up: https://9019933fc4f8ed.lhr.life
+[2026-06-13 17:14:42] Loader URL updated to https://9019933fc4f8ed.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   28e0681..f8d907d  main -> main
+[2026-06-13 17:15:46] Health check FAILED, restarting tunnel
+[2026-06-13 17:15:46] Starting tunnel...
+[2026-06-13 17:15:50] Tunnel up: https://617420e3eb5534.lhr.life
+[2026-06-13 17:15:50] Loader URL updated to https://617420e3eb5534.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   f8d907d..b91a43e  main -> main
+[2026-06-13 17:16:52] Health check FAILED, restarting tunnel
+[2026-06-13 17:16:52] Starting tunnel...
+[2026-06-13 17:16:56] Tunnel up: https://a44f383abc7821.lhr.life
+[2026-06-13 17:16:56] Loader URL updated to https://a44f383abc7821.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b91a43e..a772519  main -> main
+[2026-06-13 17:17:58] Health check FAILED, restarting tunnel
+[2026-06-13 17:17:58] Starting tunnel...
+[2026-06-13 17:18:02] Tunnel up: https://5b86d588966f01.lhr.life
+[2026-06-13 17:18:02] Loader URL updated to https://5b86d588966f01.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   a772519..ce43030  main -> main
+[2026-06-13 17:19:04] Health check FAILED, restarting tunnel
+[2026-06-13 17:19:04] Starting tunnel...
+[2026-06-13 17:19:08] Tunnel up: https://05a173261bdc00.lhr.life
+[2026-06-13 17:19:08] Loader URL updated to https://05a173261bdc00.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   5ca5bdf..c18d7f7  main -> main
+[2026-06-13 17:20:10] Health check FAILED, restarting tunnel
+[2026-06-13 17:20:10] Starting tunnel...
+[2026-06-13 17:20:32] Failed to start tunnel after 20s
+[2026-06-13 17:20:32] Restart failed, will retry in 60s
+[2026-06-13 17:21:32] Health check FAILED, restarting tunnel
+[2026-06-13 17:21:32] Starting tunnel...
+[2026-06-13 17:21:36] Tunnel up: https://af9f60f25e9bd3.lhr.life
+[2026-06-13 17:21:36] Loader URL updated to https://af9f60f25e9bd3.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c18d7f7..e8d7283  main -> main
+[2026-06-13 17:22:38] Health check FAILED, restarting tunnel
+[2026-06-13 17:22:38] Starting tunnel...
+[2026-06-13 17:22:42] Tunnel up: https://283d4b607679cc.lhr.life
+[2026-06-13 17:22:43] Loader URL updated to https://283d4b607679cc.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   e8d7283..037d73b  main -> main
+[2026-06-13 17:23:45] Health check FAILED, restarting tunnel
+[2026-06-13 17:23:45] Starting tunnel...
+[2026-06-13 17:23:49] Tunnel up: https://65f880720c9867.lhr.life
+[2026-06-13 17:23:49] Loader URL updated to https://65f880720c9867.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   00b6740..e21803f  main -> main
+[2026-06-13 17:24:51] Health check FAILED, restarting tunnel
+[2026-06-13 17:24:51] Starting tunnel...
+[2026-06-13 17:24:55] Tunnel up: https://954b2d36762f29.lhr.life
+[2026-06-13 17:24:55] Loader URL updated to https://954b2d36762f29.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   e21803f..de9ad05  main -> main
+[2026-06-13 17:25:57] Health check FAILED, restarting tunnel
+[2026-06-13 17:25:57] Starting tunnel...
+[2026-06-13 17:26:01] Tunnel up: https://0ed5dae5dca836.lhr.life
+[2026-06-13 17:26:01] Loader URL updated to https://0ed5dae5dca836.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   de9ad05..d3a83e4  main -> main
+[2026-06-13 17:27:04] Health check FAILED, restarting tunnel
+[2026-06-13 17:27:04] Starting tunnel...
+[2026-06-13 17:27:08] Tunnel up: https://d13791edffcf8d.lhr.life
+[2026-06-13 17:27:08] Loader URL updated to https://d13791edffcf8d.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   d3a83e4..7fca848  main -> main
+[2026-06-13 17:28:11] Health check FAILED, restarting tunnel
+[2026-06-13 17:28:11] Starting tunnel...
+[2026-06-13 17:28:15] Tunnel up: https://e3a4430e0b0260.lhr.life
+[2026-06-13 17:28:15] Loader URL updated to https://e3a4430e0b0260.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   7fca848..b05136b  main -> main
+[2026-06-13 17:29:17] Health check FAILED, restarting tunnel
+[2026-06-13 17:29:17] Starting tunnel...
+[2026-06-13 17:29:21] Tunnel up: https://35c237b4e74819.lhr.life
+[2026-06-13 17:29:21] Loader URL updated to https://35c237b4e74819.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b05136b..dd61f58  main -> main
+[2026-06-13 17:30:23] Health check FAILED, restarting tunnel
+[2026-06-13 17:30:23] Starting tunnel...
+[2026-06-13 17:30:27] Tunnel up: https://41444864a3581b.lhr.life
+[2026-06-13 17:30:27] Loader URL updated to https://41444864a3581b.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   dd61f58..94dd3b6  main -> main
+[2026-06-13 17:31:29] Health check FAILED, restarting tunnel
+[2026-06-13 17:31:29] Starting tunnel...
+[2026-06-13 17:31:33] Tunnel up: https://a00bb6ea79f57b.lhr.life
+[2026-06-13 17:31:33] Loader URL updated to https://a00bb6ea79f57b.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   94dd3b6..c4aed3e  main -> main
+[2026-06-13 17:32:35] Health check FAILED, restarting tunnel
+[2026-06-13 17:32:35] Starting tunnel...
+[2026-06-13 17:32:40] Tunnel up: https://4a71fbae86eaa5.lhr.life
+[2026-06-13 17:32:40] Loader URL updated to https://4a71fbae86eaa5.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c4aed3e..7bcb98e  main -> main
+[2026-06-13 17:33:42] Health check FAILED, restarting tunnel
+[2026-06-13 17:33:42] Starting tunnel...
+[2026-06-13 17:33:46] Tunnel up: https://f6f6d4f8f7d31b.lhr.life
+[2026-06-13 17:33:46] Loader URL updated to https://f6f6d4f8f7d31b.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   7bcb98e..4f54ca5  main -> main
+[2026-06-13 17:34:48] Health check FAILED, restarting tunnel
+[2026-06-13 17:34:48] Starting tunnel...
+[2026-06-13 17:34:52] Tunnel up: https://e0f38e1265f82f.lhr.life
+[2026-06-13 17:34:52] Loader URL updated to https://e0f38e1265f82f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   4f54ca5..7a168f7  main -> main
+[2026-06-13 17:35:54] Health check FAILED, restarting tunnel
+[2026-06-13 17:35:54] Starting tunnel...
+[2026-06-13 17:35:58] Tunnel up: https://70d0895a9d0dca.lhr.life
+[2026-06-13 17:35:58] Loader URL updated to https://70d0895a9d0dca.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   7a168f7..02e3280  main -> main
+[2026-06-13 17:37:00] Health check FAILED, restarting tunnel
+[2026-06-13 17:37:00] Starting tunnel...
+[2026-06-13 17:37:04] Tunnel up: https://81b47fd3878722.lhr.life
+[2026-06-13 17:37:04] Loader URL updated to https://81b47fd3878722.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   02e3280..c36a1ea  main -> main
+[2026-06-13 17:38:06] Health check FAILED, restarting tunnel
+[2026-06-13 17:38:06] Starting tunnel...
+[2026-06-13 17:38:10] Tunnel up: https://1d7ccf848c0146.lhr.life
+[2026-06-13 17:38:10] Loader URL updated to https://1d7ccf848c0146.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c36a1ea..d1b8572  main -> main
+[2026-06-13 17:39:12] Health check FAILED, restarting tunnel
+[2026-06-13 17:39:12] Starting tunnel...
+[2026-06-13 17:39:16] Tunnel up: https://edc4775b0fc92f.lhr.life
+[2026-06-13 17:39:16] Loader URL updated to https://edc4775b0fc92f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   d1b8572..ee50d0c  main -> main
+[2026-06-13 17:40:18] Health check FAILED, restarting tunnel
+[2026-06-13 17:40:18] Starting tunnel...
+[2026-06-13 17:40:40] Failed to start tunnel after 20s
+[2026-06-13 17:40:40] Restart failed, will retry in 60s
+[2026-06-13 17:41:40] Health check FAILED, restarting tunnel
+[2026-06-13 17:41:40] Starting tunnel...
+[2026-06-13 17:41:44] Tunnel up: https://7ec12df3091c9f.lhr.life
+[2026-06-13 17:41:44] Loader URL updated to https://7ec12df3091c9f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   ee50d0c..7a62d31  main -> main
+[2026-06-13 17:42:46] Health check FAILED, restarting tunnel
+[2026-06-13 17:42:46] Starting tunnel...
+[2026-06-13 17:42:50] Tunnel up: https://571e4bd06bd0ae.lhr.life
+[2026-06-13 17:42:51] Loader URL updated to https://571e4bd06bd0ae.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   7a62d31..6e0507f  main -> main
+[2026-06-13 17:43:54] Health check FAILED, restarting tunnel
+[2026-06-13 17:43:54] Starting tunnel...
+[2026-06-13 17:43:58] Tunnel up: https://9d06ad8a08f018.lhr.life
+[2026-06-13 17:43:58] Loader URL updated to https://9d06ad8a08f018.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   6e0507f..051c9ca  main -> main
+[2026-06-13 17:45:00] Health check FAILED, restarting tunnel
+[2026-06-13 17:45:00] Starting tunnel...
+[2026-06-13 17:45:04] Tunnel up: https://66248e1b088da0.lhr.life
+[2026-06-13 17:45:04] Loader URL updated to https://66248e1b088da0.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   051c9ca..128c4c7  main -> main
+[2026-06-13 17:46:07] Health check FAILED, restarting tunnel
+[2026-06-13 17:46:07] Starting tunnel...
+[2026-06-13 17:46:11] Tunnel up: https://03a4c2f5cc7ed1.lhr.life
+[2026-06-13 17:46:11] Loader URL updated to https://03a4c2f5cc7ed1.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   128c4c7..5d62247  main -> main
+[2026-06-13 17:47:13] Health check FAILED, restarting tunnel
+[2026-06-13 17:47:13] Starting tunnel...
+[2026-06-13 17:47:17] Tunnel up: https://73eecba88ab062.lhr.life
+[2026-06-13 17:47:17] Loader URL updated to https://73eecba88ab062.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   5d62247..d4e0d29  main -> main
+[2026-06-13 17:48:19] Health check FAILED, restarting tunnel
+[2026-06-13 17:48:19] Starting tunnel...
+[2026-06-13 17:48:23] Tunnel up: https://ec9cd217ec44f7.lhr.life
+[2026-06-13 17:48:23] Loader URL updated to https://ec9cd217ec44f7.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   d4e0d29..9954dad  main -> main
+[2026-06-13 17:49:25] Health check FAILED, restarting tunnel
+[2026-06-13 17:49:25] Starting tunnel...
+[2026-06-13 17:49:31] Tunnel up: https://a365939e46de69.lhr.life
+[2026-06-13 17:49:31] Loader URL updated to https://a365939e46de69.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9954dad..ccf49d3  main -> main
+[2026-06-13 17:50:34] Health check FAILED, restarting tunnel
+[2026-06-13 17:50:34] Starting tunnel...
+[2026-06-13 17:50:38] Tunnel up: https://1eb5a25c8d3fed.lhr.life
+[2026-06-13 17:50:38] Loader URL updated to https://1eb5a25c8d3fed.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   ccf49d3..2973afc  main -> main
+[2026-06-13 17:51:40] Health check FAILED, restarting tunnel
+[2026-06-13 17:51:40] Starting tunnel...
+[2026-06-13 17:51:44] Tunnel up: https://2637f295983e62.lhr.life
+[2026-06-13 17:51:44] Loader URL updated to https://2637f295983e62.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   2973afc..97b644e  main -> main
+[2026-06-13 17:52:46] Health check FAILED, restarting tunnel
+[2026-06-13 17:52:46] Starting tunnel...
+[2026-06-13 17:52:50] Tunnel up: https://988bf1c97b5eb8.lhr.life
+[2026-06-13 17:52:50] Loader URL updated to https://988bf1c97b5eb8.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   97b644e..c69c7c8  main -> main
+[2026-06-13 17:53:52] Health check FAILED, restarting tunnel
+[2026-06-13 17:53:52] Starting tunnel...
+[2026-06-13 17:53:56] Tunnel up: https://52599e0f4b7e03.lhr.life
+[2026-06-13 17:53:56] Loader URL updated to https://52599e0f4b7e03.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   d4983be..9f10f04  main -> main
+[2026-06-13 17:54:58] Health check FAILED, restarting tunnel
+[2026-06-13 17:54:58] Starting tunnel...
+[2026-06-13 17:55:02] Tunnel up: https://a9bca2bea38ac3.lhr.life
+[2026-06-13 17:55:02] Loader URL updated to https://a9bca2bea38ac3.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9f10f04..bea18df  main -> main
+[2026-06-13 17:56:04] Health check FAILED, restarting tunnel
+[2026-06-13 17:56:04] Starting tunnel...
+[2026-06-13 17:56:08] Tunnel up: https://f286e2e1a079dd.lhr.life
+[2026-06-13 17:56:08] Loader URL updated to https://f286e2e1a079dd.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   bea18df..5ddaf69  main -> main
+[2026-06-13 17:57:10] Health check FAILED, restarting tunnel
+[2026-06-13 17:57:10] Starting tunnel...
+[2026-06-13 17:57:14] Tunnel up: https://58d5b90896f8d7.lhr.life
+[2026-06-13 17:57:14] Loader URL updated to https://58d5b90896f8d7.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   5ddaf69..f7aec8a  main -> main
+[2026-06-13 17:58:16] Health check FAILED, restarting tunnel
+[2026-06-13 17:58:16] Starting tunnel...
+[2026-06-13 17:58:20] Tunnel up: https://e9395e028f133b.lhr.life
+[2026-06-13 17:58:20] Loader URL updated to https://e9395e028f133b.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   f7aec8a..dc5f52e  main -> main
+[2026-06-13 17:59:22] Health check FAILED, restarting tunnel
+[2026-06-13 17:59:22] Starting tunnel...
+[2026-06-13 17:59:26] Tunnel up: https://3986d57bc25b52.lhr.life
+[2026-06-13 17:59:26] Loader URL updated to https://3986d57bc25b52.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   dc5f52e..8675b5b  main -> main
+[2026-06-13 18:00:29] Health check FAILED, restarting tunnel
+[2026-06-13 18:00:29] Starting tunnel...
+[2026-06-13 18:00:45] Tunnel up: https://9c5b0754d27633.lhr.life
+[2026-06-13 18:00:45] Loader URL updated to https://9c5b0754d27633.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   8675b5b..9f6d407  main -> main
+[2026-06-13 18:01:47] Health check FAILED, restarting tunnel
+[2026-06-13 18:01:47] Starting tunnel...
+[2026-06-13 18:01:51] Tunnel up: https://8d83ad3634058f.lhr.life
+[2026-06-13 18:01:51] Loader URL updated to https://8d83ad3634058f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9f6d407..f59460d  main -> main
+[2026-06-13 18:02:53] Health check FAILED, restarting tunnel
+[2026-06-13 18:02:53] Starting tunnel...
+[2026-06-13 18:02:57] Tunnel up: https://7aaf5544436f6a.lhr.life
+[2026-06-13 18:02:57] Loader URL updated to https://7aaf5544436f6a.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   f59460d..31e91f6  main -> main
+[2026-06-13 18:03:59] Health check FAILED, restarting tunnel
+[2026-06-13 18:03:59] Starting tunnel...
+[2026-06-13 18:04:03] Tunnel up: https://3b98962eda724e.lhr.life
+[2026-06-13 18:04:03] Loader URL updated to https://3b98962eda724e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   31e91f6..18840d9  main -> main
+[2026-06-13 18:05:05] Health check FAILED, restarting tunnel
+[2026-06-13 18:05:05] Starting tunnel...
+[2026-06-13 18:05:09] Tunnel up: https://a4e46a6271e939.lhr.life
+[2026-06-13 18:05:09] Loader URL updated to https://a4e46a6271e939.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   18840d9..0f96aab  main -> main
+[2026-06-13 18:06:11] Health check FAILED, restarting tunnel
+[2026-06-13 18:06:11] Starting tunnel...
+[2026-06-13 18:06:15] Tunnel up: https://c5ecbd968c8ef7.lhr.life
+[2026-06-13 18:06:15] Loader URL updated to https://c5ecbd968c8ef7.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   0f96aab..1ea25cf  main -> main
+[2026-06-13 18:07:18] Health check FAILED, restarting tunnel
+[2026-06-13 18:07:18] Starting tunnel...
+[2026-06-13 18:07:22] Tunnel up: https://eccc448523e2a9.lhr.life
+[2026-06-13 18:07:22] Loader URL updated to https://eccc448523e2a9.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   1ea25cf..b04fed6  main -> main
+[2026-06-13 18:08:24] Health check FAILED, restarting tunnel
+[2026-06-13 18:08:24] Starting tunnel...
+[2026-06-13 18:08:28] Tunnel up: https://48976fa16d9c94.lhr.life
+[2026-06-13 18:08:28] Loader URL updated to https://48976fa16d9c94.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b04fed6..a4e2a28  main -> main
+[2026-06-13 18:09:30] Health check FAILED, restarting tunnel
+[2026-06-13 18:09:30] Starting tunnel...
+[2026-06-13 18:09:34] Tunnel up: https://fb90b6c92e7d94.lhr.life
+[2026-06-13 18:09:34] Loader URL updated to https://fb90b6c92e7d94.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   a4e2a28..c54c220  main -> main
+[2026-06-13 18:10:36] Health check FAILED, restarting tunnel
+[2026-06-13 18:10:36] Starting tunnel...
+[2026-06-13 18:10:40] Tunnel up: https://cc8a2ee0c01b94.lhr.life
+[2026-06-13 18:10:40] Loader URL updated to https://cc8a2ee0c01b94.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c54c220..00c5702  main -> main
+[2026-06-13 18:11:42] Health check FAILED, restarting tunnel
+[2026-06-13 18:11:42] Starting tunnel...
+[2026-06-13 18:11:46] Tunnel up: https://5d943dd57967fd.lhr.life
+[2026-06-13 18:11:46] Loader URL updated to https://5d943dd57967fd.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   00c5702..66847ef  main -> main
+[2026-06-13 18:12:49] Health check FAILED, restarting tunnel
+[2026-06-13 18:12:49] Starting tunnel...
+[2026-06-13 18:12:53] Tunnel up: https://77183cec2e7e92.lhr.life
+[2026-06-13 18:12:53] Loader URL updated to https://77183cec2e7e92.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   66847ef..56b954b  main -> main
+[2026-06-13 18:13:55] Health check FAILED, restarting tunnel
+[2026-06-13 18:13:55] Starting tunnel...
+[2026-06-13 18:13:59] Tunnel up: https://d547976268b830.lhr.life
+[2026-06-13 18:13:59] Loader URL updated to https://d547976268b830.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   56b954b..9f3f6ff  main -> main
+[2026-06-13 18:15:02] Health check FAILED, restarting tunnel
+[2026-06-13 18:15:02] Starting tunnel...
+[2026-06-13 18:15:06] Tunnel up: https://d952dcd345981e.lhr.life
+[2026-06-13 18:15:06] Loader URL updated to https://d952dcd345981e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9f3f6ff..8635bb7  main -> main
+[2026-06-13 18:16:10] Health check FAILED, restarting tunnel
+[2026-06-13 18:16:10] Starting tunnel...
+[2026-06-13 18:16:14] Tunnel up: https://b7c2649b572f29.lhr.life
+[2026-06-13 18:16:14] Loader URL updated to https://b7c2649b572f29.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   1a15fa1..a8d54c9  main -> main
+[2026-06-13 18:17:17] Health check FAILED, restarting tunnel
+[2026-06-13 18:17:17] Starting tunnel...
+[2026-06-13 18:17:21] Tunnel up: https://8c6999f2b8c49d.lhr.life
+[2026-06-13 18:17:21] Loader URL updated to https://8c6999f2b8c49d.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   a8d54c9..b46f4b7  main -> main
+[2026-06-13 18:18:23] Health check FAILED, restarting tunnel
+[2026-06-13 18:18:23] Starting tunnel...
+[2026-06-13 18:18:27] Tunnel up: https://6a795bb982a60c.lhr.life
+[2026-06-13 18:18:27] Loader URL updated to https://6a795bb982a60c.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b46f4b7..826dc42  main -> main
+[2026-06-13 18:19:29] Health check FAILED, restarting tunnel
+[2026-06-13 18:19:29] Starting tunnel...
+[2026-06-13 18:19:33] Tunnel up: https://53a3d0befe49d8.lhr.life
+[2026-06-13 18:19:33] Loader URL updated to https://53a3d0befe49d8.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   826dc42..527a559  main -> main
+[2026-06-13 18:20:35] Health check FAILED, restarting tunnel
+[2026-06-13 18:20:35] Starting tunnel...
+[2026-06-13 18:20:47] Tunnel up: https://b7f572cd4e02c4.lhr.life
+[2026-06-13 18:20:47] Loader URL updated to https://b7f572cd4e02c4.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   527a559..fce8646  main -> main
+[2026-06-13 18:21:50] Health check FAILED, restarting tunnel
+[2026-06-13 18:21:50] Starting tunnel...
+[2026-06-13 18:21:54] Tunnel up: https://96c5e26500f5cb.lhr.life
+[2026-06-13 18:21:54] Loader URL updated to https://96c5e26500f5cb.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   fce8646..30250ab  main -> main
+[2026-06-13 18:22:56] Health check FAILED, restarting tunnel
+[2026-06-13 18:22:56] Starting tunnel...
+[2026-06-13 18:23:00] Tunnel up: https://f01652bed3bf17.lhr.life
+[2026-06-13 18:23:00] Loader URL updated to https://f01652bed3bf17.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   30250ab..c55f815  main -> main
+[2026-06-13 18:24:02] Health check FAILED, restarting tunnel
+[2026-06-13 18:24:02] Starting tunnel...
+[2026-06-13 18:24:06] Tunnel up: https://19d2b77b1d9853.lhr.life
+[2026-06-13 18:24:06] Loader URL updated to https://19d2b77b1d9853.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c55f815..263e96c  main -> main
+[2026-06-13 18:25:08] Health check FAILED, restarting tunnel
+[2026-06-13 18:25:08] Starting tunnel...
+[2026-06-13 18:25:13] Tunnel up: https://5cf432841c396e.lhr.life
+[2026-06-13 18:25:13] Loader URL updated to https://5cf432841c396e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   263e96c..222cf72  main -> main
+[2026-06-13 18:26:15] Health check FAILED, restarting tunnel
+[2026-06-13 18:26:15] Starting tunnel...
+[2026-06-13 18:26:19] Tunnel up: https://2b262d6188f33a.lhr.life
+[2026-06-13 18:26:19] Loader URL updated to https://2b262d6188f33a.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   222cf72..9c70d1c  main -> main
+[2026-06-13 18:27:21] Health check FAILED, restarting tunnel
+[2026-06-13 18:27:21] Starting tunnel...
+[2026-06-13 18:27:25] Tunnel up: https://c453e8efbf458f.lhr.life
+[2026-06-13 18:27:25] Loader URL updated to https://c453e8efbf458f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9c70d1c..e144edc  main -> main
+[2026-06-13 18:28:27] Health check FAILED, restarting tunnel
+[2026-06-13 18:28:27] Starting tunnel...
+[2026-06-13 18:28:31] Tunnel up: https://124559c5faab81.lhr.life
+[2026-06-13 18:28:31] Loader URL updated to https://124559c5faab81.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   e144edc..48dc9e0  main -> main
+[2026-06-13 18:29:33] Health check FAILED, restarting tunnel
+[2026-06-13 18:29:33] Starting tunnel...
+[2026-06-13 18:29:37] Tunnel up: https://59e4fd2e57b01f.lhr.life
+[2026-06-13 18:29:37] Loader URL updated to https://59e4fd2e57b01f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   48dc9e0..6697fd2  main -> main
+[2026-06-13 18:30:40] Health check FAILED, restarting tunnel
+[2026-06-13 18:30:40] Starting tunnel...
+[2026-06-13 18:30:44] Tunnel up: https://6183bfbb4e65b2.lhr.life
+[2026-06-13 18:30:44] Loader URL updated to https://6183bfbb4e65b2.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   6697fd2..74388d5  main -> main
+[2026-06-13 18:31:46] Health check FAILED, restarting tunnel
+[2026-06-13 18:31:46] Starting tunnel...
+[2026-06-13 18:31:50] Tunnel up: https://8553c0cd6d73e8.lhr.life
+[2026-06-13 18:31:50] Loader URL updated to https://8553c0cd6d73e8.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   74388d5..9805cc6  main -> main
+[2026-06-13 18:32:52] Health check FAILED, restarting tunnel
+[2026-06-13 18:32:52] Starting tunnel...
+[2026-06-13 18:32:56] Tunnel up: https://0fff89254ce790.lhr.life
+[2026-06-13 18:32:56] Loader URL updated to https://0fff89254ce790.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   9805cc6..f8362e6  main -> main
+[2026-06-13 18:33:58] Health check FAILED, restarting tunnel
+[2026-06-13 18:33:58] Starting tunnel...
+[2026-06-13 18:34:02] Tunnel up: https://b9545286ea3a22.lhr.life
+[2026-06-13 18:34:02] Loader URL updated to https://b9545286ea3a22.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   f8362e6..ecacdb9  main -> main
+[2026-06-13 18:35:04] Health check FAILED, restarting tunnel
+[2026-06-13 18:35:04] Starting tunnel...
+[2026-06-13 18:35:08] Tunnel up: https://ca05ce41357605.lhr.life
+[2026-06-13 18:35:08] Loader URL updated to https://ca05ce41357605.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   ecacdb9..a053476  main -> main
+[2026-06-13 18:36:10] Health check FAILED, restarting tunnel
+[2026-06-13 18:36:10] Starting tunnel...
+[2026-06-13 18:36:15] Tunnel up: https://4ef4a6c2a14ee8.lhr.life
+[2026-06-13 18:36:15] Loader URL updated to https://4ef4a6c2a14ee8.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   a053476..1668eab  main -> main
+[2026-06-13 18:37:17] Health check FAILED, restarting tunnel
+[2026-06-13 18:37:17] Starting tunnel...
+[2026-06-13 18:37:21] Tunnel up: https://cf7d4f306dafbb.lhr.life
+[2026-06-13 18:37:21] Loader URL updated to https://cf7d4f306dafbb.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b978e96..75d7507  main -> main
+[2026-06-13 18:38:23] Health check FAILED, restarting tunnel
+[2026-06-13 18:38:23] Starting tunnel...
+[2026-06-13 18:38:27] Tunnel up: https://d6b0fc4121d597.lhr.life
+[2026-06-13 18:38:27] Loader URL updated to https://d6b0fc4121d597.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   75d7507..b7a05de  main -> main
+[2026-06-13 18:39:29] Health check FAILED, restarting tunnel
+[2026-06-13 18:39:29] Starting tunnel...
+[2026-06-13 18:39:33] Tunnel up: https://2087dc0a31d46e.lhr.life
+[2026-06-13 18:39:33] Loader URL updated to https://2087dc0a31d46e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b7a05de..005bda5  main -> main
+[2026-06-13 18:40:35] Health check FAILED, restarting tunnel
+[2026-06-13 18:40:35] Starting tunnel...
+[2026-06-13 18:40:45] Tunnel up: https://3c992aa8458ecf.lhr.life
+[2026-06-13 18:40:45] Loader URL updated to https://3c992aa8458ecf.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   005bda5..c2115c9  main -> main
+[2026-06-13 18:41:47] Health check FAILED, restarting tunnel
+[2026-06-13 18:41:47] Starting tunnel...
+[2026-06-13 18:41:51] Tunnel up: https://147f1f3303fc0f.lhr.life
+[2026-06-13 18:41:51] Loader URL updated to https://147f1f3303fc0f.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   c2115c9..7d5fd9a  main -> main
+[2026-06-13 18:42:53] Health check FAILED, restarting tunnel
+[2026-06-13 18:42:53] Starting tunnel...
+[2026-06-13 18:42:57] Tunnel up: https://157ad563d01c40.lhr.life
+[2026-06-13 18:42:57] Loader URL updated to https://157ad563d01c40.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   7d5fd9a..b4e4532  main -> main
+[2026-06-13 18:43:59] Health check FAILED, restarting tunnel
+[2026-06-13 18:43:59] Starting tunnel...
+[2026-06-13 18:44:03] Tunnel up: https://64c3f5e3cc293c.lhr.life
+[2026-06-13 18:44:03] Loader URL updated to https://64c3f5e3cc293c.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   b4e4532..c254d20  main -> main
+[2026-06-13 18:45:05] Health check FAILED, restarting tunnel
+[2026-06-13 18:45:06] Starting tunnel...
+[2026-06-13 18:45:10] Tunnel up: https://e17982da444264.lhr.life
+[2026-06-13 18:45:10] Loader URL updated to https://e17982da444264.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   f72540d..6e83015  main -> main
+[2026-06-13 18:46:14] Health check FAILED, restarting tunnel
+[2026-06-13 18:46:14] Starting tunnel...
+[2026-06-13 18:46:18] Tunnel up: https://a01bbc6557482e.lhr.life
+[2026-06-13 18:46:18] Loader URL updated to https://a01bbc6557482e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   6e83015..ea8b3c5  main -> main
+[2026-06-13 18:47:21] Health check FAILED, restarting tunnel
+[2026-06-13 18:47:21] Starting tunnel...
+[2026-06-13 18:47:25] Tunnel up: https://17fb97a7e3285b.lhr.life
+[2026-06-13 18:47:25] Loader URL updated to https://17fb97a7e3285b.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   ea8b3c5..57604ff  main -> main
+[2026-06-13 18:48:27] Health check FAILED, restarting tunnel
+[2026-06-13 18:48:27] Starting tunnel...
+[2026-06-13 18:48:31] Tunnel up: https://b46112b8be1a5e.lhr.life
+[2026-06-13 18:48:31] Loader URL updated to https://b46112b8be1a5e.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   57604ff..83d7644  main -> main
+[2026-06-13 18:49:33] Health check FAILED, restarting tunnel
+[2026-06-13 18:49:33] Starting tunnel...
+[2026-06-13 18:49:37] Tunnel up: https://2964a00458620d.lhr.life
+[2026-06-13 18:49:37] Loader URL updated to https://2964a00458620d.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   83d7644..00f3bbc  main -> main
+[2026-06-13 18:50:39] Health check FAILED, restarting tunnel
+[2026-06-13 18:50:39] Starting tunnel...

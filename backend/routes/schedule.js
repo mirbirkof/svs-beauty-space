@@ -12,15 +12,34 @@ router.use((req, res, next) => {
   return requirePerm(perm)(req, res, next);
 });
 
-// ── GET /api/schedule/masters — все активные мастера с расписанием ──
+// ── GET /api/schedule/masters — мастера с расписанием ──
+// ?all=1 — включить уволенных (для управления карточками). По умолчанию только активные.
 router.get('/masters', async (req, res) => {
   try {
     const pool = getPool();
+    const all = req.query.all === '1' || req.query.all === 'true';
     const r = await pool.query(
       `SELECT id, name, specialty, avatar, schedule_json, active, beautypro_id
-         FROM masters WHERE active = true ORDER BY name`
+         FROM masters ${all ? '' : 'WHERE active = true'} ORDER BY active DESC, name`
     );
     res.json({ items: r.rows, count: r.rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PATCH /api/schedule/masters/:id — сменить статус (работает/уволен) ──
+// Body: { active: true|false }. Уволенный мастер исчезает из журнала, графика,
+// онлайн-записи и всех выпадающих списков, но остаётся для статистики (отчёты тянут всех).
+router.patch('/masters/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { active } = req.body || {};
+    if (typeof active !== 'boolean') return res.status(400).json({ error: 'active boolean required' });
+    const r = await pool.query(
+      'UPDATE masters SET active = $1 WHERE id = $2 RETURNING id, name, active',
+      [active, req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
+    res.json({ ok: true, master: r.rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

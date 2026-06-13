@@ -219,7 +219,7 @@ select.input { background:var(--card); }
 .jcol-head .nm { font-size:13px; font-weight:600; line-height:1.1; }
 .jcol-head .sp { font-size:11px; color:var(--text-secondary); }
 .jcol-body { position:relative; }
-.jslot { height:var(--jh,21px); box-sizing:border-box; }                /* 15-хв слот — без лінії */
+.jslot { height:var(--jh,21px); box-sizing:border-box; border-top:1px solid rgba(0,0,0,.05); }   /* 15-хв слот — ледь помітна лінія */
 .jslot.half { border-top:1px solid var(--border); }                     /* 30-хв — тонка лінія */
 .jslot.hour { border-top:2px solid #c2c8d2; }                           /* година — жирна лінія */
 .joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; pointer-events:none; }
@@ -1452,12 +1452,22 @@ const _SCH_DAYS = [['mon','Пн'],['tue','Вт'],['wed','Ср'],['thu','Чт'],[
 let _schMastersCache = null;
 async function loadSchMasters() {
   const sel = document.getElementById('schMaster'); if (!sel) return;
+  const keep = sel.value;
   try {
-    const r = await api('/api/schedule/masters');
-    _schMastersCache = (r.items || r.masters || []).filter(m => m.active !== false);
+    const r = await api('/api/schedule/masters?all=1');
+    _schMastersCache = (r.items || r.masters || []);
     sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
-      _schMastersCache.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+      _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(keep)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
   } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }
+}
+async function schToggleActive(id, makeActive) {
+  const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
+  if (!confirm(makeActive ? `Повернути «${m.name}» до роботи? Майстер знову зʼявиться в журналі й онлайн-записі.` : `Звільнити «${m.name}»? Він зникне з журналу, графіка й онлайн-запису, але залишиться у статистиці.`)) return;
+  try {
+    const r = await api('/api/schedule/masters/'+id, { method:'PATCH', body: JSON.stringify({ active: makeActive }) });
+    if (r.ok) { m.active = makeActive; await loadSchMasters(); document.getElementById('schMaster').value = id; loadSchedule(); }
+    else alert(r.error || 'Помилка');
+  } catch (e) { alert('Помилка мережі'); }
 }
 function loadSchedule() {
   const id = document.getElementById('schMaster').value;
@@ -1465,7 +1475,14 @@ function loadSchedule() {
   if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати графік.</p>'; return; }
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id));
   const sched = (m && m.schedule_json) || {};
-  grid.innerHTML = `<div class="sch-week">${_SCH_DAYS.map(([k,lbl])=>{
+  const isActive = !m || m.active !== false;
+  const statusBar = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:${isActive?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'}">
+      <span style="font-weight:600;color:${isActive?'#10b981':'#ef4444'}">${isActive?'● Працює':'🚫 Звільнений'}</span>
+      <span style="color:var(--text-secondary);font-size:13px">${m&&m.specialty?m.specialty:''}</span>
+      <button class="btn btn-sm ${isActive?'':'btn-primary'}" style="margin-left:auto;${isActive?'background:#ef4444;color:#fff':''}" onclick="schToggleActive('${id}', ${isActive?'false':'true'})">${isActive?'Звільнити':'Повернути до роботи'}</button>
+    </div>`;
+  if (!isActive) { grid.innerHTML = statusBar + '<p class="set-p">Майстер звільнений — графік прихований. Поверніть до роботи, щоб редагувати.</p>'; return; }
+  grid.innerHTML = statusBar + `<div class="sch-week">${_SCH_DAYS.map(([k,lbl])=>{
     const d = sched[k]; const on = !!d;
     return `<div class="sch-row" data-day="${k}">
       <label class="sch-day"><input type="checkbox" class="sch-on" ${on?'checked':''} onchange="schToggle(this)"><b>${lbl}</b></label>
@@ -1947,9 +1964,11 @@ function renderJournalDay(container, data) {
   if (focusSel) {
     const cur = journalFocusMaster;
     focusSel.innerHTML = '<option value="">Усі майстри</option>' +
+      `<option value="__working__"${cur==='__working__'?' selected':''}>Тільки працюючі</option>` +
       masters.map(m=>`<option value="${m.id}"${String(m.id)===String(cur)?' selected':''}>${m.name}</option>`).join('');
   }
-  if (journalFocusMaster) masters = masters.filter(m => String(m.id) === String(journalFocusMaster));
+  if (journalFocusMaster === '__working__') masters = masters.filter(m => m.working);
+  else if (journalFocusMaster) masters = masters.filter(m => String(m.id) === String(journalFocusMaster));
   if (!masters.length) masters = data.masters || [];
 
   // нормалізуємо робочий час: приймаємо лише валідний формат HH:MM
@@ -1969,7 +1988,8 @@ function renderJournalDay(container, data) {
 
   // часова колонка
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
-  for (let i=0;i<slots;i++){ const m=minM+i*15; const lbl = m%60===0 ? _toHHMM(m) : (m%30===0 ? _toHHMM(m) : ''); timeCol += `<div class="jslot-label${m%60===0?' hh':''}">${lbl}</div>`; }
+  // підпис лише на годині — 15/30-хв лінії без тексту, щоб не засмічувати екран
+  for (let i=0;i<slots;i++){ const m=minM+i*15; const lbl = m%60===0 ? _toHHMM(m) : ''; timeCol += `<div class="jslot-label${m%60===0?' hh':''}">${lbl}</div>`; }
   timeCol += '</div>';
 
   // колонки майстрів
