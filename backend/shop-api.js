@@ -110,7 +110,7 @@ app.get('/api/shop/readiness', (req, res) => {
     code_status: {
       catalog: 'ready',
       orders: 'ready',
-      cabinet_auth: 'ready (dev-mode 0000)',
+      cabinet_auth: 'ready (telegram-otp, dev-code disabled in prod)',
       admin_panel: 'ready',
       stock_management: 'ready',
       loyalty_3pct: 'ready',
