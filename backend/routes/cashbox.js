@@ -73,6 +73,33 @@ router.get('/shifts/current', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/cashbox/today — зведення каси за СЬОГОДНІ (готівка/безготівка/разом)
+// Доступно адміну: лише поточний день, без історії.
+router.get('/today', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN type='in'  AND method='cash' THEN amount ELSE 0 END),0)::float AS cash,
+         COALESCE(SUM(CASE WHEN type='in'  AND method<>'cash' THEN amount ELSE 0 END),0)::float AS cashless,
+         COALESCE(SUM(CASE WHEN type='in'  THEN amount ELSE 0 END),0)::float AS total_in,
+         COALESCE(SUM(CASE WHEN type='out' THEN amount ELSE 0 END),0)::float AS total_out,
+         COUNT(*) FILTER (WHERE type='in')::int AS ops_in
+       FROM cash_operations
+       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'`
+    );
+    const row = r.rows[0];
+    res.json({
+      date: new Date().toISOString().slice(0,10),
+      cash: row.cash,
+      cashless: row.cashless,
+      total: row.total_in,            // загальна каса за день (прихід)
+      total_out: row.total_out,
+      net: row.total_in - row.total_out,
+      ops_in: row.ops_in,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/cashbox/shifts — история смен (только владелец)
 router.get('/shifts', requireHistory, async (req, res) => {
   try {

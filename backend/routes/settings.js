@@ -8,8 +8,13 @@ const { requirePerm, hasPermission, logAction } = require('../lib/rbac');
 const { getAllSettings, setSetting } = require('../lib/settings');
 
 // дозволені ключі + валідатори (захист від довільного запису)
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const ALLOWED = {
   masters_see_phone: (v) => typeof v === 'boolean',
+  // Профіль салону (DIKIDI-style): назва, телефони, адреса, час роботи, опис, напрямки, фото
+  salon_profile: (v) => isObj(v),
+  // Онлайн-запис: вкл/вимк, посилання, крок часу, мін. час до запису
+  online_booking: (v) => isObj(v),
 };
 
 router.use(requirePerm()); // будь-який авторизований може читати

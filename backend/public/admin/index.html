@@ -251,6 +251,66 @@ select.input { background:var(--card); }
 .jt-date:hover { border-color:var(--primary); }
 .jt-right { display:flex; align-items:center; gap:8px; }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
+/* Журнал: права панель — календар + каса */
+.journal-layout { display:flex; gap:16px; align-items:flex-start; }
+.journal-main { flex:1; min-width:0; }
+.journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+.jcal-card .card-body, .jcash-card .card-body { padding:14px; }
+.jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.jcal-title { font-size:14px; font-weight:700; text-transform:capitalize; }
+.jcal-nav { display:flex; gap:4px; }
+.jcal-nav button { width:26px; height:26px; border:1px solid var(--border); border-radius:7px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); }
+.jcal-nav button:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
+.jcal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.jcal-dow { text-align:center; font-size:10px; color:var(--text-secondary); padding:2px 0; font-weight:600; }
+.jcal-day { aspect-ratio:1; display:flex; align-items:center; justify-content:center; font-size:12px; border-radius:8px; cursor:pointer; color:var(--text); position:relative; border:1px solid transparent; }
+.jcal-day:hover { background:var(--primary-light); }
+.jcal-day.other { color:var(--text-secondary); opacity:.4; }
+.jcal-day.today { border-color:var(--primary); font-weight:700; }
+.jcal-day.sel { background:var(--primary); color:#fff; font-weight:700; }
+.jcal-day.has::after { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:var(--primary); }
+.jcal-day.sel.has::after { background:#fff; }
+.jcash-title { font-size:13px; font-weight:700; margin-bottom:4px; }
+.jcash-sub { font-size:11px; color:var(--text-secondary); margin-bottom:12px; }
+.jcash-donut { display:block; margin:0 auto 12px; }
+.jcash-rows { display:grid; gap:8px; }
+.jcash-row { display:flex; align-items:center; gap:8px; font-size:13px; }
+.jcash-row .dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+.jcash-row .lbl { color:var(--text-secondary); }
+.jcash-row .val { margin-left:auto; font-weight:700; }
+.jcash-row.tot { border-top:1px solid var(--border); padding-top:8px; font-size:14px; }
+.jcash-lock { font-size:12px; color:var(--text-secondary); text-align:center; padding:8px 4px; }
+@media(max-width:1100px){ .journal-side { display:none; } }
+/* Налаштування: ліве підменю (DIKIDI-style) */
+.settings-layout { display:flex; gap:20px; align-items:flex-start; }
+.settings-nav { flex:0 0 230px; display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:8px; position:sticky; top:16px; }
+.set-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; background:none; border-radius:10px; cursor:pointer; font-size:13.5px; color:var(--text); text-align:left; width:100%; text-decoration:none; font-weight:500; }
+.set-item:hover { background:var(--bg); }
+.set-item.active { background:var(--primary); color:#fff; }
+.set-item .material-icons-round { font-size:19px; }
+.set-navsec { padding:10px 12px 4px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-secondary); }
+.settings-content { flex:1; min-width:0; max-width:720px; }
+.set-pane { display:none; }
+.set-pane.active { display:block; }
+.set-h { font-size:16px; font-weight:700; margin-bottom:4px; }
+.set-p { color:var(--text-secondary); font-size:13px; margin-bottom:18px; }
+.set-form { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.set-field { display:flex; flex-direction:column; gap:5px; }
+.set-field.full { grid-column:1/-1; }
+.set-field span { font-size:12px; color:var(--text-secondary); font-weight:600; }
+.set-actions { display:flex; align-items:center; gap:12px; margin-top:18px; }
+.set-msg { font-size:13px; }
+.set-toggle { display:flex; align-items:flex-start; gap:12px; cursor:pointer; padding:14px; border:1px solid var(--border); border-radius:12px; }
+.set-toggle input { width:20px; height:20px; margin-top:2px; flex-shrink:0; }
+.set-toggle b { display:block; font-size:14px; }
+.set-toggle i { color:var(--text-secondary); font-size:13px; font-style:normal; }
+@media(max-width:768px){
+  .settings-layout { flex-direction:column; }
+  .settings-nav { flex-direction:row; flex-wrap:wrap; width:100%; position:static; }
+  .set-item { width:auto; }
+  .set-navsec { display:none; }
+  .set-form { grid-template-columns:1fr; }
+}
 .jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jappt .ok { position:absolute; bottom:5px; right:6px; font-size:13px; opacity:.9; }
 .jappt.dragging { opacity:.45; }
@@ -452,10 +512,18 @@ select.input { background:var(--card); }
             <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Запис</button>
           </div>
         </div>
-        <div class="card">
-          <div class="card-body" id="journalContent">
-            <div class="empty"><span class="material-icons-round">event_note</span>Завантаження журналу...</div>
+        <div class="journal-layout">
+          <div class="journal-main">
+            <div class="card">
+              <div class="card-body" id="journalContent">
+                <div class="empty"><span class="material-icons-round">event_note</span>Завантаження журналу...</div>
+              </div>
+            </div>
           </div>
+          <aside class="journal-side">
+            <div class="card jcal-card"><div class="card-body" id="jMiniCal"></div></div>
+            <div class="card jcash-card"><div class="card-body" id="jCashGauge"></div></div>
+          </aside>
         </div>
       </div>
 
@@ -661,49 +729,109 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- ═══ SETTINGS ═══ -->
+      <!-- ═══ SETTINGS (DIKIDI-style: ліве підменю + панелі) ═══ -->
       <div class="page" id="page-settings">
-        <div class="card" style="max-width:680px">
-          <div class="card-body">
-            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Приватність клієнтів</h3>
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Керування тим, що бачать співробітники.</p>
-            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:12px">
-              <input type="checkbox" id="set-masters-phone" style="width:20px;height:20px;margin-top:2px" onchange="saveSettings()">
-              <span>
-                <span style="font-weight:600;display:block">Майстри бачать номери телефонів клієнтів</span>
-                <span style="color:var(--text-secondary);font-size:13px">Коли вимкнено — у журналі та записах майстер бачить ім'я клієнта, але номер прихований (••• ••XX). Адміністратори й власник бачать номери завжди.</span>
-              </span>
-            </label>
-            <p id="settingsMsg" style="font-size:13px;margin-top:12px"></p>
-          </div>
-        </div>
+        <div class="settings-layout">
+          <nav class="settings-nav">
+            <button class="set-item active" data-tab="profile" onclick="setTab('profile')"><span class="material-icons-round">storefront</span> Профіль</button>
+            <button class="set-item" data-tab="booking" onclick="setTab('booking')"><span class="material-icons-round">event_available</span> Онлайн-запис</button>
+            <button class="set-item" data-tab="privacy" onclick="setTab('privacy')"><span class="material-icons-round">visibility</span> Конфіденційність</button>
+            <button class="set-item" data-tab="rooms" onclick="setTab('rooms')"><span class="material-icons-round">meeting_room</span> Кабінети / ресурси</button>
+            <button class="set-item" data-tab="consumables" onclick="setTab('consumables')"><span class="material-icons-round">inventory_2</span> Розхідники</button>
+            <div class="set-navsec">Керування</div>
+            <a class="set-item" href="/admin/crm-extra.html#users"><span class="material-icons-round">badge</span> Співробітники</a>
+            <a class="set-item" onclick="go('products')"><span class="material-icons-round">design_services</span> Послуги / товари</a>
+            <a class="set-item" href="/admin/crm-extra.html#users"><span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту</a>
+            <a class="set-item" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round">point_of_sale</span> Каса</a>
+          </nav>
 
-        <div class="card" style="max-width:680px;margin-top:16px">
-          <div class="card-body">
-            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Кабінети / робочі місця</h3>
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Кабінети можна призначати запису в журналі.</p>
-            <div id="roomsList" style="display:grid;gap:8px;margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px">
-              <input id="newRoomName" class="input" placeholder="Назва кабінету" style="flex:1">
-              <input id="newRoomColor" type="color" value="#7c5cff" class="input" style="width:48px;padding:4px">
-              <button class="btn btn-primary" onclick="addRoom()">Додати</button>
+          <div class="settings-content">
+            <!-- ПРОФІЛЬ САЛОНУ -->
+            <div class="set-pane active" id="tab-profile">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Профіль салону</h3>
+                <p class="set-p">Основна інформація про салон — показується клієнтам в онлайн-записі та чеках.</p>
+                <div class="set-form">
+                  <label class="set-field"><span>Назва салону</span><input id="sp_name" class="input" placeholder="SVS Beauty Space"></label>
+                  <label class="set-field"><span>Телефони</span><input id="sp_phones" class="input" placeholder="+38 (0XX) XXX-XX-XX"></label>
+                  <label class="set-field"><span>Адреса</span><input id="sp_address" class="input" placeholder="м. Київ, вул. ..."></label>
+                  <label class="set-field"><span>Час роботи</span><input id="sp_hours" class="input" placeholder="Пн–Нд 08:00–22:00"></label>
+                  <label class="set-field"><span>Напрямки діяльності</span><input id="sp_directions" class="input" placeholder="Манікюр, педикюр, брови, вії, масаж"></label>
+                  <label class="set-field"><span>Орієнтири / як дістатися</span><input id="sp_landmarks" class="input" placeholder="Поруч ТРЦ ..., вхід з двору"></label>
+                  <label class="set-field full"><span>Опис</span><textarea id="sp_desc" class="input" rows="3" placeholder="Короткий опис салону для клієнтів"></textarea></label>
+                </div>
+                <div class="set-actions">
+                  <button class="btn btn-primary" onclick="saveProfile()">Зберегти профіль</button>
+                  <span id="profileMsg" class="set-msg"></span>
+                </div>
+              </div></div>
             </div>
-            <p id="roomsMsg" style="font-size:13px;margin-top:10px"></p>
-          </div>
-        </div>
 
-        <div class="card" style="max-width:680px;margin-top:16px">
-          <div class="card-body">
-            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Розхідники на послуги</h3>
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Вкажіть, які товари списуються зі складу при виконанні послуги. Списання — автоматичне, коли запис стає «Виконано».</p>
-            <select id="consSvc" class="input" onchange="loadCons()"><option value="">— оберіть послугу —</option></select>
-            <div id="consList" style="display:grid;gap:8px;margin:12px 0"></div>
-            <div id="consAddBox" style="display:none;gap:8px;align-items:center">
-              <input id="consVarSearch" class="input" placeholder="Пошук товару…" style="flex:1" oninput="searchVars()">
-              <input id="consQty" class="input" type="number" step="0.001" min="0" value="1" style="width:90px" title="Кількість на 1 виконання">
+            <!-- ОНЛАЙН-ЗАПИС -->
+            <div class="set-pane" id="tab-booking">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Онлайн-запис</h3>
+                <p class="set-p">Налаштування форми запису, якою користуються клієнти.</p>
+                <label class="set-toggle">
+                  <input type="checkbox" id="ob_enabled" onchange="saveBooking()">
+                  <span><b>Онлайн-запис увімкнено</b><i>Клієнти можуть записуватись самостійно через посилання/віджет.</i></span>
+                </label>
+                <div class="set-form" style="margin-top:14px">
+                  <label class="set-field"><span>Посилання на запис</span><input id="ob_url" class="input" placeholder="https://svs-beauty-space.vercel.app/book"></label>
+                  <label class="set-field"><span>Крок часу, хв</span><input id="ob_step" class="input" type="number" min="5" max="180" step="5" value="30"></label>
+                  <label class="set-field"><span>Мін. час до запису, год</span><input id="ob_minlead" class="input" type="number" min="0" max="168" value="2"></label>
+                  <label class="set-field"><span>Скасування за, год</span><input id="ob_cancel" class="input" type="number" min="0" max="168" value="24"></label>
+                </div>
+                <div class="set-actions">
+                  <button class="btn btn-primary" onclick="saveBooking()">Зберегти</button>
+                  <span id="bookingMsg" class="set-msg"></span>
+                </div>
+              </div></div>
             </div>
-            <div id="consVarResults" style="display:grid;gap:6px;margin-top:6px"></div>
-            <p id="consMsg" style="font-size:13px;margin-top:10px"></p>
+
+            <!-- КОНФІДЕНЦІЙНІСТЬ -->
+            <div class="set-pane" id="tab-privacy">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Приватність клієнтів</h3>
+                <p class="set-p">Керування тим, що бачать співробітники.</p>
+                <label class="set-toggle">
+                  <input type="checkbox" id="set-masters-phone" onchange="saveSettings()">
+                  <span><b>Майстри бачать номери телефонів клієнтів</b><i>Коли вимкнено — майстер бачить ім'я, але номер прихований (••• ••XX). Адміністратори й власник бачать завжди.</i></span>
+                </label>
+                <p id="settingsMsg" class="set-msg" style="margin-top:12px"></p>
+              </div></div>
+            </div>
+
+            <!-- КАБІНЕТИ / РЕСУРСИ -->
+            <div class="set-pane" id="tab-rooms">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Кабінети / робочі місця</h3>
+                <p class="set-p">Кабінети можна призначати запису в журналі.</p>
+                <div id="roomsList" style="display:grid;gap:8px;margin-bottom:12px"></div>
+                <div style="display:flex;gap:8px">
+                  <input id="newRoomName" class="input" placeholder="Назва кабінету" style="flex:1">
+                  <input id="newRoomColor" type="color" value="#7c5cff" class="input" style="width:48px;padding:4px">
+                  <button class="btn btn-primary" onclick="addRoom()">Додати</button>
+                </div>
+                <p id="roomsMsg" class="set-msg" style="margin-top:10px"></p>
+              </div></div>
+            </div>
+
+            <!-- РОЗХІДНИКИ -->
+            <div class="set-pane" id="tab-consumables">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Розхідники на послуги</h3>
+                <p class="set-p">Які товари списуються зі складу при виконанні послуги. Списання — автоматичне, коли запис стає «Виконано».</p>
+                <select id="consSvc" class="input" onchange="loadCons()"><option value="">— оберіть послугу —</option></select>
+                <div id="consList" style="display:grid;gap:8px;margin:12px 0"></div>
+                <div id="consAddBox" style="display:none;gap:8px;align-items:center">
+                  <input id="consVarSearch" class="input" placeholder="Пошук товару…" style="flex:1" oninput="searchVars()">
+                  <input id="consQty" class="input" type="number" step="0.001" min="0" value="1" style="width:90px" title="Кількість на 1 виконання">
+                </div>
+                <div id="consVarResults" style="display:grid;gap:6px;margin-top:6px"></div>
+                <p id="consMsg" class="set-msg" style="margin-top:10px"></p>
+              </div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -815,16 +943,60 @@ function go(page) {
 }
 
 // ═══ SETTINGS ═════════════════════════════════
+function setTab(tab) {
+  document.querySelectorAll('.settings-nav .set-item[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.set-pane').forEach(p => p.classList.toggle('active', p.id==='tab-'+tab));
+}
 async function loadSettings() {
   const msg = document.getElementById('settingsMsg');
   try {
     const r = await api('/api/settings');
     const s = r.settings || {};
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
+    // Профіль салону
+    const p = s.salon_profile || {};
+    const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
+    setv('sp_name', p.name); setv('sp_phones', p.phones); setv('sp_address', p.address);
+    setv('sp_hours', p.hours); setv('sp_directions', p.directions); setv('sp_landmarks', p.landmarks); setv('sp_desc', p.description);
+    // Онлайн-запис
+    const b = s.online_booking || {};
+    const ob = document.getElementById('ob_enabled'); if (ob) ob.checked = b.enabled === true;
+    setv('ob_url', b.url);
+    if (document.getElementById('ob_step')) document.getElementById('ob_step').value = b.step ?? 30;
+    if (document.getElementById('ob_minlead')) document.getElementById('ob_minlead').value = b.min_lead_hours ?? 2;
+    if (document.getElementById('ob_cancel')) document.getElementById('ob_cancel').value = b.cancel_hours ?? 24;
     msg.textContent = '';
   } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Не вдалося завантажити налаштування'; }
   loadRooms();
   loadConsServices();
+}
+async function saveProfile() {
+  const msg = document.getElementById('profileMsg');
+  const g = (id)=>document.getElementById(id).value.trim();
+  const salon_profile = { name:g('sp_name'), phones:g('sp_phones'), address:g('sp_address'),
+    hours:g('sp_hours'), directions:g('sp_directions'), landmarks:g('sp_landmarks'), description:g('sp_desc') };
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ salon_profile }) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Збережено ✓'; }
+    else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
+}
+async function saveBooking() {
+  const msg = document.getElementById('bookingMsg');
+  const online_booking = {
+    enabled: document.getElementById('ob_enabled').checked,
+    url: document.getElementById('ob_url').value.trim(),
+    step: Number(document.getElementById('ob_step').value)||30,
+    min_lead_hours: Number(document.getElementById('ob_minlead').value)||0,
+    cancel_hours: Number(document.getElementById('ob_cancel').value)||0,
+  };
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ online_booking }) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Збережено ✓'; }
+    else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
 async function loadRooms() {
   const box = document.getElementById('roomsList');
@@ -1098,12 +1270,99 @@ function shiftJournalDate(dir) {
 }
 function goToday() {
   document.getElementById('journalDate').valueAsDate = new Date();
+  _calMonth = null;
   loadJournal();
+}
+
+// ── Міні-календар у правій панелі (вибір будь-якої дати) ──
+let _calMonth = null;   // {y, m} що зараз показано; null → місяць обраної дати
+function calShift(dir) {
+  const sel = new Date((document.getElementById('journalDate').value||new Date().toISOString().slice(0,10))+'T00:00:00');
+  const base = _calMonth ? new Date(_calMonth.y, _calMonth.m, 1) : new Date(sel.getFullYear(), sel.getMonth(), 1);
+  base.setMonth(base.getMonth()+dir);
+  _calMonth = { y: base.getFullYear(), m: base.getMonth() };
+  renderMiniCal();
+}
+function calPick(ds) {
+  document.getElementById('journalDate').value = ds;
+  _calMonth = null;
+  if (journalMode === 'week') journalMode = 'day', setJournalMode('day');
+  else loadJournal();
+}
+function renderMiniCal() {
+  const box = document.getElementById('jMiniCal');
+  if (!box) return;
+  const selStr = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  const sel = new Date(selStr+'T00:00:00');
+  const view = _calMonth ? new Date(_calMonth.y, _calMonth.m, 1) : new Date(sel.getFullYear(), sel.getMonth(), 1);
+  const y=view.getFullYear(), mo=view.getMonth();
+  const todayStr = new Date().toISOString().slice(0,10);
+  const first = new Date(y, mo, 1);
+  const startOffset = (first.getDay()+6)%7;           // Пн=0
+  const start = new Date(first); start.setDate(1-startOffset);
+  const dows = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+  let cells='';
+  for (let i=0;i<42;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const ds=d.toISOString().slice(0,10);
+    const cls=['jcal-day'];
+    if (d.getMonth()!==mo) cls.push('other');
+    if (ds===todayStr) cls.push('today');
+    if (ds===selStr) cls.push('sel');
+    cells += `<div class="${cls.join(' ')}" onclick="calPick('${ds}')">${d.getDate()}</div>`;
+  }
+  box.innerHTML = `
+    <div class="jcal-head">
+      <div class="jcal-title">${view.toLocaleDateString('uk-UA',{month:'long',year:'numeric'})}</div>
+      <div class="jcal-nav">
+        <button onclick="calShift(-1)"><span class="material-icons-round" style="font-size:16px">chevron_left</span></button>
+        <button onclick="calShift(1)"><span class="material-icons-round" style="font-size:16px">chevron_right</span></button>
+      </div>
+    </div>
+    <div class="jcal-grid">${dows.map(d=>`<div class="jcal-dow">${d}</div>`).join('')}${cells}</div>`;
+}
+
+// ── Бублик каси за день (нал / безнал / разом) — видно адміну ──
+async function loadCashGauge() {
+  const box = document.getElementById('jCashGauge');
+  if (!box) return;
+  box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-sub">завантаження…</div>`;
+  let d;
+  try { d = await api('/api/cashbox/today'); }
+  catch { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">Каса недоступна</div>`; return; }
+  if (d.error) { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">${d.message||'Недоступно'}</div>`; return; }
+  const cash=Number(d.cash||0), cashless=Number(d.cashless||0), total=Number(d.total||0);
+  // SVG-бублик: дві дуги (готівка/безготівка)
+  const R=52, C=2*Math.PI*R, sw=14;
+  const fCash = total>0 ? cash/total : 0;
+  const fCashless = total>0 ? cashless/total : 0;
+  const dashCash = `${(fCash*C).toFixed(1)} ${C.toFixed(1)}`;
+  const dashCashless = `${(fCashless*C).toFixed(1)} ${C.toFixed(1)}`;
+  const offCashless = -(fCash*C);
+  box.innerHTML = `
+    <div class="jcash-title">Каса за день</div>
+    <div class="jcash-sub">${new Date(d.date+'T00:00:00').toLocaleDateString('uk-UA',{day:'numeric',month:'long'})} · ${d.ops_in||0} надходжень</div>
+    <svg class="jcash-donut" width="132" height="132" viewBox="0 0 132 132">
+      <circle cx="66" cy="66" r="${R}" fill="none" stroke="var(--border)" stroke-width="${sw}"/>
+      <circle cx="66" cy="66" r="${R}" fill="none" stroke="#10b981" stroke-width="${sw}"
+              stroke-dasharray="${dashCash}" stroke-dashoffset="0" transform="rotate(-90 66 66)" stroke-linecap="round"/>
+      <circle cx="66" cy="66" r="${R}" fill="none" stroke="#6366f1" stroke-width="${sw}"
+              stroke-dasharray="${dashCashless}" stroke-dashoffset="${offCashless}" transform="rotate(-90 66 66)" stroke-linecap="round"/>
+      <text x="66" y="62" text-anchor="middle" font-size="11" fill="var(--text-secondary)">разом</text>
+      <text x="66" y="80" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">${_money(total)}</text>
+    </svg>
+    <div class="jcash-rows">
+      <div class="jcash-row"><span class="dot" style="background:#10b981"></span><span class="lbl">Готівка</span><span class="val">${_money(cash)}</span></div>
+      <div class="jcash-row"><span class="dot" style="background:#6366f1"></span><span class="lbl">Безготівка</span><span class="val">${_money(cashless)}</span></div>
+      <div class="jcash-row tot"><span class="lbl" style="font-weight:600;color:var(--text)">Загальна каса</span><span class="val">${_money(total)}</span></div>
+    </div>`;
 }
 
 async function loadJournal() {
   const container = document.getElementById('journalContent');
   updateDateLabel();
+  renderMiniCal();
+  loadCashGauge();
   const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
   container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   try {
