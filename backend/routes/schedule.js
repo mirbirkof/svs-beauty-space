@@ -237,23 +237,44 @@ router.get('/journal', async (req, res) => {
 router.patch('/appointments/:id', async (req, res) => {
   try {
     const pool = getPool();
-    const { notes, status, room_id } = req.body || {};
-    if (notes === undefined && status === undefined && room_id === undefined) {
+    const { notes, status, room_id, starts_at, master_id } = req.body || {};
+    if (notes === undefined && status === undefined && room_id === undefined
+        && starts_at === undefined && master_id === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
     const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
     if (status !== undefined && !allowed.includes(status)) {
       return res.status(400).json({ error: 'bad-status' });
     }
+
+    // Перенос запису (drag&drop): нове starts_at → зберігаємо тривалість, перераховуємо ends_at
+    let newStart = null, newEnd = null;
+    if (starts_at !== undefined) {
+      const sd = new Date(starts_at);
+      if (isNaN(sd)) return res.status(400).json({ error: 'bad-starts_at' });
+      const cur = await pool.query(
+        `SELECT EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur FROM appointments WHERE id=$1`,
+        [req.params.id]
+      );
+      if (!cur.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+      const dur = Number(cur.rows[0].dur) || 30;
+      newStart = sd.toISOString();
+      newEnd = new Date(sd.getTime() + dur * 60000).toISOString();
+    }
+
     const r = await pool.query(
       `UPDATE appointments
           SET notes = COALESCE($2, notes),
               status = COALESCE($3, status),
               room_id = COALESCE($4, room_id),
+              master_id = COALESCE($5, master_id),
+              starts_at = COALESCE($6, starts_at),
+              ends_at = COALESCE($7, ends_at),
               updated_at = NOW()
         WHERE id = $1
-        RETURNING id, notes, status, room_id`,
-      [req.params.id, notes ?? null, status ?? null, room_id ?? null]
+        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at`,
+      [req.params.id, notes ?? null, status ?? null, room_id ?? null,
+       master_id != null ? Number(master_id) : null, newStart, newEnd]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 

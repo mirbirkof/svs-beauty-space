@@ -195,8 +195,6 @@ select.input { background:var(--card); }
   .jcol-head .nm { font-size:12px; }
   .jappt { left:2px; right:2px; padding:4px 5px; font-size:11px; }
   .jappt .t { font-size:10px; }
-  .journal-toolbar { flex-wrap:wrap; }
-  .journal-toolbar .btn-sm { flex:1; }
 }
 
 /* SCROLLBAR */
@@ -241,6 +239,29 @@ select.input { background:var(--card); }
 .jst-noshow   { background:#9ca3af; }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+/* Журнал: панель навігації по датах (DIKIDI-style) */
+.journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; }
+.jt-modes { display:flex; gap:6px; }
+.jt-nav { display:flex; align-items:center; gap:6px; margin:0 auto; position:relative; }
+.jt-arrow { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); transition:background .12s; }
+.jt-arrow:hover { background:var(--primary-light); border-color:var(--primary); color:var(--primary); }
+.jt-today { height:34px; padding:0 12px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:12.5px; font-weight:600; color:var(--text-secondary); }
+.jt-today:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
+.jt-date { height:34px; min-width:200px; padding:0 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:14px; font-weight:700; color:var(--text); text-transform:capitalize; }
+.jt-date:hover { border-color:var(--primary); }
+.jt-right { display:flex; align-items:center; gap:8px; }
+.jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
+.jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.jappt .ok { position:absolute; bottom:5px; right:6px; font-size:13px; opacity:.9; }
+.jappt.dragging { opacity:.45; }
+.jcol-body.drop-active { background:var(--primary-light); }
+@media(max-width:768px){
+  .journal-toolbar { flex-wrap:wrap; gap:8px; }
+  .jt-nav { order:3; width:100%; margin:0; justify-content:center; }
+  .jt-modes { order:1; }
+  .jt-right { order:2; margin-left:auto; }
+  .jt-date { min-width:140px; font-size:13px; }
+}
 </style>
 </head>
 <body>
@@ -411,13 +432,25 @@ select.input { background:var(--card); }
 
       <!-- ═══ JOURNAL ═══ -->
       <div class="page" id="page-journal">
-        <div class="journal-toolbar" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-          <button class="btn btn-outline btn-sm j-mode active" data-mode="day" onclick="setJournalMode('day')">День</button>
-          <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
-          <select id="journalFocus" class="input btn-sm" style="max-width:170px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
-            <option value="">Усі майстри</option>
-          </select>
-          <input type="date" id="journalDate" class="input" style="margin-left:auto" onchange="loadJournal()">
+        <div class="journal-toolbar">
+          <div class="jt-modes">
+            <button class="btn btn-outline btn-sm j-mode active" data-mode="day" onclick="setJournalMode('day')">День</button>
+            <button class="btn btn-outline btn-sm j-mode" data-mode="week" onclick="setJournalMode('week')">Тиждень</button>
+            <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
+          </div>
+          <div class="jt-nav">
+            <button class="jt-arrow" onclick="shiftJournalDate(-1)" title="Назад"><span class="material-icons-round">chevron_left</span></button>
+            <button class="jt-today" onclick="goToday()">Сьогодні</button>
+            <button class="jt-date" id="journalDateLabel" onclick="document.getElementById('journalDate').showPicker?.();document.getElementById('journalDate').click()">—</button>
+            <button class="jt-arrow" onclick="shiftJournalDate(1)" title="Вперед"><span class="material-icons-round">chevron_right</span></button>
+            <input type="date" id="journalDate" onchange="loadJournal()" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
+          </div>
+          <div class="jt-right">
+            <select id="journalFocus" class="input btn-sm" style="max-width:160px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
+              <option value="">Усі майстри</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Запис</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-body" id="journalContent">
@@ -1040,11 +1073,41 @@ const _hm = (d) => { const x = new Date(d); return x.getHours()*60 + x.getMinute
 const _toHHMM = (m) => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 const _money = (v) => v != null ? Number(v).toLocaleString('uk-UA') + ' ₴' : '';
 
+// ── навігація по датах ──
+function updateDateLabel() {
+  const inp = document.getElementById('journalDate');
+  if (!inp.value) inp.valueAsDate = new Date();
+  const lbl = document.getElementById('journalDateLabel');
+  if (!lbl) return;
+  const d = new Date(inp.value + 'T00:00:00');
+  if (journalMode === 'week') {
+    const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6)%7));
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    const f = (x)=>x.toLocaleDateString('uk-UA',{day:'numeric',month:'short'});
+    lbl.textContent = `${f(mon)} – ${f(sun)}`;
+  } else {
+    lbl.textContent = d.toLocaleDateString('uk-UA',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+  }
+}
+function shiftJournalDate(dir) {
+  const inp = document.getElementById('journalDate');
+  const d = new Date((inp.value||new Date().toISOString().slice(0,10)) + 'T00:00:00');
+  d.setDate(d.getDate() + dir * (journalMode==='week'?7:1));
+  inp.value = d.toISOString().slice(0,10);
+  loadJournal();
+}
+function goToday() {
+  document.getElementById('journalDate').valueAsDate = new Date();
+  loadJournal();
+}
+
 async function loadJournal() {
   const container = document.getElementById('journalContent');
+  updateDateLabel();
   const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
   container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   try {
+    if (journalMode === 'week') return renderJournalWeek(container, date);
     const data = await api('/api/schedule/journal?date=' + date);
     journalData = data;
     if (data.error) { container.innerHTML = `<div class="empty"><span class="material-icons-round">error</span>${data.error}</div>`; return; }
@@ -1118,6 +1181,10 @@ function renderJournalDay(container, data) {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0];
     const wStart = m.working ? _hm2(m.start) : null;
     const wEnd   = m.working ? _hm2(m.end)   : null;
+    // денна статистика майстра: к-ть записів + сума (без скасованих)
+    const mAppts = (apptByMaster[m.id]||[]);
+    const cnt = mAppts.length;
+    const sum = mAppts.reduce((acc,a)=> acc + (Number(a.price)||0), 0);
     let body = '';
     // ряди сітки: робочий час — клікабельний для броні «в моменті»
     for (let i=0;i<slots;i++){
@@ -1137,21 +1204,33 @@ function renderJournalDay(container, data) {
       const bs=_hm2(m.break_start), be=_hm2(m.break_end);
       body += `<div class="jbreak" style="top:${(bs-minM)*J_PX_PER_MIN}px;height:${(be-bs)*J_PX_PER_MIN}px"></div>`;
     }
-    // картки записів
-    (apptByMaster[m.id]||[]).forEach(a => {
+    // картки записів (draggable — перенос на інший час/майстра)
+    mAppts.forEach(a => {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
-      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" onclick="openAppt(${a.id})">
+      const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
+      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" draggable="true" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
-        ${h>56?`<div class="p">${_money(a.price)}</div>`:''}
+        ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
+        ${h>64?`<div class="p">${_money(a.price)}</div>`:''}
+        ${okIcon}
       </div>`;
     });
     return `<div class="jcol">
-      <div class="jcol-head"><div class="av">${av}</div><div><div class="nm">${m.name}</div><div class="sp">${m.working?(m.start+'–'+m.end):'вихідний'}</div></div></div>
-      <div class="jcol-body" style="height:${colH}px">${body}</div>
+      <div class="jcol-head">
+        <div class="av">${av}</div>
+        <div style="min-width:0">
+          <div class="nm">${m.name}</div>
+          <div class="sp">${m.working?(m.start+'–'+m.end):'вихідний'}</div>
+          ${cnt?`<div class="stat">${cnt} ${_plural(cnt,'запис','записи','записів')} · ${_money(sum)}</div>`:''}
+        </div>
+      </div>
+      <div class="jcol-body" data-master="${m.id}" data-min="${minM}" data-date="${dateStr}"
+           ondragover="jDragOver(event)" ondragleave="jDragLeave(event)" ondrop="jDrop(event)"
+           style="height:${colH}px">${body}</div>
     </div>`;
   }).join('');
 
@@ -1164,6 +1243,80 @@ function renderJournalDay(container, data) {
     </div>`;
 }
 const _hm2 = (hhmm) => { const [h,m]=String(hhmm||'0:0').split(':').map(Number); return h*60+(m||0); };
+const _plural = (n,one,few,many) => { const m10=n%10,m100=n%100; if(m10===1&&m100!==11)return one; if(m10>=2&&m10<=4&&(m100<10||m100>=20))return few; return many; };
+
+// ── Drag & drop: перенос запису на інший час / до іншого майстра ──
+let _dragId = null;
+function jDragStart(ev, id) { _dragId = id; ev.dataTransfer.effectAllowed='move'; ev.target.classList.add('dragging'); }
+function jDragEnd(ev) { ev.target.classList.remove('dragging'); document.querySelectorAll('.drop-active').forEach(e=>e.classList.remove('drop-active')); }
+function jDragOver(ev) { ev.preventDefault(); ev.dataTransfer.dropEffect='move'; ev.currentTarget.classList.add('drop-active'); }
+function jDragLeave(ev) { ev.currentTarget.classList.remove('drop-active'); }
+async function jDrop(ev) {
+  ev.preventDefault();
+  const col = ev.currentTarget;
+  col.classList.remove('drop-active');
+  if (!_dragId) return;
+  const minM = Number(col.dataset.min);
+  const masterId = Number(col.dataset.master);
+  const dateStr = col.dataset.date;
+  const rect = col.getBoundingClientRect();
+  const y = ev.clientY - rect.top;
+  let mins = minM + Math.round((y / J_PX_PER_MIN) / 15) * 15;   // прив'язка до 15 хв
+  mins = Math.max(0, Math.min(24*60-15, mins));
+  const starts_at = `${dateStr}T${_toHHMM(mins)}:00`;
+  const id = _dragId; _dragId = null;
+  try {
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });
+    if (r.ok) loadJournal();
+    else alert(r.error || 'Не вдалося перенести запис');
+  } catch { alert('Помилка мережі'); }
+}
+
+// ── Тижневий огляд: дні колонками, всі записи салону ──
+async function renderJournalWeek(container, dateStr) {
+  const base = new Date(dateStr + 'T00:00:00');
+  const mon = new Date(base); mon.setDate(base.getDate() - ((base.getDay()+6)%7));
+  const days = Array.from({length:7}, (_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d; });
+  // тягнемо 7 днів паралельно
+  const results = await Promise.all(days.map(d => api('/api/schedule/journal?date=' + d.toISOString().slice(0,10)).catch(()=>({appointments:[]}))));
+  // щоб openAppt() знаходив запис у тижневому режимі
+  journalData = { appointments: results.flatMap(r=>r.appointments||[]), masters: results.find(r=>r&&r.masters)?.masters || [] };
+  let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
+  results.forEach(r => (r.appointments||[]).forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); }));
+  minM=Math.floor(minM/60)*60; maxM=Math.ceil(maxM/60)*60;
+  const slots=(maxM-minM)/30, colH=(maxM-minM)*J_PX_PER_MIN;
+  const today = new Date().toISOString().slice(0,10);
+  let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
+  for (let i=0;i<slots;i++){ timeCol += `<div class="jslot-label">${_toHHMM(minM+i*30)}</div>`; }
+  timeCol += '</div>';
+  const cols = days.map((d,di) => {
+    const ds = d.toISOString().slice(0,10);
+    const appts = (results[di].appointments||[]).slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
+    let body='';
+    for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':''}"></div>`; }
+    // прості рядки-картки (тиждень = огляд, без позиціювання по майстрах)
+    appts.forEach(a => {
+      const s=_hm(a.starts_at), e=_hm(a.ends_at);
+      const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN,22);
+      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" onclick="event.stopPropagation();openAppt(${a.id})" title="${a.master_name||''}">
+        <div class="t">${_toHHMM(s)}</div>
+        <div class="c">${a.client_name||a.service_name||'—'}</div>
+      </div>`;
+    });
+    const sum = appts.reduce((acc,a)=>acc+(Number(a.price)||0),0);
+    return `<div class="jcol">
+      <div class="jcol-head" style="${ds===today?'background:var(--primary-light)':''}">
+        <div style="min-width:0">
+          <div class="nm">${d.toLocaleDateString('uk-UA',{weekday:'short'})}</div>
+          <div class="sp">${d.toLocaleDateString('uk-UA',{day:'numeric',month:'short'})}</div>
+          ${appts.length?`<div class="stat">${appts.length} · ${_money(sum)}</div>`:''}
+        </div>
+      </div>
+      <div class="jcol-body" style="height:${colH}px;cursor:pointer" onclick="(function(){document.getElementById('journalDate').value='${ds}';setJournalMode('day');})()">${body}</div>
+    </div>`;
+  }).join('');
+  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>`;
+}
 
 // ── модалка запису: деталі + замітка + статус ──
 let _roomsCache = null;
@@ -1283,9 +1436,16 @@ async function openCreate(masterId, dateStr, minutes) {
   const services = await getServices();
   const hh = String(Math.floor(minutes/60)).padStart(2,'0'), mm = String(minutes%60).padStart(2,'0');
   _createCtx = { masterId, dateStr };
-  document.getElementById('apptTitle').textContent = `Новий запис · ${master?master.name:''}`;
+  const allMasters = (journalData?.masters||[]).filter(m=>m.working || true);
+  document.getElementById('apptTitle').textContent = `Новий запис${master?' · '+master.name:''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
+      ${!masterId ? `<div>
+        <span style="color:var(--text-secondary);font-size:12px">Майстер</span>
+        <select id="ncMaster" class="input">
+          ${allMasters.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Час початку</span>
         <input id="ncTime" type="time" class="input" value="${hh}:${mm}">
@@ -1348,9 +1508,12 @@ async function saveCreate() {
   const newPhone = document.getElementById('ncNewPhone').value.trim();
   if (!svc || !time) { msg.style.color='#ef4444'; msg.textContent='Оберіть послугу і час'; return; }
   if (!_createCtx.clientId && !newName && !newPhone) { msg.style.color='#ef4444'; msg.textContent='Оберіть клієнта або введіть імʼя/телефон'; return; }
+  const masterSel = document.getElementById('ncMaster');
+  const masterId = _createCtx.masterId || (masterSel ? Number(masterSel.value) : null);
+  if (!masterId) { msg.style.color='#ef4444'; msg.textContent='Оберіть майстра'; return; }
   const starts_at = `${_createCtx.dateStr}T${time}:00`;
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
-  const body = { master_id: _createCtx.masterId, service_id: svc, starts_at, notes: note };
+  const body = { master_id: masterId, service_id: svc, starts_at, notes: note };
   if (_createCtx.clientId) body.client_id = _createCtx.clientId;
   else { body.client_name = newName; body.client_phone = newPhone; }
   try {
