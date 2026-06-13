@@ -1184,7 +1184,7 @@ let journalMode = 'day';
 
 // ── Auth ─────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('journalDate').valueAsDate = new Date();
+  document.getElementById('journalDate').value = _ymd(new Date());
   if (TOKEN) checkToken(); else showLogin();
 });
 
@@ -1798,11 +1798,13 @@ const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверд�
 const _hm = (d) => { const x = new Date(d); return x.getHours()*60 + x.getMinutes(); };
 const _toHHMM = (m) => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 const _money = (v) => v != null ? Number(v).toLocaleString('uk-UA') + ' ₴' : '';
+// Локальна дата YYYY-MM-DD (БЕЗ зсуву UTC — toISOString у Києві відкочував день назад)
+const _ymd = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
 
 // ── навігація по датах ──
 function updateDateLabel() {
   const inp = document.getElementById('journalDate');
-  if (!inp.value) inp.valueAsDate = new Date();
+  if (!inp.value) inp.value = _ymd(new Date());
   const lbl = document.getElementById('journalDateLabel');
   if (!lbl) return;
   const d = new Date(inp.value + 'T00:00:00');
@@ -1817,13 +1819,13 @@ function updateDateLabel() {
 }
 function shiftJournalDate(dir) {
   const inp = document.getElementById('journalDate');
-  const d = new Date((inp.value||new Date().toISOString().slice(0,10)) + 'T00:00:00');
+  const d = new Date((inp.value||_ymd(new Date())) + 'T00:00:00');
   d.setDate(d.getDate() + dir * (journalMode==='week'?7:1));
-  inp.value = d.toISOString().slice(0,10);
+  inp.value = _ymd(d);
   loadJournal();
 }
 function goToday() {
-  document.getElementById('journalDate').valueAsDate = new Date();
+  document.getElementById('journalDate').value = _ymd(new Date());
   _calMonth = null;
   loadJournal();
 }
@@ -1831,7 +1833,7 @@ function goToday() {
 // ── Міні-календар у правій панелі (вибір будь-якої дати) ──
 let _calMonth = null;   // {y, m} що зараз показано; null → місяць обраної дати
 function calShift(dir) {
-  const sel = new Date((document.getElementById('journalDate').value||new Date().toISOString().slice(0,10))+'T00:00:00');
+  const sel = new Date((document.getElementById('journalDate').value||_ymd(new Date()))+'T00:00:00');
   const base = _calMonth ? new Date(_calMonth.y, _calMonth.m, 1) : new Date(sel.getFullYear(), sel.getMonth(), 1);
   base.setMonth(base.getMonth()+dir);
   _calMonth = { y: base.getFullYear(), m: base.getMonth() };
@@ -1846,11 +1848,11 @@ function calPick(ds) {
 function renderMiniCal() {
   const box = document.getElementById('jMiniCal');
   if (!box) return;
-  const selStr = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  const selStr = document.getElementById('journalDate').value || _ymd(new Date());
   const sel = new Date(selStr+'T00:00:00');
   const view = _calMonth ? new Date(_calMonth.y, _calMonth.m, 1) : new Date(sel.getFullYear(), sel.getMonth(), 1);
   const y=view.getFullYear(), mo=view.getMonth();
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = _ymd(new Date());
   const first = new Date(y, mo, 1);
   const startOffset = (first.getDay()+6)%7;           // Пн=0
   const start = new Date(first); start.setDate(1-startOffset);
@@ -1858,7 +1860,7 @@ function renderMiniCal() {
   let cells='';
   for (let i=0;i<42;i++){
     const d=new Date(start); d.setDate(start.getDate()+i);
-    const ds=d.toISOString().slice(0,10);
+    const ds=_ymd(d);
     const cls=['jcal-day'];
     if (d.getMonth()!==mo) cls.push('other');
     if (ds===todayStr) cls.push('today');
@@ -1880,7 +1882,7 @@ function renderMiniCal() {
 async function loadCashGauge(forDate) {
   const box = document.getElementById('jCashGauge');
   if (!box) return;
-  const date = forDate || document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  const date = forDate || document.getElementById('journalDate').value || _ymd(new Date());
   box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-sub">завантаження…</div>`;
   let d;
   try { d = await api('/api/cashbox/today?date=' + date); }
@@ -1918,7 +1920,7 @@ async function loadJournal() {
   updateDateLabel();
   renderMiniCal();
   loadCashGauge();
-  const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById('journalDate').value || _ymd(new Date());
   container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   try {
     if (journalMode === 'week') return renderJournalWeek(container, date);
@@ -1993,10 +1995,10 @@ function renderJournalDay(container, data) {
   timeCol += '</div>';
 
   // колонки майстрів
-  const dateStr = document.getElementById('journalDate').value || new Date().toISOString().slice(0,10);
+  const dateStr = document.getElementById('journalDate').value || _ymd(new Date());
   // індикатор поточного часу (червона лінія) — лише для сьогодні в межах сітки
   const _now = new Date();
-  const isToday = dateStr === _now.toISOString().slice(0,10);
+  const isToday = dateStr === _ymd(_now);
   const nowM = _now.getHours()*60 + _now.getMinutes();
   const showNow = isToday && nowM >= minM && nowM < maxM;
   const cols = masters.map(m => {
@@ -2058,7 +2060,30 @@ function renderJournalDay(container, data) {
     </div>`;
   }).join('');
 
-  container.innerHTML = `<div class="jgrid" style="--jh:${15*J_PX_PER_MIN}px">${timeCol}${cols}</div>
+  // колонка для записів без призначеного майстра (у BeautyPro трапляється бронь без майстра) — щоб жодна не губилась
+  const orphan = appts.filter(a => !a.master_id);
+  let orphanCol = '';
+  if (orphan.length && !journalFocusMaster) {
+    let body = '';
+    for (let i=0;i<slots;i++){ const m2=minM+i*15; const lineCls = m2%60===0?' hour':(m2%30===0?' half':''); body += `<div class="jslot${lineCls}"></div>`; }
+    orphan.forEach(a => {
+      const s=_hm(a.starts_at), e=_hm(a.ends_at);
+      const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
+      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" onclick="openAppt(${a.id})">
+        <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
+        <div class="s">${a.service_name||'Послуга'}</div>
+        <div class="c">${a.client_name||'—'}</div>
+      </div>`;
+    });
+    if (showNow) body += `<div class="jnow" style="top:${(nowM-minM)*J_PX_PER_MIN}px"></div>`;
+    orphanCol = `<div class="jcol"><div class="jcol-head">
+        <div class="av" style="background:#f59e0b;color:#fff">?</div>
+        <div style="min-width:0"><div class="nm">Без майстра</div><div class="sp">не призначено</div>
+        <div class="stat">${orphan.length} ${_plural(orphan.length,'запис','записи','записів')}</div></div>
+      </div><div class="jcol-body" style="height:${colH}px">${body}</div></div>`;
+  }
+
+  container.innerHTML = `<div class="jgrid" style="--jh:${15*J_PX_PER_MIN}px">${timeCol}${cols}${orphanCol}</div>
     <div class="jlegend">
       <span><i style="background:#6366f1"></i>Заплановано</span>
       <span><i style="background:#0ea5e9"></i>Підтверджено</span>
@@ -2102,19 +2127,19 @@ async function renderJournalWeek(container, dateStr) {
   const mon = new Date(base); mon.setDate(base.getDate() - ((base.getDay()+6)%7));
   const days = Array.from({length:7}, (_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d; });
   // тягнемо 7 днів паралельно
-  const results = await Promise.all(days.map(d => api('/api/schedule/journal?date=' + d.toISOString().slice(0,10)).catch(()=>({appointments:[]}))));
+  const results = await Promise.all(days.map(d => api('/api/schedule/journal?date=' + _ymd(d)).catch(()=>({appointments:[]}))));
   // щоб openAppt() знаходив запис у тижневому режимі
   journalData = { appointments: results.flatMap(r=>r.appointments||[]), masters: results.find(r=>r&&r.masters)?.masters || [] };
   let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
   results.forEach(r => (r.appointments||[]).forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); }));
   minM=Math.floor(minM/60)*60; maxM=Math.ceil(maxM/60)*60;
   const slots=(maxM-minM)/30, colH=(maxM-minM)*J_PX_PER_MIN;
-  const today = new Date().toISOString().slice(0,10);
+  const today = _ymd(new Date());
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
   for (let i=0;i<slots;i++){ timeCol += `<div class="jslot-label">${_toHHMM(minM+i*30)}</div>`; }
   timeCol += '</div>';
   const cols = days.map((d,di) => {
-    const ds = d.toISOString().slice(0,10);
+    const ds = _ymd(d);
     const appts = (results[di].appointments||[]).slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
     let body='';
     for (let i=0;i<slots;i++){ const m2=minM+i*30; body += `<div class="jslot${m2%60===0?' hour':' half'}"></div>`; }
