@@ -217,6 +217,84 @@ async function syncAppointments(from, to) {
   return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients };
 }
 
+// ── Продажи BP → касса (cash_operations) ───────────────────────────────
+// BP-кошельки → способ оплаты. Безнал = банковская карта, остальное = готівка.
+const BP_CARD_ACCOUNTS = new Set(['88de9f80-b486-7c3d-2721-6e895eccd818']);
+function saleMethod(payments) {
+  if (!Array.isArray(payments) || !payments.length) return 'cash';
+  const main = payments.slice().sort((a, b) => (Number(b.sum) || 0) - (Number(a.sum) || 0))[0];
+  return BP_CARD_ACCOUNTS.has(main.account) ? 'card' : 'cash';
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// /sales нестабилен: поле `appointment` роняет 502/500, тяжёлые окна тоже.
+// Тянем по одному дню, без appointment, с ретраями.
+async function fetchSalesDay(token, day) {
+  const nd = new Date(day + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1);
+  const next = nd.toISOString().slice(0, 10);
+  const fields = encodeURIComponent('sale_date,type,sum,cancel,payments,professional_name,name');
+  const path = `/sales?fields=${fields}&sale_date_from=${day}&sale_date_to=${next}` +
+    `&location=${encodeURIComponent(process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499')}&limit=1000`;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const r = await httpsRequest('GET', path, { token });
+      return Array.isArray(r) ? r : (r && r.data) || [];
+    } catch (e) {
+      if (e.status >= 500 && i < 4) { await sleep(700 * (i + 1)); continue; }
+      throw e;
+    }
+  }
+  return [];
+}
+
+// Проводит продажи BP в кассу за период [from..to] (включительно).
+// Идемпотентно: ext_ref = sale.id, ON CONFLICT DO NOTHING.
+// Под каждый день — закрытая смена 'BeautyPro YYYY-MM-DD'.
+async function syncSales(from, to) {
+  const pool = getPool();
+  const token = await getToken();
+  // имя мастера → id (для привязки операции)
+  const mres = await pool.query('SELECT id, name FROM masters');
+  const mmap = new Map(mres.rows.map((r) => [String(r.name).trim(), r.id]));
+
+  let posted = 0, skipped = 0, shifts = 0;
+  const days = [];
+  for (let d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z'); d <= end; d.setUTCDate(d.getUTCDate() + 1))
+    days.push(d.toISOString().slice(0, 10));
+
+  for (const day of days) {
+    const recs = (await fetchSalesDay(token, day)).filter(
+      (s) => !s.cancel && (s.type === 'Service' || s.type === 'Product') && (Number(s.sum) || 0) > 0);
+    if (!recs.length) continue;
+    recs.sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
+    const cashSum = recs.filter((s) => saleMethod(s.payments) === 'cash').reduce((a, s) => a + Number(s.sum), 0);
+
+    // смена дня
+    let sh = await pool.query('SELECT id FROM cash_shifts WHERE notes = $1 LIMIT 1', ['BeautyPro ' + day]);
+    let shiftId;
+    if (sh.rows[0]) shiftId = sh.rows[0].id;
+    else {
+      const ins = await pool.query(
+        `INSERT INTO cash_shifts (opened_at, closed_at, opening_cash, closing_cash, status, notes)
+         VALUES ($1,$2,0,$3,'closed',$4) RETURNING id`,
+        [recs[0].sale_date, recs[recs.length - 1].sale_date, cashSum, 'BeautyPro ' + day]);
+      shiftId = ins.rows[0].id; shifts++;
+    }
+
+    for (const s of recs) {
+      const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
+      const r = await pool.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, created_at, ext_ref)
+         VALUES ($1,'in',$2,$3,$4,'bp_sale',$5,$6,$7,$8)
+         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING RETURNING id`,
+        [shiftId, s.type === 'Service' ? 'sale_service' : 'sale_product', Number(s.sum),
+         saleMethod(s.payments), masterId, s.name || null, s.sale_date, s.id]);
+      if (r.rowCount) posted++; else skipped++;
+    }
+  }
+  return { posted, skipped, shifts };
+}
+
 // Backfill клиентов BP→local: для записей без client_id тянем клиента из BP и создаём карточку
 async function backfillClients(limit = 500) {
   const pool = getPool();
@@ -288,6 +366,15 @@ router.post('/v2/appointments', requirePerm('sync.write'), async (req, res) => {
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
+router.post('/v2/sales', requirePerm('sync.write'), async (req, res) => {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const from = req.query.from || iso(new Date(today.getTime() - 3 * 864e5));
+  const to = req.query.to || iso(today);
+  try { res.json({ ok: true, from, to, ...(await withAuthRetry(() => syncSales(from, to))) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
 router.get('/v2/appointments/status', requirePerm('sync.write'), async (req, res) => {
   try {
     const pool = getPool();
@@ -308,6 +395,9 @@ async function cronTick() {
     const now = new Date();
     const r = await withAuthRetry(() => syncAppointments(iso(new Date(now.getTime() - 864e5)), iso(new Date(now.getTime() + 14 * 864e5))));
     if (r.created || r.updated) console.log(`[bp-appt-sync] +${r.created} new, ~${r.updated} upd`);
+    // продажи в кассу за последние 3 дня (включая сегодня) — держим кассу синхронной с BP
+    const s = await withAuthRetry(() => syncSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
+    if (s.posted) console.log(`[bp-appt-sync] касса: +${s.posted} продаж, ${s.shifts} змін`);
   } catch (e) {
     console.error('[bp-appt-sync] cron error:', e.message);
   }
@@ -322,3 +412,7 @@ function startCron() {
 startCron();
 
 module.exports = router;
+module.exports.syncAppointments = syncAppointments;
+module.exports.backfillClients = backfillClients;
+module.exports.syncSales = syncSales;
+module.exports.syncServicesCatalog = syncServicesCatalog;
