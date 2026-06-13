@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const mono = require('../lib/mono');
+const { getSetting } = require('../lib/settings');
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
 
@@ -249,7 +250,19 @@ async function createInvoiceForOrder(orderId) {
 }
 
 // ── предоплата за онлайн-запись (online_bookings) ──
-const DEPOSIT_PERCENT = Math.min(100, Math.max(0, parseInt(process.env.BOOKING_DEPOSIT_PERCENT || '30', 10) || 0));
+// Налаштування читаються з кабінету (app_settings.prepayment); якщо там нічого —
+// fallback на серверну змінну BOOKING_DEPOSIT_PERCENT (історична поведінка).
+const ENV_DEPOSIT_PERCENT = Math.min(100, Math.max(0, parseInt(process.env.BOOKING_DEPOSIT_PERCENT || '30', 10) || 0));
+async function getPrepaymentConfig() {
+  const s = await getSetting('prepayment', null);
+  if (s && typeof s === 'object') {
+    const enabled = s.enabled !== false; // за замовч. увімкнено, якщо ключ існує
+    const percent = Math.min(100, Math.max(0, parseInt(s.percent, 10) || 0));
+    const minAmount = Math.max(0, parseInt(s.min_amount, 10) || 0);
+    return { enabled, percent: enabled ? percent : 0, minAmount };
+  }
+  return { enabled: ENV_DEPOSIT_PERCENT > 0, percent: ENV_DEPOSIT_PERCENT, minAmount: 0 };
+}
 
 // отправка через booking-бота (клиент гарантированно начинал с ним диалог)
 function bookingBotSend(chatId, text, opts = {}) {
@@ -268,7 +281,8 @@ function bookingBotSend(chatId, text, opts = {}) {
 }
 
 async function createInvoiceForBooking(bookingId) {
-  if (!DEPOSIT_PERCENT) return null; // предоплата выключена
+  const cfg = await getPrepaymentConfig();
+  if (!cfg.enabled || !cfg.percent) return null; // предоплата выключена
   const pool = getPool();
   const r = await pool.query(
     `SELECT b.id, b.status, b.service_name, b.client_name, b.telegram_id, b.prepaid_at,
@@ -283,7 +297,9 @@ async function createInvoiceForBooking(bookingId) {
   if (b.prepaid_at) return { alreadyPaid: true };
   if (!b.price || Number(b.price) <= 0) return null; // цена неизвестна — без предоплаты
 
-  const deposit = Math.max(1, Math.round(Number(b.price) * DEPOSIT_PERCENT / 100));
+  let deposit = Math.round(Number(b.price) * cfg.percent / 100);
+  if (cfg.minAmount) deposit = Math.max(deposit, cfg.minAmount); // мін. сума предоплати
+  deposit = Math.min(Math.max(1, deposit), Math.round(Number(b.price))); // не більше повної ціни
   const serviceName = b.service_name || b.local_service_name || 'послугу';
 
   // идемпотентность: живой pending-инвойс не дублируем

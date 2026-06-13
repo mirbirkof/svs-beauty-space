@@ -15,6 +15,8 @@ const ALLOWED = {
   salon_profile: (v) => isObj(v),
   // Онлайн-запис: вкл/вимк, посилання, крок часу, мін. час до запису
   online_booking: (v) => isObj(v),
+  // Передплата: вкл/вимк, % депозиту, мін. сума (грн)
+  prepayment: (v) => isObj(v),
 };
 
 router.use(requirePerm()); // будь-який авторизований може читати

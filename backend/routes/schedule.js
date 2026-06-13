@@ -55,6 +55,11 @@ router.put('/masters/:id/schedule', async (req, res) => {
       if (!/^\d{2}:\d{2}$/.test(val.start) || !/^\d{2}:\d{2}$/.test(val.end)) continue;
       clean[day] = { start: val.start, end: val.end, break_start: val.break_start || null, break_end: val.break_end || null };
     }
+    // Зберігаємо разові винятки (відгули), щоб оновлення тижневого графіка їх не стирало
+    const cur = await pool.query('SELECT schedule_json FROM masters WHERE id = $1', [req.params.id]);
+    if (!cur.rows[0]) return res.status(404).json({ error: 'master not found' });
+    const existing = cur.rows[0].schedule_json || {};
+    if (existing.exceptions && typeof existing.exceptions === 'object') clean.exceptions = existing.exceptions;
     const r = await pool.query(
       'UPDATE masters SET schedule_json = $1 WHERE id = $2 RETURNING id, name, schedule_json',
       [JSON.stringify(clean), req.params.id]

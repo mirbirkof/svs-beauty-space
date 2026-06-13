@@ -280,7 +280,11 @@ select.input { background:var(--card); }
 .jcash-row .val { margin-left:auto; font-weight:700; }
 .jcash-row.tot { border-top:1px solid var(--border); padding-top:8px; font-size:14px; }
 .jcash-lock { font-size:12px; color:var(--text-secondary); text-align:center; padding:8px 4px; }
-@media(max-width:1100px){ .journal-side { display:none; } }
+@media(max-width:1100px){
+  .journal-layout { flex-direction:column; }
+  .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
+  .journal-side > .card { flex:1 1 240px; min-width:0; }
+}
 /* Налаштування: ліве підменю (DIKIDI-style) */
 .settings-layout { display:flex; gap:20px; align-items:flex-start; }
 .settings-nav { flex:0 0 230px; display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:8px; position:sticky; top:16px; }
@@ -313,6 +317,14 @@ select.input { background:var(--card); }
 }
 .jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jappt .ok { position:absolute; bottom:5px; right:6px; font-size:13px; opacity:.9; }
+/* Графік змін */
+.sch-week { display:flex; flex-direction:column; gap:8px; }
+.sch-row { display:flex; align-items:center; gap:14px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; flex-wrap:wrap; }
+.sch-day { display:flex; align-items:center; gap:8px; min-width:64px; cursor:pointer; }
+.sch-day input { width:18px; height:18px; }
+.sch-times { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.sch-times .input { width:104px; }
+.sch-brk { font-size:11px; color:var(--text-secondary); margin-left:8px; }
 .jappt.dragging { opacity:.45; }
 .jcol-body.drop-active { background:var(--primary-light); }
 @media(max-width:768px){
@@ -735,6 +747,8 @@ select.input { background:var(--card); }
           <nav class="settings-nav">
             <button class="set-item active" data-tab="profile" onclick="setTab('profile')"><span class="material-icons-round">storefront</span> Профіль</button>
             <button class="set-item" data-tab="booking" onclick="setTab('booking')"><span class="material-icons-round">event_available</span> Онлайн-запис</button>
+            <button class="set-item" data-tab="prepay" onclick="setTab('prepay')"><span class="material-icons-round">payments</span> Передплата</button>
+            <button class="set-item" data-tab="schedule" onclick="setTab('schedule')"><span class="material-icons-round">schedule</span> Графік змін</button>
             <button class="set-item" data-tab="privacy" onclick="setTab('privacy')"><span class="material-icons-round">visibility</span> Конфіденційність</button>
             <button class="set-item" data-tab="rooms" onclick="setTab('rooms')"><span class="material-icons-round">meeting_room</span> Кабінети / ресурси</button>
             <button class="set-item" data-tab="consumables" onclick="setTab('consumables')"><span class="material-icons-round">inventory_2</span> Розхідники</button>
@@ -786,6 +800,40 @@ select.input { background:var(--card); }
                   <button class="btn btn-primary" onclick="saveBooking()">Зберегти</button>
                   <span id="bookingMsg" class="set-msg"></span>
                 </div>
+              </div></div>
+            </div>
+
+            <!-- ПЕРЕДПЛАТА -->
+            <div class="set-pane" id="tab-prepay">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Передплата за онлайн-запис</h3>
+                <p class="set-p">При онлайн-записі клієнту автоматично виставляється рахунок на передоплату через Monobank (картка / Apple Pay / Google Pay). Це знижує кількість неявок.</p>
+                <label class="set-toggle">
+                  <input type="checkbox" id="pp_enabled" onchange="savePrepay()">
+                  <span><b>Передплату увімкнено</b><i>Коли вимкнено — клієнт записується без передоплати.</i></span>
+                </label>
+                <div class="set-form" style="margin-top:14px">
+                  <label class="set-field"><span>Відсоток депозиту, %</span><input id="pp_percent" class="input" type="number" min="0" max="100" step="5" value="30"></label>
+                  <label class="set-field"><span>Мін. сума, грн (0 = без мінімуму)</span><input id="pp_min" class="input" type="number" min="0" step="10" value="0"></label>
+                </div>
+                <p class="set-p" style="margin-top:10px;font-size:12px">Приклад: послуга 1000 грн, депозит 30% → передоплата <b>300 грн</b>. Решта оплачується в салоні.</p>
+                <div class="set-actions">
+                  <button class="btn btn-primary" onclick="savePrepay()">Зберегти</button>
+                  <span id="prepayMsg" class="set-msg"></span>
+                </div>
+              </div></div>
+            </div>
+
+            <!-- ГРАФІК ЗМІН -->
+            <div class="set-pane" id="tab-schedule">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Графік змін майстрів</h3>
+                <p class="set-p">Робочі дні й години кожного майстра на тиждень. Журнал показує лише робочий час, онлайн-запис пропонує тільки вільні слоти в межах зміни.</p>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+                  <select id="schMaster" class="input" style="max-width:260px" onchange="loadSchedule()"><option value="">— оберіть майстра —</option></select>
+                  <span id="schMsg" class="set-msg"></span>
+                </div>
+                <div id="schGrid"></div>
               </div></div>
             </div>
 
@@ -965,10 +1013,90 @@ async function loadSettings() {
     if (document.getElementById('ob_step')) document.getElementById('ob_step').value = b.step ?? 30;
     if (document.getElementById('ob_minlead')) document.getElementById('ob_minlead').value = b.min_lead_hours ?? 2;
     if (document.getElementById('ob_cancel')) document.getElementById('ob_cancel').value = b.cancel_hours ?? 24;
+    // Передплата
+    const pp = s.prepayment || {};
+    const ppe = document.getElementById('pp_enabled'); if (ppe) ppe.checked = pp.enabled === true;
+    if (document.getElementById('pp_percent')) document.getElementById('pp_percent').value = pp.percent ?? 30;
+    if (document.getElementById('pp_min')) document.getElementById('pp_min').value = pp.min_amount ?? 0;
     msg.textContent = '';
   } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Не вдалося завантажити налаштування'; }
   loadRooms();
   loadConsServices();
+  loadSchMasters();
+}
+async function savePrepay() {
+  const msg = document.getElementById('prepayMsg');
+  const prepayment = {
+    enabled: document.getElementById('pp_enabled').checked,
+    percent: Math.min(100, Math.max(0, Number(document.getElementById('pp_percent').value)||0)),
+    min_amount: Math.max(0, Number(document.getElementById('pp_min').value)||0),
+  };
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ prepayment }) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Збережено ✓'; }
+    else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
+}
+// ── Графік змін майстрів ──
+const _SCH_DAYS = [['mon','Пн'],['tue','Вт'],['wed','Ср'],['thu','Чт'],['fri','Пт'],['sat','Сб'],['sun','Нд']];
+let _schMastersCache = null;
+async function loadSchMasters() {
+  const sel = document.getElementById('schMaster'); if (!sel) return;
+  try {
+    const r = await api('/api/schedule/masters');
+    _schMastersCache = (r.items || r.masters || []).filter(m => m.active !== false);
+    sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
+      _schMastersCache.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }
+}
+function loadSchedule() {
+  const id = document.getElementById('schMaster').value;
+  const grid = document.getElementById('schGrid');
+  if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати графік.</p>'; return; }
+  const m = (_schMastersCache||[]).find(x => String(x.id) === String(id));
+  const sched = (m && m.schedule_json) || {};
+  grid.innerHTML = `<div class="sch-week">${_SCH_DAYS.map(([k,lbl])=>{
+    const d = sched[k]; const on = !!d;
+    return `<div class="sch-row" data-day="${k}">
+      <label class="sch-day"><input type="checkbox" class="sch-on" ${on?'checked':''} onchange="schToggle(this)"><b>${lbl}</b></label>
+      <div class="sch-times" ${on?'':'style="opacity:.35;pointer-events:none"'}>
+        <input type="time" class="input sch-start" value="${(d&&d.start)||'09:00'}">
+        <span>–</span>
+        <input type="time" class="input sch-end" value="${(d&&d.end)||'18:00'}">
+        <span class="sch-brk">перерва</span>
+        <input type="time" class="input sch-bs" value="${(d&&d.break_start)||''}">
+        <input type="time" class="input sch-be" value="${(d&&d.break_end)||''}">
+      </div>
+    </div>`;
+  }).join('')}</div>
+  <div class="set-actions"><button class="btn btn-primary" onclick="saveSchedule()">Зберегти графік</button><span id="schSaveMsg" class="set-msg"></span></div>`;
+}
+function schToggle(cb) {
+  const t = cb.closest('.sch-row').querySelector('.sch-times');
+  if (cb.checked) { t.style.opacity=''; t.style.pointerEvents=''; }
+  else { t.style.opacity='.35'; t.style.pointerEvents='none'; }
+}
+async function saveSchedule() {
+  const id = document.getElementById('schMaster').value; if (!id) return;
+  const msg = document.getElementById('schSaveMsg');
+  const schedule = {};
+  document.querySelectorAll('#schGrid .sch-row').forEach(row => {
+    const day = row.dataset.day;
+    if (!row.querySelector('.sch-on').checked) { schedule[day] = null; return; }
+    const start = row.querySelector('.sch-start').value, end = row.querySelector('.sch-end').value;
+    if (!start || !end) { schedule[day] = null; return; }
+    const bs = row.querySelector('.sch-bs').value, be = row.querySelector('.sch-be').value;
+    schedule[day] = { start, end, break_start: bs||null, break_end: be||null };
+  });
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r = await api('/api/schedule/masters/'+id+'/schedule', { method:'PUT', body: JSON.stringify({ schedule }) });
+    if (r.ok || r.master) {
+      msg.style.color='#10b981'; msg.textContent='Збережено ✓';
+      const m = (_schMastersCache||[]).find(x => String(x.id)===String(id)); if (m && r.master) m.schedule_json = r.master.schedule_json;
+    } else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
 async function saveProfile() {
   const msg = document.getElementById('profileMsg');
