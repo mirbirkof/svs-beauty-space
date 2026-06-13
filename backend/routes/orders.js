@@ -14,6 +14,23 @@ const { requirePerm } = require('../lib/rbac');
 
 const STATUSES = ['new', 'paid', 'packing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
+// единый формат телефона +380XXXXXXXXX (как в create/waitlist/booking)
+function normPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('380')) return '+' + d;
+  if (d.length === 10 && d.startsWith('0')) return '+38' + d;
+  if (d.length === 9) return '+380' + d;
+  return d ? '+' + d : '';
+}
+// Доступ к конкретному заказу: владелец по сессии ИЛИ гость, знающий телефон заказа
+// (capability — закрывает IDOR-перебор по числовым id, гостевой checkout не ломается).
+function canAccessOrder(req, order, orderPhone, providedPhone) {
+  if (req.client) return order.client_id === req.client.id;
+  const want = normPhone(orderPhone);
+  const got = normPhone(providedPhone);
+  return !!want && want === got;
+}
+
 // ── создать заказ ───────────────────────────────────────
 router.post('/', authClient({ optional: true }), async (req, res) => {
   const pool = getPool();
@@ -201,11 +218,16 @@ router.get('/:id', authClient({ optional: true }), async (req, res) => {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'bad-id' });
-    const r = await pool.query(`SELECT * FROM orders WHERE id = $1`, [id]);
+    const r = await pool.query(
+      `SELECT o.*, c.phone AS _client_phone
+         FROM orders o LEFT JOIN clients c ON c.id = o.client_id
+        WHERE o.id = $1`, [id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
     const order = r.rows[0];
-    if (req.client && order.client_id !== req.client.id) {
-      return res.status(403).json({ error: 'not-yours' });
+    const orderPhone = order._client_phone;
+    delete order._client_phone;
+    if (!canAccessOrder(req, order, orderPhone, req.query.phone)) {
+      return res.status(403).json({ error: 'forbidden' });
     }
     const items = await pool.query(
       `SELECT * FROM order_items WHERE order_id = $1 ORDER BY id`, [id]
@@ -258,15 +280,20 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
   try {
     await client.query('BEGIN'); await applyTenant(client);
     const id = parseInt(req.params.id, 10);
-    const r = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [id]);
+    const r = await client.query(
+      `SELECT o.*, c.phone AS _client_phone
+         FROM orders o LEFT JOIN clients c ON c.id = o.client_id
+        WHERE o.id = $1 FOR UPDATE OF o`, [id]);
     if (r.rowCount === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'not-found' });
     }
     const order = r.rows[0];
-    if (req.client && order.client_id !== req.client.id) {
+    const orderPhone = order._client_phone;
+    delete order._client_phone;
+    if (!canAccessOrder(req, order, orderPhone, req.body?.phone)) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'not-yours' });
+      return res.status(403).json({ error: 'forbidden' });
     }
     if (['cancelled', 'refunded', 'delivered', 'shipped'].includes(order.status)) {
       await client.query('ROLLBACK');

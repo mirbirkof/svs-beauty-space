@@ -13,6 +13,7 @@ const router = express.Router();
 const { getPool } = require('../db-pg');
 const bp = require('../beautyproClient');
 const { requirePerm } = require('../lib/rbac');
+const { authClient } = require('./cabinet-auth');
 
 const pool = getPool();
 
@@ -93,10 +94,11 @@ router.get('/waitlist', requirePerm('waitlist.read'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/waitlist/mine?phone=...
-router.get('/waitlist/mine', async (req, res) => {
+// GET /api/waitlist/mine — телефон берём ТОЛЬКО из авторизованной сессии кабинета
+// (раньше любой ?phone= отдавал чужую очередь → утечка PII по перебору номеров)
+router.get('/waitlist/mine', authClient(), async (req, res) => {
   try {
-    const phone = normalizePhone(req.query.phone);
+    const phone = normalizePhone(req.client.phone);
     if (!phone) return res.status(400).json({ error: 'phone required' });
     const r = await pool.query(
       'SELECT * FROM waitlist WHERE client_phone = $1 ORDER BY created_at DESC LIMIT 50',
@@ -224,10 +226,11 @@ router.post('/booking/confirm', async (req, res) => {
   }
 });
 
-// GET /api/booking/history?phone=... — все онлайн-записи + waitlist + покупки
-router.get('/booking/history', async (req, res) => {
+// GET /api/booking/history — все онлайн-записи + waitlist + покупки.
+// Телефон берём ТОЛЬКО из авторизованной сессии (раньше ?phone= отдавал чужую историю без auth).
+router.get('/booking/history', authClient(), async (req, res) => {
   try {
-    const phone = normalizePhone(req.query.phone);
+    const phone = normalizePhone(req.client.phone);
     if (!phone) return res.status(400).json({ error: 'phone required' });
     const [bookings, waiting, orders] = await Promise.all([
       pool.query('SELECT * FROM online_bookings WHERE client_phone = $1 ORDER BY date_from DESC LIMIT 50', [phone]),

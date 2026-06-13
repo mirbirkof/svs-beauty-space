@@ -35,7 +35,11 @@ async function sendOtpToUser({ telegram_id, phone, text }) {
     // Локального токена нет — fallback через booking-api
     const r = await fetch(BOOKING_RELAY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // shared-secret для booking-api релая (если задан в env обоих сервисов)
+        ...(process.env.INTERNAL_RELAY_SECRET ? { 'x-internal-token': process.env.INTERNAL_RELAY_SECRET } : {}),
+      },
       body: JSON.stringify({ phone, text }),
     });
     const j = await r.json().catch(() => ({}));
