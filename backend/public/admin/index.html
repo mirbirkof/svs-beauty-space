@@ -145,6 +145,8 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .btn-primary { background:var(--primary); color:#fff; }
 .btn-primary:hover { background:var(--primary-hover); }
 .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+.payway { flex:1; display:flex; align-items:center; gap:6px; justify-content:center; padding:8px; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:14px; }
+.payway:has(input:checked) { border-color:#10b981; background:rgba(16,185,129,.08); font-weight:600; }
 .btn-outline:hover { border-color:var(--primary); color:var(--primary); }
 .btn-sm { padding:5px 10px; font-size:12px; }
 .btn-danger { background:var(--danger); color:#fff; }
@@ -1800,6 +1802,9 @@ const _toHHMM = (m) => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m
 const _money = (v) => v != null ? Number(v).toLocaleString('uk-UA') + ' ₴' : '';
 // Локальна дата YYYY-MM-DD (БЕЗ зсуву UTC — toISOString у Києві відкочував день назад)
 const _ymd = (dt) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+// На тачскрінах нативний HTML5-drag не працює і ПЕРЕХОПЛЮЄ тап → картка запису не відкривалась на телефоні.
+// Вмикаємо draggable лише на десктопі (є мишка / немає тача).
+const IS_TOUCH = (('ontouchstart' in window) || navigator.maxTouchPoints > 0) && !window.matchMedia('(pointer:fine)').matches;
 
 // ── навігація по датах ──
 function updateDateLabel() {
@@ -2034,7 +2039,7 @@ function renderJournalDay(container, data) {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
-      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px" draggable="true" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
+      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
         <div class="s">${a.service_name||'Послуга'}</div>
@@ -2216,15 +2221,59 @@ async function openAppt(id) {
           </div>
         </div>
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
-        <button class="btn btn-primary" onclick="saveAppt(${a.id})">Зберегти</button>
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+        <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
+          <label class="payway"><input type="radio" name="apptPayWay" value="card"> Картка</label>
+        </div>
+        <button class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
+                onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px">
+        <button class="btn" style="background:#fee2e2;color:#dc2626" onclick="deleteAppt(${a.id})">Видалити запис</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="closeAppt()">Закрити</button>
+          <button class="btn btn-primary" onclick="saveAppt(${a.id})">Зберегти</button>
+        </div>
       </div>
       <div id="apptMsg" style="font-size:13px"></div>
     </div>`;
   document.getElementById('apptModal').style.display = 'flex';
   loadApptPhotos(a.id, 'before');
   loadApptPhotos(a.id, 'after');
+}
+
+// Провести оплату: запис → виконано + прихід у касу (готівка/картка)
+async function payAppt(id) {
+  const msg = document.getElementById('apptMsg');
+  const way = (document.querySelector('input[name="apptPayWay"]:checked')||{}).value || 'cash';
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Проводжу оплату…';
+  try {
+    const r = await api('/api/schedule/appointments/' + id + '/pay', { method:'POST', body: JSON.stringify({ method: way }) });
+    if (r.ok) {
+      msg.style.color = '#10b981';
+      msg.textContent = r.already_paid ? 'Цей запис вже оплачено ✓' : `Оплату проведено ✓ ${_money(r.amount)} (${way==='card'?'картка':'готівка'})`;
+      const a = (journalData?.appointments||[]).find(x => x.id===id); if (a) a.status='done';
+      setTimeout(() => { closeAppt(); loadJournal(); if (typeof loadCashGauge==='function') loadCashGauge(); }, 900);
+    } else if (r.error === 'no-open-shift') {
+      msg.style.color = '#ef4444'; msg.textContent = r.message || 'Немає відкритої зміни каси';
+    } else if (r.error === 'no-price') {
+      msg.style.color = '#ef4444'; msg.textContent = 'У запису не вказана ціна — додайте послугу з ціною';
+    } else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
+}
+
+// Видалити запис (з підтвердженням)
+async function deleteAppt(id) {
+  if (!confirm('Видалити цей запис? Дію не можна скасувати.')) return;
+  const msg = document.getElementById('apptMsg');
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Видалення…';
+  try {
+    const r = await api('/api/schedule/appointments/' + id, { method:'DELETE' });
+    if (r.ok) { msg.style.color = '#10b981'; msg.textContent = 'Запис видалено ✓'; setTimeout(() => { closeAppt(); loadJournal(); }, 700); }
+    else { msg.style.color = '#ef4444'; msg.textContent = r.error || 'Помилка'; }
+  } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
 }
 function closeAppt() { document.getElementById('apptModal').style.display = 'none'; }
 

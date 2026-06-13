@@ -363,4 +363,78 @@ router.post('/appointments', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── POST /api/schedule/appointments/:id/pay — провести оплату ──
+// Помічає запис виконаним + створює прихід у касу (готівка/картка).
+// Ідемпотентно: повторний виклик не дублює операцію (ref_type='appointment').
+router.post('/appointments/:id/pay', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'bad-id' });
+    const method = ['cash', 'card', 'transfer', 'mono'].includes(req.body?.method) ? req.body.method : 'cash';
+
+    // запис + ціна + майстер
+    const ap = await pool.query(
+      `SELECT a.id, a.master_id, a.client_id, a.status,
+              COALESCE(a.price, s.price) AS price, s.name AS service_name
+         FROM appointments a LEFT JOIN services s ON s.id = a.service_id
+        WHERE a.id = $1`, [id]
+    );
+    if (!ap.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    const appt = ap.rows[0];
+    const amount = Number(appt.price) || 0;
+    if (amount <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
+
+    // вже оплачено? (ідемпотентність)
+    const dup = await pool.query(
+      `SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]
+    );
+    if (dup.rows[0]) {
+      await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
+      return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].id });
+    }
+
+    // відкрита зміна каси
+    const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+    if (!sh.rows[0]) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
+    const shiftId = sh.rows[0].id;
+
+    // прихід у касу
+    const op = await pool.query(
+      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+       VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6) RETURNING id`,
+      [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга']
+    );
+
+    // запис виконано + списання розхідників (ідемпотентно)
+    await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
+    let stock = null;
+    try {
+      const { writeOffForAppointment } = require('../lib/consumables');
+      stock = await writeOffForAppointment(id);
+    } catch (e) { stock = { written: false, error: e.message }; }
+
+    res.json({ ok: true, operation_id: op.rows[0].id, amount, method, stock });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/schedule/appointments/:id — видалити запис ──
+// Прибирає касові операції цього запису у ВІДКРИТІЙ зміні, потім видаляє сам запис.
+router.delete('/appointments/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'bad-id' });
+    const chk = await pool.query(`SELECT id FROM appointments WHERE id=$1`, [id]);
+    if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    // прибрати привʼязані касові операції лише з відкритих змін (минулі не чіпаємо)
+    await pool.query(
+      `DELETE FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1
+         AND shift_id IN (SELECT id FROM cash_shifts WHERE status='open')`, [id]
+    );
+    await pool.query(`DELETE FROM appointments WHERE id=$1`, [id]);
+    res.json({ ok: true, deleted: id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
