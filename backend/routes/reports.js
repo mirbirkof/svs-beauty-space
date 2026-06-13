@@ -229,4 +229,38 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Дневная динамика выручки (для графика) ──────────────
+// GET /api/reports/revenue-series?from=&to=
+router.get('/revenue-series', requirePerm('reports.read'), async (req, res) => {
+  try {
+    const { from, to } = parsePeriod(req.query);
+    const r = await pool.query(
+      `WITH days AS (
+         SELECT generate_series($1::date, $2::date, '1 day')::date AS d
+       ),
+       prod AS (
+         SELECT created_at::date AS d, COALESCE(SUM(total),0)::numeric AS rev
+           FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2
+          GROUP BY 1
+       ),
+       serv AS (
+         SELECT created_at::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
+           FROM cash_operations
+          WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2
+          GROUP BY 1
+       )
+       SELECT days.d AS date,
+              COALESCE(prod.rev,0)::numeric AS products,
+              COALESCE(serv.rev,0)::numeric AS services,
+              (COALESCE(prod.rev,0)+COALESCE(serv.rev,0))::numeric AS total
+         FROM days
+         LEFT JOIN prod ON prod.d = days.d
+         LEFT JOIN serv ON serv.d = days.d
+        ORDER BY days.d`,
+      [from, to]
+    );
+    res.json({ period: { from, to }, items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

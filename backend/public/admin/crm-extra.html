@@ -61,6 +61,7 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 .status.ok{background:#E0F8EB;color:#0F8E48}
 .status.err{background:#FCE7E8;color:#A8252C}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="content" style="padding:0">
@@ -146,9 +147,10 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 
   <div class="grid grid-4" id="r-dashboard"></div>
 
+  <div class="card"><h2>Динаміка виручки</h2><div style="position:relative;height:240px"><canvas id="chart-revenue"></canvas></div></div>
   <div class="card"><h2>P&amp;L — фінансовий результат</h2><div id="r-pnl"></div></div>
-  <div class="card"><h2>KPI майстрів</h2><div id="r-masters"></div></div>
-  <div class="card"><h2>RFM-сегментація клієнтів</h2><div id="r-rfm"></div></div>
+  <div class="card"><h2>KPI майстрів</h2><div style="position:relative;height:260px;margin-bottom:14px"><canvas id="chart-masters"></canvas></div><div id="r-masters"></div></div>
+  <div class="card"><h2>RFM-сегментація клієнтів</h2><div class="row" style="gap:18px;flex-wrap:wrap;align-items:flex-start"><div style="position:relative;height:220px;width:220px"><canvas id="chart-rfm"></canvas></div><div style="flex:1;min-width:260px" id="r-rfm"></div></div></div>
   <div class="card"><h2>Відтік (>90 днів)</h2><div id="r-churn"></div></div>
 </section>
 
@@ -349,6 +351,15 @@ function setRange(days){
   document.getElementById('r-to').value = to.toISOString().slice(0,10);
   loadReports();
 }
+const _charts = {};
+const GOLD = '#C9A24B', INK = '#2b2b2b';
+function drawChart(id, cfg){
+  const el = document.getElementById(id);
+  if(!el || typeof Chart === 'undefined') return;
+  if(_charts[id]) _charts[id].destroy();
+  _charts[id] = new Chart(el, cfg);
+}
+const fmtUAH = v => (+v).toLocaleString('uk') + ' ₴';
 async function loadReports(){
   try{
     const d = await api('/api/reports/dashboard');
@@ -381,6 +392,42 @@ async function loadReports(){
     document.getElementById('r-churn').innerHTML = ch.items.length ?
       `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||r.phone}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
       '<div class="empty">Клієнтів у відтоку немає</div>';
+
+    // ── Графіки ──────────────────────────────────────
+    try {
+      const rs = await api('/api/reports/revenue-series'+q);
+      const items = rs.items || [];
+      drawChart('chart-revenue', {
+        type:'line',
+        data:{ labels: items.map(x=>new Date(x.date).toLocaleDateString('uk',{day:'2-digit',month:'2-digit'})),
+          datasets:[
+            {label:'Товари', data:items.map(x=>+x.products), borderColor:'#7B9E89', backgroundColor:'rgba(123,158,137,.12)', tension:.35, fill:true, pointRadius:0},
+            {label:'Послуги', data:items.map(x=>+x.services), borderColor:GOLD, backgroundColor:'rgba(201,162,75,.14)', tension:.35, fill:true, pointRadius:0},
+          ]},
+        options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+          plugins:{legend:{labels:{usePointStyle:true,boxWidth:8}}, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmtUAH(c.raw)}}},
+          scales:{y:{ticks:{callback:v=>v.toLocaleString('uk')}}, x:{grid:{display:false}}} }
+      });
+    } catch(e){}
+
+    const topM = (m.items||[]).slice().sort((a,b)=>(+b.revenue)-(+a.revenue)).slice(0,10);
+    drawChart('chart-masters', {
+      type:'bar',
+      data:{ labels: topM.map(r=>r.name||'#'+r.id),
+        datasets:[{label:'Дохід', data:topM.map(r=>+r.revenue||0), backgroundColor:GOLD, borderRadius:6}]},
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>fmtUAH(c.raw)}}},
+        scales:{x:{ticks:{callback:v=>v.toLocaleString('uk')}}} }
+    });
+
+    const segColors = {champion:'#7B9E89', loyal:'#C9A24B', potential:'#8FB3CC', at_risk:'#E0A458', lost:'#C46B6B', new:'#A99ACb'};
+    const segEntries = Object.entries(rfm.summary||{});
+    drawChart('chart-rfm', {
+      type:'doughnut',
+      data:{ labels: segEntries.map(([k])=>k),
+        datasets:[{ data:segEntries.map(([,v])=>v.count), backgroundColor:segEntries.map(([k])=>segColors[k]||'#bbb'), borderWidth:2, borderColor:'#fff' }]},
+      options:{ responsive:true, maintainAspectRatio:false, cutout:'58%', plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,font:{size:10}}}} }
+    });
   }catch(e){ alert('Звіти: '+e.message); }
 }
 
