@@ -38,6 +38,7 @@ main{padding:24px;max-width:1400px;margin:0 auto}
 .metric.ok .value{color:var(--ok)}
 .metric.warn .value{color:var(--warn)}
 .metric.dng .value{color:var(--dng)}
+.metric.info .value{color:#3F7CAC}
 table{width:100%;border-collapse:collapse;font-size:13px}
 table th,table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd)}
 table th{background:#FAFBFC;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
@@ -412,11 +413,27 @@ const fmtUAH = v => (+v).toLocaleString('uk') + ' ₴';
 async function loadReports(){
   try{
     const d = await api('/api/reports/dashboard');
-    document.getElementById('r-dashboard').innerHTML = `
-      <div class="metric ok"><div class="label">Дохід сьогодні</div><div class="value">${(+d.revenue_today).toFixed(0)} ₴</div></div>
-      <div class="metric"><div class="label">Дохід місяць</div><div class="value">${(+d.revenue_month).toFixed(0)} ₴</div></div>
-      <div class="metric warn"><div class="label">Низькі залишки</div><div class="value">${d.low_stock_items}</div></div>
-      <div class="metric dng"><div class="label">Клієнти у відтоку</div><div class="value">${d.churn_clients}</div></div>`;
+    const delta = (cur, prev) => {
+      cur = +cur || 0; prev = +prev || 0;
+      if (!prev) return cur > 0 ? '<div class="sub" style="color:#7B9E89">новий</div>' : '';
+      const p = Math.round((cur - prev) / prev * 100);
+      const up = p >= 0;
+      return `<div class="sub" style="color:${up?'#5a8f6f':'#C46B6B'}">${up?'▲':'▼'} ${Math.abs(p)}% vs ${prev.toLocaleString('uk')} ₴</div>`;
+    };
+    const cards = [];
+    cards.push(`<div class="metric ok"><div class="label">Дохід сьогодні</div><div class="value">${fmtUAH(d.revenue_today)}</div>${d.revenue_yesterday!=null?delta(d.revenue_today,d.revenue_yesterday):''}</div>`);
+    if (!d.finance_locked) {
+      cards.push(`<div class="metric"><div class="label">Дохід місяць</div><div class="value">${fmtUAH(d.revenue_month)}</div>${delta(d.revenue_month,d.revenue_prev_month)}</div>`);
+      cards.push(`<div class="metric"><div class="label">Середній чек (міс.)</div><div class="value">${fmtUAH(d.avg_check_month)}</div><div class="sub">${d.appts_month} записів</div></div>`);
+      cards.push(`<div class="metric"><div class="label">Послуги / Товари (міс.)</div><div class="value" style="font-size:18px">${fmtUAH(d.services_month)}<br><span style="color:#7B9E89">${fmtUAH(d.products_month)}</span></div></div>`);
+    }
+    cards.push(`<div class="metric info"><div class="label">Записів сьогодні</div><div class="value">${d.appts_today}</div><div class="sub">${d.appts_month} за місяць · ${d.clients_month} клієнтів</div></div>`);
+    if (!d.finance_locked && d.top_master)
+      cards.push(`<div class="metric ok"><div class="label">Топ-майстер місяця</div><div class="value" style="font-size:18px">${d.top_master.name}</div><div class="sub">${fmtUAH(d.top_master.revenue)}</div></div>`);
+    cards.push(`<div class="metric"><div class="label">Активних майстрів</div><div class="value">${d.active_masters}</div><div class="sub">${d.open_shifts} відкритих змін</div></div>`);
+    cards.push(`<div class="metric warn"><div class="label">Низькі залишки</div><div class="value">${d.low_stock_items}</div></div>`);
+    cards.push(`<div class="metric dng"><div class="label">Клієнти у відтоку</div><div class="value">${d.churn_clients}</div></div>`);
+    document.getElementById('r-dashboard').innerHTML = cards.join('');
     const from = document.getElementById('r-from').value;
     const to = document.getElementById('r-to').value;
     const q = (from && to) ? `?from=${from}&to=${to}` : '';

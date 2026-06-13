@@ -237,35 +237,89 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
 router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
   try {
     const canFinance = hasPermission(req.user.permissions, 'reports.finance');
-    const today = new Date(); today.setHours(0,0,0,0);
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const [todayRev, lowStock, openShifts, churnCnt] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(total),0)::numeric AS rev FROM orders WHERE status='paid' AND created_at >= $1`, [today.toISOString()]),
+    // ВЫРУЧКА = касса салона (услуги+товары) + оплаченные online-заказы.
+    // Раньше брали только orders → у салона без интернет-магазина было 0.
+    // Все границы считаем по киевскому wall-time, касса/заказы хранятся в UTC.
+    const main = await pool.query(`
+      WITH b AS (
+        SELECT date_trunc('day',   now() AT TIME ZONE 'Europe/Kyiv')                        AS d0,
+               date_trunc('day',   now() AT TIME ZONE 'Europe/Kyiv') + INTERVAL '1 day'      AS d1,
+               date_trunc('day',   now() AT TIME ZONE 'Europe/Kyiv') - INTERVAL '1 day'      AS yd0,
+               date_trunc('month', now() AT TIME ZONE 'Europe/Kyiv')                         AS m0,
+               date_trunc('month', now() AT TIME ZONE 'Europe/Kyiv') + INTERVAL '1 month'    AS m1,
+               date_trunc('month', now() AT TIME ZONE 'Europe/Kyiv') - INTERVAL '1 month'    AS pm0
+      ),
+      co AS (
+        SELECT (created_at AT TIME ZONE 'Europe/Kyiv') AS k, amount, category
+          FROM cash_operations
+         WHERE type='in' AND category IN ('sale_service','sale_product')
+      ),
+      ord AS (
+        SELECT (created_at AT TIME ZONE 'Europe/Kyiv') AS k, total
+          FROM orders WHERE status='paid'
+      ),
+      ap AS (
+        SELECT (starts_at AT TIME ZONE 'Europe/Kyiv') AS k, status, client_id
+          FROM appointments
+      )
+      SELECT
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.k>=b.d0 AND co.k<b.d1)
+          + (SELECT COALESCE(SUM(total),0) FROM ord,b WHERE ord.k>=b.d0 AND ord.k<b.d1)   AS revenue_today,
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.k>=b.yd0 AND co.k<b.d0)
+          + (SELECT COALESCE(SUM(total),0) FROM ord,b WHERE ord.k>=b.yd0 AND ord.k<b.d0)  AS revenue_yesterday,
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.k>=b.m0 AND co.k<b.m1)
+          + (SELECT COALESCE(SUM(total),0) FROM ord,b WHERE ord.k>=b.m0 AND ord.k<b.m1)   AS revenue_month,
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.k>=b.pm0 AND co.k<b.m0)
+          + (SELECT COALESCE(SUM(total),0) FROM ord,b WHERE ord.k>=b.pm0 AND ord.k<b.m0)  AS revenue_prev_month,
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.category='sale_service' AND co.k>=b.m0 AND co.k<b.m1) AS services_month,
+        (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.category='sale_product' AND co.k>=b.m0 AND co.k<b.m1) AS products_month,
+        (SELECT COUNT(*)            FROM ap,b WHERE ap.k>=b.d0 AND ap.k<b.d1 AND ap.status NOT IN ('cancelled','noshow'))  AS appts_today,
+        (SELECT COUNT(*)            FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow'))  AS appts_month,
+        (SELECT COUNT(DISTINCT client_id) FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow')) AS clients_month
+    `);
+    const r0 = main.rows[0];
+
+    const [lowStock, openShifts, churnCnt, activeMasters, topMaster] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE stock <= COALESCE(low_stock_threshold,5)`).catch(()=>({rows:[{n:0}]})),
-      pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`),
+      pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM (
          SELECT c.id FROM clients c
-         JOIN appointments a ON a.client_id=c.id AND a.status='done'
+         JOIN appointments a ON a.client_id=c.id
+         WHERE a.status NOT IN ('cancelled','noshow')
          GROUP BY c.id
          HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
-       ) t`),
+       ) t`).catch(()=>({rows:[{n:0}]})),
+      pool.query(`SELECT COUNT(*)::int AS n FROM masters WHERE active=true`).catch(()=>({rows:[{n:0}]})),
+      pool.query(`SELECT m.name, SUM(co.amount)::numeric AS rev
+         FROM cash_operations co JOIN masters m ON m.id=co.master_id
+        WHERE co.type='in' AND co.category IN ('sale_service','sale_product')
+          AND (co.created_at AT TIME ZONE 'Europe/Kyiv') >= date_trunc('month', now() AT TIME ZONE 'Europe/Kyiv')
+        GROUP BY m.name ORDER BY rev DESC LIMIT 1`).catch(()=>({rows:[]})),
     ]);
 
+    const apptsMonth = Number(r0.appts_month);
     const out = {
-      revenue_today: Number(todayRev.rows[0].rev),
+      revenue_today: Number(r0.revenue_today),
       low_stock_items: lowStock.rows[0].n,
       open_shifts: openShifts.rows[0].n,
       churn_clients: churnCnt.rows[0].n,
+      appts_today: Number(r0.appts_today),
+      appts_month: apptsMonth,
+      clients_month: Number(r0.clients_month),
+      active_masters: activeMasters.rows[0].n,
       finance_locked: !canFinance,
     };
-    // Месячная выручка — только для владельца / при reports.finance
+    // Финансовые метрики — только владельцу / при reports.finance
     if (canFinance) {
-      const monthRev = await pool.query(
-        `SELECT COALESCE(SUM(total),0)::numeric AS rev FROM orders WHERE status='paid' AND created_at >= $1`,
-        [monthStart.toISOString()]
-      );
-      out.revenue_month = Number(monthRev.rows[0].rev);
+      const revMonth = Number(r0.revenue_month);
+      out.revenue_month       = revMonth;
+      out.revenue_yesterday   = Number(r0.revenue_yesterday);
+      out.revenue_prev_month  = Number(r0.revenue_prev_month);
+      out.services_month      = Number(r0.services_month);
+      out.products_month      = Number(r0.products_month);
+      out.avg_check_month     = apptsMonth > 0 ? Math.round(revMonth / apptsMonth) : 0;
+      out.top_master          = topMaster.rows[0] ? { name: topMaster.rows[0].name, revenue: Math.round(Number(topMaster.rows[0].rev)) } : null;
     }
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
