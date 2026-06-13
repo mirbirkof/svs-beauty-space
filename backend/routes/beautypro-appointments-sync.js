@@ -311,11 +311,14 @@ async function backfillClients(limit = 500) {
         const bp = await httpsRequest('GET', `/clients/${guid}?fields=${encodeURIComponent('name,firstname,lastname,phone,email,birthday')}`, { token });
         const name = bp.name || [bp.firstname, bp.lastname].filter(Boolean).join(' ') || 'Клієнт BP';
         const phone = Array.isArray(bp.phone) ? (bp.phone[0] || null) : (bp.phone || null);
-        const phoneNorm = phone ? String(phone).replace(/\D/g, '') : null;
+        const digits = phone ? String(phone).replace(/\D/g, '') : null;
+        // канонический украинский формат: 380 + последние 9 цифр (исключает дубли 380… vs 0…)
+        const last9 = digits && digits.length >= 9 ? digits.slice(-9) : null;
+        const phoneNorm = last9 ? ('380' + last9) : digits;
         const email = (bp.email && String(bp.email).trim()) || null; // пустые строки бьются об UNIQUE(email)
-        if (phoneNorm) {
-          // защитимся от дубля по телефону
-          const byPhone = await pool.query('SELECT id FROM clients WHERE regexp_replace(phone, \'\\D\', \'\', \'g\') = $1 LIMIT 1', [phoneNorm]);
+        if (last9) {
+          // защитимся от дубля по телефону — сравниваем по последним 9 цифрам
+          const byPhone = await pool.query('SELECT id FROM clients WHERE right(regexp_replace(phone, \'\\D\', \'\', \'g\'), 9) = $1 LIMIT 1', [last9]);
           if (byPhone.rows.length) {
             await pool.query('UPDATE clients SET beautypro_id = $1 WHERE id = $2', [guid, byPhone.rows[0].id]);
             local = byPhone;
