@@ -239,12 +239,12 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 
 <script>
 const API = location.origin;
-let TOKEN = localStorage.getItem('svs_token') || '';
+let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let CURRENT_SHIFT = null;
 let CURRENT_AUDIT = null;
 document.getElementById('token').value = TOKEN;
 
-function saveToken(){ TOKEN = document.getElementById('token').value.trim(); localStorage.setItem('svs_token', TOKEN); init(); }
+function saveToken(){ TOKEN = document.getElementById('token').value.trim(); localStorage.setItem('svs_admin_token', TOKEN); init(); }
 
 async function api(path, opts={}){
   const h = opts.headers || {};

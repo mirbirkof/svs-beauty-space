@@ -162,10 +162,18 @@ $('sendCode').onclick = async () => {
   const phone = $('phone').value.trim();
   if (!phone) return;
   const r = await api('/api/cabinet/request-code', { method: 'POST', body: JSON.stringify({ phone }) });
-  if (r.ok) {
+  if (r.ok && r.mode === 'telegram-link-required') {
+    // код не отправлен — клиент ещё не привязал Telegram. Показываем инструкцию, не пускаем на ввод кода.
+    $('loginMsg').className = 'text-sm mt-3 text-amber-600';
+    $('loginMsg').textContent = r.message || 'Спочатку прив\u2019яжіть Telegram до бота і запросіть код ще раз.';
+  } else if (r.ok) {
     $('step-phone').classList.add('hidden');
     $('step-code').classList.remove('hidden');
-    if (r.dev_code) $('devHint').classList.remove('hidden');
+    if (r.mode === 'dev' || r.hint) {
+      $('devHint').classList.remove('hidden');
+      if (r.hint) $('devHint').textContent = r.hint;
+    }
+    $('loginMsg').className = 'text-sm mt-3';
     $('loginMsg').textContent = '';
   } else $('loginMsg').textContent = r.error || 'Помилка';
 };
@@ -276,7 +284,7 @@ $('saveProfile').onclick = async () => {
 };
 
 async function loadOrders() {
-  const r = await api('/api/orders/my');
+  const r = await api('/api/cabinet/orders');
   const list = $('orders');
   if (!r.ok) { list.innerHTML = '<div class="text-slate-400 text-sm">Помилка завантаження</div>'; return; }
   $('ordersCount').textContent = r.orders.length;
@@ -298,15 +306,15 @@ async function loadOrders() {
       <div class="border rounded-xl p-3">
         <div class="flex justify-between items-start">
           <div>
-            <div class="font-semibold">№${o.order_number || o.id}</div>
+            <div class="font-semibold">№${o.id}</div>
             <div class="text-xs text-slate-500">${new Date(o.created_at).toLocaleString('uk')}</div>
           </div>
           <div class="text-right">
-            <div class="font-bold">${Number(o.total_amount).toFixed(0)} ₴</div>
+            <div class="font-bold">${Number(o.total).toFixed(0)} ₴</div>
             <span class="inline-block text-xs rounded-full px-2 py-0.5 mt-1 ${statusColor}">${statusText}</span>
           </div>
         </div>
-        ${canPay ? `<button onclick="openPay(${o.id}, ${o.total_amount}, '${o.order_number || o.id}')" class="mt-3 w-full bg-slate-900 text-white rounded-lg py-2 text-sm font-semibold">Оплатити</button>` : ''}
+        ${canPay ? `<button onclick="openPay(${o.id}, ${o.total}, '${o.id}')" class="mt-3 w-full bg-slate-900 text-white rounded-lg py-2 text-sm font-semibold">Оплатити</button>` : ''}
       </div>`;
   }).join('');
 }

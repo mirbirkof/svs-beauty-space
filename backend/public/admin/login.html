@@ -102,7 +102,7 @@ $('btn-verify').addEventListener('click', async () => {
     });
     const data = await r.json();
     if (data.ok && data.token) {
-      localStorage.setItem('svs_token', data.token);
+      localStorage.setItem('svs_admin_token', data.token);
       localStorage.setItem('svs_user', JSON.stringify(data.user));
       showMsg($('msg2'), 'ok', 'Вхід виконано. Перенаправлення...');
       setTimeout(() => location.href = '/admin/crm-extra.html', 600);

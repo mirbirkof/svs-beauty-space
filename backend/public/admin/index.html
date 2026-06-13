@@ -595,7 +595,7 @@ select.input { background:var(--card); }
 
 <script>
 const API = location.origin;
-const DIKIDI_API = location.origin.replace(/:\d+/, ':3012');
+const DIKIDI_API = location.origin; // dikidi-роуты смонтированы на /api того же сервиса
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let currentPage = 'dashboard';
 let journalMode = 'day';

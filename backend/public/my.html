@@ -80,7 +80,7 @@
       <div id="new-review" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
         <input id="rev-master" placeholder="ID мастера или имя" class="border rounded-lg px-3 py-2 text-sm w-full mb-2">
         <div class="flex gap-1 mb-2 text-2xl cursor-pointer" id="rev-stars">
-          ${[1,2,3,4,5].map(i=>`<span data-r="${i}">☆</span>`).join('')}
+          <span data-r="1">☆</span><span data-r="2">☆</span><span data-r="3">☆</span><span data-r="4">☆</span><span data-r="5">☆</span>
         </div>
         <textarea id="rev-text" placeholder="Ваш отзыв" class="border rounded-lg px-3 py-2 text-sm w-full mb-2" rows="3"></textarea>
         <label class="flex items-center gap-2 text-sm text-slate-600 mb-3"><input id="rev-anon" type="checkbox"> Анонимно</label>
