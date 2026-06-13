@@ -891,8 +891,11 @@ function renderJournalList(container, data) {
 }
 
 function renderJournalDay(container, data) {
-  const masters = data.masters || [];
   const appts = data.appointments || [];
+  // показуємо лише майстрів, що працюють або мають записи цього дня — без зайвих «вихідних» колонок
+  const withAppts = new Set(appts.map(a => a.master_id));
+  let masters = (data.masters || []).filter(m => m.working || withAppts.has(m.id));
+  if (!masters.length) masters = data.masters || [];
   if (!masters.length) { container.innerHTML = '<div class="empty"><span class="material-icons-round">groups</span>Немає активних майстрів. Додайте майстрів у розділі «Майстри».</div>'; return; }
 
   // нормалізуємо робочий час: приймаємо лише валідний формат HH:MM

@@ -204,7 +204,11 @@ router.get('/journal', async (req, res) => {
               s.name AS service_name,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,
-              COALESCE(NULLIF(c.name,''), a.bp_client, 'Клієнт') AS client_name,
+              COALESCE(
+                NULLIF(c.name,''),
+                CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
+                'Клієнт'
+              ) AS client_name,
               c.phone AS client_phone
          FROM appointments a
          LEFT JOIN masters  m ON m.id = a.master_id
