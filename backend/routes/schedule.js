@@ -306,6 +306,15 @@ router.get('/journal', async (req, res) => {
               s.name AS service_name,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,
+              -- Оплата: вручну (ref_type=appointment) АБО продаж BeautyPro того ж майстра
+              -- у часовому вікні запису (BeautyPro проводить оплату на своїй стороні).
+              (EXISTS(SELECT 1 FROM cash_operations co
+                        WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
+               OR (a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
+                        WHERE co.type='in' AND co.ref_type='bp_sale' AND co.master_id=a.master_id
+                          AND co.created_at BETWEEN a.starts_at - interval '30 min'
+                              AND COALESCE(a.ends_at, a.starts_at + interval '1 hour') + interval '4 hour'))
+              ) AS paid,
               COALESCE(
                 NULLIF(c.name,''),
                 CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
@@ -463,13 +472,28 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const amount = Number(appt.price) || 0;
     if (amount <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
 
-    // вже оплачено? (ідемпотентність)
+    // вже оплачено вручну? (ідемпотентність)
     const dup = await pool.query(
       `SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]
     );
     if (dup.rows[0]) {
       await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
       return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].id });
+    }
+    // вже оплачено в BeautyPro? Продаж того ж майстра у часовому вікні запису —
+    // гроші вже в касі (ref_type=bp_sale). Не дублюємо прихід.
+    if (appt.master_id) {
+      const bp = await pool.query(
+        `SELECT id FROM cash_operations
+          WHERE type='in' AND ref_type='bp_sale' AND master_id=$1
+            AND created_at BETWEEN (SELECT starts_at - interval '30 min' FROM appointments WHERE id=$2)
+                AND (SELECT COALESCE(ends_at, starts_at + interval '1 hour') + interval '4 hour' FROM appointments WHERE id=$2)
+          LIMIT 1`, [appt.master_id, id]
+      );
+      if (bp.rows[0]) {
+        await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
+        return res.json({ ok: true, already_paid: true, paid_via: 'beautypro', operation_id: bp.rows[0].id });
+      }
     }
 
     // відкрита зміна каси

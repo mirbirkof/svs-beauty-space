@@ -244,6 +244,10 @@ select.input { background:var(--card); }
 .jst-confirmed{ background:#0ea5e9; }
 .jst-done     { background:#10b981; }
 .jst-noshow   { background:#9ca3af; }
+/* Оплачено (підтверджено продажем у касі) — зелена рамка + позначка */
+.jappt.jpaid { box-shadow:0 0 0 2px #10b981 inset, 0 1px 3px rgba(0,0,0,.15); }
+.jappt .paid-ico { position:absolute; bottom:4px; right:5px; font-size:14px; color:#d1fae5; }
+.jappt .paid-tag { font-size:9px; font-weight:700; background:rgba(255,255,255,.25); padding:0 4px; border-radius:4px; margin-left:3px; vertical-align:middle; }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
 /* Журнал: панель навігації по датах (DIKIDI-style) */
@@ -2620,14 +2624,14 @@ function renderJournalDay(container, data) {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
-      body += `<div class="jappt jst-${a.status||'booked'}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
+      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
         ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
-        ${h>64?`<div class="p">${_money(a.price)}</div>`:''}
-        ${okIcon}
+        ${h>64?`<div class="p">${_money(a.price)}${a.paid?' <span class="paid-tag">оплачено</span>':''}</div>`:''}
+        ${a.paid?'<span class="paid-ico material-icons-round" title="Оплачено">paid</span>':okIcon}
       </div>`;
     });
     if (showNow) body += `<div class="jnow" style="top:${(nowM-minM)*J_PX_PER_MIN}px"></div>`;
@@ -2803,13 +2807,20 @@ async function openAppt(id) {
         </div>
       </div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+      ${a.paid ? `
+        <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
+          <span style="font-size:18px">✓</span>
+          <div>Оплачено · ${_money(a.price)}
+            <div style="font-size:11px;font-weight:400;color:#059669">Проведено через BeautyPro — у касі вже враховано</div>
+          </div>
+        </div>` : `
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
         <div style="display:flex;gap:6px;margin-top:6px">
           <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
           <label class="payway"><input type="radio" name="apptPayWay" value="card"> Картка</label>
         </div>
         <button class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
-                onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>
+                onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
       </div>
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px">
         <button class="btn" style="background:#fee2e2;color:#dc2626" onclick="deleteAppt(${a.id})">Видалити запис</button>
