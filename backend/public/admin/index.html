@@ -346,6 +346,9 @@ select.input { background:var(--card); }
       <a class="sidebar-item" href="/admin/crm-extra.html#audit">
         <span class="material-icons-round">history</span> Аудит
       </a>
+      <a class="sidebar-item" data-page="settings" onclick="go('settings')">
+        <span class="material-icons-round">settings</span> Налаштування
+      </a>
     </nav>
     <div class="sidebar-footer">
       <button onclick="logout()">
@@ -608,6 +611,24 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ SETTINGS ═══ -->
+      <div class="page" id="page-settings">
+        <div class="card" style="max-width:680px">
+          <div class="card-body">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Приватність клієнтів</h3>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Керування тим, що бачать співробітники.</p>
+            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:12px">
+              <input type="checkbox" id="set-masters-phone" style="width:20px;height:20px;margin-top:2px" onchange="saveSettings()">
+              <span>
+                <span style="font-weight:600;display:block">Майстри бачать номери телефонів клієнтів</span>
+                <span style="color:var(--text-secondary);font-size:13px">Коли вимкнено — у журналі та записах майстер бачить ім'я клієнта, але номер прихований (••• ••XX). Адміністратори й власник бачать номери завжди.</span>
+              </span>
+            </label>
+            <p id="settingsMsg" style="font-size:13px;margin-top:12px"></p>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content -->
   </div><!-- /main -->
 
@@ -690,7 +711,8 @@ const pageTitles = {
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
-  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити'
+  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
+  settings:'Налаштування'
 };
 
 window.addEventListener('hashchange', () => {
@@ -709,8 +731,29 @@ function go(page) {
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, blacklist:loadBlacklist, sync:loadSync,
-    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat };
+    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat, settings:loadSettings };
   if (loaders[page]) loaders[page]();
+}
+
+// ═══ SETTINGS ═════════════════════════════════
+async function loadSettings() {
+  const msg = document.getElementById('settingsMsg');
+  try {
+    const r = await api('/api/settings');
+    const s = r.settings || {};
+    document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
+    msg.textContent = '';
+  } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Не вдалося завантажити налаштування'; }
+}
+async function saveSettings() {
+  const msg = document.getElementById('settingsMsg');
+  const masters_see_phone = document.getElementById('set-masters-phone').checked;
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ masters_see_phone }) });
+    if (r.ok) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(()=>msg.textContent='', 2000); }
+    else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; document.getElementById('set-masters-phone').checked = !masters_see_phone; }
+  } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; document.getElementById('set-masters-phone').checked = !masters_see_phone; }
 }
 
 // ═══ WAITLIST ═════════════════════════════════

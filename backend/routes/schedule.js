@@ -3,6 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
+const { getSetting, maskPhone } = require('../lib/settings');
 const router = express.Router();
 
 // GET = schedule.read, мутации = schedule.write
@@ -221,7 +222,14 @@ router.get('/journal', async (req, res) => {
       [date]
     );
 
-    res.json({ date, day: dayKey, masters, appointments: aRes.rows, count: aRes.rows.length });
+    // Майстер не бачить номери клієнтів, якщо опція вимкнена
+    let appts = aRes.rows;
+    if (req.user && req.user.role === 'master') {
+      const see = await getSetting('masters_see_phone', false);
+      if (see !== true) appts = appts.map(a => ({ ...a, client_phone: maskPhone(a.client_phone), phone_hidden: true }));
+    }
+
+    res.json({ date, day: dayKey, masters, appointments: appts, count: appts.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

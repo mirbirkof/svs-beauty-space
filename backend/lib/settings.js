@@ -1,0 +1,49 @@
+/* Глобальні налаштування CRM (app_settings) з легким кешем.
+   getSetting(key, default) → value | default
+   setSetting(key, value, userId)
+   maskPhone(phone) → 'прихований' маскований номер */
+const { getPool } = require('../db-pg');
+
+const CACHE_TTL_MS = 30 * 1000;
+const cache = new Map(); // key → { value, exp }
+
+async function getSetting(key, def = null) {
+  const hit = cache.get(key);
+  if (hit && hit.exp > Date.now()) return hit.value;
+  try {
+    const r = await getPool().query('SELECT value FROM app_settings WHERE key = $1', [key]);
+    const value = r.rows[0] ? r.rows[0].value : def;
+    cache.set(key, { value, exp: Date.now() + CACHE_TTL_MS });
+    return value;
+  } catch {
+    return def; // якщо таблиці ще нема (міграція не пройшла) — повертаємо дефолт
+  }
+}
+
+async function setSetting(key, value, userId = null) {
+  const r = await getPool().query(
+    `INSERT INTO app_settings (key, value, updated_by, updated_at)
+     VALUES ($1, $2::jsonb, $3, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()
+     RETURNING key, value`,
+    [key, JSON.stringify(value), userId]
+  );
+  cache.delete(key);
+  return r.rows[0];
+}
+
+async function getAllSettings() {
+  const r = await getPool().query('SELECT key, value FROM app_settings ORDER BY key');
+  const out = {};
+  for (const row of r.rows) out[row.key] = row.value;
+  return out;
+}
+
+// Маскуємо номер: лишаємо лише останні 2 цифри → '••• ••89'
+function maskPhone(phone) {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (!d) return null;
+  return '••• ••' + d.slice(-2);
+}
+
+module.exports = { getSetting, setSetting, getAllSettings, maskPhone };

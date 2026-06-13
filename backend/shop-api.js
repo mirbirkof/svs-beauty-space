@@ -161,6 +161,7 @@ app.use('/api/schedule', scheduleRoutes);
 app.use('/api/reminders', remindersRoutes);
 app.use('/api/repeat-visits', repeatVisitsRoutes);
 app.use('/api/branches', require('./routes/branches'));
+app.use('/api/settings', require('./routes/settings'));
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
