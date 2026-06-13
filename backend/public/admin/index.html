@@ -681,8 +681,9 @@ select.input { background:var(--card); }
 
       <!-- ═══ CLIENTS ═══ -->
       <div class="page" id="page-clients">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
           <input id="clientSearch" placeholder="Пошук за телефоном або імʼям..." class="input" style="flex:1" oninput="debounce(loadClients,400)">
+          <span id="clientsCount" style="font-size:13px;color:var(--text-secondary);white-space:nowrap"></span>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -699,6 +700,9 @@ select.input { background:var(--card); }
               <tbody id="clientsBody"></tbody>
             </table>
           </div>
+        </div>
+        <div style="text-align:center;margin-top:12px">
+          <button id="clientsMoreBtn" class="btn btn-outline btn-sm" style="display:none" onclick="loadMoreClients()">Показати ще</button>
         </div>
       </div>
 
@@ -3036,12 +3040,30 @@ async function saveAppt(id) {
 
 // ═══ CLIENTS ═════════════════════════════════
 let _clientsData = [];
+let _clientsTotal = 0;
 let _clientSort = { key: 'created_at', dir: 'desc' };
+const CLIENTS_PAGE = 200;
 async function loadClients() {
   const q = document.getElementById('clientSearch').value.trim();
-  const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
+  const r = await api(`/api/admin/clients?limit=${CLIENTS_PAGE}&offset=0` + (q ? '&search=' + encodeURIComponent(q) : ''));
   _clientsData = r.items || [];
+  _clientsTotal = (r.total != null) ? r.total : _clientsData.length;
+  updateClientsCount();
   renderClientsTable();
+}
+async function loadMoreClients() {
+  const q = document.getElementById('clientSearch').value.trim();
+  const r = await api(`/api/admin/clients?limit=${CLIENTS_PAGE}&offset=${_clientsData.length}` + (q ? '&search=' + encodeURIComponent(q) : ''));
+  _clientsData = _clientsData.concat(r.items || []);
+  if (r.total != null) _clientsTotal = r.total;
+  updateClientsCount();
+  renderClientsTable();
+}
+function updateClientsCount() {
+  const el = document.getElementById('clientsCount');
+  if (el) el.textContent = `Показано ${_clientsData.length} з ${_clientsTotal}`;
+  const btn = document.getElementById('clientsMoreBtn');
+  if (btn) btn.style.display = (_clientsData.length < _clientsTotal) ? '' : 'none';
 }
 function sortClients(key) {
   if (_clientSort.key === key) { _clientSort.dir = _clientSort.dir === 'asc' ? 'desc' : 'asc'; }

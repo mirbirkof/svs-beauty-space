@@ -347,6 +347,7 @@ router.get('/clients', async (req, res) => {
       cond.push(`(c.phone ILIKE $${args.length - 1} OR c.name ILIKE $${args.length})`);
     }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+    const cnt = await pool.query(`SELECT COUNT(*)::int AS total FROM clients c ${where}`, args.slice());
     args.push(parseInt(limit, 10), parseInt(offset, 10));
     const r = await pool.query(
       `SELECT c.id, c.phone, c.name, c.email, c.loyalty_points, c.total_spent,
@@ -358,7 +359,8 @@ router.get('/clients', async (req, res) => {
        LIMIT $${args.length - 1} OFFSET $${args.length}`,
       args
     );
-    res.json({ ok: true, items: r.rows });
+    res.json({ ok: true, items: r.rows, total: cnt.rows[0].total,
+               limit: parseInt(limit, 10), offset: parseInt(offset, 10) });
   } catch (e) { console.error('[admin:clients]', e); res.status(500).json({ error: 'internal' }); }
 });
 
