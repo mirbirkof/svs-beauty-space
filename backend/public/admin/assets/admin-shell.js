@@ -146,4 +146,11 @@
     l.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
     document.head.appendChild(l);
   }
+
+  // Плавающая кнопка "Заметки" — единый виджет обратной связи на всех страницах
+  if (!document.querySelector('script[src*="notes-widget.js"]')) {
+    const s = document.createElement('script');
+    s.src = '/admin/assets/notes-widget.js';
+    document.body.appendChild(s);
+  }
 })();
