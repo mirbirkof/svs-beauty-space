@@ -3,6 +3,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { requirePerm, sha256, logAction } = require('../lib/rbac');
+const { hashPassword, checkPasswordComplexity, normalizePhone } = require('../lib/auth-core');
 
 const router = express.Router();
 const pool = getPool();
@@ -11,28 +12,89 @@ const pool = getPool();
 router.get('/', requirePerm('users.read'), async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT u.id, u.phone, u.email, u.display_name, r.code AS role, u.master_id, u.branch_id,
-              u.is_active, u.last_login_at, u.created_at
+      `SELECT u.id, u.phone, u.email, u.display_name, u.username, r.code AS role, r.name AS role_name,
+              u.master_id, u.branch_id, u.is_active, u.last_login_at, u.created_at,
+              (u.password_hash IS NOT NULL) AS has_password
          FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id`
     );
     res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/users — создать
+// POST /api/users — создать сотрудника (с паролем/логином, опц. авто-мастер)
 router.post('/', requirePerm('users.write'), async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { phone, email, display_name, role_code, master_id, branch_id } = req.body || {};
+    let { phone, email, display_name, role_code, master_id, branch_id,
+          username, password, specialty, commission_pct, create_master } = req.body || {};
     if (!display_name || !role_code) return res.status(400).json({ error: 'display_name, role_code required' });
-    const role = await pool.query(`SELECT id FROM roles WHERE code=$1`, [role_code]);
+    const role = await client.query(`SELECT id, code FROM roles WHERE code=$1`, [role_code]);
     if (!role.rows[0]) return res.status(400).json({ error: 'bad-role' });
-    const r = await pool.query(
-      `INSERT INTO users (phone, email, display_name, role_id, master_id, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [phone || null, email || null, display_name, role.rows[0].id, master_id || null, branch_id || null]
+    phone = phone ? normalizePhone(phone) : null;
+
+    // пароль (необов'язковий) — якщо заданий, перевіряємо складність і хешуємо
+    let password_hash = null;
+    if (password) {
+      const cx = checkPasswordComplexity(password);
+      if (!cx.ok) return res.status(400).json({ error: 'weak-password', details: cx.errors });
+      password_hash = await hashPassword(password);
+    }
+
+    await client.query('BEGIN');
+
+    // якщо роль майстер і просять — створюємо запис у masters і лінкуємо
+    if (!master_id && (create_master || role.rows[0].code === 'master')) {
+      const m = await client.query(
+        `INSERT INTO masters (name, phone, specialty, commission_pct, active)
+         VALUES ($1,$2,$3,$4,true) RETURNING id`,
+        [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40]
+      );
+      master_id = m.rows[0].id;
+    }
+
+    const r = await client.query(
+      `INSERT INTO users (phone, email, display_name, role_id, master_id, branch_id, username, password_hash, is_active, password_changed_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text,true, CASE WHEN $8::text IS NULL THEN NULL ELSE NOW() END) RETURNING id`,
+      [phone, email || null, display_name, role.rows[0].id, master_id || null, branch_id || null, username || null, password_hash]
     );
-    await logAction({ user: req.user, action: 'user.create', entity: 'user', entity_id: r.rows[0].id, meta: { display_name, role_code } });
-    res.json({ ok: true, id: r.rows[0].id });
+    await client.query('COMMIT');
+    await logAction({ user: req.user, action: 'user.create', entity: 'user', entity_id: r.rows[0].id, meta: { display_name, role_code, has_password: !!password_hash, master_id } });
+    res.json({ ok: true, id: r.rows[0].id, master_id: master_id || null });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    if (/duplicate key|unique/i.test(e.message)) return res.status(409).json({ error: 'duplicate', message: 'Телефон, email або логін вже зайняті' });
+    res.status(500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
+// POST /api/users/:id/password — власник/адмін встановлює або скидає пароль
+router.post('/:id/password', requirePerm('users.write'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'password required' });
+    const cx = checkPasswordComplexity(password);
+    if (!cx.ok) return res.status(400).json({ error: 'weak-password', details: cx.errors });
+    const hash = await hashPassword(password);
+    const r = await pool.query(
+      `UPDATE users SET password_hash=$1, password_changed_at=NOW(), failed_login_attempts=0, locked_until=NULL, updated_at=NOW()
+       WHERE id=$2 RETURNING id`, [hash, id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    await pool.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [id, hash]).catch(()=>{});
+    await logAction({ user: req.user, action: 'user.set-password', entity: 'user', entity_id: id, meta: {} });
+    res.json({ ok: true, message: 'Пароль встановлено' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/users/:id — деактивувати (м'яке видалення)
+router.delete('/:id', requirePerm('users.write'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (id === req.user.id) return res.status(400).json({ error: 'cannot-deactivate-self' });
+    const r = await pool.query(`UPDATE users SET is_active=FALSE, updated_at=NOW() WHERE id=$1 RETURNING id`, [id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    await logAction({ user: req.user, action: 'user.deactivate', entity: 'user', entity_id: id, meta: {} });
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

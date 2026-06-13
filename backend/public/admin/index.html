@@ -903,6 +903,7 @@ select.input { background:var(--card); }
             <button class="set-item" data-tab="prepay" onclick="setTab('prepay')"><span class="material-icons-round">payments</span> Передплата</button>
             <button class="set-item" data-tab="schedule" onclick="setTab('schedule')"><span class="material-icons-round">schedule</span> Графік змін</button>
             <button class="set-item" data-tab="privacy" onclick="setTab('privacy')"><span class="material-icons-round">visibility</span> Конфіденційність</button>
+            <button class="set-item" data-tab="business" onclick="setTab('business')"><span class="material-icons-round">tune</span> Бізнес-налаштування</button>
             <button class="set-item" data-tab="rooms" onclick="setTab('rooms')"><span class="material-icons-round">meeting_room</span> Кабінети / ресурси</button>
             <button class="set-item" data-tab="consumables" onclick="setTab('consumables')"><span class="material-icons-round">inventory_2</span> Розхідники</button>
             <div class="set-navsec">Керування</div>
@@ -1000,6 +1001,86 @@ select.input { background:var(--card); }
                   <span><b>Майстри бачать номери телефонів клієнтів</b><i>Коли вимкнено — майстер бачить ім'я, але номер прихований (••• ••XX). Адміністратори й власник бачать завжди.</i></span>
                 </label>
                 <p id="settingsMsg" class="set-msg" style="margin-top:12px"></p>
+              </div></div>
+            </div>
+
+            <!-- БІЗНЕС-НАЛАШТУВАННЯ (власник) -->
+            <div class="set-pane" id="tab-business">
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Лояльність</h3>
+                <p class="set-p">Кешбек балами за візити. 1 бал = 1 грн при списанні.</p>
+                <div class="set-form">
+                  <label class="set-toggle"><input type="checkbox" id="bz_loy_enabled"><span><b>Програма лояльності увімкнена</b></span></label>
+                  <div class="set-field"><label>Кешбек, %</label><input id="bz_loy_pct" class="input" type="number" min="0" max="100" step="0.5" value="5"></div>
+                  <div class="set-field"><label>Поріг списання, балів</label><input id="bz_loy_min" class="input" type="number" min="0" value="0"></div>
+                  <div class="set-field"><label>Термін дії балів, днів (0 = безстроково)</label><input id="bz_loy_exp" class="input" type="number" min="0" value="0"></div>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('loyalty')">Зберегти</button>
+                <p id="bzLoyMsg" class="set-msg" style="margin-top:8px"></p>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Сповіщення</h3>
+                <p class="set-p">Нагадування клієнтам про запис.</p>
+                <div class="set-form">
+                  <label class="set-toggle"><input type="checkbox" id="bz_ntf_sms"><span><b>SMS</b></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_ntf_tg"><span><b>Telegram</b></span></label>
+                  <div class="set-field"><label>Нагадувати за (годин до запису)</label><input id="bz_ntf_hours" class="input" type="number" min="0" value="2"></div>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('notifications')">Зберегти</button>
+                <p id="bzNtfMsg" class="set-msg" style="margin-top:8px"></p>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Способи оплати</h3>
+                <p class="set-p">Які методи доступні при розрахунку.</p>
+                <div class="set-form">
+                  <label class="set-toggle"><input type="checkbox" id="bz_pay_cash"><span><b>Готівка</b></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_pay_card"><span><b>Картка</b></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_pay_mono"><span><b>monobank</b></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_pay_apple"><span><b>Apple Pay</b></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_pay_google"><span><b>Google Pay</b></span></label>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('payment_methods')">Зберегти</button>
+                <p id="bzPayMsg" class="set-msg" style="margin-top:8px"></p>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Фінанси</h3>
+                <p class="set-p">Валюта та комісія майстрів за замовчуванням.</p>
+                <div class="set-form">
+                  <div class="set-field"><label>Валюта</label>
+                    <select id="bz_fin_currency" class="input"><option value="UAH">грн (UAH)</option><option value="USD">$ (USD)</option><option value="EUR">€ (EUR)</option></select>
+                  </div>
+                  <div class="set-field"><label>Комісія майстра за замовч., %</label><input id="bz_fin_commission" class="input" type="number" min="0" max="100" value="40"></div>
+                  <div class="set-field"><label>Податок, %</label><input id="bz_fin_tax" class="input" type="number" min="0" max="100" step="0.1" value="0"></div>
+                  <label class="set-toggle"><input type="checkbox" id="bz_fin_fiscal"><span><b>РРО / фіскалізація</b></span></label>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('finance')">Зберегти</button>
+                <p id="bzFinMsg" class="set-msg" style="margin-top:8px"></p>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Скасування та неявка</h3>
+                <p class="set-p">Політика скасування записів.</p>
+                <div class="set-form">
+                  <div class="set-field"><label>Мін. годин до скасування</label><input id="bz_can_hours" class="input" type="number" min="0" value="24"></div>
+                  <div class="set-field"><label>Штраф за неявку, грн</label><input id="bz_can_fee" class="input" type="number" min="0" value="0"></div>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('cancellation')">Зберегти</button>
+                <p id="bzCanMsg" class="set-msg" style="margin-top:8px"></p>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Видимість для майстрів</h3>
+                <p class="set-p">Що бачать майстри у своєму кабінеті.</p>
+                <div class="set-form">
+                  <label class="set-toggle"><input type="checkbox" id="bz_vis_others"><span><b>Бачать чужі записи</b><i>Записи інших майстрів у журналі.</i></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_vis_finance"><span><b>Бачать фінанси</b><i>Суми, виручку, звіти.</i></span></label>
+                  <label class="set-toggle"><input type="checkbox" id="bz_vis_contacts"><span><b>Бачать контакти клієнтів</b><i>Телефони та email.</i></span></label>
+                </div>
+                <button class="btn btn-primary" onclick="saveBusiness('masters_visibility')">Зберегти</button>
+                <p id="bzVisMsg" class="set-msg" style="margin-top:8px"></p>
               </div></div>
             </div>
 
@@ -1306,6 +1387,7 @@ async function loadSettings() {
     const ppe = document.getElementById('pp_enabled'); if (ppe) ppe.checked = pp.enabled === true;
     if (document.getElementById('pp_percent')) document.getElementById('pp_percent').value = pp.percent ?? 30;
     if (document.getElementById('pp_min')) document.getElementById('pp_min').value = pp.min_amount ?? 0;
+    loadBusiness(s);
     msg.textContent = '';
   } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Не вдалося завантажити налаштування'; }
   loadRooms();
@@ -1322,6 +1404,43 @@ async function savePrepay() {
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
   try {
     const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ prepayment }) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Збережено ✓'; }
+    else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
+}
+// ── Бізнес-налаштування (власник) ──
+function loadBusiness(s) {
+  const chk=(id,v)=>{ const el=document.getElementById(id); if(el) el.checked=!!v; };
+  const val=(id,v)=>{ const el=document.getElementById(id); if(el && v!=null) el.value=v; };
+  const loy=s.loyalty||{};
+  chk('bz_loy_enabled', loy.enabled); val('bz_loy_pct', loy.percent ?? 5); val('bz_loy_min', loy.min_redeem ?? 0); val('bz_loy_exp', loy.expire_days ?? 0);
+  const ntf=s.notifications||{}; const ch=ntf.channels||{};
+  chk('bz_ntf_sms', ch.sms); chk('bz_ntf_tg', ch.telegram); val('bz_ntf_hours', ntf.reminder_hours ?? 2);
+  const pm=s.payment_methods||{};
+  chk('bz_pay_cash', pm.cash!==false); chk('bz_pay_card', pm.card!==false); chk('bz_pay_mono', pm.mono); chk('bz_pay_apple', pm.apple); chk('bz_pay_google', pm.google);
+  const fin=s.finance||{};
+  val('bz_fin_currency', fin.currency || 'UAH'); val('bz_fin_commission', fin.commission_pct ?? 40); val('bz_fin_tax', fin.tax_pct ?? 0); chk('bz_fin_fiscal', fin.fiscal);
+  const can=s.cancellation||{};
+  val('bz_can_hours', can.min_hours ?? 24); val('bz_can_fee', can.noshow_fee ?? 0);
+  const vis=s.masters_visibility||{};
+  chk('bz_vis_others', vis.see_others); chk('bz_vis_finance', vis.see_finance); chk('bz_vis_contacts', vis.see_contacts);
+}
+async function saveBusiness(group) {
+  const n=id=>Number(document.getElementById(id).value)||0;
+  const c=id=>document.getElementById(id).checked;
+  const map={
+    loyalty:    { msg:'bzLoyMsg', payload:{ loyalty:{ enabled:c('bz_loy_enabled'), percent:n('bz_loy_pct'), min_redeem:n('bz_loy_min'), expire_days:n('bz_loy_exp') } } },
+    notifications:{ msg:'bzNtfMsg', payload:{ notifications:{ channels:{ sms:c('bz_ntf_sms'), telegram:c('bz_ntf_tg') }, reminder_hours:n('bz_ntf_hours') } } },
+    payment_methods:{ msg:'bzPayMsg', payload:{ payment_methods:{ cash:c('bz_pay_cash'), card:c('bz_pay_card'), mono:c('bz_pay_mono'), apple:c('bz_pay_apple'), google:c('bz_pay_google') } } },
+    finance:    { msg:'bzFinMsg', payload:{ finance:{ currency:document.getElementById('bz_fin_currency').value, commission_pct:n('bz_fin_commission'), tax_pct:n('bz_fin_tax'), fiscal:c('bz_fin_fiscal') } } },
+    cancellation:{ msg:'bzCanMsg', payload:{ cancellation:{ min_hours:n('bz_can_hours'), noshow_fee:n('bz_can_fee') } } },
+    masters_visibility:{ msg:'bzVisMsg', payload:{ masters_visibility:{ see_others:c('bz_vis_others'), see_finance:c('bz_vis_finance'), see_contacts:c('bz_vis_contacts') } } },
+  };
+  const cfg=map[group]; if(!cfg) return;
+  const msg=document.getElementById(cfg.msg);
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r=await api('/api/settings', { method:'PATCH', body: JSON.stringify(cfg.payload) });
     if (r.ok) { msg.style.color='#10b981'; msg.textContent='Збережено ✓'; }
     else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }

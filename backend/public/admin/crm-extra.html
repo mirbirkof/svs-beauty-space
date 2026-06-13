@@ -209,25 +209,34 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
 <!-- ═══════════ ПОЛЬЗОВАТЕЛИ ═══════════ -->
 <section id="tab-users" class="tab">
   <div class="card">
-    <h2>Новий користувач</h2>
-    <div class="row">
-      <input id="u-name" placeholder="Ім'я" style="width:200px">
-      <input id="u-phone" placeholder="Телефон" style="width:160px">
-      <input id="u-email" placeholder="Email" style="width:200px">
-      <select id="u-role">
+    <h2>Новий співробітник (майстер / адмін)</h2>
+    <div class="row" style="flex-wrap:wrap;gap:8px">
+      <input id="u-name" placeholder="Ім'я *" style="width:180px">
+      <input id="u-phone" placeholder="Телефон (логін)" style="width:150px">
+      <input id="u-email" placeholder="Email" style="width:180px">
+      <select id="u-role" onchange="toggleMasterFields()">
         <option value="owner">Власник</option>
         <option value="admin">Адмін</option>
         <option value="manager">Менеджер</option>
-        <option value="master">Майстер</option>
+        <option value="accountant">Бухгалтер</option>
+        <option value="master" selected>Майстер</option>
         <option value="reception">Рецепшен</option>
-        <option value="readonly">Тільки чтение</option>
+        <option value="marketer">Маркетолог</option>
+        <option value="readonly">Тільки читання</option>
       </select>
+      <input id="u-username" placeholder="Логін (необов.)" style="width:130px">
+      <input id="u-password" type="password" placeholder="Пароль" style="width:150px">
+      <span id="u-master-fields" style="display:inline-flex;gap:8px">
+        <input id="u-specialty" placeholder="Спеціальність" style="width:150px">
+        <input id="u-commission" type="number" placeholder="Комісія %" value="40" style="width:90px">
+      </span>
       <button class="btn" onclick="createUser()">Створити</button>
     </div>
+    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мін. 8 символів, велика+мала літера, цифра. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
   </div>
   <div class="card">
-    <h2>Користувачі</h2>
-    <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Телефон</th><th>Email</th><th>Філіал</th><th>Активний</th><th></th></tr></thead><tbody id="u-list"></tbody></table>
+    <h2>Співробітники</h2>
+    <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Логін/Тел</th><th>Email</th><th>Пароль</th><th>Активний</th><th>Дії</th></tr></thead><tbody id="u-list"></tbody></table>
   </div>
 </section>
 
@@ -538,14 +547,23 @@ async function createBranch(){
 }
 
 // ─────── USERS ───────
+function toggleMasterFields(){
+  const isMaster = document.getElementById('u-role').value === 'master';
+  document.getElementById('u-master-fields').style.display = isMaster ? 'inline-flex' : 'none';
+}
 async function loadUsers(){
   try{
     const r = await api('/api/users');
     document.getElementById('u-list').innerHTML = r.items.map(u=>`
-      <tr><td>${u.display_name}</td><td><span class="pill info">${u.role}</span></td>
-          <td>${fmtPhone(u.phone)}</td><td>${u.email||''}</td><td>${u.branch_id||'—'}</td>
+      <tr><td>${u.display_name}</td><td><span class="pill info">${u.role_name||u.role}</span></td>
+          <td>${u.username||fmtPhone(u.phone)}</td><td>${u.email||''}</td>
+          <td><span class="pill ${u.has_password?'ok':'gray'}">${u.has_password?'є':'нема'}</span></td>
           <td><span class="pill ${u.is_active?'ok':'gray'}">${u.is_active?'так':'ні'}</span></td>
-          <td><button class="btn sm" onclick="issueToken(${u.id})">Token</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Користувачів немає</td></tr>';
+          <td style="white-space:nowrap">
+            <button class="btn sm" onclick="setPassword(${u.id})">Пароль</button>
+            <button class="btn sm" onclick="issueToken(${u.id})">Token</button>
+            ${u.is_active?`<button class="btn sm ghost" onclick="deactivateUser(${u.id})">✕</button>`:''}
+          </td></tr>`).join('') || '<tr><td colspan="7" class="empty">Співробітників немає</td></tr>';
   }catch(e){ alert(e.message); }
 }
 async function createUser(){
@@ -553,8 +571,28 @@ async function createUser(){
   const phone = document.getElementById('u-phone').value.trim();
   const email = document.getElementById('u-email').value.trim();
   const role_code = document.getElementById('u-role').value;
+  const username = document.getElementById('u-username').value.trim();
+  const password = document.getElementById('u-password').value;
+  const specialty = document.getElementById('u-specialty').value.trim();
+  const commission_pct = parseFloat(document.getElementById('u-commission').value)||40;
   if(!display_name) return alert('Імʼя обовʼязкове');
-  try{ await api('/api/users',{method:'POST',body:JSON.stringify({display_name, phone, email, role_code})}); document.getElementById('u-name').value=''; loadUsers(); }catch(e){ alert(e.message); }
+  const body = { display_name, phone, email, role_code, username, password };
+  if(role_code==='master'){ body.specialty = specialty; body.commission_pct = commission_pct; }
+  try{
+    await api('/api/users',{method:'POST',body:JSON.stringify(body)});
+    ['u-name','u-phone','u-email','u-username','u-password','u-specialty'].forEach(id=>document.getElementById(id).value='');
+    loadUsers();
+  }catch(e){ alert(e.message); }
+}
+async function setPassword(uid){
+  const password = prompt('Новий пароль (мін. 8 символів, велика+мала літера, цифра):');
+  if(!password) return;
+  try{ await api('/api/users/'+uid+'/password',{method:'POST',body:JSON.stringify({password})}); alert('Пароль встановлено'); loadUsers(); }
+  catch(e){ alert(e.message); }
+}
+async function deactivateUser(uid){
+  if(!confirm('Деактивувати співробітника? Він втратить доступ.')) return;
+  try{ await api('/api/users/'+uid,{method:'DELETE'}); loadUsers(); }catch(e){ alert(e.message); }
 }
 async function issueToken(uid){
   const label = prompt('Мітка токена (напр. "iPad ресепшен"):', 'main');
