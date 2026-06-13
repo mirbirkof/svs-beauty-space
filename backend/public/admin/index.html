@@ -627,6 +627,35 @@ select.input { background:var(--card); }
             <p id="settingsMsg" style="font-size:13px;margin-top:12px"></p>
           </div>
         </div>
+
+        <div class="card" style="max-width:680px;margin-top:16px">
+          <div class="card-body">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Кабінети / робочі місця</h3>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Кабінети можна призначати запису в журналі.</p>
+            <div id="roomsList" style="display:grid;gap:8px;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px">
+              <input id="newRoomName" class="input" placeholder="Назва кабінету" style="flex:1">
+              <input id="newRoomColor" type="color" value="#7c5cff" class="input" style="width:48px;padding:4px">
+              <button class="btn btn-primary" onclick="addRoom()">Додати</button>
+            </div>
+            <p id="roomsMsg" style="font-size:13px;margin-top:10px"></p>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:680px;margin-top:16px">
+          <div class="card-body">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px">Розхідники на послуги</h3>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Вкажіть, які товари списуються зі складу при виконанні послуги. Списання — автоматичне, коли запис стає «Виконано».</p>
+            <select id="consSvc" class="input" onchange="loadCons()"><option value="">— оберіть послугу —</option></select>
+            <div id="consList" style="display:grid;gap:8px;margin:12px 0"></div>
+            <div id="consAddBox" style="display:none;gap:8px;align-items:center">
+              <input id="consVarSearch" class="input" placeholder="Пошук товару…" style="flex:1" oninput="searchVars()">
+              <input id="consQty" class="input" type="number" step="0.001" min="0" value="1" style="width:90px" title="Кількість на 1 виконання">
+            </div>
+            <div id="consVarResults" style="display:grid;gap:6px;margin-top:6px"></div>
+            <p id="consMsg" style="font-size:13px;margin-top:10px"></p>
+          </div>
+        </div>
       </div>
 
     </div><!-- /content -->
@@ -744,6 +773,98 @@ async function loadSettings() {
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
     msg.textContent = '';
   } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Не вдалося завантажити налаштування'; }
+  loadRooms();
+  loadConsServices();
+}
+async function loadRooms() {
+  const box = document.getElementById('roomsList');
+  if (!box) return;
+  try {
+    const r = await api('/api/rooms?all=1');
+    _roomsCache = (r.items || []).filter(x => x.active);
+    box.innerHTML = (r.items || []).length ? '' : '<span style="font-size:13px;color:var(--text-secondary)">Кабінетів ще немає</span>';
+    for (const rm of (r.items || [])) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px' + (rm.active ? '' : ';opacity:.5');
+      row.innerHTML = `<span style="width:16px;height:16px;border-radius:4px;background:${rm.color||'#7c5cff'}"></span>
+        <span style="flex:1;font-weight:600">${rm.name}${rm.active?'':' (вимкнено)'}</span>
+        ${rm.active?`<button class="btn btn-outline" style="padding:4px 10px" onclick="delRoom(${rm.id})">Вимкнути</button>`:''}`;
+      box.appendChild(row);
+    }
+  } catch (e) { box.innerHTML = '<span style="color:#ef4444">Помилка завантаження</span>'; }
+}
+async function addRoom() {
+  const name = document.getElementById('newRoomName').value.trim();
+  const color = document.getElementById('newRoomColor').value;
+  const msg = document.getElementById('roomsMsg');
+  if (!name) { msg.style.color='#ef4444'; msg.textContent='Введіть назву'; return; }
+  msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
+  try {
+    const r = await api('/api/rooms', { method:'POST', body: JSON.stringify({ name, color }) });
+    if (r.ok) { document.getElementById('newRoomName').value=''; msg.textContent=''; _roomsCache=null; loadRooms(); }
+    else { msg.style.color='#ef4444'; msg.textContent = r.error || 'Помилка'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
+}
+async function delRoom(id) {
+  await api('/api/rooms/' + id, { method:'DELETE' });
+  _roomsCache = null; loadRooms();
+}
+
+// ── Розхідники на послуги ──
+async function loadConsServices() {
+  try {
+    const r = await api('/api/admin/services');
+    const sel = document.getElementById('consSvc');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— оберіть послугу —</option>' +
+      (r.items || []).filter(s=>s.active!==false).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  } catch {}
+}
+async function loadCons() {
+  const sid = document.getElementById('consSvc').value;
+  const box = document.getElementById('consList');
+  const addBox = document.getElementById('consAddBox');
+  document.getElementById('consVarResults').innerHTML = '';
+  document.getElementById('consVarSearch').value = '';
+  if (!sid) { box.innerHTML = ''; addBox.style.display='none'; return; }
+  addBox.style.display='flex';
+  const r = await api('/api/consumables/' + sid);
+  const items = r.items || [];
+  box.innerHTML = items.length ? '' : '<span style="font-size:13px;color:var(--text-secondary)">Розхідників не призначено</span>';
+  for (const c of items) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px';
+    row.innerHTML = `<span style="flex:1">${c.product_name||'?'}${c.volume?' · '+c.volume:''} <span style="color:var(--text-secondary);font-size:12px">(на складі: ${c.stock_qty})</span></span>
+      <span style="font-weight:600">${c.qty_per_use} шт</span>
+      <button class="btn btn-outline" style="padding:4px 10px" onclick="delCons(${sid},${c.variant_id})">✕</button>`;
+    box.appendChild(row);
+  }
+}
+let _consVarTimer = null;
+function searchVars() {
+  clearTimeout(_consVarTimer);
+  _consVarTimer = setTimeout(async () => {
+    const q = document.getElementById('consVarSearch').value.trim();
+    if (q.length < 2) { document.getElementById('consVarResults').innerHTML=''; return; }
+    const r = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
+    const box = document.getElementById('consVarResults');
+    box.innerHTML = (r.items||[]).map(v=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px dashed var(--border);border-radius:8px;cursor:pointer" onclick="addCons(${v.id})">
+      <span style="flex:1">${v.product_name||'?'}${v.volume?' · '+v.volume:''}</span>
+      <span style="color:var(--text-secondary);font-size:12px">скл: ${v.stock_qty}</span></div>`).join('')
+      || '<span style="font-size:12px;color:var(--text-secondary)">Нічого не знайдено</span>';
+  }, 300);
+}
+async function addCons(variantId) {
+  const sid = document.getElementById('consSvc').value;
+  const qty = Number(document.getElementById('consQty').value) || 1;
+  const msg = document.getElementById('consMsg');
+  const r = await api('/api/consumables/' + sid, { method:'POST', body: JSON.stringify({ variant_id: variantId, qty_per_use: qty }) });
+  if (r.ok) { msg.style.color='#10b981'; msg.textContent='Додано ✓'; document.getElementById('consVarSearch').value=''; document.getElementById('consVarResults').innerHTML=''; loadCons(); setTimeout(()=>msg.textContent='',1500); }
+  else { msg.style.color='#ef4444'; msg.textContent = r.error||'Помилка'; }
+}
+async function delCons(sid, variantId) {
+  await api(`/api/consumables/${sid}/${variantId}`, { method:'DELETE' });
+  loadCons();
 }
 async function saveSettings() {
   const msg = document.getElementById('settingsMsg');
@@ -1003,9 +1124,18 @@ function renderJournalDay(container, data) {
 const _hm2 = (hhmm) => { const [h,m]=String(hhmm||'0:0').split(':').map(Number); return h*60+(m||0); };
 
 // ── модалка запису: деталі + замітка + статус ──
-function openAppt(id) {
+let _roomsCache = null;
+async function getRooms() {
+  if (_roomsCache) return _roomsCache;
+  try { const r = await api('/api/rooms'); _roomsCache = r.items || []; } catch { _roomsCache = []; }
+  return _roomsCache;
+}
+async function openAppt(id) {
   const a = (journalData?.appointments||[]).find(x => x.id===id);
   if (!a) return;
+  const rooms = await getRooms();
+  const roomOpts = `<option value="">— без кабінету —</option>` +
+    rooms.map(rm=>`<option value="${rm.id}"${a.room_id===rm.id?' selected':''}>${rm.name}</option>`).join('');
   document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
@@ -1018,8 +1148,29 @@ function openAppt(id) {
         </select>
       </div>
       <div>
+        <span style="color:var(--text-secondary);font-size:12px">Кабінет</span>
+        <select id="apptRoom" class="input">${roomOpts}</select>
+      </div>
+      <div>
         <span style="color:var(--text-secondary);font-size:12px">Замітка</span>
         <textarea id="apptNote" class="input" rows="3" placeholder="Напр.: алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
+      </div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Фото до / після</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:8px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px">До</div>
+            <div id="ph_before" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+            <input type="file" accept="image/*" style="display:none" id="up_before" onchange="uploadApptPhoto(${a.id},'before',this)">
+            <button class="btn btn-outline" style="margin-top:6px;width:100%" onclick="document.getElementById('up_before').click()">+ Додати</button>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:10px;padding:8px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px">Після</div>
+            <div id="ph_after" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px"></div>
+            <input type="file" accept="image/*" style="display:none" id="up_after" onchange="uploadApptPhoto(${a.id},'after',this)">
+            <button class="btn btn-outline" style="margin-top:6px;width:100%" onclick="document.getElementById('up_after').click()">+ Додати</button>
+          </div>
+        </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
@@ -1028,20 +1179,70 @@ function openAppt(id) {
       <div id="apptMsg" style="font-size:13px"></div>
     </div>`;
   document.getElementById('apptModal').style.display = 'flex';
+  loadApptPhotos(a.id, 'before');
+  loadApptPhotos(a.id, 'after');
 }
 function closeAppt() { document.getElementById('apptModal').style.display = 'none'; }
+
+// ── Фото до/після (через files.js, entity_type=appt_before/appt_after) ──
+async function imgBlobUrl(fileId) {
+  const r = await fetch(API + '/api/files/' + fileId, { headers: { 'X-Admin-Token': TOKEN } });
+  if (!r.ok) return null;
+  return URL.createObjectURL(await r.blob());
+}
+async function loadApptPhotos(apptId, kind) {
+  const box = document.getElementById('ph_' + kind);
+  if (!box) return;
+  const r = await api(`/api/files?entity_type=appt_${kind}&entity_id=${apptId}`);
+  const items = r.items || [];
+  box.innerHTML = items.length ? '' : '<span style="font-size:11px;color:var(--text-secondary)">—</span>';
+  for (const f of items) {
+    const url = await imgBlobUrl(f.id);
+    if (!url) continue;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative';
+    wrap.innerHTML = `<img src="${url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer" onclick="window.open('${url}')">
+      <span onclick="delApptPhoto('${f.id}','${kind}',${apptId})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;font-size:12px;line-height:18px;text-align:center;cursor:pointer">×</span>`;
+    box.appendChild(wrap);
+  }
+}
+async function uploadApptPhoto(apptId, kind, input) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('entity_type', 'appt_' + kind);
+  fd.append('entity_id', String(apptId));
+  const msg = document.getElementById('apptMsg');
+  if (msg) { msg.textContent = 'Завантаження фото…'; msg.style.color = 'var(--text-secondary)'; }
+  try {
+    const r = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN }, body: fd });
+    const j = await r.json();
+    if (j.ok || j.id) { if (msg) msg.textContent=''; loadApptPhotos(apptId, kind); }
+    else if (msg) { msg.textContent = j.error || 'Помилка фото'; msg.style.color = '#ef4444'; }
+  } catch { if (msg) { msg.textContent = 'Помилка мережі'; msg.style.color = '#ef4444'; } }
+  input.value = '';
+}
+async function delApptPhoto(fileId, kind, apptId) {
+  await api('/api/files/' + fileId, { method:'DELETE' });
+  loadApptPhotos(apptId, kind);
+}
+
 async function saveAppt(id) {
   const notes = document.getElementById('apptNote').value;
   const status = document.getElementById('apptStatus').value;
+  const roomSel = document.getElementById('apptRoom');
+  const room_id = roomSel && roomSel.value ? Number(roomSel.value) : null;
   const msg = document.getElementById('apptMsg');
   msg.textContent = 'Збереження…'; msg.style.color = 'var(--text-secondary)';
   try {
-    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ notes, status }) });
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ notes, status, room_id }) });
     if (r.ok) {
       const a = (journalData?.appointments||[]).find(x => x.id===id);
-      if (a) { a.notes = r.appointment.notes; a.status = r.appointment.status; }
-      msg.textContent = 'Збережено ✓'; msg.style.color = '#10b981';
-      setTimeout(() => { closeAppt(); loadJournal(); }, 500);
+      if (a) { a.notes = r.appointment.notes; a.status = r.appointment.status; a.room_id = r.appointment.room_id; }
+      let extra = '';
+      if (r.stock && r.stock.written) extra = ` · списано розхідників: ${r.stock.items}`;
+      msg.textContent = 'Збережено ✓' + extra; msg.style.color = '#10b981';
+      setTimeout(() => { closeAppt(); loadJournal(); }, 700);
     } else { msg.textContent = r.error || 'Помилка'; msg.style.color = '#ef4444'; }
   } catch (e) { msg.textContent = 'Помилка мережі'; msg.style.color = '#ef4444'; }
 }

@@ -199,7 +199,7 @@ router.get('/journal', async (req, res) => {
 
     // записи на день: appointment + майстер + послуга + клієнт
     const aRes = await pool.query(
-      `SELECT a.id, a.master_id, a.service_id, a.client_id,
+      `SELECT a.id, a.master_id, a.service_id, a.client_id, a.room_id,
               a.starts_at, a.ends_at, a.status, a.notes,
               COALESCE(a.price, s.price) AS price,
               s.name AS service_name,
@@ -237,8 +237,8 @@ router.get('/journal', async (req, res) => {
 router.patch('/appointments/:id', async (req, res) => {
   try {
     const pool = getPool();
-    const { notes, status } = req.body || {};
-    if (notes === undefined && status === undefined) {
+    const { notes, status, room_id } = req.body || {};
+    if (notes === undefined && status === undefined && room_id === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
     const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
@@ -249,13 +249,23 @@ router.patch('/appointments/:id', async (req, res) => {
       `UPDATE appointments
           SET notes = COALESCE($2, notes),
               status = COALESCE($3, status),
+              room_id = COALESCE($4, room_id),
               updated_at = NOW()
         WHERE id = $1
-        RETURNING id, notes, status`,
-      [req.params.id, notes ?? null, status ?? null]
+        RETURNING id, notes, status, room_id`,
+      [req.params.id, notes ?? null, status ?? null, room_id ?? null]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
-    res.json({ ok: true, appointment: r.rows[0] });
+
+    // услуга выполнена → списываем расходники со склада (идемпотентно)
+    let stock = null;
+    if (status === 'done') {
+      try {
+        const { writeOffForAppointment } = require('../lib/consumables');
+        stock = await writeOffForAppointment(Number(req.params.id));
+      } catch (e) { stock = { written: false, error: e.message }; }
+    }
+    res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
