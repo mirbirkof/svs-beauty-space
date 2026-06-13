@@ -212,8 +212,25 @@ router.get('/journal', async (req, res) => {
         WHERE active = true ${masterOnly ? 'AND id = $1' : ''} ORDER BY name`,
       masterOnly ? [masterOnly] : []
     );
+    // реальний графік з BeautyPro на цю дату (пріоритет над тижневим schedule_json)
+    const bpRes = await pool.query(
+      `SELECT master_id, to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
+         FROM master_schedule_days WHERE work_date = $1`, [date]
+    );
+    const bpMap = new Map(bpRes.rows.map(r => [r.master_id, r]));
     const masters = mRes.rows.map(m => {
       const s = m.schedule_json || {};
+      const bp = bpMap.get(m.id);
+      if (bp) {
+        // BeautyPro має запис на цей день: є години → працює, немає → вихідний
+        const working = !!(bp.start && bp.end);
+        return {
+          id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar,
+          working, start: working ? bp.start : null, end: working ? bp.end : null,
+          break_start: null, break_end: null,
+          day_off_reason: working ? null : 'Вихідний',
+        };
+      }
       const off = !!(s.exceptions && s.exceptions[date] && s.exceptions[date].off);
       const wd = (!off && s[dayKey]) ? s[dayKey] : null;
       return {

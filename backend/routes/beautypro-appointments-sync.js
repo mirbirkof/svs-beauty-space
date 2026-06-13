@@ -227,6 +227,49 @@ async function syncAppointments(from, to) {
   return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients };
 }
 
+// ── Графік майстрів BP (/schedule) → master_schedule_days ───────────────
+// /employees.worktime порожній, тож реальний графік беремо з /schedule по даті.
+// "HH:MM" з ISO-таймстемпу worktime (BP віддає у локальному часі салону).
+function hhmmFromIso(iso) {
+  if (!iso) return null;
+  const m = String(iso).match(/T(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+}
+
+async function syncSchedules(from, to) {
+  const pool = getPool();
+  const token = await getToken();
+  const LOCATION = process.env.BEAUTYPRO_LOCATION_ID || '88deba79-2b95-c6e0-9eb9-658d4d8ea59c';
+  const r = await httpsRequest('GET', `/schedule?from=${from}&to=${to}&location=${encodeURIComponent(LOCATION)}`, { token });
+  const cols = (r && (r.columns || r.data)) || [];
+  let upserted = 0, skipped = 0;
+  for (const col of cols) {
+    const masterId = await resolveMasterId(pool, col.professional);
+    if (!masterId) { skipped++; continue; }
+    const date = String(col.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped++; continue; }
+    const wt = Array.isArray(col.worktime) && col.worktime.length ? col.worktime : null;
+    // мінімальний start і максимальний end за день (об'єднуємо вікна)
+    let start = null, end = null;
+    if (wt) {
+      for (const w of wt) {
+        const s = hhmmFromIso(w.start), e = hhmmFromIso(w.end);
+        if (s && (!start || s < start)) start = s;
+        if (e && (!end || e > end)) end = e;
+      }
+    }
+    await pool.query(
+      `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+       VALUES ($1,$2,$3,$4,'beautypro',NOW())
+       ON CONFLICT (master_id, work_date) DO UPDATE SET
+         start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, synced_at=NOW()`,
+      [masterId, date, start, end]
+    );
+    upserted++;
+  }
+  return { columns: cols.length, upserted, skipped };
+}
+
 // ── Продажи BP → касса (cash_operations) ───────────────────────────────
 // BP-кошельки → способ оплаты. Безнал = банковская карта, остальное = готівка.
 const BP_CARD_ACCOUNTS = new Set(['88de9f80-b486-7c3d-2721-6e895eccd818']);
@@ -379,6 +422,15 @@ router.post('/v2/appointments', requirePerm('sync.write'), async (req, res) => {
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
+router.post('/v2/schedules', requirePerm('sync.write'), async (req, res) => {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const from = req.query.from || iso(today);
+  const to = req.query.to || iso(new Date(today.getTime() + 30 * 864e5));
+  try { res.json({ ok: true, from, to, ...(await withAuthRetry(() => syncSchedules(from, to))) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
 router.post('/v2/sales', requirePerm('sync.write'), async (req, res) => {
   const today = new Date();
   const iso = (d) => d.toISOString().slice(0, 10);
@@ -411,6 +463,9 @@ async function cronTick() {
     // продажи в кассу за последние 3 дня (включая сегодня) — держим кассу синхронной с BP
     const s = await withAuthRetry(() => syncSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
     if (s.posted) console.log(`[bp-appt-sync] касса: +${s.posted} продаж, ${s.shifts} змін`);
+    // графік майстрів на 30 днів вперёд — журнал бачить реальні робочі години з BP
+    const sc = await withAuthRetry(() => syncSchedules(iso(now), iso(new Date(now.getTime() + 30 * 864e5))));
+    if (sc.upserted) console.log(`[bp-appt-sync] графік: ${sc.upserted} днів-майстрів`);
   } catch (e) {
     console.error('[bp-appt-sync] cron error:', e.message);
   }
@@ -428,4 +483,5 @@ module.exports = router;
 module.exports.syncAppointments = syncAppointments;
 module.exports.backfillClients = backfillClients;
 module.exports.syncSales = syncSales;
+module.exports.syncSchedules = syncSchedules;
 module.exports.syncServicesCatalog = syncServicesCatalog;
