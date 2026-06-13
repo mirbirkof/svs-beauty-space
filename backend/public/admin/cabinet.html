@@ -143,7 +143,7 @@ async function showCabinet() {
   if (!me.ok) { localStorage.removeItem(TOKEN_KEY); location.reload(); return; }
   const c = me.client;
   $('hello').textContent = c.name ? 'Привіт, ' + c.name + '!' : 'Привіт!';
-  $('phoneLine').textContent = '+' + c.phone;
+  $('phoneLine').textContent = c.phone ? '+' + String(c.phone).replace(/\D/g,'') : '—';
   $('name').value = c.name || '';
   $('email').value = c.email || '';
   $('bonus').textContent = Math.floor(Number(c.loyalty_points) || 0);

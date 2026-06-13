@@ -84,7 +84,7 @@ async function loadMe() {
     const u = data.user;
     $('hello').textContent = 'Вітаю, ' + (u.display_name || 'співробітник') + '!';
     $('i-name').textContent = u.display_name || '—';
-    $('i-phone').textContent = u.phone || '—';
+    $('i-phone').textContent = u.phone ? '+' + String(u.phone).replace(/\D/g,'') : '—';
     $('i-role').textContent = u.role_code || ('role#' + u.role_id);
     hasPassword = !!u.has_password;
     reflectState();
