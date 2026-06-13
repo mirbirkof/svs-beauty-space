@@ -2280,20 +2280,38 @@ async function loadProductSales(){
     if(bSel.options.length<=1 && r.brands?.length) bSel.innerHTML='<option value="">Усі бренди</option>'+r.brands.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
     const brSel=document.getElementById('psBranch');
     if(brSel.options.length<=1 && r.branches?.length) brSel.innerHTML='<option value="">Усі склади</option>'+r.branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
-    const brandRows=r.by_brand.map(b=>`<tr><td>${b.brand}</td><td>${b.qty}</td><td>${_money2(b.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає продажів</td></tr>';
-    const prodRows=r.by_product.map(p=>`<tr><td>${p.name}</td><td style="color:var(--text-secondary);font-size:12px">${p.brand||''}</td><td>${p.qty}</td><td>${_money2(p.revenue)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Немає продажів</td></tr>';
-    box.innerHTML=`<div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Усього: <b style="font-size:18px">${_money2(r.total)}</b></div>
-      ${(!r.by_brand.length)?'<p class="set-p" style="color:#f59e0b">Деталізовані продажі товарів (з брендом) ведуться лише через замовлення інтернет-магазину. Салонні продажі з BeautyPro приходять однією сумою без розбивки по товару.</p>':''}
+    const salon = r.salon || { total:0, by_product:[], by_category:[], by_master:[] };
+    const _q = v => Number(v||0).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
+    // Салонні товари (BeautyPro) — позиційно
+    const spCat = salon.by_category.map(c=>`<tr><td>${c.category}</td><td>${_q(c.qty)}</td><td>${_money2(c.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає даних</td></tr>';
+    const spProd = salon.by_product.map(p=>`<tr><td>${p.name}${p.matched?'':' <span style="color:#f59e0b" title="Не зіставлено зі складом">⚠</span>'}</td><td style="color:var(--text-secondary);font-size:12px">${p.category||''}</td><td>${_q(p.qty)}</td><td>${_money2(p.revenue)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Немає продажів</td></tr>';
+    const spMaster = salon.by_master.map(m=>`<tr><td>${m.master}</td><td>${_q(m.qty)}</td><td>${_money2(m.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає даних</td></tr>';
+    // Інтернет-магазин (якщо є замовлення)
+    const shopBlock = (r.by_brand && r.by_brand.length) ? `
+      <h3 style="margin:22px 0 8px">Інтернет-магазин</h3>
+      <div style="padding:10px 14px;border-radius:10px;background:var(--bg-secondary);margin-bottom:12px">Магазин: <b>${_money2(r.total)}</b></div>
       <div class="grid-2" style="gap:20px">
-        <div><h4 style="margin:0 0 8px">За брендами</h4><table class="tbl"><thead><tr><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${brandRows}</tbody></table></div>
-        <div><h4 style="margin:0 0 8px">За товарами</h4><table class="tbl"><thead><tr><th>Товар</th><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${prodRows}</tbody></table></div>
-      </div>`;
+        <div><h4 style="margin:0 0 8px">За брендами</h4><table class="tbl"><thead><tr><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${r.by_brand.map(b=>`<tr><td>${b.brand}</td><td>${b.qty}</td><td>${_money2(b.revenue)}</td></tr>`).join('')}</tbody></table></div>
+        <div><h4 style="margin:0 0 8px">За товарами</h4><table class="tbl"><thead><tr><th>Товар</th><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${r.by_product.map(p=>`<tr><td>${p.name}</td><td style="font-size:12px">${p.brand||''}</td><td>${p.qty}</td><td>${_money2(p.revenue)}</td></tr>`).join('')}</tbody></table></div>
+      </div>` : '';
+    box.innerHTML=`
+      <div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Салон (BeautyPro): <b style="font-size:18px">${_money2(salon.total)}</b>${r.total?` &nbsp;·&nbsp; Магазин: <b>${_money2(r.total)}</b>`:''}</div>
+      <h3 style="margin:0 0 8px">Салонні товари</h3>
+      <div class="grid-2" style="gap:20px">
+        <div><h4 style="margin:0 0 8px">За категоріями</h4><table class="tbl"><thead><tr><th>Категорія</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spCat}</tbody></table></div>
+        <div><h4 style="margin:0 0 8px">За майстрами</h4><table class="tbl"><thead><tr><th>Майстер</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spMaster}</tbody></table></div>
+      </div>
+      <h4 style="margin:18px 0 8px">За товарами (позиційно)</h4>
+      <table class="tbl"><thead><tr><th>Товар</th><th>Категорія</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spProd}</tbody></table>
+      ${shopBlock}`;
   }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
 }
 function exportProductSales(){
   if(!_psData) return alert('Немає даних');
-  downloadCSV('product-sales.csv',['Товар','Бренд','Шт','Сума,грн'],
-    _psData.by_product.map(p=>[p.name,p.brand||'',p.qty,p.revenue]));
+  const salon=(_psData.salon&&_psData.salon.by_product)||[];
+  const rows=salon.map(p=>['Салон',p.name,p.category||'',p.qty,p.revenue])
+    .concat((_psData.by_product||[]).map(p=>['Магазин',p.name,p.brand||'',p.qty,p.revenue]));
+  downloadCSV('product-sales.csv',['Джерело','Товар','Категорія/Бренд','К-сть','Сума,грн'],rows);
 }
 
 // ═══ JOURNAL ═════════════════════════════════

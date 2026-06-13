@@ -348,6 +348,71 @@ async function syncSales(from, to) {
   return { posted, skipped, shifts };
 }
 
+// ── Детальні продажі товарів BP (/sales type=Product) → salon_product_sales ──
+// Кожна позиція окремим рядком (name+quantity+sum). Fuzzy-match до salon_stock.
+async function fetchProductSalesDay(token, day) {
+  const nd = new Date(day + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1);
+  const next = nd.toISOString().slice(0, 10);
+  const fields = encodeURIComponent('sale_date,type,sum,quantity,cancel,professional_name,name');
+  const path = `/sales?fields=${fields}&sale_date_from=${day}&sale_date_to=${next}` +
+    `&location=${encodeURIComponent(process.env.BEAUTYPRO_LOCATION_ID || '88deba79-2b95-c6e0-9eb9-658d4d8ea59c')}&limit=1000`;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const r = await httpsRequest('GET', path, { token });
+      return Array.isArray(r) ? r : (r && r.data) || [];
+    } catch (e) {
+      if (e.status >= 500 && i < 4) { await sleep(700 * (i + 1)); continue; }
+      throw e;
+    }
+  }
+  return [];
+}
+
+// Пошук позиції складу за назвою: точний (нормалізований) → частковий ILIKE
+async function matchStock(pool, name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  let r = await pool.query(`SELECT id FROM salon_stock WHERE lower(trim(name)) = lower($1) LIMIT 1`, [n]);
+  if (r.rows[0]) return r.rows[0].id;
+  r = await pool.query(`SELECT id FROM salon_stock WHERE name ILIKE $1 OR $2 ILIKE ('%'||name||'%') ORDER BY length(name) DESC LIMIT 1`, ['%' + n + '%', n]);
+  return r.rows[0]?.id || null;
+}
+
+async function syncProductSales(from, to) {
+  const pool = getPool();
+  const token = await getToken();
+  const mres = await pool.query('SELECT id, name FROM masters');
+  const mmap = new Map(mres.rows.map((r) => [String(r.name).trim(), r.id]));
+  const days = [];
+  for (let d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z'); d <= end; d.setUTCDate(d.getUTCDate() + 1))
+    days.push(d.toISOString().slice(0, 10));
+
+  let posted = 0, skipped = 0, matched = 0;
+  for (const day of days) {
+    const recs = (await fetchProductSalesDay(token, day)).filter(
+      (s) => !s.cancel && s.type === 'Product' && (Number(s.sum) || 0) > 0);
+    for (const s of recs) {
+      const qty = Number(s.quantity) || 1;
+      const total = Number(s.sum) || 0;
+      const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
+      const stockId = await matchStock(pool, s.name);
+      if (stockId) matched++;
+      const r = await pool.query(
+        `INSERT INTO salon_product_sales (ext_ref, sale_date, product_name, qty, total_price, unit_price, master_id, master_name, stock_id, matched)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (ext_ref) DO UPDATE SET
+           product_name=EXCLUDED.product_name, qty=EXCLUDED.qty, total_price=EXCLUDED.total_price,
+           unit_price=EXCLUDED.unit_price, master_id=EXCLUDED.master_id, master_name=EXCLUDED.master_name,
+           stock_id=EXCLUDED.stock_id, matched=EXCLUDED.matched
+         RETURNING (xmax = 0) AS inserted`,
+        [s.id, s.sale_date, s.name || 'Товар', qty, total, qty ? total / qty : total, masterId, s.professional_name || null, stockId, !!stockId]
+      );
+      if (r.rows[0]?.inserted) posted++; else skipped++;
+    }
+  }
+  return { posted, updated: skipped, matched };
+}
+
 // Backfill клиентов BP→local: для записей без client_id тянем клиента из BP и создаём карточку
 async function backfillClients(limit = 500) {
   const pool = getPool();
@@ -422,6 +487,15 @@ router.post('/v2/appointments', requirePerm('sync.write'), async (req, res) => {
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
+router.post('/v2/product-sales', requirePerm('sync.write'), async (req, res) => {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const from = req.query.from || iso(new Date(today.getTime() - 30 * 864e5));
+  const to = req.query.to || iso(today);
+  try { res.json({ ok: true, from, to, ...(await withAuthRetry(() => syncProductSales(from, to))) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
 router.post('/v2/schedules', requirePerm('sync.write'), async (req, res) => {
   const today = new Date();
   const iso = (d) => d.toISOString().slice(0, 10);
@@ -466,6 +540,9 @@ async function cronTick() {
     // графік майстрів на 30 днів вперёд — журнал бачить реальні робочі години з BP
     const sc = await withAuthRetry(() => syncSchedules(iso(now), iso(new Date(now.getTime() + 30 * 864e5))));
     if (sc.upserted) console.log(`[bp-appt-sync] графік: ${sc.upserted} днів-майстрів`);
+    // детальні продажі товарів за 3 дні — позиційна аналітика складу
+    const ps = await withAuthRetry(() => syncProductSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
+    if (ps.posted) console.log(`[bp-appt-sync] товари: +${ps.posted} позицій (${ps.matched} матч)`);
   } catch (e) {
     console.error('[bp-appt-sync] cron error:', e.message);
   }
@@ -484,4 +561,5 @@ module.exports.syncAppointments = syncAppointments;
 module.exports.backfillClients = backfillClients;
 module.exports.syncSales = syncSales;
 module.exports.syncSchedules = syncSchedules;
+module.exports.syncProductSales = syncProductSales;
 module.exports.syncServicesCatalog = syncServicesCatalog;

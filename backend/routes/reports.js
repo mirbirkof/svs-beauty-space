@@ -440,15 +440,14 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
       [masterId, from, to]
     );
 
-    // Товары — продажи товаров, привязанные к мастеру (cash_operations sale_product)
+    // Товары — позиційні продажі мастера (salon_product_sales з BeautyPro)
     const products = await pool.query(
-      `SELECT COALESCE(NULLIF(description,''),'Товар') AS name,
-              COUNT(*)::int AS count,
-              COALESCE(SUM(amount),0)::numeric AS sum
-         FROM cash_operations
-        WHERE category='sale_product' AND type='in' AND master_id=$1
-          AND created_at BETWEEN $2 AND $3
-        GROUP BY description ORDER BY sum DESC`,
+      `SELECT product_name AS name,
+              SUM(qty)::numeric AS count,
+              COALESCE(SUM(total_price),0)::numeric AS sum
+         FROM salon_product_sales
+        WHERE master_id=$1 AND sale_date BETWEEN $2 AND $3
+        GROUP BY product_name ORDER BY sum DESC`,
       [masterId, from, to]
     );
 
@@ -508,12 +507,54 @@ router.get('/product-sales', requirePerm('reports.read'), async (req, res) => {
     ).catch(() => ({ rows: [] }));
 
     const total = byBrand.rows.reduce((a,r)=>a+Number(r.revenue),0);
+
+    // ── Салонні продажі товарів (BeautyPro, позиційно) ──
+    const salonByProduct = await pool.query(
+      `SELECT sps.product_name AS name,
+              COALESCE(ss.category,'(без категорії)') AS category,
+              SUM(sps.qty)::numeric AS qty,
+              COALESCE(SUM(sps.total_price),0)::numeric AS revenue,
+              bool_or(sps.matched) AS matched
+         FROM salon_product_sales sps
+         LEFT JOIN salon_stock ss ON ss.id = sps.stock_id
+        WHERE sps.sale_date BETWEEN $1 AND $2
+        GROUP BY sps.product_name, ss.category ORDER BY revenue DESC LIMIT 500`,
+      [from, to]
+    ).catch(() => ({ rows: [] }));
+    const salonByCategory = await pool.query(
+      `SELECT COALESCE(ss.category,'(без категорії)') AS category,
+              SUM(sps.qty)::numeric AS qty,
+              COALESCE(SUM(sps.total_price),0)::numeric AS revenue
+         FROM salon_product_sales sps
+         LEFT JOIN salon_stock ss ON ss.id = sps.stock_id
+        WHERE sps.sale_date BETWEEN $1 AND $2
+        GROUP BY ss.category ORDER BY revenue DESC`,
+      [from, to]
+    ).catch(() => ({ rows: [] }));
+    const salonByMaster = await pool.query(
+      `SELECT COALESCE(m.name, sps.master_name, '(без майстра)') AS master,
+              SUM(sps.qty)::numeric AS qty,
+              COALESCE(SUM(sps.total_price),0)::numeric AS revenue
+         FROM salon_product_sales sps
+         LEFT JOIN masters m ON m.id = sps.master_id
+        WHERE sps.sale_date BETWEEN $1 AND $2
+        GROUP BY COALESCE(m.name, sps.master_name, '(без майстра)') ORDER BY revenue DESC`,
+      [from, to]
+    ).catch(() => ({ rows: [] }));
+    const salonTotal = salonByCategory.rows.reduce((a,r)=>a+Number(r.revenue),0);
+
     res.json({
       period: { from, to },
       filters: { brand, branch },
       brands: brands.rows, branches: branches.rows,
       total: Math.round(total),
       by_brand: byBrand.rows, by_product: byProduct.rows,
+      salon: {
+        total: Math.round(salonTotal),
+        by_product: salonByProduct.rows,
+        by_category: salonByCategory.rows,
+        by_master: salonByMaster.rows,
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
