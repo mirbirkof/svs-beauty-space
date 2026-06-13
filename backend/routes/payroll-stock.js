@@ -221,7 +221,7 @@ router.post('/stock/receipts', async (req, res) => {
           [it.qty, it.product_id]
         );
         await client.query(
-          `INSERT INTO stock_movements (product_id, delta, reason, note)
+          `INSERT INTO stock_movements (product_id, delta, reason, notes)
            VALUES ($1,$2,'receipt',$3)`,
           [it.product_id, it.qty, `receipt #${receipt_id}`]
         );
@@ -278,7 +278,7 @@ router.post('/stock/consumption', async (req, res) => {
     if (product_id) {
       await client.query(`UPDATE products SET stock = GREATEST(COALESCE(stock,0) - $1, 0) WHERE id=$2`, [qty, product_id]);
       await client.query(
-        `INSERT INTO stock_movements (product_id, delta, reason, note)
+        `INSERT INTO stock_movements (product_id, delta, reason, notes)
          VALUES ($1,$2,'consumption',$3)`,
         [product_id, -qty, `master ${master_id || 'unknown'} appointment ${appointment_id || '?'}`]
       );
