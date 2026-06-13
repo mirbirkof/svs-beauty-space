@@ -1,7 +1,7 @@
 /* Inventory audits: акты пересчёта, фиксация расхождений, авто-корректировка остатков
    Подключается как /api/inventory */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
@@ -14,7 +14,7 @@ router.post('/audits', requirePerm('stock.write'), async (req, res) => {
     const { branch_id, scope, scope_filter, notes } = req.body || {};
     const scopeVal = scope || 'full';
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const a = await client.query(
       `INSERT INTO inventory_audits (branch_id, status, started_by, scope, scope_filter, notes)
        VALUES ($1,'in_progress',$2,$3,$4,$5) RETURNING id`,
@@ -37,8 +37,8 @@ router.post('/audits', requirePerm('stock.write'), async (req, res) => {
     }
 
     const items = await client.query(
-      `SELECT v.id AS variant_id, p.name AS product_name, v.sku, COALESCE(v.stock,0) AS expected_qty,
-              COALESCE(v.cost,0) AS cost
+      `SELECT v.id AS variant_id, p.name AS product_name, v.sku, COALESCE(v.stock_qty,0) AS expected_qty,
+              COALESCE(v.wholesale,0) AS cost
          FROM product_variants v
          JOIN products p ON p.id = v.product_id
         WHERE ${where}`,
@@ -116,7 +116,7 @@ router.post('/audits/:id/complete', requirePerm('stock.write'), async (req, res)
   const client = await pool.connect();
   try {
     const id = Number(req.params.id);
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const a = await client.query(`SELECT * FROM inventory_audits WHERE id=$1 FOR UPDATE`, [id]);
     if (!a.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     if (a.rows[0].status === 'completed') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'already-completed' }); }
@@ -129,13 +129,13 @@ router.post('/audits/:id/complete', requirePerm('stock.write'), async (req, res)
 
     let totalDiff = 0;
     for (const row of diffs.rows) {
-      await client.query(`UPDATE product_variants SET stock=$1 WHERE id=$2`, [row.actual_qty, row.variant_id]);
-      // лог движения
+      await client.query(`UPDATE product_variants SET stock_qty=$1 WHERE id=$2`, [row.actual_qty, row.variant_id]);
+      // лог движения: delta = diff_qty (actual - expected), reason фиксирует акт инвентаризации
       await client.query(
-        `INSERT INTO stock_movements (variant_id, movement_type, qty_change, cost_per_unit, reason, created_at)
-         VALUES ($1,'audit_adjust',$2,$3,$4,NOW())`,
-        [row.variant_id, row.diff_qty, row.cost_per_unit, row.reason || 'inventory_audit']
-      ).catch(()=>{});
+        `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+         VALUES ($1,$2,'inventory_audit',$3,$4)`,
+        [row.variant_id, row.diff_qty, id, row.reason || null]
+      );
       totalDiff += Number(row.diff_value || 0);
     }
 

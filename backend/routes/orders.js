@@ -8,7 +8,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { authClient } = require('./cabinet-auth');
 const { requirePerm } = require('../lib/rbac');
 
@@ -24,7 +24,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       return res.status(400).json({ error: 'no-items' });
     }
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
 
     // клиент: либо из сессии, либо guest по телефону
     let clientId = req.client?.id || null;
@@ -60,7 +60,8 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
                 p.name AS product_name
          FROM product_variants pv
          JOIN products p ON p.id = pv.product_id
-         WHERE pv.id = $1 AND pv.active = true`,
+         WHERE pv.id = $1 AND pv.active = true
+         FOR UPDATE OF pv`,
         [it.variant_id]
       );
       if (v.rowCount === 0) {
@@ -255,7 +256,7 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
   const pool = getPool();
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const id = parseInt(req.params.id, 10);
     const r = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [id]);
     if (r.rowCount === 0) {
@@ -271,13 +272,28 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'cannot-cancel', status: order.status });
     }
-    // возврат остатков
+    // возврат остатков: для оплаченного заказа товар уже списан со склада → восстанавливаем stock_qty;
+    // для нового (ещё не оплачен) — только снимаем резерв.
+    const stockTaken = ['paid', 'packing'].includes(order.status);
     const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [id]);
     for (const it of items.rows) {
-      await client.query(
-        `UPDATE product_variants SET reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1) WHERE id = $2`,
-        [it.qty, it.variant_id]
-      );
+      if (it.variant_id == null) continue;
+      if (stockTaken) {
+        await client.query(
+          `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,
+          [it.qty, it.variant_id]
+        );
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, ref_id)
+           VALUES ($1, $2, $3, $4)`,
+          [it.variant_id, it.qty, `cancel:order:${id}`, id]
+        );
+      } else {
+        await client.query(
+          `UPDATE product_variants SET reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1) WHERE id = $2`,
+          [it.qty, it.variant_id]
+        );
+      }
     }
     await client.query(`UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [id]);
     await client.query('COMMIT');

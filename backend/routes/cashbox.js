@@ -2,7 +2,7 @@
    Финансовый учёт салона — приход/расход кассы по сменам.
    Подключается как /api/cashbox в shop-api.js */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
@@ -100,7 +100,7 @@ router.post('/shifts/:id/close', async (req, res) => {
     const id = Number(req.params.id);
     const { closing_cash, closed_by, notes } = req.body || {};
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const s = await client.query(`SELECT * FROM cash_shifts WHERE id=$1 FOR UPDATE`, [id]);
     if (!s.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     if (s.rows[0].status !== 'open') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'not-open' }); }

@@ -87,8 +87,17 @@ async function withTx(fn) {
   }
 }
 
+// Выставляет transaction-local app.tenant_id на ВНЕШНЕМ client'е (для ручных
+// транзакций в orders/inventory/cashbox, которые берут pool.connect() напрямую).
+// Без этого RLS-политики (миграция 015) работают permissive и не изолируют тенанта.
+// No-op вне HTTP-контекста (кроны/скрипты) — поведение как раньше.
+async function applyTenant(client) {
+  const tid = currentTenantId();
+  if (tid) await client.query("SELECT set_config('app.tenant_id', $1, true)", [tid]);
+}
+
 function isEnabled() {
   return !!process.env.DATABASE_URL;
 }
 
-module.exports = { query, withTx, getPool, isEnabled };
+module.exports = { query, withTx, applyTenant, getPool, isEnabled };

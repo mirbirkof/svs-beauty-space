@@ -31,11 +31,13 @@ router.get('/pnl', requirePerm('reports.read'), async (req, res) => {
       [from, to]
     );
 
-    // COGS (себестоимость проданных товаров) — из stock_movements типа 'sale'
+    // COGS (себестоимость проданных товаров) — расходные движения по заказам × оптовая цена варианта
     const cogs = await pool.query(
-      `SELECT COALESCE(SUM(ABS(qty_change) * COALESCE(cost_per_unit,0)),0)::numeric AS cogs
-         FROM stock_movements
-        WHERE movement_type='sale' AND created_at BETWEEN $1 AND $2`,
+      `SELECT COALESCE(SUM(ABS(sm.delta) * COALESCE(pv.wholesale,0)),0)::numeric AS cogs
+         FROM stock_movements sm
+         JOIN product_variants pv ON pv.id = sm.variant_id
+        WHERE sm.reason LIKE 'order:%' AND sm.delta < 0
+          AND sm.created_at BETWEEN $1 AND $2`,
       [from, to]
     ).catch(() => ({ rows: [{ cogs: 0 }] }));
 

@@ -11,7 +11,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const mono = require('../lib/mono');
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
@@ -126,24 +126,85 @@ async function applyInvoiceStatus(data) {
       }
     }
   } else if (data.status === 'success') {
-    const upd = await pool.query(
-      `UPDATE orders SET status = 'paid', updated_at = NOW()
-       WHERE id = $1 AND status = 'new' RETURNING id`,
-      [p.order_id]
-    );
-    if (upd.rowCount) {
+    // Атомарно: помечаем оплаченным + списываем остаток + снимаем резерв + пишем движение склада.
+    // WHERE status='new' RETURNING — идемпотентность: только первая доставка вебхука делает работу.
+    let paidOk = false;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      const upd = await client.query(
+        `UPDATE orders SET status = 'paid', updated_at = NOW()
+         WHERE id = $1 AND status = 'new' RETURNING id`,
+        [p.order_id]
+      );
+      if (upd.rowCount) {
+        paidOk = true;
+        const its = await client.query(
+          `SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [p.order_id]
+        );
+        for (const it of its.rows) {
+          if (it.variant_id == null) continue;
+          await client.query(
+            `UPDATE product_variants
+                SET stock_qty    = GREATEST(0, COALESCE(stock_qty,0)    - $1),
+                    reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1)
+              WHERE id = $2`,
+            [it.qty, it.variant_id]
+          );
+          await client.query(
+            `INSERT INTO stock_movements (variant_id, delta, reason, ref_id)
+             VALUES ($1, $2, $3, $4)`,
+            [it.variant_id, -it.qty, `order:${p.order_id}`, p.order_id]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      console.error('[mono:success:stock]', e.message);
+    } finally { client.release(); }
+    if (paidOk) {
       // уведомления fire-and-forget
       try {
         const { notifyOrderStatus, tgSend } = require('./telegram-notify');
         notifyOrderStatus(p.order_id, 'paid').catch(e => console.error('[mono:notify-client]', e.message));
         if (process.env.ADMIN_TG_CHAT) {
+          const amt = Number.isFinite(data.amount) ? (data.amount / 100).toFixed(2) : '—';
           tgSend(process.env.ADMIN_TG_CHAT,
-            `💳 <b>Оплачено замовлення №${p.order_id}</b>\nMono: ${(data.amount / 100).toFixed(2)} грн`)
+            `💳 <b>Оплачено замовлення №${p.order_id}</b>\nMono: ${amt} грн`)
             .catch(e => console.error('[mono:notify-admin]', e.message));
         }
       } catch (e) { console.error('[mono:notify:load]', e.message); }
     }
   } else if (['failure', 'expired', 'reversed'].includes(data.status)) {
+    // неоплаченный/протухший инвойс → отменяем заказ и возвращаем зарезервированный остаток
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      const upd = await client.query(
+        `UPDATE orders SET status = 'cancelled', updated_at = NOW()
+         WHERE id = $1 AND status = 'new' RETURNING id`,
+        [p.order_id]
+      );
+      if (upd.rowCount) {
+        const its = await client.query(
+          `SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [p.order_id]
+        );
+        for (const it of its.rows) {
+          if (it.variant_id == null) continue;
+          await client.query(
+            `UPDATE product_variants
+                SET reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1)
+              WHERE id = $2`,
+            [it.qty, it.variant_id]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      console.error('[mono:cancel:release]', e.message);
+    } finally { client.release(); }
     console.log(`[mono] invoice ${invoiceId} → ${data.status} (order ${p.order_id})`);
   }
   return { ok: true, status: data.status };
