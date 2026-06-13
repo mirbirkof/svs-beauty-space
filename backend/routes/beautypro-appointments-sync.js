@@ -144,6 +144,16 @@ async function syncServicesCatalog() {
   return { total: items.length, upserted };
 }
 
+// Резолв мастера по BP-GUID: сперва прямой beautypro_id, затем алиас
+// (один человек может иметь несколько BP-профилей, см. master_bp_aliases).
+async function resolveMasterId(pool, guid) {
+  if (!guid) return null;
+  const m = await pool.query('SELECT id FROM masters WHERE beautypro_id = $1 LIMIT 1', [guid]);
+  if (m.rows[0]) return m.rows[0].id;
+  const a = await pool.query('SELECT master_id FROM master_bp_aliases WHERE beautypro_id = $1 LIMIT 1', [guid]);
+  return a.rows[0]?.master_id || null;
+}
+
 async function syncAppointments(from, to) {
   const pool = getPool();
   const token = await getToken();
@@ -163,7 +173,7 @@ async function syncAppointments(from, to) {
     const cl = a.client ? await pool.query('SELECT id FROM clients WHERE beautypro_id = $1', [a.client]) : { rows: [] };
     if (a.client && !cl.rows.length) unlinkedClients++;
     const firstSvc = services[0] || {};
-    const ms = firstSvc.professional ? await pool.query('SELECT id FROM masters WHERE beautypro_id = $1', [firstSvc.professional]) : { rows: [] };
+    const firstMasterId = await resolveMasterId(pool, firstSvc.professional);
     const sv = firstSvc.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [firstSvc.service]) : { rows: [] };
 
     const ex = await pool.query('SELECT id FROM appointments WHERE beautypro_id = $1', [a.id]);
@@ -176,7 +186,7 @@ async function syncAppointments(from, to) {
            ends_at=($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
            status=$6, bp_state=$7, price=$8, bp_client=$9, synced_at=NOW(), updated_at=NOW()
          WHERE id=$10`,
-        [cl.rows[0]?.id || null, ms.rows[0]?.id || null, sv.rows[0]?.id || null,
+        [cl.rows[0]?.id || null, firstMasterId, sv.rows[0]?.id || null,
          startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.client || null, apptId]
       );
       updated++;
@@ -185,7 +195,7 @@ async function syncAppointments(from, to) {
         `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, bp_state, price, source, beautypro_id, bp_client, synced_at)
          VALUES ($1,$2,$3,($4::timestamp AT TIME ZONE 'Europe/Kyiv'),($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7,$8,'beautypro',$9,$10,NOW())
          RETURNING id`,
-        [cl.rows[0]?.id || null, ms.rows[0]?.id || null, sv.rows[0]?.id || null,
+        [cl.rows[0]?.id || null, firstMasterId, sv.rows[0]?.id || null,
          startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.id, a.client || null]
       );
       apptId = ins.rows[0].id;
@@ -196,7 +206,7 @@ async function syncAppointments(from, to) {
     await pool.query('DELETE FROM appointment_services WHERE appointment_id = $1', [apptId]);
     for (const s of services) {
       const svcRow = s.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.service]) : { rows: [] };
-      const mstRow = s.professional ? await pool.query('SELECT id FROM masters WHERE beautypro_id = $1', [s.professional]) : { rows: [] };
+      const svcMasterId = await resolveMasterId(pool, s.professional);
       let startLocal = startsLocal;
       if (s.start) {
         const [h, m] = s.start.split(':').map(Number);
@@ -209,7 +219,7 @@ async function syncAppointments(from, to) {
          ON CONFLICT (beautypro_id) WHERE beautypro_id IS NOT NULL DO UPDATE SET
            appointment_id=EXCLUDED.appointment_id, service_id=EXCLUDED.service_id, master_id=EXCLUDED.master_id,
            starts_at=EXCLUDED.starts_at, duration_min=EXCLUDED.duration_min, price=EXCLUDED.price`,
-        [apptId, svcRow.rows[0]?.id || null, mstRow.rows[0]?.id || null, s.id || null,
+        [apptId, svcRow.rows[0]?.id || null, svcMasterId, s.id || null,
          startLocal, Number(s.duration) || null, Number(s.price) || null]
       );
     }
