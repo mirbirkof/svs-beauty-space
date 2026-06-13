@@ -92,7 +92,7 @@ async function scheduleReminders() {
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
     LEFT JOIN services s ON s.id = a.service_id
-    WHERE a.status = 'completed'
+    WHERE a.status = 'done'
       AND COALESCE(a.ends_at, a.starts_at + interval '1 hour') BETWEEN NOW() - interval '150 minutes' AND NOW() - interval '90 minutes'
       AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (
@@ -138,7 +138,7 @@ async function sendPending() {
       AND EXISTS (
         SELECT 1 FROM appointments a
         WHERE a.id::text = sn.appointment_id
-          AND a.status NOT IN ('confirmed', 'pending', 'booked', 'completed')
+          AND a.status NOT IN ('confirmed', 'pending', 'booked', 'done')
       )
   `);
 

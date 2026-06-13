@@ -7,9 +7,30 @@ const { requirePerm, hasPermission } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
 
+// Смещение часового пояса Киева для конкретной даты (учитывает летнее/зимнее время)
+function kyivOffsetMin(date) {
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kiev',
+    year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+  const p = {}; for (const part of dtf.formatToParts(date)) p[part.type] = part.value;
+  const asUTC = Date.UTC(+p.year, +p.month-1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+  return (asUTC - date.getTime()) / 60000;
+}
+// 'YYYY-MM-DD' → UTC-инстант начала/конца этого дня по Киеву.
+// Это убирает сдвиг на сутки: клик по «13 червня» больше не тянет данные за 12-е.
+function kyivDayBound(dateStr, isEnd) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const naive = Date.UTC(y, m-1, d, isEnd ? 23 : 0, isEnd ? 59 : 0, isEnd ? 59 : 0, isEnd ? 999 : 0);
+  const off = kyivOffsetMin(new Date(naive));
+  return new Date(naive - off*60000);
+}
+
 function parsePeriod(q) {
-  const end   = q.to   ? new Date(q.to)   : new Date();
-  const start = q.from ? new Date(q.from) : new Date(end.getTime() - 30*86400*1000);
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  let end, start;
+  if (q.to && dateRe.test(q.to)) end = kyivDayBound(q.to, true);
+  else end = q.to ? new Date(q.to) : new Date();
+  if (q.from && dateRe.test(q.from)) start = kyivDayBound(q.from, false);
+  else start = q.from ? new Date(q.from) : new Date(end.getTime() - 30*86400*1000);
   return { from: start.toISOString(), to: end.toISOString() };
 }
 
@@ -19,12 +40,18 @@ router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
 
-    // Доход: paid-заказы магазина + услуги (из cash_operations или appointments)
+    // Доход — товары: заказы магазина (orders) + продажи товаров в салоне (cash_operations sale_product)
     const revOrders = await pool.query(
       `SELECT COALESCE(SUM(total),0)::numeric AS rev, COUNT(*)::int AS cnt
          FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`,
       [from, to]
     );
+    const revProductsSalon = await pool.query(
+      `SELECT COALESCE(SUM(amount),0)::numeric AS rev, COUNT(*)::int AS cnt
+         FROM cash_operations WHERE type='in' AND category='sale_product' AND created_at BETWEEN $1 AND $2`,
+      [from, to]
+    );
+    // Доход — услуги: из кассы (sale_service)
     const revServices = await pool.query(
       `SELECT COALESCE(SUM(amount),0)::numeric AS rev, COUNT(*)::int AS cnt
          FROM cash_operations WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2`,
@@ -49,7 +76,7 @@ router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
       [from, to]
     );
 
-    const revenueProducts = Number(revOrders.rows[0].rev);
+    const revenueProducts = Number(revOrders.rows[0].rev) + Number(revProductsSalon.rows[0].rev);
     const revenueServices = Number(revServices.rows[0].rev);
     const revenueTotal    = revenueProducts + revenueServices;
     const cogsTotal       = Number(cogs.rows[0].cogs);
@@ -82,11 +109,11 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
       `WITH appts AS (
          SELECT master_id,
                 COUNT(*)::int                    AS total_appts,
-                COUNT(*) FILTER (WHERE status='completed')::int AS done_appts,
-                COUNT(*) FILTER (WHERE status='canceled')::int  AS canceled_appts,
-                COUNT(*) FILTER (WHERE status='no_show')::int   AS no_show_appts,
+                COUNT(*) FILTER (WHERE status='done')::int      AS done_appts,
+                COUNT(*) FILTER (WHERE status='cancelled')::int AS canceled_appts,
+                COUNT(*) FILTER (WHERE status='noshow')::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients,
-                COALESCE(SUM(price),0)::numeric  AS revenue
+                COALESCE(SUM(price) FILTER (WHERE status='done'),0)::numeric AS revenue
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2
           GROUP BY master_id
@@ -128,10 +155,12 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
     const r = await pool.query(
       `WITH base AS (
          SELECT c.id, c.name, c.phone,
-                COALESCE(MAX(o.created_at), MAX(a.starts_at)) AS last_activity,
-                COUNT(DISTINCT o.id) + COUNT(DISTINCT a.id)  AS frequency,
+                COALESCE(MAX(o.created_at) FILTER (WHERE o.status='paid'),
+                         MAX(a.starts_at)  FILTER (WHERE a.status='done')) AS last_activity,
+                COUNT(DISTINCT o.id) FILTER (WHERE o.status='paid')
+                + COUNT(DISTINCT a.id) FILTER (WHERE a.status='done')  AS frequency,
                 COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
-                + COALESCE(SUM(a.price) FILTER (WHERE a.status='completed'),0) AS monetary
+                + COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0) AS monetary
            FROM clients c
            LEFT JOIN orders o       ON o.client_id = c.id
            LEFT JOIN appointments a ON a.client_id = c.id
@@ -190,7 +219,7 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
               COUNT(a.id)     AS total_visits,
               EXTRACT(EPOCH FROM (NOW()-MAX(a.starts_at)))/86400 AS days_since
          FROM clients c
-         JOIN appointments a ON a.client_id=c.id AND a.status='completed'
+         JOIN appointments a ON a.client_id=c.id AND a.status='done'
         GROUP BY c.id, c.name, c.phone
         HAVING MAX(a.starts_at) < NOW() - make_interval(days => $1)
            AND COUNT(a.id) >= 2
@@ -217,7 +246,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`),
       pool.query(`SELECT COUNT(*)::int AS n FROM (
          SELECT c.id FROM clients c
-         JOIN appointments a ON a.client_id=c.id AND a.status='completed'
+         JOIN appointments a ON a.client_id=c.id AND a.status='done'
          GROUP BY c.id
          HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
        ) t`),
@@ -621,6 +650,72 @@ router.post('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       [master_id, year, month, perShift, planTotal, auto]
     );
     res.json({ ok: true, plan: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Салонный обзор для дашборда (одним запросом) ─────────
+// GET /api/reports/overview
+// Салон-центричные метрики: касса сегодня/месяц из cash_operations,
+// записи сегодня, новые клиенты, топ-мастера месяца. Деньги — при reports.finance.
+router.get('/overview', requirePerm('reports.read'), async (req, res) => {
+  try {
+    const canFinance = hasPermission(req.user.permissions, 'reports.finance');
+    // Границы суток и месяца по Киеву
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', year:'numeric', month:'2-digit', day:'2-digit' }).format(now);
+    const monthStr = todayStr.slice(0,7) + '-01';
+    const dayFrom = kyivDayBound(todayStr, false).toISOString();
+    const dayTo   = kyivDayBound(todayStr, true).toISOString();
+    const monFrom = kyivDayBound(monthStr, false).toISOString();
+
+    const [revToday, revMonth, expMonth, apptToday, newClientsMonth, topMasters, openShift] = await Promise.all([
+      // касса сегодня (услуги + товары)
+      pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric AS svc,
+                         COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod
+                  FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
+      // касса месяц
+      pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric AS svc,
+                         COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod
+                  FROM cash_operations WHERE type='in' AND created_at >= $1`, [monFrom]),
+      // расходы месяц
+      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
+      // записи сегодня по статусам
+      pool.query(`SELECT COUNT(*)::int AS total,
+                         COUNT(*) FILTER (WHERE status='done')::int AS done,
+                         COUNT(*) FILTER (WHERE status IN ('booked','confirmed'))::int AS upcoming
+                  FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
+      // новые клиенты за месяц
+      pool.query(`SELECT COUNT(*)::int AS n FROM clients WHERE created_at >= $1`, [monFrom]).catch(()=>({rows:[{n:0}]})),
+      // топ мастеров месяца по выручке
+      pool.query(`SELECT m.id, m.name, COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue,
+                         COUNT(*) FILTER (WHERE a.status='done')::int AS done
+                  FROM appointments a JOIN masters m ON m.id=a.master_id
+                  WHERE a.starts_at >= $1 GROUP BY m.id, m.name
+                  HAVING COUNT(*) FILTER (WHERE a.status='done') > 0
+                  ORDER BY revenue DESC LIMIT 8`, [monFrom]),
+      pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
+    ]);
+
+    const clientsTotal = await pool.query(`SELECT COUNT(*)::int AS n FROM clients`);
+
+    const out = {
+      today: { appts: apptToday.rows[0].total, appts_done: apptToday.rows[0].done, appts_upcoming: apptToday.rows[0].upcoming },
+      clients_total: clientsTotal.rows[0].n,
+      new_clients_month: newClientsMonth.rows[0].n,
+      open_shifts: openShift.rows[0].n,
+      finance_locked: !canFinance,
+    };
+    if (canFinance) {
+      const rt = revToday.rows[0], rm = revMonth.rows[0];
+      out.revenue_today = { services: Number(rt.svc), products: Number(rt.prod), total: Number(rt.svc) + Number(rt.prod) };
+      out.revenue_month = { services: Number(rm.svc), products: Number(rm.prod), total: Number(rm.svc) + Number(rm.prod) };
+      out.expense_month = Number(expMonth.rows[0].sum);
+      out.profit_month = out.revenue_month.total - out.expense_month;
+      out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
+    } else {
+      out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, done: r.done }));
+    }
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

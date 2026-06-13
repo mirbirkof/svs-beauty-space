@@ -34,7 +34,7 @@ async function findDueClients() {
         LAG(starts_at) OVER (PARTITION BY client_id ORDER BY starts_at) AS prev_visit,
         starts_at - LAG(starts_at) OVER (PARTITION BY client_id ORDER BY starts_at) AS gap
       FROM appointments
-      WHERE status IN ('completed', 'confirmed')
+      WHERE status IN ('done', 'confirmed')
     ),
     client_stats AS (
       SELECT

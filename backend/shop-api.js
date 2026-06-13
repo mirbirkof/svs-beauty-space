@@ -71,8 +71,12 @@ app.use('/api', globalLimiter);
 app.use('/api/cabinet', authLimiter);
 app.use('/api/files/upload', uploadLimiter);
 
-// статика админки
-app.use('/admin', express.static(__dirname + '/public/admin'));
+// статика админки — HTML без кэша, чтобы обновления панели сразу были видны (не залипал старый index.html)
+app.use('/admin', express.static(__dirname + '/public/admin', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+}));
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
 app.use('/p', express.static(__dirname + '/public'));
 

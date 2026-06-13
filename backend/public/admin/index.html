@@ -377,7 +377,7 @@ select.input { background:var(--card); }
 <body>
 
 <!-- LOGIN -->
-<div id="login" class="login-screen">
+<div id="login" class="login-screen" style="display:none">
   <div class="login-card">
     <h1>SVS Beauty</h1>
     <p>CRM · Адмін-панель</p>
@@ -592,9 +592,9 @@ select.input { background:var(--card); }
         <div class="kpi-grid" id="kpi"></div>
         <div class="grid-2" style="gap:24px">
           <div class="card">
-            <div class="card-header"><h3>Топ товарів за виручкою</h3></div>
+            <div class="card-header"><h3>Топ майстри за виручкою (місяць)</h3></div>
             <div class="card-body" style="padding:0">
-              <table class="tbl"><thead><tr><th>Товар</th><th>Шт</th><th>Виручка</th></tr></thead><tbody id="topBody"></tbody></table>
+              <table class="tbl"><thead><tr><th>Майстер</th><th>Виконано</th><th>Виручка</th></tr></thead><tbody id="topMastersBody"></tbody></table>
             </div>
           </div>
           <div class="card">
@@ -1303,27 +1303,52 @@ let journalMode = 'day';
 // ── Auth ─────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('journalDate').value = _ymd(new Date());
-  if (TOKEN) checkToken(); else showLogin();
+  if (TOKEN) {
+    // Оптимистично сразу открываем кабинет, токен проверяем в фоне.
+    // Окно логина больше не мелькает при обновлении страницы и холодном старте сервера.
+    showApp();
+    checkToken();
+  } else {
+    showLogin();
+  }
 });
 
 function showLogin() { document.getElementById('login').style.display=''; document.getElementById('app').style.display='none'; }
+function showApp() {
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='';
+  const h = location.hash.replace('#','');
+  if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'dashboard');
+}
 
 async function checkToken() {
+  let r;
   try {
-    const r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } });
-    if (r.status === 200) {
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('app').style.display = '';
-      const h = location.hash.replace('#','');
-      go(document.getElementById('page-' + h) ? h : 'dashboard');
-    } else throw new Error();
-  } catch { localStorage.removeItem('svs_admin_token'); TOKEN=''; showLogin(); }
+    r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } });
+  } catch {
+    // Сеть недоступна / таймаут / сервер просыпается — НЕ разлогиниваем, кабинет остаётся открытым
+    return;
+  }
+  if (r.status === 200) { showApp(); return; }
+  if (r.status === 401 || r.status === 403) {
+    // Токен реально недействителен — только в этом случае разлогиниваем
+    localStorage.removeItem('svs_admin_token'); TOKEN=''; showLogin();
+    return;
+  }
+  // 5xx и прочее — сервер моргнул, токен НЕ трогаем
 }
 
 function login() {
   TOKEN = document.getElementById('tokenInput').value.trim();
   localStorage.setItem('svs_admin_token', TOKEN);
-  checkToken().catch(() => { document.getElementById('loginErr').style.display=''; });
+  document.getElementById('loginErr').style.display='none';
+  (async () => {
+    let r;
+    try { r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } }); }
+    catch { document.getElementById('loginErr').textContent='Сервер недоступний, спробуйте ще раз'; document.getElementById('loginErr').style.display=''; return; }
+    if (r.status === 200) { showApp(); }
+    else { localStorage.removeItem('svs_admin_token'); document.getElementById('loginErr').textContent='Невірний токен'; document.getElementById('loginErr').style.display=''; }
+  })();
 }
 function logout() { localStorage.removeItem('svs_admin_token'); location.reload(); }
 
@@ -1886,32 +1911,44 @@ function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = s
 
 // ═══ DASHBOARD ═══════════════════════════════
 async function loadDashboard() {
-  const s = await api('/api/admin/stats');
-  if (!s.ok) return;
-  const k = s.stats;
-  document.getElementById('kpi').innerHTML = [
-    ['Виручка', k.revenue.toLocaleString() + ' ₴', 'green'],
-    ['Оплачено', k.orders_completed, 'blue'],
-    ['В очікуванні', k.orders_pending, 'orange'],
-    ['Клієнтів', k.clients, 'purple'],
-    ['Товарів', k.products_active, 'pink'],
-  ].map(([l, v, c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
-
-  // Badge for new orders
-  if (k.orders_pending > 0) {
-    const b = document.getElementById('badge-orders');
-    b.textContent = k.orders_pending; b.style.display = '';
+  // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
+  let o = {};
+  try { o = await api('/api/reports/overview'); } catch { o = {}; }
+  const fin = o && !o.finance_locked;
+  const kpis = [];
+  if (fin && o.revenue_today) {
+    kpis.push(['Каса сьогодні', _money2(o.revenue_today.total), 'green']);
+    kpis.push(['Каса за місяць', _money2(o.revenue_month.total), 'blue']);
+    kpis.push(['Прибуток місяця', _money2(o.profit_month), o.profit_month>=0?'purple':'orange']);
   }
+  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + (o.today?.appts_upcoming!=null?` · ${o.today.appts_upcoming} попереду`:''), 'pink']);
+  kpis.push(['Клієнтів усього', (o.clients_total ?? 0), 'blue']);
+  kpis.push(['Нових за місяць', (o.new_clients_month ?? 0), 'green']);
+  document.getElementById('kpi').innerHTML = kpis.map(([l, v, c]) =>
+    `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
 
-  const top = await api('/api/admin/stats/top-products');
-  document.getElementById('topBody').innerHTML = (top.items || []).map(p =>
-    `<tr><td>${p.product_name}</td><td>${p.qty}</td><td>${Number(p.revenue).toLocaleString()} ₴</td></tr>`).join('')
-    || '<tr><td colspan="3" class="empty">Поки немає продажів</td></tr>';
+  // Топ майстри місяця
+  const tm = o.top_masters || [];
+  document.getElementById('topMastersBody').innerHTML = tm.length ? tm.map(m =>
+    `<tr><td>${m.name}</td><td>${m.done}</td><td>${m.revenue!=null?_money2(m.revenue):'—'}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty">Поки немає виконаних записів</td></tr>';
 
-  const low = await api('/api/admin/stats/low-stock?threshold=5');
-  document.getElementById('lowBody').innerHTML = (low.items || []).slice(0,30).map(p =>
-    `<tr><td>${p.product_name}</td><td>${p.volume||''}</td><td>${p.stock_qty??0}</td></tr>`).join('')
-    || '<tr><td colspan="3" class="empty">Усі товари в наявності</td></tr>';
+  // Низький залишок
+  try {
+    const low = await api('/api/admin/stats/low-stock?threshold=5');
+    document.getElementById('lowBody').innerHTML = (low.items || []).slice(0,30).map(p =>
+      `<tr><td>${p.product_name}</td><td>${p.volume||''}</td><td>${p.stock_qty??0}</td></tr>`).join('')
+      || '<tr><td colspan="3" class="empty">Усі товари в наявності</td></tr>';
+  } catch { document.getElementById('lowBody').innerHTML='<tr><td colspan="3" class="empty">—</td></tr>'; }
+
+  // Бейдж нових замовлень (магазин)
+  try {
+    const s = await api('/api/admin/stats');
+    if (s.ok && s.stats.orders_pending > 0) {
+      const b = document.getElementById('badge-orders');
+      b.textContent = s.stats.orders_pending; b.style.display = '';
+    }
+  } catch {}
 
   initClientsByService();
 }
