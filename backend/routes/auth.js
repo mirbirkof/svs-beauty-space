@@ -628,5 +628,71 @@ router.delete('/sessions/:id', authRequired, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────
+// POST /api/auth/panel-login
+// Вход в адмін-панель по логіну/паролю → видає довгоживучий токен,
+// сумісний з rbac (user_tokens). На відміну від /login (JWT 15 хв),
+// цей токен не протухає кожні 15 хв — кабінет тримається стабільно.
+// body: { identifier, password, remember_me? }
+// returns: { ok, token, user:{ id, display_name, role, permissions, master_id } }
+// ─────────────────────────────────────────────────────────
+router.post('/panel-login', async (req, res) => {
+  const { identifier, password, remember_me } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  if (!identifier || !password) {
+    return res.status(400).json({ ok: false, error: 'identifier-and-password-required' });
+  }
+  try {
+    // захист від перебору по IP
+    const ipFailures = await countRecentFailures(pool, ip || 'unknown', 'panel-login', 15);
+    if (ipFailures >= 20) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'ip-rate-limit' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    }
+    const user = await findUserByIdentifier(pool, identifier);
+    if (!user) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'user-not-found' } });
+      return res.status(401).json({ ok: false, error: 'bad-credentials' });
+    }
+    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'locked' } });
+      return res.status(423).json({ ok: false, error: 'account-locked' });
+    }
+    if (user.is_active === false) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'inactive' } });
+      return res.status(403).json({ ok: false, error: 'account-inactive' });
+    }
+    if (!user.password_hash) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'no-password-set' } });
+      return res.status(401).json({ ok: false, error: 'no-password-set' });
+    }
+    const ok = await verifyPassword(password, user.password_hash);
+    if (!ok) {
+      const newCount = (user.failed_login_attempts || 0) + 1;
+      const lock = newCount >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCKOUT_MINUTES*60*1000) : null;
+      await pool.query(`UPDATE users SET failed_login_attempts=$1, locked_until=$2 WHERE id=$3`, [newCount, lock, user.id]);
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'bad-password', attempts: newCount } });
+      return res.status(401).json({ ok: false, error: 'bad-credentials' });
+    }
+    await pool.query(`UPDATE users SET failed_login_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1`, [user.id]);
+    // довгоживучий токен для панелі (90 днів, або null=безстроково при remember)
+    const token = 'svs_' + require('crypto').randomBytes(24).toString('hex');
+    const hash = sha256(token);
+    const expires = remember_me ? null : new Date(Date.now() + 90*86400*1000);
+    await pool.query(
+      `INSERT INTO user_tokens (user_id, token_hash, label, expires_at) VALUES ($1,$2,$3,$4)`,
+      [user.id, hash, deviceLabelFromUA(ua).slice(0,120), expires]
+    );
+    await recordAttempt(pool, { identifier, kind: 'panel-login', success: true, ip, ua, meta: {} });
+    res.json({ ok: true, token, user: {
+      id: user.id, display_name: user.display_name, role: user.role_code,
+      permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
+    }});
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'panel-login-failed', detail: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.authRequired = authRequired;

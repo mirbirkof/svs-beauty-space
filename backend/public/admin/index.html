@@ -380,10 +380,17 @@ select.input { background:var(--card); }
 <div id="login" class="login-screen" style="display:none">
   <div class="login-card">
     <h1>SVS Beauty</h1>
-    <p>CRM · Адмін-панель</p>
-    <input id="tokenInput" type="password" placeholder="Admin token" class="input">
-    <button onclick="login()" class="btn btn-primary">Увійти</button>
-    <p id="loginErr" style="display:none;color:var(--danger);font-size:13px;margin-top:12px">Невірний токен</p>
+    <p>CRM · Вхід у систему</p>
+    <input id="loginIdent" type="text" placeholder="Телефон, email або логін" class="input" autocomplete="username" style="margin-bottom:10px">
+    <input id="loginPass" type="password" placeholder="Пароль" class="input" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin:10px 0;cursor:pointer;color:var(--text-secondary)"><input type="checkbox" id="loginRemember" checked> Запам'ятати мене на цьому пристрої</label>
+    <button onclick="login()" class="btn btn-primary" style="width:100%">Увійти</button>
+    <p id="loginErr" style="display:none;color:var(--danger);font-size:13px;margin-top:12px">Невірний логін або пароль</p>
+    <p style="margin-top:16px"><a href="#" onclick="toggleTokenLogin();return false" style="font-size:12px;color:var(--text-secondary);text-decoration:underline">Вхід за токеном (адміністратор)</a></p>
+    <div id="tokenLoginBox" style="display:none;margin-top:10px">
+      <input id="tokenInput" type="password" placeholder="Admin token" class="input">
+      <button onclick="loginWithToken()" class="btn btn-outline" style="width:100%;margin-top:8px">Увійти за токеном</button>
+    </div>
   </div>
 </div>
 
@@ -579,6 +586,7 @@ select.input { background:var(--card); }
         <span class="topbar-title" id="pageTitle">Дашборд</span>
       </div>
       <div class="topbar-right">
+        <span id="userBadge" style="display:none;font-size:13px;color:var(--text-muted,#888);font-weight:600"></span>
         <button class="topbar-btn" onclick="window.open('/admin/export.html')">
           <span class="material-icons-round" style="font-size:16px">download</span> Експорт
         </button>
@@ -1295,6 +1303,7 @@ select.input { background:var(--card); }
 const API = location.origin;
 const DIKIDI_API = location.origin; // dikidi-роуты смонтированы на /api того же сервиса
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
+let USER = (() => { try { return JSON.parse(localStorage.getItem('svs_user')||'null'); } catch { return null; } })();
 // Телефон для відображення: БД зберігає цифри, показуємо у форматі +XXXXXXXXXXX
 function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
 let currentPage = 'dashboard';
@@ -1324,33 +1333,92 @@ function showApp() {
 async function checkToken() {
   let r;
   try {
-    r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } });
+    r = await fetch(API + '/api/users/me', { headers: { 'X-Admin-Token': TOKEN } });
   } catch {
     // Сеть недоступна / таймаут / сервер просыпается — НЕ разлогиниваем, кабинет остаётся открытым
     return;
   }
-  if (r.status === 200) { showApp(); return; }
+  if (r.status === 200) {
+    try { const j = await r.json(); if (j.user) { USER = j.user; localStorage.setItem('svs_user', JSON.stringify(USER)); } } catch {}
+    applyRoleUI();
+    showApp();
+    return;
+  }
   if (r.status === 401 || r.status === 403) {
     // Токен реально недействителен — только в этом случае разлогиниваем
-    localStorage.removeItem('svs_admin_token'); TOKEN=''; showLogin();
+    localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); TOKEN=''; USER=null; showLogin();
     return;
   }
   // 5xx и прочее — сервер моргнул, токен НЕ трогаем
 }
 
+function toggleTokenLogin(){ const b=document.getElementById('tokenLoginBox'); b.style.display = b.style.display==='none'?'':'none'; }
+function _loginErr(msg){ const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display=''; }
+
+// Основний вхід: логін + пароль
 function login() {
-  TOKEN = document.getElementById('tokenInput').value.trim();
-  localStorage.setItem('svs_admin_token', TOKEN);
+  const identifier = document.getElementById('loginIdent').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const remember = document.getElementById('loginRemember').checked;
   document.getElementById('loginErr').style.display='none';
+  if (!identifier || !password) return _loginErr('Введіть логін і пароль');
   (async () => {
-    let r;
-    try { r = await fetch(API + '/api/admin/stats', { headers: { 'X-Admin-Token': TOKEN } }); }
-    catch { document.getElementById('loginErr').textContent='Сервер недоступний, спробуйте ще раз'; document.getElementById('loginErr').style.display=''; return; }
-    if (r.status === 200) { showApp(); }
-    else { localStorage.removeItem('svs_admin_token'); document.getElementById('loginErr').textContent='Невірний токен'; document.getElementById('loginErr').style.display=''; }
+    let r, j;
+    try {
+      r = await fetch(API + '/api/auth/panel-login', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ identifier, password, remember_me: remember }) });
+      j = await r.json();
+    } catch { return _loginErr('Сервер недоступний, спробуйте ще раз'); }
+    if (r.status === 200 && j.ok && j.token) {
+      TOKEN = j.token; USER = j.user || null;
+      localStorage.setItem('svs_admin_token', TOKEN);
+      if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
+      applyRoleUI(); showApp();
+    } else if (r.status === 423) { _loginErr('Акаунт тимчасово заблоковано через невдалі спроби. Спробуйте за 15 хв');
+    } else if (r.status === 403) { _loginErr('Акаунт неактивний. Зверніться до власника');
+    } else if (r.status === 429) { _loginErr('Забагато спроб. Спробуйте пізніше');
+    } else { _loginErr('Невірний логін або пароль'); }
   })();
 }
-function logout() { localStorage.removeItem('svs_admin_token'); location.reload(); }
+
+// Запасний вхід: за токеном (для адміністратора / legacy)
+function loginWithToken() {
+  TOKEN = document.getElementById('tokenInput').value.trim();
+  if (!TOKEN) return _loginErr('Введіть токен');
+  localStorage.setItem('svs_admin_token', TOKEN);
+  document.getElementById('loginErr').style.display='none';
+  checkToken().then(() => { if (document.getElementById('app').style.display==='none') _loginErr('Невірний токен'); });
+}
+function logout() { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); location.reload(); }
+
+// ── Гейтинг інтерфейсу за роллю ───────────────
+// owner / admin / manager — бачать усе. master — лише свій дашборд + журнал записів.
+function isMasterRole(){ return !!USER && USER.role === 'master'; }
+function applyRoleUI(){
+  // показуємо ім'я та роль користувача у шапці
+  try {
+    const lbl = document.getElementById('userBadge');
+    if (lbl && USER) {
+      const roleNames = { owner:'Власник', admin:'Адміністратор', manager:'Менеджер', master:'Майстер' };
+      lbl.textContent = (USER.display_name || '') + (USER.role ? ' · ' + (roleNames[USER.role]||USER.role) : '');
+      lbl.style.display = '';
+    }
+  } catch {}
+
+  const master = isMasterRole();
+  // Майстру лишаємо тільки дашборд і журнал — решта пунктів та груп ховаємо
+  const allowForMaster = ['dashboard','journal'];
+  document.querySelectorAll('.sidebar-nav > .sidebar-item').forEach(it => {
+    if (!master) { it.style.display=''; return; }
+    const pg = it.dataset.page;
+    it.style.display = (pg && allowForMaster.includes(pg)) ? '' : 'none';
+  });
+  document.querySelectorAll('.sidebar-nav > .sidebar-group').forEach(g => {
+    g.style.display = master ? 'none' : '';
+  });
+  // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
+  if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
+}
 
 // ── API helpers ──────────────────────────────
 async function api(path, opts = {}) {
@@ -1914,6 +1982,32 @@ async function loadDashboard() {
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   try { o = await api('/api/reports/overview'); } catch { o = {}; }
+
+  // ── Кабінет майстра: власна статистика ──
+  if (o && o.is_master) {
+    const kpis = [
+      ['Записів сьогодні', (o.today?.appts ?? 0) + (o.today?.appts_upcoming!=null?` · ${o.today.appts_upcoming} попереду`:''), 'pink'],
+      ['Виконано сьогодні', (o.today?.appts_done ?? 0), 'green'],
+      ['Виконано за місяць', (o.month?.done ?? 0), 'blue'],
+      ['Виручка за місяць', _money2(o.month?.revenue ?? 0), 'purple'],
+    ];
+    document.getElementById('kpi').innerHTML = kpis.map(([l,v,c]) =>
+      `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+    // Найближчі записи замість топ-майстрів
+    const tmCard = document.querySelector('#page-dashboard .card-header h3');
+    if (tmCard) tmCard.textContent = 'Найближчі записи';
+    const na = o.next_appointments || [];
+    document.getElementById('topMastersBody').innerHTML = na.length ? na.map(a => {
+      const d = new Date(a.starts_at);
+      const t = d.toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      return `<tr><td>${t}</td><td>${a.service_name||'—'}</td><td>${a.client_name||'Клієнт'}</td></tr>`;
+    }).join('') : '<tr><td colspan="3" class="empty">Немає майбутніх записів</td></tr>';
+    // Ховаємо салонні картки, не потрібні майстру
+    try { document.getElementById('lowBody').closest('.card').style.display='none'; } catch {}
+    try { document.querySelector('#page-dashboard .card #cbsButtons')?.closest('.card')?.style?.setProperty('display','none'); } catch {}
+    return;
+  }
+
   const fin = o && !o.finance_locked;
   const kpis = [];
   if (fin && o.revenue_today) {

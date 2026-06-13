@@ -657,9 +657,8 @@ router.post('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
 // GET /api/reports/overview
 // Салон-центричные метрики: касса сегодня/месяц из cash_operations,
 // записи сегодня, новые клиенты, топ-мастера месяца. Деньги — при reports.finance.
-router.get('/overview', requirePerm('reports.read'), async (req, res) => {
+router.get('/overview', requirePerm(), async (req, res) => {
   try {
-    const canFinance = hasPermission(req.user.permissions, 'reports.finance');
     // Границы суток и месяца по Киеву
     const now = new Date();
     const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', year:'numeric', month:'2-digit', day:'2-digit' }).format(now);
@@ -667,6 +666,38 @@ router.get('/overview', requirePerm('reports.read'), async (req, res) => {
     const dayFrom = kyivDayBound(todayStr, false).toISOString();
     const dayTo   = kyivDayBound(todayStr, true).toISOString();
     const monFrom = kyivDayBound(monthStr, false).toISOString();
+
+    // ── Кабінет майстра: тільки власні записи та виручка ──
+    if (req.user.role === 'master' && req.user.master_id) {
+      const mid = Number(req.user.master_id);
+      const [todayA, monthA, nextA] = await Promise.all([
+        pool.query(`SELECT COUNT(*)::int AS total,
+                           COUNT(*) FILTER (WHERE status='done')::int AS done,
+                           COUNT(*) FILTER (WHERE status IN ('booked','confirmed'))::int AS upcoming
+                    FROM appointments WHERE master_id=$1 AND starts_at BETWEEN $2 AND $3`, [mid, dayFrom, dayTo]),
+        pool.query(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done,
+                           COALESCE(SUM(price) FILTER (WHERE status='done'),0)::numeric AS revenue
+                    FROM appointments WHERE master_id=$1 AND starts_at >= $2`, [mid, monFrom]),
+        pool.query(`SELECT a.starts_at, COALESCE(s.name,'Послуга') AS service_name,
+                           COALESCE(NULLIF(c.name,''),'Клієнт') AS client_name
+                    FROM appointments a LEFT JOIN services s ON s.id=a.service_id
+                    LEFT JOIN clients c ON c.id=a.client_id
+                    WHERE a.master_id=$1 AND a.starts_at >= $2
+                      AND COALESCE(a.status,'') IN ('booked','confirmed')
+                    ORDER BY a.starts_at LIMIT 5`, [mid, dayFrom]),
+      ]);
+      return res.json({
+        is_master: true,
+        master_id: mid,
+        master_name: req.user.display_name || null,
+        today: { appts: todayA.rows[0].total, appts_done: todayA.rows[0].done, appts_upcoming: todayA.rows[0].upcoming },
+        month: { done: monthA.rows[0].done, revenue: Number(monthA.rows[0].revenue) },
+        next_appointments: nextA.rows,
+        finance_locked: false,
+      });
+    }
+
+    const canFinance = hasPermission(req.user.permissions, 'reports.finance');
 
     const [revToday, revMonth, expMonth, apptToday, newClientsMonth, topMasters, openShift] = await Promise.all([
       // касса сегодня (услуги + товары)

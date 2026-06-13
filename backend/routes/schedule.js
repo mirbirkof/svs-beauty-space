@@ -203,9 +203,14 @@ router.get('/journal', async (req, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'bad-date (YYYY-MM-DD)' });
     const dayKey = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(date + 'T00:00:00').getDay()];
 
+    // Майстер бачить лише власний графік і власні записи
+    const masterOnly = (req.user && req.user.role === 'master' && req.user.master_id) ? Number(req.user.master_id) : null;
+
     // майстри + їх робочий час на цей день тижня
     const mRes = await pool.query(
-      `SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true ORDER BY name`
+      `SELECT id, name, specialty, avatar, schedule_json FROM masters
+        WHERE active = true ${masterOnly ? 'AND id = $1' : ''} ORDER BY name`,
+      masterOnly ? [masterOnly] : []
     );
     const masters = mRes.rows.map(m => {
       const s = m.schedule_json || {};
@@ -242,8 +247,9 @@ router.get('/journal', async (req, res) => {
         WHERE a.starts_at >= $1::date
           AND a.starts_at <  ($1::date + INTERVAL '1 day')
           AND COALESCE(a.status,'') NOT IN ('cancelled')
+          ${masterOnly ? 'AND a.master_id = $2' : ''}
         ORDER BY a.starts_at`,
-      [date]
+      masterOnly ? [date, masterOnly] : [date]
     );
 
     // Майстер не бачить номери клієнтів, якщо опція вимкнена
