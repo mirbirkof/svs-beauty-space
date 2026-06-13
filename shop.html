@@ -11,7 +11,8 @@
   <link rel="stylesheet" href="css/design-system.css">
   <link rel="stylesheet" href="css/shop.css">
   <link rel="stylesheet" href="css/product.css">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/shop-atelier.css?v=1">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -83,6 +84,14 @@
       </div>
     </div>
   </section>
+
+  <!-- BRAND MARQUEE (atelier style) -->
+  <div class="atelier-marquee" aria-hidden="true">
+    <div class="track">
+      <span>Raywell</span><span>Extremo</span><span>Envie</span><span>Invidia</span><span>Eterna</span>
+      <span>Raywell</span><span>Extremo</span><span>Envie</span><span>Invidia</span><span>Eterna</span>
+    </div>
+  </div>
 
   <!-- FILTERS BAR — brands + category button + sort -->
   <section class="shop-filters" id="filters">
@@ -208,7 +217,9 @@
     </div>
   </footer>
 
-  <script src="js/bg-3d.js?v=2" defer></script>
+  <div class="atelier-grain" aria-hidden="true"></div>
+
+  <script src="js/shop-atelier.js?v=1" defer></script>
   <script src="js/lotus.js"></script>
   <script src="js/shop-data.js"></script>
   <script src="js/shop-data-live.js"></script>
