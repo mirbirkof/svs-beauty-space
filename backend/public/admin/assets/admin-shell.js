@@ -5,36 +5,49 @@
      <script src="/admin/assets/admin-shell.js" data-title="Назва сторінки"></script>
    Контент страницы должен лежать в <div class="content"> (шелл обернёт его в .main). */
 (function () {
+  // Единое меню в стиле DIKIDI — зеркало admin/index.html.
   const NAV = [
-    { section: 'Головне' },
     { icon: 'dashboard', label: 'Дашборд', href: '/admin/index.html#dashboard' },
     { icon: 'event_note', label: 'Журнал записів', href: '/admin/index.html#journal' },
-    { icon: 'people', label: 'Клієнти', href: '/admin/index.html#clients' },
-    { section: 'Салон' },
-    { icon: 'queue', label: 'Лист очікування', href: '/admin/index.html#waitlist' },
-    { icon: 'notifications_active', label: 'Нагадування', href: '/admin/index.html#reminders' },
-    { icon: 'replay', label: 'Повторні візити', href: '/admin/index.html#repeat' },
+    { icon: 'calendar_month', label: 'Графік роботи', href: '/admin/index.html#settings' },
+    { group: 'Клієнти', icon: 'people', items: [
+      { icon: 'groups', label: 'Усі клієнти', href: '/admin/index.html#clients' },
+      { icon: 'queue', label: 'Лист очікування', href: '/admin/index.html#waitlist' },
+      { icon: 'replay', label: 'Повторні візити', href: '/admin/index.html#repeat' },
+      { icon: 'block', label: 'Чорний список', href: '/admin/index.html#blacklist' },
+    ] },
+    { group: 'Просування', icon: 'campaign', items: [
+      { icon: 'local_offer', label: 'Акції / Промокоди', href: '/admin/index.html#promos' },
+      { icon: 'star_rate', label: 'Відгуки', href: '/admin/index.html#reviews' },
+      { icon: 'reviews', label: 'Відгуки / Промо (запис)', href: '/admin/dikidi.html' },
+    ] },
+    { icon: 'notifications_active', label: 'Повідомлення', href: '/admin/index.html#reminders' },
     { icon: 'payments', label: 'Зарплата', href: '/admin/index.html#payroll' },
-    { icon: 'block', label: 'Чорний список', href: '/admin/index.html#blacklist' },
-    { icon: 'reviews', label: 'Відгуки / Промо (запис)', href: '/admin/dikidi.html' },
-    { section: 'SVS Beauty World' },
-    { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
-    { icon: 'inventory_2', label: 'Товари', href: '/admin/index.html#products' },
-    { icon: 'warehouse', label: 'Склад', href: '/admin/index.html#stock' },
-    { icon: 'fact_check', label: 'Інвентаризація', href: '/admin/crm-extra.html#inventory' },
-    { icon: 'local_offer', label: 'Акції / Промокоди', href: '/admin/index.html#promos' },
-    { icon: 'star_rate', label: 'Відгуки (магазин)', href: '/admin/index.html#reviews' },
-    { icon: 'point_of_sale', label: 'Каса магазину', href: '/admin/crm-extra.html#cashbox' },
-    { section: 'Фінанси' },
-    { icon: 'point_of_sale', label: 'Каса (загальна)', href: '/admin/crm-extra.html' },
-    { icon: 'insights', label: 'Звіти (P&L, RFM)', href: '/admin/crm-extra.html#reports' },
-    { icon: 'file_download', label: 'Експорт CSV', href: '/admin/export.html' },
-    { section: 'Система' },
-    { icon: 'monitor_heart', label: 'Системний статус', href: '/admin/dashboard.html' },
-    { icon: 'store', label: 'Філії', href: '/admin/crm-extra.html#branches' },
-    { icon: 'manage_accounts', label: 'Користувачі', href: '/admin/crm-extra.html#users' },
-    { icon: 'sync', label: 'BeautyPro синхро', href: '/admin/index.html#sync' },
-    { icon: 'history', label: 'Аудит', href: '/admin/crm-extra.html#audit' },
+    { group: 'Продажі', icon: 'sell', items: [
+      { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
+      { icon: 'point_of_sale', label: 'Каса магазину', href: '/admin/crm-extra.html#cashbox' },
+      { icon: 'language', label: 'Вітрина (сайт)', href: 'https://svs-beauty-space.vercel.app' },
+    ] },
+    { group: 'Фінанси', icon: 'account_balance_wallet', items: [
+      { icon: 'swap_vert', label: 'Доходи і Витрати', href: '/admin/index.html#finance' },
+      { icon: 'point_of_sale', label: 'Рахунки і каси', href: '/admin/crm-extra.html' },
+      { icon: 'groups', label: 'Контрагенти', href: '/admin/index.html#contractors' },
+      { icon: 'insights', label: 'Звіти (P&L, RFM)', href: '/admin/crm-extra.html#reports' },
+      { icon: 'file_download', label: 'Експорт CSV', href: '/admin/export.html' },
+    ] },
+    { group: 'Товари', icon: 'storefront', items: [
+      { icon: 'inventory_2', label: 'Товари', href: '/admin/index.html#products' },
+      { icon: 'warehouse', label: 'Склад', href: '/admin/index.html#stock' },
+      { icon: 'fact_check', label: 'Інвентаризація', href: '/admin/crm-extra.html#inventory' },
+    ] },
+    { icon: 'badge', label: 'Майстри / Співробітники', href: '/admin/crm-extra.html#users' },
+    { icon: 'settings', label: 'Налаштування', href: '/admin/index.html#settings' },
+    { group: 'Система', icon: 'tune', items: [
+      { icon: 'monitor_heart', label: 'Системний статус', href: '/admin/dashboard.html' },
+      { icon: 'store', label: 'Управління магазинами', href: '/admin/crm-extra.html#branches' },
+      { icon: 'sync', label: 'BeautyPro синхро', href: '/admin/index.html#sync' },
+      { icon: 'history', label: 'Аудит', href: '/admin/crm-extra.html#audit' },
+    ] },
   ];
 
   // ── Единый токен (миграция со старого ключа admin_token) ──
@@ -55,11 +68,29 @@
 
   // ── Рендер шелла ──
   const here = location.pathname.replace(/\/+$/, '');
+  const hash = location.hash || '';
+  function isActive(href) {
+    if (href.startsWith('http')) return false;
+    const [p, h] = href.split('#');
+    if (p.replace(/\/+$/, '') !== here) return false;
+    return h ? ('#' + h) === hash : !hash;
+  }
+  function renderItem(it) {
+    const active = isActive(it.href) ? ' active' : '';
+    const ext = it.href.startsWith('http') ? ' target="_blank"' : '';
+    return `<a class="sidebar-item${active}" href="${it.href}"${ext}><span class="material-icons-round">${it.icon}</span> ${it.label}</a>`;
+  }
   const items = NAV.map((n) => {
-    if (n.section) return `<div class="sidebar-section">${n.section}</div>`;
-    const active = !n.href.includes('#') && n.href.replace(/\/+$/, '') === here ? ' active' : '';
-    const ext = n.href.startsWith('http') ? ' target="_blank"' : '';
-    return `<a class="sidebar-item${active}" href="${n.href}"${ext}><span class="material-icons-round">${n.icon}</span> ${n.label}</a>`;
+    if (n.group) {
+      const open = n.items.some((it) => isActive(it.href)) ? ' open' : '';
+      const sub = n.items.map(renderItem).join('');
+      return `<div class="sidebar-group${open}">` +
+        `<div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">` +
+        `<span class="material-icons-round">${n.icon}</span> ${n.group}` +
+        `<span class="material-icons-round chevron">chevron_right</span></div>` +
+        `<div class="sidebar-group-items">${sub}</div></div>`;
+    }
+    return renderItem(n);
   }).join('');
 
   const aside = document.createElement('aside');
