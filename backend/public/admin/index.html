@@ -216,6 +216,7 @@ select.input { background:var(--card); }
 .jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
 .jslot-label { height:var(--jh,21px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }
 .jslot-label.hh { font-weight:600; color:var(--text); }                 /* мітка на годині — жирніша */
+.jslot-label.mm { font-size:10px; color:var(--text-secondary); opacity:.6; }  /* мітка «30» на пів години — тонка, для симетрії */
 .jcol { flex:1 0 180px; border-right:1px solid var(--border); position:relative; }
 .jcol:last-child { border-right:none; }
 .jcol-head { height:64px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 10px; position:sticky; top:0; background:var(--card); z-index:2; }
@@ -225,7 +226,7 @@ select.input { background:var(--card); }
 .jcol-head .sp { font-size:11px; color:var(--text-secondary); }
 .jcol-body { position:relative; }
 .jslot { height:var(--jh,21px); box-sizing:border-box; border-top:1px solid rgba(0,0,0,.05); }   /* 15-хв слот — ледь помітна лінія */
-.jslot.half { border-top:1px solid var(--border); }                     /* 30-хв — тонка лінія */
+.jslot.half { border-top:1px solid rgba(0,0,0,.05); }                   /* 30-хв — така ж тонка лінія, як 15-хв (без виділення) */
 .jslot.hour { border-top:2px solid #c2c8d2; }                           /* година — жирна лінія */
 .joff { position:absolute; inset:0; background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(0,0,0,.025) 8px,rgba(0,0,0,.025) 16px); display:flex; align-items:flex-start; justify-content:center; padding-top:16px; color:var(--text-secondary); font-size:12px; pointer-events:none; }
 .joff-part { inset:auto; left:0; right:0; }
@@ -2581,7 +2582,7 @@ function renderJournalDay(container, data) {
   // часова колонка
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
   // підпис лише на годині — 15/30-хв лінії без тексту, щоб не засмічувати екран
-  for (let i=0;i<slots;i++){ const m=minM+i*15; const lbl = m%60===0 ? _toHHMM(m) : ''; timeCol += `<div class="jslot-label${m%60===0?' hh':''}">${lbl}</div>`; }
+  for (let i=0;i<slots;i++){ const m=minM+i*15; const isH=m%60===0; const isHalf=m%30===0&&!isH; const lbl = isH ? _toHHMM(m) : (isHalf ? '30' : ''); timeCol += `<div class="jslot-label${isH?' hh':''}${isHalf?' mm':''}">${lbl}</div>`; }
   timeCol += '</div>';
 
   // колонки майстрів

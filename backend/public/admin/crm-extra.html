@@ -88,7 +88,7 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
   <button data-tab="reports"><span class="material-icons-round" style="font-size:18px">insights</span> Звіти</button>
   <button data-tab="inventory"><span class="material-icons-round" style="font-size:18px">inventory_2</span> Інвентаризація</button>
   <button data-tab="branches"><span class="material-icons-round" style="font-size:18px">store</span> Філії</button>
-  <button data-tab="users"><span class="material-icons-round" style="font-size:18px">manage_accounts</span> Користувачі</button>
+  <button data-tab="users"><span class="material-icons-round" style="font-size:18px">badge</span> Майстри / Співробітники</button>
   <button data-tab="audit"><span class="material-icons-round" style="font-size:18px">history</span> Аудит</button>
 </nav>
 
@@ -230,9 +230,10 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
       </select>
       <input id="u-username" placeholder="Логін (необов.)" style="width:130px">
       <input id="u-password" type="password" placeholder="Пароль" style="width:150px">
-      <span id="u-master-fields" style="display:inline-flex;gap:8px">
-        <input id="u-specialty" placeholder="Спеціальність" style="width:150px">
-        <input id="u-commission" type="number" placeholder="Комісія %" value="40" style="width:90px">
+      <span id="u-master-fields" style="display:inline-flex;gap:8px;align-items:center">
+        <input id="u-specialty" placeholder="Спеціальність (напр. Манікюр)" style="width:190px">
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#666;white-space:nowrap">Комісія
+          <input id="u-commission" type="number" min="0" max="100" value="40" style="width:56px">%</label>
       </span>
       <button class="btn" onclick="createUser()">Створити</button>
     </div>
@@ -348,7 +349,10 @@ function openHashTab(){
 }
 window.addEventListener('hashchange', openHashTab);
 
+const TAB_TITLES = {cashbox:'Каса', reports:'Звіти (P&L, RFM)', inventory:'Інвентаризація', branches:'Філії та магазини', users:'Майстри / Співробітники', audit:'Аудит'};
+function setShellTitle(t){ const h=document.querySelector('.main .topbar h2'); if(h && TAB_TITLES[t]) h.textContent=TAB_TITLES[t]; document.title='SVS Beauty · '+(TAB_TITLES[t]||''); }
 function onTab(t){
+  setTimeout(()=>setShellTitle(t),0); // shell рендериться після цього скрипта — даємо йому з'явитись
   if(t==='cashbox') loadCashbox();
   if(t==='reports') loadReports();
   if(t==='inventory') loadInventory();
@@ -741,6 +745,6 @@ function init(){ setRange(30); if(location.hash && document.querySelector('nav.t
 init();
 </script>
 </div>
-<script src="/admin/assets/admin-shell.js" data-title="Каса · Звіти · Система"></script>
+<script src="/admin/assets/admin-shell.js" data-title="Каса"></script>
 </body>
 </html>
