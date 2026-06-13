@@ -17,6 +17,11 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
+
+// Секрет для краткоживущего 2FA pre-auth токена.
+// Раньше при отсутствии JWT_SECRET использовалась строка-заглушка из репозитория —
+// убираем её. Если env не задан — случайный per-process секрет (подделать pre-токен нельзя).
+const PRE_AUTH_SECRET = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
 const {
   ACCESS_TTL_SEC,
   MAX_FAILED_LOGINS,
@@ -275,7 +280,7 @@ router.post('/login', async (req, res) => {
 
       const preToken = jwt.sign(
         { sub: user.id, typ: '2fa_pending' },
-        process.env.JWT_SECRET || 'svs-fallback-secret-do-not-use-in-prod',
+        PRE_AUTH_SECRET,
         { expiresIn: 600, issuer: 'svs-crm' }
       );
       await recordAttempt(pool, { identifier, kind: 'login', success: true, ip, ua, meta: { stage: '2fa-required' } });
@@ -312,7 +317,7 @@ router.post('/verify-2fa', async (req, res) => {
   try {
     let decoded;
     try {
-      decoded = jwt.verify(pre_auth_token, process.env.JWT_SECRET || 'svs-fallback-secret-do-not-use-in-prod', { issuer: 'svs-crm' });
+      decoded = jwt.verify(pre_auth_token, PRE_AUTH_SECRET, { issuer: 'svs-crm' });
     } catch { return res.status(401).json({ ok: false, error: 'pre-auth-token-invalid' }); }
     if (decoded.typ !== '2fa_pending') return res.status(401).json({ ok: false, error: 'wrong-token-type' });
 
