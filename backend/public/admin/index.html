@@ -597,6 +597,8 @@ select.input { background:var(--card); }
 const API = location.origin;
 const DIKIDI_API = location.origin; // dikidi-роуты смонтированы на /api того же сервиса
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
+// Телефон для відображення: БД зберігає цифри, показуємо у форматі +XXXXXXXXXXX
+function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
 let currentPage = 'dashboard';
 let journalMode = 'day';
 
@@ -815,7 +817,7 @@ async function loadJournal() {
 
     if (journalMode === 'list') {
       container.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Час</th><th>Клієнт</th><th>Телефон</th><th>Статус</th></tr></thead><tbody>${
-        items.map(o => `<tr><td>${new Date(o.created_at).toLocaleString('uk-UA')}</td><td>${o.client_name||'—'}</td><td>${o.phone||'—'}</td><td><span class="badge b-${o.status}">${o.status}</span></td></tr>`).join('')
+        items.map(o => `<tr><td>${new Date(o.created_at).toLocaleString('uk-UA')}</td><td>${o.client_name||'—'}</td><td>${fmtPhone(o.phone)}</td><td><span class="badge b-${o.status}">${o.status}</span></td></tr>`).join('')
       }</tbody></table>` : '<div class="empty"><span class="material-icons-round">event_note</span>Записів немає</div>';
     } else {
       container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Журнал записів з BeautyPro — підключається</div>';
@@ -828,7 +830,7 @@ async function loadClients() {
   const q = document.getElementById('clientSearch').value.trim();
   const r = await api('/api/admin/clients?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
   document.getElementById('clientsBody').innerHTML = (r.items || []).map(c => `
-    <tr><td>${c.name||'—'}</td><td>${c.phone}</td><td>${c.email||'—'}</td>
+    <tr><td>${c.name||'—'}</td><td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
     <td>${c.orders_count}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
     <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
     || '<tr><td colspan="7"><div class="empty">Клієнтів немає</div></td></tr>';
@@ -841,7 +843,7 @@ async function loadOrders() {
   document.getElementById('ordersBody').innerHTML = (r.items || []).map(o => `
     <tr onclick="openOrder(${o.id})">
       <td class="font-mono" style="font-family:monospace">#${o.id}</td><td>${o.client_name||'—'}</td>
-      <td>${o.phone||'—'}</td><td style="font-weight:600">${Number(o.total).toLocaleString()} ₴</td>
+      <td>${fmtPhone(o.phone)}</td><td style="font-weight:600">${Number(o.total).toLocaleString()} ₴</td>
       <td>${o.delivery_type||'—'}</td><td><span class="badge b-${o.status}">${o.status}</span></td>
       <td>${new Date(o.created_at).toLocaleString('uk-UA')}</td>
       <td onclick="event.stopPropagation()">${statusButtons(o)}</td>
@@ -869,7 +871,7 @@ async function openOrder(id) {
   const o = r.order;
   document.getElementById('orderDetail').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Клієнт</span><span style="font-weight:600">${o.client_name||'—'} (${o.phone||'—'})</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Клієнт</span><span style="font-weight:600">${o.client_name||'—'} (${fmtPhone(o.phone)})</span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Сума</span><span style="font-weight:600">${Number(o.total).toLocaleString()} ₴</span></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Статус</span><span class="badge b-${o.status}">${o.status}</span></div>
       <div style="border-top:1px solid var(--border);padding-top:12px"><b>Позиції</b></div>

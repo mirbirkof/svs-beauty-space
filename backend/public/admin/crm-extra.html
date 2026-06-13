@@ -248,6 +248,8 @@ let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let CURRENT_SHIFT = null;
 let CURRENT_AUDIT = null;
 document.getElementById('token').value = TOKEN;
+// Телефон для відображення: БД зберігає цифри, показуємо +XXXXXXXXXXX
+function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
 
 // Ручной ввод токена (скрыт по умолчанию — для сервисных случаев)
 document.getElementById('token-toggle').addEventListener('click', (e) => {
@@ -425,10 +427,10 @@ async function loadReports(){
     const rfm = await api('/api/reports/rfm');
     const sumHtml = Object.entries(rfm.summary).map(([k,v])=>`<span class="pill ${k==='champion'?'ok':k==='lost'?'dng':k==='at_risk'?'warn':'info'}">${k}: ${v.count} (${(+v.revenue).toFixed(0)} ₴)</span> `).join('');
     document.getElementById('r-rfm').innerHTML = `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
-      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th>R/F/M</th><th>Днів тому</th><th>Покупок</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,50).map(r=>`<tr><td>${r.name||r.phone}</td><td><span class="pill ${r.segment==='champion'?'ok':r.segment==='lost'?'dng':'info'}">${r.segment}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
+      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th>R/F/M</th><th>Днів тому</th><th>Покупок</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,50).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${r.segment==='champion'?'ok':r.segment==='lost'?'dng':'info'}">${r.segment}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
     const ch = await api('/api/reports/churn?days=90');
     document.getElementById('r-churn').innerHTML = ch.items.length ?
-      `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||r.phone}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
+      `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
       '<div class="empty">Клієнтів у відтоку немає</div>';
 
     // ── Графіки ──────────────────────────────────────
@@ -541,7 +543,7 @@ async function loadUsers(){
     const r = await api('/api/users');
     document.getElementById('u-list').innerHTML = r.items.map(u=>`
       <tr><td>${u.display_name}</td><td><span class="pill info">${u.role}</span></td>
-          <td>${u.phone||''}</td><td>${u.email||''}</td><td>${u.branch_id||'—'}</td>
+          <td>${fmtPhone(u.phone)}</td><td>${u.email||''}</td><td>${u.branch_id||'—'}</td>
           <td><span class="pill ${u.is_active?'ok':'gray'}">${u.is_active?'так':'ні'}</span></td>
           <td><button class="btn sm" onclick="issueToken(${u.id})">Token</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Користувачів немає</td></tr>';
   }catch(e){ alert(e.message); }
