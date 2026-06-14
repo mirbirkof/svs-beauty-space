@@ -30,6 +30,20 @@ const repeatVisitsRoutes = require('./routes/repeat-visits');
 const app = express();
 const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
 
+// ── Security headers (helmet) ───────────────────────────
+// Базовые HTTP-заголовки безопасности: nosniff, frameguard, HSTS, referrer-policy,
+// hidePoweredBy. CSP отключён — админка-SPA использует inline-скрипты/стили и внешние
+// CDN (иконки/шрифты), строгий CSP их заблокирует. CORP=cross-origin — чтобы фото,
+// отдаваемые этим API, грузились на витрине (github.io/onrender). COOP отключён,
+// чтобы не ломать popup-вход в кабинет.
+const helmet = require('helmet');
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(cors({
   origin: [
     'http://localhost:8080',
