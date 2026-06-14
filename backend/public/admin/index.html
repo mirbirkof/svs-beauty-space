@@ -361,6 +361,7 @@ select.input { background:var(--card); }
 .set-pane.active { display:block; }
 .set-h { font-size:16px; font-weight:700; margin-bottom:4px; }
 .set-p { color:var(--text-secondary); font-size:13px; margin-bottom:18px; }
+.set-l { display:block; font-size:12px; color:var(--text-secondary); margin-bottom:4px; }
 .set-form { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .set-field { display:flex; flex-direction:column; gap:5px; }
 .set-field.full { grid-column:1/-1; }
@@ -1654,12 +1655,12 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:640px">
+    <div class="modal" style="max-width:720px">
       <div class="modal-header">
-        <h3 id="masterCardTitle">Портфоліо майстра</h3>
+        <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
       </div>
-      <div class="modal-body" id="masterCardBody"></div>
+      <div class="modal-body" id="masterCardBody" style="padding-top:0"></div>
     </div>
   </div>
 
@@ -4263,8 +4264,8 @@ async function saveClientCard(){
 }
 
 // ═══ ПОРТФОЛІО МАЙСТРА ══════════════════════════════════
-let _mcId = null;
-function closeMasterCard(){ document.getElementById('masterCardModal').style.display='none'; _mcId=null; }
+let _mcId = null, _mcData = null, _mcTabKey = 'profile';
+function closeMasterCard(){ document.getElementById('masterCardModal').style.display='none'; _mcId=null; _mcData=null; }
 // аватар-кружок: фото або ініціали
 function _mcAvatar(ms){
   const init = (ms.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
@@ -4296,88 +4297,176 @@ async function openMasterCard(id){
   m.style.display='flex';
   try {
     const r = await api('/api/schedule/masters/'+id+'/portfolio');
-    const ms = r.master; const s = r.stats || {};
-    const avg = (s.done_total>0) ? Math.round((s.revenue_total||0)/s.done_total) : 0;
-    const topHtml = (r.top_services||[]).map(t=>`
-      <tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
-      || '<tr><td colspan="3"><div class="empty">Немає даних</div></td></tr>';
-    const recHtml = (r.recent||[]).slice(0,12).map(a=>`
-      <tr><td>${a.starts_at?new Date(a.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
-      <td>${a.client_name||'—'}</td><td>${a.services_text||'—'}</td>
-      <td>${Number(a.price||0).toLocaleString()} ₴</td>
-      <td><span class="badge b-${a.status}">${a.status}</span></td></tr>`).join('')
-      || '<tr><td colspan="5"><div class="empty">Записів немає</div></td></tr>';
-    const phoneTxt = ms.phone ? `<a href="tel:${ms.phone}" style="color:#7c5cff;text-decoration:none;font-weight:600">${fmtPhone?fmtPhone(ms.phone):ms.phone}</a>` : '<span style="color:#9ca3af">телефон не вказано</span>';
-    const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
-    document.getElementById('masterCardTitle').textContent = ms.name || 'Профіль майстра';
-    document.getElementById('masterCardBody').innerHTML = `
-      <div style="display:flex;gap:14px;align-items:center;margin-bottom:16px">
-        ${_mcAvatar(ms)}
-        <div style="min-width:0">
-          <div style="font-size:20px;font-weight:700;line-height:1.2">${ms.name||'—'}</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
-            <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
-            ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
-            ${bpBadge}
-            <span style="font-size:12px;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
-          </div>
-          <div style="margin-top:6px;font-size:13px">📞 ${phoneTxt}</div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-        ${kpiBox('Виконано (всього)', s.done_total||0)}
-        ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
-        ${kpiBox('Середній чек', avg.toLocaleString()+' ₴')}
-        ${kpiBox('Виручка 30 днів', (s.revenue_30||0).toLocaleString()+' ₴')}
-        ${kpiBox('Послуг 30 днів', s.done_30||0)}
-        ${kpiBox('Клієнтів', s.clients_total||0)}
-      </div>
-      <h4 style="margin:0 0 8px;font-size:14px">Графік роботи</h4>
-      <div style="margin-bottom:16px">${_mcSchedule(ms.schedule_json)}</div>
-      <details style="margin-bottom:16px">
-        <summary style="cursor:pointer;font-size:14px;font-weight:600;padding:6px 0">✎ Редагувати профіль</summary>
-        <div style="padding-top:10px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
-            <div><label style="font-size:12px;color:var(--text-secondary)">Імʼя</label><input id="mcName" class="input" value="${(ms.name||'').replace(/"/g,'&quot;')}"></div>
-            <div><label style="font-size:12px;color:var(--text-secondary)">Спеціальність</label><input id="mcSpec" class="input" value="${(ms.specialty||'').replace(/"/g,'&quot;')}"></div>
-            <div><label style="font-size:12px;color:var(--text-secondary)">Телефон</label><input id="mcPhone" class="input" value="${ms.phone||''}"></div>
-            <div><label style="font-size:12px;color:var(--text-secondary)">Комісія, %</label><input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}"></div>
-          </div>
-          <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Біо / опис</label>
-            <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
-          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px">
-            <span>Надає послуги <span style="color:var(--text-secondary)">(якщо вимкнено — це адміністратор: не показується в журналі та онлайн-записі)</span></span></label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти</button>
-            <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
-          </div>
-        </div>
-      </details>
-      <h4 style="margin:0 0 8px;font-size:14px">Топ послуг</h4>
-      <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${topHtml}</tbody></table>
-      <h4 style="margin:16px 0 8px;font-size:14px">Останні записи</h4>
-      <table class="tbl"><thead><tr><th>Дата</th><th>Клієнт</th><th>Послуга</th><th>Сума</th><th>Статус</th></tr></thead><tbody>${recHtml}</tbody></table>`;
+    _mcData = { ms: r.master, stats: r.stats||{}, top: r.top_services||[], recent: r.recent||[] };
+    _mcTabKey = 'profile';
+    document.getElementById('masterCardTitle').textContent = _mcData.ms.name || 'Профіль співробітника';
+    _mcRenderShell();
   } catch(e){ document.getElementById('masterCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// ── Каркас: шапка + вкладки + контент (DIKIDI-стиль) ──
+const _MC_TABS = [
+  ['profile','Профіль'], ['schedule','Графік'], ['services','Послуги'],
+  ['salary','Схема ЗП'], ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
+];
+function _mcRenderShell(){
+  const ms = _mcData.ms;
+  const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
+  const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
+  const tabsHtml = _MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
+  document.getElementById('masterCardBody').innerHTML = `
+    <div style="display:flex;gap:14px;align-items:center;padding:14px 0 12px">
+      ${_mcAvatar(ms)}
+      <div style="min-width:0">
+        <div style="font-size:20px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
+          <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
+          ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
+          ${bpBadge}
+          <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--border,#e5e7eb);margin:0 -4px 14px">${tabsHtml}</div>
+    <div id="mcTabBody" style="padding-bottom:6px"></div>`;
+  mcTab(_mcTabKey, true);
+}
+function mcTab(k, skipShell){
+  _mcTabKey = k;
+  if (!skipShell) {
+    document.querySelectorAll('[data-mctab]').forEach(b=>{
+      const on = b.getAttribute('data-mctab')===k;
+      b.style.color = on?'#7c5cff':'var(--text-secondary)';
+      b.style.borderBottom = '2px solid '+(on?'#7c5cff':'transparent');
+    });
+  }
+  const fn = { profile:_mcTabProfile, schedule:_mcTabSchedule, services:_mcTabServices,
+              salary:_mcTabSalary, stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
+  document.getElementById('mcTabBody').innerHTML = fn ? fn() : '';
+}
+const _esc = s => String(s||'').replace(/"/g,'&quot;');
+function _mcTabProfile(){
+  const ms = _mcData.ms;
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+      <div><label class="set-l">Імʼя *</label><input id="mcName" class="input" value="${_esc(ms.name)}"></div>
+      <div><label class="set-l">Прізвище</label><input id="mcSurname" class="input" value="${_esc(ms.surname)}"></div>
+      <div><label class="set-l">Посада *</label><input id="mcSpec" class="input" value="${_esc(ms.specialty)}"></div>
+      <div><label class="set-l">Категорія</label><input id="mcCat" class="input" value="${_esc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
+      <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone)}"></div>
+      <div><label class="set-l">Email</label><input id="mcEmail" class="input" value="${_esc(ms.email)}"></div>
+    </div>
+    <div style="margin-bottom:12px"><label class="set-l">Відомості про співробітника</label>
+      <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
+      <span>Надає послуги <span style="color:var(--text-secondary)">— показується в журналі та онлайн-записі. Вимкнено = адміністратор.</span></span></label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding-top:14px">
+      <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти профіль</button>
+      <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+    </div>`;
+}
+function _mcTabSchedule(){
+  return `<h4 style="margin:0 0 10px;font-size:14px">Тижневий графік</h4>
+    <div style="margin-bottom:14px">${_mcSchedule(_mcData.ms.schedule_json)}</div>
+    <p class="set-p" style="font-size:12px">Редагувати зміни по днях — у розділі <b>Персонал → Графіки</b> (помісячна сітка з реальними змінами BeautyPro).</p>`;
+}
+function _mcTabServices(){
+  const top = _mcData.top;
+  const rows = top.map(t=>`<tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
+    || '<tr><td colspan="3"><div class="empty">Ще немає виконаних послуг</div></td></tr>';
+  return `<h4 style="margin:0 0 10px;font-size:14px">Послуги, які надає (за фактом виконання)</h4>
+    <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="set-p" style="font-size:12px;margin-top:10px">Індивідуальні ціни майстра на послуги — у розділі <b>Послуги</b> (картка послуги → «Ціни майстрів»).</p>`;
+}
+function _mcTabSalary(){
+  const ms = _mcData.ms, s = _mcData.stats;
+  return `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
+      ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
+      ${kpiBox('Виручка 30 днів', (s.revenue_30||0).toLocaleString()+' ₴')}
+    </div>
+    <div style="max-width:240px;margin-bottom:14px"><label class="set-l">Комісія майстра, %</label>
+      <input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}" placeholder="напр. 40"></div>
+    <button class="btn btn-primary btn-sm" onclick="saveMasterSalary()">Зберегти схему ЗП</button>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Нарахування за період — у розділі <b>Персонал → Зарплати</b>.</p>`;
+}
+function _mcTabStats(){
+  const s = _mcData.stats;
+  const avg = (s.done_total>0) ? Math.round((s.revenue_total||0)/s.done_total) : 0;
+  const recHtml = _mcData.recent.slice(0,12).map(a=>`
+    <tr><td>${a.starts_at?new Date(a.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
+    <td>${a.client_name||'—'}</td><td>${a.services_text||'—'}</td>
+    <td>${Number(a.price||0).toLocaleString()} ₴</td>
+    <td><span class="badge b-${a.status}">${a.status}</span></td></tr>`).join('')
+    || '<tr><td colspan="5"><div class="empty">Записів немає</div></td></tr>';
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      ${kpiBox('Виконано (всього)', s.done_total||0)}
+      ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
+      ${kpiBox('Середній чек', avg.toLocaleString()+' ₴')}
+      ${kpiBox('Виручка 30 днів', (s.revenue_30||0).toLocaleString()+' ₴')}
+      ${kpiBox('Послуг 30 днів', s.done_30||0)}
+      ${kpiBox('Клієнтів', s.clients_total||0)}
+    </div>
+    <h4 style="margin:0 0 8px;font-size:14px">Останні записи</h4>
+    <table class="tbl"><thead><tr><th>Дата</th><th>Клієнт</th><th>Послуга</th><th>Сума</th><th>Статус</th></tr></thead><tbody>${recHtml}</tbody></table>`;
+}
+function _mcTabPhotos(){
+  const ms = _mcData.ms;
+  return `<h4 style="margin:0 0 10px;font-size:14px">Фото профілю</h4>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${_mcAvatar(ms)}
+      <div style="flex:1"><label class="set-l">URL фото</label>
+        <input id="mcAvatar" class="input" value="${_esc(ms.avatar)}" placeholder="https://...">
+        <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveMasterAvatar()">Оновити фото</button></div>
+    </div>
+    <p class="set-p" style="font-size:12px">Галерея «фото робіт» (портфоліо до/після) — у дорожній карті. Зараз доступне фото профілю, яке видно клієнтам в онлайн-записі.</p>`;
+}
+function _mcTabAccess(){
+  const ms = _mcData.ms;
+  return `<h4 style="margin:0 0 10px;font-size:14px">Доступ до системи</h4>
+    <p class="set-p" style="font-size:13px;margin-bottom:12px">Логін, пароль і права (RBAC) співробітника <b>${_esc(ms.name)}</b> налаштовуються в єдиному реєстрі доступів.</p>
+    <a class="btn btn-primary btn-sm" href="/admin/crm-extra.html#users-access">Відкрити «Доступи до системи»</a>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Майстер бачить лише свій графік і свої записи. Адміністратор — повний журнал без фінансів власника (залежить від ролі).</p>`;
 }
 async function saveMasterCard(){
   if(!_mcId) return;
   const provides = document.getElementById('mcProvides').checked;
   const body = {
     name: document.getElementById('mcName').value.trim(),
+    surname: document.getElementById('mcSurname').value.trim(),
     specialty: document.getElementById('mcSpec').value.trim(),
+    category: document.getElementById('mcCat').value.trim(),
     phone: document.getElementById('mcPhone').value.trim(),
+    email: document.getElementById('mcEmail').value.trim(),
     bio: document.getElementById('mcBio').value.trim(),
-    commission_pct: document.getElementById('mcComm').value || null,
     provides_services: provides,
     staff_role: provides ? 'master' : 'admin',
   };
   try {
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
-    if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
-    alert('Збережено');
-    closeMasterCard();
-  } catch(e){ alert('Помилка збереження'); }
+    if (!r || !r.ok) { toast('Помилка: '+((r&&r.error)||'невідома'),'error'); return; }
+    _mcData.ms = r.master;
+    document.getElementById('masterCardTitle').textContent = r.master.name || 'Профіль співробітника';
+    toast('Профіль збережено','success');
+    _mcRenderShell();
+    _planInited = false;
+  } catch(e){ toast('Помилка збереження','error'); }
+}
+async function saveMasterSalary(){
+  if(!_mcId) return;
+  const v = document.getElementById('mcComm').value;
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ commission_pct: v||null }) });
+    if (!r || !r.ok) { toast('Помилка','error'); return; }
+    _mcData.ms = r.master; toast('Схему ЗП збережено','success');
+  } catch(e){ toast('Помилка','error'); }
+}
+async function saveMasterAvatar(){
+  if(!_mcId) return;
+  const v = document.getElementById('mcAvatar').value.trim();
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: v||null }) });
+    if (!r || !r.ok) { toast('Помилка','error'); return; }
+    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab('photos');
+  } catch(e){ toast('Помилка','error'); }
 }
 async function toggleMasterActive(id, makeActive){
   if(!confirm(makeActive?'Відновити майстра? Він знову зʼявиться у графіку, записах та плані.':'Звільнити майстра? Він зникне з графіка, журналу, плану місяця та онлайн-запису (статистика збережеться).')) return;

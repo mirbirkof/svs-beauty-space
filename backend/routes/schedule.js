@@ -166,7 +166,7 @@ router.patch('/masters/:id/profile', async (req, res) => {
   try {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
-    const allowed = ['name', 'specialty', 'bio', 'phone', 'commission_pct', 'provides_services', 'staff_role'];
+    const allowed = ['name', 'surname', 'email', 'category', 'specialty', 'bio', 'phone', 'avatar', 'commission_pct', 'provides_services', 'staff_role'];
     const sets = [], vals = [];
     for (const f of allowed) {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
