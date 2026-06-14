@@ -138,10 +138,12 @@
 
   // ── Згортання меню (icon-rail), стан спільний з index.html ──
   window.toggleSidebar = function () {
-    const on = document.body.classList.toggle('sb-collapsed');
+    const on = document.documentElement.classList.toggle('sb-collapsed');
     try { localStorage.setItem('svs_sb_collapsed', on ? '1' : '0'); } catch (_) {}
   };
-  if (localStorage.getItem('svs_sb_collapsed') === '1') document.body.classList.add('sb-collapsed');
+  // стан застосовується inline-скриптом у <head> кожної сторінки (до рендера — без мигання);
+  // тут лише підстраховка, якщо скрипт у <head> відсутній
+  if (localStorage.getItem('svs_sb_collapsed') === '1') document.documentElement.classList.add('sb-collapsed');
 
   // Закрытие меню по клику мимо (мобайл)
   document.addEventListener('click', (e) => {
