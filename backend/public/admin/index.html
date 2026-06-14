@@ -147,6 +147,8 @@ body.sb-collapsed .sidebar-footer button .material-icons-round { font-size:18px;
 /* BADGES */
 .badge { display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:600; }
 .b-new { background:#DBEAFE; color:#1E40AF; }
+.b-ok { background:#DCFCE7; color:#166534; }
+.b-warn { background:#FEF3C7; color:#92400E; }
 .b-paid { background:#DCFCE7; color:#166534; }
 .b-packing { background:#FEF3C7; color:#92400E; }
 .b-shipped { background:#E0E7FF; color:#3730A3; }
@@ -914,11 +916,111 @@ select.input { background:var(--card); }
 
       <!-- ═══ PAYROLL ═══ -->
       <div class="page" id="page-payroll">
-        <div class="card">
-          <div class="card-header"><h3>Схеми зарплати майстрів</h3></div>
-          <div class="card-body" id="payrollList">
-            <div class="empty"><span class="material-icons-round">payments</span>Завантаження...</div>
+        <style>
+          #page-payroll .inp{padding:9px 12px;border:1px solid var(--border,#e2e3ec);border-radius:9px;font-size:14px;background:#fff;min-width:0}
+          #page-payroll .py-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+          #page-payroll .py-form{display:flex;flex-direction:column;gap:8px}
+          #page-payroll .py-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+          @media(max-width:980px){#page-payroll .py-grid3{grid-template-columns:1fr}}
+          #page-payroll .py-mini{width:100%;border-collapse:collapse;font-size:13px}
+          #page-payroll .py-mini td{padding:6px 4px;border-bottom:1px solid var(--border,#eee)}
+          #page-payroll .py-mini .x{color:#d9534f;cursor:pointer;font-size:16px}
+          #page-payroll .stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+          #page-payroll .stat-c{background:#fff;border:1px solid var(--border,#eee);border-radius:12px;padding:14px}
+          #page-payroll .stat-c .v{font-size:22px;font-weight:800}
+          #page-payroll .stat-c .l{font-size:12px;color:var(--text-secondary,#777);margin-top:2px}
+          #page-payroll .stat-c.debt .v{color:#d9534f}
+          #page-payroll .stat-c.paid .v{color:#0a8f5f}
+        </style>
+        <div class="plan-tabs">
+          <button class="plan-tab active" data-pyt="schemes" onclick="payrollTab('schemes')"><span class="material-icons-round">tune</span>Схеми</button>
+          <button class="plan-tab" data-pyt="calc" onclick="payrollTab('calc')"><span class="material-icons-round">calculate</span>Розрахунки</button>
+          <button class="plan-tab" data-pyt="adjust" onclick="payrollTab('adjust')"><span class="material-icons-round">add_card</span>Бонуси / Штрафи / Аванси</button>
+          <button class="plan-tab" data-pyt="payments" onclick="payrollTab('payments')"><span class="material-icons-round">receipt_long</span>Виплати</button>
+          <button class="plan-tab" data-pyt="analytics" onclick="payrollTab('analytics')"><span class="material-icons-round">insights</span>Аналітика</button>
+        </div>
+
+        <!-- СХЕМИ -->
+        <div class="py-pane" id="pypane-schemes">
+          <div class="card">
+            <div class="card-header"><h3>Схеми нарахування</h3>
+              <button class="btn btn-primary btn-sm" onclick="schemeForm()"><span class="material-icons-round">add</span>Нова / змінити схему</button></div>
+            <div class="card-body" id="payrollList"><div class="empty"><span class="material-icons-round">payments</span>Завантаження...</div></div>
           </div>
+        </div>
+
+        <!-- РОЗРАХУНКИ -->
+        <div class="py-pane" id="pypane-calc" style="display:none">
+          <div class="card">
+            <div class="card-header"><h3>Розрахувати зарплату</h3></div>
+            <div class="card-body">
+              <div class="py-row">
+                <select id="pyCalcMaster" class="inp"></select>
+                <input type="date" id="pyCalcFrom" class="inp">
+                <input type="date" id="pyCalcTo" class="inp">
+                <button class="btn btn-primary" onclick="calcPayroll()"><span class="material-icons-round">calculate</span>Розрахувати</button>
+              </div>
+              <div id="pyCalcResult" style="margin-top:12px"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Нарахування</h3>
+              <select id="pyRecFilter" class="inp" style="max-width:200px" onchange="loadPayrollRecords()">
+                <option value="">Усі статуси</option><option value="draft">Чернетка</option>
+                <option value="approved">Підтверджено</option><option value="paid">Виплачено</option></select></div>
+            <div class="card-body" id="payrollRecords"><div class="empty">Завантаження...</div></div>
+          </div>
+        </div>
+
+        <!-- БОНУСИ / ШТРАФИ / АВАНСИ -->
+        <div class="py-pane" id="pypane-adjust" style="display:none">
+          <div class="py-grid3">
+            <div class="card"><div class="card-header"><h3>Бонуси</h3></div><div class="card-body">
+              <div class="py-form">
+                <select id="pyBonMaster" class="inp"></select>
+                <input type="number" id="pyBonAmount" class="inp" placeholder="Сума ₴" min="0">
+                <select id="pyBonKind" class="inp"><option value="onetime">Разовий</option><option value="kpi">KPI</option><option value="premium">Премія</option><option value="motivation">Мотивація</option></select>
+                <input type="text" id="pyBonReason" class="inp" placeholder="Причина">
+                <button class="btn btn-primary btn-sm" onclick="addAdjustment('bonus')">Додати бонус</button>
+              </div>
+              <div id="pyBonusList" style="margin-top:10px"></div>
+            </div></div>
+            <div class="card"><div class="card-header"><h3>Штрафи</h3></div><div class="card-body">
+              <div class="py-form">
+                <select id="pyPenMaster" class="inp"></select>
+                <input type="number" id="pyPenAmount" class="inp" placeholder="Сума ₴" min="0">
+                <select id="pyPenKind" class="inp"><option value="manual">Ручний</option><option value="violation">Порушення</option><option value="auto">Авто</option></select>
+                <input type="text" id="pyPenReason" class="inp" placeholder="Причина">
+                <button class="btn btn-primary btn-sm" onclick="addAdjustment('penalty')">Додати штраф</button>
+              </div>
+              <div id="pyPenaltyList" style="margin-top:10px"></div>
+            </div></div>
+            <div class="card"><div class="card-header"><h3>Аванси</h3></div><div class="card-body">
+              <div class="py-form">
+                <select id="pyAdvMaster" class="inp"></select>
+                <input type="number" id="pyAdvAmount" class="inp" placeholder="Сума ₴" min="0">
+                <select id="pyAdvMethod" class="inp"><option value="cash">Готівка</option><option value="card">Картка</option><option value="transfer">Переказ</option></select>
+                <input type="text" id="pyAdvReason" class="inp" placeholder="Причина">
+                <button class="btn btn-primary btn-sm" onclick="addAdjustment('advance')">Видати аванс</button>
+              </div>
+              <div id="pyAdvanceList" style="margin-top:10px"></div>
+            </div></div>
+          </div>
+        </div>
+
+        <!-- ВИПЛАТИ -->
+        <div class="py-pane" id="pypane-payments" style="display:none">
+          <div class="card"><div class="card-header"><h3>Історія виплат</h3></div>
+            <div class="card-body" id="payrollPayments"><div class="empty">Завантаження...</div></div></div>
+        </div>
+
+        <!-- АНАЛІТИКА -->
+        <div class="py-pane" id="pypane-analytics" style="display:none">
+          <div class="card"><div class="card-header"><h3>Фінансова аналітика</h3>
+            <div style="display:flex;gap:8px">
+              <input type="date" id="pyStatFrom" class="inp"><input type="date" id="pyStatTo" class="inp">
+              <button class="btn btn-outline btn-sm" onclick="loadPayrollStats()">Оновити</button></div></div>
+            <div class="card-body" id="payrollStats"><div class="empty">Завантаження...</div></div></div>
         </div>
       </div>
 
@@ -1598,6 +1700,32 @@ async function dikidiApi(path, opts = {}) {
     ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
   return r.json();
+}
+
+// ── Generic modal + toast (переиспользують стилі .modal-overlay/.modal) ──
+function showModal(title, bodyHtml, onOk) {
+  document.getElementById('genModal')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'genModal'; ov.className = 'modal-overlay'; ov.style.display = 'flex';
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.innerHTML = `<div class="modal" style="max-width:480px">
+    <div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="document.getElementById('genModal').remove()">✕</button></div>
+    <div class="modal-body">${bodyHtml}</div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border,#eee)">
+      <button class="btn btn-outline" onclick="document.getElementById('genModal').remove()">${onOk ? 'Скасувати' : 'Закрити'}</button>
+      ${onOk ? '<button class="btn btn-primary" id="genModalOk">Зберегти</button>' : ''}
+    </div></div>`;
+  document.body.appendChild(ov);
+  if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } finally { document.getElementById('genModal')?.remove(); } };
+}
+function toast(msg, type = 'ok') {
+  let t = document.getElementById('genToast');
+  if (!t) { t = document.createElement('div'); t.id = 'genToast';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 20px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:opacity .3s;font-size:14px';
+    document.body.appendChild(t); }
+  t.style.background = type === 'error' ? '#d9534f' : '#0a8f5f';
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
 }
 
 // ── Navigation ───────────────────────────────
@@ -3696,16 +3824,213 @@ async function loadPromos() {
 }
 
 // ═══ PAYROLL ═════════════════════════════════
+let _pyMasters = [];
+const _pyMoney = v => (Math.round((+v || 0) * 100) / 100).toLocaleString('uk-UA', { minimumFractionDigits: 2 }) + ' ₴';
+const _pyStatusBadge = s => ({ draft: '<span class="badge b-new">Чернетка</span>', approved: '<span class="badge b-warn">Підтверджено</span>', paid: '<span class="badge b-ok">Виплачено</span>' }[s] || s);
+const _pyKindLabel = k => ({ kpi: 'KPI', premium: 'Премія', onetime: 'Разовий', motivation: 'Мотивація', manual: 'Ручний', violation: 'Порушення', auto: 'Авто' }[k] || k);
+
 async function loadPayroll() {
+  await loadPayrollMasters();
+  payrollTab('schemes');
+}
+
+async function loadPayrollMasters() {
+  if (_pyMasters.length) return;
   try {
-    const r = await dikidiApi('/api/payroll/schemes');
+    const r = await dikidiApi('/api/schedule/masters?all=1');
+    _pyMasters = (r.items || []).map(m => ({ id: String(m.id), name: m.name || ('#' + m.id) }));
+  } catch { _pyMasters = []; }
+  const opts = '<option value="">— майстер —</option>' + _pyMasters.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  ['pyCalcMaster', 'pyBonMaster', 'pyPenMaster', 'pyAdvMaster'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = opts; });
+}
+
+function payrollTab(t) {
+  document.querySelectorAll('#page-payroll .plan-tab').forEach(b => b.classList.toggle('active', b.dataset.pyt === t));
+  document.querySelectorAll('#page-payroll .py-pane').forEach(p => p.style.display = 'none');
+  const pane = document.getElementById('pypane-' + t); if (pane) pane.style.display = '';
+  if (t === 'schemes') loadPayrollSchemes();
+  else if (t === 'calc') loadPayrollRecords();
+  else if (t === 'adjust') loadAdjustments();
+  else if (t === 'payments') loadPayrollPayments();
+  else if (t === 'analytics') loadPayrollStats();
+}
+
+async function loadPayrollSchemes() {
+  try {
+    const r = await api('/api/payroll/schemes');
     const items = r.items || [];
     document.getElementById('payrollList').innerHTML = items.length ? `
-      <table class="tbl"><thead><tr><th>Майстер</th><th>Тип</th><th>%</th><th>Ставка/день</th><th>Оклад/міс</th></tr></thead><tbody>${
-        items.map(s => `<tr><td>${s.master_name||s.master_id}</td><td><span class="badge b-new">${s.scheme_type}</span></td>
-          <td>${s.percent||'—'}</td><td>${s.fixed_per_day||'—'}</td><td>${s.fixed_per_month||'—'}</td></tr>`).join('')
+      <table class="tbl"><thead><tr><th>Майстер</th><th>Тип</th><th>%</th><th>Ставка/день</th><th>Оклад/міс</th><th>% з продажів</th></tr></thead><tbody>${
+        items.map(s => `<tr><td>${s.master_name || s.master_id}</td><td><span class="badge b-new">${s.scheme_type}</span></td>
+          <td>${s.percent || '—'}</td><td>${s.fixed_per_day || '—'}</td><td>${s.fixed_per_month || '—'}</td><td>${s.sales_commission_pct || '—'}</td></tr>`).join('')
       }</tbody></table>` : '<div class="empty"><span class="material-icons-round">payments</span>Схеми зарплати не задані</div>';
   } catch { document.getElementById('payrollList').innerHTML = '<div class="empty">Сервер зарплати недоступний</div>'; }
+}
+
+async function schemeForm() {
+  await loadPayrollMasters();
+  const mopts = _pyMasters.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  const html = `<div style="display:flex;flex-direction:column;gap:10px">
+    <label>Майстер<select id="sfMaster" class="inp" style="width:100%">${mopts}</select></label>
+    <label>Тип схеми<select id="sfType" class="inp" style="width:100%"><option value="percent">Відсоток з послуг</option><option value="fixed">Фіксована ставка/оклад</option><option value="hybrid">Змішана</option></select></label>
+    <label>% з послуг<input id="sfPercent" type="number" class="inp" style="width:100%" placeholder="напр. 40"></label>
+    <label>Ставка за зміну<input id="sfDay" type="number" class="inp" style="width:100%" placeholder="₴/день"></label>
+    <label>Оклад на місяць<input id="sfMonth" type="number" class="inp" style="width:100%" placeholder="₴/міс"></label>
+    <label>% з продажів товарів<input id="sfSales" type="number" class="inp" style="width:100%" placeholder="напр. 10"></label>
+  </div>`;
+  showModal('Схема нарахування', html, async () => {
+    const master_id = document.getElementById('sfMaster').value;
+    if (!master_id) return toast('Оберіть майстра', 'error');
+    const master_name = (_pyMasters.find(m => m.id === master_id) || {}).name;
+    const body = { master_id, master_name, scheme_type: document.getElementById('sfType').value,
+      percent: +document.getElementById('sfPercent').value || null, fixed_per_day: +document.getElementById('sfDay').value || null,
+      fixed_per_month: +document.getElementById('sfMonth').value || null, sales_commission_pct: +document.getElementById('sfSales').value || 0 };
+    const r = await api('/api/payroll/schemes', { method: 'POST', body: JSON.stringify(body) });
+    if (r.ok) { toast('Схему збережено'); loadPayrollSchemes(); } else toast(r.error || 'Помилка', 'error');
+  });
+}
+
+async function calcPayroll() {
+  const master_id = document.getElementById('pyCalcMaster').value;
+  const period_start = document.getElementById('pyCalcFrom').value;
+  const period_end = document.getElementById('pyCalcTo').value;
+  if (!master_id || !period_start || !period_end) return toast('Майстер і період обовʼязкові', 'error');
+  const res = document.getElementById('pyCalcResult');
+  res.innerHTML = 'Рахуємо…';
+  const r = await api('/api/payroll/calculate', { method: 'POST', body: JSON.stringify({ master_id, period_start, period_end }) });
+  if (!r.ok) { res.innerHTML = `<div class="empty">${r.error || 'Помилка'}</div>`; return; }
+  const b = r.breakdown || {};
+  res.innerHTML = `<div class="stat-cards">
+    <div class="stat-c"><div class="v">${_pyMoney(r.total)}</div><div class="l">До виплати</div></div>
+    <div class="stat-c"><div class="v">${b.services_count || 0}</div><div class="l">Послуг · ${_pyMoney(b.services_revenue)}</div></div>
+    <div class="stat-c paid"><div class="v">+${_pyMoney(b.bonus_sum)}</div><div class="l">Бонуси</div></div>
+    <div class="stat-c debt"><div class="v">−${_pyMoney((+b.penalty_sum || 0) + (+b.advance_sum || 0))}</div><div class="l">Штрафи + аванси</div></div>
+  </div>`;
+  loadPayrollRecords();
+}
+
+async function loadPayrollRecords() {
+  const status = document.getElementById('pyRecFilter')?.value || '';
+  const el = document.getElementById('payrollRecords'); if (!el) return;
+  try {
+    const r = await api('/api/payroll/records?limit=100' + (status ? '&status=' + status : ''));
+    const items = r.items || [];
+    el.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Майстер</th><th>Період</th><th>Послуг</th><th>До виплати</th><th>Статус</th><th></th></tr></thead><tbody>${
+      items.map(x => `<tr><td>${x.master_name || x.master_id}</td>
+        <td>${(x.period_start || '').slice(0, 10)} — ${(x.period_end || '').slice(0, 10)}</td>
+        <td>${x.services_count || 0} · ${_pyMoney(x.services_revenue)}</td>
+        <td><b>${_pyMoney(x.total)}</b></td><td>${_pyStatusBadge(x.status)}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" onclick="openPayslip(${x.id})">Лист</button>
+          ${x.status === 'draft' ? `<button class="btn btn-outline btn-sm" onclick="setPayrollStatus(${x.id},'approved')">Підтвердити</button>` : ''}
+          ${x.status === 'approved' ? `<button class="btn btn-primary btn-sm" onclick="setPayrollStatus(${x.id},'paid')">Виплатити</button>` : ''}
+        </td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">Нарахувань немає</div>';
+  } catch { el.innerHTML = '<div class="empty">Сервер недоступний</div>'; }
+}
+
+async function setPayrollStatus(id, status) {
+  if (status === 'paid' && !confirm('Провести виплату? Сума спишеться з відкритої каси.')) return;
+  const r = await api('/api/payroll/records/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
+  if (r.ok) { toast(status === 'paid' ? 'Виплачено' : 'Підтверджено'); loadPayrollRecords(); } else toast(r.error || 'Помилка', 'error');
+}
+
+async function openPayslip(id) {
+  const r = await api('/api/payroll/payslip/' + id);
+  if (r.error) return toast(r.error, 'error');
+  const e = r.earnings, d = r.deductions;
+  const lines = arr => arr && arr.length ? arr.map(x => `<tr><td>${_pyKindLabel(x.kind) || x.reason || '—'}</td><td style="text-align:right">${_pyMoney(x.amount)}</td></tr>`).join('') : '<tr><td colspan="2" style="color:#999">—</td></tr>';
+  const html = `<div style="font-size:13px">
+    <h4 style="margin:0 0 6px">${r.record.master_name || r.record.master_id}</h4>
+    <div style="color:#777;margin-bottom:10px">${(r.record.period_start || '').slice(0, 10)} — ${(r.record.period_end || '').slice(0, 10)}</div>
+    <b>Нарахування</b>
+    <table class="py-mini"><tbody>
+      <tr><td>Послуги (${e.services.count}) · виручка ${_pyMoney(e.services.revenue)}</td><td style="text-align:right">${_pyMoney(e.services.part)}</td></tr>
+      ${e.fixed ? `<tr><td>Ставка/оклад</td><td style="text-align:right">${_pyMoney(e.fixed)}</td></tr>` : ''}
+      ${e.sales.part ? `<tr><td>% з продажів (${_pyMoney(e.sales.revenue)})</td><td style="text-align:right">${_pyMoney(e.sales.part)}</td></tr>` : ''}
+      ${lines(e.bonuses)}
+    </tbody></table>
+    <b style="display:block;margin-top:10px">Утримання</b>
+    <table class="py-mini"><tbody>${lines(d.penalties)}${(d.advances || []).map(x => `<tr><td>Аванс · ${x.reason || '—'}</td><td style="text-align:right">−${_pyMoney(x.amount)}</td></tr>`).join('') || ''}</tbody></table>
+    <div style="margin-top:12px;font-size:17px;font-weight:800;text-align:right">До виплати: ${_pyMoney(r.total)}</div>
+    ${r.payment ? `<div style="color:#0a8f5f;text-align:right;margin-top:4px">Виплачено ${new Date(r.payment.paid_at).toLocaleDateString('uk-UA')} (${r.payment.method})</div>` : ''}
+  </div>`;
+  showModal('Розрахунковий лист #' + id, html, null);
+}
+
+async function loadAdjustments() {
+  await loadPayrollMasters();
+  const render = (items, kind, dcol) => items.length ? `<table class="py-mini"><tbody>${
+    items.map(x => `<tr><td>${x.master_name || x.master_id}<br><small style="color:#999">${_pyKindLabel(x.kind) || ''} ${x.reason || ''} · ${(x[dcol] || '').slice(0, 10)}</small></td>
+      <td style="text-align:right;white-space:nowrap"><b>${_pyMoney(x.amount)}</b>
+      ${(kind === 'advance' ? x.settled : x.applied_record_id) ? '<span style="color:#0a8f5f;font-size:11px;margin-left:6px">✓ враховано</span>' : `<span class="material-icons-round x" onclick="delAdjustment('${kind}',${x.id})">close</span>`}</td></tr>`).join('')
+  }</tbody></table>` : '<div class="empty" style="padding:14px">Порожньо</div>';
+  try {
+    const [b, p, a] = await Promise.all([api('/api/payroll/bonuses'), api('/api/payroll/penalties'), api('/api/payroll/advances')]);
+    document.getElementById('pyBonusList').innerHTML = render(b.items || [], 'bonus', 'bonus_date');
+    document.getElementById('pyPenaltyList').innerHTML = render(p.items || [], 'penalty', 'penalty_date');
+    document.getElementById('pyAdvanceList').innerHTML = render(a.items || [], 'advance', 'issued_at');
+  } catch { /* ignore */ }
+}
+
+async function addAdjustment(kind) {
+  const map = {
+    bonus: { path: 'bonuses', m: 'pyBonMaster', a: 'pyBonAmount', k: 'pyBonKind', r: 'pyBonReason' },
+    penalty: { path: 'penalties', m: 'pyPenMaster', a: 'pyPenAmount', k: 'pyPenKind', r: 'pyPenReason' },
+    advance: { path: 'advances', m: 'pyAdvMaster', a: 'pyAdvAmount', k: 'pyAdvMethod', r: 'pyAdvReason' }
+  }[kind];
+  const master_id = document.getElementById(map.m).value;
+  const amount = +document.getElementById(map.a).value;
+  if (!master_id || !(amount > 0)) return toast('Майстер і сума обовʼязкові', 'error');
+  const master_name = (_pyMasters.find(m => m.id === master_id) || {}).name;
+  const reason = document.getElementById(map.r).value;
+  const body = { master_id, master_name, amount, reason };
+  if (kind === 'advance') body.method = document.getElementById(map.k).value; else body.kind = document.getElementById(map.k).value;
+  const r = await api('/api/payroll/' + map.path, { method: 'POST', body: JSON.stringify(body) });
+  if (r.ok) { toast('Додано'); document.getElementById(map.a).value = ''; document.getElementById(map.r).value = ''; loadAdjustments(); } else toast(r.error || 'Помилка', 'error');
+}
+
+async function delAdjustment(kind, id) {
+  const path = { bonus: 'bonuses', penalty: 'penalties', advance: 'advances' }[kind];
+  const r = await api(`/api/payroll/${path}/${id}`, { method: 'DELETE' });
+  if (r.ok) { loadAdjustments(); } else toast(r.error || 'Не можна видалити', 'error');
+}
+
+async function loadPayrollPayments() {
+  const el = document.getElementById('payrollPayments'); if (!el) return;
+  try {
+    const r = await api('/api/payroll/payments');
+    const items = r.items || [];
+    el.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Дата</th><th>Майстер</th><th>Період</th><th>Сума</th><th>Спосіб</th><th>Провів</th></tr></thead><tbody>${
+      items.map(x => `<tr><td>${new Date(x.paid_at).toLocaleDateString('uk-UA')}</td><td>${x.master_name || x.master_id}</td>
+        <td>${(x.period_start || '').slice(0, 10)} — ${(x.period_end || '').slice(0, 10)}</td>
+        <td><b>${_pyMoney(x.amount)}</b></td><td>${x.method}</td><td>${x.created_by_name || '—'}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">Виплат ще не було</div>';
+  } catch { el.innerHTML = '<div class="empty">Сервер недоступний</div>'; }
+}
+
+async function loadPayrollStats() {
+  const el = document.getElementById('payrollStats'); if (!el) return;
+  const from = document.getElementById('pyStatFrom')?.value;
+  const to = document.getElementById('pyStatTo')?.value;
+  const qs = [from && 'from=' + from, to && 'to=' + to].filter(Boolean).join('&');
+  try {
+    const r = await api('/api/payroll/statistics' + (qs ? '?' + qs : ''));
+    el.innerHTML = `<div class="stat-cards">
+      <div class="stat-c"><div class="v">${_pyMoney(r.fund)}</div><div class="l">Фонд оплати праці</div></div>
+      <div class="stat-c"><div class="v">${_pyMoney(r.accrued)}</div><div class="l">Нараховано</div></div>
+      <div class="stat-c paid"><div class="v">${_pyMoney(r.paid)}</div><div class="l">Виплачено</div></div>
+      <div class="stat-c debt"><div class="v">${_pyMoney(r.debt)}</div><div class="l">Заборгованість</div></div>
+      <div class="stat-c"><div class="v">${r.payroll_ratio}%</div><div class="l">ЗП від виручки</div></div>
+      <div class="stat-c"><div class="v">${_pyMoney(r.open_advances)}</div><div class="l">Невипл. аванси</div></div>
+    </div>
+    <h4 style="margin:6px 0">Ефективність майстрів</h4>
+    <table class="tbl"><thead><tr><th>Майстер</th><th>Візитів</th><th>Виручка</th><th>Нараховано ЗП</th><th>% ЗП/виручка</th></tr></thead><tbody>${
+      (r.by_master || []).map(m => `<tr><td>${m.master_name || m.master_id}</td><td>${m.visits}</td>
+        <td>${_pyMoney(m.revenue)}</td><td>${_pyMoney(m.payroll)}</td>
+        <td><span class="badge ${m.ratio > 60 ? 'b-warn' : 'b-ok'}">${m.ratio}%</span></td></tr>`).join('') || '<tr><td colspan="5"><div class="empty">Немає даних</div></td></tr>'
+    }</tbody></table>`;
+  } catch { el.innerHTML = '<div class="empty">Сервер недоступний</div>'; }
 }
 
 // ═══ BLACKLIST ════════════════════════════════
