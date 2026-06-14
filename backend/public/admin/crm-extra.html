@@ -1059,6 +1059,8 @@ function _humMeta(meta){
   if(!meta || (typeof meta==='object' && !Object.keys(meta).length)) return '<span style="color:var(--muted)">—</span>';
   const m = meta; const bits = [];
   if(m.name) bits.push(`«${m.name}»`);
+  if(m.hard===true) bits.push('повне видалення');
+  if(m.reason) bits.push(`причина: ${m.reason}`);
   if(m.tag) bits.push(`тег «${m.tag}»`);
   if(Array.isArray(m.fields) && m.fields.length) bits.push(`поля: ${m.fields.join(', ')}`);
   if(m.renamed_services) bits.push(`перейменовано послуг: ${m.renamed_services}`);
