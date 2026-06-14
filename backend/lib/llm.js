@@ -90,10 +90,20 @@ async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-lla
   throw new Error(j.error?.message || `openrouter empty (status ${status})`);
 }
 
+// Каскад провайдерів. Кілька Gemini-моделей підряд: у кожної free-tier СВІЙ
+// денний квота-бакет, тож коли flash вичерпано — flash-lite ще живе (дає запас
+// х2-3 без оплати). Далі OpenRouter і Groq як резерв.
+const PROVIDERS = [
+  ['gemini-2.5-flash',      (p, o) => _gemini(p, { ...o, model: 'gemini-2.5-flash' })],
+  ['gemini-2.5-flash-lite', (p, o) => _gemini(p, { ...o, model: 'gemini-2.5-flash-lite' })],
+  ['openrouter',            _openrouter],
+  ['groq',                  _groq],
+];
+
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
 async function ask(prompt, opts = {}) {
   const errors = [];
-  for (const [name, fn] of [['gemini', _gemini], ['openrouter', _openrouter], ['groq', _groq]]) {
+  for (const [name, fn] of PROVIDERS) {
     try { return await fn(prompt, opts); }
     catch (e) { errors.push(`${name}: ${e.message}`); }
   }
