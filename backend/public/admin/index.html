@@ -382,10 +382,32 @@ select.input { background:var(--card); }
 .schb-pill .brk { display:block; font-size:9.5px; font-weight:500; color:#9a8a3a; }
 .schb-off { color:#cfd2e0; font-size:14px; }
 .schb-row-off .schb-name { background:#fff5f5; }
+/* Місячна матриця графіка (DIKIDI-style) */
+.schmon-bar { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.schmon-title { font-weight:700; font-size:15px; min-width:150px; text-align:center; text-transform:capitalize; }
+.schmon { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:#fff; }
+.schmon-grid { display:grid; }
+.smc { border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:48px; display:flex; align-items:center; justify-content:center; overflow:hidden; box-sizing:border-box; }
+.smc-h { background:#f6f7fb; flex-direction:column; gap:1px; font-size:12px; color:var(--text-secondary); position:sticky; top:0; z-index:2; }
+.smc-h b { font-size:13px; color:var(--text); font-weight:700; }
+.smc-h i { font-style:normal; font-size:9.5px; text-transform:uppercase; }
+.smc-h.wknd, .smc-h.wknd b { color:#d9534f; }
+.smc-h.today { background:var(--primary); } .smc-h.today b, .smc-h.today i { color:#fff; }
+.smc-name { flex-direction:row; gap:9px; padding:6px 8px; justify-content:flex-start; background:#fafbff; position:sticky; left:0; z-index:1; }
+.smc-h.smc-name { z-index:3; }
+.smc-name.off { background:#fff5f5; }
+.smc-day { cursor:pointer; }
+.smc-day:hover { background:#eef0fb; }
+.smc-day.wknd { background:#fdf6f6; }
+.smc-day.today { box-shadow:inset 0 0 0 2px var(--primary); }
+.smc-shift { display:inline-block; padding:3px 4px; border-radius:6px; font-size:10.5px; font-weight:700; line-height:1.15; text-align:center; background:rgba(16,185,129,.14); color:#0a8f5f; }
+.smc-shift.man { background:rgba(59,130,246,.16); color:#1d6fd6; }
+.smc-off span { color:#d4d7e3; font-size:15px; }
 @media(max-width:768px){
-  .schboard { overflow-x:auto; }
   .schboard-grid { grid-template-columns:140px repeat(7, 82px); min-width:714px; }
   .schb-nm { font-size:12px; }
+  .smc-name { min-width:0; }
+  .schmon-title { min-width:120px; font-size:14px; }
 }
 .jappt.dragging { opacity:.45; }
 .jcol-body.drop-active { background:var(--primary-light); }
@@ -1985,36 +2007,115 @@ async function loadSchMasters() {
 // Зведений огляд графіка всіх майстрів — DIKIDI-style дошка (тільки перегляд)
 function _schAvColor(name){ let h=0; const s=String(name||'?'); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return `hsl(${h},55%,52%)`; }
 function _schMinutes(d){ if(!d||!d.start||!d.end) return 0; const [h1,m1]=d.start.split(':').map(Number),[h2,m2]=d.end.split(':').map(Number); let mins=(h2*60+m2)-(h1*60+m1); if(d.break_start&&d.break_end){const[b1,c1]=d.break_start.split(':').map(Number),[b2,c2]=d.break_end.split(':').map(Number); mins-=Math.max(0,(b2*60+c2)-(b1*60+c1));} return Math.max(0,mins); }
-function renderScheduleOverview(grid) {
-  const masters = (_schMastersCache||[]).filter(m => m.active !== false);
-  if (!masters.length) { grid.innerHTML = '<p class="set-p">Немає активних майстрів.</p>'; return; }
-  const todayIdx = (new Date().getDay()+6)%7; // 0=Пн..6=Нд
-  const head = `<div class="schb-cell schb-head" style="text-align:left">Майстер</div>` +
-    _SCH_DAYS.map(([k,l],i)=>`<div class="schb-cell schb-head${i>=5?' wknd':''}${i===todayIdx?' today':''}">${l}</div>`).join('');
-  const rows = masters.map(m => {
-    const s = m.week || m.schedule_json || {}; // тиждень = реальний графік BeautyPro поверх шаблону
-    let totalMin=0, workDays=0;
-    const cells = _SCH_DAYS.map(([k],i) => {
-      const d = s[k];
-      const cls = `schb-cell schb-day${i>=5?' wknd':''}${i===todayIdx?' today':''}`;
-      if (d && d.start && d.end) {
-        totalMin += _schMinutes(d); workDays++;
-        const brk = (d.break_start&&d.break_end) ? `<span class="brk">⏸ ${d.break_start}–${d.break_end}</span>` : '';
-        const bpDot = d.source==='beautypro' ? '<span title="З BeautyPro" style="color:#0a8f5f">•</span> ' : '';
-        return `<div class="${cls}"><span class="schb-pill">${bpDot}${d.start}–${d.end}${brk}</span></div>`;
-      }
-      return `<div class="${cls}"><span class="schb-off">·</span></div>`;
-    }).join('');
+// Місячна матриця графіка (як DIKIDI): рядки=майстри, колонки=дні місяця, клітинка=зміна.
+const _SCH_WD = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб']; // index = getUTCDay()
+const _SCH_MON = ['січень','лютий','березень','квітень','травень','червень','липень','серпень','вересень','жовтень','листопад','грудень'];
+let _schMonth = null;      // 'YYYY-MM'
+let _schMonthData = null;  // кеш останньої відповіді /month
+function _ymNow(){ return new Date().toISOString().slice(0,7); }
+function schMonthNav(delta){
+  const ym = _schMonth || _ymNow();
+  let [Y,M] = ym.split('-').map(Number);
+  M += delta; if (M<1){M=12;Y--;} if (M>12){M=1;Y++;}
+  _schMonth = `${Y}-${String(M).padStart(2,'0')}`;
+  renderScheduleOverview(document.getElementById('schGrid'));
+}
+async function renderScheduleOverview(grid) {
+  const ym = _schMonth || (_schMonth = _ymNow());
+  grid.innerHTML = '<p class="set-p">Завантаження графіка…</p>';
+  let data;
+  try { data = await api('/api/schedule/month?ym='+ym); }
+  catch { grid.innerHTML = '<p class="set-p">Графік недоступний.</p>'; return; }
+  if (!data || !data.items) { grid.innerHTML = '<p class="set-p">'+((data&&data.error)||'Помилка')+'</p>'; return; }
+  _schMonthData = data;
+  const [Y,M] = ym.split('-').map(Number);
+  const todayISO = new Date().toISOString().slice(0,10);
+  const dates = data.dates;
+  // Шапка: дні місяця (число + день тижня)
+  const head = `<div class="smc smc-h smc-name">Майстер</div>` + dates.map(dt => {
+    const dow = new Date(dt+'T00:00:00Z').getUTCDay();
+    const wknd = (dow===0||dow===6) ? ' wknd' : '';
+    const today = dt===todayISO ? ' today' : '';
+    return `<div class="smc smc-h${wknd}${today}"><b>${Number(dt.slice(8,10))}</b><i>${_SCH_WD[dow]}</i></div>`;
+  }).join('');
+  const rows = data.items.map(m => {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0].toUpperCase();
+    let workDays=0, totalMin=0;
+    const cells = m.days.map(d => {
+      const dow = new Date(d.date+'T00:00:00Z').getUTCDay();
+      const wknd = (dow===0||dow===6) ? ' wknd' : '';
+      const today = d.date===todayISO ? ' today' : '';
+      const man = d.source==='manual' ? ' man' : '';
+      if (!d.off && d.start && d.end) {
+        workDays++; totalMin += _schMinutes(d);
+        return `<div class="smc smc-day${wknd}${today}" onclick="schEditDay(${m.id},'${d.date}')"><span class="smc-shift${man}">${d.start}<br>${d.end}</span></div>`;
+      }
+      return `<div class="smc smc-day smc-off${wknd}${today}" onclick="schEditDay(${m.id},'${d.date}')"><span>·</span></div>`;
+    }).join('');
     const H = Math.floor(totalMin/60), Mn = totalMin%60;
-    const hrs = totalMin>0 ? `${workDays} ${_plural(workDays,'день','дні','днів')}/тиж · ${H} год${Mn?' '+Mn+'хв':''}` : 'вихідні';
-    return `<div class="schb-cell schb-name${workDays?'':' schb-row-off'}" onclick="document.getElementById('schMaster').value='${m.id}';loadSchedule()">
+    const meta = workDays ? `${workDays} ${_plural(workDays,'день','дні','днів')} · ${H}год${Mn?' '+Mn+'хв':''}` : 'вихідні';
+    return `<div class="smc smc-name${workDays?'':' off'}">
         <span class="schb-av" style="background:${_schAvColor(m.name)}">${av}</span>
-        <span style="min-width:0;overflow:hidden"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty?m.specialty+' · ':''}${hrs}</span></span>
+        <span style="min-width:0;overflow:hidden"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty?m.specialty+' · ':''}${meta}</span></span>
       </div>${cells}`;
   }).join('');
-  grid.innerHTML = `<div class="schboard"><div class="schboard-grid">${head}${rows}</div></div>
-    <p class="set-p" style="margin-top:10px">Поточний тиждень. <span style="color:#0a8f5f">•</span> — реальна зміна з BeautyPro, решта — тижневий шаблон. Натисніть на майстра, щоб відредагувати шаблон. <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
+  const colW = `200px repeat(${dates.length}, 46px)`;
+  grid.innerHTML =
+    `<div class="schmon-bar">
+       <button class="btn btn-sm" onclick="schMonthNav(-1)">‹</button>
+       <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
+       <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
+       <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+     </div>
+     <div class="schmon"><div class="schmon-grid" style="grid-template-columns:${colW}">${head}${rows}</div></div>
+     <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня. <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується синхронізацією BeautyPro). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
+}
+// Редагування зміни конкретного дня (модалка як у DIKIDI: «Робочий час» з/до)
+function schEditDay(mid, date){
+  const m = (_schMonthData && _schMonthData.items || []).find(x => String(x.id)===String(mid)); if (!m) return;
+  const d = (m.days||[]).find(x => x.date===date) || { off:true };
+  const isManual = d.source==='manual';
+  const st = (!d.off && d.start) ? d.start : '09:00';
+  const en = (!d.off && d.end) ? d.end : '18:00';
+  const dow = new Date(date+'T00:00:00Z').getUTCDay();
+  const human = `${Number(date.slice(8,10))} ${_SCH_MON[Number(date.slice(5,7))-1]}, ${_SCH_WD[dow]}`;
+  const body =
+    `<div style="font-weight:600;margin-bottom:4px">${m.name}</div>
+     <div style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">${human}</div>
+     <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+       <input type="checkbox" id="edOff" ${d.off?'checked':''} onchange="document.getElementById('edTimes').style.opacity=this.checked?'.4':'1';document.getElementById('edTimes').style.pointerEvents=this.checked?'none':'auto'">
+       <span>Вихідний</span>
+     </label>
+     <div id="edTimes" style="display:flex;gap:10px;align-items:flex-end;${d.off?'opacity:.4;pointer-events:none':''}">
+       <label style="flex:1">Початок<br><input type="time" id="edStart" value="${st}" style="width:100%"></label>
+       <label style="flex:1">Кінець<br><input type="time" id="edEnd" value="${en}" style="width:100%"></label>
+     </div>
+     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;font-size:13px;color:var(--text-secondary)">
+       <input type="checkbox" id="edAll"><span>Застосувати до всіх «${_SCH_WD[dow]}» цього місяця</span>
+     </label>
+     ${isManual?`<div style="margin-top:12px"><button class="btn btn-sm" onclick="schRevertDay(${mid},'${date}')">↺ Повернути до графіка BeautyPro</button></div>`:''}`;
+  showModal('Робочий час', body, async () => {
+    const off = document.getElementById('edOff').checked;
+    const start = document.getElementById('edStart').value;
+    const end = document.getElementById('edEnd').value;
+    const all = document.getElementById('edAll').checked;
+    if (!off && (!start || !end)) { toast('Вкажіть час','error'); return false; }
+    if (!off && end <= start) { toast('Кінець має бути пізніше початку','error'); return false; }
+    const targets = all
+      ? (m.days||[]).filter(x => new Date(x.date+'T00:00:00Z').getUTCDay()===dow).map(x=>x.date)
+      : [date];
+    for (const dt of targets) {
+      await api('/api/schedule/day', { method:'POST', body: JSON.stringify({ master_id: mid, work_date: dt, start, end, off }) });
+    }
+    toast(off ? 'Вихідний збережено' : 'Зміну збережено');
+    renderScheduleOverview(document.getElementById('schGrid'));
+  });
+}
+async function schRevertDay(mid, date){
+  await api('/api/schedule/day?master_id='+mid+'&date='+date, { method:'DELETE' });
+  document.getElementById('genModal')?.remove();
+  toast('Повернуто до графіка BeautyPro');
+  renderScheduleOverview(document.getElementById('schGrid'));
 }
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;

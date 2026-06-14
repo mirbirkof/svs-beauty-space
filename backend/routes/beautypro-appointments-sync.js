@@ -262,7 +262,8 @@ async function syncSchedules(from, to) {
       `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
        VALUES ($1,$2,$3,$4,'beautypro',NOW())
        ON CONFLICT (master_id, work_date) DO UPDATE SET
-         start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, synced_at=NOW()`,
+         start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, synced_at=NOW()
+       WHERE master_schedule_days.source <> 'manual'`,
       [masterId, date, start, end]
     );
     upserted++;

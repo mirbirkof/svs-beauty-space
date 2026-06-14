@@ -249,6 +249,137 @@ router.delete('/masters/:id/dayoff/:date', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/schedule/month?ym=YYYY-MM — місячна матриця графіків (як DIKIDI) ──
+// Рядки = майстри, колонки = дні місяця, клітинка = зміна (start-end) або вихідний.
+// Пріоритет на конкретний день: явний per-day запис (master_schedule_days) >
+//   виняток-відгул (schedule_json.exceptions) > тижневий шаблон (beautypro>template>auto).
+router.get('/month', async (req, res) => {
+  try {
+    const pool = getPool();
+    const ym = /^\d{4}-\d{2}$/.test(req.query.ym || '') ? req.query.ym : new Date().toISOString().slice(0, 7);
+    const [Y, M] = ym.split('-').map(Number);
+    const daysInMonth = new Date(Y, M, 0).getDate();
+    const first = `${ym}-01`;
+    const last = `${ym}-${String(daysInMonth).padStart(2, '0')}`;
+    const dates = [];
+    for (let d = 1; d <= daysInMonth; d++) dates.push(`${ym}-${String(d).padStart(2, '0')}`);
+
+    const mrows = (await pool.query(
+      `SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true ORDER BY name`
+    )).rows;
+
+    // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з BeautyPro)
+    const expl = await pool.query(
+      `SELECT master_id, to_char(work_date,'YYYY-MM-DD') AS d,
+              to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end,
+              source, (start_time IS NULL) AS off
+         FROM master_schedule_days
+        WHERE work_date BETWEEN $1 AND $2`, [first, last]);
+    const explMap = new Map(); // master -> date -> {start,end,off,source}
+    for (const row of expl.rows) {
+      if (!explMap.has(row.master_id)) explMap.set(row.master_id, {});
+      explMap.get(row.master_id)[row.d] = { start: row.start, end: row.end, off: row.off, source: row.source };
+    }
+
+    // Тижневий шаблон (той самий алгоритм, що у GET /masters): beautypro agg > template > auto
+    const DAYK = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const bp = await pool.query(
+      `SELECT master_id, EXTRACT(DOW FROM work_date)::int AS dow,
+              to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
+         FROM master_schedule_days
+        WHERE work_date BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 35 AND start_time IS NOT NULL`);
+    const agg = new Map();
+    for (const row of bp.rows) {
+      if (!agg.has(row.master_id)) agg.set(row.master_id, {});
+      const wd = agg.get(row.master_id); const key = DAYK[row.dow]; const slot = `${row.start}-${row.end}`;
+      wd[key] = wd[key] || {}; wd[key][slot] = (wd[key][slot] || 0) + 1;
+    }
+    const realRes = await pool.query(
+      `SELECT master_id, EXTRACT(DOW FROM (starts_at AT TIME ZONE 'Europe/Kyiv'))::int AS dow,
+              to_char(MIN((starts_at AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS start,
+              to_char(MAX((COALESCE(ends_at, starts_at + interval '1 hour') AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS end
+         FROM appointments
+        WHERE starts_at >= CURRENT_DATE - 56 AND starts_at < CURRENT_DATE + 35
+          AND master_id IS NOT NULL AND COALESCE(status,'') NOT IN ('cancelled','noshow')
+        GROUP BY master_id, dow HAVING COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kyiv')::date) >= 2`);
+    const real = new Map();
+    for (const row of realRes.rows) {
+      if (!real.has(row.master_id)) real.set(row.master_id, {});
+      real.get(row.master_id)[DAYK[row.dow]] = { start: row.start, end: row.end };
+    }
+
+    const weekFor = (m) => {
+      const tmpl = m.schedule_json || {};
+      const wd = agg.get(m.id) || {}; const rl = real.get(m.id) || {};
+      const week = {};
+      ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
+        if (wd[k]) { const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0]; const [s, e] = best.split('-'); week[k] = { start: s, end: e, source: 'beautypro' }; }
+        else if (tmpl[k]) week[k] = { start: tmpl[k].start, end: tmpl[k].end, source: 'template' };
+        else if (rl[k]) week[k] = { start: rl[k].start, end: rl[k].end, source: 'auto' };
+        else week[k] = null;
+      });
+      return week;
+    };
+
+    const items = mrows.map((m) => {
+      const week = weekFor(m);
+      const ex = (m.schedule_json && m.schedule_json.exceptions) || {};
+      const eMap = explMap.get(m.id) || {};
+      const days = dates.map((dt) => {
+        if (eMap[dt]) {
+          const rr = eMap[dt];
+          return rr.off ? { date: dt, off: true, source: rr.source } : { date: dt, start: rr.start, end: rr.end, off: false, source: rr.source };
+        }
+        if (ex[dt] && ex[dt].off) return { date: dt, off: true, source: 'exception' };
+        const dow = new Date(dt + 'T00:00:00Z').getUTCDay();
+        const wk = week[DAYK[dow]];
+        if (wk) return { date: dt, start: wk.start, end: wk.end, off: false, source: wk.source };
+        return { date: dt, off: true, source: 'pattern' };
+      });
+      return { id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar, days };
+    });
+
+    res.json({ ym, days_in_month: daysInMonth, dates, items, count: items.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/schedule/day — ручне редагування зміни конкретного дня ──
+// Body: { master_id, work_date:"YYYY-MM-DD", start:"09:00", end:"18:00", off:false }
+// off:true → вихідний (start_time NULL). source='manual' захищено від перезапису синхронізацією.
+router.post('/day', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { master_id, work_date, start, end, off } = req.body || {};
+    if (!master_id || !work_date) return res.status(400).json({ error: 'master_id and work_date required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(work_date)) return res.status(400).json({ error: 'work_date must be YYYY-MM-DD' });
+    let st = null, en = null;
+    if (!off) {
+      if (!/^\d{2}:\d{2}$/.test(start || '') || !/^\d{2}:\d{2}$/.test(end || '')) return res.status(400).json({ error: 'start/end must be HH:MM' });
+      st = start; en = end;
+    }
+    const r = await pool.query(
+      `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+         VALUES ($1,$2,$3,$4,'manual',NOW())
+       ON CONFLICT (master_id, work_date)
+       DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()
+       RETURNING id, to_char(work_date,'YYYY-MM-DD') AS work_date,
+                 to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end`,
+      [master_id, work_date, st, en]);
+    res.json({ ok: true, day: r.rows[0], off: !!off });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/schedule/day?master_id=&date= — прибрати ручний запис, повернути до шаблону ──
+router.delete('/day', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { master_id, date } = req.query;
+    if (!master_id || !date) return res.status(400).json({ error: 'master_id and date required' });
+    await pool.query("DELETE FROM master_schedule_days WHERE master_id=$1 AND work_date=$2 AND source='manual'", [master_id, date]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/schedule/availability?date=2026-06-10 — кто работает в конкретный день ──
 router.get('/availability', async (req, res) => {
   try {
