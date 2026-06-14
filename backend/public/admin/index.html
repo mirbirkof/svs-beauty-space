@@ -811,6 +811,28 @@ select.input { background:var(--card); }
       <!-- ═══ DASHBOARD ═══ -->
       <div class="page active" id="page-dashboard">
         <div class="kpi-grid" id="kpi"></div>
+
+        <!-- ═══ AI-аналітик ═══ -->
+        <div class="card" id="aiCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7)">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px">
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">auto_awesome</span> AI-аналітик салону</h3>
+            <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+              <span id="aiUpdated" style="font-size:12px;color:var(--text-secondary)"></span>
+              <button class="btn btn-outline btn-sm" onclick="loadAiInsights(true)" title="Оновити аналіз"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button>
+            </div>
+          </div>
+          <div class="card-body" id="aiBody">
+            <div class="empty"><span class="material-icons-round">auto_awesome</span>Завантаження аналізу...</div>
+          </div>
+          <div class="card-body" style="border-top:1px solid var(--border,#eee);padding-top:14px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="aiQuestion" class="input" placeholder="Запитайте про ваш салон: напр. «Який день тижня найслабший?»" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')askAi()">
+              <button class="btn btn-primary btn-sm" onclick="askAi()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">send</span> Запитати</button>
+            </div>
+            <div id="aiAnswer" style="margin-top:12px"></div>
+          </div>
+        </div>
+
         <div class="grid-2" style="gap:24px">
           <div class="card">
             <div class="card-header"><h3>Топ майстри за виручкою (місяць)</h3></div>
@@ -2988,6 +3010,7 @@ async function loadDashboard() {
     // Ховаємо салонні картки, не потрібні майстру
     try { document.getElementById('lowBody').closest('.card').style.display='none'; } catch {}
     try { document.querySelector('#page-dashboard .card #cbsButtons')?.closest('.card')?.style?.setProperty('display','none'); } catch {}
+    try { document.getElementById('aiCard').style.display='none'; } catch {}
     return;
   }
 
@@ -3033,6 +3056,72 @@ async function loadDashboard() {
   } catch {}
 
   initClientsByService();
+
+  // AI-аналітик (тільки для фінансового доступу)
+  if (fin) { try { document.getElementById('aiCard').style.display=''; loadAiInsights(false); } catch {} }
+  else { try { document.getElementById('aiCard').style.display='none'; } catch {} }
+}
+
+// ═══ AI-аналітик ══════════════════════════════
+const AI_ICONS = { good:'check_circle', warning:'warning', critical:'error' };
+const AI_COLORS = { good:'#16a34a', warning:'#d97706', critical:'#dc2626' };
+let _aiLoading = false;
+async function loadAiInsights(fresh) {
+  if (_aiLoading) return;
+  _aiLoading = true;
+  const body = document.getElementById('aiBody');
+  body.innerHTML = '<div class="empty"><span class="material-icons-round">auto_awesome</span>Аналізую дані салону...</div>';
+  try {
+    const d = await api('/api/ai/insights' + (fresh ? '?fresh=1' : ''));
+    if (d.error === 'ai_unconfigured') { body.innerHTML = '<div class="empty">AI ще не налаштований на сервері.</div>'; _aiLoading=false; return; }
+    let html = '';
+    if (d.summary) html += `<p style="margin:0 0 14px;font-size:15px;line-height:1.5">${escapeHtml(d.summary)}</p>`;
+    const ins = d.insights || [];
+    if (ins.length) {
+      html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">';
+      for (const i of ins) {
+        const col = AI_COLORS[i.type] || '#64748b', ic = AI_ICONS[i.type] || 'info';
+        html += `<div style="display:flex;gap:10px;padding:10px 12px;border-left:3px solid ${col};background:var(--bg-soft,#f8f9fb);border-radius:6px">
+          <span class="material-icons-round" style="color:${col};font-size:20px;flex-shrink:0">${ic}</span>
+          <div><div style="font-weight:600;font-size:14px">${escapeHtml(i.title||'')}</div><div style="font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${escapeHtml(i.detail||'')}</div></div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    const recs = d.recommendations || [];
+    if (recs.length) {
+      html += '<div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Рекомендації</div><div style="display:flex;flex-direction:column;gap:8px">';
+      for (const r of recs) {
+        html += `<div style="display:flex;gap:10px;align-items:flex-start">
+          <span class="material-icons-round" style="color:var(--primary,#6c5ce7);font-size:18px;flex-shrink:0;margin-top:1px">lightbulb</span>
+          <div style="font-size:13px;line-height:1.45"><b>${escapeHtml(r.action||'')}</b>${r.why?` <span style="color:var(--text-secondary)">— ${escapeHtml(r.why)}</span>`:''}</div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    if (!d.ai_ok && !ins.length) html += '<div class="empty" style="margin-top:10px">AI тимчасово недоступний — спробуйте «Оновити».</div>';
+    body.innerHTML = html || '<div class="empty">Недостатньо даних для аналізу.</div>';
+    const upd = document.getElementById('aiUpdated');
+    if (upd && d.generated_at) {
+      const t = new Date(d.generated_at).toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      upd.textContent = (d.cached ? 'кеш · ' : '') + 'оновлено ' + t;
+    }
+  } catch (e) {
+    body.innerHTML = '<div class="empty">Не вдалося завантажити аналіз.</div>';
+  }
+  _aiLoading = false;
+}
+async function askAi() {
+  const inp = document.getElementById('aiQuestion'), ans = document.getElementById('aiAnswer');
+  const q = (inp.value || '').trim();
+  if (!q) return;
+  ans.innerHTML = '<div style="color:var(--text-secondary);font-size:13px">Думаю...</div>';
+  try {
+    const d = await api('/api/ai/ask', { method:'POST', body: JSON.stringify({ question: q }) });
+    ans.innerHTML = `<div style="padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;font-size:14px;line-height:1.55;white-space:pre-wrap">${escapeHtml(d.answer||'Немає відповіді.')}</div>`;
+  } catch (e) {
+    ans.innerHTML = '<div style="color:#dc2626;font-size:13px">Не вдалося отримати відповідь. Спробуйте ще раз.</div>';
+  }
 }
 
 // ═══ Спільні утиліти аналітики ════════════════
