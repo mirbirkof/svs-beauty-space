@@ -285,7 +285,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchSalesDay(token, day) {
   const nd = new Date(day + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1);
   const next = nd.toISOString().slice(0, 10);
-  const fields = encodeURIComponent('sale_date,type,sum,cancel,payments,professional_name,name');
+  const fields = encodeURIComponent('sale_date,calendar_date,type,sum,cancel,payments,professional_name,name,client');
   const path = `/sales?fields=${fields}&sale_date_from=${day}&sale_date_to=${next}` +
     `&location=${encodeURIComponent(process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499')}&limit=1000`;
   for (let i = 0; i < 5; i++) {
@@ -344,13 +344,19 @@ async function syncSales(from, to) {
 
     for (const s of recs) {
       const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
+      const bpClient = s.client ? String(s.client) : null;
+      const bpCalendar = s.calendar_date || null; // час запису в BP (для матчингу з appointments)
+      // ON CONFLICT DO UPDATE: бэкфиллим bp_client/bp_calendar у вже проведених продажів (раніше їх не зберігали)
       const r = await pool.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, created_at, ext_ref)
-         VALUES ($1,'in',$2,$3,$4,'bp_sale',$5,$6,$7,$8)
-         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING RETURNING id`,
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, created_at, ext_ref, bp_client, bp_calendar)
+         VALUES ($1,'in',$2,$3,$4,'bp_sale',$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO UPDATE SET
+           bp_client=COALESCE(EXCLUDED.bp_client, cash_operations.bp_client),
+           bp_calendar=COALESCE(EXCLUDED.bp_calendar, cash_operations.bp_calendar)
+         RETURNING (xmax = 0) AS inserted`,
         [shiftId, s.type === 'Service' ? 'sale_service' : 'sale_product', Number(s.sum),
-         saleMethod(s.payments), masterId, s.name || null, s.sale_date, s.id]);
-      if (r.rowCount) posted++; else skipped++;
+         saleMethod(s.payments), masterId, s.name || null, s.sale_date, s.id, bpClient, bpCalendar]);
+      if (r.rows[0]?.inserted) posted++; else skipped++;
     }
   }
   return { posted, skipped, shifts };

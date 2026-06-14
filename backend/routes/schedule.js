@@ -353,14 +353,16 @@ router.get('/journal', async (req, res) => {
               s.name AS service_name,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,
-              -- Оплата: вручну (ref_type=appointment) АБО продаж BeautyPro того ж майстра
-              -- у часовому вікні запису (BeautyPro проводить оплату на своїй стороні).
+              -- Оплата = ПРАВДА: вручну (ref_type=appointment) АБО конкретний продаж послуги
+              -- у BeautyPro цьому ж клієнту тим же майстром того ж дня (точна привʼязка по GUID).
+              -- Без bp_client (не злінкований клієнт) — НЕ показуємо «оплачено» (краще пропуск, ніж брехня).
               (EXISTS(SELECT 1 FROM cash_operations co
                         WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-               OR (a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
-                        WHERE co.type='in' AND co.ref_type='bp_sale' AND co.master_id=a.master_id
-                          AND co.created_at BETWEEN a.starts_at - interval '30 min'
-                              AND COALESCE(a.ends_at, a.starts_at + interval '1 hour') + interval '4 hour'))
+               OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
+                        WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+                          AND co.bp_client = a.bp_client AND co.master_id = a.master_id
+                          AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                              = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
               ) AS paid,
               COALESCE(
                 NULLIF(c.name,''),
@@ -528,9 +530,9 @@ router.post('/appointments/:id/pay', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'bad-id' });
     const method = ['cash', 'card', 'transfer', 'mono'].includes(req.body?.method) ? req.body.method : 'cash';
 
-    // запис + ціна + майстер
+    // запис + ціна + майстер + GUID клієнта (для точної перевірки оплати в BP)
     const ap = await pool.query(
-      `SELECT a.id, a.master_id, a.client_id, a.status,
+      `SELECT a.id, a.master_id, a.client_id, a.status, a.bp_client, a.starts_at,
               COALESCE(a.price, s.price) AS price, s.name AS service_name
          FROM appointments a LEFT JOIN services s ON s.id = a.service_id
         WHERE a.id = $1`, [id]
@@ -548,15 +550,16 @@ router.post('/appointments/:id/pay', async (req, res) => {
       await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
       return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].id });
     }
-    // вже оплачено в BeautyPro? Продаж того ж майстра у часовому вікні запису —
-    // гроші вже в касі (ref_type=bp_sale). Не дублюємо прихід.
-    if (appt.master_id) {
+    // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
+    // майстром того ж дня (точна привʼязка по GUID) — гроші вже в касі. Не дублюємо.
+    if (appt.master_id && appt.bp_client) {
       const bp = await pool.query(
         `SELECT id FROM cash_operations
-          WHERE type='in' AND ref_type='bp_sale' AND master_id=$1
-            AND created_at BETWEEN (SELECT starts_at - interval '30 min' FROM appointments WHERE id=$2)
-                AND (SELECT COALESCE(ends_at, starts_at + interval '1 hour') + interval '4 hour' FROM appointments WHERE id=$2)
-          LIMIT 1`, [appt.master_id, id]
+          WHERE type='in' AND ref_type='bp_sale' AND category='sale_service'
+            AND master_id=$1 AND bp_client=$2
+            AND (COALESCE(bp_calendar, created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                = ($3::timestamptz AT TIME ZONE 'Europe/Kyiv')::date
+          LIMIT 1`, [appt.master_id, appt.bp_client, appt.starts_at]
       );
       if (bp.rows[0]) {
         await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
