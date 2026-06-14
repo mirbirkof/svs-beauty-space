@@ -335,6 +335,12 @@ select.input { background:var(--card); }
   .journal-layout { flex-direction:column; }
   .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
   .journal-side > .card { flex:1 1 240px; min-width:0; }
+  /* Коли журнал у стовпчик — .journal-main інакше розпирається неущільнюваними
+     колонками майстрів (flex-shrink:0) за межі екрана, і clip обрізає скрол →
+     до правих майстрів не дотягнутися. Явна ширина прив'язує main до екрана,
+     і горизонтальний скрол працює ВСЕРЕДИНІ .jgrid, а не розпирає сторінку. */
+  .journal-main { width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
+  .jgrid { max-width:100%; }
 }
 /* Налаштування: підменю перенесено в бічне меню — внутрішня колонка прихована */
 .settings-layout { display:flex; gap:20px; align-items:flex-start; }
