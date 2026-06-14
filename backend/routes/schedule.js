@@ -329,7 +329,17 @@ router.get('/journal', async (req, res) => {
                 CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
                 'Клієнт'
               ) AS client_name,
-              c.phone AS client_phone
+              c.phone AS client_phone,
+              -- історія клієнта: попередні візити та неявки (для прапорців «новий» / «⚠ не прийшов»)
+              CASE WHEN a.client_id IS NULL THEN NULL ELSE (
+                SELECT COUNT(*)::int FROM appointments av
+                 WHERE av.client_id = a.client_id AND av.starts_at < a.starts_at
+                   AND COALESCE(av.status,'') NOT IN ('cancelled','noshow')
+              ) END AS visit_count,
+              CASE WHEN a.client_id IS NULL THEN 0 ELSE (
+                SELECT COUNT(*)::int FROM appointments av
+                 WHERE av.client_id = a.client_id AND av.status = 'noshow'
+              ) END AS no_show_count
          FROM appointments a
          LEFT JOIN masters  m ON m.id = a.master_id
          LEFT JOIN services s ON s.id = a.service_id

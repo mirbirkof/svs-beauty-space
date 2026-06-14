@@ -262,6 +262,7 @@ select.input { background:var(--card); }
 .jappt .c { opacity:.92; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jappt .p { font-weight:700; }
 .jappt .note-dot { position:absolute; top:5px; right:6px; font-size:11px; }
+.jappt .jflag { position:absolute; top:4px; right:22px; font-size:11px; line-height:1; }
 .jst-booked   { background:#6366f1; }
 .jst-confirmed{ background:#0ea5e9; }
 .jst-done     { background:#10b981; }
@@ -2699,8 +2700,10 @@ function renderJournalDay(container, data) {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
+      const tileFlag = a.client_id ? (Number(a.no_show_count)>0 ? '<span class="jflag warn" title="Є неявки">⚠</span>' : (Number(a.visit_count)===0 ? '<span class="jflag new" title="Новий клієнт">🆕</span>' : '')) : '';
       body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
+        ${tileFlag}
         <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
@@ -2839,6 +2842,28 @@ async function getRooms() {
   try { const r = await api('/api/rooms'); _roomsCache = r.items || []; } catch { _roomsCache = []; }
   return _roomsCache;
 }
+function apptClientFlags(a){
+  if (!a || !a.client_id) return '';
+  const out = [];
+  const vc = Number(a.visit_count);
+  if (Number.isFinite(vc)) {
+    if (vc === 0) out.push('<span class="badge info" style="margin-top:6px;display:inline-block">🆕 новий клієнт</span>');
+    else out.push(`<span class="badge ok" style="margin-top:6px;display:inline-block">⭐ постійний · ${vc} ${vc===1?'візит':(vc<5?'візити':'візитів')}</span>`);
+  }
+  const ns = Number(a.no_show_count);
+  if (Number.isFinite(ns) && ns > 0) out.push(`<span class="badge err" style="margin-top:6px;display:inline-block">⚠ ${ns} ${ns===1?'неявка':(ns<5?'неявки':'неявок')}</span>`);
+  return out.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${out.join('')}</div>` : '';
+}
+function apptContactRow(a){
+  const d = String(a && a.client_phone || '').replace(/\D/g,'');
+  if (!d) return '';
+  const tel = '+'+d;
+  return `<div style="display:flex;gap:8px;margin-top:8px">
+    <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="tel:${tel}"><span class="material-icons-round" style="font-size:16px">call</span> Дзвінок</a>
+    <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="sms:${tel}"><span class="material-icons-round" style="font-size:16px">sms</span> SMS</a>
+    <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="https://wa.me/${d}" target="_blank" rel="noopener"><span class="material-icons-round" style="font-size:16px">chat</span> WhatsApp</a>
+  </div>`;
+}
 async function openAppt(id) {
   const a = (journalData?.appointments||[]).find(x => x.id===id);
   if (!a) return;
@@ -2849,7 +2874,11 @@ async function openAppt(id) {
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
       <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${Math.round(a.duration_min)}хв · ${_money(a.price)}</div></div>
-      <div><span style="color:var(--text-secondary);font-size:12px">Клієнт</span><div style="font-weight:600">${a.client_name||'—'} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
+        <div style="font-weight:600">${a.client_name||'—'} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div>
+        ${apptClientFlags(a)}
+        ${apptContactRow(a)}
+      </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Статус</span>
         <select id="apptStatus" class="input">
