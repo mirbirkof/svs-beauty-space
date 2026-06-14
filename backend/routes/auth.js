@@ -694,5 +694,104 @@ router.post('/panel-login', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────
+// POST /api/auth/tg-login-request
+// Вхід через Telegram: за логіном/телефоном/email знаходимо
+// користувача, шлемо 6-значний код у його Telegram. Без пароля.
+// body: { identifier }
+// returns: { ok, channel:'telegram', hint } | { ok:false, error }
+// ─────────────────────────────────────────────────────────
+router.post('/tg-login-request', async (req, res) => {
+  const { identifier } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  if (!identifier) return res.status(400).json({ ok: false, error: 'identifier-required' });
+  try {
+    const ipFailures = await countRecentFailures(pool, ip || 'unknown', 'tg-login', 15);
+    if (ipFailures >= 20) {
+      await recordAttempt(pool, { identifier, kind: 'tg-login', success: false, ip, ua, meta: { reason: 'ip-rate-limit' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    }
+    const user = await findUserByIdentifier(pool, identifier);
+    if (!user) {
+      await recordAttempt(pool, { identifier, kind: 'tg-login', success: false, ip, ua, meta: { reason: 'user-not-found' } });
+      return res.status(404).json({ ok: false, error: 'user-not-found' });
+    }
+    if (user.is_active === false) {
+      return res.status(403).json({ ok: false, error: 'account-inactive' });
+    }
+    if (!user.telegram_id) {
+      return res.status(400).json({ ok: false, error: 'no-telegram-linked' });
+    }
+    const code = gen6digit();
+    const codeHash = sha256(code);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 хв
+    await pool.query(
+      `INSERT INTO two_factor_codes (user_id, code_hash, channel, expires_at) VALUES ($1,$2,'telegram',$3)`,
+      [user.id, codeHash, expiresAt]
+    );
+    const sent = await deliverViaTelegram(user, `🔐 <b>SVS CRM</b>\nКод для входу: <code>${code}</code>\nДіє 5 хв. Нікому не повідомляйте.`);
+    if (!sent) {
+      return res.status(502).json({ ok: false, error: 'telegram-delivery-failed' });
+    }
+    await recordAttempt(pool, { identifier, kind: 'tg-login', success: true, ip, ua, meta: { stage: 'code-sent' } });
+    res.json({ ok: true, channel: 'telegram', hint: 'Код надіслано у ваш Telegram' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'tg-login-request-failed', detail: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// POST /api/auth/tg-login-verify
+// Перевіряє код із Telegram → видає довгоживучий panel-токен
+// (сумісний з rbac, user_tokens), як /panel-login.
+// body: { identifier, code, remember_me? }
+// returns: { ok, token, user } | { ok:false, error }
+// ─────────────────────────────────────────────────────────
+router.post('/tg-login-verify', async (req, res) => {
+  const { identifier, code, remember_me } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  if (!identifier || !code) return res.status(400).json({ ok: false, error: 'identifier-and-code-required' });
+  try {
+    const user = await findUserByIdentifier(pool, identifier);
+    if (!user) return res.status(404).json({ ok: false, error: 'user-not-found' });
+    if (user.is_active === false) return res.status(403).json({ ok: false, error: 'account-inactive' });
+
+    const codeHash = sha256(String(code).trim());
+    const r = await pool.query(
+      `SELECT * FROM two_factor_codes
+        WHERE user_id=$1 AND code_hash=$2 AND channel='telegram'
+          AND used_at IS NULL AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1`,
+      [user.id, codeHash]
+    );
+    const row = r.rows[0];
+    if (!row) {
+      await pool.query(`UPDATE two_factor_codes SET attempts=attempts+1 WHERE user_id=$1 AND used_at IS NULL`, [user.id]);
+      await recordAttempt(pool, { identifier, kind: 'tg-login-verify', success: false, ip, ua, meta: {} });
+      return res.status(401).json({ ok: false, error: 'invalid-or-expired' });
+    }
+    await pool.query(`UPDATE two_factor_codes SET used_at=NOW() WHERE id=$1`, [row.id]);
+    await pool.query(`UPDATE users SET failed_login_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1`, [user.id]);
+
+    // довгоживучий panel-токен (дзеркало /panel-login)
+    const token = 'svs_' + require('crypto').randomBytes(24).toString('hex');
+    const hash = sha256(token);
+    const expires = remember_me ? null : new Date(Date.now() + 90*86400*1000);
+    await pool.query(
+      `INSERT INTO user_tokens (user_id, token_hash, label, expires_at) VALUES ($1,$2,$3,$4)`,
+      [user.id, hash, deviceLabelFromUA(ua).slice(0,120), expires]
+    );
+    await recordAttempt(pool, { identifier, kind: 'tg-login-verify', success: true, ip, ua, meta: {} });
+    res.json({ ok: true, token, user: {
+      id: user.id, display_name: user.display_name, role: user.role_code,
+      permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
+    }});
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'tg-login-verify-failed', detail: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.authRequired = authRequired;

@@ -507,6 +507,20 @@ select.input { background:var(--card); }
     <label style="display:flex;align-items:center;gap:7px;font-size:13px;margin:10px 0;cursor:pointer;color:var(--text-secondary)"><input type="checkbox" id="loginRemember" checked> Запам'ятати мене на цьому пристрої</label>
     <button onclick="login()" class="btn btn-primary" style="width:100%">Увійти</button>
     <p id="loginErr" style="display:none;color:var(--danger);font-size:13px;margin-top:12px">Невірний логін або пароль</p>
+
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--text-secondary);font-size:12px">
+      <span style="flex:1;height:1px;background:var(--border)"></span>або<span style="flex:1;height:1px;background:var(--border)"></span>
+    </div>
+    <button onclick="tgLoginRequest()" class="btn btn-outline" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px">
+      <span class="material-icons-round" style="font-size:18px;color:#229ED9">send</span> Увійти через Telegram
+    </button>
+    <div id="tgCodeBox" style="display:none;margin-top:12px">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Код надіслано у ваш Telegram. Введіть його:</p>
+      <input id="tgCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="6-значний код" class="input" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')tgLoginVerify()" style="text-align:center;letter-spacing:6px;font-size:18px">
+      <button onclick="tgLoginVerify()" class="btn btn-primary" style="width:100%;margin-top:8px">Підтвердити код</button>
+      <p id="tgCodeErr" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></p>
+    </div>
+
     <p style="margin-top:16px"><a href="#" onclick="toggleTokenLogin();return false" style="font-size:12px;color:var(--text-secondary);text-decoration:underline">Вхід за токеном (адміністратор)</a></p>
     <div id="tokenLoginBox" style="display:none;margin-top:10px">
       <input id="tokenInput" type="password" placeholder="Admin token" class="input">
@@ -1779,6 +1793,55 @@ function login() {
     } else if (r.status === 403) { _loginErr('Акаунт неактивний. Зверніться до власника');
     } else if (r.status === 429) { _loginErr('Забагато спроб. Спробуйте пізніше');
     } else { _loginErr('Невірний логін або пароль'); }
+  })();
+}
+
+// Вхід через Telegram: крок 1 — запит коду
+function tgLoginRequest() {
+  const identifier = document.getElementById('loginIdent').value.trim();
+  document.getElementById('loginErr').style.display='none';
+  if (!identifier) return _loginErr('Введіть телефон, email або логін — на цей акаунт прийде код');
+  (async () => {
+    let r, j;
+    try {
+      r = await fetch(API + '/api/auth/tg-login-request', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ identifier }) });
+      j = await r.json();
+    } catch { return _loginErr('Сервер недоступний, спробуйте ще раз'); }
+    if (r.status === 200 && j.ok) {
+      document.getElementById('tgCodeBox').style.display='';
+      const ti = document.getElementById('tgCodeInput'); ti.value=''; ti.focus();
+      document.getElementById('tgCodeErr').style.display='none';
+    } else if (r.status === 404) { _loginErr('Акаунт не знайдено за цими даними');
+    } else if (j && j.error === 'no-telegram-linked') { _loginErr('До цього акаунту не привʼязаний Telegram');
+    } else if (r.status === 403) { _loginErr('Акаунт неактивний. Зверніться до власника');
+    } else if (r.status === 429) { _loginErr('Забагато спроб. Спробуйте пізніше');
+    } else if (j && j.error === 'telegram-delivery-failed') { _loginErr('Не вдалося надіслати код у Telegram');
+    } else { _loginErr('Не вдалося надіслати код, спробуйте ще раз'); }
+  })();
+}
+// Вхід через Telegram: крок 2 — підтвердження коду
+function tgLoginVerify() {
+  const identifier = document.getElementById('loginIdent').value.trim();
+  const code = document.getElementById('tgCodeInput').value.trim();
+  const remember = document.getElementById('loginRemember').checked;
+  const errEl = document.getElementById('tgCodeErr');
+  errEl.style.display='none';
+  if (!code) { errEl.textContent='Введіть код із Telegram'; errEl.style.display=''; return; }
+  (async () => {
+    let r, j;
+    try {
+      r = await fetch(API + '/api/auth/tg-login-verify', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ identifier, code, remember_me: remember }) });
+      j = await r.json();
+    } catch { errEl.textContent='Сервер недоступний'; errEl.style.display=''; return; }
+    if (r.status === 200 && j.ok && j.token) {
+      TOKEN = j.token; USER = j.user || null;
+      localStorage.setItem('svs_admin_token', TOKEN);
+      if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
+      applyRoleUI(); showApp();
+    } else if (r.status === 401) { errEl.textContent='Невірний або прострочений код'; errEl.style.display='';
+    } else { errEl.textContent='Помилка підтвердження, спробуйте ще раз'; errEl.style.display=''; }
   })();
 }
 
