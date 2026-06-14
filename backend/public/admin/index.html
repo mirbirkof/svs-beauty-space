@@ -499,6 +499,9 @@ select.input { background:var(--card); }
       <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
         <span class="material-icons-round">calendar_month</span> Графік роботи
       </a>
+      <a class="sidebar-item" data-page="services" onclick="go('services')">
+        <span class="material-icons-round">content_cut</span> Послуги
+      </a>
 
       <!-- Клієнти -->
       <div class="sidebar-group open" id="grp-clients">
@@ -892,6 +895,36 @@ select.input { background:var(--card); }
             <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="input">
             <button onclick="addStock()" class="btn btn-primary">Внести</button>
             <p id="stockResult" style="font-size:13px"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ SERVICES / ПОСЛУГИ (SAL-01) ═══ -->
+      <div class="page" id="page-services">
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <input id="svcSearch" placeholder="Пошук послуги..." class="input" style="flex:1;min-width:180px" oninput="debounce(loadServices,400)">
+          <select id="svcCatFilter" class="input" style="width:auto" onchange="loadServices()"><option value="">Усі категорії</option></select>
+          <select id="svcStatusFilter" class="input" style="width:auto" onchange="loadServices()">
+            <option value="">Усі статуси</option><option value="active">Активні</option>
+            <option value="inactive">Неактивні</option><option value="draft">Чернетки</option>
+          </select>
+          <button class="btn btn-primary" onclick="svcEdit(null)"><span class="material-icons-round" style="font-size:18px;vertical-align:-4px">add</span> Послуга</button>
+        </div>
+        <div id="svcBulkBar" style="display:none;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+          <span id="svcSelCount" style="font-size:13px;font-weight:600"></span>
+          <button class="btn btn-outline" onclick="svcBulk('activate')">Активувати</button>
+          <button class="btn btn-outline" onclick="svcBulk('deactivate')">Деактивувати</button>
+          <button class="btn btn-outline" onclick="svcBulkPrice()">Змінити ціну %</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr>
+                <th style="width:34px"><input type="checkbox" id="svcSelAll" onclick="svcToggleAll(this)"></th>
+                <th>Назва</th><th>Категорія</th><th>Ціна</th><th>Триваліс.</th><th>Варіацій</th><th>Статус</th><th></th>
+              </tr></thead>
+              <tbody id="svcBody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1777,11 +1810,14 @@ function toast(msg, type = 'ok') {
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
 }
 
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
+  services:'Послуги',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
@@ -1819,7 +1855,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, contractors:loadContractors, settings:loadSettings };
+    finance:loadFinance, contractors:loadContractors, settings:loadSettings, services:loadServices };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -1827,6 +1863,207 @@ function go(page) {
     const cur = document.querySelector('.set-pane.active');
     setTab(cur ? cur.id.replace('tab-', '') : 'profile');
   }
+}
+
+// ═══ SERVICES / ПОСЛУГИ (SAL-01) ═══════════════
+let _svcList = [];
+const _svcSel = new Set();
+let _svcMasters = null;
+function _svcMoney(v){ return Number(v||0).toLocaleString('uk-UA') + ' ₴'; }
+function _svcStatusBadge(s){
+  const m = { active:['Активна','#0a8f5f'], inactive:['Неактивна','#9aa0a6'], draft:['Чернетка','#d9863b'] };
+  const [t,c] = m[s] || m.active;
+  return '<span style="background:'+c+'1a;color:'+c+';padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600">'+t+'</span>';
+}
+async function loadServices(){
+  const cat = document.getElementById('svcCatFilter').value;
+  const st = document.getElementById('svcStatusFilter').value;
+  const q = document.getElementById('svcSearch').value.trim();
+  const body = document.getElementById('svcBody');
+  body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;opacity:.6">Завантаження...</td></tr>';
+  const qs = new URLSearchParams();
+  if(cat) qs.set('category',cat); if(st) qs.set('status',st); if(q) qs.set('search',q);
+  qs.set('sort','name'); qs.set('limit','500');
+  const r = await api('/api/services?'+qs.toString());
+  _svcList = r.items || [];
+  // фільтр категорій (тільки коли порожній)
+  const sel = document.getElementById('svcCatFilter');
+  if(sel.options.length<=1){
+    const cr = await api('/api/services/categories');
+    for(const c of (cr.items||[])){ const o=document.createElement('option'); o.value=c.category; o.textContent=c.category+' ('+c.count+')'; sel.appendChild(o); }
+    sel.value = cat;
+  }
+  if(!_svcList.length){ body.innerHTML='<tr><td colspan="8" style="padding:24px;text-align:center;opacity:.6">Послуг не знайдено</td></tr>'; _svcUpdateBulk(); return; }
+  body.innerHTML = _svcList.map(s=>{
+    const badges = (s.is_hit?'<span title="Хіт" style="color:#d9863b">★</span>':'')+(s.is_new?'<span title="Новинка" style="color:#0a8f5f">●</span>':'');
+    return '<tr>'+
+      '<td><input type="checkbox" '+(_svcSel.has(s.id)?'checked':'')+' onclick="svcToggle('+s.id+',this)"></td>'+
+      '<td style="cursor:pointer;font-weight:600" onclick="svcEdit('+s.id+')">'+escapeHtml(s.name)+' '+badges+'</td>'+
+      '<td>'+escapeHtml(s.category||'—')+'</td>'+
+      '<td>'+_svcMoney(s.price)+'</td>'+
+      '<td>'+(s.duration_min||0)+' хв</td>'+
+      '<td>'+(s.variations_count||0)+'</td>'+
+      '<td>'+_svcStatusBadge(s.status)+'</td>'+
+      '<td style="white-space:nowrap;text-align:right">'+
+        '<button class="btn btn-outline" style="padding:4px 8px" title="Редагувати" onclick="svcEdit('+s.id+')"><span class="material-icons-round" style="font-size:18px">edit</span></button> '+
+        '<button class="btn btn-outline" style="padding:4px 8px" title="Дублювати" onclick="svcDuplicate('+s.id+')"><span class="material-icons-round" style="font-size:18px">content_copy</span></button> '+
+        '<button class="btn btn-outline" style="padding:4px 8px" title="Видалити" onclick="svcDelete('+s.id+',\''+escapeHtml(s.name).replace(/'/g,"\\'")+'\')"><span class="material-icons-round" style="font-size:18px">delete</span></button>'+
+      '</td></tr>';
+  }).join('');
+  _svcUpdateBulk();
+}
+function svcToggle(id,el){ if(el.checked)_svcSel.add(id); else _svcSel.delete(id); _svcUpdateBulk(); }
+function svcToggleAll(el){ _svcSel.clear(); if(el.checked)_svcList.forEach(s=>_svcSel.add(s.id)); document.querySelectorAll('#svcBody input[type=checkbox]').forEach(c=>c.checked=el.checked); _svcUpdateBulk(); }
+function _svcUpdateBulk(){
+  const bar=document.getElementById('svcBulkBar');
+  if(_svcSel.size){ bar.style.display='flex'; document.getElementById('svcSelCount').textContent='Обрано: '+_svcSel.size; }
+  else bar.style.display='none';
+}
+async function svcBulk(action){
+  if(!_svcSel.size) return;
+  const r = await api('/api/services/bulk',{method:'POST',body:JSON.stringify({action,ids:[..._svcSel]})});
+  if(r.ok){ toast('Оновлено: '+r.affected); _svcSel.clear(); loadServices(); } else toast(r.error||'Помилка','error');
+}
+function svcBulkPrice(){
+  showModal('Зміна ціни на %','<label style="font-size:13px">Відсоток (+10 = +10%, -15 = знижка 15%)</label><input id="svcPct" type="number" class="input" placeholder="0" style="margin-top:6px">',async()=>{
+    const pct=Number(document.getElementById('svcPct').value)||0;
+    const r=await api('/api/services/bulk',{method:'POST',body:JSON.stringify({action:'price_pct',ids:[..._svcSel],pct})});
+    if(r.ok){ toast('Ціни оновлено: '+r.affected); _svcSel.clear(); loadServices(); } else toast(r.error||'Помилка','error');
+  });
+}
+async function svcDuplicate(id){
+  const r=await api('/api/services/'+id+'/duplicate',{method:'POST',body:JSON.stringify({})});
+  if(r.ok){ toast('Створено копію (чернетка)'); loadServices(); } else toast(r.error||'Помилка','error');
+}
+async function svcDelete(id,name){
+  if(!confirm('Видалити послугу «'+name+'»? (м\'яке видалення)')) return;
+  const r=await api('/api/services/'+id,{method:'DELETE'});
+  if(r.ok){ toast('Видалено'); loadServices(); }
+  else if(r.error==='has_future_appointments') toast('Не можна: є '+r.count+' майбутніх записів','error');
+  else toast(r.error||'Помилка','error');
+}
+function _svcField(label,id,val,attrs){ return '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">'+label+'</label><input id="'+id+'" class="input" value="'+(val==null?'':String(val).replace(/"/g,'&quot;'))+'" '+(attrs||'')+'>'; }
+async function svcEdit(id){
+  let data = { service:{status:'active',price:0,duration_min:60}, variations:[], master_prices:[], price_history:[] };
+  if(id){ data = await api('/api/services/'+id); if(data.error){ toast('Не знайдено','error'); return; } }
+  const s = data.service;
+  const ov=document.createElement('div'); ov.id='svcModal'; ov.className='modal-overlay'; ov.style.display='flex';
+  ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
+  const tabs = id ? ['Картка','Варіації','Ціни майстрів','Історія цін'] : ['Картка'];
+  ov.innerHTML='<div class="modal" style="max-width:620px;width:96%"><div class="modal-header"><h3>'+(id?'Послуга: '+escapeHtml(s.name):'Нова послуга')+'</h3><button class="modal-close" onclick="document.getElementById(\'svcModal\').remove()">✕</button></div>'+
+    '<div style="display:flex;gap:4px;padding:10px 18px 0;flex-wrap:wrap">'+tabs.map((t,i)=>'<button class="btn btn-outline svc-tab" data-t="'+i+'" style="padding:5px 12px;'+(i===0?'background:var(--sidebar-active,#7c5cff);color:#fff':'')+'" onclick="svcTab('+i+')">'+t+'</button>').join('')+'</div>'+
+    '<div class="modal-body" style="max-height:62vh;overflow:auto">'+
+      '<div class="svc-pane" data-t="0">'+
+        _svcField('Назва *','svcf_name',s.name)+
+        _svcField('Категорія','svcf_category',s.category)+
+        '<div style="display:flex;gap:10px">'+
+          '<div style="flex:1">'+_svcField('Ціна, ₴ *','svcf_price',s.price,'type="number" step="0.01"')+'</div>'+
+          '<div style="flex:1">'+_svcField('Тривалість, хв *','svcf_duration',s.duration_min,'type="number"')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:10px">'+
+          '<div style="flex:1">'+_svcField('Буфер до, хв','svcf_bbefore',s.buffer_before,'type="number"')+'</div>'+
+          '<div style="flex:1">'+_svcField('Буфер після, хв','svcf_bafter',s.buffer_after,'type="number"')+'</div>'+
+        '</div>'+
+        '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Тип кабінету</label>'+
+        '<select id="svcf_room" class="input"><option value="">Будь-який</option>'+['cabinet','hall','vip'].map(v=>'<option value="'+v+'" '+(s.required_room_type===v?'selected':'')+'>'+({cabinet:'Кабінет',hall:'Зал',vip:'VIP'})[v]+'</option>').join('')+'</select>'+
+        '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Статус</label>'+
+        '<select id="svcf_status" class="input">'+['active','inactive','draft'].map(v=>'<option value="'+v+'" '+(s.status===v?'selected':'')+'>'+({active:'Активна',inactive:'Неактивна',draft:'Чернетка'})[v]+'</option>').join('')+'</select>'+
+        '<div style="display:flex;gap:16px;margin-top:10px;font-size:13px">'+
+          '<label><input type="checkbox" id="svcf_hit" '+(s.is_hit?'checked':'')+'> Хіт</label>'+
+          '<label><input type="checkbox" id="svcf_new" '+(s.is_new?'checked':'')+'> Новинка</label>'+
+          '<label><input type="checkbox" id="svcf_disc" '+(s.is_discounted?'checked':'')+'> Зі знижкою</label>'+
+        '</div>'+
+        '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Опис для клієнта</label>'+
+        '<textarea id="svcf_desc" class="input" rows="2">'+escapeHtml(s.description||'')+'</textarea>'+
+        '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Протипоказання</label>'+
+        '<textarea id="svcf_contra" class="input" rows="2">'+escapeHtml(s.contraindications||'')+'</textarea>'+
+      '</div>'+
+      (id?'<div class="svc-pane" data-t="1" style="display:none"><div id="svcVarBox"></div></div>'+
+      '<div class="svc-pane" data-t="2" style="display:none"><div id="svcMpBox"></div></div>'+
+      '<div class="svc-pane" data-t="3" style="display:none"><div id="svcHistBox"></div></div>':'')+
+    '</div>'+
+    '<div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border,#eee)">'+
+      '<button class="btn btn-outline" onclick="document.getElementById(\'svcModal\').remove()">Скасувати</button>'+
+      '<button class="btn btn-primary" id="svcSaveBtn">Зберегти</button>'+
+    '</div></div>';
+  document.body.appendChild(ov);
+  document.getElementById('svcSaveBtn').onclick=()=>svcSave(id);
+  if(id){ _svcRenderVars(id,data.variations); _svcRenderMp(id,data.master_prices); _svcRenderHist(data.price_history); }
+}
+function svcTab(i){
+  document.querySelectorAll('#svcModal .svc-tab').forEach(b=>{ const on=b.dataset.t==i; b.style.background=on?'var(--sidebar-active,#7c5cff)':''; b.style.color=on?'#fff':''; });
+  document.querySelectorAll('#svcModal .svc-pane').forEach(p=>{ p.style.display = p.dataset.t==i?'block':'none'; });
+}
+async function svcSave(id){
+  const b={
+    name:document.getElementById('svcf_name').value.trim(),
+    category:document.getElementById('svcf_category').value.trim()||null,
+    price:Number(document.getElementById('svcf_price').value)||0,
+    duration_min:parseInt(document.getElementById('svcf_duration').value)||0,
+    buffer_before:parseInt(document.getElementById('svcf_bbefore').value)||0,
+    buffer_after:parseInt(document.getElementById('svcf_bafter').value)||0,
+    required_room_type:document.getElementById('svcf_room').value||null,
+    status:document.getElementById('svcf_status').value,
+    is_hit:document.getElementById('svcf_hit').checked,
+    is_new:document.getElementById('svcf_new').checked,
+    is_discounted:document.getElementById('svcf_disc').checked,
+    description:document.getElementById('svcf_desc').value||null,
+    contraindications:document.getElementById('svcf_contra').value||null,
+  };
+  if(!b.name||!b.price||!b.duration_min){ toast('Заповніть назву, ціну і тривалість','error'); return; }
+  const r = id ? await api('/api/services/'+id,{method:'PATCH',body:JSON.stringify(b)})
+              : await api('/api/services',{method:'POST',body:JSON.stringify(b)});
+  if(r.ok){ toast('Збережено'); document.getElementById('svcModal').remove(); loadServices(); }
+  else toast(r.error||'Помилка','error');
+}
+// ── Варіації ──
+function _svcRenderVars(id,vars){
+  const box=document.getElementById('svcVarBox');
+  box.innerHTML=(vars.length?'<table class="tbl" style="font-size:13px"><thead><tr><th>Назва</th><th>Тип</th><th>Ціна</th><th>Хв</th><th></th></tr></thead><tbody>'+
+    vars.map(v=>'<tr><td>'+escapeHtml(v.name)+'</td><td>'+(v.variation_type||'')+'</td><td>'+_svcMoney(v.price)+'</td><td>'+v.duration_min+'</td>'+
+      '<td><button class="btn btn-outline" style="padding:2px 7px" onclick="svcVarDel('+id+','+v.id+')">✕</button></td></tr>').join('')+'</tbody></table>':'<p style="opacity:.6;font-size:13px">Варіацій немає</p>')+
+    '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
+      '<input id="svcVarName" class="input" placeholder="Назва (напр. Довге волосся)" style="flex:2;min-width:140px">'+
+      '<select id="svcVarType" class="input" style="width:auto"><option value="length">Довжина</option><option value="complexity">Складність</option><option value="area">Зона</option><option value="custom">Інше</option></select>'+
+      '<input id="svcVarPrice" class="input" type="number" placeholder="Ціна" style="width:90px">'+
+      '<input id="svcVarDur" class="input" type="number" placeholder="Хв" style="width:70px">'+
+      '<button class="btn btn-primary" onclick="svcVarAdd('+id+')">Додати</button>'+
+    '</div>';
+}
+async function svcVarAdd(id){
+  const b={name:document.getElementById('svcVarName').value.trim(),variation_type:document.getElementById('svcVarType').value,price:Number(document.getElementById('svcVarPrice').value)||0,duration_min:parseInt(document.getElementById('svcVarDur').value)||0};
+  if(!b.name){ toast('Вкажіть назву варіації','error'); return; }
+  const r=await api('/api/services/'+id+'/variations',{method:'POST',body:JSON.stringify(b)});
+  if(r.ok){ const d=await api('/api/services/'+id); _svcRenderVars(id,d.variations); loadServices(); } else toast(r.error||'Помилка','error');
+}
+async function svcVarDel(id,vid){ const r=await api('/api/services/variations/'+vid,{method:'DELETE'}); if(r.ok){ const d=await api('/api/services/'+id); _svcRenderVars(id,d.variations); loadServices(); } }
+// ── Ціни майстрів ──
+async function _svcRenderMp(id,mp){
+  const box=document.getElementById('svcMpBox');
+  if(!_svcMasters){ const r=await api('/api/schedule/masters?all=1'); _svcMasters=(r.items||r.masters||[]); }
+  box.innerHTML=(mp.length?'<table class="tbl" style="font-size:13px"><thead><tr><th>Майстер</th><th>Ціна</th><th>Хв</th><th></th></tr></thead><tbody>'+
+    mp.map(m=>'<tr><td>'+escapeHtml(m.master_name)+'</td><td>'+(m.price!=null?_svcMoney(m.price):'базова')+'</td><td>'+(m.duration_min||'базова')+'</td>'+
+      '<td><button class="btn btn-outline" style="padding:2px 7px" onclick="svcMpDel('+id+','+m.id+')">✕</button></td></tr>').join('')+'</tbody></table>':'<p style="opacity:.6;font-size:13px">Індивідуальних цін немає (діє базова)</p>')+
+    '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
+      '<select id="svcMpMaster" class="input" style="flex:2;min-width:140px">'+_svcMasters.map(m=>'<option value="'+m.id+'">'+escapeHtml(m.name)+'</option>').join('')+'</select>'+
+      '<input id="svcMpPrice" class="input" type="number" placeholder="Ціна" style="width:90px">'+
+      '<input id="svcMpDur" class="input" type="number" placeholder="Хв" style="width:70px">'+
+      '<button class="btn btn-primary" onclick="svcMpAdd('+id+')">Додати</button>'+
+    '</div>';
+}
+async function svcMpAdd(id){
+  const b={master_id:Number(document.getElementById('svcMpMaster').value),price:document.getElementById('svcMpPrice').value?Number(document.getElementById('svcMpPrice').value):null,duration_min:document.getElementById('svcMpDur').value?parseInt(document.getElementById('svcMpDur').value):null};
+  if(!b.master_id){ toast('Оберіть майстра','error'); return; }
+  const r=await api('/api/services/'+id+'/master-prices',{method:'POST',body:JSON.stringify(b)});
+  if(r.ok){ const d=await api('/api/services/'+id); _svcRenderMp(id,d.master_prices); } else toast(r.error||'Помилка','error');
+}
+async function svcMpDel(id,mpid){ const r=await api('/api/services/master-prices/'+mpid,{method:'DELETE'}); if(r.ok){ const d=await api('/api/services/'+id); _svcRenderMp(id,d.master_prices); } }
+// ── Історія цін ──
+function _svcRenderHist(hist){
+  const box=document.getElementById('svcHistBox');
+  if(!hist.length){ box.innerHTML='<p style="opacity:.6;font-size:13px">Історія порожня</p>'; return; }
+  box.innerHTML='<table class="tbl" style="font-size:13px"><thead><tr><th>Дата</th><th>Було</th><th>Стало</th><th>Причина</th><th>Хто</th></tr></thead><tbody>'+
+    hist.map(h=>'<tr><td>'+new Date(h.changed_at).toLocaleDateString('uk-UA')+'</td><td>'+(h.old_price!=null?_svcMoney(h.old_price):'—')+'</td><td>'+_svcMoney(h.new_price)+'</td><td>'+escapeHtml(h.reason||'')+'</td><td>'+escapeHtml(h.changed_by_name||'—')+'</td></tr>').join('')+'</tbody></table>';
 }
 
 // ═══ FINANCE (Доходи і Витрати) ═══════════════
