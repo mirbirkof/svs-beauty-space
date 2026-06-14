@@ -340,11 +340,15 @@ router.patch('/orders/:id/status', async (req, res) => {
 router.get('/clients', async (req, res) => {
   try {
     const pool = getPool();
-    const { search, limit = 50, offset = 0 } = req.query;
+    const { search, limit = 50, offset = 0, tag_id } = req.query;
     const cond = []; const args = [];
     if (search) {
       args.push(`%${search}%`); args.push(`%${search}%`);
       cond.push(`(c.phone ILIKE $${args.length - 1} OR c.name ILIKE $${args.length})`);
+    }
+    if (tag_id) {
+      args.push(parseInt(tag_id, 10));
+      cond.push(`EXISTS (SELECT 1 FROM client_tags ct WHERE ct.client_id = c.id AND ct.tag_id = $${args.length})`);
     }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const cnt = await pool.query(`SELECT COUNT(*)::int AS total FROM clients c ${where}`, args.slice());
@@ -352,7 +356,10 @@ router.get('/clients', async (req, res) => {
     const r = await pool.query(
       `SELECT c.id, c.phone, c.name, c.email, c.loyalty_points, c.total_spent,
               c.created_at, c.last_visit_at,
-              (SELECT COUNT(*) FROM orders WHERE client_id = c.id) AS orders_count
+              (SELECT COUNT(*) FROM orders WHERE client_id = c.id) AS orders_count,
+              COALESCE((SELECT json_agg(json_build_object('id',d.id,'name',d.name,'color',d.color) ORDER BY d.sort_order)
+                          FROM client_tags ct JOIN client_tag_defs d ON d.id = ct.tag_id
+                         WHERE ct.client_id = c.id), '[]'::json) AS tags
        FROM clients c
        ${where}
        ORDER BY c.last_visit_at DESC NULLS LAST, c.total_spent DESC NULLS LAST, c.id DESC
@@ -398,6 +405,11 @@ router.get('/clients/:id', async (req, res) => {
       );
       productSales = ps.rows;
     } catch (_) { /* міграція 037 ще не застосована */ }
+    // Теги клієнта (CRM-03)
+    const tagsRows = await pool.query(
+      `SELECT d.id, d.name, d.color FROM client_tags ct
+         JOIN client_tag_defs d ON d.id = ct.tag_id
+        WHERE ct.client_id = $1 ORDER BY d.sort_order, LOWER(d.name)`, [id]);
     const visits = appts.rows;
     const doneVisits = visits.filter(v => v.status === 'done');
     const productsSpent = productSales.reduce((s, p) => s + Number(p.total_price || 0), 0);
@@ -412,7 +424,7 @@ router.get('/clients/:id', async (req, res) => {
                                 .reduce((s, o) => s + Number(o.total || 0), 0),
       last_visit_at: visits[0] ? visits[0].starts_at : (c.rows[0].last_visit_at || null),
     };
-    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, product_sales: productSales, stats } });
+    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, product_sales: productSales, stats, tags: tagsRows.rows } });
   } catch (e) { console.error('[admin:client]', e); res.status(500).json({ error: 'internal' }); }
 });
 

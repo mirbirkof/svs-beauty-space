@@ -825,8 +825,10 @@ select.input { background:var(--card); }
 
       <!-- ═══ CLIENTS ═══ -->
       <div class="page" id="page-clients">
-        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-          <input id="clientSearch" placeholder="Пошук за телефоном або імʼям..." class="input" style="flex:1" oninput="debounce(loadClients,400)">
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
+          <input id="clientSearch" placeholder="Пошук за телефоном або імʼям..." class="input" style="flex:1;min-width:180px" oninput="debounce(loadClients,400)">
+          <select id="clientTagFilter" class="input" style="width:auto" onchange="loadClients()"><option value="">Усі теги</option></select>
+          <button class="btn btn-outline btn-sm" onclick="openTagManager()" title="Керувати тегами"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">sell</span> Теги</button>
           <span id="clientsCount" style="font-size:13px;color:var(--text-secondary);white-space:nowrap"></span>
         </div>
         <div class="card">
@@ -3855,17 +3857,35 @@ let _clientsData = [];
 let _clientsTotal = 0;
 let _clientSort = { key: 'created_at', dir: 'desc' };
 const CLIENTS_PAGE = 200;
-async function loadClients() {
+function _clientsQS(offset){
   const q = document.getElementById('clientSearch').value.trim();
-  const r = await api(`/api/admin/clients?limit=${CLIENTS_PAGE}&offset=0` + (q ? '&search=' + encodeURIComponent(q) : ''));
+  const tag = (document.getElementById('clientTagFilter')||{}).value || '';
+  let s = `?limit=${CLIENTS_PAGE}&offset=${offset}`;
+  if (q) s += '&search=' + encodeURIComponent(q);
+  if (tag) s += '&tag_id=' + tag;
+  return s;
+}
+async function loadClients() {
+  await _ensureClientTagFilter();
+  const r = await api('/api/admin/clients' + _clientsQS(0));
   _clientsData = r.items || [];
   _clientsTotal = (r.total != null) ? r.total : _clientsData.length;
   updateClientsCount();
   renderClientsTable();
 }
+async function _ensureClientTagFilter(){
+  const sel = document.getElementById('clientTagFilter');
+  if (!sel || sel.options.length > 1) return;
+  try {
+    const r = await api('/api/client-tags');
+    _tagCatalog = r.items || [];
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Усі теги</option>' + _tagCatalog.map(t=>`<option value="${t.id}">${escapeHtml(t.name)} (${t.clients_count})</option>`).join('');
+    sel.value = cur;
+  } catch(e){}
+}
 async function loadMoreClients() {
-  const q = document.getElementById('clientSearch').value.trim();
-  const r = await api(`/api/admin/clients?limit=${CLIENTS_PAGE}&offset=${_clientsData.length}` + (q ? '&search=' + encodeURIComponent(q) : ''));
+  const r = await api('/api/admin/clients' + _clientsQS(_clientsData.length));
   _clientsData = _clientsData.concat(r.items || []);
   if (r.total != null) _clientsTotal = r.total;
   updateClientsCount();
@@ -3895,7 +3915,7 @@ function renderClientsTable() {
     return 0;
   });
   document.getElementById('clientsBody').innerHTML = arr.map(c => `
-    <tr><td><a href="#" onclick="openClientCard(${c.id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a></td>
+    <tr><td><a href="#" onclick="openClientCard(${c.id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a>${_tagBadges(c.tags)}</td>
     <td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
     <td>${c.orders_count}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
     <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
@@ -3903,6 +3923,103 @@ function renderClientsTable() {
   document.querySelectorAll('#clientsTable .sort-ind').forEach(s => {
     s.textContent = (s.dataset.k === key) ? (dir === 'asc' ? '▲' : '▼') : '';
   });
+}
+
+// ═══ ТЕГИ КЛІЄНТІВ (CRM-03) ══════════════════════════
+let _tagCatalog = [];
+function _tagBadge(t, removable){
+  const x = removable ? `<span onclick="ccRemoveTag(${t.id});event.stopPropagation()" style="cursor:pointer;margin-left:4px;opacity:.7">✕</span>` : '';
+  return `<span style="display:inline-flex;align-items:center;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:600;margin:0 2px 2px 0">${escapeHtml(t.name)}${x}</span>`;
+}
+function _tagBadges(tags){
+  if (!tags || !tags.length) return '';
+  return ' ' + tags.map(t=>_tagBadge(t,false)).join('');
+}
+function _ccRenderTags(tags){
+  const badges = (tags||[]).map(t=>_tagBadge(t,true)).join('');
+  return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-top:4px">${badges||'<span style="font-size:12px;opacity:.5">Без тегів</span>'}<button class="btn btn-outline btn-sm" style="margin-left:6px;padding:2px 8px;font-size:12px" onclick="ccAddTagMenu(event)">+ тег</button></div>`;
+}
+async function ccAddTagMenu(ev){
+  ev.stopPropagation();
+  if (!_tagCatalog.length) { try { _tagCatalog = (await api('/api/client-tags')).items || []; } catch(e){} }
+  const cur = (await api('/api/client-tags/client/'+_ccId)).items || [];
+  const curIds = new Set(cur.map(t=>t.id));
+  const avail = _tagCatalog.filter(t=>!curIds.has(t.id));
+  if (!avail.length) { toast('Усі теги вже навішені','ok'); return; }
+  const body = '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+    avail.map(t=>`<span onclick="ccAddTag(${t.id})" style="cursor:pointer;background:${t.color}22;color:${t.color};border:1px solid ${t.color}55;padding:4px 12px;border-radius:14px;font-size:13px;font-weight:600">${escapeHtml(t.name)}</span>`).join('') +
+    '</div>';
+  showModal('Додати тег', body, null);
+}
+async function ccAddTag(tagId){
+  const r = await api('/api/client-tags/assign', { method:'POST', body: JSON.stringify({ client_id:_ccId, tag_id:tagId }) });
+  if (r.error){ toast(r.error,'error'); return; }
+  document.getElementById('genModal')?.remove();
+  await _ccReloadTags();
+  toast('Тег додано','success');
+  const sel=document.getElementById('clientTagFilter'); if(sel) sel.options.length=1; // оновити лічильники
+}
+async function ccRemoveTag(tagId){
+  const r = await api('/api/client-tags/unassign', { method:'POST', body: JSON.stringify({ client_id:_ccId, tag_id:tagId }) });
+  if (r.error){ toast(r.error,'error'); return; }
+  await _ccReloadTags();
+  const sel=document.getElementById('clientTagFilter'); if(sel) sel.options.length=1;
+}
+async function _ccReloadTags(){
+  const cur = (await api('/api/client-tags/client/'+_ccId)).items || [];
+  const box = document.getElementById('ccTags');
+  if (box) box.innerHTML = _ccRenderTags(cur);
+}
+async function openTagManager(){
+  const r = await api('/api/client-tags');
+  _tagCatalog = r.items || [];
+  const rows = _tagCatalog.map(t=>`
+    <tr>
+      <td><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${t.color};vertical-align:-2px;margin-right:6px"></span>${escapeHtml(t.name)}${t.is_system?' <span style="font-size:10px;opacity:.5">сист.</span>':''}</td>
+      <td style="text-align:center">${t.clients_count}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <span class="material-icons-round" onclick="tagEdit(${t.id})" style="cursor:pointer;font-size:17px;opacity:.6;padding:3px">edit</span>
+        ${t.is_system?'':`<span class="material-icons-round" onclick="tagDelete(${t.id},'${escapeHtml(t.name).replace(/'/g,"\\'")}')" style="cursor:pointer;font-size:17px;opacity:.6;padding:3px">delete</span>`}
+      </td>
+    </tr>`).join('');
+  const body = `
+    <div style="margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="tagEdit(null)">+ Новий тег</button></div>
+    <table class="tbl" style="font-size:13px"><thead><tr><th>Тег</th><th style="text-align:center">Клієнтів</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="3" style="opacity:.5">Тегів немає</td></tr>'}</tbody></table>`;
+  showModal('Керування тегами', body, null);
+}
+function tagEdit(id){
+  const t = id ? _tagCatalog.find(x=>x.id===id) : { name:'', color:'#6b7280', description:'' };
+  const palette = ['#d4a017','#0a8f5f','#3b82f6','#d9534f','#9333ea','#6b7280','#e76f51','#2a9d8f','#264653','#ff7eb6'];
+  const body = `
+    <div style="display:grid;gap:10px">
+      <label style="display:grid;gap:3px;font-size:13px">Назва<input id="tagName" class="input" value="${escapeHtml(t.name)}"></label>
+      <label style="display:grid;gap:3px;font-size:13px">Колір
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <input id="tagColor" type="color" value="${t.color||'#6b7280'}" style="width:46px;height:32px;border:none;background:none;cursor:pointer">
+          ${palette.map(c=>`<span onclick="document.getElementById('tagColor').value='${c}'" style="cursor:pointer;width:22px;height:22px;border-radius:50%;background:${c};display:inline-block;border:1px solid #0002"></span>`).join('')}
+        </div></label>
+      <label style="display:grid;gap:3px;font-size:13px">Опис<input id="tagDesc" class="input" value="${escapeHtml(t.description||'')}"></label>
+    </div>`;
+  showModal(id?'Редагувати тег':'Новий тег', body, async ()=>{
+    const payload = { name: document.getElementById('tagName').value.trim(), color: document.getElementById('tagColor').value, description: document.getElementById('tagDesc').value.trim()||null };
+    if (!payload.name){ toast('Вкажіть назву','error'); throw new Error('no name'); }
+    const res = id
+      ? await api('/api/client-tags/'+id, { method:'PATCH', body: JSON.stringify(payload) })
+      : await api('/api/client-tags', { method:'POST', body: JSON.stringify(payload) });
+    if (res.error){ toast(res.error==='name_exists'?'Тег з такою назвою вже є':res.error,'error'); throw new Error(res.error); }
+    toast('Збережено','success');
+    const sel=document.getElementById('clientTagFilter'); if(sel) sel.options.length=1;
+    setTimeout(openTagManager, 50);
+  });
+}
+async function tagDelete(id, name){
+  if (!confirm('Видалити тег «'+name+'»? Він зніметься з усіх клієнтів.')) return;
+  const r = await api('/api/client-tags/'+id, { method:'DELETE' });
+  if (r.error){ toast(r.error==='system_tag'?'Системний тег видалити не можна':r.error,'error'); return; }
+  toast('Тег видалено','success');
+  const sel=document.getElementById('clientTagFilter'); if(sel) sel.options.length=1;
+  openTagManager();
 }
 
 // ═══ КАРТКА КЛІЄНТА ══════════════════════════════════
@@ -3943,6 +4060,8 @@ async function openClientCard(id){
         <div><label style="font-size:12px;color:var(--text-secondary)">Email</label><input id="ccEmail" class="input" value="${c.email||''}"></div>
         <div><label style="font-size:12px;color:var(--text-secondary)">День народження</label><input id="ccBday" type="date" class="input" value="${bday}"></div>
       </div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Теги</label>
+        <div id="ccTags">${_ccRenderTags(c.tags)}</div></div>
       <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Особисті нотатки</label>
         <textarea id="ccNotes" class="input" rows="3" placeholder="Уподобання, алергії, важливі деталі…">${c.notes||''}</textarea></div>
       <div style="display:flex;gap:8px;margin-bottom:18px">
