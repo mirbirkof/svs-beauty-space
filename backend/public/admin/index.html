@@ -3111,12 +3111,18 @@ async function openClientCard(id){
       <td>${Number(v.price||0).toLocaleString()} ₴</td>
       <td><span class="badge b-${v.status}">${v.status}</span></td></tr>`).join('')
       || '<tr><td colspan="5"><div class="empty">Візитів немає</div></td></tr>';
+    const prodHtml = (c.product_sales||[]).slice(0,30).map(p=>`
+      <tr><td>${p.sale_date?new Date(p.sale_date).toLocaleDateString('uk-UA'):'—'}</td>
+      <td>${p.product_name||'—'}</td><td>${Number(p.qty||1)} шт</td>
+      <td>${p.master_name||'—'}</td>
+      <td>${Number(p.total_price||0).toLocaleString()} ₴</td></tr>`).join('')
+      || '<tr><td colspan="5"><div class="empty">Покупок товарів немає</div></td></tr>';
     document.getElementById('clientCardTitle').textContent = c.name || 'Картка клієнта';
     document.getElementById('clientCardBody').innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${kpiBox('Візитів', st.visits_done||0)}
         ${kpiBox('Витрачено в салоні', (st.visits_spent||0).toLocaleString()+' ₴')}
-        ${kpiBox('Замовлень', st.orders_count||0)}
+        ${kpiBox('Куплено товарів', (st.products_spent||0).toLocaleString()+' ₴')}
         ${kpiBox('Бонуси', c.loyalty_points||0)}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
@@ -3133,7 +3139,10 @@ async function openClientCard(id){
       </div>
       <h4 style="margin:0 0 8px;font-size:14px">Історія візитів</h4>
       <table class="tbl"><thead><tr><th>Дата</th><th>Послуга</th><th>Майстер</th><th>Сума</th><th>Статус</th></tr></thead>
-      <tbody>${visitsHtml}</tbody></table>`;
+      <tbody>${visitsHtml}</tbody></table>
+      <h4 style="margin:18px 0 8px;font-size:14px">Куплені товари</h4>
+      <table class="tbl"><thead><tr><th>Дата</th><th>Товар</th><th>К-сть</th><th>Майстер</th><th>Сума</th></tr></thead>
+      <tbody>${prodHtml}</tbody></table>`;
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
 }
 async function saveClientCard(){

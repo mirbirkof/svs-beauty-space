@@ -361,7 +361,7 @@ async function syncSales(from, to) {
 async function fetchProductSalesDay(token, day) {
   const nd = new Date(day + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1);
   const next = nd.toISOString().slice(0, 10);
-  const fields = encodeURIComponent('sale_date,type,sum,quantity,cancel,professional_name,name');
+  const fields = encodeURIComponent('sale_date,type,sum,quantity,cancel,professional_name,name,client');
   const path = `/sales?fields=${fields}&sale_date_from=${day}&sale_date_to=${next}` +
     `&location=${encodeURIComponent(process.env.BEAUTYPRO_LOCATION_ID || '88deba79-2b95-c6e0-9eb9-658d4d8ea59c')}&limit=1000`;
   for (let i = 0; i < 5; i++) {
@@ -395,7 +395,18 @@ async function syncProductSales(from, to) {
   for (let d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z'); d <= end; d.setUTCDate(d.getUTCDate() + 1))
     days.push(d.toISOString().slice(0, 10));
 
-  let posted = 0, skipped = 0, matched = 0;
+  // кеш резолву GUID клієнта BP → локальний clients.id (через beautypro_id)
+  const clientCache = new Map();
+  async function resolveClientId(guid) {
+    if (!guid) return null;
+    if (clientCache.has(guid)) return clientCache.get(guid);
+    const cr = await pool.query('SELECT id FROM clients WHERE beautypro_id = $1 LIMIT 1', [guid]);
+    const id = cr.rows[0]?.id || null;
+    clientCache.set(guid, id);
+    return id;
+  }
+
+  let posted = 0, skipped = 0, matched = 0, linked = 0;
   for (const day of days) {
     const recs = (await fetchProductSalesDay(token, day)).filter(
       (s) => !s.cancel && s.type === 'Product' && (Number(s.sum) || 0) > 0);
@@ -405,20 +416,25 @@ async function syncProductSales(from, to) {
       const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
       const stockId = await matchStock(pool, s.name);
       if (stockId) matched++;
+      const bpClient = s.client ? String(s.client) : null;
+      const clientId = await resolveClientId(bpClient);
+      if (clientId) linked++;
       const r = await pool.query(
-        `INSERT INTO salon_product_sales (ext_ref, sale_date, product_name, qty, total_price, unit_price, master_id, master_name, stock_id, matched)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `INSERT INTO salon_product_sales (ext_ref, sale_date, product_name, qty, total_price, unit_price, master_id, master_name, stock_id, matched, bp_client, client_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (ext_ref) DO UPDATE SET
            product_name=EXCLUDED.product_name, qty=EXCLUDED.qty, total_price=EXCLUDED.total_price,
            unit_price=EXCLUDED.unit_price, master_id=EXCLUDED.master_id, master_name=EXCLUDED.master_name,
-           stock_id=EXCLUDED.stock_id, matched=EXCLUDED.matched
+           stock_id=EXCLUDED.stock_id, matched=EXCLUDED.matched,
+           bp_client=COALESCE(EXCLUDED.bp_client, salon_product_sales.bp_client),
+           client_id=COALESCE(EXCLUDED.client_id, salon_product_sales.client_id)
          RETURNING (xmax = 0) AS inserted`,
-        [s.id, s.sale_date, s.name || 'Товар', qty, total, qty ? total / qty : total, masterId, s.professional_name || null, stockId, !!stockId]
+        [s.id, s.sale_date, s.name || 'Товар', qty, total, qty ? total / qty : total, masterId, s.professional_name || null, stockId, !!stockId, bpClient, clientId]
       );
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
   }
-  return { posted, updated: skipped, matched };
+  return { posted, updated: skipped, matched, linked };
 }
 
 // Backfill клиентов BP→local: для записей без client_id тянем клиента из BP и создаём карточку

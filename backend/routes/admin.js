@@ -385,18 +385,34 @@ router.get('/clients/:id', async (req, res) => {
         LIMIT 200`,
       [id]
     );
+    // Покупки товарів у салоні (BeautyPro /sales type=Product)
+    let productSales = [];
+    try {
+      const ps = await pool.query(
+        `SELECT id, sale_date, product_name, qty, total_price, master_name
+           FROM salon_product_sales
+          WHERE client_id = $1
+          ORDER BY sale_date DESC NULLS LAST
+          LIMIT 200`,
+        [id]
+      );
+      productSales = ps.rows;
+    } catch (_) { /* міграція 037 ще не застосована */ }
     const visits = appts.rows;
     const doneVisits = visits.filter(v => v.status === 'done');
+    const productsSpent = productSales.reduce((s, p) => s + Number(p.total_price || 0), 0);
     const stats = {
       visits_total: visits.length,
       visits_done: doneVisits.length,
       visits_spent: doneVisits.reduce((s, v) => s + Number(v.price || 0), 0),
+      products_count: productSales.length,
+      products_spent: productsSpent,
       orders_count: orders.rowCount,
       orders_spent: orders.rows.filter(o => ['paid','packing','shipped','delivered'].includes(o.status))
                                 .reduce((s, o) => s + Number(o.total || 0), 0),
       last_visit_at: visits[0] ? visits[0].starts_at : (c.rows[0].last_visit_at || null),
     };
-    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, stats } });
+    res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, product_sales: productSales, stats } });
   } catch (e) { console.error('[admin:client]', e); res.status(500).json({ error: 'internal' }); }
 });
 
