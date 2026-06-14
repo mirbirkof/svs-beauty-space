@@ -803,7 +803,8 @@ router.get('/overview', requirePerm(), async (req, res) => {
                   FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
       // касса месяц
       pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric AS svc,
-                         COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod
+                         COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod,
+                         COUNT(*) FILTER (WHERE category IN ('sale_service','sale_product'))::int AS cnt
                   FROM cash_operations WHERE type='in' AND created_at >= $1`, [monFrom]),
       // расходы месяц
       pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
@@ -866,7 +867,8 @@ router.get('/overview', requirePerm(), async (req, res) => {
       out.revenue_yesterday = Number(revYesterday.rows[0].total);
       out.expense_month = Number(expMonth.rows[0].sum);
       out.profit_month = out.revenue_month.total - out.expense_month;
-      out.avg_check_month = doneMonth.rows[0].done > 0 ? Math.round(out.revenue_month.total / doneMonth.rows[0].done) : 0;
+      const salesCnt = Number(rm.cnt || 0);
+      out.avg_check_month = salesCnt > 0 ? Math.round(out.revenue_month.total / salesCnt) : 0;
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
     } else {
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, done: r.done }));
