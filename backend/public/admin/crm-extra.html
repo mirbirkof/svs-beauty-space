@@ -51,6 +51,8 @@ table tr:hover{background:#FAFBFC}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
 input,select{padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
 input:focus,select:focus{outline:none;border-color:var(--p)}
+.inp{width:100%;box-sizing:border-box;display:block;margin-top:4px;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
+textarea.inp{resize:vertical}
 .pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
 .pill.ok{background:#E0F8EB;color:#0F8E48}
 .pill.warn{background:#FEF3DC;color:#9D6A0C}
@@ -660,7 +662,9 @@ async function openMasterCard(id){
           </div>
           <div style="margin-top:6px;font-size:13px">📞 ${phoneTxt}</div>
         </div>
+        <button class="btn sm ghost" style="margin-left:auto;align-self:flex-start" onclick="editMasterProfile(${id})">✎ Редагувати</button>
       </div>
+      ${m.bio?`<div style="font-size:13px;color:#555;background:#f8f7ff;border-radius:10px;padding:9px 12px;margin-bottom:12px;line-height:1.45">${m.bio}</div>`:''}
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div class="metric"><div class="label">Виконано</div><div class="value">${st.done_total||0}</div></div>
         <div class="metric ok"><div class="label">Дохід</div><div class="value" style="font-size:16px">${fmtUAH(st.revenue_total||0)}</div></div>
@@ -671,12 +675,39 @@ async function openMasterCard(id){
       </div>
       <h3 style="margin:14px 0 6px;font-size:14px">Графік роботи</h3>
       ${_mcSchedule(m.schedule_json)}
-      ${(p.top_services&&p.top_services.length)?`<h3 style="margin:14px 0 6px;font-size:14px">Топ послуги</h3>`+p.top_services.slice(0,5).map(s=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span>${s.service}</span><span style="color:#888">${s.cnt}× · ${fmtUAH(s.sum)}</span></div>`).join(''):''}`;
+      ${(p.top_services&&p.top_services.length)?`<h3 style="margin:14px 0 6px;font-size:14px">Топ послуги</h3>`+p.top_services.slice(0,5).map(s=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid #f0f0f0"><span>${s.service}</span><span style="color:#888">${s.cnt}× · ${fmtUAH(s.sum)}</span></div>`).join(''):''}
+      ${(p.recent&&p.recent.length)?`<h3 style="margin:14px 0 6px;font-size:14px">Останні візити</h3>`+p.recent.slice(0,8).map(v=>{const dt=v.starts_at?new Date(v.starts_at).toLocaleDateString('uk',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;border-bottom:1px solid #f4f4f4"><span style="color:#888;white-space:nowrap">${dt}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.client_name||'—'}${v.services_text?' · '+v.services_text:''}</span><span style="color:#16a34a;white-space:nowrap">${v.price?fmtUAH(v.price):''}</span></div>`;}).join(''):''}`;
   }catch(e){
     document.getElementById('cardBody').innerHTML = `<h2 style="margin:0 0 4px">${cached.name}</h2>
       <div style="color:#888;font-size:13px;margin-bottom:12px">${cached.specialty||'Спеціальність не вказана'} · ${cached.beautypro_id?'синхр. з BeautyPro':'вручну'}</div>
       <div style="color:#c00">Статистика недоступна: ${e.message}</div>`;
   }
+}
+async function editMasterProfile(id){
+  const m = MASTERS_CACHE.find(x=>x.id===id) || {};
+  const esc=s=>(s==null?'':String(s)).replace(/"/g,'&quot;');
+  document.getElementById('cardBody').innerHTML = `
+    <h2 style="margin:0 0 12px;font-size:18px">Редагування профілю</h2>
+    <div style="display:grid;gap:10px">
+      <label style="font-size:12px;color:#888">Ім'я<input id="ep-name" class="inp" value="${esc(m.name)}"></label>
+      <label style="font-size:12px;color:#888">Спеціальність<input id="ep-spec" class="inp" value="${esc(m.specialty)}" placeholder="Перукар / Майстер манікюру / Адміністратор…"></label>
+      <label style="font-size:12px;color:#888">Телефон<input id="ep-phone" class="inp" value="${esc(m.phone)}" placeholder="+380…"></label>
+      <label style="font-size:12px;color:#888">Про майстра (досвід, послуги, особливості)<textarea id="ep-bio" class="inp" rows="3" style="resize:vertical">${esc(m.bio)}</textarea></label>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <button class="btn sm" onclick="saveMasterProfile(${id})">Зберегти</button>
+      <button class="btn sm ghost" onclick="openMasterCard(${id})">Скасувати</button>
+    </div>`;
+}
+async function saveMasterProfile(id){
+  const body={ name:document.getElementById('ep-name').value.trim(),
+               specialty:document.getElementById('ep-spec').value.trim(),
+               phone:document.getElementById('ep-phone').value.trim(),
+               bio:document.getElementById('ep-bio').value.trim() };
+  try{ await api('/api/schedule/masters/'+id+'/profile',{method:'PATCH',body:JSON.stringify(body)});
+    const i=MASTERS_CACHE.findIndex(x=>x.id===id); if(i>=0) Object.assign(MASTERS_CACHE[i],body);
+    openMasterCard(id); loadMasters();
+  }catch(e){ alert(e.message); }
 }
 function openUserCard(id){
   const u = USERS_CACHE.find(x=>x.id===id) || {};
