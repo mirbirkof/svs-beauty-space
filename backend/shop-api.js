@@ -171,6 +171,7 @@ app.use('/api/consumables', require('./routes/consumables'));
 app.use('/api/notes', require('./routes/notes'));
 const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/segments', require('./routes/segments'));
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
