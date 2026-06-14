@@ -321,15 +321,16 @@ select.input { background:var(--card); }
   .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
   .journal-side > .card { flex:1 1 240px; min-width:0; }
 }
-/* Налаштування: ліве підменю (DIKIDI-style) */
+/* Налаштування: підменю перенесено в бічне меню — внутрішня колонка прихована */
 .settings-layout { display:flex; gap:20px; align-items:flex-start; }
-.settings-nav { flex:0 0 230px; display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:8px; position:sticky; top:16px; }
+.settings-nav { display:none; }
+.settings-nav-legacy { flex:0 0 230px; display:flex; flex-direction:column; gap:2px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:8px; position:sticky; top:16px; }
 .set-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; background:none; border-radius:10px; cursor:pointer; font-size:13.5px; color:var(--text); text-align:left; width:100%; text-decoration:none; font-weight:500; }
 .set-item:hover { background:var(--bg); }
 .set-item.active { background:var(--primary); color:#fff; }
 .set-item .material-icons-round { font-size:19px; }
 .set-navsec { padding:10px 12px 4px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-secondary); }
-.settings-content { flex:1; min-width:0; max-width:720px; }
+.settings-content { flex:1; min-width:0; max-width:860px; }
 .set-pane { display:none; }
 .set-pane.active { display:block; }
 .set-h { font-size:16px; font-weight:700; margin-bottom:4px; }
@@ -346,9 +347,6 @@ select.input { background:var(--card); }
 .set-toggle i { color:var(--text-secondary); font-size:13px; font-style:normal; }
 @media(max-width:768px){
   .settings-layout { flex-direction:column; }
-  .settings-nav { flex-direction:row; flex-wrap:wrap; width:100%; position:static; }
-  .set-item { width:auto; }
-  .set-navsec { display:none; }
   .set-form { grid-template-columns:1fr; }
 }
 .jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -642,10 +640,48 @@ select.input { background:var(--card); }
         <span class="material-icons-round">badge</span> Майстри / Співробітники
       </a>
 
-      <!-- Налаштування -->
-      <a class="sidebar-item" data-page="settings" onclick="go('settings')">
-        <span class="material-icons-round">settings</span> Налаштування
-      </a>
+      <!-- Налаштування (підменю в самому сайдбарі, без другої колонки на сторінці) -->
+      <div class="sidebar-group" id="grp-settings">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">settings</span> Налаштування
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="settings" data-tab="profile" onclick="go('settings');setTab('profile')">
+            <span class="material-icons-round">storefront</span> Профіль
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="booking" onclick="go('settings');setTab('booking')">
+            <span class="material-icons-round">event_available</span> Онлайн-запис
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="prepay" onclick="go('settings');setTab('prepay')">
+            <span class="material-icons-round">payments</span> Передплата
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="schedule" onclick="go('settings');setTab('schedule')">
+            <span class="material-icons-round">schedule</span> Графік змін
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="privacy" onclick="go('settings');setTab('privacy')">
+            <span class="material-icons-round">visibility</span> Конфіденційність
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="business" onclick="go('settings');setTab('business')">
+            <span class="material-icons-round">tune</span> Бізнес-налаштування
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="rooms" onclick="go('settings');setTab('rooms')">
+            <span class="material-icons-round">meeting_room</span> Кабінети / ресурси
+          </a>
+          <a class="sidebar-item" data-page="settings" data-tab="consumables" onclick="go('settings');setTab('consumables')">
+            <span class="material-icons-round">inventory_2</span> Розхідники
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#users">
+            <span class="material-icons-round">badge</span> Співробітники
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#users">
+            <span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту
+          </a>
+          <a class="sidebar-item" href="/admin/crm-extra.html#cashbox">
+            <span class="material-icons-round">point_of_sale</span> Каса
+          </a>
+        </div>
+      </div>
 
       <!-- Система -->
       <div class="sidebar-group" id="grp-system">
@@ -1289,22 +1325,6 @@ select.input { background:var(--card); }
       <!-- ═══ SETTINGS (DIKIDI-style: ліве підменю + панелі) ═══ -->
       <div class="page" id="page-settings">
         <div class="settings-layout">
-          <nav class="settings-nav">
-            <button class="set-item active" data-tab="profile" onclick="setTab('profile')"><span class="material-icons-round">storefront</span> Профіль</button>
-            <button class="set-item" data-tab="booking" onclick="setTab('booking')"><span class="material-icons-round">event_available</span> Онлайн-запис</button>
-            <button class="set-item" data-tab="prepay" onclick="setTab('prepay')"><span class="material-icons-round">payments</span> Передплата</button>
-            <button class="set-item" data-tab="schedule" onclick="setTab('schedule')"><span class="material-icons-round">schedule</span> Графік змін</button>
-            <button class="set-item" data-tab="privacy" onclick="setTab('privacy')"><span class="material-icons-round">visibility</span> Конфіденційність</button>
-            <button class="set-item" data-tab="business" onclick="setTab('business')"><span class="material-icons-round">tune</span> Бізнес-налаштування</button>
-            <button class="set-item" data-tab="rooms" onclick="setTab('rooms')"><span class="material-icons-round">meeting_room</span> Кабінети / ресурси</button>
-            <button class="set-item" data-tab="consumables" onclick="setTab('consumables')"><span class="material-icons-round">inventory_2</span> Розхідники</button>
-            <div class="set-navsec">Керування</div>
-            <a class="set-item" href="/admin/crm-extra.html#users"><span class="material-icons-round">badge</span> Співробітники</a>
-            <a class="set-item" onclick="go('products')"><span class="material-icons-round">design_services</span> Послуги / товари</a>
-            <a class="set-item" href="/admin/crm-extra.html#users"><span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту</a>
-            <a class="set-item" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round">point_of_sale</span> Каса</a>
-          </nav>
-
           <div class="settings-content">
             <!-- ПРОФІЛЬ САЛОНУ -->
             <div class="set-pane active" id="tab-profile">
@@ -1794,6 +1814,12 @@ function go(page) {
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
     finance:loadFinance, contractors:loadContractors, settings:loadSettings };
   if (loaders[page]) loaders[page]();
+  // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
+  // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
+  if (page === 'settings') {
+    const cur = document.querySelector('.set-pane.active');
+    setTab(cur ? cur.id.replace('tab-', '') : 'profile');
+  }
 }
 
 // ═══ FINANCE (Доходи і Витрати) ═══════════════
@@ -1904,8 +1930,11 @@ function loadContractors(){ /* статична сторінка */ }
 
 // ═══ SETTINGS ═════════════════════════════════
 function setTab(tab) {
-  document.querySelectorAll('.settings-nav .set-item[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
   document.querySelectorAll('.set-pane').forEach(p => p.classList.toggle('active', p.id==='tab-'+tab));
+  // Підсвічування у бічному меню: пункти налаштувань мають data-page="settings" + data-tab
+  document.querySelectorAll('.sidebar-item[data-page="settings"]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  // Сумісність зі старим внутрішнім підменю (якщо ще присутнє в DOM)
+  document.querySelectorAll('.settings-nav .set-item[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
 }
 async function loadSettings() {
   const msg = document.getElementById('settingsMsg');
