@@ -281,7 +281,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
     const r0 = main.rows[0];
 
     const [lowStock, openShifts, churnCnt, activeMasters, topMaster] = await Promise.all([
-      pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE stock <= COALESCE(low_stock_threshold,5)`).catch(()=>({rows:[{n:0}]})),
+      pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active = true AND COALESCE(stock_qty,0) <= 5`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM (
          SELECT c.id FROM clients c
@@ -846,7 +846,7 @@ router.get('/overview', requirePerm(), async (req, res) => {
                     GROUP BY c.id HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
                   ) t`).catch(()=>({rows:[{n:0}]})),
       // позицій на виході (≤ поріг)
-      pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE stock <= COALESCE(low_stock_threshold,5)`).catch(()=>({rows:[{n:0}]})),
+      pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active = true AND COALESCE(stock_qty,0) <= 5`).catch(()=>({rows:[{n:0}]})),
     ]);
 
     const out = {
