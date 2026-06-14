@@ -173,6 +173,8 @@ const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/segments', require('./routes/segments'));
 app.use('/api/campaigns', require('./routes/campaigns'));
+const triggersRoutes = require('./routes/marketing-triggers');
+app.use('/api/triggers', triggersRoutes);
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
@@ -188,6 +190,7 @@ app.listen(PORT, '0.0.0.0', () => {
   if (process.env.DATABASE_URL) {
     remindersRoutes.startCron();
     notificationsRoutes.startCron(); // COM-01 Notification Hub воркер очереди
+    triggersRoutes.startCron();      // MKT-02 авто-триггеры маркетинга
     // страховка вебхуков Mono: поллинг pending-инвойсов
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
