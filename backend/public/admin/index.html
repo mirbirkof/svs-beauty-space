@@ -475,7 +475,7 @@ select.input { background:var(--card); }
 
       <!-- Клієнти -->
       <div class="sidebar-group open" id="grp-clients">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">people</span> Клієнти
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -498,7 +498,7 @@ select.input { background:var(--card); }
 
       <!-- Просування -->
       <div class="sidebar-group" id="grp-promo">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">campaign</span> Просування
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -517,7 +517,7 @@ select.input { background:var(--card); }
 
       <!-- Маркетинг -->
       <div class="sidebar-group" id="grp-marketing">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">campaign</span> Маркетинг
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -552,7 +552,7 @@ select.input { background:var(--card); }
 
       <!-- Продажі -->
       <div class="sidebar-group" id="grp-sales">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">sell</span> Продажі
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -573,7 +573,7 @@ select.input { background:var(--card); }
 
       <!-- Фінанси -->
       <div class="sidebar-group" id="grp-finance">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">account_balance_wallet</span> Фінанси
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -598,7 +598,7 @@ select.input { background:var(--card); }
 
       <!-- Товари -->
       <div class="sidebar-group" id="grp-goods">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">storefront</span> Товари
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -627,7 +627,7 @@ select.input { background:var(--card); }
 
       <!-- Система -->
       <div class="sidebar-group" id="grp-system">
-        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">tune</span> Система
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
@@ -1744,12 +1744,26 @@ window.addEventListener('hashchange', () => {
   if (h && h !== currentPage && document.getElementById('page-' + h)) go(h);
 });
 
+// Аккордеон бічного меню: відкрита лише одна група за раз — меню не «стрибає»
+// і не перетворюється на довгий список. Клік по заголовку відкритої групи її згортає.
+function toggleSidebarGroup(headerEl) {
+  const grp = headerEl.parentElement;
+  const willOpen = !grp.classList.contains('open');
+  document.querySelectorAll('.sidebar-group').forEach(g => g.classList.remove('open'));
+  if (willOpen) grp.classList.add('open');
+}
+
 function go(page) {
   currentPage = page;
   if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.page === page));
+  // Група активної сторінки розкривається автоматично, решта згортаються —
+  // активний пункт завжди видно, відкритий стан не «збивається» при переході.
+  const activeItem = document.querySelector('.sidebar-item.active');
+  const parentGroup = activeItem ? activeItem.closest('.sidebar-group') : null;
+  document.querySelectorAll('.sidebar-group').forEach(g => g.classList.toggle('open', g === parentGroup));
   document.getElementById('pageTitle').textContent = pageTitles[page] || page;
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
