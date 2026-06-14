@@ -3996,6 +3996,28 @@ function _tagBadges(tags){
   if (!tags || !tags.length) return '';
   return ' ' + tags.map(t=>_tagBadge(t,false)).join('');
 }
+function _ccTimeline(c){
+  const ev = [];
+  const esc = s => String(s==null?'':s).replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+  (c.visits||[]).forEach(v=>{ if(v.starts_at) ev.push({ t:new Date(v.starts_at), icon:'content_cut', color:'#7c5cff',
+    title:'Візит'+(v.services_text?': '+esc(v.services_text):''), sub:(v.master_name?esc(v.master_name):'')+(v.status?' · '+esc(v.status):''),
+    amount:Number(v.price||0) }); });
+  (c.product_sales||[]).forEach(p=>{ if(p.sale_date) ev.push({ t:new Date(p.sale_date), icon:'shopping_bag', color:'#0aa',
+    title:'Покупка: '+esc(p.product_name||'товар')+(p.qty?' ×'+Number(p.qty):''), sub:(p.master_name?esc(p.master_name):''),
+    amount:Number(p.total_price||0) }); });
+  (c.orders||[]).forEach(o=>{ if(o.created_at) ev.push({ t:new Date(o.created_at), icon:'local_mall', color:'#e8890c',
+    title:'Замовлення №'+o.id, sub:esc(o.status||''), amount:Number(o.total||0) }); });
+  ev.sort((a,b)=>b.t-a.t);
+  if(!ev.length) return '<div class="empty">Подій ще немає</div>';
+  return ev.slice(0,40).map(e=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border,#eee)">
+    <span class="material-icons-round" style="font-size:18px;color:${e.color};margin-top:1px">${e.icon}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:600">${e.title}</div>
+      <div style="font-size:11px;color:var(--text-secondary,#888)">${e.t.toLocaleDateString('uk-UA')}${e.sub?' · '+e.sub:''}</div>
+    </div>
+    ${e.amount?`<div style="font-size:13px;font-weight:600;white-space:nowrap">${e.amount.toLocaleString('uk-UA')} ₴</div>`:''}
+  </div>`).join('');
+}
 function _ccRenderTags(tags){
   const badges = (tags||[]).map(t=>_tagBadge(t,true)).join('');
   return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-top:4px">${badges||'<span style="font-size:12px;opacity:.5">Без тегів</span>'}<button class="btn btn-outline btn-sm" style="margin-left:6px;padding:2px 8px;font-size:12px" onclick="ccAddTagMenu(event)">+ тег</button></div>`;
@@ -4107,6 +4129,7 @@ async function openClientCard(id){
       <td>${p.master_name||'—'}</td>
       <td>${Number(p.total_price||0).toLocaleString()} ₴</td></tr>`).join('')
       || '<tr><td colspan="5"><div class="empty">Покупок товарів немає</div></td></tr>';
+    const timelineHtml = _ccTimeline(c);
     document.getElementById('clientCardTitle').textContent = c.name || 'Картка клієнта';
     document.getElementById('clientCardBody').innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
@@ -4129,6 +4152,8 @@ async function openClientCard(id){
         <button class="btn btn-primary btn-sm" onclick="saveClientCard()">Зберегти</button>
         ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);align-self:center">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
       </div>
+      <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
+      <div class="cc-timeline" style="margin-bottom:18px">${timelineHtml}</div>
       <h4 style="margin:0 0 8px;font-size:14px">Історія візитів</h4>
       <table class="tbl"><thead><tr><th>Дата</th><th>Послуга</th><th>Майстер</th><th>Сума</th><th>Статус</th></tr></thead>
       <tbody>${visitsHtml}</tbody></table>
