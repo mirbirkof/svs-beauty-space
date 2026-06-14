@@ -33,7 +33,12 @@
 /* Корневая защита от горизонтального раздувания: широкие таблицы больше не
    растягивают страницу за ширину экрана → мобильный viewport стабилен,
    сайдбар не «прыгает» в размере между страницами. */
-html, body { overflow-x:hidden; max-width:100%; }
+html, body { overflow-x:hidden; max-width:100%; width:100%; }
+/* clip надійніше за hidden: hidden на body НЕ завжди стримує розширення
+   мобільного layout-viewport від широкого контенту → тоді @media(768px) не
+   спрацьовує і меню показується в десктоп-режимі (різна ширина на кожній
+   сторінці). clip жорстко фіксує ICB по ширині екрана. */
+html { overflow-x:clip; overflow-y:visible; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
 
 /* SIDEBAR */
@@ -244,7 +249,7 @@ select.input { background:var(--card); }
 .empty .material-icons-round { font-size:48px; opacity:.3; display:block; margin-bottom:8px; }
 
 /* JOURNAL — DIKIDI-style day grid */
-.jgrid { display:flex; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+.jgrid { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; border:1px solid var(--border); border-radius:12px; background:var(--card); }
 .jgrid-time { flex:0 0 56px; border-right:1px solid var(--border); background:var(--bg); position:sticky; left:0; z-index:3; }
 .jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
 .jslot-label { height:var(--jh,21px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }

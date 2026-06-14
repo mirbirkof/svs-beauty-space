@@ -23,7 +23,10 @@
 /* Корневая защита от горизонтального раздувания: широкие таблицы больше не
    растягивают страницу за ширину экрана → мобильный viewport стабилен,
    сайдбар выглядит одинаково на всех страницах каркаса. */
-html, body { overflow-x:hidden; max-width:100%; }
+html, body { overflow-x:hidden; max-width:100%; width:100%; }
+/* clip надійніше за hidden: стримує розширення мобільного layout-viewport від
+   широкого контенту → @media(768px) спрацьовує і меню однакове на всіх сторінках */
+html { overflow-x:clip; overflow-y:visible; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
 
 /* SIDEBAR */
