@@ -824,21 +824,49 @@ router.get('/overview', requirePerm(), async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
     ]);
 
-    const clientsTotal = await pool.query(`SELECT COUNT(*)::int AS n FROM clients`);
+    // Вчорашня дата (Київ) для розрахунку динаміки каси
+    const yDate = new Date(now); yDate.setUTCDate(yDate.getUTCDate() - 1);
+    const yStr = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', year:'numeric', month:'2-digit', day:'2-digit' }).format(yDate);
+    const yFrom = kyivDayBound(yStr, false).toISOString();
+    const yTo   = kyivDayBound(yStr, true).toISOString();
+
+    const [clientsTotal, revYesterday, doneMonth, churnQ, lowStockQ] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS n FROM clients`),
+      // каса вчора (для тренду ±%) — рахуємо завжди, віддаємо лише при фінансах
+      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS total
+                  FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
+                    AND created_at BETWEEN $1 AND $2`, [yFrom, yTo]).catch(()=>({rows:[{total:0}]})),
+      // виконано записів за місяць (для середнього чека і KPI)
+      pool.query(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done
+                  FROM appointments WHERE starts_at >= $1`, [monFrom]).catch(()=>({rows:[{done:0}]})),
+      // відтік: клієнти з ≥2 візитами, останній >90 днів тому
+      pool.query(`SELECT COUNT(*)::int AS n FROM (
+                    SELECT c.id FROM clients c JOIN appointments a ON a.client_id=c.id
+                    WHERE a.status NOT IN ('cancelled','noshow')
+                    GROUP BY c.id HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
+                  ) t`).catch(()=>({rows:[{n:0}]})),
+      // позицій на виході (≤ поріг)
+      pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE stock <= COALESCE(low_stock_threshold,5)`).catch(()=>({rows:[{n:0}]})),
+    ]);
 
     const out = {
       today: { appts: apptToday.rows[0].total, appts_done: apptToday.rows[0].done, appts_upcoming: apptToday.rows[0].upcoming },
       clients_total: clientsTotal.rows[0].n,
       new_clients_month: newClientsMonth.rows[0].n,
       open_shifts: openShift.rows[0].n,
+      done_month: doneMonth.rows[0].done,
+      churn_clients: churnQ.rows[0].n,
+      low_stock_count: lowStockQ.rows[0].n,
       finance_locked: !canFinance,
     };
     if (canFinance) {
       const rt = revToday.rows[0], rm = revMonth.rows[0];
       out.revenue_today = { services: Number(rt.svc), products: Number(rt.prod), total: Number(rt.svc) + Number(rt.prod) };
       out.revenue_month = { services: Number(rm.svc), products: Number(rm.prod), total: Number(rm.svc) + Number(rm.prod) };
+      out.revenue_yesterday = Number(revYesterday.rows[0].total);
       out.expense_month = Number(expMonth.rows[0].sum);
       out.profit_month = out.revenue_month.total - out.expense_month;
+      out.avg_check_month = doneMonth.rows[0].done > 0 ? Math.round(out.revenue_month.total / doneMonth.rows[0].done) : 0;
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
     } else {
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, done: r.done }));

@@ -2981,13 +2981,18 @@ async function loadDashboard() {
   const fin = o && !o.finance_locked;
   const kpis = [];
   if (fin && o.revenue_today) {
-    kpis.push(['Каса сьогодні', _money2(o.revenue_today.total), 'green']);
-    kpis.push(['Каса за місяць', _money2(o.revenue_month.total), 'blue']);
-    kpis.push(['Прибуток місяця', _money2(o.profit_month), o.profit_month>=0?'purple':'orange']);
+    // Каса сьогодні + динаміка до вчора + розбивка послуги/товари
+    const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
+    kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green']);
+    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue']);
+    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange']);
+    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink']);
   }
-  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + (o.today?.appts_upcoming!=null?` · ${o.today.appts_upcoming} попереду`:''), 'pink']);
-  kpis.push(['Клієнтів усього', (o.clients_total ?? 0), 'blue']);
-  kpis.push(['Нових за місяць', (o.new_clients_month ?? 0), 'green']);
+  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink']);
+  kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue']);
+  if ((o.open_shifts ?? 0) > 0) kpis.push(['Відкриті зміни', o.open_shifts, 'green']);
+  if ((o.churn_clients ?? 0) > 0) kpis.push(['Відтік клієнтів', o.churn_clients + _sub('не були &gt;90 днів'), 'orange']);
+  if ((o.low_stock_count ?? 0) > 0) kpis.push(['Товари на виході', o.low_stock_count + _sub('≤ порогу залишку'), 'orange']);
   document.getElementById('kpi').innerHTML = kpis.map(([l, v, c]) =>
     `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
 
@@ -3020,6 +3025,17 @@ async function loadDashboard() {
 // ═══ Спільні утиліти аналітики ════════════════
 const SVC_LABELS = { manicure:'Манікюр', pedicure:'Педикюр', coloring:'Фарбування', lashes:'Вії/нарощення', brows:'Брови', hair:'Перукарські', other:'Інше' };
 function _money2(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
+// дрібний підпис під значенням KPI
+function _sub(txt){ return `<div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-top:3px;line-height:1.25">${txt}</div>`; }
+// стрілка динаміки сьогодні vs вчора (для каси)
+function _trend(cur, prev){
+  cur = Number(cur||0); prev = Number(prev||0);
+  if (prev <= 0) return cur > 0 ? `<span style="font-size:12px;font-weight:600;color:#16a34a;margin-left:6px">нове</span>` : '';
+  const pct = Math.round((cur - prev) / prev * 100);
+  if (pct === 0) return `<span style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-left:6px">= вчора</span>`;
+  const up = pct > 0;
+  return `<span style="font-size:12px;font-weight:600;color:${up?'#16a34a':'#dc2626'};margin-left:6px">${up?'▲':'▼'} ${Math.abs(pct)}%</span>`;
+}
 function _ym2(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function _monthBounds(){ const n=new Date(); return { from:_ym2(new Date(n.getFullYear(),n.getMonth(),1)), to:_ym2(n) }; }
 // Експорт у CSV (Excel відкриває з UTF-8 BOM коректно з кирилицею)
