@@ -1,5 +1,6 @@
 /* lib/llm.js — лёгкий LLM-клиент для AI-модулей CRM.
-   Каскад: Gemini Flash (быстрый, бесплатный) → Groq (fallback).
+   Каскад: Groq (своя щедрая квота, не делится с другими ботами) → Gemini Flash (fallback).
+   GEMINI_API_KEY общий с gemini-ботом → быстро упирается в дневную квоту, поэтому вторичный.
    Без сторонних SDK — чистый https. Никогда не бросает наружу необработанное:
    вызывающий код сам решает что делать при null. */
 const https = require('https');
@@ -64,7 +65,7 @@ async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
 async function ask(prompt, opts = {}) {
   const errors = [];
-  for (const [name, fn] of [['gemini', _gemini], ['groq', _groq]]) {
+  for (const [name, fn] of [['groq', _groq], ['gemini', _gemini]]) {
     try { return await fn(prompt, opts); }
     catch (e) { errors.push(`${name}: ${e.message}`); }
   }
