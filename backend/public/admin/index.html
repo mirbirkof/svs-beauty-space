@@ -1669,7 +1669,7 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:720px">
+    <div class="modal" style="max-width:880px;width:96vw">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
@@ -4369,7 +4369,8 @@ async function openMasterCard(id){
 // ── Каркас: шапка + вкладки + контент (DIKIDI-стиль) ──
 const _MC_TABS = [
   ['profile','Профіль'], ['schedule','Графік'], ['services','Послуги'],
-  ['salary','Схема ЗП'], ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
+  ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
+  ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
 ];
 function _mcRenderShell(){
   const ms = _mcData.ms;
@@ -4403,7 +4404,8 @@ function mcTab(k, skipShell){
     });
   }
   const fn = { profile:_mcTabProfile, schedule:_mcTabSchedule, services:_mcTabServices,
-              salary:_mcTabSalary, stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
+              salary:_mcTabSalary, online:_mcTabOnline, notify:_mcTabNotify,
+              stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
   document.getElementById('mcTabBody').innerHTML = fn ? fn() : '';
 }
 const _esc = s => String(s||'').replace(/"/g,'&quot;');
@@ -4452,6 +4454,45 @@ function _mcTabSalary(){
     <button class="btn btn-primary btn-sm" onclick="saveMasterSalary()">Зберегти схему ЗП</button>
     <p class="set-p" style="font-size:12px;margin-top:12px">Нарахування за період — у розділі <b>Персонал → Зарплати</b>.</p>`;
 }
+function _mcTabOnline(){
+  const ms = _mcData.ms;
+  const on = ms.online_booking_enabled !== false;
+  return `<h4 style="margin:0 0 12px;font-size:14px">Налаштування онлайн-запису</h4>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="mcOnEnabled" ${on?'checked':''} style="width:16px;height:16px;margin-top:1px">
+      <span>Доступний для онлайн-запису <span style="color:var(--text-secondary)">— клієнти можуть обрати цього майстра на сайті/віджеті. Вимкнено = записати може лише адміністратор.</span></span></label>
+    <div style="display:grid;grid-template-columns:1fr 160px;gap:12px;margin-bottom:12px">
+      <div><label class="set-l">Звання для клієнтів</label>
+        <input id="mcOnTitle" class="input" value="${_esc(ms.online_title)}" placeholder="напр. Топ-майстер"></div>
+      <div><label class="set-l">Порядок показу</label>
+        <input id="mcOnRank" type="number" class="input" value="${ms.online_rank!=null?ms.online_rank:0}" placeholder="0"></div>
+    </div>
+    <div style="margin-bottom:14px"><label class="set-l">Опис у картці онлайн-запису</label>
+      <textarea id="mcOnDesc" class="input" rows="3" placeholder="Короткий опис, який бачить клієнт при виборі майстра">${ms.online_description||''}</textarea></div>
+    <button class="btn btn-primary btn-sm" onclick="saveMasterOnline()">Зберегти онлайн-запис</button>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Менший «Порядок показу» = вище у списку. Послуги та ціни для онлайн-запису беруться з розділу <b>Послуги</b>.</p>`;
+}
+function _mcTabNotify(){
+  const ms = _mcData.ms;
+  const ch = ms.notify_channel || 'telegram';
+  const opt = (v,l)=>`<option value="${v}" ${ch===v?'selected':''}>${l}</option>`;
+  const chk = (id,val,lbl,hint)=>`<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:11px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="${id}" ${val!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
+      <span>${lbl} <span style="color:var(--text-secondary)">${hint||''}</span></span></label>`;
+  return `<h4 style="margin:0 0 12px;font-size:14px">Сповіщення співробітнику</h4>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:12px;margin-bottom:16px">
+      <div><label class="set-l">Канал</label>
+        <select id="mcNoChannel" class="input">${opt('telegram','Telegram')}${opt('sms','SMS')}${opt('email','Email')}${opt('none','Без сповіщень')}</select></div>
+      <div><label class="set-l">Telegram @username або chat_id</label>
+        <input id="mcNoTg" class="input" value="${_esc(ms.notify_telegram)}" placeholder="@nickname або 123456789"></div>
+    </div>
+    <h4 style="margin:0 0 10px;font-size:14px">Про що повідомляти</h4>
+    ${chk('mcNoNew', ms.notify_new_booking, 'Нова запис', '— коли клієнт записався')}
+    ${chk('mcNoCancel', ms.notify_cancellation, 'Скасування', '— коли запис скасовано')}
+    ${chk('mcNoResch', ms.notify_reschedule, 'Перенесення', '— коли запис перенесено на інший час')}
+    <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="saveMasterNotify()">Зберегти оповіщення</button>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Для Telegram співробітник має написати боту салону — інакше сповіщення не дійде. SMS/Email — за наявності підключеного каналу.</p>`;
+}
 function _mcTabStats(){
   const s = _mcData.stats;
   const avg = (s.done_total>0) ? Math.round((s.revenue_total||0)/s.done_total) : 0;
@@ -4475,12 +4516,23 @@ function _mcTabStats(){
 function _mcTabPhotos(){
   const ms = _mcData.ms;
   return `<h4 style="margin:0 0 10px;font-size:14px">Фото профілю</h4>
-    <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">${_mcAvatar(ms)}
-      <div style="flex:1"><label class="set-l">URL фото</label>
-        <input id="mcAvatar" class="input" value="${_esc(ms.avatar)}" placeholder="https://...">
-        <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveMasterAvatar()">Оновити фото</button></div>
+    <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">${_mcAvatar(ms)}
+      <div style="flex:1;min-width:0">
+        <input type="file" id="mcAvatarFile" accept="image/*" style="display:none" onchange="uploadMasterAvatar(this)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('mcAvatarFile').click()">
+            <span class="material-icons-round" style="font-size:16px;vertical-align:-3px">upload</span> Завантажити фото</button>
+          ${ms.avatar?`<button class="btn btn-sm" style="background:#fee2e2;color:#dc2626" onclick="removeMasterAvatar()">Видалити фото</button>`:''}
+        </div>
+        <span id="mcAvatarStatus" style="font-size:12px;color:var(--text-secondary)"></span>
+        <label class="set-l" style="margin-top:8px">або вставити URL</label>
+        <div style="display:flex;gap:8px">
+          <input id="mcAvatar" class="input" value="${_esc(ms.avatar)}" placeholder="https://..." style="flex:1">
+          <button class="btn btn-sm" onclick="saveMasterAvatar()">OK</button>
+        </div>
+      </div>
     </div>
-    <p class="set-p" style="font-size:12px">Галерея «фото робіт» (портфоліо до/після) — у дорожній карті. Зараз доступне фото профілю, яке видно клієнтам в онлайн-записі.</p>`;
+    <p class="set-p" style="font-size:12px">Фото видно клієнтам в онлайн-записі. JPG/PNG/WebP до 10 МБ. Галерея робіт до/після — у дорожній карті.</p>`;
 }
 function _mcTabAccess(){
   const ms = _mcData.ms;
@@ -4529,6 +4581,66 @@ async function saveMasterAvatar(){
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: v||null }) });
     if (!r || !r.ok) { toast('Помилка','error'); return; }
     _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab('photos');
+  } catch(e){ toast('Помилка','error'); }
+}
+async function uploadMasterAvatar(inp){
+  if(!_mcId || !inp.files || !inp.files[0]) return;
+  const file = inp.files[0];
+  const st = document.getElementById('mcAvatarStatus');
+  if (file.size > 10*1024*1024){ if(st) st.textContent='Файл завеликий (макс 10 МБ)'; toast('Файл завеликий','error'); inp.value=''; return; }
+  if (st){ st.textContent='Завантаження…'; st.style.color='var(--text-secondary)'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('is_public', 'true');           // публічне → видно клієнтам в <img> без токена
+    fd.append('entity_type', 'master_avatar');
+    fd.append('entity_id', String(_mcId));
+    const up = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN }, body: fd });
+    const j = await up.json();
+    if (!up.ok || !j.ok || !j.id){ if(st) st.textContent='Помилка завантаження'; toast('Помилка завантаження','error'); inp.value=''; return; }
+    const url = API + '/api/files/' + j.id;
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: url }) });
+    if (!r || !r.ok){ toast('Фото завантажено, але не збереглось','error'); return; }
+    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab('photos');
+  } catch(e){ if(st) st.textContent='Помилка'; toast('Помилка завантаження','error'); }
+  finally { inp.value=''; }
+}
+async function removeMasterAvatar(){
+  if(!_mcId) return;
+  if(!confirm('Видалити фото профілю?')) return;
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: null }) });
+    if (!r || !r.ok){ toast('Помилка','error'); return; }
+    _mcData.ms = r.master; toast('Фото видалено','success'); _mcRenderShell(); mcTab('photos');
+  } catch(e){ toast('Помилка','error'); }
+}
+async function saveMasterOnline(){
+  if(!_mcId) return;
+  const body = {
+    online_booking_enabled: document.getElementById('mcOnEnabled').checked,
+    online_title: document.getElementById('mcOnTitle').value.trim(),
+    online_rank: document.getElementById('mcOnRank').value,
+    online_description: document.getElementById('mcOnDesc').value.trim(),
+  };
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
+    if (!r || !r.ok){ toast('Помилка','error'); return; }
+    _mcData.ms = r.master; toast('Онлайн-запис збережено','success');
+  } catch(e){ toast('Помилка','error'); }
+}
+async function saveMasterNotify(){
+  if(!_mcId) return;
+  const body = {
+    notify_channel: document.getElementById('mcNoChannel').value,
+    notify_telegram: document.getElementById('mcNoTg').value.trim(),
+    notify_new_booking: document.getElementById('mcNoNew').checked,
+    notify_cancellation: document.getElementById('mcNoCancel').checked,
+    notify_reschedule: document.getElementById('mcNoResch').checked,
+  };
+  try {
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
+    if (!r || !r.ok){ toast('Помилка','error'); return; }
+    _mcData.ms = r.master; toast('Оповіщення збережено','success');
   } catch(e){ toast('Помилка','error'); }
 }
 async function toggleMasterActive(id, makeActive){

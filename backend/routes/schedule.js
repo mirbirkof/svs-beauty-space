@@ -166,13 +166,19 @@ router.patch('/masters/:id/profile', async (req, res) => {
   try {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
-    const allowed = ['name', 'surname', 'email', 'category', 'specialty', 'bio', 'phone', 'avatar', 'commission_pct', 'provides_services', 'staff_role'];
+    const allowed = ['name', 'surname', 'email', 'category', 'specialty', 'bio', 'phone', 'avatar', 'commission_pct', 'provides_services', 'staff_role',
+      // онлайн-запис
+      'online_booking_enabled', 'online_rank', 'online_title', 'online_description',
+      // оповіщення
+      'notify_channel', 'notify_telegram', 'notify_new_booking', 'notify_cancellation', 'notify_reschedule'];
+    const boolFields = new Set(['provides_services', 'online_booking_enabled', 'notify_new_booking', 'notify_cancellation', 'notify_reschedule']);
     const sets = [], vals = [];
     for (const f of allowed) {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
         let v = req.body[f];
         if (f === 'commission_pct' && (v === '' || v == null)) v = null;
-        if (f === 'provides_services') v = !!v;
+        if (f === 'online_rank') v = (v === '' || v == null) ? 0 : parseInt(v, 10) || 0;
+        if (boolFields.has(f)) v = !!v;
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
     }
