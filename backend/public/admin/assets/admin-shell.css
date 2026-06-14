@@ -20,6 +20,10 @@
   --radius-sm: 8px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
+/* Корневая защита от горизонтального раздувания: широкие таблицы больше не
+   растягивают страницу за ширину экрана → мобильный viewport стабилен,
+   сайдбар выглядит одинаково на всех страницах каркаса. */
+html, body { overflow-x:hidden; max-width:100%; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
 
 /* SIDEBAR */
@@ -133,13 +137,15 @@ input.inp, select.inp, textarea.inp {
 input.inp:focus, select.inp:focus, textarea.inp:focus { outline:none; border-color:var(--primary); }
 .muted { color:var(--text-secondary); }
 
-/* MOBILE */
-@media (max-width: 900px) {
+/* MOBILE — брейкпоинт 768px синхронизирован с index.html, чтобы меню вело себя одинаково */
+@media (max-width: 768px) {
   .sidebar, .sb-collapsed .sidebar { transform:translateX(-100%); width:240px; }
   .sidebar.open { transform:translateX(0); }
   .main, .sb-collapsed .main { margin-left:0; }
   .burger { display:inline-flex; }
   .sb-toggle { display:none; }
+  /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
+  .content { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   /* На мобільному меню — висувна шторка на всю ширину, icon-rail не діє.
      Перекриваємо базове !important, щоб розкрита група показувала пункти. */
   .sb-collapsed .sidebar-group-items { display:none; }

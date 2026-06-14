@@ -30,6 +30,10 @@
   --radius-sm: 8px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
+/* Корневая защита от горизонтального раздувания: широкие таблицы больше не
+   растягивают страницу за ширину экрана → мобильный viewport стабилен,
+   сайдбар не «прыгает» в размере между страницами. */
+html, body { overflow-x:hidden; max-width:100%; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
 
 /* SIDEBAR */
@@ -209,6 +213,8 @@ select.input { background:var(--card); }
   .main, .sb-collapsed .main { margin-left:0; }
   .mobile-toggle { display:flex; }
   .sb-toggle { display:none; }
+  /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
+  .content { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
      Перекриваємо базове правило з !important, щоб розкрита група показувала пункти. */
   .sb-collapsed .sidebar-group-items { display:none; }
