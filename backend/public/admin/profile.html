@@ -53,7 +53,7 @@
         <input id="cur" class="inp" type="password" placeholder="••••" autocomplete="current-password">
       </div>
 
-      <label for="np">Новий пароль (мінімум 4 символи)</label>
+      <label for="np">Новий пароль (мінімум 6 символів)</label>
       <input id="np" class="inp" type="password" placeholder="••••" autocomplete="new-password">
 
       <label for="np2">Повторіть новий пароль</label>
@@ -93,7 +93,7 @@ async function loadMe() {
 
 $('save').addEventListener('click', async () => {
   const np = $('np').value, np2 = $('np2').value;
-  if (np.length < 4) { showMsg('err', 'Пароль мінімум 4 символи'); return; }
+  if (np.length < 6) { showMsg('err', 'Пароль мінімум 6 символів'); return; }
   if (np !== np2) { showMsg('err', 'Паролі не співпадають'); return; }
   $('save').disabled = true;
   try {
@@ -110,7 +110,7 @@ $('save').addEventListener('click', async () => {
     } else if (data.error === 'current-password-wrong') {
       showMsg('err', 'Невірний поточний пароль');
     } else if (data.error === 'password-too-short') {
-      showMsg('err', 'Пароль мінімум 4 символи');
+      showMsg('err', 'Пароль мінімум 6 символів');
     } else if (r.status === 401) {
       localStorage.removeItem('svs_admin_token'); location.href = '/admin/login.html';
     } else {

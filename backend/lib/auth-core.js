@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 const ACCESS_TTL_SEC = 15 * 60;                 // 15 минут
 const REFRESH_TTL_DAYS_DEFAULT = 14;            // обычная сессия
 const REFRESH_TTL_DAYS_REMEMBER = 30;           // "Запам'ятати мене"
-const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MIN_LENGTH = 6;
 const PASSWORD_HISTORY_DEPTH = 5;               // не повторять последние 5
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -42,14 +42,11 @@ async function verifyPassword(plain, hash) {
   catch { return false; }
 }
 
-// Минимальные требования: 8+ символов, заглавная, строчная, цифра
+// Минимальное требование: 6+ любых символов (по решению владельца)
 function checkPasswordComplexity(pwd) {
   const s = String(pwd || '');
   const errors = [];
   if (s.length < PASSWORD_MIN_LENGTH) errors.push(`min-length-${PASSWORD_MIN_LENGTH}`);
-  if (!/[A-ZА-ЯҐІЇЄ]/.test(s)) errors.push('no-uppercase');
-  if (!/[a-zа-яґіїє]/.test(s)) errors.push('no-lowercase');
-  if (!/[0-9]/.test(s)) errors.push('no-digit');
   return { ok: errors.length === 0, errors };
 }
 

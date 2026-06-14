@@ -445,7 +445,7 @@ router.post('/set-password', async (req, res) => {
     if (!me) return res.status(401).json({ error: 'unauthorized' });
 
     const next = String(req.body?.password || '');
-    if (next.length < 4) return res.status(400).json({ error: 'password-too-short', message: 'Мінімум 4 символи' });
+    if (next.length < 6) return res.status(400).json({ error: 'password-too-short', message: 'Мінімум 6 символів' });
 
     // Если пароль уже установлен — проверяем текущий (защита от смены чужой открытой сессией)
     if (me.password_hash) {

@@ -237,7 +237,7 @@ input:focus,select:focus{outline:none;border-color:var(--p)}
       </span>
       <button class="btn" onclick="createUser()">Створити</button>
     </div>
-    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мін. 8 символів, велика+мала літера, цифра. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
+    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мінімум 6 символів. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
   </div>
   <div class="card">
     <h2>Майстри салону <span id="m-count" style="font-size:13px;color:#888;font-weight:400"></span></h2>
@@ -714,14 +714,11 @@ async function loadUsers(){
 }
 function pwIssues(p){
   const e=[];
-  if((p||'').length<8) e.push('мін. 8 символів');
-  if(!/[A-ZА-ЯҐІЇЄ]/.test(p||'')) e.push('велика літера');
-  if(!/[a-zа-яґіїє]/.test(p||'')) e.push('мала літера');
-  if(!/[0-9]/.test(p||'')) e.push('цифра');
+  if((p||'').length<6) e.push('мін. 6 символів');
   return e;
 }
 function pwError(e){
-  if(e && e.message==='weak-password') return 'Пароль заслабкий. Потрібно: мін. 8 символів, велика та мала літера, цифра. Напр.: Salon2026';
+  if(e && e.message==='weak-password') return 'Пароль закороткий. Потрібно: мінімум 6 символів.';
   return (e&&e.message)||'Помилка';
 }
 async function createUser(){
@@ -745,7 +742,7 @@ async function createUser(){
   }catch(e){ alert(pwError(e)); }
 }
 async function setPassword(uid){
-  const password = prompt('Новий пароль (мін. 8 символів, велика+мала літера, цифра):');
+  const password = prompt('Новий пароль (мінімум 6 символів):');
   if(!password) return;
   const iss=pwIssues(password); if(iss.length) return alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад: Salon2026');
   try{ await api('/api/users/'+uid+'/password',{method:'POST',body:JSON.stringify({password})}); alert('Пароль встановлено'); loadUsers(); }
