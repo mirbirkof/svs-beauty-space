@@ -209,8 +209,11 @@ select.input { background:var(--card); }
   .main, .sb-collapsed .main { margin-left:0; }
   .mobile-toggle { display:flex; }
   .sb-toggle { display:none; }
+  /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
+     Перекриваємо базове правило з !important, щоб розкрита група показувала пункти. */
   .sb-collapsed .sidebar-group-items { display:none; }
-  .sb-collapsed .sidebar-item, .sb-collapsed .sidebar-group-header { font-size:13px; gap:10px; justify-content:flex-start; padding:9px 16px; }
+  .sb-collapsed .sidebar-group.open .sidebar-group-items { display:block !important; }
+  .sb-collapsed .sidebar-item, .sb-collapsed .sidebar-group-header { font-size:14px; gap:11px; justify-content:flex-start; padding:10px 16px; }
   .sb-collapsed .sidebar-logo h1 { font-size:16px; }
   .sb-collapsed .sidebar-logo h1::after { content:""; }
   .sb-collapsed .sidebar-footer button { font-size:13px; }
