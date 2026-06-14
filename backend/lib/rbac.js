@@ -73,6 +73,15 @@ async function logAction({ user, action, entity, entity_id, ip, meta }) {
       [user?.id || null, user?.display_name || 'anon', action, entity || null, entity_id || null, ip || null, meta ? JSON.stringify(meta) : null]
     );
   } catch (e) { /* не валим основной запрос */ }
+  // INF-01: публикуем доменное событие в шину (best-effort, never throws).
+  // Ленивый require, чтобы избежать циклов и не падать, если шина недоступна.
+  try {
+    const bus = require('./event-bus');
+    bus.emit(`audit.${action}`, { entity, entity_id, meta }, {
+      entityType: entity || null, entityId: entity_id || null,
+      actor: user?.display_name || 'anon',
+    });
+  } catch (_) { /* шина опциональна */ }
 }
 
 module.exports = { requirePerm, resolveUserByToken, hasPermission, logAction, sha256 };
