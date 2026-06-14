@@ -272,6 +272,11 @@ select.input { background:var(--card); }
 .jslot.jbook:hover { background:var(--primary-light); box-shadow:inset 0 0 0 1px var(--primary); }
 .jslot.jbook:hover::after { content:'+'; color:var(--primary); font-weight:700; display:flex; align-items:center; justify-content:center; height:100%; font-size:16px; }
 .jbreak { position:absolute; left:0; right:0; background:repeating-linear-gradient(45deg,rgba(0,0,0,.04),rgba(0,0,0,.04) 6px,transparent 6px,transparent 12px); z-index:1; }
+.jblock { position:absolute; left:1px; right:1px; z-index:5; cursor:pointer; overflow:hidden;
+  background:repeating-linear-gradient(45deg,rgba(120,120,135,.32),rgba(120,120,135,.32) 7px,rgba(120,120,135,.16) 7px,rgba(120,120,135,.16) 14px);
+  border:1px solid rgba(90,90,110,.45); border-radius:5px; color:#444; font-size:11px; font-weight:600;
+  display:flex; align-items:center; gap:3px; padding:2px 5px; box-sizing:border-box; }
+.jblock:hover { filter:brightness(.94); }
 .jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; }
 .jappt:hover { transform:scale(1.015); z-index:5; }
 .jappt .t { font-weight:700; font-size:11px; opacity:.95; }
@@ -829,6 +834,7 @@ select.input { background:var(--card); }
             <select id="journalFocus" class="input btn-sm" style="max-width:160px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
               <option value="">Усі майстри</option>
             </select>
+            <button class="btn btn-outline btn-sm" onclick="openBlockModal()" title="Заблокувати час майстра"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">lock</span> Блокувати</button>
             <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Запис</button>
           </div>
         </div>
@@ -3429,6 +3435,8 @@ function renderJournalDay(container, data) {
 
   const apptByMaster = {};
   appts.forEach(a => { (apptByMaster[a.master_id] = apptByMaster[a.master_id]||[]).push(a); });
+  const blockByMaster = {};
+  (data.blocks || []).forEach(b => { (blockByMaster[b.master_id] = blockByMaster[b.master_id]||[]).push(b); });
 
   // часова колонка
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
@@ -3471,6 +3479,14 @@ function renderJournalDay(container, data) {
       const bs=_hm2(m.break_start), be=_hm2(m.break_end);
       body += `<div class="jbreak" style="top:${(bs-minM)*J_PX_PER_MIN}px;height:${(be-bs)*J_PX_PER_MIN}px"></div>`;
     }
+    // блокування часу (CRM-06 06.05) — клік знімає
+    (blockByMaster[m.id]||[]).forEach(b => {
+      const bs=_hm(b.starts_at), be=_hm(b.ends_at);
+      const top=Math.max((bs-minM)*J_PX_PER_MIN,0), h=Math.max((Math.min(be,maxM)-Math.max(bs,minM))*J_PX_PER_MIN, 18);
+      const lbl = BLOCK_LABELS[b.block_type]||'Зайнято';
+      body += `<div class="jblock" style="top:${top}px;height:${h}px" title="${lbl}${b.reason?': '+String(b.reason).replace(/"/g,'&quot;'):''} — клік щоб зняти" onclick="jRemoveBlock(${b.id})">
+        <span class="material-icons-round" style="font-size:13px">lock</span> ${lbl}${b.reason?' · '+b.reason:''}</div>`;
+    });
     // картки записів (draggable — перенос на інший час/майстра)
     mAppts.forEach(a => {
       const s=_hm(a.starts_at), e=_hm(a.ends_at);
@@ -3563,6 +3579,48 @@ async function jDrop(ev) {
     if (r.ok) loadJournal();
     else alert(r.error || 'Не вдалося перенести запис');
   } catch { alert('Помилка мережі'); }
+}
+
+// ── Блокування часу (CRM-06 06.05) ──
+const BLOCK_LABELS = { busy:'Зайнято', break:'Перерва', vacation:'Відпустка', sick:'Лікарняний', other:'Інше' };
+async function jRemoveBlock(id){
+  if (!confirm('Зняти блокування часу?')) return;
+  try { const r = await api('/api/schedule/blocks/'+id, { method:'DELETE' });
+    if (r.ok) loadJournal(); else toast(r.error||'Помилка','error');
+  } catch { toast('Помилка мережі','error'); }
+}
+function openBlockModal(){
+  const ms = (journalData && journalData.masters || []);
+  if (!ms.length) { toast('Немає майстрів на цей день','error'); return; }
+  const dateStr = document.getElementById('journalDate').value || _ymd(new Date());
+  const opts = ms.map(m=>`<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  const typeOpts = Object.keys(BLOCK_LABELS).map(k=>`<option value="${k}">${BLOCK_LABELS[k]}</option>`).join('');
+  showModal('Блокувати час · '+dateStr, `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><label style="font-size:12px;color:var(--text-secondary)">Майстер</label>
+        <select id="blkMaster" class="input">${opts}</select></div>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1"><label style="font-size:12px;color:var(--text-secondary)">З</label>
+          <input id="blkStart" type="time" class="input" value="12:00" step="900"></div>
+        <div style="flex:1"><label style="font-size:12px;color:var(--text-secondary)">До</label>
+          <input id="blkEnd" type="time" class="input" value="13:00" step="900"></div>
+      </div>
+      <div><label style="font-size:12px;color:var(--text-secondary)">Тип</label>
+        <select id="blkType" class="input">${typeOpts}</select></div>
+      <div><label style="font-size:12px;color:var(--text-secondary)">Причина (необовʼязково)</label>
+        <input id="blkReason" class="input" placeholder="напр. навчання, особисте…"></div>
+    </div>`, async () => {
+      const mid = document.getElementById('blkMaster').value;
+      const st = document.getElementById('blkStart').value;
+      const en = document.getElementById('blkEnd').value;
+      if (!mid || !st || !en) { toast('Заповніть поля','error'); throw new Error('skip'); }
+      if (en <= st) { toast('Час «До» має бути пізніше','error'); throw new Error('skip'); }
+      const body = { master_id: Number(mid), starts_at: `${dateStr}T${st}:00`, ends_at: `${dateStr}T${en}:00`,
+                     block_type: document.getElementById('blkType').value, reason: document.getElementById('blkReason').value.trim() || null };
+      const r = await api('/api/schedule/blocks', { method:'POST', body: JSON.stringify(body) });
+      if (r.ok) { loadJournal(); toast('Час заблоковано','ok'); }
+      else { toast(r.error||'Помилка','error'); throw new Error('fail'); }
+  });
 }
 
 // ── Тижневий огляд: дні колонками, всі записи салону ──
