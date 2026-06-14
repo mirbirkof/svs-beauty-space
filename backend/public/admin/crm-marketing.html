@@ -73,6 +73,11 @@ textarea.inp{resize:vertical}
 .switch input:checked+.sl:before{transform:translateX(18px)}
 .cond-row{display:grid;grid-template-columns:1.3fr 1fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:center}
 @media(max-width:700px){.cond-row{grid-template-columns:1fr 1fr}}
+/* Єдиний каркас: уся навігація — в лівому меню (admin-shell, дзеркало index.html).
+   Власний верхній header і горизонтальні вкладки приховані — дублювали сайдбар.
+   Перемикання розділів працює через ліве меню (#hash). */
+header, nav.tabs { display:none !important; }
+main { padding:24px 0; }
 </style>
 </head>
 <body>

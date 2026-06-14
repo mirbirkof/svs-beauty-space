@@ -67,6 +67,11 @@ textarea.inp{resize:vertical}
 .status{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px}
 .status.ok{background:#E0F8EB;color:#0F8E48}
 .status.err{background:#FCE7E8;color:#A8252C}
+/* Єдиний каркас: уся навігація — в лівому меню (admin-shell, дзеркало index.html).
+   Власний верхній header і горизонтальні вкладки приховані — вони дублювали
+   сайдбар та кнопку «Вийти». Перемикання розділів працює через ліве меню (#hash). */
+header, nav.tabs { display:none !important; }
+main { padding:24px 0; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>

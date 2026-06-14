@@ -165,6 +165,19 @@
     if (!aside.contains(e.target) && !e.target.closest('.burger')) aside.classList.remove('open');
   });
 
+  // Заголовок topbar = активний розділ. На сторінках, де власні вкладки приховані
+  // (навігація йде з лівого меню через #hash), синхронізуємо заголовок з активною вкладкою.
+  const titleEl = main.querySelector('.topbar h2');
+  if (document.querySelector('nav.tabs') && titleEl) {
+    const syncTabTitle = () => {
+      const a = document.querySelector('nav.tabs button.active');
+      if (a) titleEl.textContent = a.textContent.trim();
+    };
+    syncTabTitle();
+    window.addEventListener('hashchange', () => setTimeout(syncTabTitle, 40));
+    document.addEventListener('click', (e) => { if (e.target.closest('nav.tabs button')) setTimeout(syncTabTitle, 40); });
+  }
+
   // Шрифты/иконки, если страница их не подключила
   if (!document.querySelector('link[href*="Material+Icons"]')) {
     const l = document.createElement('link');
