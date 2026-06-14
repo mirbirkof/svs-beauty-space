@@ -362,9 +362,9 @@ select.input { background:var(--card); }
 .sch-times .input { width:104px; }
 .sch-brk { font-size:11px; color:var(--text-secondary); margin-left:8px; }
 /* ── DIKIDI-style зведена дошка графіка ── */
-.schboard { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
-.schboard-grid { display:grid; grid-template-columns:200px repeat(7, minmax(72px,1fr)); }
-.schb-cell { padding:8px 6px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:46px; display:flex; flex-direction:column; justify-content:center; }
+.schboard { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:#fff; }
+.schboard-grid { display:grid; grid-template-columns:210px repeat(7, minmax(86px,1fr)); min-width:812px; }
+.schb-cell { padding:8px 6px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:46px; display:flex; flex-direction:column; justify-content:center; overflow:hidden; }
 .schb-cell:nth-child(8n) { border-right:none; }
 .schb-head { background:#f6f7fb; font-weight:600; font-size:12px; color:var(--text-secondary); text-align:center; text-transform:uppercase; letter-spacing:.3px; align-items:center; }
 .schb-head.wknd { color:#d9534f; }
@@ -373,18 +373,18 @@ select.input { background:var(--card); }
 .schb-name:hover { background:#eef0fb; }
 .schb-av { width:30px; height:30px; border-radius:50%; flex:0 0 30px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:12px; overflow:hidden; }
 .schb-av img { width:100%; height:100%; object-fit:cover; }
-.schb-nm { font-weight:600; font-size:13.5px; line-height:1.15; min-width:0; }
-.schb-meta { font-size:11px; color:var(--text-secondary); margin-top:1px; }
+.schb-nm { display:block; font-weight:600; font-size:13.5px; line-height:1.2; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.schb-meta { display:block; font-size:11px; color:var(--text-secondary); margin-top:2px; line-height:1.25; }
 .schb-day { text-align:center; align-items:center; }
 .schb-day.wknd { background:#fdf6f6; }
 .schb-day.today { background:#f0f1fc; }
-.schb-pill { display:inline-block; padding:3px 7px; border-radius:7px; font-size:11.5px; font-weight:600; background:rgba(16,185,129,.12); color:#0a8f5f; white-space:nowrap; line-height:1.35; }
+.schb-pill { display:inline-block; max-width:100%; padding:3px 6px; border-radius:7px; font-size:11px; font-weight:600; background:rgba(16,185,129,.12); color:#0a8f5f; white-space:nowrap; line-height:1.35; }
 .schb-pill .brk { display:block; font-size:9.5px; font-weight:500; color:#9a8a3a; }
 .schb-off { color:#cfd2e0; font-size:14px; }
 .schb-row-off .schb-name { background:#fff5f5; }
 @media(max-width:768px){
   .schboard { overflow-x:auto; }
-  .schboard-grid { grid-template-columns:130px repeat(7, 64px); min-width:600px; }
+  .schboard-grid { grid-template-columns:140px repeat(7, 82px); min-width:714px; }
   .schb-nm { font-size:12px; }
 }
 .jappt.dragging { opacity:.45; }
@@ -1992,10 +1992,11 @@ function renderScheduleOverview(grid) {
       return `<div class="${cls}"><span class="schb-off">·</span></div>`;
     }).join('');
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0].toUpperCase();
-    const hrs = totalMin>0 ? `${Math.floor(totalMin/60)}год${totalMin%60?' '+(totalMin%60)+'хв':''} · ${workDays} ${_plural(workDays,'день','дні','днів')}` : 'вихідні';
+    const H = Math.floor(totalMin/60), Mn = totalMin%60;
+    const hrs = totalMin>0 ? `${workDays} ${_plural(workDays,'день','дні','днів')}/тиж · ${H} год${Mn?' '+Mn+'хв':''}` : 'вихідні';
     return `<div class="schb-cell schb-name${workDays?'':' schb-row-off'}" onclick="document.getElementById('schMaster').value='${m.id}';loadSchedule()">
         <span class="schb-av" style="background:${_schAvColor(m.name)}">${av}</span>
-        <span style="min-width:0"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty||''}${m.specialty?' · ':''}${hrs}/тиж</span></span>
+        <span style="min-width:0;overflow:hidden"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty?m.specialty+' · ':''}${hrs}</span></span>
       </div>${cells}`;
   }).join('');
   grid.innerHTML = `<div class="schboard"><div class="schboard-grid">${head}${rows}</div></div>
