@@ -76,20 +76,29 @@ function buildChain({ explicitChannel, prefs, settings, client }) {
   if (explicitChannel) chain = [explicitChannel];
   else if (prefs?.channel_priority?.length) chain = prefs.channel_priority;
   else chain = settings?.default_chain?.length ? settings.default_chain : ['telegram', 'sms', 'email'];
-  return chain.filter((ch) => recipientFor(ch, client));
+  const live = channelStatus();
+  // только каналы, для которых есть адрес у клиента И провайдер настроен
+  return chain.filter((ch) => recipientFor(ch, client) && live[ch] !== false);
 }
 
 // ── Каналы доставки (адаптеры) ──────────────────────────────────────
 // COM-02 SMS / COM-03 Email подключатся сюда же.
+const smsChannel = require('./channels/sms-twilio');
+const emailChannel = require('./channels/email-resend');
 const channels = {
   telegram: async (to, { body }) => {
     const res = await tgSend(to, body);
     return { providerId: res?.message_id ? String(res.message_id) : null };
   },
-  sms: async () => { throw new Error('channel-sms-not-configured'); },
-  email: async () => { throw new Error('channel-email-not-configured'); },
+  sms: (to, msg) => smsChannel.send(to, msg),
+  email: (to, msg) => emailChannel.send(to, msg),
 };
 function registerChannel(name, fn) { channels[name] = fn; }
+
+// Какие каналы реально настроены (для UI/health и оптимизации цепочек)
+function channelStatus() {
+  return { telegram: true, sms: smsChannel.isConfigured(), email: emailChannel.isConfigured() };
+}
 
 async function getSettings(pool) {
   const r = await pool.query(`SELECT * FROM notification_settings WHERE tenant_id = $1`, [DEFAULT_TENANT]);
@@ -311,6 +320,6 @@ async function processQueue(limit = 30) {
 }
 
 module.exports = {
-  enqueue, processQueue, renderTemplate, registerChannel,
+  enqueue, processQueue, renderTemplate, registerChannel, channelStatus,
   recipientFor, getSettings, PRIORITY, DEFAULT_TENANT,
 };

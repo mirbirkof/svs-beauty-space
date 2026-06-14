@@ -176,7 +176,7 @@ router.patch('/prefs/:clientId', requirePerm('notify.write'), async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.get('/health', (req, res) => res.json({ ok: true, worker_active: !!cronRef }));
+router.get('/health', (req, res) => res.json({ ok: true, worker_active: !!cronRef, channels: hub.channelStatus() }));
 
 // ── Cron-воркер ─────────────────────────────────────────────────────
 async function workerTick() {
