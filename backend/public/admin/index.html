@@ -213,13 +213,17 @@ select.input { background:var(--card); }
 /* MOBILE */
 .mobile-toggle { display:none; background:none; border:none; cursor:pointer; color:var(--text); }
 @media(max-width:768px) {
+  /* Залізна страховка: на мобільному жоден елемент не може розпирати сторінку за екран.
+     Off-canvas сайдбар лежить за лівим краєм (translateX -100%) і лишається прихованим;
+     внутрішні скроли (.jgrid, .content) працюють незалежно. */
+  html, body { overflow-x:hidden; max-width:100vw; }
   .sidebar, .sb-collapsed .sidebar { transform:translateX(-100%); width:240px; }
   .sidebar.open { transform:translateX(0); }
-  .main, .sb-collapsed .main { margin-left:0; }
+  .main, .sb-collapsed .main { margin-left:0; max-width:100vw; min-width:0; }
   .mobile-toggle { display:flex; }
   .sb-toggle { display:none; }
   /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
-  .content { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .content { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100vw; }
   /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
      Перекриваємо базове правило з !important, щоб розкрита група показувала пункти. */
   .sb-collapsed .sidebar-group-items { display:none; }
