@@ -44,19 +44,47 @@ router.get('/masters', async (req, res) => {
       wd[key] = wd[key] || {};
       wd[key][slot] = (wd[key][slot] || 0) + 1;
     }
+
+    // BeautyPro формально віддає графік лише для 2 майстрів (решта працюють,
+    // але графік у BP не заведений). Щоб дошка була повна і ПРАВДИВА — для решти
+    // виводимо реальні робочі години з фактичних записів: для кожного дня тижня
+    // беремо найраніший початок і найпізніший кінець записів за останні 8 тижнів,
+    // якщо майстер працював у цей день ≥2 різних дат (відсікає випадкові одиничні).
+    const realRes = await pool.query(
+      `SELECT master_id, EXTRACT(DOW FROM (starts_at AT TIME ZONE 'Europe/Kyiv'))::int AS dow,
+              to_char(MIN((starts_at AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS start,
+              to_char(MAX((COALESCE(ends_at, starts_at + interval '1 hour') AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS end,
+              COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kyiv')::date) AS days
+         FROM appointments
+        WHERE starts_at >= CURRENT_DATE - 56 AND starts_at < CURRENT_DATE + 35
+          AND master_id IS NOT NULL
+          AND COALESCE(status,'') NOT IN ('cancelled','noshow')
+        GROUP BY master_id, dow
+       HAVING COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kyiv')::date) >= 2`
+    );
+    const real = new Map(); // master -> { mon: {start,end} }
+    for (const row of realRes.rows) {
+      if (!real.has(row.master_id)) real.set(row.master_id, {});
+      real.get(row.master_id)[DAYK[row.dow]] = { start: row.start, end: row.end };
+    }
+
     const items = r.rows.map((m) => {
       const tmpl = m.schedule_json || {};
       const wd = agg.get(m.id) || {};
+      const rl = real.get(m.id) || {};
       const week = {};
       ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
         if (wd[k]) {
-          // найчастіша зміна для цього дня тижня
+          // найчастіша зміна для цього дня тижня (графік BeautyPro — пріоритет)
           const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0];
           const [start, end] = best.split('-');
           week[k] = { start, end, source: 'beautypro' };
         } else if (tmpl[k]) {
           week[k] = { start: tmpl[k].start, end: tmpl[k].end,
             break_start: tmpl[k].break_start || null, break_end: tmpl[k].break_end || null, source: 'template' };
+        } else if (rl[k]) {
+          // фактичні робочі години з записів (BP графік відсутній)
+          week[k] = { start: rl[k].start, end: rl[k].end, source: 'auto' };
         } else { week[k] = null; }
       });
       return { ...m, week };
