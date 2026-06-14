@@ -29,6 +29,7 @@
       { icon: 'history', label: 'Нагадування (записи)', href: '/admin/index.html#reminders' },
     ] },
     { icon: 'payments', label: 'Зарплата', href: '/admin/index.html#payroll' },
+    { icon: 'flag', label: 'План місяця', href: '/admin/index.html#plan' },
     { group: 'Продажі', icon: 'sell', items: [
       { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
       { icon: 'point_of_sale', label: 'Каса магазину', href: '/admin/crm-extra.html#cashbox' },

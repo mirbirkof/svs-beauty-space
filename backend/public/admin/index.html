@@ -513,10 +513,30 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- Повідомлення -->
-      <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
-        <span class="material-icons-round">notifications_active</span> Повідомлення
-      </a>
+      <!-- Маркетинг -->
+      <div class="sidebar-group" id="grp-marketing">
+        <div class="sidebar-group-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="material-icons-round">campaign</span> Маркетинг
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" href="/admin/crm-marketing.html#center">
+            <span class="material-icons-round">notifications_active</span> Центр повідомлень
+          </a>
+          <a class="sidebar-item" href="/admin/crm-marketing.html#segments">
+            <span class="material-icons-round">groups</span> Сегменти
+          </a>
+          <a class="sidebar-item" href="/admin/crm-marketing.html#campaigns">
+            <span class="material-icons-round">send</span> Кампанії / Розсилки
+          </a>
+          <a class="sidebar-item" href="/admin/crm-marketing.html#triggers">
+            <span class="material-icons-round">bolt</span> Авто-тригери
+          </a>
+          <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
+            <span class="material-icons-round">history</span> Нагадування (записи)
+          </a>
+        </div>
+      </div>
 
       <!-- Зарплата -->
       <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
