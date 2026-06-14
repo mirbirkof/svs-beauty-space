@@ -558,7 +558,61 @@ router.get('/journal', async (req, res) => {
       if (see !== true) appts = appts.map(a => ({ ...a, client_phone: maskPhone(a.client_phone), phone_hidden: true }));
     }
 
-    res.json({ date, day: dayKey, masters, appointments: appts, count: appts.length });
+    // блокування часу на цей день (CRM-06 06.05)
+    let blocks = [];
+    try {
+      const blkRes = await pool.query(
+        `SELECT id, master_id, starts_at, ends_at, reason, block_type
+           FROM time_blocks
+          WHERE starts_at < ($1::date + INTERVAL '1 day')
+            AND ends_at   > $1::date
+            ${masterOnly ? 'AND master_id = $2' : ''}
+          ORDER BY starts_at`,
+        masterOnly ? [date, masterOnly] : [date]
+      );
+      blocks = blkRes.rows;
+    } catch (_) { /* міграція 050 ще не застосована */ }
+
+    res.json({ date, day: dayKey, masters, appointments: appts, blocks, count: appts.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/schedule/blocks — заблокувати час майстра (CRM-06 06.05) ──
+// Body: { master_id, starts_at, ends_at, reason?, block_type? }
+router.post('/blocks', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { master_id, starts_at, ends_at, reason, block_type } = req.body || {};
+    if (!master_id || !starts_at || !ends_at) return res.status(400).json({ error: 'master_id, starts_at, ends_at обовʼязкові' });
+    const sd = new Date(starts_at), ed = new Date(ends_at);
+    if (isNaN(sd) || isNaN(ed)) return res.status(400).json({ error: 'bad-date' });
+    if (ed <= sd) return res.status(400).json({ error: 'ends_at має бути пізніше starts_at' });
+    const allowed = ['busy', 'break', 'vacation', 'sick', 'other'];
+    const type = allowed.includes(block_type) ? block_type : 'busy';
+    // майстер може блокувати лише власний час
+    if (req.user && req.user.role === 'master' && req.user.master_id && Number(req.user.master_id) !== Number(master_id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    const r = await pool.query(
+      `INSERT INTO time_blocks (master_id, starts_at, ends_at, reason, block_type, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [master_id, sd.toISOString(), ed.toISOString(), reason || null, type, (req.user && req.user.display_name) || null]
+    );
+    res.json({ ok: true, block: r.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DELETE /api/schedule/blocks/:id — зняти блокування ──
+router.delete('/blocks/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    if (req.user && req.user.role === 'master' && req.user.master_id) {
+      const own = await pool.query(`SELECT 1 FROM time_blocks WHERE id=$1 AND master_id=$2`, [id, req.user.master_id]);
+      if (own.rowCount === 0) return res.status(403).json({ error: 'forbidden' });
+    }
+    await pool.query(`DELETE FROM time_blocks WHERE id=$1`, [id]);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
