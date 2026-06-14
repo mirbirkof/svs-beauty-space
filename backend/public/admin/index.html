@@ -2109,7 +2109,7 @@ async function _svcRenderMp(id,mp){
     mp.map(m=>'<tr><td>'+escapeHtml(m.master_name)+'</td><td>'+(m.price!=null?_svcMoney(m.price):'базова')+'</td><td>'+(m.duration_min||'базова')+'</td>'+
       '<td><button class="btn btn-outline" style="padding:2px 7px" onclick="svcMpDel('+id+','+m.id+')">✕</button></td></tr>').join('')+'</tbody></table>':'<p style="opacity:.6;font-size:13px">Індивідуальних цін немає (діє базова)</p>')+
     '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
-      '<select id="svcMpMaster" class="input" style="flex:2;min-width:140px">'+_svcMasters.map(m=>'<option value="'+m.id+'">'+escapeHtml(m.name)+'</option>').join('')+'</select>'+
+      '<select id="svcMpMaster" class="input" style="flex:2;min-width:140px">'+_svcMasters.filter(m=>m.provides_services!==false).map(m=>'<option value="'+m.id+'">'+escapeHtml(m.name)+'</option>').join('')+'</select>'+
       '<input id="svcMpPrice" class="input" type="number" placeholder="Ціна" style="width:90px">'+
       '<input id="svcMpDur" class="input" type="number" placeholder="Хв" style="width:70px">'+
       '<button class="btn btn-primary" onclick="svcMpAdd('+id+')">Додати</button>'+
@@ -4317,6 +4317,7 @@ async function openMasterCard(id){
           <div style="font-size:20px;font-weight:700;line-height:1.2">${ms.name||'—'}</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
             <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
+            ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
             ${bpBadge}
             <span style="font-size:12px;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
           </div>
@@ -4344,6 +4345,9 @@ async function openMasterCard(id){
           </div>
           <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Біо / опис</label>
             <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
+          <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px">
+            <span>Надає послуги <span style="color:var(--text-secondary)">(якщо вимкнено — це адміністратор: не показується в журналі та онлайн-записі)</span></span></label>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти</button>
             <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
@@ -4358,12 +4362,15 @@ async function openMasterCard(id){
 }
 async function saveMasterCard(){
   if(!_mcId) return;
+  const provides = document.getElementById('mcProvides').checked;
   const body = {
     name: document.getElementById('mcName').value.trim(),
     specialty: document.getElementById('mcSpec').value.trim(),
     phone: document.getElementById('mcPhone').value.trim(),
     bio: document.getElementById('mcBio').value.trim(),
     commission_pct: document.getElementById('mcComm').value || null,
+    provides_services: provides,
+    staff_role: provides ? 'master' : 'admin',
   };
   try {
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });

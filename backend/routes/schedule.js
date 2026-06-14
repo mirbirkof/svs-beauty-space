@@ -20,7 +20,8 @@ router.get('/masters', async (req, res) => {
     const pool = getPool();
     const all = req.query.all === '1' || req.query.all === 'true';
     const r = await pool.query(
-      `SELECT id, name, specialty, avatar, schedule_json, active, beautypro_id
+      `SELECT id, name, specialty, avatar, schedule_json, active, beautypro_id,
+              COALESCE(provides_services, true) AS provides_services, staff_role
          FROM masters ${all ? '' : 'WHERE active = true'} ORDER BY active DESC, name`
     );
     // Типовий тижневий графік: агрегуємо реальні зміни з BeautyPro (master_schedule_days)
@@ -165,12 +166,13 @@ router.patch('/masters/:id/profile', async (req, res) => {
   try {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
-    const allowed = ['name', 'specialty', 'bio', 'phone', 'commission_pct'];
+    const allowed = ['name', 'specialty', 'bio', 'phone', 'commission_pct', 'provides_services', 'staff_role'];
     const sets = [], vals = [];
     for (const f of allowed) {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
         let v = req.body[f];
         if (f === 'commission_pct' && (v === '' || v == null)) v = null;
+        if (f === 'provides_services') v = !!v;
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
     }
@@ -265,7 +267,7 @@ router.get('/month', async (req, res) => {
     for (let d = 1; d <= daysInMonth; d++) dates.push(`${ym}-${String(d).padStart(2, '0')}`);
 
     const mrows = (await pool.query(
-      `SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true ORDER BY name`
+      `SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true AND COALESCE(provides_services, true) = true ORDER BY name`
     )).rows;
 
     // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з BeautyPro)
@@ -390,7 +392,7 @@ router.get('/availability', async (req, res) => {
     const dayOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(date).getDay()];
 
     const masters = await pool.query(
-      'SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true'
+      'SELECT id, name, specialty, avatar, schedule_json FROM masters WHERE active = true AND COALESCE(provides_services, true) = true'
     );
 
     const available = [];
@@ -470,7 +472,7 @@ router.get('/journal', async (req, res) => {
     // майстри + їх робочий час на цей день тижня
     const mRes = await pool.query(
       `SELECT id, name, specialty, avatar, schedule_json FROM masters
-        WHERE active = true ${masterOnly ? 'AND id = $1' : ''} ORDER BY name`,
+        WHERE active = true AND COALESCE(provides_services, true) = true ${masterOnly ? 'AND id = $1' : ''} ORDER BY name`,
       masterOnly ? [masterOnly] : []
     );
     // реальний графік з BeautyPro на цю дату (пріоритет над тижневим schedule_json)
