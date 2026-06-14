@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Ваш відгук — SVS Beauty</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root{ --bg:#f6f4f1; --card:#fff; --ink:#1f1b18; --muted:#8a817a; --gold:#c8a45c; --line:#ece7e1; --bad:#d9534f; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:var(--card);max-width:440px;width:100%;border-radius:22px;padding:30px 26px;box-shadow:0 18px 50px rgba(0,0,0,.08);text-align:center}
+  .logo{font-weight:700;font-size:15px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px}
+  h1{font-size:22px;margin:6px 0 4px;font-weight:600}
+  p.sub{color:var(--muted);font-size:14px;margin:0 0 22px}
+  .stars{display:flex;justify-content:center;gap:8px;margin:18px 0 6px}
+  .star{font-size:42px;cursor:pointer;color:#dcd5cc;transition:transform .12s, color .12s;user-select:none;line-height:1}
+  .star:hover{transform:scale(1.12)}
+  .star.on{color:var(--gold)}
+  .hint{font-size:13px;color:var(--muted);min-height:18px;margin-top:4px}
+  textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-family:inherit;font-size:15px;resize:vertical;min-height:96px;margin-top:14px;outline:none}
+  textarea:focus{border-color:var(--gold)}
+  button{width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:16px;transition:opacity .15s}
+  .btn-primary{background:var(--ink);color:#fff}
+  .btn-gold{background:var(--gold);color:#fff;text-decoration:none;display:block}
+  button:disabled{opacity:.5;cursor:default}
+  .hidden{display:none}
+  .emoji{font-size:54px;margin:6px 0 10px}
+  .thanks{font-size:18px;font-weight:600;margin:4px 0 8px}
+  .thanks-sub{color:var(--muted);font-size:14px;margin:0 0 18px;line-height:1.5}
+  .powered{margin-top:22px;font-size:11px;color:#c3bbb2;letter-spacing:.5px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <!-- STEP 1: оценка -->
+    <div id="step1">
+      <div class="logo">SVS Beauty</div>
+      <h1>Як вам візит?</h1>
+      <p class="sub">Ваша оцінка допомагає нам ставати кращими</p>
+      <div class="stars" id="stars">
+        <span class="star" data-v="1">★</span>
+        <span class="star" data-v="2">★</span>
+        <span class="star" data-v="3">★</span>
+        <span class="star" data-v="4">★</span>
+        <span class="star" data-v="5">★</span>
+      </div>
+      <div class="hint" id="hint">Натисніть на зірочки</div>
+    </div>
+
+    <!-- STEP 2: коментар (для низької оцінки) -->
+    <div id="step2" class="hidden">
+      <div class="emoji">🙏</div>
+      <h1>Дякуємо за чесність</h1>
+      <p class="sub">Що пішло не так? Ми хочемо це виправити</p>
+      <textarea id="comment" placeholder="Розкажіть детальніше…"></textarea>
+      <button class="btn-primary" id="sendNeg">Надіслати</button>
+    </div>
+
+    <!-- DONE -->
+    <div id="done" class="hidden">
+      <div class="emoji" id="doneEmoji">💛</div>
+      <div class="thanks" id="doneThanks">Дякуємо!</div>
+      <p class="thanks-sub" id="doneSub"></p>
+      <a class="btn-gold hidden" id="googleBtn" target="_blank" rel="noopener">Залишити відгук на Google</a>
+    </div>
+
+    <div class="powered">SVS Beauty Space</div>
+  </div>
+
+<script>
+(function(){
+  var qs = new URLSearchParams(location.search);
+  var payload = {
+    client_id: qs.get('c') || null,
+    appointment_id: qs.get('a') || null,
+    master_name: qs.get('m') || null,
+    service_name: qs.get('s') || null,
+  };
+  var chosen = 0;
+  var HINTS = ['', 'Дуже погано', 'Погано', 'Нормально', 'Добре', 'Чудово!'];
+  var stars = Array.prototype.slice.call(document.querySelectorAll('.star'));
+
+  function paint(n){ stars.forEach(function(s,i){ s.classList.toggle('on', i < n); }); }
+  stars.forEach(function(s){
+    s.addEventListener('mouseenter', function(){ paint(+s.dataset.v); document.getElementById('hint').textContent = HINTS[+s.dataset.v]; });
+    s.addEventListener('click', function(){ choose(+s.dataset.v); });
+  });
+  document.getElementById('stars').addEventListener('mouseleave', function(){ paint(chosen); document.getElementById('hint').textContent = chosen ? HINTS[chosen] : 'Натисніть на зірочки'; });
+
+  function show(id){ ['step1','step2','done'].forEach(function(x){ document.getElementById(x).classList.toggle('hidden', x !== id); }); }
+
+  function send(extra){
+    var body = Object.assign({}, payload, { rating: chosen }, extra || {});
+    return fetch('/api/reputation/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    }).then(function(r){ return r.json(); });
+  }
+
+  function finish(data){
+    show('done');
+    var em = document.getElementById('doneEmoji');
+    var th = document.getElementById('doneThanks');
+    var sub = document.getElementById('doneSub');
+    var gbtn = document.getElementById('googleBtn');
+    if (data && data.redirect){
+      em.textContent = '🌟'; th.textContent = 'Дякуємо за високу оцінку!';
+      sub.textContent = 'Будемо вдячні, якщо поділитесь враженнями на Google.';
+      gbtn.href = data.redirect; gbtn.classList.remove('hidden');
+    } else {
+      em.textContent = '💛'; th.textContent = 'Дякуємо за відгук';
+      sub.textContent = (data && data.thanks) || 'Ми обовʼязково попрацюємо над цим.';
+    }
+  }
+
+  function choose(v){
+    chosen = v; paint(v); document.getElementById('hint').textContent = HINTS[v];
+    if (v >= 4){
+      send().then(finish).catch(function(){ finish({}); });
+    } else {
+      show('step2');
+    }
+  }
+
+  document.getElementById('sendNeg').addEventListener('click', function(){
+    var btn = this; btn.disabled = true; btn.textContent = 'Надсилаємо…';
+    send({ text: document.getElementById('comment').value.trim() }).then(finish).catch(function(){ finish({}); });
+  });
+})();
+</script>
+</body>
+</html>

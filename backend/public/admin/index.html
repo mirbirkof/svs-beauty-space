@@ -758,16 +758,56 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- ═══ REVIEWS ═══ -->
+      <!-- ═══ REVIEWS / РЕПУТАЦІЯ ═══ -->
       <div class="page" id="page-reviews">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <input id="reviewMaster" placeholder="Фільтр по майстру (master_id)" class="input">
-          <select id="reviewRating" class="input">
+        <div id="repStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px"></div>
+
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <select id="repStatus" class="input" onchange="loadReviews()">
+            <option value="">Усі статуси</option>
+            <option value="pending">На модерації</option>
+            <option value="published">Опубліковані</option>
+            <option value="hidden">Приховані</option>
+          </select>
+          <select id="repSentiment" class="input" onchange="loadReviews()">
+            <option value="">Уся тональність</option>
+            <option value="positive">Позитивні</option>
+            <option value="neutral">Нейтральні</option>
+            <option value="negative">Негативні</option>
+          </select>
+          <select id="reviewRating" class="input" onchange="loadReviews()">
             <option value="">Усі рейтинги</option>
             <option>5</option><option>4</option><option>3</option><option>2</option><option>1</option>
           </select>
-          <button onclick="loadReviews()" class="btn btn-primary btn-sm">Фільтр</button>
+          <button onclick="loadReviews()" class="btn btn-secondary btn-sm">Оновити</button>
+          <button onclick="repToggleSettings()" class="btn btn-secondary btn-sm" style="margin-left:auto">
+            <span class="material-icons-round" style="font-size:16px;vertical-align:-3px">settings</span> Налаштування
+          </button>
         </div>
+
+        <div class="card" id="repSettings" style="display:none;margin-bottom:16px">
+          <div class="card-body" style="display:grid;gap:12px">
+            <div style="font-weight:600">Керування репутацією</div>
+            <label style="display:grid;gap:4px;font-size:13px">Посилання на Google-відгуки
+              <input id="setGoogleUrl" class="input" placeholder="https://g.page/r/...">
+            </label>
+            <label style="display:grid;gap:4px;font-size:13px">Посилання на Facebook-відгуки
+              <input id="setFbUrl" class="input" placeholder="https://facebook.com/.../reviews">
+            </label>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <label style="display:grid;gap:4px;font-size:13px">Редирект на майданчик від рейтингу
+                <select id="setMinRating" class="input"><option>5</option><option selected>4</option><option>3</option></select>
+              </label>
+              <label style="display:grid;gap:4px;font-size:13px">Кулдаун запиту (днів)
+                <input id="setCooldown" type="number" class="input" value="30" min="1" style="width:110px">
+              </label>
+            </div>
+            <label style="font-size:13px"><input type="checkbox" id="setReqEnabled" checked> Запитувати відгук після візиту</label>
+            <label style="font-size:13px"><input type="checkbox" id="setAlertLow" checked> Алерт керівнику при оцінці 1–3★</label>
+            <button onclick="repSaveSettings()" class="btn btn-primary btn-sm" style="justify-self:start">Зберегти</button>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-body" id="reviewsList">
             <div class="empty"><span class="material-icons-round">star_rate</span>Завантаження...</div>
@@ -3386,30 +3426,117 @@ async function addStock() {
   el.textContent = r.ok ? `Залишок: ${r.variant.stock_qty} шт` : 'Помилка: '+(r.error||'');
 }
 
-// ═══ REVIEWS ═════════════════════════════════
+// ═══ REVIEWS / РЕПУТАЦІЯ ═════════════════════════════════
+const REP_SENT = { positive:['#16a34a','Позитивний'], neutral:['#d97706','Нейтральний'], negative:['#dc2626','Негативний'] };
+function repEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
 async function loadReviews() {
+  loadRepAnalytics();
   try {
-    const master = document.getElementById('reviewMaster').value.trim();
+    const status = document.getElementById('repStatus').value;
+    const sentiment = document.getElementById('repSentiment').value;
     const rating = document.getElementById('reviewRating').value;
-    let url = '/api/reviews?';
-    if (master) url += 'master_id=' + encodeURIComponent(master) + '&';
-    if (rating) url += 'min_rating=' + rating + '&max_rating=' + rating;
-    const r = await dikidiApi(url);
+    let url = '/api/reputation/reviews?limit=100&';
+    if (status) url += 'status=' + status + '&';
+    if (sentiment) url += 'sentiment=' + sentiment + '&';
+    if (rating) url += 'rating_min=' + rating + '&rating_max=' + rating;
+    const r = await api(url);
     const items = r.items || [];
-    document.getElementById('reviewsList').innerHTML = items.length ? items.map(rv => `
-      <div style="border-bottom:1px solid var(--border);padding:12px 0;display:flex;gap:16px;align-items:flex-start">
-        <div style="min-width:40px;height:40px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--primary)">${rv.display_name?rv.display_name[0]:'?'}</div>
-        <div style="flex:1">
-          <div style="display:flex;justify-content:space-between">
-            <span style="font-weight:600">${rv.display_name||'Анонім'}</span>
-            <span style="color:var(--text-secondary);font-size:12px">${new Date(rv.created_at).toLocaleDateString('uk-UA')}</span>
+    document.getElementById('reviewsList').innerHTML = items.length ? items.map(rv => {
+      const sent = REP_SENT[rv.sentiment] || ['#9ca3af','—'];
+      const nm = rv.client_name || rv.client_phone || 'Анонім';
+      return `
+      <div style="border-bottom:1px solid var(--border);padding:14px 0">
+        <div style="display:flex;gap:14px;align-items:flex-start">
+          <div style="min-width:40px;height:40px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--primary)">${repEsc(nm[0]||'?')}</div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-weight:600">${repEsc(nm)}</span>
+              <span style="color:var(--text-secondary);font-size:12px">${rv.created_at?new Date(rv.created_at).toLocaleDateString('uk-UA'):''}</span>
+            </div>
+            <div style="margin:3px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span style="color:#F59E0B">${'★'.repeat(rv.rating)}${'☆'.repeat(5-rv.rating)}</span>
+              <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${sent[0]}1a;color:${sent[0]}">${sent[1]}</span>
+              ${rv.status==='pending'?'<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#f59e0b1a;color:#d97706">На модерації</span>':''}
+              ${rv.status==='hidden'?'<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#6b72801a;color:#6b7280">Приховано</span>':''}
+              ${rv.escalated_at?'<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#dc26261a;color:#dc2626">Ескальовано</span>':''}
+            </div>
+            ${rv.master_name ? `<div style="font-size:12px;color:var(--text-secondary)">Майстер: ${repEsc(rv.master_name)}</div>` : ''}
+            ${rv.text ? `<div style="margin-top:4px;font-size:13px">${repEsc(rv.text)}</div>` : ''}
+            ${rv.reply ? `<div style="margin-top:8px;padding:8px 12px;background:var(--primary-light);border-radius:10px;font-size:13px"><b>Відповідь:</b> ${repEsc(rv.reply)}</div>` : ''}
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+              <button onclick="repReply(${rv.id})" class="btn btn-secondary btn-sm">${rv.reply?'Змінити відповідь':'Відповісти'}</button>
+              ${rv.status!=='published'?`<button onclick="repSetStatus(${rv.id},'published')" class="btn btn-secondary btn-sm">Опублікувати</button>`:''}
+              ${rv.status!=='hidden'?`<button onclick="repSetStatus(${rv.id},'hidden')" class="btn btn-secondary btn-sm">Приховати</button>`:''}
+              ${!rv.escalated_at?`<button onclick="repEscalate(${rv.id})" class="btn btn-secondary btn-sm" style="color:#dc2626">Ескалація</button>`:''}
+            </div>
           </div>
-          <div style="color:#F59E0B;margin:2px 0">${'★'.repeat(rv.rating)}${'☆'.repeat(5-rv.rating)}</div>
-          ${rv.master_name ? `<div style="font-size:12px;color:var(--text-secondary)">Майстер: ${rv.master_name}</div>` : ''}
-          ${rv.text ? `<div style="margin-top:4px;font-size:13px">${rv.text}</div>` : ''}
         </div>
-      </div>`).join('') : '<div class="empty"><span class="material-icons-round">star_rate</span>Відгуків поки немає</div>';
+      </div>`; }).join('') : '<div class="empty"><span class="material-icons-round">star_rate</span>Відгуків поки немає</div>';
   } catch { document.getElementById('reviewsList').innerHTML = '<div class="empty">Сервер відгуків недоступний</div>'; }
+}
+
+async function loadRepAnalytics(){
+  try {
+    const a = await api('/api/reputation/analytics');
+    const nps = a.nps==null?'—':(a.nps>0?'+':'')+a.nps;
+    const npsColor = a.nps>=50?'#16a34a':(a.nps>=0?'#d97706':'#dc2626');
+    const cards = [
+      ['Середня оцінка', (a.avg!=null?Number(a.avg).toFixed(2):'—')+' ★', '#F59E0B'],
+      ['NPS', nps, npsColor],
+      ['Відповіли', (a.response_rate!=null?a.response_rate+'%':'—'), '#2563eb'],
+      ['Усього відгуків', a.total||0, 'var(--text)'],
+      ['Негативні', (a.sentiment&&a.sentiment.negative)||0, '#dc2626'],
+    ];
+    document.getElementById('repStats').innerHTML = cards.map(c=>`
+      <div class="card" style="padding:14px 16px"><div style="font-size:12px;color:var(--text-secondary)">${c[0]}</div>
+      <div style="font-size:24px;font-weight:700;color:${c[2]};margin-top:4px">${c[1]}</div></div>`).join('');
+  } catch { document.getElementById('repStats').innerHTML=''; }
+}
+
+async function repReply(id){
+  const text = prompt('Текст відповіді на відгук:');
+  if (text===null) return;
+  await api('/api/reputation/reviews/'+id+'/reply', { method:'POST', body: JSON.stringify({ reply: text }) });
+  loadReviews();
+}
+async function repSetStatus(id, status){
+  await api('/api/reputation/reviews/'+id, { method:'PATCH', body: JSON.stringify({ status }) });
+  loadReviews();
+}
+async function repEscalate(id){
+  if (!confirm('Ескалювати відгук керівнику?')) return;
+  await api('/api/reputation/reviews/'+id+'/escalate', { method:'POST', body: JSON.stringify({}) });
+  loadReviews();
+}
+function repToggleSettings(){
+  const el = document.getElementById('repSettings');
+  const show = el.style.display==='none';
+  el.style.display = show?'block':'none';
+  if (show) repLoadSettings();
+}
+async function repLoadSettings(){
+  try {
+    const s = await api('/api/reputation/settings');
+    document.getElementById('setGoogleUrl').value = s.google_review_url||'';
+    document.getElementById('setFbUrl').value = s.facebook_review_url||'';
+    document.getElementById('setMinRating').value = s.min_redirect_rating||4;
+    document.getElementById('setCooldown').value = s.request_cooldown_days||30;
+    document.getElementById('setReqEnabled').checked = s.request_enabled!==false;
+    document.getElementById('setAlertLow').checked = s.alert_low_rating!==false;
+  } catch {}
+}
+async function repSaveSettings(){
+  const body = {
+    google_review_url: document.getElementById('setGoogleUrl').value.trim(),
+    facebook_review_url: document.getElementById('setFbUrl').value.trim(),
+    min_redirect_rating: +document.getElementById('setMinRating').value,
+    request_cooldown_days: +document.getElementById('setCooldown').value,
+    request_enabled: document.getElementById('setReqEnabled').checked,
+    alert_low_rating: document.getElementById('setAlertLow').checked,
+  };
+  await api('/api/reputation/settings', { method:'PATCH', body: JSON.stringify(body) });
+  alert('Налаштування збережено');
 }
 
 // ═══ PROMOS ══════════════════════════════════
