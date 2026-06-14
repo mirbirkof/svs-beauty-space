@@ -31,9 +31,11 @@ ALTER TABLE services ADD COLUMN IF NOT EXISTS sort_order     INTEGER DEFAULT 0;
 ALTER TABLE services ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE services ADD COLUMN IF NOT EXISTS deleted_at     TIMESTAMPTZ;
 
--- Синхронизируем status с существующим флагом active (только для старых строк)
+-- Синхронизируем status с существующим флагом active.
+-- (DEFAULT 'active' ставит всем строкам 'active', поэтому синхронизируем
+--  именно по active-флагу, а не по status IS NULL.)
 UPDATE services SET status = CASE WHEN active THEN 'active' ELSE 'inactive' END
- WHERE status IS NULL;
+ WHERE deleted_at IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS services_slug_uq ON services(slug) WHERE slug IS NOT NULL;
 CREATE INDEX IF NOT EXISTS services_status_idx ON services(status) WHERE deleted_at IS NULL;
