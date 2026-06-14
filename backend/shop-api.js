@@ -169,6 +169,8 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/rooms', require('./routes/rooms'));
 app.use('/api/consumables', require('./routes/consumables'));
 app.use('/api/notes', require('./routes/notes'));
+const notificationsRoutes = require('./routes/notifications');
+app.use('/api/notifications', notificationsRoutes);
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
@@ -183,6 +185,7 @@ app.listen(PORT, '0.0.0.0', () => {
   // Запуск cron напоминаний
   if (process.env.DATABASE_URL) {
     remindersRoutes.startCron();
+    notificationsRoutes.startCron(); // COM-01 Notification Hub воркер очереди
     // страховка вебхуков Mono: поллинг pending-инвойсов
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
