@@ -1,9 +1,10 @@
 /* lib/llm.js — лёгкий LLM-клиент для AI-модулей CRM.
-   Каскад: OpenRouter (працює з датацентрового IP Render) → Groq → Gemini Flash.
-   Чому саме так на проді (Render):
-     - Groq блокує датацентрові IP → "Access denied" з сервера (локально працює).
-     - GEMINI_API_KEY спільний з gemini-ботом → дневна квота вичерпується.
-     - OpenRouter — шлюз для серверів, дешева модель llama-3.3-70b, не контендиться.
+   Каскад: Gemini 2.5 Flash → OpenRouter → Groq.
+   Емпірично перевірено на проді (Render datacenter IP):
+     - Gemini 2.5-flash: працює, безкоштовно, окремий квота-бакет від 2.0-flash
+       (яку вичерпує gemini-бот). thinkingBudget:0 щоб JSON не обрізався.
+     - OpenRouter: працює з серверного IP, але кредит майже вичерпано → fallback.
+     - Groq: блокує датацентрові IP ("Access denied") → лише локально, останній.
    Без сторонніх SDK — чистий https. Ніколи не кидає необроблене назовні:
    код, що викликає, сам вирішує що робити при null. */
 const https = require('https');
@@ -23,13 +24,16 @@ function _post(opts, body) {
 }
 
 // ── Gemini (generativelanguage REST) ───────────────────────
-async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.0-flash' } = {}) {
+// gemini-2.5-flash: окремий квота-бакет від 2.0-flash (яку вичерпує gemini-бот),
+// працює з датацентрового IP. thinkingBudget:0 — вимикаємо "мислення", інакше
+// воно зʼїдає maxOutputTokens і JSON обрізається (finishReason MAX_TOKENS).
+async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-flash' } = {}) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('no GEMINI_API_KEY');
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
+    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
   });
   const { status, body: raw } = await _post({
     hostname: 'generativelanguage.googleapis.com',
@@ -89,7 +93,7 @@ async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-lla
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
 async function ask(prompt, opts = {}) {
   const errors = [];
-  for (const [name, fn] of [['openrouter', _openrouter], ['groq', _groq], ['gemini', _gemini]]) {
+  for (const [name, fn] of [['gemini', _gemini], ['openrouter', _openrouter], ['groq', _groq]]) {
     try { return await fn(prompt, opts); }
     catch (e) { errors.push(`${name}: ${e.message}`); }
   }
