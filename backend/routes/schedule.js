@@ -4,6 +4,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone } = require('../lib/settings');
+const hub = require('../lib/notification-hub');
 const router = express.Router();
 
 // GET = schedule.read, мутации = schedule.write
@@ -418,7 +419,7 @@ router.post('/appointments', async (req, res) => {
       return res.status(400).json({ error: 'master_id, service_id, starts_at обовʼязкові' });
     }
     // послуга → ціна + тривалість
-    const sv = await pool.query('SELECT price, duration_min FROM services WHERE id=$1', [Number(service_id)]);
+    const sv = await pool.query('SELECT price, duration_min, name FROM services WHERE id=$1', [Number(service_id)]);
     if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
     const dur = Number(sv.rows[0].duration_min) || 30;
     const startDate = new Date(starts_at);
@@ -454,6 +455,17 @@ router.post('/appointments', async (req, res) => {
       [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
        sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]
     );
+    // Подтверждение клиенту через Notification Hub (не блокирует ответ).
+    if (cid) {
+      const time = startDate.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+      const date = startDate.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Kyiv' });
+      const mname = await pool.query(`SELECT name FROM masters WHERE id=$1`, [Number(master_id)]).then(x => x.rows[0]?.name || '').catch(() => '');
+      hub.enqueue({
+        clientId: cid, templateKey: 'appt_confirm', priority: 'high', category: 'transactional',
+        source: 'schedule', dedupKey: `appt:${r.rows[0].id}:confirm`,
+        vars: { date, time, master: mname, service: sv.rows[0].name || '' },
+      }).catch(e => console.error('[schedule] confirm enqueue:', e.message));
+    }
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

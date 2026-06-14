@@ -16,21 +16,25 @@ const router = express.Router();
 const { getPool } = require('../db-pg');
 const { tgSend } = require('./telegram-notify');
 const { requirePerm } = require('../lib/rbac');
+const hub = require('../lib/notification-hub');
 
 const CRON_INTERVAL = 15 * 60 * 1000; // 15 мин
 let cronRef = null;
 
-// ── Генерация уведомлений для предстоящих визитов ──
+// ── Генерация уведомлений для предстоящих визитов (через Notification Hub) ──
+// Дедуп — на стороне Hub (dedup_key = appt:{id}:{event}, ON CONFLICT DO NOTHING).
+// Шаблоны — из БД (appt_remind_24h / appt_remind_2h / appt_feedback).
+function kyivTime(ts) {
+  return new Date(ts).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+}
+
 async function scheduleReminders() {
   const pool = getPool();
-  const now = new Date();
 
-  // 1) За 24ч: визиты через 23-25 часов
+  // 1) За 24ч: визиты через 23-25 часов → normal
   const in24h = await pool.query(`
-    SELECT a.id, a.starts_at, a.client_id, a.master_id,
-           c.telegram_id, c.name AS client_name, c.phone,
-           m.name AS master_name,
-           s.name AS service_name
+    SELECT a.id, a.starts_at, a.client_id,
+           m.name AS master_name, s.name AS service_name
     FROM appointments a
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
@@ -38,92 +42,55 @@ async function scheduleReminders() {
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '23 hours' AND NOW() + interval '25 hours'
       AND c.telegram_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM scheduled_notifications sn
-        WHERE sn.appointment_id = a.id::text AND sn.event = 'remind_24h'
-      )
+      AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_24h')
   `);
-
   for (const row of in24h.rows) {
-    const time = new Date(row.starts_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
-    const text = `📋 <b>Нагадування</b>\nЗавтра о ${time} у вас запис` +
-      (row.master_name ? ` до майстра <b>${row.master_name}</b>` : '') +
-      (row.service_name ? ` (${row.service_name})` : '') +
-      `.\n\nЯкщо потрібно перенести — напишіть нам.`;
-
-    await insertNotification(pool, row, 'remind_24h', text, row.starts_at);
+    await hub.enqueue({
+      clientId: row.client_id, templateKey: 'appt_remind_24h', priority: 'normal',
+      category: 'transactional', source: 'reminders', dedupKey: `appt:${row.id}:remind_24h`,
+      vars: { time: kyivTime(row.starts_at), master: row.master_name || '', service: row.service_name || '' },
+    });
   }
 
-  // 2) За 2ч: визиты через 1.5-2.5 часа
+  // 2) За 2ч: визиты через 1.5-2.5 часа → high
   const in2h = await pool.query(`
-    SELECT a.id, a.starts_at, a.client_id, a.master_id,
-           c.telegram_id, c.name AS client_name, c.phone,
-           m.name AS master_name,
-           s.name AS service_name
+    SELECT a.id, a.starts_at, a.client_id, m.name AS master_name
     FROM appointments a
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
-    LEFT JOIN services s ON s.id = a.service_id
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '90 minutes' AND NOW() + interval '150 minutes'
       AND c.telegram_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM scheduled_notifications sn
-        WHERE sn.appointment_id = a.id::text AND sn.event = 'remind_2h'
-      )
+      AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_2h')
   `);
-
   for (const row of in2h.rows) {
-    const time = new Date(row.starts_at).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
-    const text = `⏰ Через 2 години ваш візит о <b>${time}</b>` +
-      (row.master_name ? ` у <b>${row.master_name}</b>` : '') +
-      `. Чекаємо на вас!`;
-
-    await insertNotification(pool, row, 'remind_2h', text, row.starts_at);
+    await hub.enqueue({
+      clientId: row.client_id, templateKey: 'appt_remind_2h', priority: 'high',
+      category: 'transactional', source: 'reminders', dedupKey: `appt:${row.id}:remind_2h`,
+      vars: { time: kyivTime(row.starts_at), master: row.master_name || '' },
+    });
   }
 
-  // 3) После визита (2ч назад): запрос оценки
+  // 3) После визита (2ч назад): запрос оценки → low
   const after2h = await pool.query(`
-    SELECT a.id, a.starts_at, a.ends_at, a.client_id,
-           c.telegram_id, c.name AS client_name,
-           m.name AS master_name,
-           s.name AS service_name
+    SELECT a.id, a.starts_at, a.client_id, c.name AS client_name, m.name AS master_name
     FROM appointments a
     JOIN clients c ON c.id = a.client_id
     LEFT JOIN masters m ON m.id = a.master_id
-    LEFT JOIN services s ON s.id = a.service_id
     WHERE a.status = 'done'
       AND COALESCE(a.ends_at, a.starts_at + interval '1 hour') BETWEEN NOW() - interval '150 minutes' AND NOW() - interval '90 minutes'
       AND c.telegram_id IS NOT NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM scheduled_notifications sn
-        WHERE sn.appointment_id = a.id::text AND sn.event = 'feedback'
-      )
+      AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':feedback')
   `);
-
   for (const row of after2h.rows) {
-    const text = `💬 <b>${row.client_name || 'Привіт'}!</b>\nЯк вам сьогоднішній візит` +
-      (row.master_name ? ` у <b>${row.master_name}</b>` : '') +
-      `?\n\nОцініть від 1 до 5:\n1 ⭐ — погано\n3 ⭐⭐⭐ — нормально\n5 ⭐⭐⭐⭐⭐ — чудово`;
-
-    await insertNotification(pool, row, 'feedback', text, row.starts_at);
+    await hub.enqueue({
+      clientId: row.client_id, templateKey: 'appt_feedback', priority: 'low',
+      category: 'transactional', source: 'reminders', dedupKey: `appt:${row.id}:feedback`,
+      vars: { client: row.client_name || 'Привіт', master: row.master_name || '' },
+    });
   }
 
   return { remind_24h: in24h.rowCount, remind_2h: in2h.rowCount, feedback: after2h.rowCount };
-}
-
-async function insertNotification(pool, row, event, text, appointmentTime) {
-  try {
-    await pool.query(
-      `INSERT INTO scheduled_notifications
-         (appointment_id, telegram_chat_id, client_phone, event, scheduled_at, payload_json, status)
-       VALUES ($1, $2, $3, $4, NOW(), $5, 'pending')
-       ON CONFLICT (appointment_id, event) DO NOTHING`,
-      [String(row.id), String(row.telegram_id), row.phone || null, event, JSON.stringify({ text })]
-    );
-  } catch (e) {
-    console.error(`[reminders] insert ${event} for appt ${row.id}:`, e.message);
-  }
 }
 
 // ── Отправка pending уведомлений ──
