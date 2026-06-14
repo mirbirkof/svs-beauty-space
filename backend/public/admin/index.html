@@ -414,6 +414,19 @@ select.input { background:var(--card); }
 .smc-shift { display:inline-block; padding:2px 2px; border-radius:5px; font-size:9px; font-weight:700; line-height:1.1; text-align:center; letter-spacing:-.3px; background:rgba(16,185,129,.14); color:#0a8f5f; }
 .smc-shift.man { background:rgba(59,130,246,.16); color:#1d6fd6; }
 .smc-off span { color:#d4d7e3; font-size:15px; }
+/* #10 — клікабельна дата і виділення стовпця */
+.smc-h.smc-day-h { cursor:pointer; }
+.smc-h.smc-day-h:hover { background:#eceefb; }
+.smc.col-sel { background:#e6ecff; }
+.smc.smc-off.col-sel { background:#e6ecff; }
+.smc-h.col-sel { background:#d4ddff; box-shadow:inset 0 -2px 0 var(--primary); }
+.smc-h.today.col-sel { background:var(--primary); }
+/* #9 — графік на весь екран */
+.schmon-wrap.fs { position:fixed; inset:0; z-index:9000; background:#fff; margin:0; padding:14px 18px; overflow:auto; }
+.schmon-wrap.fs .schmon { max-height:calc(100vh - 96px); overflow:auto; }
+.schfs-close { display:none; }
+.schmon-wrap.fs .schfs-close { display:inline-flex; }
+.schmon-wrap.fs [onclick*="schToggleFs"]:not(.schfs-close) { display:none; }
 @media(max-width:768px){
   .schboard-grid { grid-template-columns:140px repeat(7, 82px); min-width:714px; }
   .schb-nm { font-size:12px; }
@@ -2445,25 +2458,25 @@ async function renderScheduleOverview(grid) {
   const todayISO = new Date().toISOString().slice(0,10);
   const dates = data.dates;
   // Шапка: дні місяця (число + день тижня)
-  const head = `<div class="smc smc-h smc-name">Майстер</div>` + dates.map(dt => {
+  const head = `<div class="smc smc-h smc-name">Майстер</div>` + dates.map((dt,idx) => {
     const dow = new Date(dt+'T00:00:00Z').getUTCDay();
     const wknd = (dow===0||dow===6) ? ' wknd' : '';
     const today = dt===todayISO ? ' today' : '';
-    return `<div class="smc smc-h${wknd}${today}"><b>${Number(dt.slice(8,10))}</b><i>${_SCH_WD[dow]}</i></div>`;
+    return `<div class="smc smc-h smc-day-h${wknd}${today}" data-col="${idx}" onclick="schSelCol(${idx})" title="Виділити стовпець дня"><b>${Number(dt.slice(8,10))}</b><i>${_SCH_WD[dow]}</i></div>`;
   }).join('');
   const rows = data.items.map(m => {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0].toUpperCase();
     let workDays=0, totalMin=0;
-    const cells = m.days.map(d => {
+    const cells = m.days.map((d,idx) => {
       const dow = new Date(d.date+'T00:00:00Z').getUTCDay();
       const wknd = (dow===0||dow===6) ? ' wknd' : '';
       const today = d.date===todayISO ? ' today' : '';
       const man = d.source==='manual' ? ' man' : '';
       if (!d.off && d.start && d.end) {
         workDays++; totalMin += _schMinutes(d);
-        return `<div class="smc smc-day${wknd}${today}" onclick="schEditDay(${m.id},'${d.date}')"><span class="smc-shift${man}">${d.start}<br>${d.end}</span></div>`;
+        return `<div class="smc smc-day${wknd}${today}" data-col="${idx}" onclick="schEditDay(${m.id},'${d.date}')"><span class="smc-shift${man}">${d.start}<br>${d.end}</span></div>`;
       }
-      return `<div class="smc smc-day smc-off${wknd}${today}" onclick="schEditDay(${m.id},'${d.date}')"><span>·</span></div>`;
+      return `<div class="smc smc-day smc-off${wknd}${today}" data-col="${idx}" onclick="schEditDay(${m.id},'${d.date}')"><span>·</span></div>`;
     }).join('');
     const H = Math.floor(totalMin/60), Mn = totalMin%60;
     const meta = workDays ? `${workDays} ${_plural(workDays,'день','дні','днів')} · ${H}год${Mn?' '+Mn+'хв':''}` : 'вихідні';
@@ -2474,15 +2487,37 @@ async function renderScheduleOverview(grid) {
   }).join('');
   const colW = `132px repeat(${dates.length}, 34px)`;
   grid.innerHTML =
-    `<div class="schmon-bar">
+    `<div class="schmon-wrap" id="schWrap">
+     <div class="schmon-bar">
        <button class="btn btn-sm" onclick="schMonthNav(-1)">‹</button>
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
        <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+       <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
+       <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
      </div>
      <div class="schmon"><div class="schmon-grid" style="grid-template-columns:${colW}">${head}${rows}</div></div>
-     <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня. <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується синхронізацією BeautyPro). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
+     <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня, або на <b>число дати</b> вгорі — щоб виділити весь стовпець (видно хто працює, а в кого вихідний). <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується синхронізацією BeautyPro). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>
+     </div>`;
 }
+// #10 — виділення всього стовпця дня для зручного перегляду «хто працює / вихідний»
+let _schSelCol = null;
+function schSelCol(idx){
+  const wrap = document.getElementById('schWrap'); if(!wrap) return;
+  wrap.querySelectorAll('.smc.col-sel').forEach(el=>el.classList.remove('col-sel'));
+  if (_schSelCol === idx){ _schSelCol = null; return; } // повторний клік знімає виділення
+  wrap.querySelectorAll(`.smc[data-col="${idx}"]`).forEach(el=>el.classList.add('col-sel'));
+  _schSelCol = idx;
+}
+// #9 — розгортання графіка на весь екран
+function schToggleFs(){
+  const wrap = document.getElementById('schWrap'); if(!wrap) return;
+  wrap.classList.toggle('fs');
+  document.body.style.overflow = wrap.classList.contains('fs') ? 'hidden' : '';
+}
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){ const w=document.getElementById('schWrap'); if(w&&w.classList.contains('fs')) schToggleFs(); }
+});
 // Редагування зміни конкретного дня (модалка як у DIKIDI: «Робочий час» з/до)
 function schEditDay(mid, date){
   const m = (_schMonthData && _schMonthData.items || []).find(x => String(x.id)===String(mid)); if (!m) return;
