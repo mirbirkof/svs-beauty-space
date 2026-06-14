@@ -276,7 +276,7 @@ main { padding:24px 0; }
   <div class="card">
     <h2>Журнал дій (останні 100)</h2>
     <button class="btn ghost sm" onclick="loadAudit()">Оновити</button>
-    <table style="margin-top:12px"><thead><tr><th>Час</th><th>Хто</th><th>Дія</th><th>Об'єкт</th><th>ID</th><th>Деталі</th></tr></thead><tbody id="audit-list"></tbody></table>
+    <table style="margin-top:12px"><thead><tr><th>Час</th><th>Хто</th><th>Дія</th><th>ID</th><th>Деталі</th></tr></thead><tbody id="audit-list"></tbody></table>
   </div>
 </section>
 
@@ -1020,16 +1020,72 @@ async function issueToken(uid){
 }
 
 // ─────── AUDIT ───────
+// дієслова за дією (суфікс коду)
+const AUDIT_VERBS = {
+  create:'створено', created:'створено', update:'оновлено', delete:'видалено',
+  deactivate:'деактивовано', reactivate:'відновлено', move:'переміщено',
+  bulk:'масова зміна', duplicate:'дубльовано', assign:'призначено', unassign:'знято',
+  set:'налаштовано', upsert:'збережено', start:'розпочато', complete:'завершено',
+  upload:'завантажено', login:'вхід', logout:'вихід', issue:'видано', revoke:'відкликано',
+  calculated:'розраховано', done:'виконано', open:'відкрито', send:'надіслано',
+  'tg-send':'надіслано в Telegram', disable:'вимкнено', enable:'увімкнено',
+  'set_password':'змінено пароль', 'set-password':'змінено пароль',
+  'master_price':'ціну майстра', 'combo':'комбо', 'variation':'варіацію'
+};
+// сутності за префіксом коду
+const AUDIT_ENTITIES = {
+  user:'Співробітник', client:'Клієнт', client_tag:'Тег клієнта',
+  category:'Категорія', service_category:'Категорія послуг', service:'Послуга',
+  branch:'Філія', room:'Кабінет', file:'Файл', note:'Заметка',
+  inventory:'Інвентаризація', audit:'Інвентаризація', payroll:'Зарплата',
+  settings:'Налаштування', token:'Токен доступу', auth:'Авторизація',
+  advance:'Аванс', bonus:'Бонус', consumable:'Витратні матеріали',
+  internal:'Система', crm_notes:'Заметка'
+};
+const AUDIT_COLORS = { create:'#16a34a', created:'#16a34a', update:'#2563eb', upsert:'#2563eb',
+  delete:'#dc2626', deactivate:'#dc2626', revoke:'#dc2626', disable:'#dc2626',
+  login:'#7c3aed', complete:'#16a34a', upload:'#0891b2', 'tg-send':'#0891b2', send:'#0891b2' };
+function _humAction(action){
+  if(!action) return '<span style="color:var(--muted)">—</span>';
+  const parts = String(action).split('.');
+  const verbKey = parts[parts.length-1];
+  const entKey = parts[0];
+  const ent = AUDIT_ENTITIES[entKey] || (entKey.charAt(0).toUpperCase()+entKey.slice(1));
+  const verb = AUDIT_VERBS[verbKey] || verbKey.replace(/[-_]/g,' ');
+  const c = AUDIT_COLORS[verbKey] || '#64748b';
+  return `<span style="font-weight:600">${ent}</span> <span style="display:inline-block;font-size:11px;font-weight:600;color:#fff;background:${c};padding:1px 7px;border-radius:6px;margin-left:4px">${verb}</span>`;
+}
+function _humMeta(meta){
+  if(!meta || (typeof meta==='object' && !Object.keys(meta).length)) return '<span style="color:var(--muted)">—</span>';
+  const m = meta; const bits = [];
+  if(m.name) bits.push(`«${m.name}»`);
+  if(m.tag) bits.push(`тег «${m.tag}»`);
+  if(Array.isArray(m.fields) && m.fields.length) bits.push(`поля: ${m.fields.join(', ')}`);
+  if(m.renamed_services) bits.push(`перейменовано послуг: ${m.renamed_services}`);
+  if(m.qty!=null) bits.push(`к-сть: ${m.qty}`);
+  if(m.size!=null) bits.push(`${Math.round(m.size/1024)} КБ`);
+  if(m.page_path) bits.push(`стор. ${m.page_path}`);
+  if(m.scope) bits.push(`обсяг: ${m.scope}`);
+  if(m.items!=null) bits.push(`позицій: ${m.items}`);
+  if(m.adjusted!=null) bits.push(`скориговано: ${m.adjusted}`);
+  if(m.total_diff!=null) bits.push(`різниця: ${(+m.total_diff).toFixed(2)} ₴`);
+  if(m.amount!=null) bits.push(`${(+m.amount).toLocaleString('uk-UA')} ₴`);
+  if(!bits.length){ // запасний варіант — короткий перелік ключів
+    return '<span style="color:var(--muted)">'+Object.keys(m).slice(0,4).join(', ')+'</span>';
+  }
+  return bits.join(' · ');
+}
 async function loadAudit(){
   try{
     const r = await api('/api/users/audit/log?limit=100');
     document.getElementById('audit-list').innerHTML = r.items.map(a=>`
-      <tr><td>${new Date(a.created_at).toLocaleString('uk')}</td>
-          <td>${a.user_label||'—'}</td>
-          <td><code>${a.action}</code></td>
-          <td>${a.entity||''}</td><td>${a.entity_id||''}</td>
-          <td style="max-width:300px;font-size:11px;color:var(--muted)">${a.meta?JSON.stringify(a.meta):''}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Записів немає</td></tr>';
-  }catch(e){ alert(e.message); }
+      <tr><td style="white-space:nowrap;font-size:12px">${new Date(a.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+          <td>${a.user_label||'<span style="color:var(--muted)">система</span>'}</td>
+          <td>${_humAction(a.action)}</td>
+          <td>${a.entity_id?('<span style="color:var(--muted)">#'+a.entity_id+'</span>'):''}</td>
+          <td style="max-width:340px;font-size:12px;color:var(--text-secondary,#475569)">${_humMeta(a.meta)}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="empty"><span class="material-icons-round">history</span>Поки що жодних дій не зафіксовано</td></tr>';
+  }catch(e){ document.getElementById('audit-list').innerHTML='<tr><td colspan="5" class="empty"><span class="material-icons-round">error_outline</span>Не вдалося завантажити журнал: '+e.message+'</td></tr>'; }
 }
 
 function init(){ setRange(30); if(location.hash && document.querySelector('nav.tabs button[data-tab="'+location.hash.slice(1)+'"]')) openHashTab(); else onTab('cashbox'); }
