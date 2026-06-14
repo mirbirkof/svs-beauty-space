@@ -1,8 +1,11 @@
 /* lib/llm.js — лёгкий LLM-клиент для AI-модулей CRM.
-   Каскад: Groq (своя щедрая квота, не делится с другими ботами) → Gemini Flash (fallback).
-   GEMINI_API_KEY общий с gemini-ботом → быстро упирается в дневную квоту, поэтому вторичный.
-   Без сторонних SDK — чистый https. Никогда не бросает наружу необработанное:
-   вызывающий код сам решает что делать при null. */
+   Каскад: OpenRouter (працює з датацентрового IP Render) → Groq → Gemini Flash.
+   Чому саме так на проді (Render):
+     - Groq блокує датацентрові IP → "Access denied" з сервера (локально працює).
+     - GEMINI_API_KEY спільний з gemini-ботом → дневна квота вичерпується.
+     - OpenRouter — шлюз для серверів, дешева модель llama-3.3-70b, не контендиться.
+   Без сторонніх SDK — чистий https. Ніколи не кидає необроблене назовні:
+   код, що викликає, сам вирішує що робити при null. */
 const https = require('https');
 
 function _post(opts, body) {
@@ -62,10 +65,31 @@ async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-
   throw new Error(j.error?.message || `groq empty (status ${status})`);
 }
 
+// ── OpenRouter (OpenAI-совместимый шлюз) — primary на проде ─
+async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-llama/llama-3.3-70b-instruct' } = {}) {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) throw new Error('no OPENROUTER_API_KEY');
+  const messages = [];
+  if (system) messages.push({ role: 'system', content: system });
+  messages.push({ role: 'user', content: prompt });
+  const body = JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.4 });
+  const { status, body: raw } = await _post({
+    hostname: 'openrouter.ai',
+    path: '/api/v1/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'Content-Length': Buffer.byteLength(body) },
+    timeout: 30000,
+  }, body);
+  const j = JSON.parse(raw);
+  const text = j.choices?.[0]?.message?.content;
+  if (text) return text.trim();
+  throw new Error(j.error?.message || `openrouter empty (status ${status})`);
+}
+
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
 async function ask(prompt, opts = {}) {
   const errors = [];
-  for (const [name, fn] of [['groq', _groq], ['gemini', _gemini]]) {
+  for (const [name, fn] of [['openrouter', _openrouter], ['groq', _groq], ['gemini', _gemini]]) {
     try { return await fn(prompt, opts); }
     catch (e) { errors.push(`${name}: ${e.message}`); }
   }
@@ -84,7 +108,7 @@ async function askJSON(prompt, opts = {}) {
 }
 
 function available() {
-  return !!(process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY);
+  return !!(process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY);
 }
 
 module.exports = { ask, askJSON, available };
