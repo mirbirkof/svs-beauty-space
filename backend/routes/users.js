@@ -86,11 +86,32 @@ router.post('/:id/password', requirePerm('users.write'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /api/users/:id — деактивувати (м'яке видалення)
+// DELETE /api/users/:id — видалення користувача
+//   ?hard=1 → повне видалення з БД (залежні записи CASCADE)
+//   без hard → м'яка деактивація (is_active=false)
 router.delete('/:id', requirePerm('users.write'), async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (id === req.user.id) return res.status(400).json({ error: 'cannot-deactivate-self' });
+    if (id === req.user.id) return res.status(400).json({ error: 'cannot-delete-self' });
+    const hard = req.query.hard === '1' || req.query.hard === 'true';
+
+    // захист: не дати видалити/деактивувати останнього активного власника
+    const tgt = await pool.query(
+      `SELECT u.id, r.code AS role FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`, [id]);
+    if (!tgt.rows[0]) return res.status(404).json({ error: 'not-found' });
+    if (tgt.rows[0].role === 'owner') {
+      const owners = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM users u JOIN roles r ON r.id=u.role_id
+          WHERE r.code='owner' AND u.is_active=TRUE AND u.id<>$1`, [id]);
+      if (owners.rows[0].n === 0) return res.status(400).json({ error: 'cannot-remove-last-owner' });
+    }
+
+    if (hard) {
+      const r = await pool.query(`DELETE FROM users WHERE id=$1 RETURNING id`, [id]);
+      if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+      await logAction({ user: req.user, action: 'user.delete', entity: 'user', entity_id: id, meta: { hard: true } });
+      return res.json({ ok: true, deleted: true });
+    }
     const r = await pool.query(`UPDATE users SET is_active=FALSE, updated_at=NOW() WHERE id=$1 RETURNING id`, [id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'user.deactivate', entity: 'user', entity_id: id, meta: {} });
