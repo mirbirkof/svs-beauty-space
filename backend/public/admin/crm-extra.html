@@ -256,7 +256,7 @@ main { padding:24px 0; }
     </div>
     <table><thead><tr><th>Ім'я</th><th>Спеціальність</th><th>Джерело</th><th>Статус</th><th>Дії</th></tr></thead><tbody id="m-list"></tbody></table>
   </div>
-  <div class="card">
+  <div class="card" id="access-section">
     <h2>Доступи до системи (логіни)</h2>
     <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Тут лише ті, хто має пароль/токен для входу в адмінку. Майстру логін не обов'язковий.</div>
     <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Логін/Тел</th><th>Email</th><th>Пароль</th><th>Активний</th><th>Дії</th></tr></thead><tbody id="u-list"></tbody></table>
@@ -351,9 +351,14 @@ document.querySelectorAll('nav.tabs button').forEach(b=>{
 
 // прямые ссылки на вкладку: crm-extra.html#reports и т.п.
 function openHashTab(){
-  const h=location.hash.replace('#','');
+  let h=location.hash.replace('#','');
+  let scrollTo=null;
+  if(h==='users-access'){ h='users'; scrollTo='access-section'; }
   const btn=document.querySelector('nav.tabs button[data-tab="'+h+'"]');
-  if(btn) btn.onclick();
+  if(btn){
+    btn.onclick();
+    if(scrollTo) setTimeout(()=>{ const el=document.getElementById(scrollTo); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }, 250);
+  }
 }
 window.addEventListener('hashchange', openHashTab);
 

@@ -59,9 +59,7 @@
       { icon: 'tune', label: 'Бізнес-налаштування', href: '/admin/index.html#settings' },
       { icon: 'meeting_room', label: 'Кабінети / ресурси', href: '/admin/index.html#settings' },
       { icon: 'inventory_2', label: 'Розхідники', href: '/admin/index.html#settings' },
-      { icon: 'badge', label: 'Співробітники', href: '/admin/crm-extra.html#users' },
-      { icon: 'admin_panel_settings', label: 'Доступ до проєкту', href: '/admin/crm-extra.html#users' },
-      { icon: 'point_of_sale', label: 'Каса', href: '/admin/crm-extra.html#cashbox' },
+      { icon: 'admin_panel_settings', label: 'Доступ до проєкту', href: '/admin/crm-extra.html#users-access' },
     ] },
     { group: 'Система', icon: 'tune', items: [
       { icon: 'monitor_heart', label: 'Системний статус', href: '/admin/dashboard.html' },
