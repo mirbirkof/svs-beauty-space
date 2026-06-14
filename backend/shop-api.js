@@ -168,6 +168,7 @@ app.use('/api/branches', require('./routes/branches'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/rooms', require('./routes/rooms'));
 app.use('/api/services', require('./routes/services'));
+app.use('/api/service-categories', require('./routes/categories'));
 app.use('/api/consumables', require('./routes/consumables'));
 app.use('/api/notes', require('./routes/notes'));
 const notificationsRoutes = require('./routes/notifications');

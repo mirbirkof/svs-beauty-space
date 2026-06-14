@@ -502,6 +502,9 @@ select.input { background:var(--card); }
       <a class="sidebar-item" data-page="services" onclick="go('services')">
         <span class="material-icons-round">content_cut</span> Послуги
       </a>
+      <a class="sidebar-item" data-page="svccats" onclick="go('svccats')">
+        <span class="material-icons-round">account_tree</span> Категорії послуг
+      </a>
 
       <!-- Клієнти -->
       <div class="sidebar-group open" id="grp-clients">
@@ -926,6 +929,20 @@ select.input { background:var(--card); }
               <tbody id="svcBody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ КАТЕГОРІЇ ПОСЛУГ (SAL-02) ═══ -->
+      <div class="page" id="page-svccats">
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <input id="catSearch" placeholder="Пошук категорії..." class="input" style="flex:1;min-width:180px" oninput="debounce(loadSvcCats,400)">
+          <select id="catStatusFilter" class="input" style="width:auto" onchange="loadSvcCats()">
+            <option value="">Усі статуси</option><option value="active">Активні</option><option value="hidden">Приховані</option>
+          </select>
+          <button class="btn btn-primary" onclick="catEdit(null,null)"><span class="material-icons-round" style="font-size:18px;vertical-align:-4px">add</span> Категорія</button>
+        </div>
+        <div class="card">
+          <div class="card-body" id="catTree" style="padding:8px 4px"></div>
         </div>
       </div>
 
@@ -1817,7 +1834,7 @@ const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
-  services:'Послуги',
+  services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
@@ -1855,7 +1872,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, contractors:loadContractors, settings:loadSettings, services:loadServices };
+    finance:loadFinance, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -2064,6 +2081,121 @@ function _svcRenderHist(hist){
   if(!hist.length){ box.innerHTML='<p style="opacity:.6;font-size:13px">Історія порожня</p>'; return; }
   box.innerHTML='<table class="tbl" style="font-size:13px"><thead><tr><th>Дата</th><th>Було</th><th>Стало</th><th>Причина</th><th>Хто</th></tr></thead><tbody>'+
     hist.map(h=>'<tr><td>'+new Date(h.changed_at).toLocaleDateString('uk-UA')+'</td><td>'+(h.old_price!=null?_svcMoney(h.old_price):'—')+'</td><td>'+_svcMoney(h.new_price)+'</td><td>'+escapeHtml(h.reason||'')+'</td><td>'+escapeHtml(h.changed_by_name||'—')+'</td></tr>').join('')+'</tbody></table>';
+}
+
+// ═══ КАТЕГОРІЇ ПОСЛУГ (SAL-02) ═══════════════
+let _catFlat = [];           // плоский список усіх категорій (для селекта батька)
+const _catOpen = new Set();  // id розгорнутих вузлів
+async function loadSvcCats(){
+  const st = document.getElementById('catStatusFilter').value;
+  const q = document.getElementById('catSearch').value.trim();
+  const box = document.getElementById('catTree');
+  box.innerHTML = '<p style="opacity:.6;padding:16px">Завантаження...</p>';
+  const qs = new URLSearchParams();
+  if(st) qs.set('status',st); if(q) qs.set('search',q);
+  // плоский список для селекта батьків (завжди повний)
+  try { _catFlat = (await api('/api/service-categories?flat=1')).items || []; } catch(e){ _catFlat=[]; }
+  const r = await api('/api/service-categories?'+qs.toString());
+  const tree = r.tree || [];
+  if(!tree.length){ box.innerHTML='<p style="opacity:.6;padding:16px">Категорій немає. Натисніть «+ Категорія».</p>'; return; }
+  box.innerHTML = tree.map(n=>_catNode(n)).join('');
+}
+function _catNode(n){
+  const has = n.children && n.children.length;
+  const open = _catOpen.has(n.id);
+  const pad = 6 + n.depth*22;
+  const badge = n.status==='hidden' ? '<span style="background:#9aa0a61a;color:#9aa0a6;padding:1px 7px;border-radius:12px;font-size:11px;margin-left:6px">прихована</span>' : '';
+  const cnt = n.services_count_total>0
+    ? '<span style="opacity:.55;font-size:12px;margin-left:6px">'+n.services_count+(n.services_count_total!==n.services_count?' / '+n.services_count_total:'')+' послуг</span>' : '';
+  const caret = has
+    ? '<span class="material-icons-round" onclick="catTgl('+n.id+',event)" style="cursor:pointer;font-size:18px;vertical-align:-4px;transition:.15s;transform:rotate('+(open?90:0)+'deg)">chevron_right</span>'
+    : '<span style="display:inline-block;width:18px"></span>';
+  let html = '<div class="catrow" style="display:flex;align-items:center;gap:6px;padding:7px 8px;padding-left:'+pad+'px;border-bottom:1px solid #f0f0f0">'
+    + caret
+    + (n.icon?'<span style="font-size:15px">'+escapeHtml(n.icon)+'</span>':'<span class="material-icons-round" style="font-size:16px;opacity:.4">folder</span>')
+    + '<span style="font-weight:'+(n.depth?500:600)+'">'+escapeHtml(n.name)+'</span>'+badge+cnt
+    + '<span style="margin-left:auto;display:flex;gap:2px">'
+    +   '<span class="material-icons-round catact" title="Підкатегорія" onclick="catEdit(null,'+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">add</span>'
+    +   '<span class="material-icons-round catact" title="Редагувати" onclick="catEdit('+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">edit</span>'
+    +   '<span class="material-icons-round catact" title="Видалити" onclick="catDel('+n.id+",'"+escapeHtml(n.name).replace(/'/g,"\\'")+"')\" style=\"cursor:pointer;font-size:17px;opacity:.5;padding:3px\">delete</span>"
+    + '</span></div>';
+  if(has && open) html += '<div>'+n.children.map(c=>_catNode(c)).join('')+'</div>';
+  return html;
+}
+function catTgl(id,e){ if(e) e.stopPropagation(); if(_catOpen.has(id)) _catOpen.delete(id); else _catOpen.add(id); loadSvcCats(); }
+function catEdit(id, parentId){
+  const c = id ? _catFlat.find(x=>x.id===id) : null;
+  // селект батька: всі крім самої категорії та її нащадків (щоб не створити цикл)
+  const selfPath = c ? c.materialized_path : null;
+  const opts = ['<option value="">— Коренева —</option>'].concat(
+    _catFlat.filter(x=>{
+      if(!c) return true;
+      if(x.id===c.id) return false;
+      if(selfPath && x.materialized_path && (x.materialized_path===selfPath || x.materialized_path.startsWith(selfPath+'.'))) return false;
+      return true;
+    }).map(x=>{
+      const sel = (c ? c.parent_id===x.id : parentId===x.id) ? ' selected' : '';
+      return '<option value="'+x.id+'"'+sel+'>'+'　'.repeat(x.depth)+escapeHtml(x.name)+'</option>';
+    })
+  ).join('');
+  const v = c || { name:'', name_ua:'', name_en:'', icon:'', slug:'', description:'', status:'active', sort_order:0, meta_title:'', meta_description:'' };
+  const body =
+    '<div style="display:grid;gap:10px">'
+    + '<label style="display:grid;gap:3px;font-size:13px">Назва (основна)<input id="catName" class="input" value="'+escapeHtml(v.name)+'"></label>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +   '<label style="display:grid;gap:3px;font-size:13px">Назва UA<input id="catNameUa" class="input" value="'+escapeHtml(v.name_ua||'')+'"></label>'
+    +   '<label style="display:grid;gap:3px;font-size:13px">Назва EN<input id="catNameEn" class="input" value="'+escapeHtml(v.name_en||'')+'"></label>'
+    + '</div>'
+    + '<label style="display:grid;gap:3px;font-size:13px">Батьківська категорія<select id="catParent" class="input">'+opts+'</select></label>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +   '<label style="display:grid;gap:3px;font-size:13px">Іконка (emoji)<input id="catIcon" class="input" value="'+escapeHtml(v.icon||'')+'" placeholder="✂️"></label>'
+    +   '<label style="display:grid;gap:3px;font-size:13px">Порядок<input id="catSort" type="number" class="input" value="'+(v.sort_order||0)+'"></label>'
+    + '</div>'
+    + '<label style="display:grid;gap:3px;font-size:13px">Опис<textarea id="catDesc" class="input" rows="2">'+escapeHtml(v.description||'')+'</textarea></label>'
+    + '<label style="display:grid;gap:3px;font-size:13px">Статус<select id="catStatus" class="input">'
+    +   '<option value="active"'+(v.status==='active'?' selected':'')+'>Активна</option>'
+    +   '<option value="hidden"'+(v.status==='hidden'?' selected':'')+'>Прихована</option></select></label>'
+    + '<details style="font-size:13px"><summary style="cursor:pointer;opacity:.7">SEO</summary><div style="display:grid;gap:8px;margin-top:8px">'
+    +   '<label style="display:grid;gap:3px">Meta title<input id="catMetaT" class="input" value="'+escapeHtml(v.meta_title||'')+'"></label>'
+    +   '<label style="display:grid;gap:3px">Meta description<textarea id="catMetaD" class="input" rows="2">'+escapeHtml(v.meta_description||'')+'</textarea></label>'
+    + '</div></details>'
+    + (c ? '<p style="font-size:12px;opacity:.55;margin:0">При зміні назви послуги цієї категорії автоматично перепривʼяжуться.</p>' : '')
+    + '</div>';
+  showModal(id?'Категорія: '+escapeHtml(v.name):'Нова категорія', body, async ()=>{
+    const payload = {
+      name: document.getElementById('catName').value.trim(),
+      name_ua: document.getElementById('catNameUa').value.trim() || null,
+      name_en: document.getElementById('catNameEn').value.trim() || null,
+      parent_id: document.getElementById('catParent').value ? Number(document.getElementById('catParent').value) : null,
+      icon: document.getElementById('catIcon').value.trim() || null,
+      sort_order: Number(document.getElementById('catSort').value)||0,
+      description: document.getElementById('catDesc').value.trim() || null,
+      status: document.getElementById('catStatus').value,
+      meta_title: document.getElementById('catMetaT').value.trim() || null,
+      meta_description: document.getElementById('catMetaD').value.trim() || null,
+    };
+    if(!payload.name){ toast('Вкажіть назву','error'); throw new Error('no name'); }
+    try {
+      const r = id
+        ? await api('/api/service-categories/'+id, { method:'PATCH', body: JSON.stringify(payload) })
+        : await api('/api/service-categories', { method:'POST', body: JSON.stringify(payload) });
+      if(r.error){ toast(r.error==='name_exists'?'Категорія з такою назвою вже є':r.error,'error'); throw new Error(r.error); }
+      if(payload.parent_id) _catOpen.add(payload.parent_id);
+      toast(id?'Збережено'+(r.renamed_services?' · перепривʼязано послуг: '+r.renamed_services:''):'Категорію створено','success');
+      loadSvcCats();
+    } catch(e){ if(!String(e.message).startsWith('no')) throw e; }
+  });
+}
+async function catDel(id, name){
+  if(!confirm('Видалити категорію «'+name+'»?')) return;
+  const r = await api('/api/service-categories/'+id, { method:'DELETE' });
+  if(r.error){
+    const msg = r.error==='has_children' ? 'Не можна: є підкатегорії ('+r.count+'). Спершу перенесіть або видаліть їх.'
+      : r.error==='has_services' ? 'Не можна: до категорії привʼязано послуг ('+r.count+'). Перенесіть послуги в іншу категорію.'
+      : r.error;
+    toast(msg,'error'); return;
+  }
+  toast('Категорію видалено','success'); loadSvcCats();
 }
 
 // ═══ FINANCE (Доходи і Витрати) ═══════════════
