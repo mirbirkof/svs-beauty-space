@@ -355,7 +355,7 @@ router.get('/clients', async (req, res) => {
               (SELECT COUNT(*) FROM orders WHERE client_id = c.id) AS orders_count
        FROM clients c
        ${where}
-       ORDER BY c.id DESC
+       ORDER BY c.last_visit_at DESC NULLS LAST, c.total_spent DESC NULLS LAST, c.id DESC
        LIMIT $${args.length - 1} OFFSET $${args.length}`,
       args
     );
