@@ -380,6 +380,19 @@ select.input { background:var(--card); }
   .settings-layout { flex-direction:column; }
   .set-form { grid-template-columns:1fr; }
 }
+/* ── Мобільні картки замість широких таблиць (≤768px) ── */
+@media(max-width:768px){
+  .tbl thead { position:absolute; left:-9999px; }
+  .tbl, .tbl tbody, .tbl tr, .tbl td { display:block; width:100%; box-sizing:border-box; }
+  .tbl tr { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; padding:4px 2px; background:var(--card); }
+  .tbl tr:hover td { background:transparent; }
+  .tbl td { padding:8px 14px; border:none; border-bottom:1px solid #f2f3f7; display:flex; justify-content:space-between; align-items:center; gap:14px; font-size:13.5px; text-align:right; min-height:0; }
+  .tbl td:last-child { border-bottom:none; }
+  .tbl td::before { content:attr(data-label); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--text-secondary); text-align:left; flex:0 0 38%; white-space:normal; }
+  .tbl td:not([data-label])::before, .tbl td[data-label=""]::before { display:none; }
+  .tbl td[colspan] { display:block; text-align:center; }
+  .tbl td[colspan]::before { display:none; }
+}
 .jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jappt .ok { position:absolute; bottom:5px; right:6px; font-size:13px; opacity:.9; }
 /* Графік змін */
@@ -5148,6 +5161,38 @@ async function runSync() {
   document.getElementById('syncLog').textContent = JSON.stringify(r, null, 2);
   loadSync();
 }
+</script>
+<script>
+/* Мобільні картки: автопідстановка назв полів із шапки таблиці у data-label.
+   Працює і для динамічно перемальованих таблиць (MutationObserver). */
+(function(){
+  function labelTable(tbl){
+    var heads = Array.prototype.map.call(tbl.querySelectorAll('thead th'), function(th){ return th.textContent.trim(); });
+    if(!heads.length) return;
+    Array.prototype.forEach.call(tbl.querySelectorAll('tbody tr'), function(tr){
+      Array.prototype.forEach.call(tr.children, function(td, i){
+        if(td.colSpan > 1) return;
+        if(heads[i] !== undefined && heads[i] !== '') td.setAttribute('data-label', heads[i]);
+      });
+    });
+  }
+  function labelAll(root){ (root||document).querySelectorAll('table.tbl').forEach(labelTable); }
+  var obs = new MutationObserver(function(muts){
+    for(var i=0;i<muts.length;i++){
+      var added = muts[i].addedNodes;
+      for(var j=0;j<added.length;j++){
+        var n = added[j];
+        if(n.nodeType !== 1) continue;
+        var t = n.closest && n.closest('table.tbl');
+        if(t){ labelTable(t); continue; }
+        if(n.querySelectorAll) n.querySelectorAll('table.tbl').forEach(labelTable);
+      }
+    }
+  });
+  function start(){ labelAll(); obs.observe(document.body, {childList:true, subtree:true}); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
 </script>
 <script src="/admin/assets/notes-widget.js"></script>
 </body>
