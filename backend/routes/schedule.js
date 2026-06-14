@@ -23,7 +23,45 @@ router.get('/masters', async (req, res) => {
       `SELECT id, name, specialty, avatar, schedule_json, active, beautypro_id
          FROM masters ${all ? '' : 'WHERE active = true'} ORDER BY active DESC, name`
     );
-    res.json({ items: r.rows, count: r.rows.length });
+    // Типовий тижневий графік: агрегуємо реальні зміни з BeautyPro (master_schedule_days)
+    // за вікно [-7..+35 днів] по днях тижня — найчастіша зміна per день стає шаблоном.
+    // BeautyPro має пріоритет над ручним schedule_json (єдина правда, як у журналі).
+    const DAYK = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; // індекс = EXTRACT(DOW)
+    const bp = await pool.query(
+      `SELECT master_id, EXTRACT(DOW FROM work_date)::int AS dow,
+              to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
+         FROM master_schedule_days
+        WHERE work_date BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 35
+          AND start_time IS NOT NULL`
+    );
+    // master -> weekday -> { 'HH:MM-HH:MM': count }
+    const agg = new Map();
+    for (const row of bp.rows) {
+      if (!agg.has(row.master_id)) agg.set(row.master_id, {});
+      const wd = agg.get(row.master_id);
+      const key = DAYK[row.dow];
+      const slot = `${row.start}-${row.end}`;
+      wd[key] = wd[key] || {};
+      wd[key][slot] = (wd[key][slot] || 0) + 1;
+    }
+    const items = r.rows.map((m) => {
+      const tmpl = m.schedule_json || {};
+      const wd = agg.get(m.id) || {};
+      const week = {};
+      ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
+        if (wd[k]) {
+          // найчастіша зміна для цього дня тижня
+          const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0];
+          const [start, end] = best.split('-');
+          week[k] = { start, end, source: 'beautypro' };
+        } else if (tmpl[k]) {
+          week[k] = { start: tmpl[k].start, end: tmpl[k].end,
+            break_start: tmpl[k].break_start || null, break_end: tmpl[k].break_end || null, source: 'template' };
+        } else { week[k] = null; }
+      });
+      return { ...m, week };
+    });
+    res.json({ items, count: items.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

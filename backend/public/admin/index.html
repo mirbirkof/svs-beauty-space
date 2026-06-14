@@ -1850,7 +1850,7 @@ function renderScheduleOverview(grid) {
   const head = `<div class="schb-cell schb-head" style="text-align:left">Майстер</div>` +
     _SCH_DAYS.map(([k,l],i)=>`<div class="schb-cell schb-head${i>=5?' wknd':''}${i===todayIdx?' today':''}">${l}</div>`).join('');
   const rows = masters.map(m => {
-    const s = m.schedule_json || {};
+    const s = m.week || m.schedule_json || {}; // тиждень = реальний графік BeautyPro поверх шаблону
     let totalMin=0, workDays=0;
     const cells = _SCH_DAYS.map(([k],i) => {
       const d = s[k];
@@ -1858,7 +1858,8 @@ function renderScheduleOverview(grid) {
       if (d && d.start && d.end) {
         totalMin += _schMinutes(d); workDays++;
         const brk = (d.break_start&&d.break_end) ? `<span class="brk">⏸ ${d.break_start}–${d.break_end}</span>` : '';
-        return `<div class="${cls}"><span class="schb-pill">${d.start}–${d.end}${brk}</span></div>`;
+        const bpDot = d.source==='beautypro' ? '<span title="З BeautyPro" style="color:#0a8f5f">•</span> ' : '';
+        return `<div class="${cls}"><span class="schb-pill">${bpDot}${d.start}–${d.end}${brk}</span></div>`;
       }
       return `<div class="${cls}"><span class="schb-off">·</span></div>`;
     }).join('');
@@ -1870,7 +1871,7 @@ function renderScheduleOverview(grid) {
       </div>${cells}`;
   }).join('');
   grid.innerHTML = `<div class="schboard"><div class="schboard-grid">${head}${rows}</div></div>
-    <p class="set-p" style="margin-top:10px">Натисніть на майстра, щоб відредагувати його графік. <span style="color:#d9534f">●</span> вихідні дні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
+    <p class="set-p" style="margin-top:10px">Поточний тиждень. <span style="color:#0a8f5f">•</span> — реальна зміна з BeautyPro, решта — тижневий шаблон. Натисніть на майстра, щоб відредагувати шаблон. <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
 }
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
