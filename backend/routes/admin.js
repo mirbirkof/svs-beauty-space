@@ -29,7 +29,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, logAction } = require('../lib/rbac');
 
 // ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
 router.use(requirePerm('admin.*'));
@@ -423,6 +423,9 @@ router.patch('/clients/:id', async (req, res) => {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
     const allowed = ['name', 'phone', 'email', 'birthday', 'notes'];
+    // старое состояние — для истории изменений (CRM-03)
+    const before = (await pool.query(`SELECT * FROM clients WHERE id = $1`, [id])).rows[0];
+    if (!before) return res.status(404).json({ error: 'not-found' });
     const sets = [], vals = [];
     for (const f of allowed) {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
@@ -438,8 +441,35 @@ router.patch('/clients/:id', async (req, res) => {
       vals
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
+    // diff изменённых полей → audit_log
+    const norm = (v) => v == null ? null : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v));
+    const changes = {};
+    for (const f of allowed) {
+      if (!Object.prototype.hasOwnProperty.call(req.body, f)) continue;
+      const from = norm(before[f]), to = norm(r.rows[0][f]);
+      if (from !== to) changes[f] = { from, to };
+    }
+    if (Object.keys(changes).length) {
+      logAction({ user: req.user, action: 'client.update', entity: 'client', entity_id: id,
+        ip: req.ip, meta: { changes } });
+    }
     res.json({ ok: true, client: r.rows[0] });
   } catch (e) { console.error('[admin:client:patch]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── GET /api/admin/clients/:id/history — история изменений карточки (CRM-03) ──
+router.get('/clients/:id/history', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const r = await pool.query(
+      `SELECT id, user_label, action, meta, created_at
+         FROM audit_log
+        WHERE entity = 'client' AND entity_id = $1
+        ORDER BY created_at DESC LIMIT $2`, [id, limit]);
+    res.json({ ok: true, items: r.rows, count: r.rowCount });
+  } catch (e) { console.error('[admin:client:history]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // ═══════════════════════════════════════════════════════

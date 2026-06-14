@@ -3142,8 +3142,32 @@ async function openClientCard(id){
       <tbody>${visitsHtml}</tbody></table>
       <h4 style="margin:18px 0 8px;font-size:14px">Куплені товари</h4>
       <table class="tbl"><thead><tr><th>Дата</th><th>Товар</th><th>К-сть</th><th>Майстер</th><th>Сума</th></tr></thead>
-      <tbody>${prodHtml}</tbody></table>`;
+      <tbody>${prodHtml}</tbody></table>
+      <h4 style="margin:18px 0 8px;font-size:14px">Історія змін картки</h4>
+      <div id="ccHistory"><div class="empty">Завантаження…</div></div>`;
+    loadClientHistory(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+const CC_FIELD_LABELS = { name:'Імʼя', phone:'Телефон', email:'Email', birthday:'День народження', notes:'Нотатки' };
+async function loadClientHistory(id){
+  const box = document.getElementById('ccHistory');
+  if (!box) return;
+  try {
+    const r = await api('/api/admin/clients/'+id+'/history');
+    const items = r.items || [];
+    if (!items.length) { box.innerHTML = '<div class="empty">Змін ще не було</div>'; return; }
+    box.innerHTML = items.map(a=>{
+      const dt = new Date(a.created_at).toLocaleString('uk-UA');
+      const ch = (a.meta && a.meta.changes) || {};
+      const diffs = Object.keys(ch).map(f=>{
+        const lbl = CC_FIELD_LABELS[f] || f;
+        const esc = s => (s==null||s==='') ? '<i style="color:#aaa">порожньо</i>' : String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+        return `<div style="font-size:12px;margin-top:3px"><b>${lbl}:</b> ${esc(ch[f].from)} → ${esc(ch[f].to)}</div>`;
+      }).join('');
+      return `<div style="border-bottom:1px solid var(--border,#eee);padding:8px 0">
+        <div style="font-size:12px;color:var(--text-secondary,#888)">${dt} · ${a.user_label||'—'}</div>${diffs}</div>`;
+    }).join('');
+  } catch(e){ box.innerHTML = '<div class="empty">Історія недоступна: '+(e.message||e)+'</div>'; }
 }
 async function saveClientCard(){
   if(!_ccId) return;

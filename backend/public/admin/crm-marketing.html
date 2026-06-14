@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SVS CRM — Маркетинг</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+/* Локальні псевдоніми → токени каркаса (admin-shell.css). Світла тема. Дзеркало crm-extra.html. */
+:root{--p:var(--primary);--muted:var(--text-secondary);--bd:var(--border);--ok:var(--success);--warn:var(--warning);--dng:var(--danger)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+header{background:var(--card);color:var(--text);padding:10px 24px;display:flex;align-items:center;justify-content:flex-end;border-bottom:1px solid var(--bd)}
+header .token{display:flex;gap:8px;align-items:center}
+header input{padding:6px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--text);font-size:12px;width:280px}
+header button{background:var(--p);color:#fff;border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+nav.tabs{display:flex;background:#fff;border-bottom:1px solid var(--bd);padding:0 24px;overflow-x:auto}
+nav.tabs button{background:none;border:none;padding:12px 16px;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:6px}
+nav.tabs button.active{color:var(--p);border-bottom-color:var(--p)}
+nav.tabs button:hover{color:var(--text)}
+main{padding:24px;max-width:1400px;margin:0 auto}
+.tab{display:none}
+.tab.active{display:block}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h2 .badge{background:var(--p);color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}
+.grid{display:grid;gap:14px}
+.grid-5{grid-template-columns:repeat(5,1fr)}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+@media(max-width:900px){.grid-5,.grid-4,.grid-3,.grid-2{grid-template-columns:1fr 1fr}}
+.metric{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+.metric .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.metric .value{font-size:24px;font-weight:700;margin-top:6px}
+.metric .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.metric.ok .value{color:var(--ok)}
+.metric.warn .value{color:var(--warn)}
+.metric.dng .value{color:var(--dng)}
+.metric.info .value{color:#3F7CAC}
+table{width:100%;border-collapse:collapse;font-size:13px}
+table th,table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd)}
+table th{background:#FAFBFC;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+table tr:hover{background:#FAFBFC}
+.btn{background:var(--p);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
+.btn:hover{background:var(--primary-hover)}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.danger{background:var(--dng)}
+.btn.ghost{background:transparent;color:var(--p);border:1px solid var(--p)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+input,select,textarea{padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p)}
+.inp{width:100%;box-sizing:border-box;display:block;margin-top:4px;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;font-size:13px;font-family:inherit;background:#fff}
+textarea.inp{resize:vertical}
+.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.pill.ok{background:#E0F8EB;color:#0F8E48}
+.pill.warn{background:#FEF3DC;color:#9D6A0C}
+.pill.dng{background:#FCE7E8;color:#A8252C}
+.pill.info{background:#E3EAFC;color:#2E54B9}
+.pill.gray{background:#EEF0F4;color:#5C6275}
+.lnk{color:#2E54B9;text-decoration:none;font-weight:600;cursor:pointer}
+.lnk:hover{text-decoration:underline}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.hint{font-size:12px;color:#888}
+.switch{position:relative;display:inline-block;width:42px;height:24px;cursor:pointer}
+.switch input{opacity:0;width:0;height:0}
+.switch .sl{position:absolute;inset:0;background:#ccc;border-radius:24px;transition:.2s}
+.switch .sl:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+.sl{background:var(--ok)}
+.switch input:checked+.sl:before{transform:translateX(18px)}
+.cond-row{display:grid;grid-template-columns:1.3fr 1fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:center}
+@media(max-width:700px){.cond-row{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="content" style="padding:0">
+
+<header>
+  <div class="token">
+    <span id="whoami" style="font-size:13px;opacity:.85"></span>
+    <a href="/admin/profile.html" style="margin-left:14px;font-size:13px;text-decoration:none;opacity:.8">Мій кабінет</a>
+    <a href="#" id="logout-link" style="margin-left:12px;font-size:13px;text-decoration:none;opacity:.8">Вийти</a>
+    <a href="#" id="token-toggle" title="Ввести токен вручну" style="margin-left:10px;font-size:13px;text-decoration:none;opacity:.45">⚙</a>
+    <span id="token-box" style="display:none;margin-left:10px">
+      <input id="token" type="password" placeholder="ADMIN_TOKEN або Bearer" style="width:160px">
+      <button onclick="saveToken()">OK</button>
+    </span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="active" data-tab="center"><span class="material-icons-round" style="font-size:18px">notifications_active</span> Центр повідомлень</button>
+  <button data-tab="segments"><span class="material-icons-round" style="font-size:18px">groups</span> Сегменти</button>
+  <button data-tab="campaigns"><span class="material-icons-round" style="font-size:18px">campaign</span> Кампанії</button>
+  <button data-tab="triggers"><span class="material-icons-round" style="font-size:18px">bolt</span> Тригери</button>
+</nav>
+
+<main>
+
+<!-- ═══════════ ЦЕНТР ПОВІДОМЛЕНЬ ═══════════ -->
+<section id="tab-center" class="tab active">
+  <div class="grid grid-5" id="n-stats"></div>
+  <div class="card">
+    <h2><span class="material-icons-round">tune</span> Стан розсилки</h2>
+    <div class="row" id="n-channels"></div>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:8px">Пауза черги
+        <span class="switch"><input type="checkbox" id="n-paused" onchange="togglePause()"><span class="sl"></span></span>
+      </label>
+      <button class="btn ghost sm" onclick="processNow()">Обробити чергу зараз</button>
+      <button class="btn ghost sm" onclick="loadCenter()">Оновити</button>
+    </div>
+    <div class="hint">Денний ліміт на клієнта і нічна тиша (DND) налаштовуються в Налаштуваннях. Канали без конфіга (SMS/Email) автоматично пропускаються.</div>
+  </div>
+  <div class="card">
+    <h2><span class="material-icons-round">send</span> Ручна відправка</h2>
+    <div class="row">
+      <input id="s-recipient" placeholder="Отримувач (tg id / телефон / email)" style="width:240px">
+      <select id="s-channel"><option value="telegram">Telegram</option><option value="sms">SMS</option><option value="email">Email</option></select>
+      <input id="s-subject" placeholder="Тема (для email)" style="width:180px">
+    </div>
+    <textarea id="s-body" class="inp" rows="3" placeholder="Текст повідомлення. Можна {{client}} та інші змінні."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="sendManual()">Відправити</button>
+      <span id="s-status" class="hint"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="material-icons-round">list_alt</span> Черга та журнал</h2>
+    <div class="row" style="gap:6px">
+      <select id="q-status" onchange="loadQueue()">
+        <option value="">Усі статуси</option>
+        <option value="queued">queued</option><option value="sending">sending</option>
+        <option value="sent">sent</option><option value="delivered">delivered</option>
+        <option value="failed">failed</option><option value="cancelled">cancelled</option>
+      </select>
+      <button class="btn ghost sm" onclick="loadQueue()">Оновити</button>
+    </div>
+    <div style="max-height:480px;overflow:auto">
+      <table><thead><tr><th>Час</th><th>Клієнт</th><th>Канал</th><th>Шаблон</th><th>Статус</th><th>Спроб</th><th>Помилка</th><th></th></tr></thead><tbody id="q-list"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ СЕГМЕНТИ ═══════════ -->
+<section id="tab-segments" class="tab">
+  <div class="card">
+    <h2><span class="material-icons-round">auto_awesome</span> Готові сегменти</h2>
+    <div class="hint" style="margin-bottom:10px">Живий підрахунок з бази. Натисни «Дивитись», щоб переглянути список клієнтів.</div>
+    <div class="grid grid-4" id="seg-presets"></div>
+  </div>
+  <div class="card">
+    <h2><span class="material-icons-round">build</span> Конструктор сегмента</h2>
+    <div class="row">
+      <input id="sg-name" placeholder="Назва сегмента" style="width:240px">
+      <select id="sg-op"><option value="AND">Усі умови (AND)</option><option value="OR">Будь-яка умова (OR)</option></select>
+      <button class="btn ghost sm" onclick="addCond()">+ Умова</button>
+    </div>
+    <div id="sg-conditions"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost" onclick="previewSeg()">Підрахувати</button>
+      <button class="btn" onclick="saveSeg()">Зберегти сегмент</button>
+      <span id="sg-preview" class="hint"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="material-icons-round">folder</span> Збережені сегменти</h2>
+    <table><thead><tr><th>Назва</th><th>Тип</th><th>Клієнтів</th><th>Оновлено</th><th></th></tr></thead><tbody id="seg-saved"></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ КАМПАНІЇ ═══════════ -->
+<section id="tab-campaigns" class="tab">
+  <div class="card">
+    <h2><span class="material-icons-round">add_circle</span> Нова кампанія</h2>
+    <div class="row">
+      <input id="c-name" placeholder="Назва кампанії" style="width:240px">
+      <select id="c-segment" style="min-width:220px"></select>
+      <select id="c-channel"><option value="telegram">Telegram</option><option value="sms">SMS</option><option value="email">Email</option><option value="any">Будь-який</option></select>
+    </div>
+    <textarea id="c-body" class="inp" rows="3" placeholder="Текст розсилки. {{client}} підставить ім'я клієнта."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="createCampaign()">Створити чернетку</button>
+      <span id="c-status" class="hint"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="material-icons-round">campaign</span> Кампанії</h2>
+    <button class="btn ghost sm" onclick="loadCampaigns()">Оновити</button>
+    <table style="margin-top:12px"><thead><tr><th>Назва</th><th>Сегмент</th><th>Канал</th><th>Статус</th><th>Аудиторія</th><th>Надіслано</th><th>Дії</th></tr></thead><tbody id="camp-list"></tbody></table>
+  </div>
+</section>
+
+<!-- ═══════════ ТРИГЕРИ ═══════════ -->
+<section id="tab-triggers" class="tab">
+  <div class="card">
+    <h2><span class="material-icons-round">bolt</span> Авто-тригери</h2>
+    <div class="hint" style="margin-bottom:10px">Раз на день (після 10:00) система знаходить клієнтів під умову й ставить повідомлення в чергу. Cooldown захищає від спаму.</div>
+    <button class="btn ghost sm" onclick="loadTriggers()">Оновити</button>
+    <table style="margin-top:12px"><thead><tr><th>Тригер</th><th>Увімк.</th><th>Шаблон</th><th>Канал</th><th>Cooldown</th><th>Кандидатів</th><th>Останній запуск</th><th>Дії</th></tr></thead><tbody id="trg-list"></tbody></table>
+  </div>
+</section>
+
+</main>
+
+<script>
+const API = location.origin;
+let TOKEN = localStorage.getItem('svs_admin_token') || '';
+let SCHEMA = null, SEGMENTS_CACHE = [], PRESETS_CACHE = [];
+document.getElementById('token').value = TOKEN;
+function fmtPhone(p){ const d=String(p||'').replace(/\D/g,''); return d?'+'+d:'—'; }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+document.getElementById('token-toggle').addEventListener('click',(e)=>{ e.preventDefault();
+  const box=document.getElementById('token-box'); box.style.display=box.style.display==='none'?'inline':'none'; });
+document.getElementById('logout-link').addEventListener('click',async(e)=>{ e.preventDefault();
+  try{ await fetch(API+'/api/auth/staff/logout',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN}}); }catch(_){}
+  localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); location.href='/admin/login.html'; });
+
+async function checkSession(){
+  if(!TOKEN){ location.href='/admin/login.html'; return; }
+  try{ const r=await fetch(API+'/api/auth/staff/me',{headers:{'Authorization':'Bearer '+TOKEN}});
+    if(r.ok){ const d=await r.json(); const u=d.user||{};
+      document.getElementById('whoami').textContent='Ви: '+(u.display_name||'—')+(u.role_code?' · '+u.role_code:''); }
+    else if(r.status===401){ document.getElementById('whoami').textContent='Сервісний доступ'; }
+  }catch(_){}
+}
+checkSession();
+function saveToken(){ TOKEN=document.getElementById('token').value.trim(); localStorage.setItem('svs_admin_token',TOKEN); init(); }
+
+async function api(path,opts={}){
+  const h=opts.headers||{}; h['Content-Type']='application/json';
+  if(TOKEN){ h['Authorization']='Bearer '+TOKEN; h['X-Admin-Token']=TOKEN; }
+  const r=await fetch(API+path,{...opts,headers:h});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+
+// ── tabs ──
+document.querySelectorAll('nav.tabs button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('tab-'+b.dataset.tab).classList.add('active');
+    history.replaceState(null,'','#'+b.dataset.tab);
+    onTab(b.dataset.tab);
+  };
+});
+function openHashTab(){ const h=location.hash.replace('#',''); const btn=document.querySelector('nav.tabs button[data-tab="'+h+'"]'); if(btn) btn.onclick(); }
+window.addEventListener('hashchange', openHashTab);
+const TAB_TITLES={center:'Центр повідомлень', segments:'Сегменти', campaigns:'Кампанії', triggers:'Тригери'};
+function setShellTitle(t){ const h=document.querySelector('.main .topbar h2'); if(h&&TAB_TITLES[t]) h.textContent=TAB_TITLES[t]; document.title='SVS Beauty · '+(TAB_TITLES[t]||''); }
+function onTab(t){
+  setTimeout(()=>setShellTitle(t),0);
+  if(t==='center') loadCenter();
+  if(t==='segments') loadSegments();
+  if(t==='campaigns') loadCampaigns();
+  if(t==='triggers') loadTriggers();
+}
+
+// ─────── ЦЕНТР ПОВІДОМЛЕНЬ ───────
+async function loadCenter(){ loadStats(); loadQueue(); }
+async function loadStats(){
+  try{
+    const s=await api('/api/notifications/stats');
+    document.getElementById('n-paused').checked=!!s.paused;
+    const st=s.by_status||{};
+    const cards=[
+      `<div class="metric info"><div class="label">Сьогодні</div><div class="value">${s.today||0}</div><div class="sub">${s.worker_active?'воркер активний':'воркер стоїть'}</div></div>`,
+      `<div class="metric"><div class="label">У черзі</div><div class="value">${(st.queued||0)+(st.sending||0)}</div></div>`,
+      `<div class="metric ok"><div class="label">Надіслано</div><div class="value">${(st.sent||0)+(st.delivered||0)}</div></div>`,
+      `<div class="metric dng"><div class="label">Помилки</div><div class="value">${(st.failed||0)+(st.bounced||0)}</div></div>`,
+      `<div class="metric ${s.paused?'warn':'ok'}"><div class="label">Розсилка</div><div class="value" style="font-size:18px">${s.paused?'НА ПАУЗІ':'Активна'}</div></div>`,
+    ];
+    document.getElementById('n-stats').innerHTML=cards.join('');
+    // канали
+    const h=await api('/api/notifications/health'); const ch=h.channels||{};
+    const chByName={}; (s.by_channel||[]).forEach(c=>chByName[c.channel]=c);
+    document.getElementById('n-channels').innerHTML=Object.entries(ch).map(([name,live])=>{
+      const c=chByName[name]||{}; const rate=c.delivery_rate!=null?` · ${c.delivery_rate}%`:'';
+      return `<span class="pill ${live?'ok':'gray'}">${name}: ${live?'налаштовано':'нема конфіга'}${rate}</span>`;
+    }).join('');
+  }catch(e){ document.getElementById('n-stats').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }
+}
+async function loadQueue(){
+  try{
+    const st=document.getElementById('q-status').value;
+    const r=await api('/api/notifications'+(st?'?status='+st:''));
+    document.getElementById('q-list').innerHTML=(r.items||[]).map(n=>`
+      <tr>
+        <td style="white-space:nowrap">${new Date(n.created_at).toLocaleString('uk')}</td>
+        <td>${esc(n.client_name||fmtPhone(n.recipient))}</td>
+        <td>${esc(n.channel||'—')}</td>
+        <td>${esc(n.template_key||'—')}</td>
+        <td><span class="pill ${n.status==='sent'||n.status==='delivered'?'ok':n.status==='failed'||n.status==='bounced'?'dng':n.status==='queued'?'info':'gray'}">${n.status}</span></td>
+        <td>${n.attempts||0}</td>
+        <td style="max-width:200px;font-size:11px;color:#a33">${esc(n.last_error||'')}</td>
+        <td>${(n.status==='failed'||n.status==='cancelled'||n.status==='bounced')?`<button class="btn sm ghost" onclick="retryNotif(${n.id})">Повтор</button>`:''}</td>
+      </tr>`).join('')||'<tr><td colspan="8" class="empty">Повідомлень немає</td></tr>';
+  }catch(e){ document.getElementById('q-list').innerHTML='<tr><td colspan="8" class="empty">'+esc(e.message)+'</td></tr>'; }
+}
+async function retryNotif(id){ try{ await api('/api/notifications/'+id+'/retry',{method:'POST',body:'{}'}); loadCenter(); }catch(e){ alert(e.message); } }
+async function processNow(){ try{ const r=await api('/api/notifications/process',{method:'POST',body:'{}'}); alert('Оброблено: надіслано '+(r.sent||0)+', помилок '+(r.failed||0)); loadCenter(); }catch(e){ alert(e.message); } }
+async function togglePause(){ try{ await api('/api/notifications/settings',{method:'PATCH',body:JSON.stringify({paused:document.getElementById('n-paused').checked})}); loadStats(); }catch(e){ alert(e.message); loadStats(); } }
+async function sendManual(){
+  const recipient=document.getElementById('s-recipient').value.trim();
+  const channel=document.getElementById('s-channel').value;
+  const body=document.getElementById('s-body').value.trim();
+  const subject=document.getElementById('s-subject').value.trim();
+  if(!recipient||!body){ document.getElementById('s-status').textContent='Вкажи отримувача і текст'; return; }
+  document.getElementById('s-status').textContent='Відправляю…';
+  try{
+    const r=await api('/api/notifications/send',{method:'POST',body:JSON.stringify({recipient,channel,body,subject:subject||undefined,priority:'high',category:'transactional'})});
+    document.getElementById('s-status').textContent=r.ok?('✓ '+(r.status||'поставлено в чергу')):('✗ '+(r.reason||'не вийшло'));
+    document.getElementById('s-body').value=''; loadQueue();
+  }catch(e){ document.getElementById('s-status').textContent='✗ '+e.message; }
+}
+
+// ─────── СЕГМЕНТИ ───────
+async function loadSegments(){
+  if(!SCHEMA){ try{ SCHEMA=await api('/api/segments/schema'); }catch(e){ SCHEMA={fields:[],operators:[]}; } }
+  if(!document.querySelector('#sg-conditions .cond-row')) addCond();
+  loadPresets(); loadSaved();
+}
+async function loadPresets(){
+  try{
+    const r=await api('/api/segments/presets'); PRESETS_CACHE=r.items||[];
+    document.getElementById('seg-presets').innerHTML=PRESETS_CACHE.map(p=>`
+      <div class="metric"><div class="label">${esc(p.name)}</div><div class="value">${p.count}</div>
+        <div class="sub"><a class="lnk" onclick="viewMembers('preset:${p.key}','${esc(p.name)}')">Дивитись</a></div></div>`).join('');
+  }catch(e){ document.getElementById('seg-presets').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }
+}
+async function loadSaved(){
+  try{
+    const r=await api('/api/segments'); SEGMENTS_CACHE=r.items||[];
+    document.getElementById('seg-saved').innerHTML=SEGMENTS_CACHE.map(s=>`
+      <tr><td><a class="lnk" onclick="viewMembers(${s.id},'${esc(s.name)}')">${esc(s.name)}</a></td>
+        <td><span class="pill gray">${s.type}</span></td>
+        <td>${s.member_count??'—'}</td>
+        <td>${s.recalc_at?new Date(s.recalc_at).toLocaleDateString('uk'):'—'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn sm ghost" onclick="recalcSeg(${s.id})">Перерахувати</button>
+          <button class="btn sm danger" onclick="delSeg(${s.id})">✕</button></td></tr>`).join('')
+      ||'<tr><td colspan="5" class="empty">Збережених сегментів немає</td></tr>';
+  }catch(e){ document.getElementById('seg-saved').innerHTML='<tr><td colspan="5" class="empty">'+esc(e.message)+'</td></tr>'; }
+}
+function addCond(){
+  const fields=(SCHEMA&&SCHEMA.fields)||[];
+  const ops=(SCHEMA&&SCHEMA.operators)||['=','!=','>','<','>=','<=','contains','is_null','is_not_null'];
+  const div=document.createElement('div'); div.className='cond-row';
+  div.innerHTML=`
+    <select class="c-field">${fields.map(f=>`<option value="${f.key}" data-type="${f.type}">${f.key}</option>`).join('')}</select>
+    <select class="c-op">${ops.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+    <input class="c-val" placeholder="значення">
+    <button class="btn sm danger" onclick="this.parentElement.remove()">✕</button>`;
+  document.getElementById('sg-conditions').appendChild(div);
+}
+function collectRules(){
+  const op=document.getElementById('sg-op').value;
+  const conditions=[...document.querySelectorAll('#sg-conditions .cond-row')].map(r=>{
+    const field=r.querySelector('.c-field').value;
+    const operator=r.querySelector('.c-op').value;
+    let value=r.querySelector('.c-val').value;
+    if(operator==='in'||operator==='not_in'||operator==='between') value=value.split(',').map(v=>v.trim());
+    else if(value==='true') value=true; else if(value==='false') value=false;
+    else if(value!==''&&!isNaN(value)&&!/^[+]/.test(value)) value=Number(value);
+    return {field,operator,value};
+  }).filter(c=>c.field);
+  return {op,conditions};
+}
+async function previewSeg(){
+  try{ const r=await api('/api/segments/preview',{method:'POST',body:JSON.stringify({rules:collectRules()})});
+    document.getElementById('sg-preview').textContent=`Під умову: ${r.count} з ${r.total} клієнтів`;
+  }catch(e){ document.getElementById('sg-preview').textContent='✗ '+e.message; }
+}
+async function saveSeg(){
+  const name=document.getElementById('sg-name').value.trim();
+  if(!name) return alert('Назва обовʼязкова');
+  try{ await api('/api/segments',{method:'POST',body:JSON.stringify({name,type:'dynamic',rules:collectRules()})});
+    document.getElementById('sg-name').value=''; loadSaved(); document.getElementById('sg-preview').textContent='✓ Збережено';
+  }catch(e){ alert(e.message); }
+}
+async function recalcSeg(id){ try{ const r=await api('/api/segments/'+id+'/recalc',{method:'POST',body:'{}'}); loadSaved(); }catch(e){ alert(e.message); } }
+async function delSeg(id){ if(!confirm('Видалити сегмент?')) return; try{ await api('/api/segments/'+id,{method:'DELETE'}); loadSaved(); }catch(e){ alert(e.message); } }
+async function viewMembers(id,name){
+  try{ const r=await api('/api/segments/'+encodeURIComponent(id)+'/members?limit=200');
+    const list=(r.items||[]).map(m=>`${esc(m.name||fmtPhone(m.phone))}`).join(', ');
+    alert(`${name}: ${r.count} клієнтів\n\n`+(list.slice(0,1500)||'порожньо'));
+  }catch(e){ alert(e.message); }
+}
+
+// ─────── КАМПАНІЇ ───────
+function fillSegmentSelect(){
+  const sel=document.getElementById('c-segment');
+  const opt=[`<optgroup label="Готові">`+PRESETS_CACHE.map(p=>`<option value="preset:${p.key}">${esc(p.name)} (${p.count})</option>`).join('')+`</optgroup>`];
+  if(SEGMENTS_CACHE.length) opt.push(`<optgroup label="Збережені">`+SEGMENTS_CACHE.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')+`</optgroup>`);
+  sel.innerHTML=opt.join('');
+}
+async function loadCampaigns(){
+  // підтягуємо сегменти для select, якщо ще не завантажені
+  if(!PRESETS_CACHE.length){ try{ PRESETS_CACHE=(await api('/api/segments/presets')).items||[]; }catch(_){} }
+  if(!SEGMENTS_CACHE.length){ try{ SEGMENTS_CACHE=(await api('/api/segments')).items||[]; }catch(_){} }
+  fillSegmentSelect();
+  try{
+    const r=await api('/api/campaigns');
+    document.getElementById('camp-list').innerHTML=(r.items||[]).map(c=>`
+      <tr><td>${esc(c.name)}</td>
+        <td>${esc(c.segment_name||c.preset_key||'—')}</td>
+        <td>${esc(c.channel)}</td>
+        <td><span class="pill ${c.status==='done'?'ok':c.status==='running'?'info':c.status==='cancelled'?'gray':'warn'}">${c.status}</span></td>
+        <td>${c.audience_size??'—'}</td>
+        <td>${c.enqueued||0}${c.skipped?(' / '+c.skipped+' проп.'):''}</td>
+        <td style="white-space:nowrap">
+          ${(c.status==='draft'||c.status==='scheduled')?`<button class="btn sm" onclick="launchCampaign(${c.id})">Запустити</button>`:''}
+          <button class="btn sm ghost" onclick="testCampaign(${c.id})">Тест собі</button>
+          ${(c.status!=='running'&&c.status!=='done')?`<button class="btn sm danger" onclick="delCampaign(${c.id})">✕</button>`:''}
+        </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Кампаній немає</td></tr>';
+  }catch(e){ document.getElementById('camp-list').innerHTML='<tr><td colspan="7" class="empty">'+esc(e.message)+'</td></tr>'; }
+}
+async function createCampaign(){
+  const name=document.getElementById('c-name').value.trim();
+  const segVal=document.getElementById('c-segment').value;
+  const channel=document.getElementById('c-channel').value;
+  const body=document.getElementById('c-body').value.trim();
+  if(!name||!body){ document.getElementById('c-status').textContent='Вкажи назву і текст'; return; }
+  const payload={name,channel,body};
+  if(segVal.startsWith('preset:')) payload.preset_key=segVal.slice(7); else payload.segment_id=Number(segVal);
+  try{ await api('/api/campaigns',{method:'POST',body:JSON.stringify(payload)});
+    document.getElementById('c-name').value=''; document.getElementById('c-body').value='';
+    document.getElementById('c-status').textContent='✓ Чернетку створено'; loadCampaigns();
+  }catch(e){ document.getElementById('c-status').textContent='✗ '+e.message; }
+}
+async function launchCampaign(id){
+  if(!confirm('Запустити розсилку на всю аудиторію сегмента?')) return;
+  try{ const r=await api('/api/campaigns/'+id+'/launch',{method:'POST',body:'{}'}); alert('Аудиторія '+r.audience+', поставлено '+r.enqueued+', пропущено '+r.skipped); loadCampaigns(); }catch(e){ alert(e.message); }
+}
+async function testCampaign(id){
+  const chat=prompt('Telegram chat_id для тесту (порожньо — ADMIN_TG_CHAT):','');
+  try{ const r=await api('/api/campaigns/'+id+'/test',{method:'POST',body:JSON.stringify(chat?{chat_id:chat}:{})}); alert(r.ok?'✓ Надіслано':'✗ '+(r.reason||'не вийшло')); }catch(e){ alert(e.message); }
+}
+async function delCampaign(id){ if(!confirm('Видалити кампанію?')) return; try{ await api('/api/campaigns/'+id,{method:'DELETE'}); loadCampaigns(); }catch(e){ alert(e.message); } }
+
+// ─────── ТРИГЕРИ ───────
+async function loadTriggers(){
+  try{
+    const r=await api('/api/triggers');
+    const rows=await Promise.all((r.items||[]).map(async t=>{
+      let cand='—'; try{ cand=(await api('/api/triggers/'+t.id+'/preview')).candidates; }catch(_){}
+      return `<tr>
+        <td>${esc(t.name)}<div class="hint">${esc(t.key)}</div></td>
+        <td><span class="switch"><input type="checkbox" ${t.enabled?'checked':''} onchange="toggleTrigger(${t.id},this.checked)"><span class="sl"></span></span></td>
+        <td>${esc(t.template_key)}</td>
+        <td>${esc(t.channel)}</td>
+        <td>${t.cooldown_days} дн</td>
+        <td><b>${cand}</b></td>
+        <td>${t.last_run_at?new Date(t.last_run_at).toLocaleString('uk')+' ('+(t.last_enqueued||0)+')':'—'}</td>
+        <td><button class="btn sm ghost" onclick="runTrigger(${t.id})">Запустити</button></td></tr>`;
+    }));
+    document.getElementById('trg-list').innerHTML=rows.join('')||'<tr><td colspan="8" class="empty">Тригерів немає</td></tr>';
+  }catch(e){ document.getElementById('trg-list').innerHTML='<tr><td colspan="8" class="empty">'+esc(e.message)+'</td></tr>'; }
+}
+async function toggleTrigger(id,enabled){ try{ await api('/api/triggers/'+id,{method:'PATCH',body:JSON.stringify({enabled})}); }catch(e){ alert(e.message); loadTriggers(); } }
+async function runTrigger(id){
+  if(!confirm('Запустити тригер зараз? Підходящим клієнтам поставляться повідомлення.')) return;
+  try{ const r=await api('/api/triggers/'+id+'/run',{method:'POST',body:'{}'}); alert('Кандидатів '+r.candidates+', поставлено '+r.enqueued+', пропущено '+r.skipped); loadTriggers(); }catch(e){ alert(e.message); }
+}
+
+function init(){ if(location.hash && document.querySelector('nav.tabs button[data-tab="'+location.hash.slice(1)+'"]')) openHashTab(); else onTab('center'); }
+init();
+</script>
+</div>
+<script src="/admin/assets/admin-shell.js" data-title="Маркетинг"></script>
+</body>
+</html>

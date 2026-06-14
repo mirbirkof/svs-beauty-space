@@ -21,7 +21,13 @@
       { icon: 'star_rate', label: 'Відгуки', href: '/admin/index.html#reviews' },
       { icon: 'reviews', label: 'Відгуки / Промо (запис)', href: '/admin/dikidi.html' },
     ] },
-    { icon: 'notifications_active', label: 'Повідомлення', href: '/admin/index.html#reminders' },
+    { group: 'Маркетинг', icon: 'campaign', items: [
+      { icon: 'notifications_active', label: 'Центр повідомлень', href: '/admin/crm-marketing.html#center' },
+      { icon: 'groups', label: 'Сегменти', href: '/admin/crm-marketing.html#segments' },
+      { icon: 'send', label: 'Кампанії / Розсилки', href: '/admin/crm-marketing.html#campaigns' },
+      { icon: 'bolt', label: 'Авто-тригери', href: '/admin/crm-marketing.html#triggers' },
+      { icon: 'history', label: 'Нагадування (записи)', href: '/admin/index.html#reminders' },
+    ] },
     { icon: 'payments', label: 'Зарплата', href: '/admin/index.html#payroll' },
     { group: 'Продажі', icon: 'sell', items: [
       { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
