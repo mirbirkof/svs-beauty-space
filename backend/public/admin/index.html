@@ -359,6 +359,32 @@ select.input { background:var(--card); }
 .sch-times { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .sch-times .input { width:104px; }
 .sch-brk { font-size:11px; color:var(--text-secondary); margin-left:8px; }
+/* ── DIKIDI-style зведена дошка графіка ── */
+.schboard { border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
+.schboard-grid { display:grid; grid-template-columns:200px repeat(7, minmax(72px,1fr)); }
+.schb-cell { padding:8px 6px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:46px; display:flex; flex-direction:column; justify-content:center; }
+.schb-cell:nth-child(8n) { border-right:none; }
+.schb-head { background:#f6f7fb; font-weight:600; font-size:12px; color:var(--text-secondary); text-align:center; text-transform:uppercase; letter-spacing:.3px; align-items:center; }
+.schb-head.wknd { color:#d9534f; }
+.schb-head.today { background:var(--primary); color:#fff; border-radius:0; }
+.schb-name { flex-direction:row; align-items:center; gap:10px; cursor:pointer; background:#fafbff; }
+.schb-name:hover { background:#eef0fb; }
+.schb-av { width:30px; height:30px; border-radius:50%; flex:0 0 30px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:12px; overflow:hidden; }
+.schb-av img { width:100%; height:100%; object-fit:cover; }
+.schb-nm { font-weight:600; font-size:13.5px; line-height:1.15; min-width:0; }
+.schb-meta { font-size:11px; color:var(--text-secondary); margin-top:1px; }
+.schb-day { text-align:center; align-items:center; }
+.schb-day.wknd { background:#fdf6f6; }
+.schb-day.today { background:#f0f1fc; }
+.schb-pill { display:inline-block; padding:3px 7px; border-radius:7px; font-size:11.5px; font-weight:600; background:rgba(16,185,129,.12); color:#0a8f5f; white-space:nowrap; line-height:1.35; }
+.schb-pill .brk { display:block; font-size:9.5px; font-weight:500; color:#9a8a3a; }
+.schb-off { color:#cfd2e0; font-size:14px; }
+.schb-row-off .schb-name { background:#fff5f5; }
+@media(max-width:768px){
+  .schboard { overflow-x:auto; }
+  .schboard-grid { grid-template-columns:130px repeat(7, 64px); min-width:600px; }
+  .schb-nm { font-size:12px; }
+}
 .jappt.dragging { opacity:.45; }
 .jcol-body.drop-active { background:var(--primary-light); }
 /* Червона лінія поточного часу (як у DIKIDI) */
@@ -1787,27 +1813,44 @@ async function loadSchMasters() {
   try {
     const r = await api('/api/schedule/masters?all=1');
     _schMastersCache = (r.items || r.masters || []);
+    const def = keep || '__all__'; // дефолт — зведений огляд усієї команди (як у DIKIDI)
     sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
-      `<option value="__all__"${keep==='__all__'?' selected':''}>👥 Усі майстри (огляд)</option>` +
-      _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(keep)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
+      `<option value="__all__"${def==='__all__'?' selected':''}>👥 Усі майстри (огляд)</option>` +
+      _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(def)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
+    loadSchedule();
   } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }
 }
-// Зведений огляд графіка всіх майстрів (тільки перегляд)
+// Зведений огляд графіка всіх майстрів — DIKIDI-style дошка (тільки перегляд)
+function _schAvColor(name){ let h=0; const s=String(name||'?'); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return `hsl(${h},55%,52%)`; }
+function _schMinutes(d){ if(!d||!d.start||!d.end) return 0; const [h1,m1]=d.start.split(':').map(Number),[h2,m2]=d.end.split(':').map(Number); let mins=(h2*60+m2)-(h1*60+m1); if(d.break_start&&d.break_end){const[b1,c1]=d.break_start.split(':').map(Number),[b2,c2]=d.break_end.split(':').map(Number); mins-=Math.max(0,(b2*60+c2)-(b1*60+c1));} return Math.max(0,mins); }
 function renderScheduleOverview(grid) {
   const masters = (_schMastersCache||[]).filter(m => m.active !== false);
   if (!masters.length) { grid.innerHTML = '<p class="set-p">Немає активних майстрів.</p>'; return; }
-  const head = '<th style="text-align:left">Майстер</th>' + _SCH_DAYS.map(([k,l])=>`<th>${l}</th>`).join('');
+  const todayIdx = (new Date().getDay()+6)%7; // 0=Пн..6=Нд
+  const head = `<div class="schb-cell schb-head" style="text-align:left">Майстер</div>` +
+    _SCH_DAYS.map(([k,l],i)=>`<div class="schb-cell schb-head${i>=5?' wknd':''}${i===todayIdx?' today':''}">${l}</div>`).join('');
   const rows = masters.map(m => {
     const s = m.schedule_json || {};
-    const cells = _SCH_DAYS.map(([k]) => {
+    let totalMin=0, workDays=0;
+    const cells = _SCH_DAYS.map(([k],i) => {
       const d = s[k];
-      return d ? `<td style="white-space:nowrap;font-size:12px">${d.start}–${d.end}</td>`
-               : `<td style="color:var(--text-secondary)">—</td>`;
+      const cls = `schb-cell schb-day${i>=5?' wknd':''}${i===todayIdx?' today':''}`;
+      if (d && d.start && d.end) {
+        totalMin += _schMinutes(d); workDays++;
+        const brk = (d.break_start&&d.break_end) ? `<span class="brk">⏸ ${d.break_start}–${d.break_end}</span>` : '';
+        return `<div class="${cls}"><span class="schb-pill">${d.start}–${d.end}${brk}</span></div>`;
+      }
+      return `<div class="${cls}"><span class="schb-off">·</span></div>`;
     }).join('');
-    return `<tr><td style="font-weight:600;cursor:pointer;color:var(--primary)" onclick="document.getElementById('schMaster').value='${m.id}';loadSchedule()">${m.name}</td>${cells}</tr>`;
+    const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0].toUpperCase();
+    const hrs = totalMin>0 ? `${Math.floor(totalMin/60)}год${totalMin%60?' '+(totalMin%60)+'хв':''} · ${workDays} ${_plural(workDays,'день','дні','днів')}` : 'вихідні';
+    return `<div class="schb-cell schb-name${workDays?'':' schb-row-off'}" onclick="document.getElementById('schMaster').value='${m.id}';loadSchedule()">
+        <span class="schb-av" style="background:${_schAvColor(m.name)}">${av}</span>
+        <span style="min-width:0"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty||''}${m.specialty?' · ':''}${hrs}/тиж</span></span>
+      </div>${cells}`;
   }).join('');
-  grid.innerHTML = `<div class="card-body" style="padding:0;overflow-x:auto"><table class="tbl" style="min-width:560px"><thead><tr style="text-align:center">${head}</tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="set-p" style="margin-top:10px">Натисніть на імʼя майстра, щоб відредагувати його графік.</p>`;
+  grid.innerHTML = `<div class="schboard"><div class="schboard-grid">${head}${rows}</div></div>
+    <p class="set-p" style="margin-top:10px">Натисніть на майстра, щоб відредагувати його графік. <span style="color:#d9534f">●</span> вихідні дні · <span style="color:var(--primary)">●</span> сьогодні.</p>`;
 }
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
