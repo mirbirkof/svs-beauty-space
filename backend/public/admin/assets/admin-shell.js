@@ -115,7 +115,9 @@
   const main = document.createElement('div');
   main.className = 'main';
   main.innerHTML =
-    '<div class="topbar"><button class="burger" onclick="document.getElementById(\'svsSidebar\').classList.toggle(\'open\')">' +
+    '<div class="topbar">' +
+    '<button class="sb-toggle" title="Згорнути меню" onclick="window.toggleSidebar()"><span class="material-icons-round">menu_open</span></button>' +
+    '<button class="burger" onclick="document.getElementById(\'svsSidebar\').classList.toggle(\'open\')">' +
     '<span class="material-icons-round">menu</span></button><h2>' + title + '</h2></div>';
 
   const body = document.body;
@@ -132,6 +134,13 @@
   }
   body.appendChild(aside);
   body.appendChild(main);
+
+  // ── Згортання меню (icon-rail), стан спільний з index.html ──
+  window.toggleSidebar = function () {
+    const on = document.body.classList.toggle('sb-collapsed');
+    try { localStorage.setItem('svs_sb_collapsed', on ? '1' : '0'); } catch (_) {}
+  };
+  if (localStorage.getItem('svs_sb_collapsed') === '1') document.body.classList.add('sb-collapsed');
 
   // Закрытие меню по клику мимо (мобайл)
   document.addEventListener('click', (e) => {

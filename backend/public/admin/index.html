@@ -78,6 +78,21 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 }
 .sidebar-footer button:hover { color:#fff; }
 
+/* COLLAPSE (icon-rail) — десктоп */
+.sb-toggle { display:inline-flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--text); padding:6px; border-radius:8px; }
+.sb-toggle:hover { background:var(--bg); }
+body.sb-collapsed .sidebar { width:66px; }
+body.sb-collapsed .main { margin-left:66px; }
+body.sb-collapsed .sidebar-logo { padding:20px 0 16px; text-align:center; }
+body.sb-collapsed .sidebar-logo h1, body.sb-collapsed .sidebar-logo span { font-size:0; }
+body.sb-collapsed .sidebar-logo h1::after { content:"S"; font-size:18px; }
+body.sb-collapsed .sidebar-item, body.sb-collapsed .sidebar-group-header { font-size:0; gap:0; justify-content:center; padding:11px 0; margin:2px 8px; }
+body.sb-collapsed .sidebar-item .material-icons-round, body.sb-collapsed .sidebar-group-header .material-icons-round { font-size:21px; }
+body.sb-collapsed .sidebar-group-header .chevron, body.sb-collapsed .sidebar-badge { display:none; }
+body.sb-collapsed .sidebar-group-items { display:none !important; }
+body.sb-collapsed .sidebar-footer button { font-size:0; justify-content:center; }
+body.sb-collapsed .sidebar-footer button .material-icons-round { font-size:18px; }
+
 /* MAIN */
 .main { margin-left:240px; min-height:100vh; }
 .topbar {
@@ -186,10 +201,16 @@ select.input { background:var(--card); }
 /* MOBILE */
 .mobile-toggle { display:none; background:none; border:none; cursor:pointer; color:var(--text); }
 @media(max-width:768px) {
-  .sidebar { transform:translateX(-100%); }
+  .sidebar, body.sb-collapsed .sidebar { transform:translateX(-100%); width:240px; }
   .sidebar.open { transform:translateX(0); }
-  .main { margin-left:0; }
+  .main, body.sb-collapsed .main { margin-left:0; }
   .mobile-toggle { display:flex; }
+  .sb-toggle { display:none; }
+  body.sb-collapsed .sidebar-group-items { display:none; }
+  body.sb-collapsed .sidebar-item, body.sb-collapsed .sidebar-group-header { font-size:13px; gap:10px; justify-content:flex-start; padding:9px 16px; }
+  body.sb-collapsed .sidebar-logo h1 { font-size:16px; }
+  body.sb-collapsed .sidebar-logo h1::after { content:""; }
+  body.sb-collapsed .sidebar-footer button { font-size:13px; }
   .kpi-grid { grid-template-columns:1fr 1fr; }
   /* журнал на мобільному: вужча колонка часу, компактні картки */
   .jgrid-time { flex:0 0 40px; }
@@ -413,10 +434,10 @@ select.input { background:var(--card); }
     </div>
     <nav class="sidebar-nav">
       <!-- Журнал + дашборд -->
-      <a class="sidebar-item active" data-page="dashboard" onclick="go('dashboard')">
+      <a class="sidebar-item" data-page="dashboard" onclick="go('dashboard')">
         <span class="material-icons-round">dashboard</span> Дашборд
       </a>
-      <a class="sidebar-item" data-page="journal" onclick="go('journal')">
+      <a class="sidebar-item active" data-page="journal" onclick="go('journal')">
         <span class="material-icons-round">event_note</span> Журнал записів
       </a>
       <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
@@ -588,10 +609,13 @@ select.input { background:var(--card); }
   <div class="main">
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:12px">
+        <button class="sb-toggle" title="Згорнути меню" onclick="toggleSidebar()">
+          <span class="material-icons-round">menu_open</span>
+        </button>
         <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
           <span class="material-icons-round">menu</span>
         </button>
-        <span class="topbar-title" id="pageTitle">Дашборд</span>
+        <span class="topbar-title" id="pageTitle">Журнал записів</span>
       </div>
       <div class="topbar-right">
         <span id="userBadge" style="display:none;font-size:13px;color:var(--text-muted,#888);font-weight:600"></span>
@@ -1399,7 +1423,13 @@ let currentPage = 'dashboard';
 let journalMode = 'day';
 
 // ── Auth ─────────────────────────────────────
+window.toggleSidebar = function () {
+  const on = document.body.classList.toggle('sb-collapsed');
+  try { localStorage.setItem('svs_sb_collapsed', on ? '1' : '0'); } catch (_) {}
+};
+
 window.addEventListener('DOMContentLoaded', () => {
+  if (localStorage.getItem('svs_sb_collapsed') === '1') document.body.classList.add('sb-collapsed');
   document.getElementById('journalDate').value = _ymd(new Date());
   if (TOKEN) {
     // Оптимистично сразу открываем кабинет, токен проверяем в фоне.
@@ -1416,7 +1446,7 @@ function showApp() {
   document.getElementById('login').style.display='none';
   document.getElementById('app').style.display='';
   const h = location.hash.replace('#','');
-  if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'dashboard');
+  if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
 }
 
 async function checkToken() {
