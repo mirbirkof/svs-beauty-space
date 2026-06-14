@@ -249,7 +249,7 @@ select.input { background:var(--card); }
 .empty .material-icons-round { font-size:48px; opacity:.3; display:block; margin-bottom:8px; }
 
 /* JOURNAL — DIKIDI-style day grid */
-.jgrid { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+.jgrid { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; max-width:100%; border:1px solid var(--border); border-radius:12px; background:var(--card); }
 .jgrid-time { flex:0 0 56px; border-right:1px solid var(--border); background:var(--bg); position:sticky; left:0; z-index:3; }
 .jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
 .jslot-label { height:var(--jh,21px); font-size:11px; color:var(--text-secondary); text-align:right; padding-right:8px; box-sizing:border-box; transform:translateY(-7px); }
@@ -304,7 +304,7 @@ select.input { background:var(--card); }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
 /* Журнал: права панель — календар + каса */
 .journal-layout { display:flex; gap:16px; align-items:flex-start; }
-.journal-main { flex:1; min-width:0; }
+.journal-main { flex:1; min-width:0; overflow-x:hidden; }
 .journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
 .jcal-card .card-body, .jcash-card .card-body { padding:14px; }
 .jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
@@ -1704,6 +1704,7 @@ window.toggleSidebar = function () {
 
 window.addEventListener('DOMContentLoaded', () => {
   // (стан згорнутого меню вже застосовано inline-скриптом у <head> — без мигання)
+  restoreSidebarGroups();
   document.getElementById('journalDate').value = _ymd(new Date());
   if (TOKEN) {
     // Оптимистично сразу открываем кабинет, токен проверяем в фоне.
@@ -1875,10 +1876,23 @@ window.addEventListener('hashchange', () => {
 // Аккордеон бічного меню: відкрита лише одна група за раз — меню не «стрибає»
 // і не перетворюється на довгий список. Клік по заголовку відкритої групи її згортає.
 function toggleSidebarGroup(headerEl) {
-  const grp = headerEl.parentElement;
-  const willOpen = !grp.classList.contains('open');
-  document.querySelectorAll('.sidebar-group').forEach(g => g.classList.remove('open'));
-  if (willOpen) grp.classList.add('open');
+  // Незалежне розкриття груп (без «акордеону»), стан запам'ятовується —
+  // меню більше не «стрибає» при кожному кліку.
+  headerEl.parentElement.classList.toggle('open');
+  saveSidebarGroups();
+}
+function saveSidebarGroups() {
+  try {
+    const open = [...document.querySelectorAll('.sidebar-group.open')].map(g => g.id).filter(Boolean);
+    localStorage.setItem('svs_sb_groups', JSON.stringify(open));
+  } catch (_) {}
+}
+function restoreSidebarGroups() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('svs_sb_groups') || 'null');
+    if (!Array.isArray(saved)) return;  // перший вхід — лишаємо HTML-дефолти
+    document.querySelectorAll('.sidebar-group').forEach(g => g.classList.toggle('open', saved.includes(g.id)));
+  } catch (_) {}
 }
 
 function go(page) {
@@ -1887,11 +1901,12 @@ function go(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.page === page));
-  // Група активної сторінки розкривається автоматично, решта згортаються —
-  // активний пункт завжди видно, відкритий стан не «збивається» при переході.
+  document.body.dataset.page = page;
+  // Група активної сторінки лише ВІДКРИВАЄТЬСЯ; інші не чіпаємо —
+  // меню не перемальовується і не «стрибає» при кожній навігації.
   const activeItem = document.querySelector('.sidebar-item.active');
   const parentGroup = activeItem ? activeItem.closest('.sidebar-group') : null;
-  document.querySelectorAll('.sidebar-group').forEach(g => g.classList.toggle('open', g === parentGroup));
+  if (parentGroup && !parentGroup.classList.contains('open')) { parentGroup.classList.add('open'); saveSidebarGroups(); }
   document.getElementById('pageTitle').textContent = pageTitles[page] || page;
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
