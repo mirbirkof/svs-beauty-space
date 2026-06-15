@@ -35,7 +35,7 @@ router.get('/catalog', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=120');
     res.json({ services: svc.rows, masters: mst.rows, source: 'crm-db' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

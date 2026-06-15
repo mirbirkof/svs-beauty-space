@@ -252,7 +252,8 @@ try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) {
 
 app.use((err, req, res, next) => {
   console.error('[shop-api]', err);
-  res.status(500).json({ error: err.message || 'internal' });
+  const { safeMessage } = require('./lib/safe-error');
+  res.status(500).json({ error: safeMessage(err, 'internal') });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
