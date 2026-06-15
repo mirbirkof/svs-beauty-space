@@ -207,6 +207,7 @@ try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { c
 try { app.use('/api/ai', require('./routes/ai')); } catch(e) { console.error('[ai] mount failed:', e.message); }
 try { app.use('/api/forecast', require('./routes/forecasting')); } catch(e) { console.error('[forecast] mount failed:', e.message); }
 try { app.use('/api/recommendations', require('./routes/recommendations')); } catch(e) { console.error('[recommendations] mount failed:', e.message); }
+try { app.use('/api/search', require('./routes/search')); } catch(e) { console.error('[search] mount failed:', e.message); }
 try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console.error('[quality] mount failed:', e.message); }
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
