@@ -191,6 +191,7 @@ const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/segments', require('./routes/segments'));
 app.use('/api/campaigns', require('./routes/campaigns'));
+try { app.use('/api/purchasing', require('./routes/purchasing')); } catch(e) { console.error('[purchasing] mount failed:', e.message); }
 const triggersRoutes = require('./routes/marketing-triggers');
 app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }

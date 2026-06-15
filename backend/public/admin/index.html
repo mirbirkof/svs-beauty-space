@@ -770,6 +770,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="stock" onclick="go('stock')">
             <span class="material-icons-round">warehouse</span> Склад
           </a>
+          <a class="sidebar-item" data-page="purchasing" onclick="go('purchasing')">
+            <span class="material-icons-round">local_shipping</span> Закупівлі
+          </a>
           <a class="sidebar-item" href="/admin/crm-extra.html#inventory">
             <span class="material-icons-round">fact_check</span> Інвентаризація
           </a>
@@ -1178,6 +1181,30 @@ select.input { background:var(--card); }
             <button onclick="addStock()" class="btn btn-primary">Внести</button>
             <p id="stockResult" style="font-size:13px"></p>
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ ЗАКУПІВЛІ (SLS-06) ═══ -->
+      <div class="page" id="page-purchasing">
+        <div class="fc-kpis" id="puKpis" style="margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="puOrderModal()"><span class="material-icons-round" style="font-size:16px">add</span> Новий заказ</button>
+          <button class="btn btn-sm" onclick="puAutoRun()">Автозакупка</button>
+          <select id="puStatusFilter" class="input" style="width:auto" onchange="loadPurchasing()">
+            <option value="">Усі статуси</option>
+            <option value="draft">Чернетка</option><option value="pending_approval">На узгодженні</option>
+            <option value="approved">Узгоджено</option><option value="ordered">Замовлено</option>
+            <option value="partially_received">Частково отримано</option><option value="received">Отримано</option>
+            <option value="closed">Закрито</option><option value="cancelled">Скасовано</option>
+          </select>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-header"><h3>Потреба в закупівлі</h3><span class="hint" id="puNeedsHint"></span></div>
+          <div class="card-body"><table class="tbl"><tbody id="puNeeds"></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Заказы постачальникам</h3></div>
+          <div class="card-body"><table class="tbl"><tbody id="puOrders"></tbody></table></div>
         </div>
       </div>
 
@@ -2161,7 +2188,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
-  fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', orders:'Замовлення', products:'Товари', stock:'Склад',
+  fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', purchasing:'Закупівлі', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
@@ -2217,7 +2244,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -4507,6 +4534,142 @@ async function cfPayDelete(id){
   if(!confirm('Видалити платіж?')) return;
   const r=await api('/api/cash-flow/calendar/'+id,{method:'DELETE'});
   if(r&&r.ok){ toast('Видалено'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
+}
+
+// ═══ ЗАКУПІВЛІ (SLS-06) ═══
+const _PU_ST={draft:['Чернетка','flat'],pending_approval:['На узгодженні','warn'],approved:['Узгоджено','info'],rejected:['Відхилено','down'],ordered:['Замовлено','info'],in_transit:['В дорозі','info'],partially_received:['Частково','warn'],received:['Отримано','up'],closed:['Закрито','flat'],cancelled:['Скасовано','down']};
+function _puMoney(v){ return (Math.round((+v||0)*100)/100).toLocaleString('uk-UA')+' ₴'; }
+let _PU_SUPPLIERS=[], _PU_PRODUCTS=[];
+async function loadPurchasing(){
+  // аналитика
+  try{
+    const a=await api('/api/purchasing/analytics');
+    document.getElementById('puKpis').innerHTML=[
+      ['Заказів',a.orders_count||0,''],['Витрачено',_puMoney(a.total_spent),''],
+      ['Сер. доставка',(a.avg_delivery_days!=null?a.avg_delivery_days+' дн':'—'),''],
+      ['Розбіжності',(a.discrepancy_rate||0)+'%',''],
+    ].map(k=>`<div class="fc-kpi"><div class="lbl">${k[0]}</div><div class="val">${k[1]}</div></div>`).join('');
+  }catch(e){ document.getElementById('puKpis').innerHTML=''; }
+  // потребности
+  try{
+    const n=await api('/api/purchasing/needs');
+    document.getElementById('puNeedsHint').textContent=(n.count||0)+' позицій';
+    document.getElementById('puNeeds').innerHTML=(n.items||[]).map(x=>`
+      <tr>
+        <td>${x.priority==='critical'?'<span style="color:#e3342f">●</span> ':''}${escapeHtml(x.name)}</td>
+        <td>залишок ${x.current_stock} / мін ${x.min_stock??'—'}</td>
+        <td>${escapeHtml(x.supplier_name||'—')}</td>
+        <td style="text-align:right">потрібно ~${Math.round(x.suggested_qty)}</td>
+      </tr>`).join('')||'<tr><td class="empty">Потреби немає — залишки в нормі</td></tr>';
+  }catch(e){ document.getElementById('puNeeds').innerHTML='<tr><td class="empty">'+escapeHtml(e.message)+'</td></tr>'; }
+  // заказы
+  try{
+    const st=document.getElementById('puStatusFilter').value;
+    const r=await api('/api/purchasing/orders'+(st?'?status='+st:''));
+    document.getElementById('puOrders').innerHTML=(r.items||[]).map(o=>{
+      const s=_PU_ST[o.status]||[o.status,'flat'];
+      return `<tr>
+        <td><b>${escapeHtml(o.po_number)}</b>${o.auto_generated?' <span class="hint">авто</span>':''}</td>
+        <td>${escapeHtml(o.supplier_name||'—')}</td>
+        <td>${o.items_count} поз.</td>
+        <td>${_puMoney(o.total_amount)}</td>
+        <td><span class="chg ${s[1]}">${s[0]}</span></td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn btn-sm" onclick="puOpen(${o.id})">Відкрити</button>
+        </td></tr>`;
+    }).join('')||'<tr><td class="empty">Заказів немає</td></tr>';
+  }catch(e){ document.getElementById('puOrders').innerHTML='<tr><td class="empty">'+escapeHtml(e.message)+'</td></tr>'; }
+}
+async function _puLoadRefs(){
+  if(!_PU_SUPPLIERS.length){ try{ _PU_SUPPLIERS=(await api('/api/suppliers')).items||[]; }catch(_){} }
+  if(!_PU_PRODUCTS.length){ try{ _PU_PRODUCTS=(await api('/api/admin/products?limit=200')).items||[]; }catch(_){} }
+}
+let _puLines=[];
+async function puOrderModal(){
+  await _puLoadRefs(); _puLines=[{product_id:'',product_name:'',quantity:1,unit_price:0}];
+  const supOpts='<option value="">— постачальник —</option>'+_PU_SUPPLIERS.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  showModal('Новий заказ постачальнику',`
+    <div class="fld"><label>Постачальник</label><select id="puSup" class="input">${supOpts}</select></div>
+    <div class="fld"><label>Очікувана доставка</label><input id="puEta" type="date" class="input"></div>
+    <div class="fld"><label>Позиції</label><div id="puLines"></div>
+      <button class="btn btn-sm" onclick="puAddLine()" style="margin-top:6px">+ позиція</button></div>
+    <div class="fld"><label>Примітка</label><input id="puNote" class="input"></div>`,
+    async ()=>{
+      const items=_puReadLines();
+      if(!items.length) return toast('Додай позиції','error');
+      const r=await api('/api/purchasing/orders',{method:'POST',body:JSON.stringify({
+        supplier_id:document.getElementById('puSup').value||null,
+        expected_delivery:document.getElementById('puEta').value||null,
+        notes:document.getElementById('puNote').value||null, items })});
+      if(r&&r.ok){ toast('Заказ '+r.order.po_number+' створено'); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); return false; }
+    });
+  puRenderLines();
+}
+function puAddLine(){ _puLines.push({product_id:'',product_name:'',quantity:1,unit_price:0}); puRenderLines(); }
+function puRenderLines(){
+  const prodOpts='<option value="">— товар —</option>'+_PU_PRODUCTS.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  document.getElementById('puLines').innerHTML=_puLines.map((l,i)=>`
+    <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
+      <select class="input" style="flex:2" onchange="_puLines[${i}].product_id=this.value;_puLines[${i}].product_name=this.options[this.selectedIndex].text">${prodOpts.replace('value="'+l.product_id+'"','value="'+l.product_id+'" selected')}</select>
+      <input class="input" style="width:70px" type="number" min="1" value="${l.quantity}" placeholder="к-сть" oninput="_puLines[${i}].quantity=this.value">
+      <input class="input" style="width:90px" type="number" min="0" step="0.01" value="${l.unit_price}" placeholder="ціна" oninput="_puLines[${i}].unit_price=this.value">
+      <button class="btn-icon" onclick="_puLines.splice(${i},1);puRenderLines()">✕</button>
+    </div>`).join('');
+}
+function _puReadLines(){ return _puLines.filter(l=>l.product_id&&+l.quantity>0).map(l=>({product_id:l.product_id,product_name:l.product_name,quantity:+l.quantity,unit_price:+l.unit_price||0})); }
+async function puOpen(id){
+  const d=await api('/api/purchasing/orders/'+id);
+  const o=d.order, s=_PU_ST[o.status]||[o.status,'flat'];
+  const items=(d.items||[]).map(it=>`<tr><td>${escapeHtml(it.product_name||it.product_id||'—')}</td><td>${it.quantity_ordered}${+it.quantity_received>0?(' / отр. '+it.quantity_received):''}</td><td style="text-align:right">${_puMoney(it.total_price)}</td></tr>`).join('');
+  const acts=[];
+  if(o.status==='draft') acts.push(`<button class="btn btn-sm btn-primary" onclick="puAct(${id},'submit')">На узгодження</button>`,`<button class="btn btn-sm" onclick="puAct(${id},'cancel')">Скасувати</button>`);
+  if(o.status==='pending_approval') acts.push(`<button class="btn btn-sm btn-primary" onclick="puAct(${id},'approve')">Узгодити</button>`,`<button class="btn btn-sm" onclick="puReject(${id})">Відхилити</button>`);
+  if(o.status==='approved') acts.push(`<button class="btn btn-sm btn-primary" onclick="puAct(${id},'send')">Відправити постачальнику</button>`);
+  if(['ordered','in_transit','partially_received'].includes(o.status)) acts.push(`<button class="btn btn-sm btn-primary" onclick="puReceiveModal(${id})">Прийняти товар</button>`);
+  if(['received','partially_received'].includes(o.status)) acts.push(`<button class="btn btn-sm" onclick="puAct(${id},'close')">Закрити</button>`);
+  showModal('Заказ '+escapeHtml(o.po_number),`
+    <p><span class="chg ${s[1]}">${s[0]}</span> · ${escapeHtml(o.supplier_name||'без постачальника')} · ${_puMoney(o.total_amount)}</p>
+    ${o.expected_delivery?'<p class="hint">Очікується: '+new Date(o.expected_delivery).toLocaleDateString('uk-UA')+'</p>':''}
+    <table class="tbl"><tbody>${items||'<tr><td class="empty">Порожньо</td></tr>'}</tbody></table>
+    ${o.notes?'<p class="hint">'+escapeHtml(o.notes)+'</p>':''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">${acts.join('')}</div>`, null);
+}
+async function puAct(id,action){
+  const r=await api('/api/purchasing/orders/'+id+'/'+action,{method:'POST',body:'{}'});
+  if(r&&r.ok){ toast('Готово'); document.getElementById('genModal')?.remove(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+async function puReject(id){
+  const c=prompt('Причина відхилення:'); if(c===null) return;
+  const r=await api('/api/purchasing/orders/'+id+'/reject',{method:'POST',body:JSON.stringify({comment:c})});
+  if(r&&r.ok){ toast('Відхилено'); document.getElementById('genModal')?.remove(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+async function puReceiveModal(id){
+  const d=await api('/api/purchasing/orders/'+id);
+  const rows=(d.items||[]).map(it=>{
+    const left=(+it.quantity_ordered)-(+it.quantity_received||0);
+    return `<tr><td>${escapeHtml(it.product_name||it.product_id)}</td>
+      <td style="text-align:right"><input class="input" style="width:70px" type="number" min="0" value="${left>0?left:0}" data-poi="${it.id}" data-r="recv"></td>
+      <td><input class="input" style="width:55px" type="number" min="0" value="0" data-poi="${it.id}" data-r="def" title="брак"></td></tr>`;
+  }).join('');
+  showModal('Приёмка заказу '+escapeHtml(d.order.po_number),`
+    <table class="tbl"><thead><tr><th>Товар</th><th>Отримано</th><th>Брак</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="fld"><label>Розбіжності (примітка)</label><input id="puDisc" class="input"></div>`,
+    async ()=>{
+      const items=[];
+      document.querySelectorAll('[data-r="recv"]').forEach(inp=>{
+        const poi=inp.getAttribute('data-poi');
+        const def=document.querySelector('[data-poi="'+poi+'"][data-r="def"]');
+        const q=+inp.value||0; if(q>0||(+def.value>0)) items.push({po_item_id:+poi,quantity_received:q,quantity_defective:+def.value||0});
+      });
+      if(!items.length) return toast('Вкажи кількість','error');
+      const r=await api('/api/purchasing/orders/'+id+'/receive',{method:'POST',body:JSON.stringify({items,discrepancy_notes:document.getElementById('puDisc').value||null})});
+      if(r&&r.ok){ toast('Прийнято на склад'+(r.has_discrepancy?' (є розбіжності)':'')); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); return false; }
+    });
+}
+async function puAutoRun(){
+  if(!confirm('Запустити автозакупку? Створить чернетки заказів для товарів нижче мінімуму.')) return;
+  const r=await api('/api/purchasing/auto-run',{method:'POST',body:'{}'});
+  if(r&&r.ok){ toast('Кандидатів: '+r.candidates+', створено заказів: '+r.orders_created); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 
 async function loadJournal() {
