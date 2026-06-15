@@ -196,6 +196,7 @@ app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }
 try { app.use('/api/ai', require('./routes/ai')); } catch(e) { console.error('[ai] mount failed:', e.message); }
 try { app.use('/api/pipeline', require('./routes/pipeline')); } catch(e) { console.error('[pipeline] mount failed:', e.message); }
+try { app.use('/api/shifts', require('./routes/shifts')); } catch(e) { console.error('[shifts] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 

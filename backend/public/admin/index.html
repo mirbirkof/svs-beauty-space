@@ -311,6 +311,10 @@ select.input { background:var(--card); }
 .jt-date:hover { border-color:var(--primary); }
 .jt-right { display:flex; align-items:center; gap:8px; }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
+/* Зміни / Табель (SAL-05) — поля форми + іконкова кнопка */
+.fld { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; font-size:13px; }
+.fld > span { color:var(--text-secondary,#667); font-weight:600; }
+.btn-icon { padding:5px 7px; line-height:1; }
 /* Воронка візитів (CRM-08) — канбан */
 .pipeline-board { display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; align-items:flex-start; }
 .pl-col { flex:1 0 200px; min-width:200px; max-width:320px; background:var(--bg-soft,#f6f7f9); border-radius:12px; display:flex; flex-direction:column; }
@@ -583,6 +587,9 @@ select.input { background:var(--card); }
       </a>
       <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
         <span class="material-icons-round">view_kanban</span> Воронка візитів
+      </a>
+      <a class="sidebar-item" data-page="shifts" onclick="go('shifts')">
+        <span class="material-icons-round">event_available</span> Зміни / Табель
       </a>
       <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
         <span class="material-icons-round">calendar_month</span> Графік роботи
@@ -942,6 +949,22 @@ select.input { background:var(--card); }
         </div>
         <p class="set-p" style="margin:0 0 12px">Перетягуйте картку візиту між стадіями, щоб змінити статус. Червона картка — клієнт уже мав прийти, але візит «завис» у плануванні.</p>
         <div id="pipelineBoard" class="pipeline-board"><div class="empty"><span class="material-icons-round">view_kanban</span>Завантаження дошки...</div></div>
+      </div>
+
+      <!-- ═══ SHIFTS / ТАБЕЛЬ (SAL-05) ═══ -->
+      <div class="page" id="page-shifts">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <input type="date" id="shiftFrom" class="input btn-sm" style="max-width:160px" onchange="loadShifts()">
+          <span style="color:var(--text-secondary)">—</span>
+          <input type="date" id="shiftTo" class="input btn-sm" style="max-width:160px" onchange="loadShifts()">
+          <button class="btn btn-sm" onclick="shiftsThisWeek()">Цей тиждень</button>
+          <button class="btn btn-sm" onclick="shiftsThisMonth()">Цей місяць</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openShiftModal()"><span class="material-icons-round" style="font-size:16px">add</span> Запланувати зміну</button>
+        </div>
+        <p class="set-p" style="margin:0 0 12px">Плануйте робочі зміни майстрів, відмічайте прихід/вихід (clock-in/out). Табель рахує фактично відпрацьовані години за період.</p>
+        <div id="shiftsTimesheet" style="margin-bottom:18px"></div>
+        <h3 style="margin:0 0 10px;font-size:15px">Зміни за період</h3>
+        <div id="shiftsList"><div class="empty"><span class="material-icons-round">event_available</span>Завантаження...</div></div>
       </div>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -2004,7 +2027,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
-  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', clients:'Клієнти',
+  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
@@ -2057,7 +2080,7 @@ function go(page) {
   if (parentGroup && !parentGroup.classList.contains('open')) { parentGroup.classList.add('open'); saveSidebarGroups(); }
   document.getElementById('pageTitle').textContent = pageTitles[page] || page;
   document.getElementById('sidebar').classList.remove('open');
-  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, clients:loadClients,
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
@@ -3678,6 +3701,100 @@ async function pipelineDrop(ev, targetStage) {
       loadPipeline();
     } else { toast('Не вдалося змінити статус', 'error'); }
   } catch { toast('Помилка зміни статусу', 'error'); }
+}
+
+// ── SAL-05 Зміни / Табель ────────────────────────────────
+let _shiftMasters = [];
+function _shiftKyivToday(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+function _shiftFmtDate(d){ return new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d); }
+function shiftsThisWeek(){
+  const t=new Date(); const dow=(t.getDay()+6)%7; const mon=new Date(t); mon.setDate(t.getDate()-dow); const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  document.getElementById('shiftFrom').value=_shiftFmtDate(mon); document.getElementById('shiftTo').value=_shiftFmtDate(sun); loadShifts();
+}
+function shiftsThisMonth(){
+  const t=new Date(); const first=new Date(t.getFullYear(),t.getMonth(),1); const last=new Date(t.getFullYear(),t.getMonth()+1,0);
+  document.getElementById('shiftFrom').value=_shiftFmtDate(first); document.getElementById('shiftTo').value=_shiftFmtDate(last); loadShifts();
+}
+async function loadShifts(){
+  const f=document.getElementById('shiftFrom'), tt=document.getElementById('shiftTo');
+  if(!f.value){ const t=_shiftKyivToday(); const mon=new Date(t+'T12:00:00'); const dow=(mon.getDay()+6)%7; mon.setDate(mon.getDate()-dow); const sun=new Date(mon); sun.setDate(mon.getDate()+6); f.value=_shiftFmtDate(mon); tt.value=_shiftFmtDate(sun); }
+  if(!tt.value) tt.value=f.value;
+  if(!_shiftMasters.length){ try{ const m=await api('/api/schedule/masters'); _shiftMasters=(m.masters||m.items||[]).filter(x=>x&&x.id); }catch{} }
+  const qs=new URLSearchParams({from:f.value,to:tt.value});
+  // Табель
+  try{
+    const ts=await api('/api/shifts/timesheet?'+qs.toString());
+    const rows=(ts.items||[]).filter(r=>r.shifts_total>0||+r.hours_worked>0);
+    document.getElementById('shiftsTimesheet').innerHTML = rows.length ? `
+      <table class="tbl" style="width:100%"><thead><tr>
+        <th style="text-align:left">Майстер</th><th>Змін</th><th>Завершено</th><th>Пропущено</th><th>План, год</th><th>Факт, год</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td style="text-align:left">${escapeHtml(r.master_name)}</td>
+          <td style="text-align:center">${r.shifts_total}</td>
+          <td style="text-align:center;color:#16a34a">${r.shifts_done}</td>
+          <td style="text-align:center;color:${r.shifts_missed?'#dc2626':'inherit'}">${r.shifts_missed}</td>
+          <td style="text-align:center">${r.hours_planned}</td>
+          <td style="text-align:center"><b>${r.hours_worked}</b></td></tr>`).join('')}</tbody></table>`
+      : '<div class="empty" style="padding:14px">За цей період змін немає.</div>';
+  }catch{ document.getElementById('shiftsTimesheet').innerHTML='<div class="empty">Не вдалося завантажити табель.</div>'; }
+  // Список змін
+  const list=document.getElementById('shiftsList');
+  try{
+    const d=await api('/api/shifts?'+qs.toString());
+    const items=d.items||[];
+    if(!items.length){ list.innerHTML='<div class="empty"><span class="material-icons-round">event_busy</span>Немає запланованих змін. Натисніть «Запланувати зміну».</div>'; return; }
+    list.innerHTML=`<table class="tbl" style="width:100%"><thead><tr>
+      <th style="text-align:left">Дата</th><th style="text-align:left">Майстер</th><th>План</th><th>Прихід</th><th>Вихід</th><th>Год</th><th>Статус</th><th></th></tr></thead>
+      <tbody>${items.map(s=>{
+        const pl=(s.planned_start&&s.planned_end)?`${s.planned_start.slice(0,5)}–${s.planned_end.slice(0,5)}`:'—';
+        const ci=s.clock_in?new Date(s.clock_in).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'}):'—';
+        const co=s.clock_out?new Date(s.clock_out).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'}):'—';
+        const hrs=s.hours_worked!=null?(+s.hours_worked).toFixed(1):'—';
+        const stMap={planned:['Заплановано','#6366f1'],working:['На зміні','#0ea5e9'],done:['Відпрацьовано','#16a34a'],missed:['Пропущено','#dc2626']};
+        const st=stMap[s.status]||[s.status,'#94a3b8'];
+        let act='';
+        if(!s.clock_in) act=`<button class="btn btn-sm btn-primary" onclick="shiftClock(${s.id},'in')">Прихід</button>`;
+        else if(!s.clock_out) act=`<button class="btn btn-sm" onclick="shiftClock(${s.id},'out')">Вихід</button>`;
+        return `<tr>
+          <td style="text-align:left">${s.shift_date}</td>
+          <td style="text-align:left">${escapeHtml(s.master_name)}</td>
+          <td style="text-align:center">${pl}</td>
+          <td style="text-align:center">${ci}</td>
+          <td style="text-align:center">${co}</td>
+          <td style="text-align:center">${hrs}</td>
+          <td style="text-align:center"><span style="color:${st[1]};font-weight:600">${st[0]}</span></td>
+          <td style="text-align:right;white-space:nowrap">${act} <button class="btn btn-sm btn-icon" title="Видалити" onclick="shiftDelete(${s.id})"><span class="material-icons-round" style="font-size:16px">delete</span></button></td></tr>`;
+      }).join('')}</tbody></table>`;
+  }catch{ list.innerHTML='<div class="empty">Не вдалося завантажити зміни.</div>'; }
+}
+function openShiftModal(){
+  if(!_shiftMasters.length){ toast('Майстри ще завантажуються, спробуйте за мить','error'); return; }
+  const opts=_shiftMasters.map(m=>`<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  showModal('Запланувати зміну', `
+    <label class="fld"><span>Майстер</span><select id="shMaster" class="input">${opts}</select></label>
+    <label class="fld"><span>Дата</span><input type="date" id="shDate" class="input" value="${_shiftKyivToday()}"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Початок</span><input type="time" id="shStart" class="input" value="09:00"></label>
+      <label class="fld" style="flex:1"><span>Кінець</span><input type="time" id="shEnd" class="input" value="18:00"></label>
+    </div>
+    <label class="fld"><span>Нотатка</span><input type="text" id="shNotes" class="input" placeholder="необовʼязково"></label>`,
+    async ()=>{
+      const body={ master_id:+document.getElementById('shMaster').value, shift_date:document.getElementById('shDate').value,
+        planned_start:document.getElementById('shStart').value, planned_end:document.getElementById('shEnd').value,
+        notes:document.getElementById('shNotes').value||null };
+      if(!body.master_id||!body.shift_date){ toast('Оберіть майстра і дату','error'); return; }
+      const r=await api('/api/shifts',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Зміну заплановано'); loadShifts(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+async function shiftClock(id,dir){
+  const r=await api('/api/shifts/'+id+'/clock-'+dir,{method:'POST'});
+  if(r&&r.ok){ toast(dir==='in'?'Відмічено прихід':'Відмічено вихід'); loadShifts(); } else { toast(r.error||'Помилка','error'); }
+}
+async function shiftDelete(id){
+  if(!confirm('Видалити цю зміну?')) return;
+  const r=await api('/api/shifts/'+id,{method:'DELETE'});
+  if(r&&r.ok){ toast('Зміну видалено'); loadShifts(); } else { toast(r.error||'Помилка','error'); }
 }
 
 async function loadJournal() {
