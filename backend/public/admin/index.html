@@ -311,6 +311,24 @@ select.input { background:var(--card); }
 .jt-date:hover { border-color:var(--primary); }
 .jt-right { display:flex; align-items:center; gap:8px; }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
+/* Воронка візитів (CRM-08) — канбан */
+.pipeline-board { display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; align-items:flex-start; }
+.pl-col { flex:1 0 200px; min-width:200px; max-width:320px; background:var(--bg-soft,#f6f7f9); border-radius:12px; display:flex; flex-direction:column; }
+.pl-col.drag-over { outline:2px dashed var(--primary,#6366f1); outline-offset:-2px; }
+.pl-col-head { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; font-weight:700; font-size:13px; border-radius:12px 12px 0 0; }
+.pl-count { background:var(--card,#fff); border-radius:20px; padding:1px 9px; font-size:12px; color:var(--text-secondary); }
+.pl-col-body { padding:8px; display:flex; flex-direction:column; gap:8px; min-height:60px; }
+.pl-empty { text-align:center; color:var(--text-secondary); font-size:12px; padding:14px 0; opacity:.6; }
+.pl-card { background:var(--card,#fff); border:1px solid var(--border,#e8e8ee); border-radius:9px; padding:9px 10px; cursor:grab; box-shadow:0 1px 2px rgba(0,0,0,.04); transition:box-shadow .12s, transform .05s; }
+.pl-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.1); }
+.pl-card:active { cursor:grabbing; transform:scale(.98); }
+.pl-card.pl-stuck { border-color:#dc2626; background:#fef2f2; }
+.pl-card-top { display:flex; align-items:center; justify-content:space-between; font-size:13px; }
+.pl-badge { background:#dc2626; color:#fff; font-size:10px; font-weight:600; padding:1px 6px; border-radius:10px; }
+.pl-card-client { font-weight:600; font-size:13.5px; margin-top:2px; }
+.pl-card-sub { font-size:12px; color:var(--text-secondary); margin-top:1px; }
+.pl-card-master { font-size:11.5px; color:var(--primary,#6366f1); margin-top:3px; }
+@media(max-width:768px){ .pl-col{ flex:1 0 78%; min-width:78%; } }
 /* Журнал: права панель — календар + каса */
 .journal-layout { display:flex; gap:16px; align-items:flex-start; }
 .journal-main { flex:1; min-width:0; overflow-x:hidden; }
@@ -562,6 +580,9 @@ select.input { background:var(--card); }
       </a>
       <a class="sidebar-item active" data-page="journal" onclick="go('journal')">
         <span class="material-icons-round">event_note</span> Журнал записів
+      </a>
+      <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
+        <span class="material-icons-round">view_kanban</span> Воронка візитів
       </a>
       <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
         <span class="material-icons-round">calendar_month</span> Графік роботи
@@ -905,6 +926,22 @@ select.input { background:var(--card); }
             <div class="card jcash-card"><div class="card-body" id="jCashGauge"></div></div>
           </aside>
         </div>
+      </div>
+
+      <!-- ═══ PIPELINE / ВОРОНКА ВІЗИТІВ (CRM-08) ═══ -->
+      <div class="page" id="page-pipeline">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <button class="jt-arrow" onclick="shiftPipelineDate(-1)" title="Назад"><span class="material-icons-round">chevron_left</span></button>
+          <button class="jt-today" onclick="pipelineGoToday()">Сьогодні</button>
+          <input type="date" id="pipelineDate" class="input btn-sm" style="max-width:160px" onchange="loadPipeline()">
+          <button class="jt-arrow" onclick="shiftPipelineDate(1)" title="Вперед"><span class="material-icons-round">chevron_right</span></button>
+          <select id="pipelineMaster" class="input btn-sm" style="max-width:180px" onchange="loadPipeline()">
+            <option value="">Усі майстри</option>
+          </select>
+          <div id="pipelineStats" style="margin-left:auto;font-size:13px;color:var(--text-secondary)"></div>
+        </div>
+        <p class="set-p" style="margin:0 0 12px">Перетягуйте картку візиту між стадіями, щоб змінити статус. Червона картка — клієнт уже мав прийти, але візит «завис» у плануванні.</p>
+        <div id="pipelineBoard" class="pipeline-board"><div class="empty"><span class="material-icons-round">view_kanban</span>Завантаження дошки...</div></div>
       </div>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -1967,7 +2004,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
-  dashboard:'Дашборд', journal:'Журнал записів', clients:'Клієнти',
+  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', clients:'Клієнти',
   orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
@@ -2005,6 +2042,8 @@ function restoreSidebarGroups() {
 }
 
 function go(page) {
+  // зупиняємо авто-оновлення воронки при переході на іншу сторінку
+  if (page !== 'pipeline' && window._pipelineTimer) { clearInterval(window._pipelineTimer); window._pipelineTimer = null; }
   currentPage = page;
   if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2018,7 +2057,7 @@ function go(page) {
   if (parentGroup && !parentGroup.classList.contains('open')) { parentGroup.classList.add('open'); saveSidebarGroups(); }
   document.getElementById('pageTitle').textContent = pageTitles[page] || page;
   document.getElementById('sidebar').classList.remove('open');
-  const loaders = { dashboard:loadDashboard, journal:loadJournal, clients:loadClients,
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
@@ -3547,6 +3586,98 @@ async function loadCashGauge(forDate) {
       <div class="jcash-row"><span class="dot" style="background:#6366f1"></span><span class="lbl">Безготівка</span><span class="val">${_money(cashless)}</span></div>
       <div class="jcash-row tot"><span class="lbl" style="font-weight:600;color:var(--text)">Загальна каса</span><span class="val">${_money(total)}</span></div>
     </div>`;
+}
+
+// ═══ PIPELINE / ВОРОНКА ВІЗИТІВ (CRM-08) ══════
+let _pipelineMastersLoaded = false;
+function _pipelineKyivToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+}
+function pipelineGoToday() { document.getElementById('pipelineDate').value = _pipelineKyivToday(); loadPipeline(); }
+function shiftPipelineDate(delta) {
+  const inp = document.getElementById('pipelineDate');
+  const d = new Date((inp.value || _pipelineKyivToday()) + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  inp.value = new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+  loadPipeline();
+}
+async function loadPipeline() {
+  const inp = document.getElementById('pipelineDate');
+  if (!inp.value) inp.value = _pipelineKyivToday();
+  // селект майстрів — підвантажуємо раз
+  if (!_pipelineMastersLoaded) {
+    try {
+      const m = await api('/api/schedule/masters');
+      const sel = document.getElementById('pipelineMaster');
+      for (const ms of (m.masters || m.items || m || [])) {
+        if (!ms || !ms.id) continue;
+        const o = document.createElement('option'); o.value = ms.id; o.textContent = ms.name; sel.appendChild(o);
+      }
+      _pipelineMastersLoaded = true;
+    } catch {}
+  }
+  const masterId = document.getElementById('pipelineMaster').value;
+  const board = document.getElementById('pipelineBoard');
+  const qs = new URLSearchParams({ date: inp.value });
+  if (masterId) qs.set('master_id', masterId);
+  let d;
+  try { d = await api('/api/pipeline/board?' + qs.toString()); }
+  catch { board.innerHTML = '<div class="empty">Не вдалося завантажити дошку.</div>'; return; }
+  if (!d || !d.stages) { board.innerHTML = '<div class="empty">Немає даних.</div>'; return; }
+
+  board.innerHTML = d.stages.map(st => {
+    const cards = (st.appointments || []).map(a => _pipelineCard(a, st.color)).join('')
+      || '<div class="pl-empty">Порожньо</div>';
+    return `<div class="pl-col" data-stage="${st.code}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="pipelineDrop(event,'${st.code}')">
+      <div class="pl-col-head" style="border-top:3px solid ${st.color}">
+        <span>${escapeHtml(st.name)}</span><span class="pl-count">${st.count}</span>
+      </div>
+      <div class="pl-col-body">${cards}</div>
+    </div>`;
+  }).join('');
+
+  // статистика воронки (30 днів / обраний майстер не впливає)
+  try {
+    const s = await api('/api/pipeline/stats');
+    document.getElementById('pipelineStats').innerHTML =
+      `За 30 днів: завершено <b>${s.counts.done}</b> · конверсія <b>${s.done_rate}%</b> · неявки <b>${s.noshow_rate}%</b> · скасування <b>${s.cancel_rate}%</b>`;
+  } catch {}
+
+  // авто-оновлення кожні 30 сек (поки сторінка активна)
+  if (window._pipelineTimer) clearInterval(window._pipelineTimer);
+  window._pipelineTimer = setInterval(() => { if (currentPage === 'pipeline') loadPipeline(); }, 30000);
+}
+function _pipelineCard(a, color) {
+  const t = a.starts_at ? new Date(a.starts_at).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'}) : '';
+  const price = a.price != null ? ` · ${a.price.toLocaleString('uk-UA')} ₴` : '';
+  const stuck = a.stuck ? ' pl-stuck' : '';
+  const stuckBadge = a.stuck ? `<span class="pl-badge" title="Час візиту минув">завис ${a.mins_since_start} хв</span>` : '';
+  return `<div class="pl-card${stuck}" draggable="true" data-id="${a.id}" ondragstart="pipelineDrag(event,${a.id})">
+    <div class="pl-card-top"><b>${t}</b>${stuckBadge}</div>
+    <div class="pl-card-client">${escapeHtml(a.client_name)}</div>
+    <div class="pl-card-sub">${escapeHtml(a.service_name)}${price}</div>
+    <div class="pl-card-master">${escapeHtml(a.master_name)}</div>
+  </div>`;
+}
+let _pipelineDragId = null;
+function pipelineDrag(ev, id) { _pipelineDragId = id; ev.dataTransfer.effectAllowed = 'move'; }
+async function pipelineDrop(ev, targetStage) {
+  ev.preventDefault();
+  document.querySelectorAll('.pl-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  const id = _pipelineDragId; _pipelineDragId = null;
+  if (!id) return;
+  // знаходимо поточну стадію картки
+  const card = document.querySelector(`.pl-card[data-id="${id}"]`);
+  const fromStage = card ? card.closest('.pl-col')?.dataset.stage : null;
+  if (fromStage === targetStage) return;
+  try {
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ status: targetStage }) });
+    if (r && (r.ok || r.appointment)) {
+      const names = { booked:'Заплановано', confirmed:'Підтверджено', done:'Завершено', noshow:'Не прийшов', cancelled:'Скасовано' };
+      toast('Візит → ' + (names[targetStage] || targetStage));
+      loadPipeline();
+    } else { toast('Не вдалося змінити статус', 'error'); }
+  } catch { toast('Помилка зміни статусу', 'error'); }
 }
 
 async function loadJournal() {
