@@ -58,6 +58,7 @@ app.use(cors({
     'http://localhost:8080',
     'http://127.0.0.1:8080',
     /\.github\.io$/,
+    /\.vercel\.app$/,
     /\.lhr\.life$/,
     /\.pinggy\.link$/,
     /svs-shop-api\.onrender\.com$/,

@@ -6,6 +6,9 @@
   'use strict';
 
   const API = window.SVS_BOOKING_API || 'https://svs-booking-api.onrender.com';
+  // Каталог (послуги + реальна звʼязка майстер↔послуга) беремо з НАШОЇ CRM — джерело правди.
+  // Слоти/доступність/створення запису лишаються на booking-api (там ключі BeautyPro).
+  const CRM = window.SVS_CRM_API || 'https://svs-shop-api.onrender.com';
 
   const html = `
     <div id="svs-book-modal" class="svs-book-modal" hidden>
@@ -151,12 +154,28 @@
 
     const loader = addLoading();
     try {
-      const list = await apiFetch('/api/booking/services');
-      state.services = Array.isArray(list) ? list : [];
+      // 1) каталог з нашої CRM: послуги + майстри з реальною звʼязкою (тільки активні, без звільнених)
+      const r = await fetch(CRM + '/api/booking/catalog');
+      const c = r.ok ? await r.json() : null;
+      if (c && Array.isArray(c.services) && c.services.length) {
+        state.services = c.services;
+        state.catalogMasters = (c.masters || []).map(m => ({
+          ...m, services: Array.isArray(m.services) ? m.services.map(x => x.id || x) : []
+        }));
+      } else {
+        throw new Error('empty catalog');
+      }
     } catch (e) {
-      removeLoading();
-      addMessage('Не вдалось завантажити послуги 😕 Спробуй пізніше або зателефонуй: <a href="tel:+380632407847">+38 063 240 7847</a>');
-      return;
+      // 2) fallback: послуги напряму з booking-api
+      try {
+        const list = await apiFetch('/api/booking/services');
+        state.services = Array.isArray(list) ? list : [];
+        state.catalogMasters = null;
+      } catch (e2) {
+        removeLoading();
+        addMessage('Не вдалось завантажити послуги 😕 Спробуй пізніше або зателефонуй: <a href="tel:+380632407847">+38 063 240 7847</a>');
+        return;
+      }
     }
     removeLoading();
 
@@ -256,7 +275,9 @@
     if (!state.service) return;
     state.master = null; state.date = null; state.slot = null;
 
-    const price = state.service.price ? Object.values(state.service.price)[0] : null;
+    const price = typeof state.service.price === 'object' && state.service.price
+      ? Object.values(state.service.price)[0]
+      : (state.service.price || null);
     addUserChoice(state.service.name);
     updateProgress(2);
 
@@ -283,11 +304,16 @@
   }
 
   async function loadMastersBg(svcId) {
+    // 1) якщо є каталог нашої CRM — фільтруємо СУВОРО по реальній звʼязці (без витоку «показати всіх»)
+    if (Array.isArray(state.catalogMasters)) {
+      state.masters = state.catalogMasters.filter(m => m.services.includes(svcId));
+      return;
+    }
+    // 2) fallback: майстри з booking-api (теж суворо, без «інакше всі»)
     try {
       const list = await apiFetch('/api/booking/masters?service_id=' + encodeURIComponent(svcId));
       const all = Array.isArray(list) ? list : [];
-      const filtered = all.filter(m => Array.isArray(m.services) && m.services.some(x => x.id === svcId));
-      state.masters = filtered.length ? filtered : all;
+      state.masters = all.filter(m => Array.isArray(m.services) && m.services.some(x => (x.id || x) === svcId));
     } catch { state.masters = []; }
   }
 
@@ -439,7 +465,9 @@
   function showConfirmStep() {
     const slotFrom = state.slot.from || state.slot.start || state.slot.time || state.slot;
     const timeLabel = typeof slotFrom === 'string' ? slotFrom.slice(11, 16) : '';
-    const price = state.service.price ? Object.values(state.service.price)[0] : null;
+    const price = typeof state.service.price === 'object' && state.service.price
+      ? Object.values(state.service.price)[0]
+      : (state.service.price || null);
 
     const summary = `<div class="svs-summary">
       <div class="svs-summary-row"><span>Послуга:</span> <b>${state.service.name}</b></div>
