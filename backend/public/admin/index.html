@@ -897,6 +897,26 @@ select.input { background:var(--card); }
           </div>
         </div>
 
+        <!-- ═══ AI-прогноз ═══ -->
+        <div class="card" id="fcCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px">
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">insights</span> AI-прогноз</h3>
+            <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+              <select id="fcHorizon" class="input btn-sm" style="max-width:130px" onchange="loadForecast()">
+                <option value="7">7 днів</option>
+                <option value="14">14 днів</option>
+                <option value="30" selected>30 днів</option>
+                <option value="90">90 днів</option>
+              </select>
+              <button class="btn btn-outline btn-sm" onclick="openWhatIf()" title="Сценарне моделювання"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">tune</span> Що-якщо</button>
+              <button class="btn btn-outline btn-sm" onclick="forecastExplain()" title="Пояснення від AI"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">auto_awesome</span> Пояснити</button>
+            </div>
+          </div>
+          <div class="card-body" id="fcBody">
+            <div class="empty"><span class="material-icons-round">insights</span>Завантаження прогнозу...</div>
+          </div>
+        </div>
+
         <div class="grid-2" style="gap:24px">
           <div class="card">
             <div class="card-header"><h3>Топ майстри за виручкою (місяць)</h3></div>
@@ -3307,6 +3327,9 @@ async function loadDashboard() {
   // AI-аналітик (тільки для фінансового доступу)
   if (fin) { try { document.getElementById('aiCard').style.display=''; loadAiInsights(false); } catch {} }
   else { try { document.getElementById('aiCard').style.display='none'; } catch {} }
+  // AI-прогноз (теж фінансовий доступ)
+  if (fin) { try { document.getElementById('fcCard').style.display=''; loadForecast(); } catch {} }
+  else { try { document.getElementById('fcCard').style.display='none'; } catch {} }
 }
 
 // ═══ AI-аналітик ══════════════════════════════
@@ -3369,6 +3392,152 @@ async function askAi() {
   } catch (e) {
     ans.innerHTML = '<div style="color:#dc2626;font-size:13px">Не вдалося отримати відповідь. Спробуйте ще раз.</div>';
   }
+}
+
+// ═══ AI-прогноз ════════════════════════════════
+let _fcData = null, _fcLoading = false;
+function _fcMoney(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
+async function loadForecast(){
+  if (_fcLoading) return; _fcLoading = true;
+  const h = document.getElementById('fcHorizon')?.value || '30';
+  const body = document.getElementById('fcBody');
+  body.innerHTML = '<div class="empty"><span class="material-icons-round">insights</span>Рахую прогноз...</div>';
+  try {
+    const d = await api('/api/forecast/revenue?horizon=' + h);
+    _fcData = d;
+    if (!d.enough_data){ body.innerHTML = `<div class="empty">${escapeHtml(d.message||'Замало даних для прогнозу.')}</div>`; _fcLoading=false; return; }
+    renderForecast(d);
+  } catch(e){ body.innerHTML = '<div class="empty">Не вдалося завантажити прогноз.</div>'; }
+  _fcLoading = false;
+}
+function renderForecast(d){
+  const body = document.getElementById('fcBody');
+  const trend = d.model.trend_per_day;
+  const trendTxt = trend > 5 ? `<span style="color:#16a34a;font-weight:600">▲ зростання</span>` : trend < -5 ? `<span style="color:#dc2626;font-weight:600">▼ спад</span>` : `<span style="color:var(--text-secondary);font-weight:600">→ стабільно</span>`;
+  let html = '';
+  // KPI рядок
+  html += '<div class="kpi-grid" style="margin-bottom:16px">';
+  html += `<div class="kpi"><div class="kpi-label">Прогноз виручки (${d.horizon} дн.)</div><div class="kpi-value">${_fcMoney(d.total)}</div>${_sub('інтервал 80%: '+_fcMoney(d.total_lo80)+' – '+_fcMoney(d.total_hi80))}</div>`;
+  html += `<div class="kpi"><div class="kpi-label">У середньому за день</div><div class="kpi-value">${_fcMoney(Math.round(d.total/d.horizon))}</div>${_sub('тренд: '+trendTxt)}</div>`;
+  const bestWd = [...d.model.weekday_factors].sort((a,b)=>b.factor-a.factor)[0];
+  const worstWd = [...d.model.weekday_factors].sort((a,b)=>a.factor-b.factor)[0];
+  html += `<div class="kpi"><div class="kpi-label">Найсильніший день</div><div class="kpi-value" style="font-size:20px">${bestWd.day}</div>${_sub('×'+bestWd.factor+' від середнього')}</div>`;
+  html += `<div class="kpi"><div class="kpi-label">Найслабший день</div><div class="kpi-value" style="font-size:20px">${worstWd.day}</div>${_sub('×'+worstWd.factor+' від середнього')}</div>`;
+  html += '</div>';
+  // графік
+  html += _fcChart(d);
+  // AI-пояснення (якщо є)
+  if (d.ai_summary) html += `<div style="margin-top:14px;padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;font-size:14px;line-height:1.55;white-space:pre-wrap">${escapeHtml(d.ai_summary)}</div>`;
+  html += `<p style="font-size:11px;color:var(--text-secondary);margin:10px 0 0">Прогноз на основі ${d.model.based_on_days} днів історії: тижнева сезонність + тренд + святкові піки. Затінена смуга — діапазон 80%.</p>`;
+  body.innerHTML = html;
+}
+function _fcChart(d){
+  const actual = d.recent_actual || [];
+  const fc = d.daily || [];
+  const W = 720, H = 200, padL = 48, padR = 12, padT = 12, padB = 22;
+  const pts = [...actual.map(a=>({v:a.value, lo:a.value, hi:a.value, kind:'a', date:a.date})),
+               ...fc.map(f=>({v:f.point, lo:f.lo80, hi:f.hi80, kind:'f', date:f.date}))];
+  if (!pts.length) return '';
+  const maxV = Math.max(...pts.map(p=>p.hi), 1) * 1.1;
+  const n = pts.length;
+  const x = i => padL + (W - padL - padR) * (n<=1?0:i/(n-1));
+  const y = v => padT + (H - padT - padB) * (1 - v/maxV);
+  // смуга прогнозу
+  const fcStart = actual.length;
+  let band = '';
+  if (fc.length){
+    const top = fc.map((f,i)=>`${x(fcStart+i)},${y(f.hi80)}`).join(' ');
+    const bot = fc.map((f,i)=>`${x(fcStart+i)},${y(f.lo80)}`).reverse().join(' ');
+    band = `<polygon points="${top} ${bot}" fill="var(--primary,#6c5ce7)" opacity="0.12"/>`;
+  }
+  const lineActual = actual.map((a,i)=>`${x(i)},${y(a.value)}`).join(' ');
+  const lineFc = fc.map((f,i)=>`${x(fcStart+i)},${y(f.point)}`).join(' ');
+  const joiner = (actual.length && fc.length) ? `${x(fcStart-1)},${y(actual[actual.length-1].value)} ${x(fcStart)},${y(fc[0].point)}` : '';
+  // осі (3 рівні)
+  let grid = '';
+  for (let g=0; g<=3; g++){ const val = maxV*g/3; const yy = y(val); grid += `<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="var(--border,#eee)" stroke-width="1"/><text x="${padL-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="var(--text-secondary)">${Math.round(val/1000)}k</text>`; }
+  return `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:520px;height:auto">
+    ${grid}${band}
+    ${lineActual?`<polyline points="${lineActual}" fill="none" stroke="#64748b" stroke-width="2"/>`:''}
+    ${joiner?`<polyline points="${joiner}" fill="none" stroke="var(--primary,#6c5ce7)" stroke-width="2" stroke-dasharray="2 3"/>`:''}
+    ${lineFc?`<polyline points="${lineFc}" fill="none" stroke="var(--primary,#6c5ce7)" stroke-width="2.5"/>`:''}
+    <line x1="${x(fcStart)}" y1="${padT}" x2="${x(fcStart)}" y2="${H-padB}" stroke="var(--text-secondary)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+  </svg></div>
+  <div style="display:flex;gap:18px;font-size:12px;color:var(--text-secondary);margin-top:4px"><span><span style="display:inline-block;width:14px;height:3px;background:#64748b;vertical-align:middle"></span> факт</span><span><span style="display:inline-block;width:14px;height:3px;background:var(--primary,#6c5ce7);vertical-align:middle"></span> прогноз</span></div>`;
+}
+async function forecastExplain(){
+  const h = document.getElementById('fcHorizon')?.value || '30';
+  const body = document.getElementById('fcBody');
+  const note = document.createElement('div');
+  note.style.cssText='margin-top:10px;color:var(--text-secondary);font-size:13px'; note.textContent='AI готує пояснення...';
+  body.appendChild(note);
+  try { const d = await api('/api/forecast/revenue?horizon='+h+'&explain=1'); _fcData=d; renderForecast(d); }
+  catch(e){ note.textContent='Не вдалося отримати пояснення.'; }
+}
+function openWhatIf(){
+  const bodyHtml = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <label style="font-size:13px;font-weight:600">Сценарій
+        <select id="wiScenario" class="input" style="margin-top:4px" onchange="_wiToggle()">
+          <option value="price">Зміна цін</option>
+          <option value="discount">Акція (знижка)</option>
+          <option value="add_master">Додатковий майстер</option>
+        </select>
+      </label>
+      <label style="font-size:13px;font-weight:600">Горизонт
+        <select id="wiHorizon" class="input" style="margin-top:4px">
+          <option value="14">14 днів</option><option value="30" selected>30 днів</option><option value="90">90 днів</option>
+        </select>
+      </label>
+      <div id="wiPrice" class="wi-grp">
+        <label style="font-size:13px;font-weight:600">Зміна ціни, % <input id="wiPct" type="number" class="input" value="10" style="margin-top:4px"></label>
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-top:8px">Еластичність попиту <input id="wiElast" type="number" step="0.1" class="input" value="-0.4" style="margin-top:4px"><span style="font-size:11px">−0.4 = при +10% ціни попит падає на 4%</span></label>
+      </div>
+      <div id="wiDiscount" class="wi-grp" style="display:none">
+        <label style="font-size:13px;font-weight:600">Знижка, % <input id="wiDPct" type="number" class="input" value="20" style="margin-top:4px"></label>
+        <label style="font-size:13px;font-weight:600;display:block;margin-top:8px">Тривалість, днів <input id="wiDays" type="number" class="input" value="14" style="margin-top:4px"></label>
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-top:8px">Очікуваний приріст попиту, % <input id="wiUplift" type="number" class="input" value="30" style="margin-top:4px"></label>
+      </div>
+      <div id="wiMaster" class="wi-grp" style="display:none">
+        <label style="font-size:13px;font-weight:600">Завантаження нового майстра, % <input id="wiFill" type="number" class="input" value="50" style="margin-top:4px"></label>
+      </div>
+      <div id="wiResult" style="margin-top:6px"></div>
+    </div>`;
+  showModal('Що-якщо: моделювання', bodyHtml, null);
+  // прибрати авто-OK поведінку — рахуємо кнопкою
+  const modal = document.getElementById('genModal');
+  if (modal){
+    const okBtn = modal.querySelector('.btn-primary');
+    if (okBtn){ okBtn.textContent='Розрахувати'; okBtn.onclick=(e)=>{ e.preventDefault(); _wiCalc(); }; }
+  }
+}
+function _wiToggle(){
+  const s = document.getElementById('wiScenario').value;
+  document.getElementById('wiPrice').style.display = s==='price'?'':'none';
+  document.getElementById('wiDiscount').style.display = s==='discount'?'':'none';
+  document.getElementById('wiMaster').style.display = s==='add_master'?'':'none';
+}
+async function _wiCalc(){
+  const s = document.getElementById('wiScenario').value;
+  const horizon = +document.getElementById('wiHorizon').value;
+  const res = document.getElementById('wiResult');
+  res.innerHTML = '<div style="color:var(--text-secondary);font-size:13px">Рахую...</div>';
+  const payload = { scenario:s, horizon };
+  if (s==='price'){ payload.pct = +document.getElementById('wiPct').value; payload.elasticity = +document.getElementById('wiElast').value; }
+  else if (s==='discount'){ payload.pct = +document.getElementById('wiDPct').value; payload.days = +document.getElementById('wiDays').value; payload.uplift_pct = +document.getElementById('wiUplift').value; }
+  else if (s==='add_master'){ payload.master_fill_pct = +document.getElementById('wiFill').value; }
+  try {
+    const d = await api('/api/forecast/what-if', { method:'POST', body: JSON.stringify(payload) });
+    if (!d.enough_data){ res.innerHTML = `<div class="empty">${escapeHtml(d.message||'Замало даних.')}</div>`; return; }
+    const up = d.delta >= 0;
+    res.innerHTML = `<div style="padding:14px;background:var(--bg-soft,#f8f9fb);border-radius:8px">
+      <div style="font-weight:600;margin-bottom:8px">${escapeHtml(d.label)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Базовий прогноз:</span><b>${_fcMoney(d.baseline_total)}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px"><span>За сценарієм:</span><b>${_fcMoney(d.projected_total)}</b></div>
+      <div style="font-size:18px;font-weight:700;color:${up?'#16a34a':'#dc2626'}">${up?'+':''}${_fcMoney(d.delta)} <span style="font-size:14px">(${up?'+':''}${d.delta_pct}%)</span></div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:8px">${escapeHtml(d.note)}</div>
+    </div>`;
+  } catch(e){ res.innerHTML = '<div style="color:#dc2626;font-size:13px">Помилка розрахунку.</div>'; }
 }
 
 // ═══ Спільні утиліти аналітики ════════════════
