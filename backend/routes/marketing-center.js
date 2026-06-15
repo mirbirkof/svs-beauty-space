@@ -258,7 +258,7 @@ router.post('/calendar', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13,'planned')) RETURNING *`,
       [b.title, b.type || 'campaign', b.channels || null, b.start_date, b.end_date || null, b.budget || 0, b.owner_name || null,
        b.campaign_id || null, b.promo_id || null, b.recurrence || null, b.color || null, b.description || null, b.status]);
-    logAction(req, 'marketing.activity_create', { id: r[0].id });
+    logAction({ user: req.user, action: 'marketing.activity_create', entity: 'marketing_activity', entity_id: r[0].id, ip: req.ip }).catch(() => {});
     res.json(r[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -279,7 +279,7 @@ router.put('/calendar/:id', async (req, res) => {
 router.delete('/calendar/:id', async (req, res) => {
   try {
     await q(`DELETE FROM marketing_activities WHERE id=$1`, [parseInt(req.params.id, 10)]);
-    logAction(req, 'marketing.activity_delete', { id: req.params.id });
+    logAction({ user: req.user, action: 'marketing.activity_delete', entity: 'marketing_activity', entity_id: req.params.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -86,7 +86,7 @@ router.put('/settings', async (req, res) => {
     if (!sets.length) return res.json(s);
     vals.push(s.id);
     const r = await q(`UPDATE referral_program_settings SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
-    logAction(req, 'referral.settings_update', { id: s.id });
+    logAction({ user: req.user, action: 'referral.settings_update', entity: 'referral_settings', entity_id: s.id, ip: req.ip }).catch(() => {});
     res.json(r[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -113,7 +113,7 @@ router.post('/code/:client_id/regenerate', async (req, res) => {
         ON CONFLICT (tenant_id, code) DO NOTHING RETURNING *`, [id, code, `/r/${code}`]).catch(() => []);
       if (r.length) { created = r[0]; break; }
     }
-    logAction(req, 'referral.code_regenerate', { client_id: id });
+    logAction({ user: req.user, action: 'referral.code_regenerate', entity: 'referral_code', entity_id: id, ip: req.ip }).catch(() => {});
     res.json(created || { error: 'не вдалось згенерувати' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -163,7 +163,7 @@ router.post('/attribute', async (req, res) => {
     await q(`UPDATE referral_codes SET total_referrals = total_referrals + 1 WHERE id=$1`, [rc[0].id]);
     // позначити останній клік сконвертованим
     await q(`UPDATE referral_clicks SET converted=true WHERE id = (SELECT id FROM referral_clicks WHERE referral_code_id=$1 AND converted=false ORDER BY created_at DESC LIMIT 1)`, [rc[0].id]);
-    logAction(req, 'referral.attribute', { referral_id: ins[0].id, referrer_id: referrerId, referee_id: refeId, fraud: isFraud });
+    logAction({ user: req.user, action: 'referral.attribute', entity: 'referral', entity_id: ins[0].id, ip: req.ip, meta: { referrer_id: referrerId, referee_id: refeId, fraud: isFraud } }).catch(() => {});
     res.json({ ok: true, referral_id: ins[0].id, status: ins[0].status, fraud_flags: isFraud ? fraud : null });
   } catch (e) {
     if (String(e.message).includes('ux_referrals_referee')) return res.status(409).json({ error: 'клієнт вже привʼязаний' });
@@ -234,7 +234,7 @@ router.post('/:id/qualify', async (req, res) => {
   try {
     const out = await rewardReferral(parseInt(req.params.id, 10));
     if (out.error) return res.status(500).json(out);
-    logAction(req, 'referral.qualify', { id: req.params.id, result: out });
+    logAction({ user: req.user, action: 'referral.qualify', entity: 'referral', entity_id: req.params.id, ip: req.ip, meta: { result: out } }).catch(() => {});
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -244,7 +244,7 @@ router.post('/:id/reject', async (req, res) => {
     const r = await q(`UPDATE referrals SET status='rejected', rejection_reason=$2 WHERE id=$1 AND status NOT IN ('rewarded') RETURNING id`,
       [parseInt(req.params.id, 10), (req.body?.reason || '').slice(0, 200)]);
     if (!r.length) return res.status(409).json({ error: 'не знайдено або вже винагороджено' });
-    logAction(req, 'referral.reject', { id: req.params.id });
+    logAction({ user: req.user, action: 'referral.reject', entity: 'referral', entity_id: req.params.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -258,7 +258,7 @@ router.post('/process', async (req, res) => {
       const out = await rewardReferral(row.id);
       if (out.ok) rewarded++; else skipped++;
     }
-    logAction(req, 'referral.process', { rewarded, skipped });
+    logAction({ user: req.user, action: 'referral.process', entity: 'referral', ip: req.ip, meta: { rewarded, skipped } }).catch(() => {});
     res.json({ ok: true, scanned: pend.length, rewarded, skipped });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
