@@ -518,6 +518,10 @@ select.input { background:var(--card); }
   .jt-modes { order:1; }
   .jt-right { order:2; margin-left:auto; }
   .jt-date { min-width:140px; font-size:13px; }
+  /* журнал на мобільному: менші відступи картки + жорстке обрізання, щоб сітка не виходила за екран (#18) */
+  .journal-main .card-body { padding:8px; }
+  .journal-main .card { overflow:hidden; max-width:100%; }
+  #journalContent { max-width:100%; overflow-x:hidden; }
 }
 /* ── Фінанси: Доходи і Витрати ── */
 .fin-toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
