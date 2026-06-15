@@ -716,6 +716,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="giftcerts" onclick="go('giftcerts')">
             <span class="material-icons-round">card_giftcard</span> Сертифікати
           </a>
+          <a class="sidebar-item" data-page="subscriptions" onclick="go('subscriptions')">
+            <span class="material-icons-round">card_membership</span> Абонементи
+          </a>
           <a class="sidebar-item" href="https://svs-beauty-space.vercel.app" target="_blank">
             <span class="material-icons-round">language</span> Вітрина (сайт)
             <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:.4">open_in_new</span>
@@ -1027,6 +1030,23 @@ select.input { background:var(--card); }
           <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="gcIssueModal()"><span class="material-icons-round" style="font-size:16px">add</span> Випустити сертифікат</button>
         </div>
         <div id="gcList"><div class="empty"><span class="material-icons-round">card_giftcard</span>Завантаження...</div></div>
+      </div>
+
+      <!-- ═══ SUBSCRIPTIONS (SLS-09) ═══ -->
+      <div class="page" id="page-subscriptions">
+        <div id="subAnalytics" class="fc-kpis" style="margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <select id="subStatus" class="input btn-sm" style="max-width:170px" onchange="loadSubs()">
+            <option value="">Усі статуси</option>
+            <option value="active">Активні</option>
+            <option value="frozen">Заморожені</option>
+            <option value="expired">Завершені</option>
+            <option value="cancelled">Розірвані</option>
+          </select>
+          <button class="btn btn-sm" onclick="subPlansModal()"><span class="material-icons-round" style="font-size:16px">tune</span> Тарифні плани</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="subSellModal()"><span class="material-icons-round" style="font-size:16px">add</span> Продати абонемент</button>
+        </div>
+        <div id="subList"><div class="empty"><span class="material-icons-round">card_membership</span>Завантаження...</div></div>
       </div>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -2090,7 +2110,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
-  fincenter:'Фінансовий центр', giftcerts:'Подарункові сертифікати', orders:'Замовлення', products:'Товари', stock:'Склад',
+  fincenter:'Фінансовий центр', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
@@ -2146,7 +2166,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, giftcerts:loadGiftCerts, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, giftcerts:loadGiftCerts, subscriptions:loadSubs, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -4003,6 +4023,156 @@ async function gcCancel(id){
   if(!confirm('Анулювати сертифікат? Залишок згорить.')) return;
   const r=await api('/api/gift-certificates/'+id+'/cancel',{method:'POST',body:JSON.stringify({reason:'анульовано вручну'})});
   if(r&&r.ok){ toast('Сертифікат анульовано'); loadGiftCerts(); } else { toast(r.error||'Помилка','error'); }
+}
+
+// ── SLS-09 Абонементи ───────────────────────────────────
+const _SUB_ST={ active:['Активний','#16a34a'], frozen:['Заморожений','#0ea5e9'], expired:['Завершений','#94a3b8'], cancelled:['Розірваний','#dc2626'] };
+const _SUB_TYPE={ visits:'візити', time:'безліміт', minutes:'хвилини', combo:'комбо' };
+function _subMoney(n){ return (Math.round(+n||0)).toLocaleString('uk-UA')+' ₴'; }
+function _subBalance(s){
+  if(s.plan_type==='time') return 'безліміт';
+  if(s.plan_type==='minutes') return (s.minutes_remaining??0)+' хв';
+  return (s.visits_remaining??0)+' візит.';
+}
+async function loadSubs(){
+  try{
+    const a=await api('/api/subscriptions/analytics');
+    document.getElementById('subAnalytics').innerHTML=`
+      <div class="fc-kpi"><div class="lbl">ПРОДАНО</div><div class="val">${_subMoney(a.sold_amount)}</div><span class="chg flat">${a.sold_count} шт</span></div>
+      <div class="fc-kpi"><div class="lbl">АКТИВНИХ</div><div class="val">${a.active_count}</div></div>
+      <div class="fc-kpi"><div class="lbl">СЕР. ВИКОРИСТАННЯ</div><div class="val">${a.avg_usage_percent}%</div></div>
+      <div class="fc-kpi"><div class="lbl">CHURN</div><div class="val" style="color:${a.churn_rate>40?'#dc2626':'#f59e0b'}">${a.churn_rate}%</div></div>`;
+  }catch{}
+  const qs=new URLSearchParams();
+  const st=document.getElementById('subStatus').value; if(st) qs.set('status',st);
+  const list=document.getElementById('subList');
+  let d; try{ d=await api('/api/subscriptions?'+qs.toString()); }catch{ list.innerHTML='<div class="empty">Не вдалося завантажити.</div>'; return; }
+  const items=d.items||[];
+  if(!items.length){ list.innerHTML='<div class="empty"><span class="material-icons-round">card_membership</span>Абонементів немає. Натисніть «Продати абонемент».</div>'; return; }
+  list.innerHTML=`<table class="tbl" style="width:100%"><thead><tr>
+    <th style="text-align:left">Номер</th><th style="text-align:left">Клієнт</th><th style="text-align:left">План</th><th>Залишок</th><th>Статус</th><th>Діє до</th><th></th></tr></thead>
+    <tbody>${items.map(s=>{
+      const st=_SUB_ST[s.status]||[s.status,'#94a3b8'];
+      const canUse=s.status==='active'&&(s.plan_type==='time'||(s.plan_type==='minutes'?+s.minutes_remaining>0:+s.visits_remaining>0));
+      let act='';
+      if(canUse) act+=`<button class="btn btn-sm btn-primary" onclick="subUseModal(${s.id},'${s.plan_type}',${s.plan_type==='minutes'?(s.minutes_remaining||0):(s.visits_remaining||0)})">Списати</button> `;
+      if(s.status==='active') act+=`<button class="btn btn-sm btn-icon" title="Заморозити" onclick="subFreeze(${s.id})"><span class="material-icons-round" style="font-size:16px">ac_unit</span></button> `;
+      if(s.status==='frozen') act+=`<button class="btn btn-sm btn-icon" title="Розморозити" onclick="subUnfreeze(${s.id})"><span class="material-icons-round" style="font-size:16px">play_arrow</span></button> `;
+      if(!['cancelled'].includes(s.status)) act+=`<button class="btn btn-sm btn-icon" title="Розірвати" onclick="subCancel(${s.id})"><span class="material-icons-round" style="font-size:16px">block</span></button>`;
+      return `<tr>
+        <td style="text-align:left"><code>${escapeHtml(s.subscription_number)}</code></td>
+        <td style="text-align:left">${escapeHtml(s.client_name||'—')}${s.client_phone?'<br><span style="font-size:11px;color:#889">'+escapeHtml(s.client_phone)+'</span>':''}</td>
+        <td style="text-align:left">${escapeHtml(s.plan_name)} <span style="font-size:11px;color:#889">(${_SUB_TYPE[s.plan_type]||s.plan_type})</span></td>
+        <td style="text-align:center"><b>${_subBalance(s)}</b></td>
+        <td style="text-align:center"><span style="color:${st[1]};font-weight:600">${st[0]}</span></td>
+        <td style="text-align:center">${(s.expires_at||'').slice(0,10)}</td>
+        <td style="text-align:right;white-space:nowrap">${act}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+let _subPlans=[];
+async function _loadSubPlans(activeOnly){
+  try{ const r=await api('/api/subscriptions/plans'+(activeOnly?'?active=true':'')); _subPlans=r.items||[]; }catch{ _subPlans=[]; }
+  return _subPlans;
+}
+async function subSellModal(){
+  await _loadSubPlans(true);
+  if(!_subPlans.length){ toast('Спершу створіть тарифний план','error'); subPlansModal(); return; }
+  const today=new Date().toISOString().slice(0,10);
+  showModal('Продати абонемент',`
+    <label class="fld"><span>Тарифний план</span><select id="subPlan" class="input">${_subPlans.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} — ${_subMoney(p.price)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Клієнт (пошук за телефоном/імʼям)</span><input id="subClientSearch" class="input" placeholder="Почніть вводити..."></label>
+    <select id="subClientSel" class="input" style="margin-bottom:10px;display:none"></select>
+    <label class="fld"><span>Дата початку</span><input type="date" id="subStart" class="input" value="${today}"></label>`,
+    async ()=>{
+      const plan_id=+document.getElementById('subPlan').value;
+      const client_id=+(document.getElementById('subClientSel').value||0);
+      if(!client_id){ toast('Оберіть клієнта','error'); return; }
+      const body={ plan_id, client_id, start_date:document.getElementById('subStart').value||today };
+      const r=await api('/api/subscriptions',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Абонемент '+r.subscription.subscription_number+' продано'); loadSubs(); } else { toast(r.error||'Помилка','error'); }
+    });
+  setTimeout(()=>{ const inp=document.getElementById('subClientSearch'); if(inp) inp.addEventListener('input',debounce(_subClientLookup,400)); },50);
+}
+async function _subClientLookup(){
+  const q=document.getElementById('subClientSearch').value.trim();
+  const sel=document.getElementById('subClientSel');
+  if(q.length<2){ sel.style.display='none'; return; }
+  try{
+    const r=await api('/api/admin/clients?limit=15&search='+encodeURIComponent(q));
+    const items=r.items||[];
+    if(!items.length){ sel.style.display='none'; return; }
+    sel.innerHTML=items.map(c=>`<option value="${c.id}">${escapeHtml(c.name||'—')} · ${escapeHtml(c.phone||'')}</option>`).join('');
+    sel.style.display='block';
+  }catch{ sel.style.display='none'; }
+}
+function subUseModal(id,type,remaining){
+  const isMin=type==='minutes';
+  const unit=isMin?'хвилин':(type==='time'?'(безлімітний — фіксуємо візит)':'візитів');
+  showModal('Списати з абонемента',`
+    ${type!=='time'?`<p class="set-p">Доступно: <b>${remaining} ${isMin?'хв':'візит.'}</b></p>`:''}
+    <label class="fld"><span>Кількість ${unit}</span><input type="number" id="subUseQty" class="input" value="1" min="1" ${type!=='time'?`max="${remaining}"`:''}></label>`,
+    async ()=>{
+      const quantity=+document.getElementById('subUseQty').value||1;
+      const r=await api('/api/subscriptions/'+id+'/use',{method:'POST',body:JSON.stringify({quantity})});
+      if(r&&r.ok){ toast('Списано. Залишок: '+(r.balance==null?'безліміт':r.balance)); loadSubs(); } else { toast(r.error==='insufficient-balance'?'Недостатньо залишку':(r.error||'Помилка'),'error'); }
+    });
+}
+async function subFreeze(id){
+  showModal('Заморозити абонемент',`
+    <label class="fld"><span>Днів заморозки</span><input type="number" id="subFrzDays" class="input" value="14" min="1"></label>
+    <label class="fld"><span>Причина</span><input id="subFrzReason" class="input" placeholder="хвороба, відпустка..."></label>`,
+    async ()=>{
+      const r=await api('/api/subscriptions/'+id+'/freeze',{method:'POST',body:JSON.stringify({days:+document.getElementById('subFrzDays').value||14,reason:document.getElementById('subFrzReason').value||null})});
+      if(r&&r.ok){ toast('Заморожено до '+r.unfreeze_at); loadSubs(); } else { toast(r.error==='max-freezes-reached'?'Вичерпано ліміт заморозок':(r.error||'Помилка'),'error'); }
+    });
+}
+async function subUnfreeze(id){
+  const r=await api('/api/subscriptions/'+id+'/unfreeze',{method:'POST',body:JSON.stringify({})});
+  if(r&&r.ok){ toast('Розморожено. Строк продовжено на '+r.frozen_days+' дн.'); loadSubs(); } else { toast(r.error||'Помилка','error'); }
+}
+async function subCancel(id){
+  if(!confirm('Розірвати абонемент? Залишок згорить.')) return;
+  const r=await api('/api/subscriptions/'+id+'/cancel',{method:'POST',body:JSON.stringify({reason:'розірвано вручну'})});
+  if(r&&r.ok){ toast('Абонемент розірвано'); loadSubs(); } else { toast(r.error||'Помилка','error'); }
+}
+async function subPlansModal(){
+  await _loadSubPlans(false);
+  const rows=_subPlans.map(p=>`<tr><td style="text-align:left">${escapeHtml(p.name)}</td><td style="text-align:center">${_SUB_TYPE[p.type]||p.type}</td><td style="text-align:center">${p.type==='minutes'?(p.minutes_included+' хв'):(p.type==='time'?p.duration_days+' дн':(p.visits_included+' віз.'))}</td><td style="text-align:center">${_subMoney(p.price)}</td><td style="text-align:center">${p.active?'✓':'—'}</td></tr>`).join('');
+  showModal('Тарифні плани',`
+    <div style="max-height:240px;overflow:auto;margin-bottom:14px">${_subPlans.length?`<table class="tbl" style="width:100%"><thead><tr><th style="text-align:left">Назва</th><th>Тип</th><th>Обсяг</th><th>Ціна</th><th>Актив.</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">Планів немає.</div>'}</div>
+    <h4 style="margin:0 0 8px">Новий план</h4>
+    <label class="fld"><span>Назва</span><input id="spName" class="input" placeholder="10 манікюрів"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Тип</span><select id="spType" class="input" onchange="_spTypeChg()"><option value="visits">Візити</option><option value="minutes">Хвилини</option><option value="time">Безліміт (час)</option><option value="combo">Комбо</option></select></label>
+      <label class="fld" style="flex:1"><span>Ціна, ₴</span><input type="number" id="spPrice" class="input" min="1"></label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1" id="spVisitsW"><span>К-сть візитів</span><input type="number" id="spVisits" class="input" min="1" value="10"></label>
+      <label class="fld" style="flex:1" id="spMinW" style="display:none"><span>Хвилин</span><input type="number" id="spMin" class="input" min="1" value="100"></label>
+      <label class="fld" style="flex:1"><span>Строк, днів</span><input type="number" id="spDays" class="input" value="365" min="1"></label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Макс. заморозок</span><input type="number" id="spMaxFrz" class="input" value="2" min="0"></label>
+      <label class="fld" style="flex:1"><span>Днів на заморозку</span><input type="number" id="spFrzDays" class="input" value="14" min="1"></label>
+    </div>`,
+    async ()=>{
+      const name=document.getElementById('spName').value.trim();
+      const price=+document.getElementById('spPrice').value;
+      if(!name||!price){ toast('Вкажіть назву і ціну','error'); return; }
+      const type=document.getElementById('spType').value;
+      const body={ name, type, price, duration_days:+document.getElementById('spDays').value||365,
+        max_freezes:+document.getElementById('spMaxFrz').value||0, max_freeze_days:+document.getElementById('spFrzDays').value||14 };
+      if(['visits','combo'].includes(type)) body.visits_included=+document.getElementById('spVisits').value||1;
+      if(type==='minutes') body.minutes_included=+document.getElementById('spMin').value||1;
+      const r=await api('/api/subscriptions/plans',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('План створено'); loadSubs(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+function _spTypeChg(){
+  const t=document.getElementById('spType').value;
+  const vW=document.getElementById('spVisitsW'), mW=document.getElementById('spMinW');
+  if(vW) vW.style.display=['visits','combo'].includes(t)?'':'none';
+  if(mW) mW.style.display=t==='minutes'?'':'none';
 }
 
 async function loadJournal() {
