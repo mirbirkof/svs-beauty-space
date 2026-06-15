@@ -368,11 +368,11 @@ router.get('/revenue-series', requirePerm('reports.finance'), async (req, res) =
 function classifyService(text) {
   const t = String(text || '').toLowerCase();
   if (/педик|pedic/.test(t)) return 'pedicure';
-  if (/манік|маник|manic|нігт|ногт|nail/.test(t)) return 'manicure';
-  if (/фарбув|покрас|окраш|колор|тонуван|airtouch|air\s*touch|шатуш|балаяж|melt|highlight|мелірув|освітл/.test(t)) return 'coloring';
-  if (/вій|вии|ресн|lash|нарощенн.*ві|ламінув.*ві/.test(t)) return 'lashes';
+  if (/манік|маник|manic|нігт|ногт|nail|френч|втирк|зняття|нарощенн.*ніг|нарощенн.*ногт/.test(t)) return 'manicure';
+  if (/фарбув|покрас|окраш|колор|тонуван|airtouch|air\s*touch|шатуш|балаяж|melt|highlight|мелірув|освітл|вихід з чорн|корекц.*кольор/.test(t)) return 'coloring';
+  if (/вій|вии|ресн|lash|hollywood|нарощенн.*ві|ламінув.*ві/.test(t)) return 'lashes';
   if (/брів|брови|brow/.test(t)) return 'brows';
-  if (/стрижк|зачіск|зачес|укладк|миття|вкладенн|hair/.test(t)) return 'hair';
+  if (/стрижк|зачіск|зачес|укладк|миття|вкладенн|hair|віднов|вирів|біовирів|biomimetic|кератин|ботокс|нанопласт|реконструкц|полірув|накрутк|вкладанн|контур|завивк|догляд.*волосс|волосс/.test(t)) return 'hair';
   return 'other';
 }
 const SERVICE_BUCKETS = ['manicure','pedicure','coloring','lashes','brows','hair','other'];
