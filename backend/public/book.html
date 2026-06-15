@@ -124,9 +124,28 @@ async function api(path, opts){
 async function loadCatalog(){
   setSteps(); hideCta();
   view.innerHTML = '<div class="spin"></div>';
+  // 1) пробуємо нормалізований каталог з нашої БД (читані категорії)
   try {
     const c = await api('/api/booking/catalog');
-    S.services = c.services || []; S.masters = c.masters || [];
+    if (c && c.services && c.services.length){
+      S.services = c.services; S.masters = c.masters || [];
+      return renderServices('');
+    }
+  } catch(e){ /* немає /catalog → fallback нижче */ }
+  // 2) fallback: прямий каталог BeautyPro (/services + /masters)
+  try {
+    const [svc, mst] = await Promise.all([
+      api('/api/booking/services'), api('/api/booking/masters')
+    ]);
+    S.services = (Array.isArray(svc)?svc:[]).map(s => ({
+      id: s.id, name: s.name, duration: s.duration,
+      price: typeof s.price==='object' ? (Object.values(s.price)[0]||0) : (s.price||0),
+      category: (s.category && !/^[0-9a-f]{8}-/.test(s.category)) ? s.category : null
+    }));
+    S.masters = (Array.isArray(mst)?mst:[])
+      .filter(m => Array.isArray(m.services) && m.services.length) // лише реальні майстри
+      .map(m => ({ id:m.id, name:m.name, specialty:null,
+        services:(m.services||[]).map(x=>x.id||x) }));
     renderServices('');
   } catch(e){
     view.innerHTML = '<div class="empty">Не вдалося завантажити послуги.<br>Спробуйте пізніше або зателефонуйте нам.</div>';
@@ -167,7 +186,9 @@ function loadMasters(){
   html += '<div class="item'+(S.master===null?'':'')+'" data-id="__any"><div class="row">'+
     '<div class="av">★</div><div><div class="nm">Будь-який вільний майстер</div>'+
     '<div class="meta">найближчий доступний час</div></div></div></div>';
-  S.masters.forEach(m => {
+  // показуємо лише майстрів, що надають обрану послугу (якщо є мапінг)
+  const avail = S.masters.filter(m => !Array.isArray(m.services) || !m.services.length || m.services.includes(S.svc.id));
+  (avail.length ? avail : S.masters).forEach(m => {
     const init = (m.name||'?').trim().charAt(0).toUpperCase();
     const av = m.avatar ? '<img class="av" src="'+esc(m.avatar)+'">' : '<div class="av">'+esc(init)+'</div>';
     html += '<div class="item" data-id="'+m.id+'"><div class="row">'+av+
