@@ -172,7 +172,7 @@ ${JSON.stringify(snapshot, null, 1)}
 
 Питання керівника: "${question}"
 
-Дай чітку коротку відповідь українською на основі цих даних. Якщо даних бракує — скажи чесно чого саме бракує. Оперуй цифрами.`;
+Дай чітку коротку відповідь українською на основі цих даних. Якщо даних бракує — скажи чесно чого саме бракує. Оперуй цифрами. Пиши звичайним текстом без markdown-розмітки (без зірочок, решіток, списків з *).`;
     let answer = null;
     try { answer = await llm.ask(prompt, { system: SYSTEM, maxTokens: 1200 }); }
     catch (e) { console.error('[ai:ask] llm fail', e.message); return res.status(502).json({ error: 'llm_failed' }); }
