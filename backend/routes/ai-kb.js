@@ -145,30 +145,43 @@ async function syncSource(type) {
   return { count };
 }
 
-// ── Извлечение релевантных чанков: cosine по embedding, fallback full-text+trgm ──
+// ── Гибридное извлечение: cosine по эмбеддингам + full-text/trgm, слияние по chunk id ──
+// Так покрытие не зависит от того, что часть чанков ещё не получила эмбеддинг (free-tier лимит).
 async function retrieve(question, topK = 5) {
-  let qvec = null;
-  if (embed.available()) qvec = await embed.embedOne(question, 'RETRIEVAL_QUERY');
-  const vlit = embed.toVectorLiteral(qvec);
-  if (vlit) {
-    const rows = await q(
+  const want = Math.max(topK, 8);
+  // 1) векторная ветка (если есть эмбеддинг запроса)
+  let vecRows = [];
+  if (embed.available()) {
+    const qvec = await embed.embedOne(question, 'RETRIEVAL_QUERY');
+    const vlit = embed.toVectorLiteral(qvec);
+    if (vlit) vecRows = await q(
       `SELECT c.id, c.content, c.document_id, d.title, d.source_type,
-              1 - (c.embedding <=> $1::vector) AS score
+              (1 - (c.embedding <=> $1::vector))::float AS score
          FROM ai_kb_chunks c JOIN ai_kb_documents d ON d.id=c.document_id
         WHERE c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> $1::vector LIMIT $2`, [vlit, topK]
+        ORDER BY c.embedding <=> $1::vector LIMIT $2`, [vlit, want]
     ).catch(() => []);
-    if (rows.length) return { mode: 'vector', chunks: rows };
   }
-  // fallback: full-text (websearch) + trgm similarity
-  const rows = await q(
+  // 2) полнотекстовая/trgm ветка (покрывает чанки без эмбеддинга)
+  const ftRows = await q(
     `SELECT c.id, c.content, c.document_id, d.title, d.source_type,
-            GREATEST(ts_rank(c.tsv, websearch_to_tsquery('simple', $1)), similarity(c.content, $1)) AS score
+            GREATEST(ts_rank(c.tsv, websearch_to_tsquery('simple', $1)), similarity(c.content, $1))::float AS score
        FROM ai_kb_chunks c JOIN ai_kb_documents d ON d.id=c.document_id
       WHERE c.tsv @@ websearch_to_tsquery('simple', $1) OR c.content % $1
-      ORDER BY score DESC LIMIT $2`, [question, topK]
+      ORDER BY score DESC LIMIT $2`, [question, want]
   ).catch(() => []);
-  return { mode: 'fulltext', chunks: rows };
+  // 3) слияние: cosine 0..1 как есть; full-text масштабируем (0.6) и берём максимум
+  const merged = new Map();
+  for (const r of vecRows) merged.set(String(r.id), { ...r, score: Number(r.score) || 0, _v: true });
+  for (const r of ftRows) {
+    const k = String(r.id), ftScore = (Number(r.score) || 0) * 0.6;
+    const ex = merged.get(k);
+    if (ex) ex.score = Math.max(ex.score, ftScore);
+    else merged.set(k, { ...r, score: ftScore, _v: false });
+  }
+  const chunks = [...merged.values()].sort((a, b) => b.score - a.score).slice(0, topK);
+  const mode = vecRows.length ? (ftRows.length ? 'hybrid' : 'vector') : 'fulltext';
+  return { mode, chunks };
 }
 
 // ── RAG-ядро: retrieve → LLM → ответ с цитатами + лог ──
@@ -176,7 +189,7 @@ async function ragAnswer(question, { topK = 5, callerModule = 'admin', userId = 
   const t0 = Date.now();
   const { mode, chunks } = await retrieve(question, topK);
   const maxScore = chunks.length ? Math.max(...chunks.map(c => Number(c.score) || 0)) : 0;
-  if (!chunks.length || maxScore < (mode === 'vector' ? 0.35 : 0.05)) {
+  if (!chunks.length || maxScore < 0.15) {
     const ans = 'Не знайшов точної інформації за цим запитом. Уточніть, будь ласка, питання.';
     await logQuery(question, chunks, ans, 0.2, callerModule, userId, Date.now() - t0);
     return { answer: ans, confidence: 0.2, sources: [], mode, response_time_ms: Date.now() - t0 };
@@ -413,6 +426,29 @@ router.put('/sources/:id', requirePerm('reports.finance'), async (req, res) => {
     if (!r[0]) return res.status(404).json({ error: 'not_found' });
     res.json(r[0]);
   } catch (e) { console.error('[kb:source-put]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// POST /embed-backfill — досчитать эмбеддинги для чанков без вектора (пачками, против rate-limit)
+router.post('/embed-backfill', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    if (!embed.available()) return res.json({ ok: false, reason: 'embeddings_unavailable' });
+    const limit = Math.min(parseInt(req.body?.limit, 10) || 50, 150);
+    const rows = await q(`SELECT id, content FROM ai_kb_chunks WHERE embedding IS NULL ORDER BY id LIMIT $1`, [limit]);
+    if (!rows.length) {
+      const left0 = (await q(`SELECT COUNT(*)::int n FROM ai_kb_chunks WHERE embedding IS NULL`))[0].n;
+      return res.json({ ok: true, processed: 0, embedded: 0, remaining: left0, done: left0 === 0 });
+    }
+    const vectors = await embed.embedBatch(rows.map(r => r.content), 'RETRIEVAL_DOCUMENT', 2);
+    let embedded = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const vlit = embed.toVectorLiteral(vectors[i]);
+      if (!vlit) continue;
+      await q(`UPDATE ai_kb_chunks SET embedding=$2::vector, embed_model=$3 WHERE id=$1`, [rows[i].id, vlit, embed.MODEL]);
+      embedded++;
+    }
+    const remaining = (await q(`SELECT COUNT(*)::int n FROM ai_kb_chunks WHERE embedding IS NULL`))[0].n;
+    res.json({ ok: true, processed: rows.length, embedded, remaining, done: remaining === 0 });
+  } catch (e) { console.error('[kb:backfill]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // POST /feedback — оценка ответа
