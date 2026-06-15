@@ -10423,3 +10423,10 @@
 (Use `node --trace-warnings ...` to show where the warning was created)
 [regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
    a19c330..6d31cda  main -> main
+[2026-06-15 09:40:49] Health check FAILED, restarting tunnel
+[2026-06-15 09:40:49] Starting tunnel...
+[2026-06-15 09:40:53] Tunnel up: https://ca046105a83ca6.lhr.life
+[2026-06-15 09:40:53] Loader URL updated to https://ca046105a83ca6.lhr.life
+(Use `node --trace-warnings ...` to show where the warning was created)
+[regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
+   6fbcdbb..5d89607  main -> main

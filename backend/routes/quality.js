@@ -43,9 +43,9 @@ async function masterMetrics() {
       ) t GROUP BY master_id
     ),
     reviews_m AS (
-      SELECT master_id, COUNT(*)::int AS reviews, AVG(rating)::numeric AS avg_rating,
+      SELECT master_id::int AS master_id, COUNT(*)::int AS reviews, AVG(rating)::numeric AS avg_rating,
              COUNT(*) FILTER (WHERE sentiment='negative')::int AS neg
-        FROM reviews WHERE status NOT IN ('rejected','spam') AND master_id IS NOT NULL
+        FROM reviews WHERE status NOT IN ('rejected','spam') AND master_id ~ '^[0-9]+$'
          AND created_at >= NOW() - ($1 || ' days')::interval
        GROUP BY master_id
     )
@@ -130,7 +130,7 @@ router.get('/master/:id', requirePerm('reports.read'), async (req, res) => {
     // останні відгуки
     const reviews = await pool.query(
       `SELECT rating, text, sentiment, created_at FROM reviews
-        WHERE master_id=$1 AND status NOT IN ('rejected','spam')
+        WHERE master_id=$1::text AND status NOT IN ('rejected','spam')
         ORDER BY created_at DESC LIMIT 5`, [id]).then(r => r.rows).catch(() => []);
     res.json({ ok: true, master: m, recent_reviews: reviews });
   } catch (e) {
