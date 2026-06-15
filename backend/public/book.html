@@ -236,7 +236,8 @@ async function loadSlots(){
   const prof = (S.master && S.master!=='__any') ? S.master.id : '';
   const dur = S.svc.duration || 60;
   try {
-    const q = new URLSearchParams({ duration:String(dur), from, to });
+    // надсилаємо обидва контракти: service_id+date (поточний booking-api) та duration+from+to
+    const q = new URLSearchParams({ service_id:S.svc.id, date:S.date, duration:String(dur), from, to });
     if (prof) q.set('professional', prof);
     const data = await api('/api/booking/slots?'+q.toString());
     const slots = normalizeSlots(data);
@@ -261,18 +262,25 @@ async function loadSlots(){
 function normalizeSlots(data){
   const out = [];
   const dur = S.svc.duration || 60;
-  const push = (iso, prof) => {
+  const selProf = (S.master && S.master!=='__any') ? S.master.id : '';
+  const push = (iso, prof, time) => {
     const d = new Date(iso); if (isNaN(d)) return;
     const end = new Date(d.getTime() + dur*60000);
-    out.push({ from: toLocalISO(d), to: toLocalISO(end), label: pad(d.getHours())+':'+pad(d.getMinutes()), prof });
+    out.push({ from: toLocalISO(d), to: toLocalISO(end),
+      label: time || (pad(d.getHours())+':'+pad(d.getMinutes())), prof: prof||'' });
   };
   const walk = (node, prof) => {
     if (!node) return;
     if (Array.isArray(node)){ node.forEach(x=>walk(x,prof)); return; }
     if (typeof node === 'string'){ push(node, prof); return; }
     if (typeof node === 'object'){
-      const p = node.professional || node.employee || node.master || prof;
-      if (node.start || node.from || node.time) push(node.start||node.from||node.time, p);
+      // поточний формат booking-api: {time, from, employees:[...]}
+      let p = node.professional || node.employee || node.master || prof;
+      if (Array.isArray(node.employees) && node.employees.length){
+        p = selProf && node.employees.includes(selProf) ? selProf : node.employees[0];
+      }
+      const startIso = node.from || node.start || (node.time && S.date ? S.date+'T'+(node.time.length===5?node.time+':00':node.time) : null);
+      if (startIso) push(startIso, p, node.time);
       if (node.slots) walk(node.slots, p);
       if (node.free_time) walk(node.free_time, p);
       if (node.times) walk(node.times, p);
