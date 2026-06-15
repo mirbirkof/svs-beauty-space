@@ -10442,3 +10442,5 @@ timeout: fork system call failed: Resource temporarily unavailable
 [2026-06-15 09:57:07] Tunnel up: https://6ca8294d5b6a05.lhr.life
 [2026-06-15 09:57:07] Loader URL updated to https://6ca8294d5b6a05.lhr.life
    887a1c9..f3fc8d2  main -> main
+[2026-06-15 10:00:10] Health check FAILED, restarting tunnel
+[2026-06-15 10:00:10] Starting tunnel...
