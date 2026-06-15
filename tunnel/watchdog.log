@@ -10430,3 +10430,15 @@
 (Use `node --trace-warnings ...` to show where the warning was created)
 [regen] wrote /home/client/workspace/svs-beauty-space/js/shop-data.js (105.2 KB, 267 products)
    6fbcdbb..5d89607  main -> main
+[2026-06-15 09:52:35] Health check FAILED, restarting tunnel
+[2026-06-15 09:52:35] Starting tunnel...
+[2026-06-15 09:53:50] Tunnel up: https://5fbbe654b33d94.lhr.life
+[2026-06-15 09:53:50] Loader URL updated to https://5fbbe654b33d94.lhr.life
+ 7: 0x789439e2a28b __libc_start_main [/lib/x86_64-linux-gnu/libc.so.6]
+ 8: 0xe9033e _start [/usr/bin/node]
+timeout: fork system call failed: Resource temporarily unavailable
+[2026-06-15 09:55:06] Health check FAILED, restarting tunnel
+[2026-06-15 09:55:06] Starting tunnel...
+[2026-06-15 09:57:07] Tunnel up: https://6ca8294d5b6a05.lhr.life
+[2026-06-15 09:57:07] Loader URL updated to https://6ca8294d5b6a05.lhr.life
+   887a1c9..f3fc8d2  main -> main

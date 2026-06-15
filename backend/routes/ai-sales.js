@@ -68,14 +68,16 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
          ORDER BY revenue DESC LIMIT 8`, [W]).then(r => r.rows).catch(() => []),
     ]);
 
-    // оцінка втраченої виручки: якщо мультисервіс підтягнути до найкращого майстра
-    const bestMulti = byMaster.length ? Math.max(...byMaster.map(m => m.multi_pct || 0)) : 0;
+    // оцінка потенціалу крос-селу: більшість візитів — одна послуга.
+    // Якщо допродати додаткову послугу хоча б частині з них — додаткова виручка.
     const curMulti = overall.multi_pct || 0;
     const visits = overall.visits || 0;
     const avgCheck = overall.avg_check || 0;
-    // кожен «доданий» мультисервісний візит ≈ +50% чека (груба, але чесна оцінка)
-    const extraVisits = bestMulti > curMulti ? Math.round(visits * (bestMulti - curMulti) / 100) : 0;
-    const opportunity = Math.round(extraVisits * avgCheck * 0.5);
+    const singleVisits = Math.round(visits * (1 - curMulti / 100));
+    const CONVERT_RATE = 0.10;            // консервативно: 10% одиночних візитів
+    const ADDON_SHARE = 0.40;             // додаткова послуга ≈ 40% від середнього чека
+    const extraVisits = Math.round(singleVisits * CONVERT_RATE);
+    const opportunity = Math.round(extraVisits * avgCheck * ADDON_SHARE);
 
     res.json({
       ok: true,
@@ -94,12 +96,13 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
       })),
       cross_sell_opportunity: {
         current_multi_pct: curMulti,
-        best_master_multi_pct: bestMulti,
+        single_service_pct: Math.round((100 - curMulti) * 10) / 10,
+        single_service_visits: singleVisits,
         potential_extra_visits: extraVisits,
         potential_revenue: opportunity,
-        hint: extraVisits > 0
-          ? `Якщо підтягнути крос-сел до рівня найкращого майстра — ~${extraVisits} додаткових мультивізитів, орієнтовно +${opportunity.toLocaleString('uk-UA')} грн`
-          : 'Крос-сел вже на рівні найкращого майстра',
+        hint: opportunity > 0
+          ? `${Math.round(100 - curMulti)}% візитів — лише одна послуга. Якщо допродати додаткову послугу хоча б 10% із них — орієнтовно +${opportunity.toLocaleString('uk-UA')} грн`
+          : 'Майже всі візити вже мультисервісні',
       },
     });
   } catch (e) {

@@ -3515,7 +3515,7 @@ async function loadSales(){
     if (op.potential_revenue > 0){
       html += `<div style="display:flex;gap:10px;padding:12px 14px;border-left:3px solid #16a34a;background:#16a34a14;border-radius:6px;margin-bottom:18px;font-size:13px;line-height:1.5">
         <span class="material-icons-round" style="color:#16a34a;font-size:20px;flex-shrink:0">savings</span>
-        <div>${escapeHtml(op.hint)}<br><span style="color:var(--text-secondary)">Зараз мультисервіс ${op.current_multi_pct}%, у найкращого майстра ${op.best_master_multi_pct}%</span></div>
+        <div>${escapeHtml(op.hint)}<br><span style="color:var(--text-secondary)">${op.single_service_visits} візитів з однією послугою · мультисервіс ${op.current_multi_pct}%</span></div>
       </div>`;
     }
     // по майстрах
