@@ -815,12 +815,15 @@ router.get('/overview', requirePerm(), async (req, res) => {
                   FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
       // новые клиенты за месяц
       pool.query(`SELECT COUNT(*)::int AS n FROM clients WHERE created_at >= $1`, [monFrom]).catch(()=>({rows:[{n:0}]})),
-      // топ мастеров месяца по выручке
-      pool.query(`SELECT m.id, m.name, COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue,
-                         COUNT(*) FILTER (WHERE a.status='done')::int AS done
-                  FROM appointments a JOIN masters m ON m.id=a.master_id
-                  WHERE a.starts_at >= $1 GROUP BY m.id, m.name
-                  HAVING COUNT(*) FILTER (WHERE a.status='done') > 0
+      // топ мастеров месяца по выручке — источник правды касса (BeautyPro оставляет записи 'confirmed', а не 'done')
+      pool.query(`SELECT m.id, m.name,
+                         COALESCE(SUM(co.amount),0)::numeric AS revenue,
+                         COUNT(*) FILTER (WHERE co.category='sale_service')::int AS done
+                  FROM cash_operations co JOIN masters m ON m.id=co.master_id
+                  WHERE co.type='in' AND co.category IN ('sale_service','sale_product')
+                    AND co.created_at >= $1
+                  GROUP BY m.id, m.name
+                  HAVING SUM(co.amount) > 0
                   ORDER BY revenue DESC LIMIT 8`, [monFrom]),
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
     ]);
