@@ -388,6 +388,49 @@ router.delete('/day', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── POST /api/schedule/copy-week — копіювати тиждень графіка на інший тиждень ──
+// Body: { master_id?, from:"YYYY-MM-DD" (будь-який день тижня-джерела), to:"YYYY-MM-DD" (будь-який день цільового тижня) }
+// Копіює явні ручні записи (master_schedule_days) з тижня-джерела у цільовий тиждень (Пн→Нд).
+// Без master_id — копіює для всіх майстрів. Перезаписує цільові ручні записи того ж дня.
+router.post('/copy-week', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { master_id, from, to } = req.body || {};
+    if (!from || !to) return res.status(400).json({ error: 'from and to required (YYYY-MM-DD)' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ error: 'dates must be YYYY-MM-DD' });
+    }
+    // нормалізуємо до понеділка тижня (ISO: Пн=0)
+    const monday = (s) => { const d = new Date(s + 'T00:00:00Z'); const wd = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - wd); return d; };
+    const srcMon = monday(from), dstMon = monday(to);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    if (fmt(srcMon) === fmt(dstMon)) return res.status(400).json({ error: 'Тиждень-джерело і цільовий збігаються' });
+    const srcEnd = new Date(srcMon); srcEnd.setUTCDate(srcEnd.getUTCDate() + 6);
+    const args = [fmt(srcMon), fmt(srcEnd)];
+    let mFilter = '';
+    if (master_id) { args.push(parseInt(master_id, 10)); mFilter = `AND master_id = $${args.length}`; }
+    const src = await pool.query(
+      `SELECT master_id, to_char(work_date,'YYYY-MM-DD') AS work_date, start_time, end_time
+         FROM master_schedule_days
+        WHERE work_date BETWEEN $1 AND $2 ${mFilter}`, args);
+    if (!src.rowCount) return res.json({ ok: true, copied: 0, note: 'У тижні-джерелі немає ручних записів' });
+    const dayMs = 86400000;
+    let copied = 0;
+    for (const row of src.rows) {
+      const offset = Math.round((new Date(row.work_date + 'T00:00:00Z') - srcMon) / dayMs);
+      const target = new Date(dstMon); target.setUTCDate(target.getUTCDate() + offset);
+      await pool.query(
+        `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+           VALUES ($1,$2,$3,$4,'manual',NOW())
+         ON CONFLICT (master_id, work_date)
+         DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
+        [row.master_id, fmt(target), row.start_time, row.end_time]);
+      copied++;
+    }
+    res.json({ ok: true, copied, from: fmt(srcMon), to: fmt(dstMon) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/schedule/availability?date=2026-06-10 — кто работает в конкретный день ──
 router.get('/availability', async (req, res) => {
   try {
