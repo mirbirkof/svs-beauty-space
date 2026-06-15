@@ -150,7 +150,7 @@ router.get('/popular', async (req, res) => {
 // Мої непрочитані обовʼязкові
 router.get('/my/unread', async (req, res) => {
   try {
-    const uid = req.user?.id || null;
+    const uid = req.user?.id ?? null;
     const rows = await q(
       `SELECT a.id,a.title,a.slug,a.category_id FROM kb_articles a
        WHERE a.tenant_id=current_tenant_id() AND a.status='published' AND a.is_mandatory=true
@@ -292,7 +292,7 @@ router.post('/articles/:id(\\d+)/read', async (req, res) => {
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (article_id, employee_id) DO UPDATE SET confirmed=EXCLUDED.confirmed, read_at=NOW()
        RETURNING *`,
-      [req.params.id, req.user?.id || null, req.user?.display_name || null, confirmed]);
+      [req.params.id, req.user?.id ?? null, req.user?.display_name || null, confirmed]);
     res.json({ ok: true, read: ins[0] });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
