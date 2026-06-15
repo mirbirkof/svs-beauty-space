@@ -2844,12 +2844,37 @@ async function renderScheduleOverview(grid) {
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
        <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+       <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
        <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
        <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
      </div>
      <div class="schmon"><div class="schmon-grid" style="grid-template-columns:${colW}">${head}${rows}</div></div>
      <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня, або на <b>число дати</b> вгорі — щоб виділити весь стовпець (видно хто працює, а в кого вихідний). <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується синхронізацією BeautyPro). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>
      </div>`;
+}
+// SAL-04 — копіювання тижня графіка на інший тиждень
+function _mondayOf(d){ const x=new Date(d); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); return x.toISOString().slice(0,10); }
+function schCopyWeek(){
+  const today=new Date();
+  const src=_mondayOf(today);
+  const nxt=new Date(today); nxt.setDate(nxt.getDate()+7); const dst=_mondayOf(nxt);
+  const opts=(_schMastersCache||[]).map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+  showModal('Копіювати тиждень графіка', `
+    <p class="set-p" style="margin-bottom:10px">Скопіює ручні зміни (сині клітинки) з тижня-джерела у цільовий тиждень. Тиждень рахується Пн–Нд від обраної дати.</p>
+    <label class="set-p" style="display:block;margin-bottom:4px">Майстер</label>
+    <select id="cwMaster" class="inp" style="margin-bottom:10px"><option value="">Всі майстри</option>${opts}</select>
+    <label class="set-p" style="display:block;margin-bottom:4px">Тиждень-джерело (будь-який день)</label>
+    <input type="date" id="cwFrom" class="inp" value="${src}" style="margin-bottom:10px">
+    <label class="set-p" style="display:block;margin-bottom:4px">Цільовий тиждень (будь-який день)</label>
+    <input type="date" id="cwTo" class="inp" value="${dst}">
+  `, async ()=>{
+    const master_id=document.getElementById('cwMaster').value||undefined;
+    const from=document.getElementById('cwFrom').value, to=document.getElementById('cwTo').value;
+    if(!from||!to){ toast('Оберіть обидва тижні','error'); throw new Error('dates'); }
+    const r=await api('/api/schedule/copy-week',{method:'POST',body:JSON.stringify({master_id,from,to})});
+    if(r&&r.ok){ toast(`Скопійовано днів: ${r.copied}`); renderScheduleOverview(document.getElementById('schGrid')); }
+    else { toast((r&&r.error)||'Помилка','error'); throw new Error('copy'); }
+  });
 }
 // #10 — виділення всього стовпця дня для зручного перегляду «хто працює / вихідний»
 let _schSelCol = null;
