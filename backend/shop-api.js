@@ -210,6 +210,7 @@ try { app.use('/api/recommendations', require('./routes/recommendations')); } ca
 try { app.use('/api/search', require('./routes/search')); } catch(e) { console.error('[search] mount failed:', e.message); }
 try { app.use('/api/audit', require('./routes/audit')); } catch(e) { console.error('[audit] mount failed:', e.message); }
 try { app.use('/api/forms', require('./routes/forms')); } catch(e) { console.error('[forms] mount failed:', e.message); }
+try { app.use('/api/webhooks', require('./routes/webhooks')); } catch(e) { console.error('[webhooks] mount failed:', e.message); }
 try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console.error('[quality] mount failed:', e.message); }
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
