@@ -880,4 +880,35 @@ router.get('/overview', requirePerm(), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/reports/top-masters?from=&to= — топ майстрів за виручкою за довільний період.
+// Джерело правди — каса (cash_operations), як і в /overview. Без from/to → поточний місяць.
+router.get('/top-masters', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    let from, to;
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (req.query.from && dateRe.test(req.query.from)) {
+      from = kyivDayBound(req.query.from, false).toISOString();
+      to = (req.query.to && dateRe.test(req.query.to))
+        ? kyivDayBound(req.query.to, true).toISOString()
+        : kyivDayBound(req.query.from, true).toISOString();
+    } else {
+      // дефолт — поточний календарний місяць по Києву
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+      from = kyivDayBound(todayStr.slice(0,7) + '-01', false).toISOString();
+      to = new Date().toISOString();
+    }
+    const r = await pool.query(
+      `SELECT m.id, m.name,
+              COALESCE(SUM(co.amount),0)::numeric AS revenue,
+              COUNT(*) FILTER (WHERE co.category='sale_service')::int AS done
+         FROM cash_operations co JOIN masters m ON m.id=co.master_id
+        WHERE co.type='in' AND co.category IN ('sale_service','sale_product')
+          AND co.created_at BETWEEN $1 AND $2
+        GROUP BY m.id, m.name
+       HAVING SUM(co.amount) > 0
+        ORDER BY revenue DESC LIMIT 20`, [from, to]);
+    res.json({ from, to, masters: r.rows.map(x => ({ id: x.id, name: x.name, revenue: Number(x.revenue), done: x.done })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -984,7 +984,14 @@ select.input { background:var(--card); }
 
         <div class="grid-2" style="gap:24px">
           <div class="card">
-            <div class="card-header"><h3 style="display:flex;align-items:center;gap:6px">Топ майстри за виручкою (місяць) <button type="button" class="info-i" data-t="<b>Топ майстрів за виручкою.</b> Рейтинг за поточний календарний місяць. Виручка береться з каси (реально проведені оплати послуг і товарів). «Виконано» — кількість оплачених послуг майстра. Сортування — від найбільшої виручки." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+            <div class="card-header" style="flex-wrap:wrap;gap:10px"><h3 style="display:flex;align-items:center;gap:6px">Топ майстри за виручкою <button type="button" class="info-i" data-t="<b>Топ майстрів за виручкою.</b> Рейтинг за обраний період (за замовчуванням — поточний календарний місяць). Виручка береться з каси (реально проведені оплати послуг і товарів). «Виконано» — кількість оплачених послуг майстра. Сортування — від найбільшої виручки. Змініть дати справа і натисніть «Показати»." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+              <div style="display:flex;gap:6px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <input type="date" id="tmFrom" class="input btn-sm" style="max-width:140px">
+                <span style="color:var(--text-secondary)">–</span>
+                <input type="date" id="tmTo" class="input btn-sm" style="max-width:140px">
+                <button class="btn btn-outline btn-sm" onclick="loadTopMasters()">Показати</button>
+              </div>
+            </div>
             <div class="card-body" style="padding:0">
               <table class="tbl"><thead><tr><th>Майстер</th><th>Виконано</th><th>Виручка</th></tr></thead><tbody id="topMastersBody"></tbody></table>
             </div>
@@ -3385,7 +3392,16 @@ async function loadDashboard() {
   document.getElementById('kpi').innerHTML = kpis.map(([l, v, c, info]) =>
     `<div class="kpi-card ${c}"><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
 
-  // Топ майстри місяця
+  // Топ майстри — дефолт поточний місяць; ініціалізуємо пікери дат один раз
+  try {
+    const tf = document.getElementById('tmFrom'), tt = document.getElementById('tmTo');
+    if (tf && !tf.value) {
+      const now = new Date();
+      const tz = d => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+      tf.value = tz(now).slice(0,7) + '-01';
+      tt.value = tz(now);
+    }
+  } catch {}
   const tm = o.top_masters || [];
   document.getElementById('topMastersBody').innerHTML = tm.length ? tm.map(m =>
     `<tr><td>${m.name}</td><td>${m.done}</td><td>${m.revenue!=null?_money2(m.revenue):'—'}</td></tr>`).join('')
@@ -3425,6 +3441,25 @@ async function loadDashboard() {
   // AI-02: AI-продажі
   if (fin) { try { document.getElementById('salesCard').style.display=''; loadSales(); } catch {} }
   else { try { document.getElementById('salesCard').style.display='none'; } catch {} }
+}
+
+// Топ майстри за виручкою з довільним діапазоном дат (#15)
+async function loadTopMasters() {
+  const body = document.getElementById('topMastersBody');
+  if (!body) return;
+  const from = document.getElementById('tmFrom')?.value || '';
+  const to = document.getElementById('tmTo')?.value || '';
+  const qs = (from ? `?from=${from}` : '') + (from && to ? `&to=${to}` : '');
+  body.innerHTML = '<tr><td colspan="3" class="empty">Завантаження…</td></tr>';
+  try {
+    const r = await api('/api/reports/top-masters' + qs);
+    const tm = r.masters || [];
+    body.innerHTML = tm.length ? tm.map(m =>
+      `<tr><td>${m.name}</td><td>${m.done}</td><td>${m.revenue!=null?_money2(m.revenue):'—'}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="empty">Немає виручки за цей період</td></tr>';
+  } catch {
+    body.innerHTML = '<tr><td colspan="3" class="empty">—</td></tr>';
+  }
 }
 // ═══ AI-07: повернення клієнтів ════════════════
 async function loadReactivation(){
