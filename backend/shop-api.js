@@ -204,6 +204,7 @@ try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } ca
 try { app.use('/api/ai/kb', require('./routes/ai-kb')); } catch(e) { console.error('[ai-kb] mount failed:', e.message); }
 try { app.use('/api/ai/marketing', require('./routes/ai-marketing')); } catch(e) { console.error('[ai-marketing] mount failed:', e.message); }
 try { app.use('/api/ai/agents', require('./routes/ai-agents')); } catch(e) { console.error('[ai-agents] mount failed:', e.message); }
+try { app.use('/api/ai/calls', require('./routes/ai-call-analysis')); } catch(e) { console.error('[ai-call-analysis] mount failed:', e.message); }
 try { app.use('/api/pipeline', require('./routes/pipeline')); } catch(e) { console.error('[pipeline] mount failed:', e.message); }
 try { app.use('/api/shifts', require('./routes/shifts')); } catch(e) { console.error('[shifts] mount failed:', e.message); }
 try { app.use('/api/financial', require('./routes/financial')); } catch(e) { console.error('[financial] mount failed:', e.message); }
