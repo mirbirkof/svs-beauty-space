@@ -201,6 +201,7 @@ try { app.use('/api/incidents', require('./routes/incidents')); } catch(e) { con
 try { app.use('/api/surveys', require('./routes/surveys')); } catch(e) { console.error('[surveys] mount failed:', e.message); }
 try { app.use('/api/qc', require('./routes/qc')); } catch(e) { console.error('[qc] mount failed:', e.message); }
 try { app.use('/api/documents', require('./routes/documents')); } catch(e) { console.error('[documents] mount failed:', e.message); }
+try { app.use('/api/esign', require('./routes/esign')); } catch(e) { console.error('[esign] mount failed:', e.message); }
 const triggersRoutes = require('./routes/marketing-triggers');
 app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }
