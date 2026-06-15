@@ -523,6 +523,17 @@ select.input { background:var(--card); }
   .journal-main .card { overflow:hidden; max-width:100%; }
   #journalContent { max-width:100%; overflow-x:hidden; }
 }
+/* ── Інфо-іконки «i» з поясненнями (#15) ── */
+.info-i { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; min-width:18px;
+  border-radius:50%; border:1px solid var(--primary,#7c5cff); color:var(--primary,#7c5cff); background:transparent;
+  font-size:12px; font-weight:700; font-style:italic; cursor:pointer; line-height:1; padding:0; vertical-align:middle;
+  font-family:Georgia,serif; transition:background .15s,color .15s; }
+.info-i:hover { background:var(--primary,#7c5cff); color:#fff; }
+#infoPop { position:fixed; z-index:9999; max-width:300px; background:#1f2333; color:#f3f4f6; border-radius:12px;
+  padding:12px 14px; font-size:13px; line-height:1.5; box-shadow:0 10px 30px rgba(0,0,0,.35); display:none; }
+#infoPop::before { content:''; position:absolute; width:12px; height:12px; background:#1f2333; transform:rotate(45deg); }
+#infoPop b { color:#fff; }
+#infoPop .ip-close { float:right; cursor:pointer; opacity:.6; margin:-4px -4px 0 8px; font-size:16px; }
 /* ── Фінанси: Доходи і Витрати ── */
 .fin-toolbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
 .fin-periods { display:inline-flex; background:var(--card-bg,#fff); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
@@ -883,7 +894,7 @@ select.input { background:var(--card); }
         <!-- ═══ AI-аналітик ═══ -->
         <div class="card" id="aiCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7)">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">auto_awesome</span> AI-аналітик салону</h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">auto_awesome</span> AI-аналітик салону <button type="button" class="info-i" data-t="<b>AI-аналітик салону.</b> Штучний інтелект аналізує ваші дані (записи, виручку, клієнтів) і дає короткі висновки: що зростає, що просідає, на що звернути увагу. Кнопка «Оновити» — перерахувати аналіз на свіжих даних. Нижче можна поставити будь-яке питання про салон своїми словами." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="aiUpdated" style="font-size:12px;color:var(--text-secondary)"></span>
               <button class="btn btn-outline btn-sm" onclick="loadAiInsights(true)" title="Оновити аналіз"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button>
@@ -904,7 +915,7 @@ select.input { background:var(--card); }
         <!-- ═══ AI-прогноз ═══ -->
         <div class="card" id="fcCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">insights</span> AI-прогноз</h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">insights</span> AI-прогноз <button type="button" class="info-i" data-t="<b>AI-прогноз.</b> Прогноз виручки і завантаженості на 7–90 днів вперед (горизонт обираєте справа). Будується на історії: враховує тижневу сезонність, тренд і святкові піки. Затінена смуга — діапазон імовірності 80%. «Що-якщо» — змоделювати сценарій (напр. +1 майстер). «Пояснити» — AI розкаже, на чому базується прогноз." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <select id="fcHorizon" class="input btn-sm" style="max-width:130px" onchange="loadForecast()">
                 <option value="7">7 днів</option>
@@ -924,7 +935,7 @@ select.input { background:var(--card); }
         <!-- ═══ AI-рекомендації: повернення клієнтів ═══ -->
         <div class="card" id="reactCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів</h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів). Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся з BeautyPro.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="reactInfo" style="font-size:12px;color:var(--text-secondary)"></span>
               <select id="reactDays" class="input btn-sm" style="max-width:150px" onchange="loadReactivation()">
@@ -965,13 +976,13 @@ select.input { background:var(--card); }
 
         <div class="grid-2" style="gap:24px">
           <div class="card">
-            <div class="card-header"><h3>Топ майстри за виручкою (місяць)</h3></div>
+            <div class="card-header"><h3 style="display:flex;align-items:center;gap:6px">Топ майстри за виручкою (місяць) <button type="button" class="info-i" data-t="<b>Топ майстрів за виручкою.</b> Рейтинг за поточний календарний місяць. Виручка береться з каси (реально проведені оплати послуг і товарів). «Виконано» — кількість оплачених послуг майстра. Сортування — від найбільшої виручки." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
             <div class="card-body" style="padding:0">
               <table class="tbl"><thead><tr><th>Майстер</th><th>Виконано</th><th>Виручка</th></tr></thead><tbody id="topMastersBody"></tbody></table>
             </div>
           </div>
           <div class="card">
-            <div class="card-header"><h3>Низький залишок (≤ 5)</h3></div>
+            <div class="card-header"><h3 style="display:flex;align-items:center;gap:6px">Низький залишок (≤ 5) <button type="button" class="info-i" data-t="<b>Низький залишок товарів.</b> Позиції, яких на складі лишилось 5 штук або менше — час замовляти в постачальника. «Обʼєм» — фасування/одиниця. Налаштувати поріг можна в розділі «Склад»." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
             <div class="card-body" style="padding:0">
               <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th>Залишок</th></tr></thead><tbody id="lowBody"></tbody></table>
             </div>
@@ -981,7 +992,7 @@ select.input { background:var(--card); }
         <!-- ═══ Клієнти за послугами ═══ -->
         <div class="card" style="margin-top:24px">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3>Клієнти за послугами</h3>
+            <h3 style="display:flex;align-items:center;gap:6px">Клієнти за послугами <button type="button" class="info-i" data-t="<b>Клієнти за послугами.</b> Показує, хто з клієнтів робив обрані послуги за вибраний період. Кнопки-фільтри: натисканням вмикаєте послугу (показати тих, хто робив), кнопкою «−» — виключаєте (хто НЕ робив). Можна комбінувати. Клік по імені клієнта відкриває картку з повною історією візитів і покупок. Дані можна вивантажити в CSV." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <input type="date" id="cbsFrom" class="input btn-sm" style="max-width:150px">
               <span style="color:var(--text-secondary)">–</span>
@@ -2250,6 +2261,27 @@ function toast(msg, type = 'ok') {
 }
 
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// ── Інфо-іконки «i» з поясненнями (#15) ──
+function iInfo(text){ return `<button type="button" class="info-i" aria-label="Пояснення" data-t="${escapeHtml(text)}" onclick="showInfo(event,this.dataset.t)">i</button>`; }
+function showInfo(ev, text){
+  ev.preventDefault(); ev.stopPropagation();
+  let p = document.getElementById('infoPop');
+  if (!p){
+    p = document.createElement('div'); p.id = 'infoPop'; document.body.appendChild(p);
+    document.addEventListener('click', e => { if (p.style.display==='block' && !p.contains(e.target) && !e.target.classList.contains('info-i')) p.style.display='none'; });
+    window.addEventListener('scroll', () => { p.style.display='none'; }, true);
+    window.addEventListener('resize', () => { p.style.display='none'; });
+  }
+  p.innerHTML = '<span class="ip-close" onclick="document.getElementById(\'infoPop\').style.display=\'none\'">&times;</span>' + text;
+  const pw = Math.min(300, window.innerWidth - 20);
+  p.style.width = pw + 'px'; p.style.display = 'block';
+  const r = (ev.currentTarget || ev.target).getBoundingClientRect();
+  let left = r.left + r.width/2 - pw/2;
+  left = Math.max(10, Math.min(left, window.innerWidth - pw - 10));
+  let top = r.bottom + 10;
+  if (top + p.offsetHeight > window.innerHeight - 10) top = r.top - p.offsetHeight - 10;
+  p.style.left = left + 'px'; p.style.top = Math.max(10, top) + 'px';
+}
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
@@ -3332,18 +3364,18 @@ async function loadDashboard() {
   if (fin && o.revenue_today) {
     // Каса сьогодні + динаміка до вчора + розбивка послуги/товари
     const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
-    kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green']);
-    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue']);
-    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange']);
-    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink']);
+    kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.']);
+    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.']);
+    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус усі витрати (зарплати, закупівлі, оренда тощо), проведені через касу/фінанси. Якщо число червоне — витрати перевищили дохід.']);
+    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.']);
   }
-  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink']);
-  kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue']);
-  if ((o.open_shifts ?? 0) > 0) kpis.push(['Відкриті зміни', o.open_shifts, 'green']);
-  if ((o.churn_clients ?? 0) > 0) kpis.push(['Відтік клієнтів', o.churn_clients + _sub('не були &gt;90 днів'), 'orange']);
-  if ((o.low_stock_count ?? 0) > 0) kpis.push(['Товари на виході', o.low_stock_count + _sub('≤ порогу залишку'), 'orange']);
-  document.getElementById('kpi').innerHTML = kpis.map(([l, v, c]) =>
-    `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
+  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.']);
+  kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue', 'Загальна кількість клієнтів у базі та скільки нових додалося цього місяця.']);
+  if ((o.open_shifts ?? 0) > 0) kpis.push(['Відкриті зміни', o.open_shifts, 'green', 'Кількість касових змін, які зараз відкриті та ще не закриті. Наприкінці дня зміну треба закрити для звірки каси.']);
+  if ((o.churn_clients ?? 0) > 0) kpis.push(['Відтік клієнтів', o.churn_clients + _sub('не були &gt;90 днів'), 'orange', 'Клієнти, які були щонайменше 2 рази, але не приходили понад 90 днів. Це ризик втрати — їх варто повернути (див. блок «Повернути клієнтів»).']);
+  if ((o.low_stock_count ?? 0) > 0) kpis.push(['Товари на виході', o.low_stock_count + _sub('≤ порогу залишку'), 'orange', 'Кількість товарних позицій, залишок яких опустився до порогу або нижче — час замовляти.']);
+  document.getElementById('kpi').innerHTML = kpis.map(([l, v, c, info]) =>
+    `<div class="kpi-card ${c}"><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
 
   // Топ майстри місяця
   const tm = o.top_masters || [];
