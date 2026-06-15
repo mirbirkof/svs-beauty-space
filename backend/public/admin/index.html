@@ -3863,7 +3863,8 @@ function renderCbsResult(){
   const items=cbsFiltered();
   const rows=items.slice(0,300).map(c=>{
     const did=c.did.map(b=>SVC_LABELS[b]||b).join(', ');
-    return `<tr><td>${c.name||'—'}</td><td>${c.phone||''}</td><td>${c.total_visits}</td><td>${_money2(c.total_sum)}</td><td style="color:var(--text-secondary);font-size:12px">${did}</td></tr>`;
+    const nm = c.client_id ? `<a href="#" onclick="openClientCard(${c.client_id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a>` : (c.name||'—');
+    return `<tr><td>${nm}</td><td>${c.phone||''}</td><td>${c.total_visits}</td><td>${_money2(c.total_sum)}</td><td style="color:var(--text-secondary);font-size:12px">${did}</td></tr>`;
   }).join('');
   box.innerHTML = `<div style="margin-bottom:8px;color:var(--text-secondary)">Знайдено клієнтів: <b>${items.length}</b></div>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Клієнт</th><th>Телефон</th><th>Візитів</th><th>Сума</th><th>Послуги</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">Немає клієнтів за фільтром</td></tr>'}</tbody></table></div>`;
