@@ -701,6 +701,9 @@ select.input { background:var(--card); }
       <a class="sidebar-item" data-page="budgets" onclick="go('budgets')">
         <span class="material-icons-round">savings</span> Бюджети
       </a>
+      <a class="sidebar-item" data-page="cashflow" onclick="go('cashflow')">
+        <span class="material-icons-round">trending_up</span> Грошовий потік
+      </a>
 
       <!-- Продажі -->
       <div class="sidebar-group" id="grp-sales">
@@ -1014,6 +1017,34 @@ select.input { background:var(--card); }
           <div class="fc-card"><h4>Витрати за категоріями</h4><div id="fcExpenses"></div></div>
         </div>
         <div class="fc-card" style="margin-top:14px"><h4>Тренд виручки (30 днів)</h4><div id="fcTrend"></div></div>
+      </div>
+
+      <!-- ═══ ГРОШОВИЙ ПОТІК (FIN-06) ═══ -->
+      <div class="page" id="page-cashflow">
+        <div id="cfKpis" class="fc-kpis" style="margin-bottom:14px"></div>
+        <div class="fc-grid">
+          <div class="fc-card">
+            <h4 style="display:flex;align-items:center;justify-content:space-between">Рахунки та каси
+              <button class="btn btn-sm" onclick="cfAccountModal()"><span class="material-icons-round" style="font-size:16px">add</span></button></h4>
+            <div id="cfAccounts"></div>
+          </div>
+          <div class="fc-card">
+            <h4 style="display:flex;align-items:center;justify-content:space-between">Найближчі платежі
+              <button class="btn btn-sm" onclick="cfPaymentModal()"><span class="material-icons-round" style="font-size:16px">add</span></button></h4>
+            <div id="cfCalendar"></div>
+          </div>
+        </div>
+        <div class="fc-card" style="margin-top:14px">
+          <h4 style="display:flex;align-items:center;gap:10px">Прогноз балансу
+            <select id="cfScenario" class="input btn-sm" style="max-width:160px;margin-left:auto" onchange="cfLoadForecast()">
+              <option value="realistic">Реалістичний</option><option value="optimistic">Оптимістичний</option><option value="pessimistic">Песимістичний</option>
+            </select>
+            <select id="cfDays" class="input btn-sm" style="max-width:110px" onchange="cfLoadForecast()">
+              <option value="30">30 днів</option><option value="60">60 днів</option><option value="90" selected>90 днів</option>
+            </select>
+          </h4>
+          <div id="cfForecast"></div>
+        </div>
       </div>
 
       <!-- ═══ БЮДЖЕТИ (FIN-05) ═══ -->
@@ -2130,7 +2161,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
-  fincenter:'Фінансовий центр', budgets:'Бюджети', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', orders:'Замовлення', products:'Товари', stock:'Склад',
+  fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
@@ -2186,7 +2217,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, giftcerts:loadGiftCerts, subscriptions:loadSubs, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -4341,6 +4372,141 @@ async function budgetDelete(id){
   if(!confirm('Видалити чернетку бюджету?')) return;
   const r=await api('/api/budgets/'+id,{method:'DELETE'});
   if(r&&r.ok){ toast('Видалено'); loadBudgets(); } else { toast(r.error||'Помилка','error'); }
+}
+
+// ── FIN-06 Грошовий потік ───────────────────────────────
+const _CF_ACT={ cash:'Каса', bank:'Банк', card_terminal:'Термінал', online:'Онлайн' };
+const _CF_CAT={ salary:'Зарплата', rent:'Оренда', taxes:'Податки', purchasing:'Закупівлі', marketing:'Маркетинг', utilities:'Комуналка', other:'Інше' };
+const _CF_PST={ planned:['Запланований','#0ea5e9'], paid:['Оплачений','#16a34a'], overdue:['Прострочений','#dc2626'], cancelled:['Скасований','#94a3b8'] };
+function _cfMoney(n){ return (Math.round(+n||0)).toLocaleString('uk-UA')+' ₴'; }
+async function loadCashFlow(){
+  await Promise.all([cfLoadAccounts(), cfLoadCalendar(), cfLoadForecast()]);
+}
+async function cfLoadAccounts(){
+  let d; try{ d=await api('/api/cash-flow/accounts'); }catch{ return; }
+  const items=d.items||[];
+  document.getElementById('cfKpis').innerHTML=`
+    <div class="fc-kpi"><div class="lbl">ЗАГАЛЬНИЙ БАЛАНС</div><div class="val">${_cfMoney(d.total_balance)}</div><span class="chg flat">${items.filter(a=>a.active).length} рахунків</span></div>`;
+  const box=document.getElementById('cfAccounts');
+  if(!items.length){ box.innerHTML='<div class="empty" style="padding:18px">Додайте рахунок або касу.</div>'; return; }
+  box.innerHTML=`<table class="tbl" style="width:100%"><tbody>${items.map(a=>{
+    const low=a.min_balance_alert!=null&&+a.current_balance<+a.min_balance_alert;
+    return `<tr>
+      <td style="text-align:left">${escapeHtml(a.name)} <span style="font-size:11px;color:#889">${_CF_ACT[a.type]||a.type}</span></td>
+      <td style="text-align:right"><b style="color:${low?'#dc2626':'inherit'}">${_cfMoney(a.current_balance)}</b>${low?' <span style="font-size:11px;color:#dc2626">низький!</span>':''}</td>
+      <td style="text-align:right;width:60px"><button class="btn btn-sm btn-icon" onclick="cfAccountModal(${a.id})"><span class="material-icons-round" style="font-size:15px">edit</span></button></td></tr>`;
+  }).join('')}</tbody></table>
+  ${items.length>1?`<button class="btn btn-sm" style="margin-top:10px" onclick="cfTransferModal()"><span class="material-icons-round" style="font-size:16px">swap_horiz</span> Переказ між рахунками</button>`:''}`;
+  window._cfAccounts=items;
+}
+async function cfLoadCalendar(){
+  const today=new Date().toISOString().slice(0,10);
+  const horizon=new Date(Date.now()+60*86400000).toISOString().slice(0,10);
+  let d; try{ d=await api('/api/cash-flow/calendar?from='+today+'&to='+horizon); }catch{ return; }
+  const box=document.getElementById('cfCalendar');
+  const pays=(d.payments||[]).filter(p=>['planned','overdue'].includes(p.status));
+  if(!pays.length){ box.innerHTML='<div class="empty" style="padding:18px">Немає запланованих платежів.</div>'; return; }
+  box.innerHTML=`<table class="tbl" style="width:100%"><tbody>${pays.map(p=>{
+    const st=_CF_PST[p.status]||[p.status,'#889'];
+    return `<tr>
+      <td style="text-align:left">${(p.due_date||'').slice(0,10)}<br><span style="font-size:11px;color:${st[1]}">${st[0]}</span></td>
+      <td style="text-align:left">${escapeHtml(p.counterparty_name||_CF_CAT[p.category]||p.category)}${p.recurring?' <span style="font-size:11px;color:#889">↻</span>':''}</td>
+      <td style="text-align:right;color:${p.type==='outflow'?'#dc2626':'#16a34a'}">${p.type==='outflow'?'−':'+'}${_cfMoney(p.amount)}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn btn-sm btn-primary" onclick="cfMarkPaid(${p.id})">Оплачено</button> <button class="btn btn-sm btn-icon" onclick="cfPayDelete(${p.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button></td></tr>`;
+  }).join('')}</tbody></table><div style="margin-top:8px;text-align:right;font-size:13px">До сплати: <b>${_cfMoney(d.total_due)}</b></div>`;
+}
+async function cfLoadForecast(){
+  const sc=document.getElementById('cfScenario').value, days=document.getElementById('cfDays').value;
+  let d; try{ d=await api('/api/cash-flow/forecast?scenario='+sc+'&days='+days); }catch{ return; }
+  const box=document.getElementById('cfForecast');
+  const pts=d.forecast||[];
+  if(!pts.length){ box.innerHTML='<div class="empty" style="padding:18px">Додайте рахунки для прогнозу.</div>'; return; }
+  const vals=pts.map(p=>p.balance);
+  const min=Math.min(...vals,d.start_balance), max=Math.max(...vals,d.start_balance);
+  const range=max-min||1;
+  const W=600,H=120;
+  const step=W/(pts.length-1||1);
+  const y=v=>H-((v-min)/range)*H;
+  const path=pts.map((p,i)=>`${i?'L':'M'}${(i*step).toFixed(1)},${y(p.balance).toFixed(1)}`).join(' ');
+  const zeroY=d.threshold>=min&&d.threshold<=max?y(d.threshold):null;
+  let gap='';
+  if(d.gap_date){ gap=`<div style="padding:10px;border-radius:8px;background:#fef2f2;color:#991b1b;margin-bottom:10px"><b>⚠ Касовий розрив</b> ${d.gap_date} — баланс впаде до ${_cfMoney(d.gap_amount)}</div>`; }
+  else { gap=`<div style="padding:10px;border-radius:8px;background:#ecfdf5;color:#065f46;margin-bottom:10px">Розриву не прогнозується. Через ${days} днів баланс ≈ <b>${_cfMoney(vals[vals.length-1])}</b></div>`; }
+  box.innerHTML=`${gap}
+    <div style="font-size:12px;color:#889;margin-bottom:6px">Старт: ${_cfMoney(d.start_balance)} · сер. дохід/день: ${_cfMoney(d.daily_inflow)}</div>
+    <svg viewBox="0 0 ${W} ${H+10}" style="width:100%;height:140px">
+      ${zeroY!=null?`<line x1="0" y1="${zeroY}" x2="${W}" y2="${zeroY}" stroke="#dc2626" stroke-dasharray="4" stroke-width="1"/>`:''}
+      <path d="${path}" fill="none" stroke="#0ea5e9" stroke-width="2"/>
+    </svg>`;
+}
+function cfAccountModal(id){
+  const acc=id?(window._cfAccounts||[]).find(a=>a.id===id):null;
+  showModal(acc?'Редагувати рахунок':'Новий рахунок',`
+    <label class="fld"><span>Назва</span><input id="cfaName" class="input" value="${acc?escapeHtml(acc.name):''}" placeholder="Каса №1"></label>
+    <label class="fld"><span>Тип</span><select id="cfaType" class="input">
+      ${Object.entries(_CF_ACT).map(([k,v])=>`<option value="${k}" ${acc&&acc.type===k?'selected':''}>${v}</option>`).join('')}</select></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Поточний баланс, ₴</span><input type="number" id="cfaBal" class="input" value="${acc?Math.round(acc.current_balance):0}"></label>
+      <label class="fld" style="flex:1"><span>Поріг алерту, ₴</span><input type="number" id="cfaMin" class="input" value="${acc&&acc.min_balance_alert!=null?Math.round(acc.min_balance_alert):''}" placeholder="напр. 10000"></label>
+    </div>`,
+    async ()=>{
+      const body={ name:document.getElementById('cfaName').value.trim(), type:document.getElementById('cfaType').value,
+        current_balance:+document.getElementById('cfaBal').value||0, min_balance_alert:document.getElementById('cfaMin').value!==''?+document.getElementById('cfaMin').value:null };
+      if(!body.name){ toast('Вкажіть назву','error'); return; }
+      const r=acc?await api('/api/cash-flow/accounts/'+id,{method:'PATCH',body:JSON.stringify(body)}):await api('/api/cash-flow/accounts',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Збережено'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+function cfTransferModal(){
+  const accs=window._cfAccounts||[];
+  const opts=accs.filter(a=>a.active).map(a=>`<option value="${a.id}">${escapeHtml(a.name)} (${_cfMoney(a.current_balance)})</option>`).join('');
+  showModal('Переказ між рахунками',`
+    <label class="fld"><span>З рахунку</span><select id="cfTrFrom" class="input">${opts}</select></label>
+    <label class="fld"><span>На рахунок</span><select id="cfTrTo" class="input">${opts}</select></label>
+    <label class="fld"><span>Сума, ₴</span><input type="number" id="cfTrAmt" class="input" min="1"></label>`,
+    async ()=>{
+      const from=+document.getElementById('cfTrFrom').value, to=+document.getElementById('cfTrTo').value, amount=+document.getElementById('cfTrAmt').value;
+      if(from===to){ toast('Оберіть різні рахунки','error'); return; }
+      if(!amount||amount<=0){ toast('Вкажіть суму','error'); return; }
+      const r=await api('/api/cash-flow/transfers',{method:'POST',body:JSON.stringify({from_account_id:from,to_account_id:to,amount})});
+      if(r&&r.ok){ toast('Переказ виконано'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+function cfPaymentModal(){
+  const accs=window._cfAccounts||[];
+  const opts='<option value="">— не вказано —</option>'+accs.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+  const today=new Date().toISOString().slice(0,10);
+  showModal('Запланувати платіж',`
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Тип</span><select id="cfpType" class="input"><option value="outflow">Витрата</option><option value="inflow">Надходження</option></select></label>
+      <label class="fld" style="flex:1"><span>Категорія</span><select id="cfpCat" class="input">${Object.entries(_CF_CAT).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
+    </div>
+    <label class="fld"><span>Сума, ₴</span><input type="number" id="cfpAmt" class="input" min="1"></label>
+    <label class="fld"><span>Кому / опис</span><input id="cfpName" class="input" placeholder="Орендодавець"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Дата платежу</span><input type="date" id="cfpDue" class="input" value="${today}"></label>
+      <label class="fld" style="flex:1"><span>Рахунок</span><select id="cfpAcc" class="input">${opts}</select></label>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:4px"><input type="checkbox" id="cfpRec"> <span>Регулярний (щомісяця)</span></label>`,
+    async ()=>{
+      const body={ type:document.getElementById('cfpType').value, category:document.getElementById('cfpCat').value,
+        amount:+document.getElementById('cfpAmt').value, counterparty_name:document.getElementById('cfpName').value||null,
+        due_date:document.getElementById('cfpDue').value, account_id:+document.getElementById('cfpAcc').value||null,
+        recurring:document.getElementById('cfpRec').checked };
+      if(body.recurring) body.recurrence_rule={interval:'monthly',day:+body.due_date.slice(8,10)};
+      if(!body.amount||!body.due_date){ toast('Вкажіть суму і дату','error'); return; }
+      const r=await api('/api/cash-flow/calendar',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Платіж заплановано'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+async function cfMarkPaid(id){
+  const r=await api('/api/cash-flow/calendar/'+id+'/mark-paid',{method:'POST',body:JSON.stringify({})});
+  if(r&&r.ok){ toast('Позначено оплаченим'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
+}
+async function cfPayDelete(id){
+  if(!confirm('Видалити платіж?')) return;
+  const r=await api('/api/cash-flow/calendar/'+id,{method:'DELETE'});
+  if(r&&r.ok){ toast('Видалено'); loadCashFlow(); } else { toast(r.error||'Помилка','error'); }
 }
 
 async function loadJournal() {
