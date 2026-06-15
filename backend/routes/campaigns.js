@@ -22,6 +22,33 @@ router.get('/', requirePerm('promo.write'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Сводная аналитика по всем кампаниям
+router.get('/analytics', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const pool = getPool();
+    const by = await pool.query(`SELECT status, count(*)::int n FROM campaigns GROUP BY status`);
+    const byStatus = {}; by.rows.forEach(r => byStatus[r.status] = r.n);
+    const tot = await pool.query(
+      `SELECT count(*)::int total,
+              COALESCE(SUM(audience_size),0)::int audience,
+              COALESCE(SUM(enqueued),0)::int enqueued,
+              COALESCE(SUM(skipped),0)::int skipped
+       FROM campaigns`);
+    // доставка по всем кампаниям из notifications
+    const dlv = await pool.query(
+      `SELECT status, count(*)::int n FROM notifications WHERE source LIKE 'campaign:%' GROUP BY status`);
+    const delivery = {}; dlv.rows.forEach(r => delivery[r.status] = r.n);
+    const sent = (delivery.sent || 0) + (delivery.delivered || 0);
+    const totalNotif = Object.values(delivery).reduce((a, b) => a + b, 0);
+    res.json({
+      by_status: byStatus,
+      totals: tot.rows[0],
+      delivery,
+      delivery_rate: totalNotif ? Math.round((sent / totalNotif) * 100) : 0,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/:id', requirePerm('promo.write'), async (req, res) => {
   try {
     const pool = getPool();
@@ -115,5 +142,44 @@ router.post('/:id/test', requirePerm('promo.write'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Пауза/возобновление запланированной кампании
+router.post('/:id/pause', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const r = await getPool().query(
+      `UPDATE campaigns SET status='paused', updated_at=NOW() WHERE id=$1 AND status='scheduled' RETURNING id`,
+      [req.params.id]);
+    if (!r.rowCount) return res.status(409).json({ error: 'not-scheduled' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:id/resume', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const r = await getPool().query(
+      `UPDATE campaigns SET status='scheduled', updated_at=NOW() WHERE id=$1 AND status='paused' RETURNING id`,
+      [req.params.id]);
+    if (!r.rowCount) return res.status(409).json({ error: 'not-paused' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Планировщик: запускает кампании, у которых наступило время scheduled_at
+let _schedRunning = false;
+async function processScheduled() {
+  if (_schedRunning) return { skipped: 'busy' };
+  _schedRunning = true;
+  try {
+    const due = await getPool().query(
+      `SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20`);
+    let launched = 0;
+    for (const row of due.rows) {
+      try { await launchCampaign(row.id); launched++; }
+      catch (e) { console.error('[campaigns] auto-launch', row.id, e.message); }
+    }
+    return { due: due.rowCount, launched };
+  } finally { _schedRunning = false; }
+}
+
 module.exports = router;
 module.exports.launchCampaign = launchCampaign;
+module.exports.processScheduled = processScheduled;

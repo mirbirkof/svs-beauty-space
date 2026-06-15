@@ -254,3 +254,16 @@ if (process.env.RENDER_EXTERNAL_URL) {
   }, 10 * 60 * 1000).unref();
   console.log('[shop-api] keep-alive enabled:', KEEPALIVE_URLS.join(', '));
 }
+
+// ── Планировщик отложенных маркетинговых кампаний (каждую минуту) ──
+try {
+  const camp = require('./routes/campaigns');
+  if (typeof camp.processScheduled === 'function') {
+    setInterval(() => {
+      camp.processScheduled()
+        .then((r) => { if (r && r.launched) console.log('[campaigns] auto-launched', r.launched); })
+        .catch((e) => console.error('[campaigns] scheduler:', e.message));
+    }, 60 * 1000).unref();
+    console.log('[shop-api] campaign scheduler enabled');
+  }
+} catch (e) { console.error('[campaigns] scheduler init failed:', e.message); }

@@ -188,7 +188,9 @@ main { padding:24px 0; }
     </div>
     <textarea id="c-body" class="inp" rows="3" placeholder="Текст розсилки. {{client}} підставить ім'я клієнта."></textarea>
     <div class="row" style="margin-top:10px">
-      <button class="btn" onclick="createCampaign()">Створити чернетку</button>
+      <label class="hint" style="display:flex;align-items:center;gap:6px">Запланувати на:
+        <input id="c-sched" type="datetime-local" style="width:200px"></label>
+      <button class="btn" onclick="createCampaign()">Створити</button>
       <span id="c-status" class="hint"></span>
     </div>
   </div>
@@ -422,6 +424,8 @@ async function loadCampaigns(){
         <td>${c.enqueued||0}${c.skipped?(' / '+c.skipped+' проп.'):''}</td>
         <td style="white-space:nowrap">
           ${(c.status==='draft'||c.status==='scheduled')?`<button class="btn sm" onclick="launchCampaign(${c.id})">Запустити</button>`:''}
+          ${c.status==='scheduled'?`<button class="btn sm ghost" onclick="pauseCampaign(${c.id})" title="${c.scheduled_at?('старт '+new Date(c.scheduled_at).toLocaleString('uk-UA')):''}">⏸ Пауза</button>`:''}
+          ${c.status==='paused'?`<button class="btn sm" onclick="resumeCampaign(${c.id})">▶ Відновити</button>`:''}
           <button class="btn sm ghost" onclick="testCampaign(${c.id})">Тест собі</button>
           ${(c.status!=='running'&&c.status!=='done')?`<button class="btn sm danger" onclick="delCampaign(${c.id})">✕</button>`:''}
         </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Кампаній немає</td></tr>';
@@ -435,9 +439,11 @@ async function createCampaign(){
   if(!name||!body){ document.getElementById('c-status').textContent='Вкажи назву і текст'; return; }
   const payload={name,channel,body};
   if(segVal.startsWith('preset:')) payload.preset_key=segVal.slice(7); else payload.segment_id=Number(segVal);
+  const sched=document.getElementById('c-sched').value;
+  if(sched) payload.scheduled_at=new Date(sched).toISOString();
   try{ await api('/api/campaigns',{method:'POST',body:JSON.stringify(payload)});
-    document.getElementById('c-name').value=''; document.getElementById('c-body').value='';
-    document.getElementById('c-status').textContent='✓ Чернетку створено'; loadCampaigns();
+    document.getElementById('c-name').value=''; document.getElementById('c-body').value=''; document.getElementById('c-sched').value='';
+    document.getElementById('c-status').textContent=sched?'✓ Заплановано':'✓ Чернетку створено'; loadCampaigns();
   }catch(e){ document.getElementById('c-status').textContent='✗ '+e.message; }
 }
 async function launchCampaign(id){
@@ -448,6 +454,8 @@ async function testCampaign(id){
   const chat=prompt('Telegram chat_id для тесту (порожньо — ADMIN_TG_CHAT):','');
   try{ const r=await api('/api/campaigns/'+id+'/test',{method:'POST',body:JSON.stringify(chat?{chat_id:chat}:{})}); alert(r.ok?'✓ Надіслано':'✗ '+(r.reason||'не вийшло')); }catch(e){ alert(e.message); }
 }
+async function pauseCampaign(id){ try{ await api('/api/campaigns/'+id+'/pause',{method:'POST',body:'{}'}); loadCampaigns(); }catch(e){ alert(e.message); } }
+async function resumeCampaign(id){ try{ await api('/api/campaigns/'+id+'/resume',{method:'POST',body:'{}'}); loadCampaigns(); }catch(e){ alert(e.message); } }
 async function delCampaign(id){ if(!confirm('Видалити кампанію?')) return; try{ await api('/api/campaigns/'+id,{method:'DELETE'}); loadCampaigns(); }catch(e){ alert(e.message); } }
 
 // ─────── ТРИГЕРИ ───────
