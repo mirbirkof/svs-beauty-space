@@ -367,7 +367,7 @@ router.get('/:id(\\d+)/analytics/by-master', async (req, res) => {
          COUNT(*) FILTER (WHERE sr.nps_score >= 9)::int promoters,
          COUNT(*) FILTER (WHERE sr.nps_score BETWEEN 0 AND 6)::int detractors,
          COUNT(*) FILTER (WHERE sr.nps_score IS NOT NULL)::int nps_total
-       FROM survey_responses sr LEFT JOIN employees e ON e.id=sr.master_id
+       FROM survey_responses sr LEFT JOIN masters e ON e.id=sr.master_id
        WHERE sr.survey_id=$1 AND sr.master_id IS NOT NULL AND sr.status='completed'
        GROUP BY sr.master_id, e.name ORDER BY responses DESC`, [req.params.id]);
     for (const r of rows) r.nps = r.nps_total ? Math.round(((r.promoters - r.detractors) / r.nps_total) * 100) : null;
