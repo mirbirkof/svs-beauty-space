@@ -217,6 +217,7 @@ try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { con
 try { app.use('/api/saas', require('./routes/saas')); } catch(e) { console.error('[saas] mount failed:', e.message); }
 try { app.use('/api/omni', require('./routes/omnichannel')); } catch(e) { console.error('[omni] mount failed:', e.message); }
 try { app.use('/api/reviews-moderation', require('./routes/reviews-moderation')); } catch(e) { console.error('[reviews-moderation] mount failed:', e.message); }
+try { app.use('/api/fin-integrations', require('./routes/integrations-fin')); } catch(e) { console.error('[fin-integrations] mount failed:', e.message); }
 try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console.error('[quality] mount failed:', e.message); }
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
