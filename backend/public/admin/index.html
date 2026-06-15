@@ -311,6 +311,24 @@ select.input { background:var(--card); }
 .jt-date:hover { border-color:var(--primary); }
 .jt-right { display:flex; align-items:center; gap:8px; }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
+/* Фінансовий центр (FIN-04) */
+.fc-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+.fc-kpi { background:var(--card,#fff); border:1px solid var(--border,#eee); border-radius:14px; padding:14px 16px; }
+.fc-kpi .lbl { font-size:12px; color:var(--text-secondary,#778); font-weight:600; }
+.fc-kpi .val { font-size:22px; font-weight:800; margin:4px 0 2px; }
+.fc-kpi .chg { font-size:12px; font-weight:700; }
+.fc-kpi .chg.up { color:#16a34a; } .fc-kpi .chg.down { color:#dc2626; } .fc-kpi .chg.flat { color:#94a3b8; }
+.fc-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media(max-width:760px){ .fc-grid{ grid-template-columns:1fr; } }
+.fc-card { background:var(--card,#fff); border:1px solid var(--border,#eee); border-radius:14px; padding:16px; }
+.fc-card h4 { margin:0 0 12px; font-size:14px; }
+.fc-bar { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; }
+.fc-bar .nm { width:120px; flex-shrink:0; color:var(--text-secondary,#667); }
+.fc-bar .track { flex:1; height:8px; background:var(--bg-soft,#f0f1f4); border-radius:5px; overflow:hidden; }
+.fc-bar .fill { height:100%; border-radius:5px; }
+.fc-bar .amt { width:90px; text-align:right; font-weight:700; flex-shrink:0; }
+.fc-spark { display:flex; align-items:flex-end; gap:2px; height:60px; }
+.fc-spark .col { flex:1; background:var(--primary,#6366f1); border-radius:2px 2px 0 0; min-height:2px; opacity:.85; }
 /* Зміни / Табель (SAL-05) — поля форми + іконкова кнопка */
 .fld { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; font-size:13px; }
 .fld > span { color:var(--text-secondary,#667); font-weight:600; }
@@ -677,6 +695,9 @@ select.input { background:var(--card); }
       <a class="sidebar-item" data-page="plan" onclick="go('plan')">
         <span class="material-icons-round">flag</span> План місяця
       </a>
+      <a class="sidebar-item" data-page="fincenter" onclick="go('fincenter')">
+        <span class="material-icons-round">account_balance</span> Фінансовий центр
+      </a>
 
       <!-- Продажі -->
       <div class="sidebar-group" id="grp-sales">
@@ -965,6 +986,25 @@ select.input { background:var(--card); }
         <div id="shiftsTimesheet" style="margin-bottom:18px"></div>
         <h3 style="margin:0 0 10px;font-size:15px">Зміни за період</h3>
         <div id="shiftsList"><div class="empty"><span class="material-icons-round">event_available</span>Завантаження...</div></div>
+      </div>
+
+      <!-- ═══ ФІНАНСОВИЙ ЦЕНТР (FIN-04) ═══ -->
+      <div class="page" id="page-fincenter">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+          <select id="fcPeriod" class="input btn-sm" style="max-width:180px" onchange="loadFinCenter()">
+            <option value="today">Сьогодні</option>
+            <option value="week">Цей тиждень</option>
+            <option value="month" selected>Цей місяць</option>
+          </select>
+          <button class="btn btn-sm" onclick="fcDigestSettings()" style="margin-left:auto"><span class="material-icons-round" style="font-size:16px">notifications</span> Щоденна зведення</button>
+          <button class="btn btn-primary btn-sm" onclick="fcSendDigest(this)"><span class="material-icons-round" style="font-size:16px">send</span> Надіслати зведення зараз</button>
+        </div>
+        <div id="fcKpis" class="fc-kpis"></div>
+        <div class="fc-grid">
+          <div class="fc-card"><h4>Структура виручки</h4><div id="fcRevenue"></div></div>
+          <div class="fc-card"><h4>Витрати за категоріями</h4><div id="fcExpenses"></div></div>
+        </div>
+        <div class="fc-card" style="margin-top:14px"><h4>Тренд виручки (30 днів)</h4><div id="fcTrend"></div></div>
       </div>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -2028,7 +2068,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
-  orders:'Замовлення', products:'Товари', stock:'Склад',
+  fincenter:'Фінансовий центр', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
@@ -2084,7 +2124,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -3795,6 +3835,65 @@ async function shiftDelete(id){
   if(!confirm('Видалити цю зміну?')) return;
   const r=await api('/api/shifts/'+id,{method:'DELETE'});
   if(r&&r.ok){ toast('Зміну видалено'); loadShifts(); } else { toast(r.error||'Помилка','error'); }
+}
+
+// ── FIN-04 Фінансовий центр ──────────────────────────────
+function _fcMoney(n){ return (Math.round(+n||0)).toLocaleString('uk-UA')+' ₴'; }
+function _fcChg(c){ if(c==null) return ''; const cl=c>0?'up':c<0?'down':'flat'; const a=c>0?'▲':c<0?'▼':'■'; return `<span class="chg ${cl}">${a} ${Math.abs(c)}%</span>`; }
+const _FC_CATS={ rent:'Оренда', salary:'Зарплата', payroll:'Зарплата', purchase:'Закупівлі', marketing:'Маркетинг', utilities:'Комуналка', supplies:'Витратні', other:'Інше' };
+async function loadFinCenter(){
+  const period=document.getElementById('fcPeriod').value;
+  document.getElementById('fcKpis').innerHTML='<div class="empty" style="grid-column:1/-1">Завантаження...</div>';
+  let d;
+  try{ d=await api('/api/financial/dashboard?period='+period); }
+  catch{ document.getElementById('fcKpis').innerHTML='<div class="empty" style="grid-column:1/-1">Не вдалося завантажити.</div>'; return; }
+  if(!d||d.error){ document.getElementById('fcKpis').innerHTML='<div class="empty" style="grid-column:1/-1">'+(d&&d.error||'Помилка')+'</div>'; return; }
+  const cmp=d.comparison||{};
+  document.getElementById('fcKpis').innerHTML=`
+    <div class="fc-kpi"><div class="lbl">ВИРУЧКА</div><div class="val">${_fcMoney(d.revenue.total)}</div>${_fcChg(cmp.revenue&&cmp.revenue.change_pct)}</div>
+    <div class="fc-kpi"><div class="lbl">ВИТРАТИ</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}</div>
+    <div class="fc-kpi"><div class="lbl">ПРИБУТОК (маржа ${d.profit.margin_pct}%)</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
+    <div class="fc-kpi"><div class="lbl">СЕРЕДНІЙ ЧЕК</div><div class="val">${_fcMoney(d.metrics.avg_check)}</div>${_fcChg(cmp.avg_check&&cmp.avg_check.change_pct)}</div>
+    <div class="fc-kpi"><div class="lbl">ЧЕКІВ / КЛІЄНТІВ</div><div class="val">${d.metrics.transaction_count} / ${d.metrics.unique_clients}</div><span class="chg flat">нових ${d.metrics.new_clients}</span></div>`;
+  // структура виручки
+  const rev=[{nm:'Послуги',v:d.revenue.services,c:'#6366f1'},{nm:'Товари',v:d.revenue.products,c:'#0ea5e9'}];
+  const revMax=Math.max(1,...rev.map(x=>x.v));
+  document.getElementById('fcRevenue').innerHTML=rev.map(x=>`<div class="fc-bar"><span class="nm">${x.nm}</span><span class="track"><span class="fill" style="width:${Math.round(x.v/revMax*100)}%;background:${x.c}"></span></span><span class="amt">${_fcMoney(x.v)}</span></div>`).join('')||'<div class="empty">Немає даних</div>';
+  // витрати
+  const exp=(d.expenses.by_category||[]).slice(0,7);
+  const expMax=Math.max(1,...exp.map(x=>+x.sum));
+  document.getElementById('fcExpenses').innerHTML=exp.length?exp.map(x=>`<div class="fc-bar"><span class="nm">${_FC_CATS[x.category]||escapeHtml(x.category||'—')}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/expMax*100)}%;background:#f59e0b"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join(''):'<div class="empty">Витрат немає</div>';
+  // тренд
+  try{
+    const t=await api('/api/financial/dashboard/trend?days=30');
+    const data=t.data||[]; const mx=Math.max(1,...data.map(x=>x.value));
+    document.getElementById('fcTrend').innerHTML=data.length?`<div class="fc-spark">${data.map(x=>`<span class="col" style="height:${Math.round(x.value/mx*100)}%" title="${x.date}: ${_fcMoney(x.value)}"></span>`).join('')}</div>`:'<div class="empty">Немає даних</div>';
+  }catch{ document.getElementById('fcTrend').innerHTML='<div class="empty">Тренд недоступний</div>'; }
+}
+async function fcSendDigest(btn){
+  if(btn){ btn.disabled=true; }
+  try{
+    const r=await api('/api/financial/digest/send-now',{method:'POST'});
+    if(r&&r.ok) toast('Зведення надіслано в Telegram'); else toast(r.error==='no-chat-id'?'Не вказано Telegram chat_id':(r.error||'Помилка'),'error');
+  }catch{ toast('Помилка надсилання','error'); }
+  finally{ if(btn) btn.disabled=false; }
+}
+async function fcDigestSettings(){
+  let s={}; try{ s=await api('/api/financial/digest/settings'); }catch{}
+  showModal('Щоденна фінансова зведення', `
+    <label class="fld"><span>Telegram chat_id (порожньо = адмін за замовч.)</span><input id="dgChat" class="input" value="${s.telegram_chat_id||''}" placeholder="напр. 123456789"></label>
+    <label class="fld"><span>Час надсилання (Київ)</span><input type="time" id="dgTime" class="input" value="${s.send_time||'21:00'}"></label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="dgActive" ${s.is_active?'checked':''}> <span>Увімкнути авто-надсилання щодня</span></label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="dgExp" ${s.include_expenses!==false?'checked':''}> <span>Включати витрати</span></label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="dgCmp" ${s.include_comparison!==false?'checked':''}> <span>Порівняння з минулим тижнем</span></label>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="dgWknd" ${s.skip_weekends?'checked':''}> <span>Пропускати вихідні</span></label>`,
+    async ()=>{
+      const body={ telegram_chat_id:document.getElementById('dgChat').value||null, send_time:document.getElementById('dgTime').value,
+        is_active:document.getElementById('dgActive').checked, include_expenses:document.getElementById('dgExp').checked,
+        include_comparison:document.getElementById('dgCmp').checked, skip_weekends:document.getElementById('dgWknd').checked };
+      const r=await api('/api/financial/digest/settings',{method:'PUT',body:JSON.stringify(body)});
+      if(r&&r.ok) toast('Налаштування збережено'); else toast(r.error||'Помилка','error');
+    });
 }
 
 async function loadJournal() {
