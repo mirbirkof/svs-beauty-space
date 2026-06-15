@@ -197,6 +197,7 @@ app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }
 try { app.use('/api/ai', require('./routes/ai')); } catch(e) { console.error('[ai] mount failed:', e.message); }
 try { app.use('/api/forecast', require('./routes/forecasting')); } catch(e) { console.error('[forecast] mount failed:', e.message); }
+try { app.use('/api/recommendations', require('./routes/recommendations')); } catch(e) { console.error('[recommendations] mount failed:', e.message); }
 try { app.use('/api/pipeline', require('./routes/pipeline')); } catch(e) { console.error('[pipeline] mount failed:', e.message); }
 try { app.use('/api/shifts', require('./routes/shifts')); } catch(e) { console.error('[shifts] mount failed:', e.message); }
 try { app.use('/api/financial', require('./routes/financial')); } catch(e) { console.error('[financial] mount failed:', e.message); }

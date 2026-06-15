@@ -917,6 +917,24 @@ select.input { background:var(--card); }
           </div>
         </div>
 
+        <!-- ═══ AI-рекомендації: повернення клієнтів ═══ -->
+        <div class="card" id="reactCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px">
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів</h3>
+            <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+              <span id="reactInfo" style="font-size:12px;color:var(--text-secondary)"></span>
+              <select id="reactDays" class="input btn-sm" style="max-width:150px" onchange="loadReactivation()">
+                <option value="45">зникли 45+ днів</option>
+                <option value="60" selected>зникли 60+ днів</option>
+                <option value="90">зникли 90+ днів</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body" id="reactBody" style="padding:0">
+            <div class="empty"><span class="material-icons-round">replay</span>Завантаження...</div>
+          </div>
+        </div>
+
         <div class="grid-2" style="gap:24px">
           <div class="card">
             <div class="card-header"><h3>Топ майстри за виручкою (місяць)</h3></div>
@@ -3330,6 +3348,39 @@ async function loadDashboard() {
   // AI-прогноз (теж фінансовий доступ)
   if (fin) { try { document.getElementById('fcCard').style.display=''; loadForecast(); } catch {} }
   else { try { document.getElementById('fcCard').style.display='none'; } catch {} }
+  // AI-рекомендації: повернення клієнтів
+  if (fin) { try { document.getElementById('reactCard').style.display=''; loadReactivation(); } catch {} }
+  else { try { document.getElementById('reactCard').style.display='none'; } catch {} }
+}
+// ═══ AI-07: повернення клієнтів ════════════════
+async function loadReactivation(){
+  const body = document.getElementById('reactBody');
+  const days = document.getElementById('reactDays')?.value || '60';
+  body.innerHTML = '<div class="empty"><span class="material-icons-round">replay</span>Шукаю клієнтів...</div>';
+  try {
+    const d = await api('/api/recommendations/reactivation?days='+days+'&limit=30');
+    const cl = d.clients || [];
+    const info = document.getElementById('reactInfo');
+    if (info) info.textContent = cl.length ? `${d.count} клієнтів · потенціал ${_money2(d.total_value)}` : '';
+    if (!cl.length){ body.innerHTML = '<div class="empty" style="padding:20px">Немає клієнтів, що зникли — усі активні.</div>'; return; }
+    const rows = cl.map(c=>{
+      const phone = (c.phone||'').replace(/[^\d+]/g,'');
+      const tel = phone ? `<a href="tel:${phone}" style="color:var(--primary,#6c5ce7);text-decoration:none">${escapeHtml(c.phone)}</a>` : '—';
+      return `<tr>
+        <td style="padding:8px 10px"><a href="#" onclick="openClientCard(${c.client_id});return false" style="color:var(--primary,#6c5ce7);font-weight:600;text-decoration:none">${escapeHtml(c.name||'—')}</a></td>
+        <td style="padding:8px 10px">${tel}</td>
+        <td style="padding:8px 10px;text-align:center">${c.days_since} дн.</td>
+        <td style="padding:8px 10px">${escapeHtml(c.last_service||'—')}</td>
+        <td style="padding:8px 10px">${escapeHtml(c.last_master||'—')}</td>
+        <td style="padding:8px 10px;text-align:center">${c.visits}</td>
+        <td style="padding:8px 10px;text-align:right;font-weight:600">${_money2(c.total_spent)}</td>
+      </tr>`;
+    }).join('');
+    body.innerHTML = `<div style="overflow-x:auto"><table class="tbl" style="font-size:13px"><thead><tr>
+      <th>Клієнт</th><th>Телефон</th><th style="text-align:center">Не був</th><th>Остання послуга</th><th>Майстер</th><th style="text-align:center">Візитів</th><th style="text-align:right">Витратив</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>
+    <p style="font-size:11px;color:var(--text-secondary);padding:8px 14px;margin:0">Клієнти з 2+ візитами, які давно не приходили — відсортовані за сумою витрат. Подзвоніть або запустіть кампанію через «Маркетинг».</p>`;
+  } catch(e){ body.innerHTML = '<div class="empty" style="padding:20px">Не вдалося завантажити список.</div>'; }
 }
 
 // ═══ AI-аналітик ══════════════════════════════
@@ -5730,6 +5781,7 @@ async function openClientCard(id){
         <button class="btn btn-primary btn-sm" onclick="saveClientCard()">Зберегти</button>
         ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);align-self:center">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
       </div>
+      <div id="ccRecs" style="margin-bottom:18px"></div>
       <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
       <div class="cc-timeline" style="margin-bottom:18px">${timelineHtml}</div>
       <h4 style="margin:0 0 8px;font-size:14px">Історія візитів</h4>
@@ -5741,7 +5793,32 @@ async function openClientCard(id){
       <h4 style="margin:18px 0 8px;font-size:14px">Історія змін картки</h4>
       <div id="ccHistory"><div class="empty">Завантаження…</div></div>`;
     loadClientHistory(id);
+    loadClientRecs(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// AI-07: персональні рекомендації в картці клієнта
+async function loadClientRecs(id){
+  const box = document.getElementById('ccRecs');
+  if (!box) return;
+  try {
+    const r = await api('/api/recommendations/client/'+id);
+    const recs = r.recommendations || [];
+    if (!recs.length){ box.innerHTML=''; return; }
+    const fav = r.favorite_master ? `<span style="font-size:12px;color:var(--text-secondary)">Улюблений майстер: <b>${escapeHtml(r.favorite_master.name)}</b></span>` : '';
+    const items = recs.map(x=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border:1px solid var(--border,#eee);border-radius:8px">
+      <span class="material-icons-round" style="font-size:16px;color:var(--primary,#6c5ce7)">add_task</span>
+      <span style="font-size:13px;font-weight:600">${escapeHtml(x.name)}</span>
+      ${x.price?`<span style="font-size:12px;color:var(--text-secondary)">${x.price.toLocaleString('uk-UA')} ₴</span>`:''}
+      <span style="font-size:11px;color:var(--text-secondary);margin-left:auto">${escapeHtml(x.reason)}</span>
+    </div>`).join('');
+    box.innerHTML = `<div style="background:var(--bg-soft,#f8f9fb);border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span class="material-icons-round" style="color:var(--primary,#6c5ce7);font-size:18px">auto_awesome</span>
+        <b style="font-size:13px">Що запропонувати клієнту</b>${fav?'<span style="margin-left:auto">'+fav+'</span>':''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">${items}</div>
+    </div>`;
+  } catch(e){ box.innerHTML=''; }
 }
 const CC_FIELD_LABELS = { name:'Імʼя', phone:'Телефон', email:'Email', birthday:'День народження', notes:'Нотатки' };
 async function loadClientHistory(id){
