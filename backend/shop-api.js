@@ -38,7 +38,16 @@ const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
 // чтобы не ломать popup-вход в кабинет.
 const helmet = require('helmet');
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://svsbeautyworld.com", "https://svs-shop-api.onrender.com"],
+    },
+  },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginOpenerPolicy: false,
   crossOriginEmbedderPolicy: false,
@@ -51,7 +60,7 @@ app.use(cors({
     /\.github\.io$/,
     /\.lhr\.life$/,
     /\.pinggy\.link$/,
-    /\.onrender\.com$/,
+    /svs-shop-api\.onrender\.com$/,
     'https://svsbeautyworld.com',
     'https://www.svsbeautyworld.com',
   ],
@@ -237,6 +246,7 @@ try { app.use('/api/subscriptions', require('./routes/subscriptions')); } catch(
 try { app.use('/api/budgets', require('./routes/budgets')); } catch(e) { console.error('[budgets] mount failed:', e.message); }
 try { app.use('/api/cash-flow', require('./routes/cash-flow')); } catch(e) { console.error('[cash-flow] mount failed:', e.message); }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
+try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 

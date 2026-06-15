@@ -95,7 +95,7 @@
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 
-const S = { step:1, services:[], masters:[], svc:null, master:null, date:null, slot:null, slotsByDay:{}, token:null };
+const S = { step:1, services:[], masters:[], svc:null, master:null, date:null, slot:null, slotsByDay:{}, token:null, hasMapping:false };
 const view = document.getElementById('view');
 const cta = document.getElementById('cta');
 const ctaBtn = document.getElementById('ctaBtn');
@@ -124,11 +124,16 @@ async function api(path, opts){
 async function loadCatalog(){
   setSteps(); hideCta();
   view.innerHTML = '<div class="spin"></div>';
-  // 1) пробуємо нормалізований каталог з нашої БД (читані категорії)
+  S.hasMapping = false;
+  // 1) каталог з НАШОЇ БД (той самий origin, що й сторінка) — реальна звʼязка майстер↔послуга
   try {
-    const c = await api('/api/booking/catalog');
-    if (c && c.services && c.services.length){
-      S.services = c.services; S.masters = c.masters || [];
+    const r = await fetch('/api/booking/catalog');
+    const c = await r.json();
+    if (r.ok && c && c.services && c.services.length){
+      S.services = c.services;
+      S.masters = (c.masters || []).map(m => ({ ...m,
+        services: Array.isArray(m.services) ? m.services.map(x => x.id || x) : [] }));
+      S.hasMapping = true;
       return renderServices('');
     }
   } catch(e){ /* немає /catalog → fallback нижче */ }
@@ -186,9 +191,16 @@ function loadMasters(){
   html += '<div class="item'+(S.master===null?'':'')+'" data-id="__any"><div class="row">'+
     '<div class="av">★</div><div><div class="nm">Будь-який вільний майстер</div>'+
     '<div class="meta">найближчий доступний час</div></div></div></div>';
-  // показуємо лише майстрів, що надають обрану послугу (якщо є мапінг)
-  const avail = S.masters.filter(m => !Array.isArray(m.services) || !m.services.length || m.services.includes(S.svc.id));
-  (avail.length ? avail : S.masters).forEach(m => {
+  // показуємо ЛИШЕ майстрів, що реально надають обрану послугу.
+  // Якщо є наш мапінг (master_services) — фільтруємо суворо, без витоку всіх майстрів.
+  const strict = m => Array.isArray(m.services) && m.services.includes(S.svc.id);
+  const loose  = m => !Array.isArray(m.services) || !m.services.length || m.services.includes(S.svc.id);
+  const avail = S.hasMapping ? S.masters.filter(strict) : S.masters.filter(loose);
+  if (!avail.length){
+    html += '<div class="empty" style="margin-top:10px">Майстер під цю послугу не заданий.<br>'+
+      'Оберіть «Будь-який вільний майстер» — підберемо вручну.</div>';
+  }
+  avail.forEach(m => {
     const init = (m.name||'?').trim().charAt(0).toUpperCase();
     const av = m.avatar ? '<img class="av" src="'+esc(m.avatar)+'">' : '<div class="av">'+esc(init)+'</div>';
     html += '<div class="item" data-id="'+m.id+'"><div class="row">'+av+
