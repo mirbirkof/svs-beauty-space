@@ -663,7 +663,8 @@ function _mcKpi(label,val){
 }
 const _MC_TABS = [
   ['profile','Профіль'], ['schedule','Графік'], ['services','Послуги'],
-  ['salary','Схема ЗП'], ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
+  ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
+  ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
 ];
 async function openMasterCard(id){
   _mcId=id;
@@ -708,7 +709,8 @@ function mcTab(k,skipShell){
     });
   }
   const fn={ profile:_mcTabProfile, schedule:_mcTabSchedule, services:_mcTabServices,
-            salary:_mcTabSalary, stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
+            salary:_mcTabSalary, online:_mcTabOnline, notify:_mcTabNotify,
+            stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
   document.getElementById('mcTabBody').innerHTML = fn ? fn() : '';
 }
 function _mcTabProfile(){
@@ -756,6 +758,70 @@ function _mcTabSalary(){
       <input id="mcComm" type="number" step="0.1" class="inp" value="${ms.commission_pct!=null?ms.commission_pct:''}" placeholder="напр. 40"></div>
     <button class="btn sm" onclick="saveMasterSalary()">Зберегти схему ЗП</button>
     <p style="font-size:12px;color:#888;margin-top:12px">Нарахування за період — у розділі <b>Персонал → Зарплати</b>.</p>`;
+}
+function _mcTabOnline(){
+  const ms=_mcData.ms;
+  const on=ms.online_booking_enabled!==false;
+  const lbl='font-size:12px;color:#888;display:block;margin-bottom:4px';
+  return `<h4 style="margin:0 0 12px;font-size:14px">Налаштування онлайн-запису</h4>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="mcOnEnabled" ${on?'checked':''} style="width:16px;height:16px;margin-top:1px">
+      <span>Доступний для онлайн-запису <span style="color:#888">— клієнти можуть обрати цього майстра на сайті/віджеті. Вимкнено = записати може лише адміністратор.</span></span></label>
+    <div style="display:grid;grid-template-columns:1fr 160px;gap:12px;margin-bottom:12px">
+      <div><label style="${lbl}">Звання для клієнтів</label>
+        <input id="mcOnTitle" class="inp" value="${_mcEsc(ms.online_title)}" placeholder="напр. Топ-майстер"></div>
+      <div><label style="${lbl}">Порядок показу</label>
+        <input id="mcOnRank" type="number" class="inp" value="${ms.online_rank!=null?ms.online_rank:0}" placeholder="0"></div>
+    </div>
+    <div style="margin-bottom:14px"><label style="${lbl}">Опис у картці онлайн-запису</label>
+      <textarea id="mcOnDesc" class="inp" rows="3" style="resize:vertical" placeholder="Короткий опис, який бачить клієнт при виборі майстра">${ms.online_description||''}</textarea></div>
+    <button class="btn sm" onclick="saveMasterOnline()">Зберегти онлайн-запис</button>
+    <p style="font-size:12px;color:#888;margin-top:12px">Менший «Порядок показу» = вище у списку. Послуги та ціни для онлайн-запису беруться з розділу <b>Послуги</b>.</p>`;
+}
+function _mcTabNotify(){
+  const ms=_mcData.ms;
+  const ch=ms.notify_channel||'telegram';
+  const lbl='font-size:12px;color:#888;display:block;margin-bottom:4px';
+  const opt=(v,l)=>`<option value="${v}" ${ch===v?'selected':''}>${l}</option>`;
+  const chk=(id,val,lbl2,hint)=>`<label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:11px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="${id}" ${val!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
+      <span>${lbl2} <span style="color:#888">${hint||''}</span></span></label>`;
+  return `<h4 style="margin:0 0 12px;font-size:14px">Сповіщення співробітнику</h4>
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:12px;margin-bottom:16px">
+      <div><label style="${lbl}">Канал</label>
+        <select id="mcNoChannel" class="inp">${opt('telegram','Telegram')}${opt('sms','SMS')}${opt('email','Email')}${opt('none','Без сповіщень')}</select></div>
+      <div><label style="${lbl}">Telegram @username або chat_id</label>
+        <input id="mcNoTg" class="inp" value="${_mcEsc(ms.notify_telegram)}" placeholder="@nickname або 123456789"></div>
+    </div>
+    <h4 style="margin:0 0 10px;font-size:14px">Про що повідомляти</h4>
+    ${chk('mcNoNew', ms.notify_new_booking, 'Нова запис', '— коли клієнт записався')}
+    ${chk('mcNoCancel', ms.notify_cancellation, 'Скасування', '— коли запис скасовано')}
+    ${chk('mcNoResch', ms.notify_reschedule, 'Перенесення', '— коли запис перенесено на інший час')}
+    <button class="btn sm" style="margin-top:6px" onclick="saveMasterNotify()">Зберегти оповіщення</button>
+    <p style="font-size:12px;color:#888;margin-top:12px">Для Telegram співробітник має написати боту салону — інакше сповіщення не дійде. SMS/Email — за наявності підключеного каналу.</p>`;
+}
+async function saveMasterOnline(){
+  if(!_mcId) return;
+  const body={ online_booking_enabled:document.getElementById('mcOnEnabled').checked,
+    online_title:document.getElementById('mcOnTitle').value.trim(),
+    online_rank:document.getElementById('mcOnRank').value,
+    online_description:document.getElementById('mcOnDesc').value.trim() };
+  try{ const r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)});
+    if(!r||!r.ok){ _mcToast('Помилка'); return; }
+    _mcData.ms=r.master; _mcToast('Онлайн-запис збережено');
+  }catch(e){ _mcToast('Помилка'); }
+}
+async function saveMasterNotify(){
+  if(!_mcId) return;
+  const body={ notify_channel:document.getElementById('mcNoChannel').value,
+    notify_telegram:document.getElementById('mcNoTg').value.trim(),
+    notify_new_booking:document.getElementById('mcNoNew').checked,
+    notify_cancellation:document.getElementById('mcNoCancel').checked,
+    notify_reschedule:document.getElementById('mcNoResch').checked };
+  try{ const r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)});
+    if(!r||!r.ok){ _mcToast('Помилка'); return; }
+    _mcData.ms=r.master; _mcToast('Оповіщення збережено');
+  }catch(e){ _mcToast('Помилка'); }
 }
 function _mcTabStats(){
   const s=_mcData.stats;
