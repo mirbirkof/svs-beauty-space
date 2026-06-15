@@ -3403,7 +3403,12 @@ async function loadForecast(){
   const body = document.getElementById('fcBody');
   body.innerHTML = '<div class="empty"><span class="material-icons-round">insights</span>Рахую прогноз...</div>';
   try {
-    const d = await api('/api/forecast/revenue?horizon=' + h);
+    const [d, load, demand] = await Promise.all([
+      api('/api/forecast/revenue?horizon=' + h),
+      api('/api/forecast/load').catch(()=>null),
+      api('/api/forecast/demand?horizon=' + h).catch(()=>null),
+    ]);
+    d._load = load; d._demand = demand;
     _fcData = d;
     if (!d.enough_data){ body.innerHTML = `<div class="empty">${escapeHtml(d.message||'Замало даних для прогнозу.')}</div>`; _fcLoading=false; return; }
     renderForecast(d);
@@ -3426,6 +3431,18 @@ function renderForecast(d){
   html += '</div>';
   // графік
   html += _fcChart(d);
+  // пікові години (з /load)
+  if (d._load && Array.isArray(d._load.peak_hours) && d._load.peak_hours.length){
+    html += `<div style="margin-top:10px;font-size:13px;color:var(--text-secondary)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px;color:var(--primary,#6c5ce7)">schedule</span> Пікові години: <b style="color:var(--text)">${d._load.peak_hours.map(escapeHtml).join(', ')}</b> — плануйте максимум майстрів на цей час.</div>`;
+  }
+  // прогноз попиту на послуги (з /demand)
+  if (d._demand && Array.isArray(d._demand.services) && d._demand.services.length){
+    const rows = d._demand.services.slice(0,6).map(s=>`<tr><td style="padding:6px 8px">${escapeHtml(s.service)}</td><td style="padding:6px 8px;text-align:center">${s.last_60d}</td><td style="padding:6px 8px;text-align:center;font-weight:600">${s.forecast_next}</td><td style="padding:6px 8px;text-align:right">${_fcMoney(s.forecast_revenue)}</td></tr>`).join('');
+    html += `<div style="margin-top:16px">
+      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Прогноз попиту на послуги (${d.horizon} дн.)</div>
+      <table class="tbl" style="font-size:13px"><thead><tr><th>Послуга</th><th style="text-align:center">За 60 дн.</th><th style="text-align:center">Прогноз</th><th style="text-align:right">Виручка</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
   // AI-пояснення (якщо є)
   if (d.ai_summary) html += `<div style="margin-top:14px;padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;font-size:14px;line-height:1.55;white-space:pre-wrap">${escapeHtml(d.ai_summary)}</div>`;
   html += `<p style="font-size:11px;color:var(--text-secondary);margin:10px 0 0">Прогноз на основі ${d.model.based_on_days} днів історії: тижнева сезонність + тренд + святкові піки. Затінена смуга — діапазон 80%.</p>`;
@@ -3471,7 +3488,7 @@ async function forecastExplain(){
   const note = document.createElement('div');
   note.style.cssText='margin-top:10px;color:var(--text-secondary);font-size:13px'; note.textContent='AI готує пояснення...';
   body.appendChild(note);
-  try { const d = await api('/api/forecast/revenue?horizon='+h+'&explain=1'); _fcData=d; renderForecast(d); }
+  try { const d = await api('/api/forecast/revenue?horizon='+h+'&explain=1'); if(_fcData){ d._load=_fcData._load; d._demand=_fcData._demand; } _fcData=d; renderForecast(d); }
   catch(e){ note.textContent='Не вдалося отримати пояснення.'; }
 }
 function openWhatIf(){

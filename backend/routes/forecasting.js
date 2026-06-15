@@ -237,7 +237,7 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
     const horizon = Math.min(Math.max(parseInt(req.query.horizon, 10) || 30, 7), 90);
     // попит по послугах: останні 60 днів → екстраполяція на horizon
     const rows = await pool.query(
-      `SELECT COALESCE(NULLIF(a.services_text,''), s.title, 'Послуга #'||a.service_id) AS service,
+      `SELECT COALESCE(NULLIF(a.services_text,''), s.name, 'Послуга #'||a.service_id) AS service,
               COUNT(*)::int AS cnt,
               COALESCE(SUM(a.price),0)::numeric AS revenue
          FROM appointments a
