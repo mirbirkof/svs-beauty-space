@@ -75,18 +75,7 @@ function tg(method, body) {
   });
 }
 
-// Настройки бронирования (CRM-05): кэш с TTL, безопасные дефолты если таблицы ещё нет
-let _bsCache = null, _bsCacheTs = 0;
-async function getBookingSettings() {
-  if (_bsCache && Date.now() - _bsCacheTs < 60000) return _bsCache;
-  const def = { min_lead_minutes: 30, max_horizon_days: 90, slot_step_minutes: 15, prevent_double_booking: true };
-  try {
-    const r = await getPool().query('SELECT * FROM booking_settings WHERE id = 1');
-    _bsCache = r.rows[0] || def;
-  } catch (_) { _bsCache = def; }
-  _bsCacheTs = Date.now();
-  return _bsCache;
-}
+// In-memory schema — no init needed
 
 // === POST /init =========================================
 router.post('/init', async (req, res) => {
@@ -95,37 +84,12 @@ router.post('/init', async (req, res) => {
     if (!service_id || !employee_id || !date_from || !date_to) {
       return res.status(400).json({ error: 'service_id, employee_id, date_from, date_to обовʼязкові' });
     }
-    // валидация дат: не в прошлом, конец после начала, не дальше горизонта (правила из настроек)
-    const s = await getBookingSettings();
+    // валидация дат: не в прошлом, конец после начала, не дальше года вперёд
     const from = new Date(date_from), to = new Date(date_to);
     if (isNaN(from) || isNaN(to)) return res.status(400).json({ error: 'Невірний формат дати' });
     if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
-    if (from < new Date(Date.now() + (s.min_lead_minutes || 0) * 60 * 1000)) {
-      return res.status(400).json({ error: `Запис можливий не раніше ніж за ${s.min_lead_minutes} хв` });
-    }
-    if (from > new Date(Date.now() + (s.max_horizon_days || 366) * 24 * 3600 * 1000)) {
-      return res.status(400).json({ error: `Запис можливий не далі ніж на ${s.max_horizon_days} днів` });
-    }
-    // запрет накладок: слот мастера уже занят подтверждённой/ожидающей записью
-    if (s.prevent_double_booking) {
-      try {
-        const busy = await getPool().query(
-          `SELECT 1 FROM online_bookings
-           WHERE master_id = $1 AND status IN ('confirmed','working')
-             AND date_from < $3 AND date_to > $2 LIMIT 1`,
-          [employee_id, date_from, date_to]
-        );
-        if (busy.rowCount) return res.status(409).json({ error: 'Цей час вже зайнятий. Оберіть інший слот.' });
-        const pend = await getPool().query(
-          `SELECT 1 FROM booking_pending
-           WHERE employee_id = $1 AND status = 'pending'
-             AND date_from < $3 AND date_to > $2
-             AND created_at > NOW() - INTERVAL '15 minutes' LIMIT 1`,
-          [employee_id, date_from, date_to]
-        );
-        if (pend.rowCount) return res.status(409).json({ error: 'Цей час зараз бронює інший клієнт. Спробуйте інший слот.' });
-      } catch (dbErr) { console.error('[booking/init double-check]', dbErr.message); }
-    }
+    if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
+    if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
     const token = genToken();
     await db.insert(token, { service_id, employee_id, date_from, date_to, client_name: client_name || null, channel: channel || 'site_salon' });
 
@@ -316,34 +280,6 @@ router.get('/slots', async (req, res) => {
   try {
     const { duration, professional, from, to } = req.query;
     res.json(await bp.freeTime({ duration, professional, from, to }));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// === Booking settings (admin) ===========================
-const { requirePerm } = require('../lib/rbac');
-
-router.get('/settings', requirePerm('settings.write'), async (req, res) => {
-  try { res.json({ ok: true, settings: await getBookingSettings() }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-router.put('/settings', requirePerm('settings.write'), async (req, res) => {
-  try {
-    const b = req.body || {};
-    const min_lead = Math.max(0, parseInt(b.min_lead_minutes, 10) || 0);
-    const horizon = Math.min(366, Math.max(1, parseInt(b.max_horizon_days, 10) || 90));
-    const step = Math.min(120, Math.max(5, parseInt(b.slot_step_minutes, 10) || 15));
-    const prevent = b.prevent_double_booking !== false;
-    const r = await getPool().query(
-      `INSERT INTO booking_settings (id, min_lead_minutes, max_horizon_days, slot_step_minutes, prevent_double_booking, updated_at)
-       VALUES (1,$1,$2,$3,$4,NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         min_lead_minutes=$1, max_horizon_days=$2, slot_step_minutes=$3, prevent_double_booking=$4, updated_at=NOW()
-       RETURNING *`,
-      [min_lead, horizon, step, prevent]
-    );
-    _bsCache = r.rows[0]; _bsCacheTs = Date.now();
-    res.json({ ok: true, settings: r.rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
