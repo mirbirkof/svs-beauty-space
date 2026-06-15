@@ -213,6 +213,7 @@ try { app.use('/api/forms', require('./routes/forms')); } catch(e) { console.err
 try { app.use('/api/webhooks', require('./routes/webhooks')); } catch(e) { console.error('[webhooks] mount failed:', e.message); }
 try { app.use('/api/api-keys', require('./routes/api-keys')); } catch(e) { console.error('[api-keys] mount failed:', e.message); }
 try { app.use('/api/v1', require('./routes/public-api')); } catch(e) { console.error('[public-api] mount failed:', e.message); }
+try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { console.error('[portfolio] mount failed:', e.message); }
 try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console.error('[quality] mount failed:', e.message); }
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
