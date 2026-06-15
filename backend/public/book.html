@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Онлайн-запис · SVS Beauty Space</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg:#faf7f5; --card:#fff; --ink:#2b2330; --muted:#9a8f96;
+    --accent:#c2185b; --accent-soft:#fce4ec; --line:#efe7ea; --ok:#2e7d32; --warn:#c77700;
+    --radius:16px; --shadow:0 4px 18px rgba(80,40,60,.08);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:16px;line-height:1.4}
+  .wrap{max-width:560px;margin:0 auto;padding:16px 14px 110px}
+  header{display:flex;align-items:center;gap:10px;padding:6px 2px 14px}
+  header .logo{font-weight:700;font-size:19px;letter-spacing:.3px}
+  header .logo span{color:var(--accent)}
+  .steps{display:flex;gap:6px;margin-bottom:14px}
+  .steps .s{flex:1;height:4px;border-radius:3px;background:var(--line)}
+  .steps .s.on{background:var(--accent)}
+  h2{font-size:17px;margin:4px 2px 12px}
+  .search{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;
+    background:var(--card);font-size:15px;margin-bottom:12px;outline:none}
+  .search:focus{border-color:var(--accent)}
+  .cat{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+    margin:14px 4px 6px;font-weight:600}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:13px 14px;margin-bottom:9px;box-shadow:var(--shadow);cursor:pointer;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;transition:.15s}
+  .item:active{transform:scale(.985)}
+  .item.sel{border-color:var(--accent);background:var(--accent-soft)}
+  .item .nm{font-weight:600}
+  .item .meta{font-size:13px;color:var(--muted);margin-top:2px}
+  .item .price{font-weight:700;color:var(--accent);white-space:nowrap}
+  .av{width:42px;height:42px;border-radius:50%;object-fit:cover;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent);flex-shrink:0}
+  .row{display:flex;align-items:center;gap:11px}
+  .dates{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch}
+  .day{flex:0 0 auto;min-width:60px;text-align:center;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:9px 6px;cursor:pointer}
+  .day.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .day .dow{font-size:12px;color:var(--muted)}
+  .day.sel .dow{color:#fff}
+  .day .dn{font-size:18px;font-weight:700;margin-top:1px}
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px;margin-top:6px}
+  .slot{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:11px 4px;
+    text-align:center;font-weight:600;cursor:pointer}
+  .slot.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .note{background:#fff8e1;border:1px solid #ffe0a3;color:var(--warn);border-radius:12px;
+    padding:12px 14px;font-size:14px;margin:8px 0}
+  .empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:15px}
+  .field{margin-bottom:11px}
+  .field label{display:block;font-size:13px;color:var(--muted);margin:0 2px 5px}
+  .field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:15px;outline:none}
+  .field input:focus{border-color:var(--accent)}
+  .summary{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px;box-shadow:var(--shadow);margin-bottom:14px}
+  .summary .l{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .summary .l:last-child{border:0}
+  .summary .l b{font-weight:600}
+  .cta{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,var(--bg) 22%)}
+  .cta .btn{max-width:560px;margin:0 auto}
+  .btn{display:block;width:100%;padding:15px;border:0;border-radius:14px;background:var(--accent);
+    color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+  .btn:disabled{background:#d9c5ce;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--muted);font-weight:500;padding:10px}
+  .center{text-align:center}
+  .ok-screen{text-align:center;padding:50px 20px}
+  .ok-screen .ic{font-size:54px;margin-bottom:14px}
+  .ok-screen h3{font-size:21px;margin:0 0 8px}
+  .ok-screen p{color:var(--muted);margin:0 0 22px}
+  .spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:r 1s linear infinite;margin:30px auto}
+  @keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">SVS <span>Beauty</span></div>
+  </header>
+  <div class="steps">
+    <div class="s" id="st1"></div><div class="s" id="st2"></div>
+    <div class="s" id="st3"></div><div class="s" id="st4"></div>
+  </div>
+  <div id="view"><div class="spin"></div></div>
+</div>
+<div class="cta" id="cta" style="display:none"><button class="btn" id="ctaBtn"></button></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
+
+const S = { step:1, services:[], masters:[], svc:null, master:null, date:null, slot:null, slotsByDay:{}, token:null };
+const view = document.getElementById('view');
+const cta = document.getElementById('cta');
+const ctaBtn = document.getElementById('ctaBtn');
+const fmtPrice = p => p ? Math.round(p) + ' грн' : '';
+const fmtDur = d => d ? (d >= 60 ? Math.floor(d/60)+'г '+(d%60?d%60+'хв':'') : d+' хв') : '';
+const pad = n => String(n).padStart(2,'0');
+const DOW = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+function setSteps(){ for(let i=1;i<=4;i++){ document.getElementById('st'+i).className = 's' + (i<=S.step?' on':''); } }
+function showCta(label, fn){ cta.style.display='block'; ctaBtn.textContent=label; ctaBtn.disabled=!fn; ctaBtn.onclick=fn||null; }
+function hideCta(){ cta.style.display='none'; }
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch(e){ j = { error: t }; }
+  if (!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+  return j;
+}
+
+// ── Step 1: services ───────────────────────────────
+async function loadCatalog(){
+  setSteps(); hideCta();
+  view.innerHTML = '<div class="spin"></div>';
+  try {
+    const c = await api('/api/booking/catalog');
+    S.services = c.services || []; S.masters = c.masters || [];
+    renderServices('');
+  } catch(e){
+    view.innerHTML = '<div class="empty">Не вдалося завантажити послуги.<br>Спробуйте пізніше або зателефонуйте нам.</div>';
+  }
+}
+function renderServices(q){
+  S.step=1; setSteps(); hideCta();
+  const list = S.services.filter(s => !q || (s.name||'').toLowerCase().includes(q.toLowerCase()));
+  const byCat = {};
+  list.forEach(s => { const k=s.category||'Інші послуги'; (byCat[k]=byCat[k]||[]).push(s); });
+  let html = '<h2>Оберіть послугу</h2>' +
+    '<input class="search" id="q" placeholder="Пошук послуги…" value="'+(q||'').replace(/"/g,'&quot;')+'">';
+  if (!list.length) html += '<div class="empty">Нічого не знайдено</div>';
+  for (const cat of Object.keys(byCat).sort()){
+    html += '<div class="cat">'+esc(cat)+'</div>';
+    byCat[cat].forEach(s => {
+      const sel = S.svc && S.svc.id===s.id ? ' sel':'';
+      html += '<div class="item'+sel+'" data-id="'+s.id+'">'+
+        '<div><div class="nm">'+esc(s.name)+'</div><div class="meta">'+fmtDur(s.duration)+'</div></div>'+
+        '<div class="price">'+fmtPrice(s.price)+'</div></div>';
+    });
+  }
+  view.innerHTML = html;
+  const qi = document.getElementById('q');
+  qi.oninput = () => renderServices(qi.value);
+  view.querySelectorAll('.item').forEach(el => el.onclick = () => {
+    S.svc = S.services.find(x => String(x.id)===el.dataset.id);
+    S.master=null; S.date=null; S.slot=null;
+    loadMasters();
+  });
+}
+
+// ── Step 2: masters ────────────────────────────────
+function loadMasters(){
+  S.step=2; setSteps();
+  let html = '<button class="btn ghost" id="bk">‹ Послуги</button>'+
+    '<h2>Оберіть майстра</h2>';
+  html += '<div class="item'+(S.master===null?'':'')+'" data-id="__any"><div class="row">'+
+    '<div class="av">★</div><div><div class="nm">Будь-який вільний майстер</div>'+
+    '<div class="meta">найближчий доступний час</div></div></div></div>';
+  S.masters.forEach(m => {
+    const init = (m.name||'?').trim().charAt(0).toUpperCase();
+    const av = m.avatar ? '<img class="av" src="'+esc(m.avatar)+'">' : '<div class="av">'+esc(init)+'</div>';
+    html += '<div class="item" data-id="'+m.id+'"><div class="row">'+av+
+      '<div><div class="nm">'+esc(m.name)+'</div>'+
+      (m.specialty?'<div class="meta">'+esc(m.specialty)+'</div>':'')+'</div></div></div>';
+  });
+  view.innerHTML = html;
+  document.getElementById('bk').onclick = () => renderServices('');
+  hideCta();
+  view.querySelectorAll('.item').forEach(el => el.onclick = () => {
+    S.master = el.dataset.id==='__any' ? '__any' : S.masters.find(x=>String(x.id)===el.dataset.id);
+    loadDates();
+  });
+}
+
+// ── Step 3: date + slots ───────────────────────────
+function loadDates(){
+  S.step=3; setSteps(); hideCta();
+  const days = [];
+  const base = new Date(); base.setHours(0,0,0,0);
+  for (let i=0;i<14;i++){ const d=new Date(base); d.setDate(base.getDate()+i); days.push(d); }
+  let html = '<button class="btn ghost" id="bk">‹ Майстри</button>'+
+    '<h2>Оберіть дату та час</h2><div class="dates">';
+  days.forEach(d => {
+    const key = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+    const sel = S.date===key?' sel':'';
+    html += '<div class="day'+sel+'" data-d="'+key+'"><div class="dow">'+DOW[d.getDay()]+'</div>'+
+      '<div class="dn">'+d.getDate()+'</div></div>';
+  });
+  html += '</div><div id="slotbox"><div class="empty">Оберіть дату</div></div>';
+  view.innerHTML = html;
+  document.getElementById('bk').onclick = loadMasters;
+  view.querySelectorAll('.day').forEach(el => el.onclick = () => {
+    view.querySelectorAll('.day').forEach(x=>x.classList.remove('sel'));
+    el.classList.add('sel'); S.date = el.dataset.d; S.slot=null; loadSlots();
+  });
+  if (S.date){ const cur=view.querySelector('.day[data-d="'+S.date+'"]'); if(cur) cur.classList.add('sel'); loadSlots(); }
+}
+
+async function loadSlots(){
+  const box = document.getElementById('slotbox');
+  box.innerHTML = '<div class="spin"></div>';
+  const from = S.date+'T00:00:00';
+  const to = S.date+'T23:59:59';
+  const prof = (S.master && S.master!=='__any') ? S.master.id : '';
+  const dur = S.svc.duration || 60;
+  try {
+    const q = new URLSearchParams({ duration:String(dur), from, to });
+    if (prof) q.set('professional', prof);
+    const data = await api('/api/booking/slots?'+q.toString());
+    const slots = normalizeSlots(data);
+    if (!slots.length){ box.innerHTML = '<div class="empty">На цей день немає вільних годин.<br>Оберіть іншу дату.</div>'; hideCta(); return; }
+    let h = '<div class="slots">';
+    slots.forEach(s => { h += '<div class="slot" data-from="'+s.from+'" data-to="'+s.to+'" data-prof="'+(s.prof||'')+'">'+s.label+'</div>'; });
+    h += '</div>';
+    box.innerHTML = h;
+    box.querySelectorAll('.slot').forEach(el => el.onclick = () => {
+      box.querySelectorAll('.slot').forEach(x=>x.classList.remove('sel'));
+      el.classList.add('sel');
+      S.slot = { from: el.dataset.from, to: el.dataset.to, prof: el.dataset.prof, label: el.textContent };
+      showCta('Продовжити', goConfirm);
+    });
+  } catch(e){
+    box.innerHTML = '<div class="note">Розклад тимчасово недоступний. Натисніть «Запит на запис» — адміністратор підтвердить час і передзвонить вам.</div>';
+    showCta('Запит на запис', goConfirm);
+  }
+}
+
+// Приводим разные форматы BeautyPro free_time к [{from,to,label,prof}]
+function normalizeSlots(data){
+  const out = [];
+  const dur = S.svc.duration || 60;
+  const push = (iso, prof) => {
+    const d = new Date(iso); if (isNaN(d)) return;
+    const end = new Date(d.getTime() + dur*60000);
+    out.push({ from: toLocalISO(d), to: toLocalISO(end), label: pad(d.getHours())+':'+pad(d.getMinutes()), prof });
+  };
+  const walk = (node, prof) => {
+    if (!node) return;
+    if (Array.isArray(node)){ node.forEach(x=>walk(x,prof)); return; }
+    if (typeof node === 'string'){ push(node, prof); return; }
+    if (typeof node === 'object'){
+      const p = node.professional || node.employee || node.master || prof;
+      if (node.start || node.from || node.time) push(node.start||node.from||node.time, p);
+      if (node.slots) walk(node.slots, p);
+      if (node.free_time) walk(node.free_time, p);
+      if (node.times) walk(node.times, p);
+      if (node.data) walk(node.data, p);
+    }
+  };
+  walk(data);
+  // dedup by label, sort
+  const seen = {}; const uniq = [];
+  out.sort((a,b)=>a.from<b.from?-1:1).forEach(s=>{ if(!seen[s.label]){seen[s.label]=1;uniq.push(s);} });
+  return uniq;
+}
+function toLocalISO(d){
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes())+':00';
+}
+
+// ── Step 4: confirm ────────────────────────────────
+function goConfirm(){
+  S.step=4; setSteps(); hideCta();
+  const masterName = (S.master && S.master!=='__any') ? S.master.name : 'Будь-який вільний майстер';
+  const dt = S.slot ? (formatDate(S.date)+', '+S.slot.label) : (formatDate(S.date)+' (час підтвердить адміністратор)');
+  const tgName = tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+    ? [tg.initDataUnsafe.user.first_name, tg.initDataUnsafe.user.last_name].filter(Boolean).join(' ') : '';
+  view.innerHTML =
+    '<button class="btn ghost" id="bk">‹ Час</button>'+
+    '<h2>Підтвердження</h2>'+
+    '<div class="summary">'+
+      '<div class="l"><span>Послуга</span><b>'+esc(S.svc.name)+'</b></div>'+
+      '<div class="l"><span>Майстер</span><b>'+esc(masterName)+'</b></div>'+
+      '<div class="l"><span>Дата і час</span><b>'+esc(dt)+'</b></div>'+
+      '<div class="l"><span>Вартість</span><b>'+fmtPrice(S.svc.price)+'</b></div>'+
+    '</div>'+
+    '<div class="field"><label>Ваше ім\u2019я</label><input id="nm" placeholder="Ім\u2019я" value="'+esc(tgName)+'"></div>'+
+    '<div class="note">Підтвердження запису відбувається через наш Telegram-бот: ми попросимо поділитися номером телефону для зв\u2019язку.</div>';
+  document.getElementById('bk').onclick = loadDates;
+  showCta('Записатися', submit);
+}
+function formatDate(key){
+  const [y,m,d] = key.split('-').map(Number);
+  const dt = new Date(y,m-1,d);
+  const MM = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
+  return d+' '+MM[m-1]+', '+DOW[dt.getDay()];
+}
+
+async function submit(){
+  ctaBtn.disabled = true; ctaBtn.textContent = 'Обробка…';
+  const name = (document.getElementById('nm')||{}).value || '';
+  // если слотов не было (расклад недоступен) — берём начало дня как заявку
+  const from = S.slot ? S.slot.from : (S.date+'T10:00:00');
+  const dur = S.svc.duration || 60;
+  const to = S.slot ? S.slot.to : toLocalISO(new Date(new Date(from).getTime()+dur*60000));
+  const prof = S.slot && S.slot.prof ? S.slot.prof : ((S.master&&S.master!=='__any')?S.master.id:'');
+  try {
+    const r = await api('/api/booking/init', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        service_id: S.svc.id, employee_id: prof || S.svc.id, // employee обовʼязковий; для "будь-який" бек підбере
+        date_from: from, date_to: to, client_name: name, channel: tg?'tg_miniapp':'website'
+      })
+    });
+    S.token = r.token;
+    if (tg && r.deep_link){
+      // в мини-аппе открываем бот для подтверждения телефона
+      tg.openTelegramLink ? tg.openTelegramLink(r.deep_link) : (location.href = r.deep_link);
+      waitConfirm();
+    } else if (r.deep_link){
+      location.href = r.deep_link; // обычный сайт → переход в бот
+    } else {
+      okScreen('Заявку прийнято', 'Адміністратор зв\u2019яжеться з вами для підтвердження.');
+    }
+  } catch(e){
+    ctaBtn.disabled=false; ctaBtn.textContent='Записатися';
+    alert('Помилка: '+e.message);
+  }
+}
+
+function waitConfirm(){
+  hideCta();
+  view.innerHTML = '<div class="ok-screen"><div class="spin"></div>'+
+    '<h3>Підтвердьте у боті</h3><p>Поділіться номером телефону у Telegram-боті, що відкрився, — і запис буде підтверджено.</p></div>';
+  let tries = 0;
+  const iv = setInterval(async () => {
+    tries++;
+    try {
+      const st = await api('/api/booking/status/'+S.token);
+      if (st.status === 'confirmed'){ clearInterval(iv); okScreen('Запис підтверджено!', 'Чекаємо вас у салоні. До зустрічі.'); }
+      else if (st.status === 'error' || st.status === 'failed'){ clearInterval(iv); okScreen('Потрібна увага', 'Не вдалося завершити автоматично. Адміністратор зв\u2019яжеться з вами.', true); }
+    } catch(e){}
+    if (tries > 150) clearInterval(iv); // ~5 хв
+  }, 2000);
+}
+
+function okScreen(title, text, warn){
+  hideCta();
+  view.innerHTML = '<div class="ok-screen"><div class="ic">'+(warn?'\u26A0\uFE0F':'\u2705')+'</div>'+
+    '<h3>'+esc(title)+'</h3><p>'+esc(text)+'</p>'+
+    '<button class="btn" id="again">Нова запис</button></div>';
+  document.getElementById('again').onclick = () => { S.svc=null;S.master=null;S.date=null;S.slot=null;S.token=null; loadCatalog(); };
+  if (tg && !warn){ try{ tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); }catch(e){} }
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+loadCatalog();
+</script>
+</body>
+</html>

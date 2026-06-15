@@ -94,6 +94,9 @@ app.use('/admin', express.static(__dirname + '/public/admin', {
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
 app.use('/p', express.static(__dirname + '/public'));
 
+// Публічна онлайн-запис (INT-08 сайт / INT-06 TG Mini App) — короткий URL
+app.get('/book', (req, res) => res.redirect(302, '/p/book.html'));
+
 // Render health check (root + /health)
 app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
 app.get('/health', (req, res) => res.json({

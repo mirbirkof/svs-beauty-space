@@ -283,4 +283,39 @@ router.get('/slots', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// === GET /catalog — нормализованный каталог из НАШЕЙ БД ==========
+// Не зависит от BeautyPro env-ключей: наша БД — синхронизированное зеркало
+// каталога (beautypro_id = GUID, совместим с /init и подтверждением бота).
+// Источник правды для онлайн-записи: услуги active, мастера online_booking_enabled.
+router.get('/catalog', async (req, res) => {
+  try {
+    const svc = await getPool().query(
+      `SELECT COALESCE(beautypro_id::text, 'svc-'||id) AS id,
+              name, COALESCE(name_ua, name) AS name_ua,
+              duration_min AS duration, price::float AS price,
+              category, color, photo_urls
+         FROM services
+        WHERE active IS NOT FALSE AND deleted_at IS NULL
+        ORDER BY sort_order NULLS LAST, name`
+    );
+    const mst = await getPool().query(
+      `SELECT COALESCE(beautypro_id::text, 'mst-'||id) AS id,
+              COALESCE(NULLIF(online_title,''), name) AS name,
+              specialty, avatar, online_rank, provides_services
+         FROM masters
+        WHERE active IS NOT FALSE AND online_booking_enabled IS NOT FALSE
+        ORDER BY online_rank NULLS LAST, name`
+    );
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({
+      services: svc.rows,
+      masters: mst.rows,
+      source: 'crm-db',
+    });
+  } catch (e) {
+    console.error('[booking/catalog]', e.message);
+    res.status(500).json({ error: 'Не вдалось завантажити каталог' });
+  }
+});
+
 module.exports = router;
