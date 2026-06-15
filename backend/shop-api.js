@@ -195,6 +195,7 @@ try { app.use('/api/purchasing', require('./routes/purchasing')); } catch(e) { c
 try { app.use('/api/referral', require('./routes/referral')); } catch(e) { console.error('[referral] mount failed:', e.message); }
 try { app.use('/api/marketing-center', require('./routes/marketing-center')); } catch(e) { console.error('[marketing-center] mount failed:', e.message); }
 try { app.use('/api/tasks', require('./routes/tasks')); } catch(e) { console.error('[tasks] mount failed:', e.message); }
+try { app.use('/api/projects', require('./routes/projects')); } catch(e) { console.error('[projects] mount failed:', e.message); }
 const triggersRoutes = require('./routes/marketing-triggers');
 app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }
