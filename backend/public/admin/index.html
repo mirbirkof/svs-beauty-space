@@ -713,6 +713,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" href="/admin/crm-extra.html#cashbox">
             <span class="material-icons-round">point_of_sale</span> Каса магазину
           </a>
+          <a class="sidebar-item" data-page="giftcerts" onclick="go('giftcerts')">
+            <span class="material-icons-round">card_giftcard</span> Сертифікати
+          </a>
           <a class="sidebar-item" href="https://svs-beauty-space.vercel.app" target="_blank">
             <span class="material-icons-round">language</span> Вітрина (сайт)
             <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:.4">open_in_new</span>
@@ -1005,6 +1008,25 @@ select.input { background:var(--card); }
           <div class="fc-card"><h4>Витрати за категоріями</h4><div id="fcExpenses"></div></div>
         </div>
         <div class="fc-card" style="margin-top:14px"><h4>Тренд виручки (30 днів)</h4><div id="fcTrend"></div></div>
+      </div>
+
+      <!-- ═══ ПОДАРУНКОВІ СЕРТИФІКАТИ (SLS-08) ═══ -->
+      <div class="page" id="page-giftcerts">
+        <div id="gcAnalytics" class="fc-kpis" style="margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <input id="gcSearch" class="input btn-sm" placeholder="Код або телефон..." style="max-width:220px" oninput="debounce(loadGiftCerts,400)">
+          <select id="gcStatus" class="input btn-sm" style="max-width:170px" onchange="loadGiftCerts()">
+            <option value="">Усі статуси</option>
+            <option value="active">Активні</option>
+            <option value="partially_used">Частково</option>
+            <option value="fully_used">Використані</option>
+            <option value="expired">Протерміновані</option>
+            <option value="cancelled">Анульовані</option>
+          </select>
+          <button class="btn btn-sm" onclick="gcCheckModal()"><span class="material-icons-round" style="font-size:16px">qr_code_scanner</span> Перевірити код</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="gcIssueModal()"><span class="material-icons-round" style="font-size:16px">add</span> Випустити сертифікат</button>
+        </div>
+        <div id="gcList"><div class="empty"><span class="material-icons-round">card_giftcard</span>Завантаження...</div></div>
       </div>
 
       <!-- ═══ CLIENTS ═══ -->
@@ -2068,7 +2090,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 // ── Navigation ───────────────────────────────
 const pageTitles = {
   dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', clients:'Клієнти',
-  fincenter:'Фінансовий центр', orders:'Замовлення', products:'Товари', stock:'Склад',
+  fincenter:'Фінансовий центр', giftcerts:'Подарункові сертифікати', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
@@ -2124,7 +2146,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, giftcerts:loadGiftCerts, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -3894,6 +3916,93 @@ async function fcDigestSettings(){
       const r=await api('/api/financial/digest/settings',{method:'PUT',body:JSON.stringify(body)});
       if(r&&r.ok) toast('Налаштування збережено'); else toast(r.error||'Помилка','error');
     });
+}
+
+// ── SLS-08 Подарункові сертифікати ───────────────────────
+const _GC_ST={ active:['Активний','#16a34a'], partially_used:['Частково','#0ea5e9'], fully_used:['Використаний','#94a3b8'], expired:['Протермінований','#dc2626'], cancelled:['Анульований','#dc2626'] };
+function _gcMoney(n){ return (Math.round(+n||0)).toLocaleString('uk-UA')+' ₴'; }
+async function loadGiftCerts(){
+  // аналітика
+  try{
+    const a=await api('/api/gift-certificates/analytics');
+    document.getElementById('gcAnalytics').innerHTML=`
+      <div class="fc-kpi"><div class="lbl">ПРОДАНО</div><div class="val">${_gcMoney(a.sold_amount)}</div><span class="chg flat">${a.sold_count} шт</span></div>
+      <div class="fc-kpi"><div class="lbl">ВИКОРИСТАНО</div><div class="val">${_gcMoney(a.used_amount)}</div></div>
+      <div class="fc-kpi"><div class="lbl">БОРГ (невикористано)</div><div class="val" style="color:#f59e0b">${_gcMoney(a.outstanding_amount)}</div></div>
+      <div class="fc-kpi"><div class="lbl">ЗГОРІЛО</div><div class="val">${_gcMoney(a.expired_amount)}</div></div>`;
+  }catch{}
+  const qs=new URLSearchParams();
+  const s=document.getElementById('gcStatus').value; if(s) qs.set('status',s);
+  const q=document.getElementById('gcSearch').value.trim(); if(q){ if(/^GC|^[A-Za-z]/.test(q)) qs.set('code',q); else qs.set('phone',q); }
+  const list=document.getElementById('gcList');
+  let d; try{ d=await api('/api/gift-certificates?'+qs.toString()); }catch{ list.innerHTML='<div class="empty">Не вдалося завантажити.</div>'; return; }
+  const items=d.items||[];
+  if(!items.length){ list.innerHTML='<div class="empty"><span class="material-icons-round">card_giftcard</span>Сертифікатів немає. Натисніть «Випустити сертифікат».</div>'; return; }
+  list.innerHTML=`<table class="tbl" style="width:100%"><thead><tr>
+    <th style="text-align:left">Код</th><th>Номінал</th><th>Залишок</th><th>Статус</th><th>Діє до</th><th style="text-align:left">Кому</th><th></th></tr></thead>
+    <tbody>${items.map(c=>{
+      const st=_GC_ST[c.status]||[c.status,'#94a3b8'];
+      const canUse=['active','partially_used'].includes(c.status)&&+c.remaining_amount>0;
+      return `<tr>
+        <td style="text-align:left"><code>${escapeHtml(c.code)}</code></td>
+        <td style="text-align:center">${_gcMoney(c.original_amount)}</td>
+        <td style="text-align:center"><b>${_gcMoney(c.remaining_amount)}</b></td>
+        <td style="text-align:center"><span style="color:${st[1]};font-weight:600">${st[0]}</span></td>
+        <td style="text-align:center">${(c.valid_until||'').slice(0,10)}</td>
+        <td style="text-align:left">${escapeHtml(c.recipient_name||c.buyer_name||'—')}${c.recipient_phone?'<br><span style="font-size:11px;color:#889">'+escapeHtml(c.recipient_phone)+'</span>':''}</td>
+        <td style="text-align:right;white-space:nowrap">${canUse?`<button class="btn btn-sm btn-primary" onclick="gcUseModal(${c.id},${c.remaining_amount})">Списати</button> `:''}${c.status!=='cancelled'?`<button class="btn btn-sm btn-icon" title="Анулювати" onclick="gcCancel(${c.id})"><span class="material-icons-round" style="font-size:16px">block</span></button>`:''}</td></tr>`;
+    }).join('')}</tbody></table>`;
+}
+function gcIssueModal(){
+  showModal('Випустити сертифікат', `
+    <label class="fld"><span>Номінал, ₴</span><input type="number" id="gcAmt" class="input" placeholder="1000" min="1"></label>
+    <label class="fld"><span>Строк дії, днів</span><input type="number" id="gcDays" class="input" value="365" min="1"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Покупець (імʼя)</span><input id="gcBuyer" class="input"></label>
+      <label class="fld" style="flex:1"><span>Телефон покупця</span><input id="gcBuyerPh" class="input"></label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Отримувач (імʼя)</span><input id="gcRecip" class="input"></label>
+      <label class="fld" style="flex:1"><span>Телефон отримувача</span><input id="gcRecipPh" class="input"></label>
+    </div>`,
+    async ()=>{
+      const amount=+document.getElementById('gcAmt').value;
+      if(!amount||amount<=0){ toast('Вкажіть номінал','error'); return; }
+      const body={ amount, valid_days:+document.getElementById('gcDays').value||365,
+        buyer_name:document.getElementById('gcBuyer').value||null, buyer_phone:document.getElementById('gcBuyerPh').value||null,
+        recipient_name:document.getElementById('gcRecip').value||null, recipient_phone:document.getElementById('gcRecipPh').value||null };
+      const r=await api('/api/gift-certificates',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Сертифікат '+r.certificate.code+' випущено'); loadGiftCerts(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+function gcUseModal(id,remaining){
+  showModal('Списати з сертифіката', `
+    <p class="set-p">Доступний залишок: <b>${_gcMoney(remaining)}</b></p>
+    <label class="fld"><span>Сума списання, ₴</span><input type="number" id="gcUseAmt" class="input" value="${remaining}" min="1" max="${remaining}"></label>`,
+    async ()=>{
+      const amount=+document.getElementById('gcUseAmt').value;
+      if(!amount||amount<=0){ toast('Вкажіть суму','error'); return; }
+      const r=await api('/api/gift-certificates/'+id+'/use',{method:'POST',body:JSON.stringify({amount})});
+      if(r&&r.ok){ toast('Списано '+_gcMoney(amount)+', залишок '+_gcMoney(r.balance)); loadGiftCerts(); } else { toast(r.error==='insufficient-balance'?'Недостатньо коштів':(r.error||'Помилка'),'error'); }
+    });
+}
+function gcCheckModal(){
+  showModal('Перевірити сертифікат', `
+    <label class="fld"><span>Код сертифіката</span><input id="gcCheckCode" class="input" placeholder="GC-XXXX-XXXX" style="text-transform:uppercase"></label>
+    <div id="gcCheckResult"></div>`, null);
+  setTimeout(()=>{ const inp=document.getElementById('gcCheckCode'); if(inp){ inp.focus(); inp.addEventListener('input',debounce(gcDoCheck,500)); } },50);
+}
+async function gcDoCheck(){
+  const code=document.getElementById('gcCheckCode').value.trim().toUpperCase();
+  const box=document.getElementById('gcCheckResult'); if(code.length<4){ box.innerHTML=''; return; }
+  let r; try{ r=await api('/api/gift-certificates/check/'+encodeURIComponent(code)); }catch{ box.innerHTML='<p style="color:#dc2626">Помилка перевірки</p>'; return; }
+  if(r.valid){ box.innerHTML=`<div style="padding:12px;border-radius:10px;background:#ecfdf5;color:#065f46"><b>✓ Дійсний</b><br>Залишок: <b>${_gcMoney(r.remaining_amount)}</b> · діє до ${(r.valid_until||'').slice(0,10)}</div>`; }
+  else { const why={ 'not-found':'Не знайдено','expired':'Протермінований','cancelled':'Анульований','no-balance':'Немає залишку','inactive':'Неактивний' }; box.innerHTML=`<div style="padding:12px;border-radius:10px;background:#fef2f2;color:#991b1b"><b>✗ Недійсний</b> — ${why[r.reason]||r.reason||r.status}</div>`; }
+}
+async function gcCancel(id){
+  if(!confirm('Анулювати сертифікат? Залишок згорить.')) return;
+  const r=await api('/api/gift-certificates/'+id+'/cancel',{method:'POST',body:JSON.stringify({reason:'анульовано вручну'})});
+  if(r&&r.ok){ toast('Сертифікат анульовано'); loadGiftCerts(); } else { toast(r.error||'Помилка','error'); }
 }
 
 async function loadJournal() {
