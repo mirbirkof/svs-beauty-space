@@ -158,14 +158,21 @@ router.get('/cohorts', async (req, res) => {
          FROM firsts f JOIN visits v ON v.client_id=f.client_id AND v.vm >= f.cohort
         WHERE f.cohort >= date_trunc('month', CURRENT_DATE) - ($1||' months')::interval
         GROUP BY f.cohort, v.vm ORDER BY f.cohort, v.vm`, [months]);
-    // зведення у матрицю retention
+    // зведення у матрицю retention. Розмір когорти = активні у нульовому місяці (перший візит у всіх там).
     const map = {};
     for (const r of rows) {
       const ck = r.cohort.toISOString().slice(0, 7);
-      if (!map[ck]) map[ck] = { cohort: ck, size: r.size, retention: {} };
+      if (!map[ck]) map[ck] = { cohort: ck, size: 0, retention: {} };
       const offset = (new Date(r.vm).getFullYear() - new Date(r.cohort).getFullYear()) * 12 + (new Date(r.vm).getMonth() - new Date(r.cohort).getMonth());
-      map[ck].retention[offset] = { active: r.active, pct: r.size ? +((r.active / r.size) * 100).toFixed(0) : 0 };
-      map[ck].size = Math.max(map[ck].size, r.size);
+      map[ck].retention[offset] = { active: r.active };
+      if (offset === 0) map[ck].size = r.active;
+    }
+    // pct рахуємо від розміру когорти
+    for (const ck in map) {
+      const size = map[ck].size || 1;
+      for (const off in map[ck].retention) {
+        map[ck].retention[off].pct = +((map[ck].retention[off].active / size) * 100).toFixed(0);
+      }
     }
     res.json({ cohorts: Object.values(map) });
   } catch (e) { res.status(500).json({ error: e.message }); }
