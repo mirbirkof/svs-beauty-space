@@ -162,14 +162,21 @@ async function retrieve(question, topK = 5) {
         ORDER BY c.embedding <=> $1::vector LIMIT $2`, [vlit, want]
     ).catch(() => []);
   }
-  // 2) полнотекстовая/trgm ветка (покрывает чанки без эмбеддинга)
-  const ftRows = await q(
+  // 2) полнотекстовая/trgm ветка (покрывает чанки без эмбеддинга).
+  // OR-семантика: вопрос «Скільки коштує манікюр?» → токены через |, ищем хоть одно совпадение.
+  // word_similarity ловит частичные совпадения слов лучше, чем similarity по всей строке.
+  // word_similarity считаем ПО КАЖДОМУ ТОКЕНУ (LATERAL unnest) — это ловит словоформы
+  // (акції↔Акція, майстри↔Майстер) через триграммы, чего 'simple'-tsvector без стемминга не умеет.
+  const tokens = (question.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).slice(0, 12);
+  const orQuery = tokens.join(' | ');
+  const ftRows = orQuery ? await q(
     `SELECT c.id, c.content, c.document_id, d.title, d.source_type,
-            GREATEST(ts_rank(c.tsv, websearch_to_tsquery('simple', $1)), similarity(c.content, $1))::float AS score
+            GREATEST(ts_rank(c.tsv, to_tsquery('simple', $1)) * 4, ws.score)::float AS score
        FROM ai_kb_chunks c JOIN ai_kb_documents d ON d.id=c.document_id
-      WHERE c.tsv @@ websearch_to_tsquery('simple', $1) OR c.content % $1
-      ORDER BY score DESC LIMIT $2`, [question, want]
-  ).catch(() => []);
+       CROSS JOIN LATERAL (SELECT COALESCE(MAX(word_similarity(tok, c.content)),0) AS score FROM unnest($2::text[]) tok) ws
+      WHERE c.tsv @@ to_tsquery('simple', $1) OR ws.score > 0.3
+      ORDER BY score DESC LIMIT $3`, [orQuery, tokens, want]
+  ).catch((e) => { console.error('[kb:ft]', e.message); return []; }) : [];
   // 3) слияние: cosine 0..1 как есть; full-text масштабируем (0.6) и берём максимум
   const merged = new Map();
   for (const r of vecRows) merged.set(String(r.id), { ...r, score: Number(r.score) || 0, _v: true });
