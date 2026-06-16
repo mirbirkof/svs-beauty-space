@@ -5542,7 +5542,7 @@ function jDragLeave(ev) { ev.currentTarget.classList.remove('drop-active'); }
 // Захист від випадкового переносу: треба саме УТРИМАТИ. Якщо палець рушив до
 // спрацювання — це скрол, підняття скасовується. На відпусканні — підтвердження.
 let _tDrag = null;
-const TOUCH_HOLD_MS = 500;
+const TOUCH_HOLD_MS = 1200;
 function jBindTouchDrag(container){
   container.querySelectorAll('.jcol-body .jappt').forEach(el => {
     const mm = (el.getAttribute('onclick')||'').match(/openAppt\((\d+)\)/);
