@@ -113,7 +113,8 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .sb-collapsed .sidebar-footer button .material-icons-round { font-size:18px; }
 
 /* MAIN */
-.main { margin-left:240px; min-height:100vh; }
+.main { margin-left:240px; min-height:100vh; min-width:0; max-width:calc(100% - 240px); }
+.sb-collapsed .main { max-width:calc(100% - 66px); }
 .topbar {
   background:var(--card); border-bottom:1px solid var(--border);
   padding:0 24px; height:56px; display:flex; align-items:center; justify-content:space-between;
@@ -127,7 +128,7 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
   background:var(--card); font-size:13px; cursor:pointer; color:var(--text-secondary);
 }
 .topbar-btn:hover { border-color:var(--primary); color:var(--primary); }
-.content { padding:24px; }
+.content { padding:24px; min-width:0; max-width:100%; overflow-x:auto; }
 
 /* CARDS */
 .card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); }
