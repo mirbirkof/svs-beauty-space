@@ -323,7 +323,29 @@ select.input { background:var(--card); }
 .jt-today:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
 .jt-date { height:34px; min-width:200px; padding:0 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:14px; font-weight:700; color:var(--text); text-transform:capitalize; }
 .jt-date:hover { border-color:var(--primary); }
-.jt-right { display:flex; align-items:center; gap:8px; }
+.jt-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* Журнал: 5 функціональних кнопок (DIKIDI-style) */
+.jt-icon-btn { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); transition:background .12s,color .12s,border-color .12s; flex:0 0 auto; }
+.jt-icon-btn:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
+.jt-icon-btn .material-icons-round { font-size:20px; }
+.btn-jsale { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.btn-jsale:hover { background:#bbf7d0; }
+.btn-jcash { background:var(--bg-soft,#f1f5f9); color:var(--text); border:1px solid var(--border); font-weight:600; }
+.btn-jcash:hover { background:#e2e8f0; }
+.btn-jcash.cash-in { color:#166534; } .btn-jcash.cash-out { color:#991b1b; }
+.jt-menu-wrap { position:relative; flex:0 0 auto; }
+.jt-menu { position:absolute; top:40px; right:0; min-width:210px; background:var(--card,#fff); border:1px solid var(--border,#e8e8ee); border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.16); padding:6px; z-index:60; display:none; }
+.jt-menu.open { display:block; }
+.jt-menu button { display:flex; align-items:center; gap:10px; width:100%; padding:9px 11px; border:none; background:none; cursor:pointer; font-size:13.5px; color:var(--text); border-radius:8px; text-align:left; }
+.jt-menu button:hover { background:var(--primary-light,#eef); color:var(--primary); }
+.jt-menu button .material-icons-round { font-size:18px; color:var(--text-secondary); }
+.jt-menu button:hover .material-icons-round { color:var(--primary); }
+.jhelp-list { display:flex; flex-direction:column; gap:14px; }
+.jhelp-item { display:flex; gap:12px; align-items:flex-start; }
+.jhelp-ic { width:36px; height:36px; flex:0 0 auto; border-radius:9px; display:flex; align-items:center; justify-content:center; }
+.jhelp-ic .material-icons-round { font-size:20px; }
+.jhelp-txt b { display:block; font-size:14px; margin-bottom:2px; }
+.jhelp-txt span { font-size:13px; color:var(--text-secondary); line-height:1.45; }
 .jcol-head .stat { font-size:11px; color:var(--primary); font-weight:600; }
 /* Фінансовий центр (FIN-04) */
 .fc-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
@@ -1058,11 +1080,30 @@ select.input { background:var(--card); }
             <input type="date" id="journalDate" onchange="loadJournal()" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
           </div>
           <div class="jt-right">
-            <select id="journalFocus" class="input btn-sm" style="max-width:160px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
+            <select id="journalFocus" class="input btn-sm" style="max-width:150px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
               <option value="">Усі майстри</option>
             </select>
-            <button class="btn btn-outline btn-sm" onclick="openBlockModal()" title="Заблокувати час майстра"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">lock</span> Блокувати</button>
-            <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Запис</button>
+            <!-- 1. Довідка/Інформація -->
+            <button class="jt-icon-btn" onclick="journalHelp()" title="Довідка по журналу"><span class="material-icons-round">help_outline</span></button>
+            <!-- 2. Додати запис -->
+            <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Додати запис</button>
+            <!-- 3. Оформити продаж -->
+            <button class="btn btn-sm btn-jsale" onclick="openEmbed('/admin/crm-extra.html#cashbox','point_of_sale Каса · продаж')" title="Оформити продаж послуги або товару"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">shopping_cart_checkout</span> Оформити продаж</button>
+            <!-- 4. Додати прихід коштів -->
+            <button class="btn btn-sm btn-jcash cash-in" onclick="finOpenOp('in')" title="Додати прихід (надходження коштів)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">savings</span>&nbsp;+&nbsp;Прихід</button>
+            <!-- 5. Додати витрату коштів -->
+            <button class="btn btn-sm btn-jcash cash-out" onclick="finOpenOp('out')" title="Додати витрату (виплату коштів)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">savings</span>&nbsp;−&nbsp;Витрата</button>
+            <!-- Додаткові дії (три крапки) -->
+            <div class="jt-menu-wrap">
+              <button class="jt-icon-btn" onclick="journalMenuToggle(event)" title="Додаткові дії"><span class="material-icons-round">more_vert</span></button>
+              <div class="jt-menu" id="journalMenu">
+                <button onclick="journalMenuClose();openBlockModal()"><span class="material-icons-round">lock</span> Заблокувати час майстра</button>
+                <button onclick="journalMenuClose();go('pipeline')"><span class="material-icons-round">view_kanban</span> Воронка візитів</button>
+                <button onclick="journalMenuClose();go('shifts')"><span class="material-icons-round">event_available</span> Табель змін</button>
+                <button onclick="journalMenuClose();go('finance')"><span class="material-icons-round">swap_vert</span> Доходи і витрати</button>
+                <button onclick="journalMenuClose();window.print()"><span class="material-icons-round">print</span> Друк журналу</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="journal-layout">
@@ -2073,6 +2114,45 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Довідка по журналу записів (DIKIDI-style) -->
+  <div id="journalHelpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) journalCloseHelp()">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <h3>Журнал записів — довідка</h3>
+        <button class="modal-close" onclick="journalCloseHelp()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px">Панель дій журналу містить 5 ключових кнопок для щоденної роботи:</p>
+        <div class="jhelp-list">
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#eef2ff;color:#4f46e5"><span class="material-icons-round">add</span></div>
+            <div class="jhelp-txt"><b>Додати запис</b><span>Створення нового запису клієнта: послуга, майстер, час, кабінет. Головна дія для планування візитів.</span></div>
+          </div>
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#dcfce7;color:#166534"><span class="material-icons-round">shopping_cart_checkout</span></div>
+            <div class="jhelp-txt"><b>Оформити продаж</b><span>Швидкий продаж послуги або товару через касу. Фіксує оплату й проводить операцію у фінансах.</span></div>
+          </div>
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#166534"><span class="material-icons-round">savings</span></div>
+            <div class="jhelp-txt"><b>+ Прихід</b><span>Облік надходження коштів: передоплата, внесення в касу, інші доходи — не обов'язково пов'язані з продажем.</span></div>
+          </div>
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#991b1b"><span class="material-icons-round">savings</span></div>
+            <div class="jhelp-txt"><b>− Витрата</b><span>Облік виплати коштів: матеріали, зарплата, оренда та інші операційні витрати.</span></div>
+          </div>
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#64748b"><span class="material-icons-round">help_outline</span></div>
+            <div class="jhelp-txt"><b>Довідка (?)</b><span>Це вікно — контекстна підказка по роботі з журналом записів.</span></div>
+          </div>
+          <div class="jhelp-item">
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#64748b"><span class="material-icons-round">more_vert</span></div>
+            <div class="jhelp-txt"><b>Додаткові дії (⋮)</b><span>Другорядні операції: блокування часу майстра, воронка візитів, табель змін, доходи/витрати, друк журналу.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <script>
@@ -2803,6 +2883,17 @@ function finOpenOp(type){
   document.getElementById('finOpModal').style.display='flex';
 }
 function finCloseOp(){ document.getElementById('finOpModal').style.display='none'; }
+// ── Журнал: довідка + меню додаткових дій ──
+function journalHelp(){ document.getElementById('journalHelpModal').style.display='flex'; }
+function journalCloseHelp(){ document.getElementById('journalHelpModal').style.display='none'; }
+function journalMenuToggle(e){
+  if(e){ e.stopPropagation(); }
+  const m=document.getElementById('journalMenu'); if(!m) return;
+  const open=m.classList.toggle('open');
+  if(open){ setTimeout(()=>document.addEventListener('click', _journalMenuOutside),0); }
+}
+function journalMenuClose(){ const m=document.getElementById('journalMenu'); if(m) m.classList.remove('open'); document.removeEventListener('click', _journalMenuOutside); }
+function _journalMenuOutside(ev){ const w=ev.target.closest('.jt-menu-wrap'); if(!w) journalMenuClose(); }
 async function finSaveOp(){
   const modal=document.getElementById('finOpModal'); const type=modal.dataset.type;
   const category=document.getElementById('finOpCat').value;
