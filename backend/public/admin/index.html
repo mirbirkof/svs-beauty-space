@@ -5671,6 +5671,10 @@ async function openAppt(id) {
   const rooms = await getRooms();
   const roomOpts = `<option value="">— без кабінету —</option>` +
     rooms.map(rm=>`<option value="${rm.id}"${a.room_id===rm.id?' selected':''}>${rm.name}</option>`).join('');
+  // Перенос запису: список майстрів (з поточним майстром гарантовано в списку)
+  const _jmasters = (journalData?.masters||[]);
+  let trfMasterOpts = _jmasters.map(m=>`<option value="${m.id}"${a.master_id===m.id?' selected':''}>${escapeHtml(m.name)}</option>`).join('');
+  if (!_jmasters.some(m=>m.id===a.master_id)) trfMasterOpts = `<option value="${a.master_id||''}" selected>${escapeHtml(a.master_name||'Поточний майстер')}</option>` + trfMasterOpts;
   document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
@@ -5727,6 +5731,16 @@ async function openAppt(id) {
         <button class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
                 onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
       </div>
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+        <span style="color:var(--text-secondary);font-size:12px">Перенести запис — дата / час / майстер</span>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <input id="trfDate" type="date" class="input" style="flex:1 1 130px" value="${_ymd(new Date(a.starts_at))}">
+          <input id="trfTime" type="time" class="input" step="900" style="flex:1 1 90px" value="${_toHHMM(_hm(a.starts_at))}">
+          <select id="trfMaster" class="input" style="flex:1 1 150px">${trfMasterOpts}</select>
+        </div>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px;font-weight:600" onclick="transferAppt(${a.id})">
+          <span class="material-icons-round" style="font-size:16px;vertical-align:-3px">swap_horiz</span> Перенести</button>
+      </div>
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:4px">
         <button class="btn" style="background:#fee2e2;color:#dc2626" onclick="deleteAppt(${a.id})">Видалити запис</button>
         <div style="display:flex;gap:8px">
@@ -5771,6 +5785,23 @@ async function deleteAppt(id) {
     if (r.ok) { msg.style.color = '#10b981'; msg.textContent = 'Запис видалено ✓'; setTimeout(() => { closeAppt(); loadJournal(); }, 700); }
     else { msg.style.color = '#ef4444'; msg.textContent = r.error || 'Помилка'; }
   } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
+}
+// Перенести запис на іншу дату/час/майстра (працює на тач-пристроях, де drag&drop недоступний)
+async function transferAppt(id) {
+  const date = (document.getElementById('trfDate')||{}).value;
+  const time = (document.getElementById('trfTime')||{}).value;
+  const masterId = Number((document.getElementById('trfMaster')||{}).value);
+  const msg = document.getElementById('apptMsg');
+  if (!date || !time) { msg.style.color='#ef4444'; msg.textContent='Вкажіть дату і час'; return; }
+  msg.style.color='var(--text-secondary)'; msg.textContent='Переношу запис…';
+  const starts_at = `${date}T${time}:00`;
+  try {
+    const body = { starts_at };
+    if (masterId) body.master_id = masterId;
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify(body) });
+    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Запис перенесено ✓'; setTimeout(()=>{ closeAppt(); loadJournal(); }, 700); }
+    else { msg.style.color='#ef4444'; msg.textContent=r.error||'Не вдалося перенести запис'; }
+  } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
 function closeAppt() { document.getElementById('apptModal').style.display = 'none'; }
 
