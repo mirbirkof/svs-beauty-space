@@ -604,6 +604,65 @@ async function slowTick() {
   }
 }
 
+// ===== REAL-TIME: вебхук BeautyPro → миттєвий синк (поверх 5-хв поллінгу) =====
+// BeautyPro: PUT /updates/webhooks/register {url, table}, table ∈ appointments|clients|sales.
+// Сервер БД №6 шле POST на наш url при будь-якій зміні запису/клієнта/продажу.
+// Payload НЕ парсимо й НЕ довіряємо: факт виклику = "щось змінилось" → дебаунсимо
+// й ганяємо fastTick (записи+клієнти+каса). Дані тягне лише сам fastTick з BeautyPro
+// (довірене джерело), тож навіть зайвий/підроблений виклик = просто ще один прогін.
+// Поллінг 5/30 хв лишається гарантованою підстраховкою, якщо вебхук відвалиться.
+const WEBHOOK_SECRET = process.env.BEAUTYPRO_WEBHOOK_SECRET || '';
+let webhookDebounce = null, webhookHits = 0;
+
+function triggerWebhookSync() {
+  webhookHits++;
+  if (webhookDebounce) return;            // вже заплановано — склеюємо сплеск подій в один прогін
+  webhookDebounce = setTimeout(() => {
+    webhookDebounce = null;
+    const n = webhookHits; webhookHits = 0;
+    console.log(`[bp-webhook] подія×${n} → миттєвий синк`);
+    fastTick().catch(() => {});           // fastBusy всередині не дасть накластись на крон-прогін
+  }, 4000);
+  if (webhookDebounce.unref) webhookDebounce.unref();
+}
+
+// Вхідний endpoint. Без RBAC (BeautyPro не має нашого токена) — захист секретом у path.
+// BeautyPro може слати або на чистий url, або з доданими сегментами {database}/{type}/{name}.
+function handleWebhook(req, res) {
+  if (WEBHOOK_SECRET && req.params.secret !== WEBHOOK_SECRET) return res.status(404).json({ ok: false });
+  res.status(200).json({ ok: true });     // відповідаємо одразу, не чекаючи синку
+  try { triggerWebhookSync(); } catch (_) {}
+}
+router.post('/bp-webhook/:secret', handleWebhook);
+router.post('/bp-webhook/:secret/:a', handleWebhook);
+router.post('/bp-webhook/:secret/:a/:b', handleWebhook);
+router.post('/bp-webhook/:secret/:a/:b/:c', handleWebhook);
+
+// Реєстрація вебхуків у BeautyPro — ідемпотентна (повторний register = 204). Викликається
+// на кожному старті, тож переживає редеплой і не потребує ручних дій.
+async function registerWebhooks() {
+  const base = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  if (!WEBHOOK_SECRET) { console.warn('[bp-webhook] register skipped — BEAUTYPRO_WEBHOOK_SECRET not set'); return { ok: false, reason: 'no_secret' }; }
+  if (!base) { console.warn('[bp-webhook] register skipped — RENDER_EXTERNAL_URL not set'); return { ok: false, reason: 'no_base' }; }
+  if (!process.env.BEAUTYPRO_ID_KEY || !process.env.BEAUTYPRO_SECRET_KEY) return { ok: false, reason: 'no_keys' };
+  const url = `${base}/api/sync/bp-webhook/${WEBHOOK_SECRET}`;
+  const token = await getToken();
+  const done = [];
+  for (const table of ['appointments', 'clients', 'sales']) {
+    try {
+      await withAuthRetry(() => httpsRequest('PUT', '/updates/webhooks/register', { token, body: { url, table } }));
+      done.push(table);
+    } catch (e) { console.error(`[bp-webhook] register ${table} failed:`, e.message); }
+  }
+  console.log(`[bp-webhook] зареєстровано real-time для: ${done.join(', ') || '—'}`);
+  return { ok: done.length === 3, registered: done };
+}
+
+// Ручний тригер реєстрації / перевірки (під sync.write).
+router.post('/v2/webhooks/register', requirePerm('sync.write'), async (req, res) => {
+  try { res.json(await registerWebhooks()); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 function startCron() {
   if (fastRef) return;
   if (!process.env.BEAUTYPRO_ID_KEY || !process.env.BEAUTYPRO_SECRET_KEY) {
@@ -615,7 +674,8 @@ function startCron() {
   fastRef = setInterval(fastTick, 5 * 60 * 1000);    // кожні 5 хв
   slowRef = setInterval(slowTick, 30 * 60 * 1000);   // кожні 30 хв
   fastRef.unref(); slowRef.unref();
-  console.log('[bp-appt-sync] cron started (fast=5min: appts+clients+sales, slow=30min: schedules+products)');
+  setTimeout(() => registerWebhooks().catch((e) => console.error('[bp-webhook] auto-register:', e.message)), 30 * 1000);
+  console.log('[bp-appt-sync] cron started (fast=5min, slow=30min) + real-time webhook trigger');
 }
 startCron();
 
@@ -626,3 +686,4 @@ module.exports.syncSales = syncSales;
 module.exports.syncSchedules = syncSchedules;
 module.exports.syncProductSales = syncProductSales;
 module.exports.syncServicesCatalog = syncServicesCatalog;
+module.exports.registerWebhooks = registerWebhooks;
