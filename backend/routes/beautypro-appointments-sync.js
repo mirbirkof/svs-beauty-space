@@ -224,7 +224,30 @@ async function syncAppointments(from, to) {
       );
     }
   }
-  return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients };
+
+  // Реконсиляція: записи, видалені в BeautyPro вже після синку, гасимо
+  // (status='cancelled'), щоб вони зникли з журналу й не накопичувались як
+  // фантоми/дублі (напр. майстер з вихідним, або стара версія перенесеного запису).
+  // Захист: чіпаємо лише власні bp-записи у вікні [from,to); ручні/ботові й уже
+  // виконані (оплачені) — недоторкані. Якщо BP повернув порожньо (збій/таймаут) —
+  // реконсиляцію пропускаємо, щоб випадково не погасити реальні записи.
+  let reconciled = 0;
+  if (items.length) {
+    const bpIds = items.map((a) => String(a.id));
+    const rc = await pool.query(
+      `UPDATE appointments
+          SET status='cancelled', bp_state='bp_deleted', updated_at=NOW()
+        WHERE source='beautypro'
+          AND beautypro_id IS NOT NULL
+          AND NOT (beautypro_id = ANY($1::text[]))
+          AND starts_at >= $2::date
+          AND starts_at <  $3::date
+          AND status NOT IN ('cancelled', 'done')`,
+      [bpIds, from, to]);
+    reconciled = rc.rowCount || 0;
+  }
+
+  return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients, reconciled };
 }
 
 // ── Графік майстрів BP (/schedule) → master_schedule_days ───────────────
@@ -319,14 +342,30 @@ async function syncSales(from, to) {
     if (id && !mmap.has(alias)) mmap.set(alias, id);
   }
 
-  let posted = 0, skipped = 0, shifts = 0;
+  let posted = 0, skipped = 0, shifts = 0, removed = 0;
   const days = [];
   for (let d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z'); d <= end; d.setUTCDate(d.getUTCDate() + 1))
     days.push(d.toISOString().slice(0, 10));
 
   for (const day of days) {
-    const recs = (await fetchSalesDay(token, day)).filter(
+    const raw = await fetchSalesDay(token, day);
+    const recs = raw.filter(
       (s) => !s.cancel && (s.type === 'Service' || s.type === 'Product') && (Number(s.sum) || 0) > 0);
+
+    // Реконсиляція каси: продаж, скасований або видалений у BeautyPro вже ПІСЛЯ
+    // проведення, прибираємо з каси. Інакше скасування накопичуються як фантомна
+    // виручка (каса не сходиться). Межі дня — UTC, бо created_at = sale_date (UTC).
+    // Чіпаємо лише власні bp_sale-операції; ручні операції каси недоторкані.
+    const validIds = recs.map((s) => String(s.id));
+    const nextD = new Date(day + 'T00:00:00Z'); nextD.setUTCDate(nextD.getUTCDate() + 1);
+    const del = await pool.query(
+      `DELETE FROM cash_operations
+        WHERE ref_type = 'bp_sale' AND ext_ref IS NOT NULL
+          AND created_at >= $1 AND created_at < $2
+          AND NOT (ext_ref = ANY($3::text[]))`,
+      [day + 'T00:00:00Z', nextD.toISOString(), validIds]);
+    removed += del.rowCount || 0;
+
     if (!recs.length) continue;
     recs.sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
     const cashSum = recs.filter((s) => saleMethod(s.payments) === 'cash').reduce((a, s) => a + Number(s.sum), 0);
@@ -360,7 +399,7 @@ async function syncSales(from, to) {
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
   }
-  return { posted, skipped, shifts };
+  return { posted, skipped, shifts, removed };
 }
 
 // ── Детальні продажі товарів BP (/sales type=Product) → salon_product_sales ──
