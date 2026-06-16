@@ -235,6 +235,7 @@ try { app.use('/api/saas/analytics', require('./routes/saas-analytics')); } catc
 try { app.use('/api/saas', require('./routes/saas')); } catch(e) { console.error('[saas] mount failed:', e.message); }
 try { app.use('/api/white-label', require('./routes/white-label')); } catch(e) { console.error('[white-label] mount failed:', e.message); }
 try { app.use('/api/tenant-mgmt', require('./routes/tenant-mgmt')); } catch(e) { console.error('[tenant-mgmt] mount failed:', e.message); }
+try { app.use('/api/billing', require('./routes/billing')); } catch(e) { console.error('[billing] mount failed:', e.message); }
 try { app.use('/api/omni', require('./routes/omnichannel')); } catch(e) { console.error('[omni] mount failed:', e.message); }
 try { app.use('/api/reviews-moderation', require('./routes/reviews-moderation')); } catch(e) { console.error('[reviews-moderation] mount failed:', e.message); }
 try { app.use('/api/fin-integrations', require('./routes/integrations-fin')); } catch(e) { console.error('[fin-integrations] mount failed:', e.message); }
