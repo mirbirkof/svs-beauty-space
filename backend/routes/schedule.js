@@ -671,9 +671,9 @@ router.delete('/blocks/:id', async (req, res) => {
 router.patch('/appointments/:id', async (req, res) => {
   try {
     const pool = getPool();
-    const { notes, status, room_id, starts_at, master_id } = req.body || {};
+    const { notes, status, room_id, starts_at, master_id, duration_min } = req.body || {};
     if (notes === undefined && status === undefined && room_id === undefined
-        && starts_at === undefined && master_id === undefined) {
+        && starts_at === undefined && master_id === undefined && duration_min === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
     const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
@@ -681,19 +681,44 @@ router.patch('/appointments/:id', async (req, res) => {
       return res.status(400).json({ error: 'bad-status' });
     }
 
-    // Перенос запису (drag&drop): нове starts_at → зберігаємо тривалість, перераховуємо ends_at
-    let newStart = null, newEnd = null;
-    if (starts_at !== undefined) {
-      const sd = new Date(starts_at);
-      if (isNaN(sd)) return res.status(400).json({ error: 'bad-starts_at' });
+    // Поточний стан запису (тривалість, старт, майстер) — потрібен для переносу/зміни тривалості/перевірки професії
+    let curRow = null;
+    if (starts_at !== undefined || duration_min !== undefined || master_id !== undefined) {
       const cur = await pool.query(
-        `SELECT EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur FROM appointments WHERE id=$1`,
+        `SELECT starts_at, EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur, master_id
+           FROM appointments WHERE id=$1`,
         [req.params.id]
       );
       if (!cur.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
-      const dur = Number(cur.rows[0].dur) || 30;
-      newStart = sd.toISOString();
-      newEnd = new Date(sd.getTime() + dur * 60000).toISOString();
+      curRow = cur.rows[0];
+    }
+
+    // Перенос лише на майстра тієї самої професії (заметка #30)
+    if (master_id !== undefined && master_id != null && Number(master_id) !== Number(curRow.master_id)) {
+      const prof = await pool.query(
+        `SELECT a.specialty AS cur_spec, b.specialty AS new_spec
+           FROM masters a, masters b WHERE a.id=$1 AND b.id=$2`,
+        [curRow.master_id, Number(master_id)]
+      );
+      if (prof.rows[0]) {
+        const cs = (prof.rows[0].cur_spec || '').trim().toLowerCase();
+        const ns = (prof.rows[0].new_spec || '').trim().toLowerCase();
+        if (cs && ns && cs !== ns) {
+          return res.status(409).json({ error: 'different-profession', message: 'Перенесення можливе лише на майстра тієї самої професії' });
+        }
+      }
+    }
+
+    // Перенос (нове starts_at) та/або зміна тривалості процедури (duration_min) → перераховуємо ends_at
+    let newStart = null, newEnd = null;
+    if (starts_at !== undefined || duration_min !== undefined) {
+      const baseStart = starts_at !== undefined ? new Date(starts_at) : new Date(curRow.starts_at);
+      if (isNaN(baseStart)) return res.status(400).json({ error: 'bad-starts_at' });
+      let dur = duration_min !== undefined ? Number(duration_min) : (Number(curRow.dur) || 30);
+      if (!Number.isFinite(dur) || dur <= 0) return res.status(400).json({ error: 'bad-duration_min' });
+      dur = Math.min(dur, 24 * 60); // запобіжник
+      if (starts_at !== undefined) newStart = baseStart.toISOString();
+      newEnd = new Date(baseStart.getTime() + dur * 60000).toISOString();
     }
 
     const r = await pool.query(

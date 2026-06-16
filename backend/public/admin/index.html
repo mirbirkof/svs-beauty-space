@@ -98,8 +98,14 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .sidebar-footer button:hover { color:#fff; }
 
 /* COLLAPSE (icon-rail) — десктоп */
-.sb-toggle { display:inline-flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--text); padding:6px; border-radius:8px; }
-.sb-toggle:hover { background:var(--bg); }
+/* Плаваюча кнопка шторки: зафіксована, завжди на одному місці, не зникає при прокрутці (заметка #29) */
+.sb-toggle { position:fixed; top:10px; left:248px; z-index:120;
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text);
+  width:36px; height:36px; padding:0; border-radius:10px;
+  background:var(--card); border:1px solid var(--border); box-shadow:0 2px 8px rgba(0,0,0,.10);
+  transition:left .18s ease, background .15s; }
+.sb-toggle:hover { background:var(--bg); border-color:var(--primary); color:var(--primary); }
+.sb-collapsed .sb-toggle { left:74px; }
 .sb-collapsed .sidebar { width:66px; }
 .sb-collapsed .main { margin-left:66px; }
 .sb-collapsed .sidebar-logo { padding:20px 0 16px; text-align:center; }
@@ -120,6 +126,7 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
   padding:0 24px; height:56px; display:flex; align-items:center; justify-content:space-between;
   position:sticky; top:0; z-index:50;
 }
+.topbar > div:first-child { padding-left:52px; } /* місце для плаваючої кнопки шторки */
 .topbar-title { font-size:16px; font-weight:600; }
 .topbar-right { display:flex; align-items:center; gap:12px; }
 .topbar-btn {
@@ -237,6 +244,7 @@ select.input { background:var(--card); }
   body:has(.sidebar.open) { overflow:hidden; }
   .mobile-toggle { display:flex; }
   .sb-toggle { display:none; }
+  .topbar > div:first-child { padding-left:0; } /* на мобільному плаваюча кнопка прихована */
   /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
   .content { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100vw; }
   /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
@@ -5671,14 +5679,28 @@ async function openAppt(id) {
   const rooms = await getRooms();
   const roomOpts = `<option value="">— без кабінету —</option>` +
     rooms.map(rm=>`<option value="${rm.id}"${a.room_id===rm.id?' selected':''}>${rm.name}</option>`).join('');
-  // Перенос запису: список майстрів (з поточним майстром гарантовано в списку)
+  // Перенос запису: лише майстри тієї самої професії (заметка #30)
   const _jmasters = (journalData?.masters||[]);
-  let trfMasterOpts = _jmasters.map(m=>`<option value="${m.id}"${a.master_id===m.id?' selected':''}>${escapeHtml(m.name)}</option>`).join('');
-  if (!_jmasters.some(m=>m.id===a.master_id)) trfMasterOpts = `<option value="${a.master_id||''}" selected>${escapeHtml(a.master_name||'Поточний майстер')}</option>` + trfMasterOpts;
+  const _curM = _jmasters.find(m=>m.id===a.master_id);
+  const _curSpec = ((_curM && _curM.specialty) || '').trim().toLowerCase();
+  const _eligible = _jmasters.filter(m => {
+    if (m.id === a.master_id) return true;
+    const sp = ((m.specialty)||'').trim().toLowerCase();
+    return !_curSpec || !sp || sp === _curSpec; // якщо професія не задана — не блокуємо
+  });
+  let trfMasterOpts = _eligible.map(m=>`<option value="${m.id}"${a.master_id===m.id?' selected':''}>${escapeHtml(m.name)}${m.specialty?' · '+escapeHtml(m.specialty):''}</option>`).join('');
+  if (!_eligible.some(m=>m.id===a.master_id)) trfMasterOpts = `<option value="${a.master_id||''}" selected>${escapeHtml(a.master_name||'Поточний майстер')}</option>` + trfMasterOpts;
   document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
-      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${Math.round(a.duration_min)}хв · ${_money(a.price)}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${_money(a.price)}</div></div>
+      <div>
+        <span style="color:var(--text-secondary);font-size:12px">Загальний час процедури (хв)</span>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+          <input id="apptDuration" type="number" class="input" min="5" max="1440" step="5" style="flex:1 1 110px" value="${Math.round(a.duration_min)||30}">
+          <span style="color:var(--text-secondary);font-size:12px">завершення о <b id="apptEndPreview">${_toHHMM(_hm(a.ends_at))}</b></span>
+        </div>
+      </div>
       <div><span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
         <div style="font-weight:600">${a.client_name||'—'} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div>
         ${apptClientFlags(a)}
@@ -5751,6 +5773,16 @@ async function openAppt(id) {
       <div id="apptMsg" style="font-size:13px"></div>
     </div>`;
   document.getElementById('apptModal').style.display = 'flex';
+  // Живий перерахунок часу завершення при зміні тривалості
+  const _durEl = document.getElementById('apptDuration');
+  if (_durEl) _durEl.oninput = () => {
+    const d = Math.round(Number(_durEl.value));
+    const prev = document.getElementById('apptEndPreview');
+    if (prev && Number.isFinite(d) && d > 0) {
+      const end = new Date(new Date(a.starts_at).getTime() + d*60000);
+      prev.textContent = _toHHMM(_hm(end));
+    }
+  };
   loadApptPhotos(a.id, 'before');
   loadApptPhotos(a.id, 'after');
 }
@@ -5954,13 +5986,23 @@ async function saveAppt(id) {
   const status = document.getElementById('apptStatus').value;
   const roomSel = document.getElementById('apptRoom');
   const room_id = roomSel && roomSel.value ? Number(roomSel.value) : null;
+  const durEl = document.getElementById('apptDuration');
   const msg = document.getElementById('apptMsg');
   msg.textContent = 'Збереження…'; msg.style.color = 'var(--text-secondary)';
   try {
-    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ notes, status, room_id }) });
+    const body = { notes, status, room_id };
+    if (durEl) {
+      const d = Math.round(Number(durEl.value));
+      if (Number.isFinite(d) && d > 0) body.duration_min = d;
+    }
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify(body) });
     if (r.ok) {
       const a = (journalData?.appointments||[]).find(x => x.id===id);
-      if (a) { a.notes = r.appointment.notes; a.status = r.appointment.status; a.room_id = r.appointment.room_id; }
+      if (a) {
+        a.notes = r.appointment.notes; a.status = r.appointment.status; a.room_id = r.appointment.room_id;
+        if (r.appointment.ends_at) { a.ends_at = r.appointment.ends_at;
+          a.duration_min = Math.round((new Date(r.appointment.ends_at)-new Date(r.appointment.starts_at))/60000); }
+      }
       let extra = '';
       if (r.stock && r.stock.written) extra = ` · списано розхідників: ${r.stock.items}`;
       msg.textContent = 'Збережено ✓' + extra; msg.style.color = '#10b981';
