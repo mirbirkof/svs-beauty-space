@@ -11,7 +11,7 @@
   var _g=JSON.parse(localStorage.getItem('svs_sb_groups')||'[]');
   if(Array.isArray(_g)&&_g.length){
     var _css=_g.map(function(id){return '#'+id+'>.sidebar-group-items{display:block}#'+id+'>.sidebar-group-header .chevron{transform:rotate(90deg)}';}).join('');
-    var _s=document.createElement('style');_s.textContent=_css;document.head.appendChild(_s);
+    var _s=document.createElement('style');_s.id='_sbgroups_prepaint';_s.textContent=_css;document.head.appendChild(_s);
   }
 }catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2346,9 +2346,13 @@ function saveSidebarGroups() {
 function restoreSidebarGroups() {
   try {
     const saved = JSON.parse(localStorage.getItem('svs_sb_groups') || 'null');
-    if (!Array.isArray(saved)) return;  // перший вхід — лишаємо HTML-дефолти
-    document.querySelectorAll('.sidebar-group').forEach(g => g.classList.toggle('open', saved.includes(g.id)));
+    if (Array.isArray(saved)) {
+      document.querySelectorAll('.sidebar-group').forEach(g => g.classList.toggle('open', saved.includes(g.id)));
+    }
   } catch (_) {}
+  // Прибираємо pre-paint <style>: він тримав групи на ID-специфічності, через що
+  // клас .open не міг їх згорнути. Після застосування класів він більше не потрібен.
+  try { const ps = document.getElementById('_sbgroups_prepaint'); if (ps) ps.remove(); } catch (_) {}
 }
 
 function openEmbed(url, title) {
