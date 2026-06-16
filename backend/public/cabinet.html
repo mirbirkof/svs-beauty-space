@@ -151,6 +151,11 @@ let token = localStorage.getItem(TOKEN_KEY);
 const $ = id => document.getElementById(id);
 const H = () => ({ 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) });
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 async function api(path, opts = {}) {
   opts.headers = { ...H(), ...(opts.headers || {}) };
   const r = await fetch(path, opts);
@@ -256,13 +261,13 @@ async function loadLoyalty() {
 }
 
 function visitRow(v, future) {
-  const statusText = { confirmed:'Підтверджено', completed:'Завершено', pending:'Очікує', cancelled:'Скасовано', new:'Нова' }[v.status] || v.status || '';
+  const statusText = { confirmed:'Підтверджено', completed:'Завершено', pending:'Очікує', cancelled:'Скасовано', new:'Нова' }[v.status] || escapeHtml(v.status) || '';
   const statusColor = future ? 'text-emerald-600' : 'text-slate-400';
   return `
     <div class="border rounded-xl p-3 flex justify-between items-start">
       <div>
-        <div class="font-medium">${v.service || 'Послуга'}</div>
-        <div class="text-xs text-slate-500">${fmtDate(v.starts_at)}${v.master ? ' · ' + v.master : ''}</div>
+        <div class="font-medium">${escapeHtml(v.service) || 'Послуга'}</div>
+        <div class="text-xs text-slate-500">${fmtDate(v.starts_at)}${v.master ? ' · ' + escapeHtml(v.master) : ''}</div>
       </div>
       <div class="text-right">
         ${v.price ? `<div class="font-semibold">${Number(v.price).toFixed(0)} ₴</div>` : ''}
@@ -312,13 +317,13 @@ async function loadOrders() {
       new: 'Новий', paid: 'Оплачено', packing: 'Пакуємо',
       shipped: 'Відправлено', delivered: 'Доставлено',
       cancelled: 'Скасовано', refunded: 'Повернуто'
-    }[o.status] || o.status;
+    }[o.status] || escapeHtml(o.status);
     const canPay = o.status === 'new';
     return `
       <div class="border rounded-xl p-3">
         <div class="flex justify-between items-start">
           <div>
-            <div class="font-semibold">№${o.id}</div>
+            <div class="font-semibold">№${escapeHtml(String(o.id))}</div>
             <div class="text-xs text-slate-500">${new Date(o.created_at).toLocaleString('uk')}</div>
           </div>
           <div class="text-right">
@@ -326,7 +331,7 @@ async function loadOrders() {
             <span class="inline-block text-xs rounded-full px-2 py-0.5 mt-1 ${statusColor}">${statusText}</span>
           </div>
         </div>
-        ${canPay ? `<button onclick="openPay(${o.id}, ${o.total}, '${o.id}')" class="mt-3 w-full bg-slate-900 text-white rounded-lg py-2 text-sm font-semibold">Оплатити</button>` : ''}
+        ${canPay ? `<button onclick="openPay(${Number(o.id)}, ${Number(o.total)}, '${escapeHtml(String(o.id))}')" class="mt-3 w-full bg-slate-900 text-white rounded-lg py-2 text-sm font-semibold">Оплатити</button>` : ''}
       </div>`;
   }).join('');
 }

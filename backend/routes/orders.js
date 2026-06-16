@@ -206,7 +206,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[orders:create]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   } finally {
     client.release();
   }

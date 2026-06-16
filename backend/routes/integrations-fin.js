@@ -33,7 +33,7 @@ router.get('/providers', async (req, res) => {
         (config != '{}'::jsonb) AS configured, last_sync_at, updated_at
       FROM fin_providers WHERE tenant_id=current_tenant_id() ORDER BY kind, provider`);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/providers/:provider', async (req, res) => {
@@ -47,7 +47,7 @@ router.put('/providers/:provider', async (req, res) => {
        RETURNING id, provider, kind, enabled`,
       [req.params.provider, b.kind, b.enabled !== false, JSON.stringify(b.config || {})]))[0];
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── БАНКОВСКИЕ ТРАНЗАКЦИИ (INT-10) ── */
@@ -61,7 +61,7 @@ router.get('/transactions', async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const rows = await q(`SELECT * FROM bank_transactions WHERE ${where} ORDER BY op_date DESC, id DESC LIMIT ${limit}`, params);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/fin-integrations/transactions { transactions:[{op_date,amount,direction,description,external_id,provider,counterparty}] }
@@ -82,7 +82,7 @@ router.post('/transactions', async (req, res) => {
     }
     await logAction({ user: req.user, action: 'bank.import', entity: 'bank_transactions', meta: { created }, ip: req.ip });
     res.json({ ok: true, imported: created });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/fin-integrations/reconcile — авто-сверка с cash_operations по сумме+дате
@@ -112,7 +112,7 @@ router.post('/reconcile', async (req, res) => {
       RETURNING bt.id`);
     await logAction({ user: req.user, action: 'bank.reconcile', meta: { matched: r.rowCount }, ip: req.ip });
     res.json({ ok: true, matched: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── ФИСКАЛЬНЫЕ ЧЕКИ (INT-09) ── */
@@ -121,7 +121,7 @@ router.get('/fiscal-receipts', async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const rows = await q(`SELECT * FROM fiscal_receipts WHERE tenant_id=current_tenant_id() ORDER BY created_at DESC LIMIT ${limit}`);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/fiscal-receipts', async (req, res) => {
@@ -136,7 +136,7 @@ router.post('/fiscal-receipts', async (req, res) => {
        b.payload ? JSON.stringify(b.payload) : null]))[0];
     await logAction({ user: req.user, action: 'fiscal.create', entity: 'fiscal_receipts', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

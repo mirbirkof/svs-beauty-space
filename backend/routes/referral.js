@@ -72,7 +72,7 @@ async function issueReward(client, referralId, recipientId, role, type, amount, 
 // ── Налаштування ──
 router.get('/settings', async (_req, res) => {
   try { res.json(await getSettings()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/settings', async (req, res) => {
@@ -88,7 +88,7 @@ router.put('/settings', async (req, res) => {
     const r = await q(`UPDATE referral_program_settings SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
     logAction({ user: req.user, action: 'referral.settings_update', entity: 'referral_settings', entity_id: s.id, ip: req.ip }).catch(() => {});
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Код/посилання клієнта ──
@@ -98,7 +98,7 @@ router.get('/code/:client_id', async (req, res) => {
     if (!c) return res.status(400).json({ error: 'client_id некоректний' });
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent('https://svs.salon' + c.short_path)}`;
     res.json({ ...c, qr_code_url: qrUrl });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/code/:client_id/regenerate', async (req, res) => {
@@ -115,7 +115,7 @@ router.post('/code/:client_id/regenerate', async (req, res) => {
     }
     logAction({ user: req.user, action: 'referral.code_regenerate', entity: 'referral_code', entity_id: id, ip: req.ip }).catch(() => {});
     res.json(created || { error: 'не вдалось згенерувати' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Трекінг кліку ──
@@ -129,7 +129,7 @@ router.post('/track-click', async (req, res) => {
       [rc[0].id, req.ip || null, (req.headers['user-agent'] || '').slice(0, 400), device_fingerprint || null, utm_source || null, utm_medium || null]);
     await q(`UPDATE referral_codes SET total_clicks = total_clicks + 1 WHERE id=$1`, [rc[0].id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Привʼязка нового клієнта до реферера за кодом ──
@@ -167,7 +167,7 @@ router.post('/attribute', async (req, res) => {
     res.json({ ok: true, referral_id: ins[0].id, status: ins[0].status, fraud_flags: isFraud ? fraud : null });
   } catch (e) {
     if (String(e.message).includes('ux_referrals_referee')) return res.status(409).json({ error: 'клієнт вже привʼязаний' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -236,7 +236,7 @@ router.post('/:id/qualify', async (req, res) => {
     if (out.error) return res.status(500).json(out);
     logAction({ user: req.user, action: 'referral.qualify', entity: 'referral', entity_id: req.params.id, ip: req.ip, meta: { result: out } }).catch(() => {});
     res.json(out);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/reject', async (req, res) => {
@@ -246,7 +246,7 @@ router.post('/:id/reject', async (req, res) => {
     if (!r.length) return res.status(409).json({ error: 'не знайдено або вже винагороджено' });
     logAction({ user: req.user, action: 'referral.reject', entity: 'referral', entity_id: req.params.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Автоскан усіх pending → видати тим, хто виконав умову
@@ -260,7 +260,7 @@ router.post('/process', async (req, res) => {
     }
     logAction({ user: req.user, action: 'referral.process', entity: 'referral', ip: req.ip, meta: { rewarded, skipped } }).catch(() => {});
     res.json({ ok: true, scanned: pend.length, rewarded, skipped });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Список рефералів ──
@@ -278,7 +278,7 @@ router.get('/', async (req, res) => {
          LEFT JOIN referral_codes rc ON rc.id=r.referral_code_id
         WHERE ${w.join(' AND ')} ORDER BY r.created_at DESC LIMIT 200`, p);
     res.json({ referrals: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/analytics', async (_req, res) => {
@@ -312,7 +312,7 @@ router.get('/analytics', async (_req, res) => {
       ltv: { referred: Math.round(Number(ltv.referred_ltv)), average: Math.round(Number(ltv.avg_ltv)) },
       cac: rewardSum.cnt ? Math.round(Number(rewardSum.total) / rewardSum.cnt) : 0,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // MLM-дерево клієнта (хто кого привів, 2 рівні вниз)
@@ -326,7 +326,7 @@ router.get('/tree/:client_id', async (req, res) => {
       tree.push({ client_id: a.referee_id, name: a.name, invited: l2.map(x => ({ client_id: x.referee_id, name: x.name })) });
     }
     res.json({ client_id: id, level1: tree, total_l1: tree.length, total_l2: tree.reduce((s, x) => s + x.invited.length, 0) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Деталь реферала + винагороди
@@ -341,7 +341,7 @@ router.get('/:id', async (req, res) => {
     if (!r.length) return res.status(404).json({ error: 'не знайдено' });
     const rewards = await q(`SELECT * FROM referral_rewards WHERE referral_id=$1 ORDER BY id`, [id]);
     res.json({ ...r[0], rewards });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

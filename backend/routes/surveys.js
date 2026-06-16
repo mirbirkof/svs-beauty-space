@@ -46,7 +46,7 @@ router.get('/nps/current', async (req, res) => {
     const total = r.total || 0;
     const nps = total ? Math.round(((r.promoters - r.detractors) / total) * 100) : null;
     res.json({ nps, promoters: r.promoters, passives: r.passives, detractors: r.detractors, total, period_days: days });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Тренд NPS помісячно за N місяців
@@ -64,7 +64,7 @@ router.get('/nps/trend', async (req, res) => {
        GROUP BY 1 ORDER BY 1`, [months]);
     res.json({ items: rows.map(m => ({ month: m.month, total: m.total,
       nps: m.total ? Math.round(((m.promoters - m.detractors) / m.total) * 100) : null })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Поточний CSAT салону
@@ -79,7 +79,7 @@ router.get('/csat/current', async (req, res) => {
          AND completed_at >= NOW() - ($1 || ' days')::interval`, [days]))[0];
     res.json({ csat_avg: r.avg ? Number(r.avg) : null, total: r.total,
       csat_percent: r.total ? Math.round((r.satisfied / r.total) * 100) : null, period_days: days });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Список опитувань
@@ -96,7 +96,7 @@ router.get('/', async (req, res) => {
             FROM survey_responses sr WHERE sr.survey_id=s.id AND sr.status='completed')::float avg_score
        FROM surveys s WHERE ${w.join(' AND ')} ORDER BY s.id DESC`, p);
     res.json({ items: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────────── CRUD ОПИТУВАННЯ ───────────────────────────────
@@ -126,7 +126,7 @@ router.post('/', async (req, res) => {
     await logAction({ user: req.user, action: 'survey.create', entity: 'survey', entity_id: row.id, ip: req.ip, meta: { type } });
     await emit('survey.created', { id: row.id, type }, { entityType: 'survey', entityId: row.id, actor: String(req.user?.id || 'system') });
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Деталі опитування з питаннями
@@ -136,7 +136,7 @@ router.get('/:id(\\d+)', async (req, res) => {
     if (!s) return res.status(404).json({ error: 'not found' });
     s.questions = await q(`SELECT * FROM survey_questions WHERE survey_id=$1 ORDER BY sort_order, id`, [s.id]);
     res.json(s);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/:id(\\d+)', async (req, res) => {
@@ -163,7 +163,7 @@ router.put('/:id(\\d+)', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not found' });
     await logAction({ user: req.user, action: 'survey.update', entity: 'survey', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id(\\d+)', async (req, res) => {
@@ -172,7 +172,7 @@ router.delete('/:id(\\d+)', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not found' });
     await logAction({ user: req.user, action: 'survey.delete', entity: 'survey', entity_id: row.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Зміна статусу: activate / pause / close
@@ -184,7 +184,7 @@ for (const [path, st] of [['activate', 'active'], ['pause', 'paused'], ['close',
       await logAction({ user: req.user, action: `survey.${path}`, entity: 'survey', entity_id: row.id, ip: req.ip });
       if (st === 'active') await emit('survey.activated', { id: row.id }, { entityType: 'survey', entityId: row.id, actor: String(req.user?.id || 'system') });
       res.json(row);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   });
 }
 
@@ -203,14 +203,14 @@ router.post('/:id(\\d+)/duplicate', async (req, res) => {
              SELECT $1,question_type,text,text_variant_b,help_text,is_required,options,skip_logic,sort_order
              FROM survey_questions WHERE survey_id=$2`, [copy.id, src.id]);
     res.status(201).json(copy);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────────── ПИТАННЯ ───────────────────────────────
 
 router.get('/:id(\\d+)/questions', async (req, res) => {
   try { res.json({ items: await q(`SELECT * FROM survey_questions WHERE survey_id=$1 AND tenant_id=current_tenant_id() ORDER BY sort_order, id`, [req.params.id]) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id(\\d+)/questions', async (req, res) => {
@@ -227,7 +227,7 @@ router.post('/:id(\\d+)/questions', async (req, res) => {
        b.is_required !== false, b.options ? JSON.stringify(b.options) : null,
        b.skip_logic ? JSON.stringify(b.skip_logic) : null, ord]))[0];
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/:id(\\d+)/questions/:qId(\\d+)', async (req, res) => {
@@ -247,7 +247,7 @@ router.put('/:id(\\d+)/questions/:qId(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE survey_questions SET ${fields.join(',')}, updated_at=NOW() WHERE id=$${p.length - 1} AND survey_id=$${p.length} RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id(\\d+)/questions/:qId(\\d+)', async (req, res) => {
@@ -255,7 +255,7 @@ router.delete('/:id(\\d+)/questions/:qId(\\d+)', async (req, res) => {
     const row = (await q(`DELETE FROM survey_questions WHERE id=$1 AND survey_id=$2 RETURNING id`, [req.params.qId, req.params.id]))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────────── ВІДПРАВКА / ВІДПОВІДІ ───────────────────────────────
@@ -281,7 +281,7 @@ router.post('/:id(\\d+)/send', async (req, res) => {
     }
     await logAction({ user: req.user, action: 'survey.send', entity: 'survey', entity_id: s.id, ip: req.ip, meta: { sent: created.length } });
     res.json({ ok: true, sent: created.length, skipped_cooldown: clients.length - created.length, items: created });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Список відповідей
@@ -295,7 +295,7 @@ router.get('/:id(\\d+)/responses', async (req, res) => {
     p.push(limit); const li = p.length; p.push(offset); const oi = p.length;
     const rows = await q(`SELECT sr.* FROM survey_responses sr WHERE ${w.join(' AND ')} ORDER BY sr.id DESC LIMIT $${li} OFFSET $${oi}`, p);
     res.json({ items: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Деталі однієї відповіді з розгорнутими answers
@@ -305,7 +305,7 @@ router.get('/:id(\\d+)/responses/:rId(\\d+)', async (req, res) => {
     if (!r) return res.status(404).json({ error: 'not found' });
     r.answers = await q(`SELECT a.*, qq.text question_text, qq.question_type FROM survey_answers a JOIN survey_questions qq ON qq.id=a.question_id WHERE a.response_id=$1 ORDER BY qq.sort_order`, [r.id]);
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Оновити статус ескалації (менеджер обробляє негатив)
@@ -322,7 +322,7 @@ router.put('/:id(\\d+)/responses/:rId(\\d+)/escalation', async (req, res) => {
     await logAction({ user: req.user, action: 'survey.escalation', entity: 'survey_response', entity_id: row.id, ip: req.ip, meta: { status: st } });
     if (st === 'resolved') await emit('survey.escalation_resolved', { id: row.id }, { entityType: 'survey_response', entityId: row.id, actor: String(req.user?.id || 'system') });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────────── АНАЛІТИКА ───────────────────────────────
@@ -355,7 +355,7 @@ router.get('/:id(\\d+)/analytics', async (req, res) => {
       ces_avg: a.ces_avg ? Number(a.ces_avg) : null, ces_total: a.ces_total,
       escalated: a.escalated, trend,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Розбивка по майстрах
@@ -372,7 +372,7 @@ router.get('/:id(\\d+)/analytics/by-master', async (req, res) => {
        GROUP BY sr.master_id, e.name ORDER BY responses DESC`, [req.params.id]);
     for (const r of rows) r.nps = r.nps_total ? Math.round(((r.promoters - r.detractors) / r.nps_total) * 100) : null;
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Розбивка по послугах
@@ -385,7 +385,7 @@ router.get('/:id(\\d+)/analytics/by-service', async (req, res) => {
        WHERE sr.survey_id=$1 AND sr.service_id IS NOT NULL AND sr.status='completed'
        GROUP BY sr.service_id, sv.name ORDER BY responses DESC`, [req.params.id]);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────────── ПУБЛІЧНІ (без авторизації) ───────────────────────────────
@@ -400,7 +400,7 @@ router.get('/public/:token', async (req, res) => {
     if (!s || s.status === 'closed' || s.status === 'archived') return res.status(410).json({ error: 'survey_closed' });
     const questions = await q(`SELECT id,question_type,text,text_variant_b,help_text,is_required,options,skip_logic,sort_order FROM survey_questions WHERE survey_id=$1 ORDER BY sort_order, id`, [s.id]);
     res.json({ survey: s, questions, response_status: r.status });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Відправити відповіді
@@ -456,7 +456,7 @@ router.post('/public/:token/submit', async (req, res) => {
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
     client.release();
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

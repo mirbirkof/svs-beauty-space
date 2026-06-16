@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
     const open = r.rows.filter((n) => n.status === 'open').length;
     res.json({ ok: true, notes: r.rows, open_count: open });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -57,7 +57,7 @@ router.post('/', async (req, res) => {
     logAction({ user: req.user, action: 'note.create', entity: 'crm_notes', entity_id: r.rows[0].id, ip: req.ip, meta: { page_path } });
     res.json({ ok: true, note: r.rows[0] });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -89,7 +89,7 @@ router.patch('/:id', async (req, res) => {
     logAction({ user: req.user, action: 'note.' + status, entity: 'crm_notes', entity_id: id, ip: req.ip });
     res.json({ ok: true, note: r.rows[0] });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -103,7 +103,7 @@ router.delete('/:id', async (req, res) => {
     logAction({ user: req.user, action: 'note.delete', entity: 'crm_notes', entity_id: id, ip: req.ip });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

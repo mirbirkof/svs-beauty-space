@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
         WHERE ${where}
         ORDER BY s.shift_date, m.name`, params);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/shifts/timesheet?from=&to= — табель: години по майстрах ──
@@ -56,7 +56,7 @@ router.get('/timesheet', async (req, res) => {
         GROUP BY m.id, m.name
         ORDER BY hours_worked DESC, m.name`, [from, to]);
     res.json({ from, to, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/shifts — створити/запланувати зміну ──
@@ -74,7 +74,7 @@ router.post('/', async (req, res) => {
       [master_id, shift_date, planned_start || null, planned_end || null, branch_id || null, notes || null, req.user?.display_name || null]);
     logAction({ user: req.user, action: 'shift.create', entity: 'staff_shift', entity_id: r.rows[0].id, ip: req.ip, meta: { master_id, shift_date } }).catch(()=>{});
     res.json({ ok: true, shift: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PATCH /api/shifts/:id — редагувати зміну ──
@@ -89,7 +89,7 @@ router.patch('/:id', async (req, res) => {
       `UPDATE staff_shifts SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, shift: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/shifts/:id/clock-in — відмітка приходу ──
@@ -101,7 +101,7 @@ router.post('/:id/clock-in', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     logAction({ user: req.user, action: 'shift.clock_in', entity: 'staff_shift', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
     res.json({ ok: true, shift: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/shifts/:id/clock-out — відмітка виходу ──
@@ -113,7 +113,7 @@ router.post('/:id/clock-out', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     logAction({ user: req.user, action: 'shift.clock_out', entity: 'staff_shift', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
     res.json({ ok: true, shift: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── DELETE /api/shifts/:id ──
@@ -123,7 +123,7 @@ router.delete('/:id', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     logAction({ user: req.user, action: 'shift.delete', entity: 'staff_shift', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

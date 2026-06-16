@@ -167,7 +167,7 @@ router.post('/transcribe', canManage, async (req, res) => {
       analysis: { topic: a.topic, intent: a.intent, sentiment: a.sentiment, outcome: a.outcome, summary: a.summary, entities: a.entities, objections: a.objections, is_escalation: !!a.is_escalation, crm_suggestion: a.crm_suggestion },
       scoring: { overall_score: compl.overall_score, compliance_percent: compl.compliance_percent, politeness: sc.pol, empathy: sc.emp, efficiency: sc.eff, upsell: sc.ups, weak_points: a.weak_points, coaching_tips: a.coaching_tips },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /recordings — список ───────────────────────────────
@@ -194,7 +194,7 @@ router.get('/recordings', canRead, async (req, res) => {
         ${w.length ? 'WHERE ' + w.join(' AND ') : ''}
         ORDER BY r.created_at DESC LIMIT $${p.length}`, p);
     res.json({ items: rows, total: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /recordings/:id — детали ───────────────────────────
@@ -206,7 +206,7 @@ router.get('/recordings/:id', canRead, async (req, res) => {
     const an = (await q(`SELECT * FROM ai_call_analysis WHERE recording_id=$1 ORDER BY id DESC LIMIT 1`, [rec.id]))[0] || null;
     const sc = an ? (await q(`SELECT * FROM ai_script_compliance WHERE analysis_id=$1 ORDER BY id DESC LIMIT 1`, [an.id]))[0] || null : null;
     res.json({ recording: rec, transcript: tr, analysis: an, compliance: sc });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /search — полнотекстовый поиск ─────────────────────
@@ -226,7 +226,7 @@ router.get('/search', canRead, async (req, res) => {
         WHERE t.tsv @@ to_tsquery('simple',$1)
         ORDER BY r.created_at DESC LIMIT 30`, [orQuery]).catch(() => []);
     res.json({ items: rows, total: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /scores/ranking — рейтинг администраторов ──────────
@@ -246,7 +246,7 @@ router.get('/scores/ranking', canRead, async (req, res) => {
         GROUP BY sc.operator_id, r.operator_name
         ORDER BY avg_score DESC NULLS LAST`, [days]).catch(() => []);
     res.json({ ranking: rows, period_days: days });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /coaching/:operator — персональные рекомендации ────
@@ -275,7 +275,7 @@ router.get('/coaching/:operator', canRead, async (req, res) => {
       top_weak_points: weak.map(w => ({ area: w.wp, occurrence_pct: callsTotal ? Math.round(100 * w.cnt / callsTotal) : null })),
       coaching_tips: tips.map(t => t.tip),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Scripts CRUD ───────────────────────────────────────────
@@ -283,7 +283,7 @@ router.get('/scripts', canRead, async (req, res) => {
   try {
     const rows = await q(`SELECT id, name, scenario, jsonb_array_length(steps) steps_count, is_active FROM ai_call_scripts ORDER BY is_active DESC, name`);
     res.json({ scripts: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/scripts', canManage, async (req, res) => {
   try {
@@ -296,7 +296,7 @@ router.post('/scripts', canManage, async (req, res) => {
       [branch_id || null, name, scenario, JSON.stringify(useSteps), !!is_active, req.user?.id || null]
     ))[0];
     res.json({ script: row });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.put('/scripts/:id', canManage, async (req, res) => {
   try {
@@ -308,7 +308,7 @@ router.put('/scripts/:id', canManage, async (req, res) => {
     const rows = await q(`UPDATE ai_call_scripts SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING id, name, scenario, is_active`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ script: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /analytics — сводка ────────────────────────────────
@@ -349,7 +349,7 @@ router.get('/analytics', canRead, async (req, res) => {
       top_decline_reasons: decline.map(d => ({ reason: d.obj, pct: totDecl ? Math.round(100 * d.cnt / totDecl) : null })),
       by_operator: byOp,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

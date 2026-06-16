@@ -193,7 +193,7 @@ router.get('/', canRead, async (req, res) => {
               (SELECT MAX(started_at) FROM ai_agent_sessions s WHERE s.agent_id=a.id) AS last_run_at
          FROM ai_agents a ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY updated_at DESC LIMIT 200`, p);
     res.json({ items: rows, total: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/', canManage, async (req, res) => {
@@ -210,7 +210,7 @@ router.post('/', canManage, async (req, res) => {
        tool_names, JSON.stringify(guardrails), schedule ? JSON.stringify(schedule) : null, event_triggers, req.user?.id || null]
     ))[0];
     res.json({ agent: row });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/metrics', canRead, async (req, res) => {
@@ -236,7 +236,7 @@ router.get('/metrics', canRead, async (req, res) => {
       sessions_by_trigger: byTrigger,
       top_errors: errs,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/tools', canRead, async (req, res) => {
@@ -246,7 +246,7 @@ router.get('/tools', canRead, async (req, res) => {
       `SELECT name, category, description, is_destructive, is_enabled FROM ai_agent_tools
         ${category ? 'WHERE category=$1' : ''} ORDER BY category, name`, category ? [category] : []);
     res.json({ tools: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/sessions/:sid', canRead, async (req, res) => {
@@ -255,7 +255,7 @@ router.get('/sessions/:sid', canRead, async (req, res) => {
     if (!s) return res.status(404).json({ error: 'сесію не знайдено' });
     const acts = await q(`SELECT step_index, action_type, tool_name, input, output, reasoning, confidence, status, error_message, created_at FROM ai_agent_actions WHERE session_id=$1 ORDER BY step_index`, [req.params.sid]);
     res.json({ session: s, actions: acts });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/:id', canRead, async (req, res) => {
@@ -268,7 +268,7 @@ router.get('/:id', canRead, async (req, res) => {
     a.tools = catalogFor(a.tool_names || []);
     a.metrics = { total_runs: metrics.total_runs || 0, success_rate: metrics.total_runs ? Number((metrics.ok / metrics.total_runs).toFixed(2)) : null, avg_duration_ms: metrics.avg_ms || 0 };
     res.json({ agent: a });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/:id', canManage, async (req, res) => {
@@ -287,7 +287,7 @@ router.put('/:id', canManage, async (req, res) => {
     const rows = await q(`UPDATE ai_agents SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING id, version, status`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ agent: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id', canManage, async (req, res) => {
@@ -295,7 +295,7 @@ router.delete('/:id', canManage, async (req, res) => {
     const rows = await q(`UPDATE ai_agents SET status='archived', updated_at=NOW() WHERE id=$1 RETURNING id, status`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ agent: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/activate', canManage, async (req, res) => {
@@ -303,7 +303,7 @@ router.post('/:id/activate', canManage, async (req, res) => {
     const rows = await q(`UPDATE ai_agents SET status='active', updated_at=NOW() WHERE id=$1 RETURNING id, status`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ agent: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/pause', canManage, async (req, res) => {
@@ -311,7 +311,7 @@ router.post('/:id/pause', canManage, async (req, res) => {
     const rows = await q(`UPDATE ai_agents SET status='paused', updated_at=NOW() WHERE id=$1 RETURNING id, status`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ agent: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Run / Test ─────────────────────────────────────────────
@@ -325,7 +325,7 @@ router.post('/:id/run', canManage, async (req, res) => {
     if (!message) return res.status(400).json({ error: 'message обовʼязковий' });
     const r = await runAgent(agent, { message, client_id, user_id: req.user?.id, triggered_by: 'user', confirm_destructive: !!confirm_destructive });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/test', canManage, async (req, res) => {
@@ -337,7 +337,7 @@ router.post('/:id/test', canManage, async (req, res) => {
     if (!message) return res.status(400).json({ error: 'message обовʼязковий' });
     const r = await runAgent(agent, { message, client_id, user_id: req.user?.id, triggered_by: 'user', dryRun: true });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/:id/sessions', canRead, async (req, res) => {
@@ -350,7 +350,7 @@ router.get('/:id/sessions', canRead, async (req, res) => {
       `SELECT id, triggered_by, status, tool_calls_count, cost_usd, duration_ms, final_response, started_at
          FROM ai_agent_sessions WHERE ${w.join(' AND ')} ORDER BY started_at DESC LIMIT 100`, p);
     res.json({ items: rows, total: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/:id/memory', canRead, async (req, res) => {
@@ -361,7 +361,7 @@ router.get('/:id/memory', canRead, async (req, res) => {
     if (scope_id) { p.push(scope_id); w.push(`scope_id=$${p.length}`); }
     const rows = await q(`SELECT scope, scope_id, key, value, relevance_score, last_accessed_at FROM ai_agent_memory WHERE ${w.join(' AND ')} ORDER BY relevance_score DESC LIMIT 100`, p);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

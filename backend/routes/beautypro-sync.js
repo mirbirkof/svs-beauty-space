@@ -83,7 +83,7 @@ router.post('/client', requirePerm('sync.write'), async (req, res) => {
     res.json(result);
   } catch (e) {
     console.error('[sync:client]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -104,7 +104,7 @@ router.post('/all-clients', requirePerm('sync.write'), async (req, res) => {
     res.json({ ok: true, processed: results.length, success: ok, failed: results.length - ok, details: results });
   } catch (e) {
     console.error('[sync:all]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

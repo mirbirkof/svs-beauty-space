@@ -91,7 +91,7 @@ router.get('/masters', async (req, res) => {
       return { ...m, week };
     });
     res.json({ items, count: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PATCH /api/schedule/masters/:id — сменить статус (работает/уволен) ──
@@ -108,7 +108,7 @@ router.patch('/masters/:id', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
     res.json({ ok: true, master: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/schedule/masters/:id — один мастер с расписанием ──
@@ -118,7 +118,7 @@ router.get('/masters/:id', async (req, res) => {
     const r = await pool.query('SELECT * FROM masters WHERE id = $1', [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/schedule/masters/:id/portfolio — портфолио мастера (профиль + статистика) ──
@@ -157,7 +157,7 @@ router.get('/masters/:id/portfolio', async (req, res) => {
         WHERE a.master_id = $1 ORDER BY a.starts_at DESC NULLS LAST LIMIT 30`, [id]);
     res.json({ ok: true, master: m.rows[0], stats: stat.rows[0],
                top_services: topServices.rows, recent: recent.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PATCH /api/schedule/masters/:id/profile — редактирование профиля мастера ──
@@ -188,7 +188,7 @@ router.patch('/masters/:id/profile', async (req, res) => {
       `UPDATE masters SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
     res.json({ ok: true, master: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PUT /api/schedule/masters/:id/schedule — обновить расписание мастера ──
@@ -223,7 +223,7 @@ router.put('/masters/:id/schedule', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
     res.json({ ok: true, master: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/masters/:id/dayoff — добавить разовый выходной ──
@@ -241,7 +241,7 @@ router.post('/masters/:id/dayoff', async (req, res) => {
     sched.exceptions[date] = { off: true, reason: reason || null };
     await pool.query('UPDATE masters SET schedule_json = $1 WHERE id = $2', [JSON.stringify(sched), req.params.id]);
     res.json({ ok: true, date, off: true, reason });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── DELETE /api/schedule/masters/:id/dayoff/:date — убрать разовый выходной ──
@@ -254,7 +254,7 @@ router.delete('/masters/:id/dayoff/:date', async (req, res) => {
     if (sched.exceptions) delete sched.exceptions[req.params.date];
     await pool.query('UPDATE masters SET schedule_json = $1 WHERE id = $2', [JSON.stringify(sched), req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/schedule/month?ym=YYYY-MM — місячна матриця графіків (як DIKIDI) ──
@@ -348,7 +348,7 @@ router.get('/month', async (req, res) => {
     });
 
     res.json({ ym, days_in_month: daysInMonth, dates, items, count: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/day — ручне редагування зміни конкретного дня ──
@@ -374,7 +374,7 @@ router.post('/day', async (req, res) => {
                  to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end`,
       [master_id, work_date, st, en]);
     res.json({ ok: true, day: r.rows[0], off: !!off });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── DELETE /api/schedule/day?master_id=&date= — прибрати ручний запис, повернути до шаблону ──
@@ -385,7 +385,7 @@ router.delete('/day', async (req, res) => {
     if (!master_id || !date) return res.status(400).json({ error: 'master_id and date required' });
     await pool.query("DELETE FROM master_schedule_days WHERE master_id=$1 AND work_date=$2 AND source='manual'", [master_id, date]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/copy-week — копіювати тиждень графіка на інший тиждень ──
@@ -428,7 +428,7 @@ router.post('/copy-week', async (req, res) => {
       copied++;
     }
     res.json({ ok: true, copied, from: fmt(srcMon), to: fmt(dstMon) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/schedule/availability?date=2026-06-10 — кто работает в конкретный день ──
@@ -465,7 +465,7 @@ router.get('/availability', async (req, res) => {
     }
 
     res.json({ date, day: dayOfWeek, available, count: available.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/sync-beautypro — подтянуть мастеров из BeautyPro ──
@@ -503,7 +503,7 @@ router.post('/sync-beautypro', async (req, res) => {
     }
 
     res.json({ ok: true, synced, errors: errors.length ? errors : undefined });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/schedule/journal?date=YYYY-MM-DD ──────────────
@@ -625,7 +625,7 @@ router.get('/journal', async (req, res) => {
     } catch (_) { /* міграція 050 ще не застосована */ }
 
     res.json({ date, day: dayKey, masters, appointments: appts, blocks, count: appts.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/blocks — заблокувати час майстра (CRM-06 06.05) ──
@@ -650,7 +650,7 @@ router.post('/blocks', async (req, res) => {
       [master_id, sd.toISOString(), ed.toISOString(), reason || null, type, (req.user && req.user.display_name) || null]
     );
     res.json({ ok: true, block: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── DELETE /api/schedule/blocks/:id — зняти блокування ──
@@ -664,7 +664,7 @@ router.delete('/blocks/:id', async (req, res) => {
     }
     await pool.query(`DELETE FROM time_blocks WHERE id=$1`, [id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PATCH /api/schedule/appointments/:id — заметка / статус ──
@@ -721,7 +721,7 @@ router.patch('/appointments/:id', async (req, res) => {
       } catch (e) { stock = { written: false, error: e.message }; }
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/appointments — створення запису адміном «в моменті» ──
@@ -781,7 +781,7 @@ router.post('/appointments', async (req, res) => {
       }).catch(e => console.error('[schedule] confirm enqueue:', e.message));
     }
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /api/schedule/appointments/:id/pay — провести оплату ──
@@ -852,7 +852,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     } catch (e) { stock = { written: false, error: e.message }; }
 
     res.json({ ok: true, operation_id: op.rows[0].id, amount, method, stock });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── DELETE /api/schedule/appointments/:id — видалити запис ──
@@ -871,7 +871,7 @@ router.delete('/appointments/:id', async (req, res) => {
     );
     await pool.query(`DELETE FROM appointments WHERE id=$1`, [id]);
     res.json({ ok: true, deleted: id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

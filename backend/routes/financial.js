@@ -101,7 +101,7 @@ router.get('/dashboard', requirePerm('reports.finance'), async (req, res) => {
       };
     }
     res.json({ period: { from: fromD, to: toD }, ...cur, comparison });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /api/financial/dashboard/trend ───────────────────
@@ -116,7 +116,7 @@ router.get('/dashboard/trend', requirePerm('reports.finance'), async (req, res) 
           AND created_at >= NOW() - ($1||' days')::interval
         GROUP BY d ORDER BY d`, [days]);
     res.json({ metric: 'revenue', days, data: r.rows.map(x => ({ date: x.d, value: Number(x.v) })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Telegram-зведення ────────────────────────────────────
@@ -160,7 +160,7 @@ router.get('/digest/settings', requirePerm('reports.finance'), async (req, res) 
   try {
     const r = await pool.query(`SELECT * FROM financial_digest_settings WHERE id=1`);
     res.json(r.rows[0] || {});
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/digest/settings', requirePerm('reports.finance'), async (req, res) => {
@@ -171,7 +171,7 @@ router.put('/digest/settings', requirePerm('reports.finance'), async (req, res) 
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     const r = await pool.query(`UPDATE financial_digest_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE id=1 RETURNING *`, vals);
     res.json({ ok: true, settings: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST надіслати зараз (тест) ──────────────────────────
@@ -183,7 +183,7 @@ router.post('/digest/send-now', requirePerm('reports.finance'), async (req, res)
     const text = await buildDigest(st);
     await tgSend(chat, text);
     res.json({ ok: true, sent_to: chat });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── CRON: щоденне зведення ───────────────────────────────

@@ -5,7 +5,17 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-app.use(cors({ origin: '*', methods: ['GET','POST','PATCH','DELETE','OPTIONS'] }));
+app.use(cors({
+  origin: [
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    /\.github\.io$/,
+    /svs-shop-api\.onrender\.com$/,
+    'https://svsbeautyworld.com',
+    'https://www.svsbeautyworld.com',
+  ],
+  methods: ['GET','POST','PATCH','DELETE','OPTIONS'],
+}));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'dikidi-features', ts: new Date().toISOString() }));

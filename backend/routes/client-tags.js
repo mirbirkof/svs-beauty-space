@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
          LEFT JOIN (SELECT tag_id, COUNT(*) c FROM client_tags GROUP BY tag_id) cnt ON cnt.tag_id = d.id
         ORDER BY d.sort_order, LOWER(d.name)`);
     res.json({ items: r.rows, total: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── POST / — створити тег ─── */
@@ -40,7 +40,7 @@ router.post('/', async (req, res) => {
       [b.name.trim(), slugify(b.slug || b.name), b.color || null, b.description || null, b.sort_order]);
     await logAction({ user: req.user, action: 'client_tag.create', entity: 'client_tag', entity_id: r.rows[0].id, meta: { name: b.name } });
     res.json({ ok: true, tag: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── PATCH /:id — перейменувати/перефарбувати ─── */
@@ -65,7 +65,7 @@ router.patch('/:id', async (req, res) => {
     const r = await pool.query(`UPDATE client_tag_defs SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING *`, vals);
     await logAction({ user: req.user, action: 'client_tag.update', entity: 'client_tag', entity_id: id, meta: { fields: Object.keys(b) } });
     res.json({ ok: true, tag: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── DELETE /:id — видалити тег (привʼязки знімаються каскадом) ─── */
@@ -78,7 +78,7 @@ router.delete('/:id', async (req, res) => {
     await pool.query(`DELETE FROM client_tag_defs WHERE id=$1`, [id]);
     await logAction({ user: req.user, action: 'client_tag.delete', entity: 'client_tag', entity_id: id, meta: { name: cur.rows[0].name } });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── GET /client/:clientId — теги клієнта ─── */
@@ -89,7 +89,7 @@ router.get('/client/:clientId', async (req, res) => {
          JOIN client_tag_defs d ON d.id = ct.tag_id
         WHERE ct.client_id = $1 ORDER BY d.sort_order, LOWER(d.name)`, [parseInt(req.params.clientId, 10)]);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── POST /assign — навісити тег ─── */
@@ -108,7 +108,7 @@ router.post('/assign', async (req, res) => {
       [clientId, tagId, (req.user && (req.user.name || req.user.label)) || null]);
     await logAction({ user: req.user, action: 'client_tag.assign', entity: 'client', entity_id: clientId, meta: { tag: tg.rows[0].name } });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─── POST /unassign — зняти тег ─── */
@@ -121,7 +121,7 @@ router.post('/unassign', async (req, res) => {
     await pool.query(`DELETE FROM client_tags WHERE client_id=$1 AND tag_id=$2`, [clientId, tagId]);
     await logAction({ user: req.user, action: 'client_tag.unassign', entity: 'client', entity_id: clientId, meta: { tag: tg.rows[0] && tg.rows[0].name } });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

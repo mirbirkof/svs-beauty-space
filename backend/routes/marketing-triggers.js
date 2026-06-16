@@ -96,7 +96,7 @@ async function dailyTick() {
 // ── API ─────────────────────────────────────────────────────────────
 router.get('/', requirePerm('promo.write'), async (req, res) => {
   try { res.json({ items: (await getPool().query(`SELECT * FROM marketing_triggers ORDER BY id`)).rows }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/:id', requirePerm('promo.write'), async (req, res) => {
@@ -112,7 +112,7 @@ router.patch('/:id', requirePerm('promo.write'), async (req, res) => {
     const r = await pool.query(`UPDATE marketing_triggers SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${args.length} RETURNING *`, args);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, trigger: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Ручной прогон (для теста) — без cooldown по запросу force=true

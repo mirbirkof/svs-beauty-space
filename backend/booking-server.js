@@ -27,8 +27,9 @@ app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISO
 app.use('/api/booking', bookingRoutes);
 
 app.use((err, req, res, next) => {
-  console.error('[svs-booking]', err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal error' });
+  console.error('[svs-booking]', err);
+  const { safeMessage } = require('./lib/safe-error');
+  res.status(err.status || 500).json({ error: safeMessage(err, 'Internal error') });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

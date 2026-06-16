@@ -64,7 +64,7 @@ router.get('/cities', async (req, res) => {
     if (e.message.includes('not configured')) {
       return res.status(503).json({ error: 'np-not-configured', message: 'Ожидаются API ключи Нова Пошта' });
     }
-    res.status(500).json({ error: 'np-failed', detail: e.message });
+    res.status(500).json({ error: 'np-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -80,7 +80,7 @@ router.get('/branches', async (req, res) => {
     if (e.message.includes('not configured')) {
       return res.status(503).json({ error: 'np-not-configured' });
     }
-    res.status(500).json({ error: 'np-failed', detail: e.message });
+    res.status(500).json({ error: 'np-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -103,7 +103,7 @@ router.post('/calculate', async (req, res) => {
     if (e.message.includes('not configured')) {
       return res.status(503).json({ error: 'np-not-configured' });
     }
-    res.status(500).json({ error: 'np-failed', detail: e.message });
+    res.status(500).json({ error: 'np-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -199,7 +199,7 @@ router.post('/ttn', requirePerm('novaposhta.write'), async (req, res) => {
     if (e.message.includes('not configured')) {
       return res.status(503).json({ error: 'np-not-configured' });
     }
-    res.status(500).json({ error: 'np-failed', detail: e.message });
+    res.status(500).json({ error: 'np-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -213,7 +213,7 @@ router.get('/track/:ttn', async (req, res) => {
     if (e.message.includes('not configured')) {
       return res.status(503).json({ error: 'np-not-configured' });
     }
-    res.status(500).json({ error: 'np-failed', detail: e.message });
+    res.status(500).json({ error: 'np-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

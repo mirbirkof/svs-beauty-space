@@ -26,7 +26,7 @@ router.get('/presets', requirePerm('reports.read'), async (req, res) => {
       out.push({ key, name: v.name, count });
     }
     res.json({ items: out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Превью произвольных правил: сколько клиентов попадёт
@@ -43,7 +43,7 @@ router.get('/', requirePerm('reports.read'), async (req, res) => {
   try {
     const r = await getPool().query(`SELECT * FROM segments ORDER BY created_at DESC`);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Члены сегмента (по id или preset:key)
@@ -67,7 +67,7 @@ router.post('/', requirePerm('promo.write'), async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [name, description || null, type, preset_key || null, JSON.stringify(rules || {}), req.user?.id || null]);
     res.json({ ok: true, segment: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Обновить / пересчитать кэш количества
@@ -85,7 +85,7 @@ router.patch('/:id', requirePerm('promo.write'), async (req, res) => {
     const r = await pool.query(`UPDATE segments SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${args.length} RETURNING *`, args);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, segment: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Пересчитать member_count
@@ -104,7 +104,7 @@ router.delete('/:id', requirePerm('promo.write'), async (req, res) => {
     const r = await getPool().query(`DELETE FROM segments WHERE id=$1 RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Управление статическими сегментами
@@ -115,7 +115,7 @@ router.post('/:id/members', requirePerm('promo.write'), async (req, res) => {
     const pool = getPool();
     for (const cid of ids) await pool.query(`INSERT INTO segment_members(segment_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [req.params.id, cid]);
     res.json({ ok: true, added: ids.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 async function loadSegment(idOrPreset) {

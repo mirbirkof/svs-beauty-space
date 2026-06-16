@@ -203,7 +203,7 @@ router.post('/link', adminOnly, async (req, res) => {
     res.json({ ok: true, user: r.rows[0], created: r.rows[0].created });
   } catch (e) {
     console.error('[auth-staff:link]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -279,7 +279,7 @@ router.post('/request', async (req, res) => {
     res.json({ ok: true, message: 'Код відправлено у Telegram' });
   } catch (e) {
     console.error('[auth-staff:request]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -336,7 +336,7 @@ router.post('/verify', async (req, res) => {
     });
   } catch (e) {
     console.error('[auth-staff:verify]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -431,7 +431,7 @@ router.post('/login-password', async (req, res) => {
       user: { id: user.id, display_name: user.display_name, role_id: user.role_id } });
   } catch (e) {
     console.error('[auth-staff:login-password]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -464,7 +464,7 @@ router.post('/set-password', async (req, res) => {
     res.json({ ok: true, message: me.password_hash ? 'Пароль змінено' : 'Пароль встановлено' });
   } catch (e) {
     console.error('[auth-staff:set-password]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

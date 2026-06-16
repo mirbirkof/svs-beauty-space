@@ -130,7 +130,7 @@ router.post('/order/:id', requirePerm('notify.write'), async (req, res) => {
     const result = await notifyOrderStatus(parseInt(req.params.id, 10), req.body?.status, req.body?.ttn);
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -141,7 +141,7 @@ router.post('/test', requirePerm('notify.write'), async (req, res) => {
     const result = await tgSend(chat, '<b>SVS Shop API</b>\nТест відправки повідомлення.');
     res.json({ ok: true, result });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

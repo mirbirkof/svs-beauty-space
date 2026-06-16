@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM branches WHERE is_active=TRUE ORDER BY is_default DESC, id`);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/', requirePerm('branches.write'), async (req, res) => {
@@ -26,7 +26,7 @@ router.post('/', requirePerm('branches.write'), async (req, res) => {
     );
     await logAction({ user: req.user, action: 'branch.create', entity: 'branch', entity_id: r.rows[0].id, meta: { code, name } });
     res.json({ ok: true, branch: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/:id', requirePerm('branches.write'), async (req, res) => {
@@ -50,7 +50,7 @@ router.patch('/:id', requirePerm('branches.write'), async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'branch.update', entity: 'branch', entity_id: id });
     res.json({ ok: true, branch: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Назначить мастера в филиал
@@ -64,7 +64,7 @@ router.post('/:id/masters/:masterId', requirePerm('branches.write'), async (req,
       [Number(req.params.masterId), Number(req.params.id), !!is_primary]
     );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id/masters/:masterId', requirePerm('branches.write'), async (req, res) => {
@@ -72,7 +72,7 @@ router.delete('/:id/masters/:masterId', requirePerm('branches.write'), async (re
     await pool.query(`DELETE FROM master_branches WHERE branch_id=$1 AND master_id=$2`,
       [Number(req.params.id), Number(req.params.masterId)]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Метрики по филиалам (для дашборда владельца)
@@ -87,7 +87,7 @@ router.get('/stats/overview', requirePerm('reports.read'), async (req, res) => {
          FROM branches b WHERE b.is_active=TRUE ORDER BY b.id`
     );
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

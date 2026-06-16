@@ -78,7 +78,7 @@ router.post('/waitlist', async (req, res) => {
     res.json({ ok: true, ...r.rows[0] });
   } catch (e) {
     console.error('[waitlist/add]', e.message);
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -91,7 +91,7 @@ router.get('/waitlist', requirePerm('waitlist.read'), async (req, res) => {
       ORDER BY created_at DESC LIMIT 200
     `);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/waitlist/mine — телефон берём ТОЛЬКО из авторизованной сессии кабинета
@@ -105,7 +105,7 @@ router.get('/waitlist/mine', authClient(), async (req, res) => {
       [phone]
     );
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/waitlist/:id — admin
@@ -127,7 +127,7 @@ router.patch('/waitlist/:id', requirePerm('waitlist.write'), async (req, res) =>
     );
     if (!r.rows.length) return res.status(404).json({ error: 'not found' });
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════════════════ BOOKING ════════════════════
@@ -152,7 +152,7 @@ router.get('/booking/schedule', async (req, res) => {
     res.json({ ok: true, slots });
   } catch (e) {
     console.error('[booking/schedule]', e.message);
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -222,7 +222,7 @@ router.post('/booking/confirm', async (req, res) => {
     res.json({ ok: true, ...r.rows[0] });
   } catch (e) {
     console.error('[booking/confirm]', e.message);
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -245,7 +245,7 @@ router.get('/booking/history', authClient(), async (req, res) => {
     });
   } catch (e) {
     console.error('[booking/history]', e.message);
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -257,7 +257,7 @@ router.get('/booking/admin/all', requirePerm('booking.read'), async (req, res) =
       ORDER BY date_from DESC LIMIT 500
     `);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/booking/services — из BeautyPro (для UI магазина и сайта)
@@ -266,7 +266,7 @@ router.get('/booking/services', async (req, res) => {
     const data = await bp.listServices();
     const list = data.data || data.items || data;
     res.json({ items: Array.isArray(list) ? list : [], count: Array.isArray(list) ? list.length : 0 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/booking/masters
@@ -275,7 +275,7 @@ router.get('/booking/masters', async (req, res) => {
     const data = await bp.listEmployees();
     const list = data.data || data.items || data;
     res.json({ items: Array.isArray(list) ? list : [], count: Array.isArray(list) ? list.length : 0 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

@@ -22,7 +22,7 @@ router.get('/_variants', async (req, res) => {
       vals
     );
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // список расходников услуги (с названиями товаров и остатком)
@@ -40,7 +40,7 @@ router.get('/:serviceId', async (req, res) => {
       [sid]
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // добавить/обновить расходник услуги
@@ -59,7 +59,7 @@ router.post('/:serviceId', requirePerm('settings.write'), async (req, res) => {
     );
     await logAction({ user: req.user, action: 'consumable.set', entity: 'service', entity_id: sid, meta: { variant_id, qty } });
     res.json({ ok: true, item: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:serviceId/:variantId', requirePerm('settings.write'), async (req, res) => {
@@ -69,7 +69,7 @@ router.delete('/:serviceId/:variantId', requirePerm('settings.write'), async (re
       [Number(req.params.serviceId), Number(req.params.variantId)]
     );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

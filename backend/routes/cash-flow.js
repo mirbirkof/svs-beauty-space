@@ -38,7 +38,7 @@ router.get('/', async (req, res) => {
        FROM cash_operations WHERE ${cond.join(' AND ')}`, params);
     const inflow = Number(tot.rows[0].inflow), outflow = Number(tot.rows[0].outflow);
     res.json({ items: r.rows.map(x => ({ ...x, type: x.type === 'in' ? 'inflow' : 'outflow', amount: Number(x.amount) })), totals: { inflow, outflow, net: inflow - outflow } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ РАХУНКИ ════════
@@ -47,7 +47,7 @@ router.get('/accounts', async (req, res) => {
     const r = await pool.query(`SELECT * FROM bank_accounts ORDER BY sort_order, id`);
     const total = r.rows.filter(a => a.active).reduce((s, a) => s + Number(a.current_balance), 0);
     res.json({ items: r.rows, total_balance: total });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/accounts', async (req, res) => {
   try {
@@ -59,7 +59,7 @@ router.post('/accounts', async (req, res) => {
       [b.name, ['cash', 'bank', 'card_terminal', 'online'].includes(b.type) ? b.type : 'cash',
        b.bank_name || null, b.account_number || null, Number(b.current_balance) || 0, b.min_balance_alert != null ? Number(b.min_balance_alert) : null, b.sort_order ?? 0]);
     res.json({ ok: true, account: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.patch('/accounts/:id', async (req, res) => {
   try {
@@ -71,7 +71,7 @@ router.patch('/accounts/:id', async (req, res) => {
     const r = await pool.query(`UPDATE bank_accounts SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, account: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ ПЕРЕКАЗИ ════════
@@ -93,7 +93,7 @@ router.post('/transfers', async (req, res) => {
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'cashflow.transfer', entity: 'account_transfer', entity_id: t.id, ip: req.ip, meta: { amt } }).catch(() => {});
     res.json({ ok: true, transfer: t });
-  } catch (e) { await client.query('ROLLBACK').catch(() => {}); res.status(500).json({ error: e.message }); }
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
 
@@ -110,7 +110,7 @@ router.get('/calendar', async (req, res) => {
     const r = await pool.query(`SELECT * FROM payment_calendar ${where} ORDER BY due_date`, params);
     const due = r.rows.filter(p => ['planned', 'overdue'].includes(p.status)).reduce((s, p) => s + (p.type === 'outflow' ? Number(p.amount) : 0), 0);
     res.json({ payments: r.rows, total_due: due });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/calendar', async (req, res) => {
   try {
@@ -122,7 +122,7 @@ router.post('/calendar', async (req, res) => {
       [b.account_id || null, b.type === 'inflow' ? 'inflow' : 'outflow', b.category || 'other', Number(b.amount),
        b.counterparty_name || null, b.description || null, b.due_date, !!b.recurring, b.recurrence_rule || null, req.user?.display_name || null]);
     res.json({ ok: true, payment: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.patch('/calendar/:id', async (req, res) => {
   try {
@@ -134,7 +134,7 @@ router.patch('/calendar/:id', async (req, res) => {
     const r = await pool.query(`UPDATE payment_calendar SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, payment: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/calendar/:id/mark-paid', async (req, res) => {
   const client = await pool.connect();
@@ -159,14 +159,14 @@ router.post('/calendar/:id/mark-paid', async (req, res) => {
     }
     await client.query('COMMIT');
     res.json({ ok: true });
-  } catch (e) { await client.query('ROLLBACK').catch(() => {}); res.status(500).json({ error: e.message }); }
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
 router.delete('/calendar/:id', async (req, res) => {
   try {
     await pool.query(`DELETE FROM payment_calendar WHERE id=$1`, [+req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ ПРОГНОЗ ════════
@@ -202,7 +202,7 @@ router.get('/forecast', async (req, res) => {
       if (i % 1 === 0 && (i <= 30 || i % 5 === 0)) series.push({ date: d, balance: Math.round(balance), expected_inflow: Math.round(dailyInflow), planned: Math.round(plannedDelta) });
     }
     res.json({ scenario, days, start_balance: Math.round(Number(acc.rows[0].s)), threshold, daily_inflow: Math.round(dailyInflow), forecast: series, gap_date: gapDate, gap_amount: gapAmount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ ЗВІТ ДДС ════════
@@ -224,7 +224,7 @@ router.get('/report', async (req, res) => {
     }
     const periods = Object.values(map).map(p => ({ ...p, net: p.inflow - p.outflow }));
     res.json({ periods });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

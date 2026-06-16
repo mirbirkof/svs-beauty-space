@@ -59,7 +59,7 @@ router.get('/reviews', requirePerm('reports.read'), async (req, res) => {
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY r.created_at DESC LIMIT $${args.length - 1} OFFSET $${args.length}`, args);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/reviews/:id', requirePerm('reports.read'), async (req, res) => {
@@ -67,7 +67,7 @@ router.get('/reviews/:id', requirePerm('reports.read'), async (req, res) => {
     const r = await getPool().query(`SELECT * FROM reviews WHERE id=$1`, [req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ review: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/reputation/reviews/:id/reply  { reply }
@@ -82,7 +82,7 @@ router.post('/reviews/:id/reply', requirePerm('reviews.write'), async (req, res)
       [String(reply).slice(0, 2000), req.user?.id || null, req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, review: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/reputation/reviews/:id  { status, internal_note, sentiment }
@@ -98,7 +98,7 @@ router.patch('/reviews/:id', requirePerm('reviews.write'), async (req, res) => {
     const r = await getPool().query(`UPDATE reviews SET ${sets.join(', ')} WHERE id=$${args.length} RETURNING *`, args);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, review: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/reputation/reviews/:id/escalate
@@ -109,13 +109,13 @@ router.post('/reviews/:id/escalate', requirePerm('reviews.write'), async (req, r
     const rv = r.rows[0];
     await alertManager(`⚠️ <b>Ескалація відгуку</b>\nОцінка: ${'★'.repeat(rv.rating)} (${rv.rating}/5)\nМайстер: ${rv.master_name || '—'}\n${rv.text ? '«' + rv.text.slice(0, 300) + '»' : 'без тексту'}`);
     res.json({ ok: true, review: rv });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Настройки ───────────────────────────────────────────────────────
 router.get('/settings', requirePerm('reports.read'), async (req, res) => {
   try { res.json(await getSettings(getPool())); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.patch('/settings', requirePerm('reviews.write'), async (req, res) => {
   try {
@@ -127,7 +127,7 @@ router.patch('/settings', requirePerm('reviews.write'), async (req, res) => {
     args.push(TENANT);
     await pool.query(`UPDATE reputation_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE tenant_id=$${args.length}`, args);
     res.json(await getSettings(pool));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Аналитика репутации ─────────────────────────────────────────────
@@ -165,7 +165,7 @@ router.get('/analytics', requirePerm('reports.read'), async (req, res) => {
       response_rate: b.total ? Math.round((b.replied / b.total) * 100) : null,
       trend: trend.rows,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Запрос отзыва у клиента (после визита) ──────────────────────────
@@ -191,7 +191,7 @@ router.post('/request-review', requirePerm('reviews.write'), async (req, res) =>
       `INSERT INTO review_request_log (client_id, appointment_id, channel) VALUES ($1,$2,$3)`,
       [client_id, appointment_id || null, out.channel || channel || null]);
     res.json({ ok: !out.skipped, ...out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Публичная двухступенчатая форма (без авторизации) ───────────────
@@ -233,7 +233,7 @@ router.post('/feedback', async (req, res) => {
       redirect: redirect ? (st.google_review_url || null) : null,
       thanks: redirect ? 'Дякуємо! Будемо вдячні за відгук на Google.' : 'Дякуємо за чесний відгук — ми обовʼязково попрацюємо над цим.',
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

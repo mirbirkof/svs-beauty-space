@@ -76,7 +76,7 @@ router.post('/products', async (req, res) => {
       [id, name, brand_id, category_id, photo, description, featured]
     );
     res.status(201).json({ ok: true, product: r.rows[0] });
-  } catch (e) { console.error('[admin:create-product]', e); res.status(500).json({ error: 'internal', detail: e.message }); }
+  } catch (e) { console.error('[admin:create-product]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
 });
 
 router.patch('/products/:id', async (req, res) => {
@@ -126,7 +126,7 @@ router.post('/products/:id/variants', async (req, res) => {
       [req.params.id, volume, price, wholesale || price, sku, stock_qty, branch_id || null]
     );
     res.status(201).json({ ok: true, variant: r.rows[0] });
-  } catch (e) { console.error('[admin:add-variant]', e); res.status(500).json({ error: 'internal', detail: e.message }); }
+  } catch (e) { console.error('[admin:add-variant]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
 });
 
 router.patch('/variants/:id', async (req, res) => {
@@ -175,7 +175,7 @@ router.post('/variants/:id/stock', async (req, res) => {
     res.json({ ok: true, variant: r.rows[0] });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error('[admin:stock]', e); res.status(500).json({ error: 'internal', detail: e.message });
+    console.error('[admin:stock]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   } finally { client.release(); }
 });
 
@@ -329,7 +329,7 @@ router.patch('/orders/:id/status', async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[admin:order-status]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   } finally { client.release(); }
 });
 
@@ -574,7 +574,7 @@ router.get('/brands', async (req, res) => {
   try {
     const r = await getPool().query('SELECT * FROM brands ORDER BY name');
     res.json({ ok: true, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/brands', async (req, res) => {
@@ -586,7 +586,7 @@ router.post('/brands', async (req, res) => {
       [id, name, logo || null, about || null]
     );
     res.status(201).json({ ok: true, brand: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/brands/:id', async (req, res) => {
@@ -598,7 +598,7 @@ router.patch('/brands/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, brand: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/brands/:id', async (req, res) => {
@@ -608,7 +608,7 @@ router.delete('/brands/:id', async (req, res) => {
     res.json({ ok: true, deleted: req.params.id });
   } catch (e) {
     if (e.code === '23503') return res.status(409).json({ error: 'has-linked-products' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -617,7 +617,7 @@ router.get('/categories', async (req, res) => {
   try {
     const r = await getPool().query('SELECT * FROM categories ORDER BY group_name, name');
     res.json({ ok: true, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/categories', async (req, res) => {
@@ -629,7 +629,7 @@ router.post('/categories', async (req, res) => {
       [id, name, icon || null, group_name || null]
     );
     res.status(201).json({ ok: true, category: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/categories/:id', async (req, res) => {
@@ -641,7 +641,7 @@ router.patch('/categories/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, category: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/categories/:id', async (req, res) => {
@@ -651,7 +651,7 @@ router.delete('/categories/:id', async (req, res) => {
     res.json({ ok: true, deleted: req.params.id });
   } catch (e) {
     if (e.code === '23503') return res.status(409).json({ error: 'has-linked-products' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -660,7 +660,7 @@ router.get('/masters', async (req, res) => {
   try {
     const r = await getPool().query('SELECT * FROM masters ORDER BY name');
     res.json({ ok: true, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/masters', async (req, res) => {
@@ -673,7 +673,7 @@ router.post('/masters', async (req, res) => {
       [name, phone || null, specialty || null, bio || null, avatar || null, beautypro_id || null, commission_pct || null]
     );
     res.status(201).json({ ok: true, master: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/masters/:id', async (req, res) => {
@@ -689,7 +689,7 @@ router.patch('/masters/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, master: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/masters/:id', async (req, res) => {
@@ -699,7 +699,7 @@ router.delete('/masters/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, deactivated: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // --- SERVICES ---
@@ -707,7 +707,7 @@ router.get('/services', async (req, res) => {
   try {
     const r = await getPool().query('SELECT * FROM services ORDER BY category, name');
     res.json({ ok: true, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/services', async (req, res) => {
@@ -720,7 +720,7 @@ router.post('/services', async (req, res) => {
       [name, category || null, duration_min || null, price || null, beautypro_id || null, description || null]
     );
     res.status(201).json({ ok: true, service: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/services/:id', async (req, res) => {
@@ -736,7 +736,7 @@ router.patch('/services/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, service: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/services/:id', async (req, res) => {
@@ -746,7 +746,7 @@ router.delete('/services/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, deactivated: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // --- ROLES ---
@@ -754,7 +754,7 @@ router.get('/roles', async (req, res) => {
   try {
     const r = await getPool().query('SELECT * FROM roles ORDER BY level DESC, name');
     res.json({ ok: true, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/roles', async (req, res) => {
@@ -768,7 +768,7 @@ router.post('/roles', async (req, res) => {
     res.status(201).json({ ok: true, role: r.rows[0] });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'code-already-exists' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -784,7 +784,7 @@ router.patch('/roles/:id', async (req, res) => {
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, role: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/roles/:id', async (req, res) => {
@@ -794,7 +794,7 @@ router.delete('/roles/:id', async (req, res) => {
     res.json({ ok: true, deleted: r.rows[0].id });
   } catch (e) {
     if (e.code === '23503') return res.status(409).json({ error: 'has-linked-users' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

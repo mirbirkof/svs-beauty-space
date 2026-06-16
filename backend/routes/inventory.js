@@ -58,7 +58,7 @@ router.post('/audits', requirePerm('stock.write'), async (req, res) => {
     res.json({ ok: true, audit_id: auditId, items: items.rows.length });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
 });
 
@@ -73,7 +73,7 @@ router.get('/audits', requirePerm('stock.read'), async (req, res) => {
         ORDER BY a.started_at DESC LIMIT 50`
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/inventory/audits/:id — детали + позиции
@@ -86,7 +86,7 @@ router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
       `SELECT * FROM inventory_audit_items WHERE audit_id=$1 ORDER BY product_name, sku`, [id]
     );
     res.json({ audit: a.rows[0], items: items.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/inventory/items/:id — внести факт по одной позиции
@@ -108,7 +108,7 @@ router.patch('/items/:id', requirePerm('stock.write'), async (req, res) => {
       [actual_qty, reason || null, notes || null, diffVal, req.user?.id || null, id]
     );
     res.json({ ok: true, diff_value: diffVal });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/inventory/audits/:id/complete — закрыть акт + применить корректировки
@@ -151,7 +151,7 @@ router.post('/audits/:id/complete', requirePerm('stock.write'), async (req, res)
     res.json({ ok: true, adjusted: diffs.rows.length, total_diff: totalDiff });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
 });
 
@@ -164,7 +164,7 @@ router.delete('/audits/:id', requirePerm('stock.write'), async (req, res) => {
     );
     if (!r.rows[0]) return res.status(400).json({ error: 'cannot-cancel' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

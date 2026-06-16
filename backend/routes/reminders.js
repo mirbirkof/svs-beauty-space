@@ -167,7 +167,7 @@ router.get('/status', async (req, res) => {
     const stats = {};
     r.rows.forEach(row => stats[row.status] = row.cnt);
     res.json({ ok: true, cron_active: !!cronRef, stats });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/reminders/run — ручной запуск (для теста, только admin)
@@ -176,7 +176,7 @@ router.post('/run', requirePerm('reminders.manage'), async (req, res) => {
     const scheduled = await scheduleReminders();
     const delivery = await sendPending();
     res.json({ ok: true, scheduled, delivery });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/reminders/pending — список pending
@@ -191,7 +191,7 @@ router.get('/pending', async (req, res) => {
        LIMIT 50`
     );
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Start/stop cron ──

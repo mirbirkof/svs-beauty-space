@@ -18,7 +18,7 @@ router.get('/', requirePerm('users.read'), async (req, res) => {
          FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id`
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/users — создать сотрудника (с паролем/логином, опц. авто-мастер)
@@ -63,7 +63,7 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK').catch(()=>{});
     if (/duplicate key|unique/i.test(e.message)) return res.status(409).json({ error: 'duplicate', message: 'Телефон, email або логін вже зайняті' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
 });
 
@@ -83,7 +83,7 @@ router.post('/:id/password', requirePerm('users.write'), async (req, res) => {
     await pool.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [id, hash]).catch(()=>{});
     await logAction({ user: req.user, action: 'user.set-password', entity: 'user', entity_id: id, meta: {} });
     res.json({ ok: true, message: 'Пароль встановлено' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/users/:id — видалення користувача
@@ -116,7 +116,7 @@ router.delete('/:id', requirePerm('users.write'), async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'user.deactivate', entity: 'user', entity_id: id, meta: {} });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/users/:id
@@ -144,7 +144,7 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'user.update', entity: 'user', entity_id: id, meta: req.body });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/users/:id/tokens — выпустить токен
@@ -163,7 +163,7 @@ router.post('/:id/tokens', requirePerm('users.write'), async (req, res) => {
     );
     await logAction({ user: req.user, action: 'token.issue', entity: 'user', entity_id: id, meta: { token_id: r.rows[0].id, label } });
     res.json({ ok: true, token, token_id: r.rows[0].id, expires_at: expires });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/users/:id/tokens/:tid — отозвать
@@ -172,7 +172,7 @@ router.delete('/:id/tokens/:tid', requirePerm('users.write'), async (req, res) =
     await pool.query(`DELETE FROM user_tokens WHERE id=$1 AND user_id=$2`, [Number(req.params.tid), Number(req.params.id)]);
     await logAction({ user: req.user, action: 'token.revoke', entity: 'user', entity_id: Number(req.params.id), meta: { token_id: Number(req.params.tid) } });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/users/me — кто я
@@ -185,7 +185,7 @@ router.get('/roles/list', requirePerm('users.read'), async (req, res) => {
   try {
     const r = await pool.query(`SELECT code, name, level, permissions FROM roles ORDER BY level DESC`);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/audit — журнал
@@ -194,7 +194,7 @@ router.get('/audit/log', requirePerm('audit.read'), async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     const r = await pool.query(`SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1`, [limit]);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

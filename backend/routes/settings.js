@@ -39,7 +39,7 @@ router.use(requirePerm()); // будь-який авторизований мо�
 router.get('/', async (req, res) => {
   try {
     res.json({ ok: true, settings: await getAllSettings() });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/', async (req, res) => {
@@ -59,7 +59,7 @@ router.patch('/', async (req, res) => {
 
     logAction({ user: u, action: 'settings.update', entity: 'settings', meta: body, ip: req.ip });
     res.json({ ok: true, settings: await getAllSettings() });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

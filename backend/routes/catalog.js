@@ -32,7 +32,7 @@ router.get('/brands', async (req, res) => {
     const r = await pg.query('SELECT id, name, logo, about FROM brands ORDER BY name');
     res.json(r.rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -50,7 +50,7 @@ router.get('/categories', async (req, res) => {
     }
     res.json({ flat: r.rows, grouped: Object.values(groups) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -91,7 +91,7 @@ router.get('/products', async (req, res) => {
 
     res.json({ items: r.rows, total: cr.rows[0].total, limit, offset });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -115,7 +115,7 @@ router.get('/products/:id', async (req, res) => {
     );
     res.json({ ...p.rows[0], variants: v.rows });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

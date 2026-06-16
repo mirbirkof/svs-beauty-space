@@ -44,7 +44,7 @@ router.get('/needs', requirePerm('stock.read'), async (req, res) => {
     let items = r.rows.map(x => ({ ...x, priority: Number(x.current_stock) <= 0 ? 'critical' : 'normal' }));
     if (priority) items = items.filter(x => x.priority === priority);
     res.json({ items, count: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────── ЗАКАЗЫ ───────
@@ -64,7 +64,7 @@ router.get('/orders', requirePerm('stock.read'), async (req, res) => {
        FROM purchase_orders po LEFT JOIN suppliers s ON s.id=po.supplier_id
        ${where} ORDER BY po.created_at DESC LIMIT $${args.length-1} OFFSET $${args.length}`, args);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/orders/:id', requirePerm('stock.read'), async (req, res) => {
@@ -78,7 +78,7 @@ router.get('/orders/:id', requirePerm('stock.read'), async (req, res) => {
     const approvals = await pool.query(`SELECT * FROM purchase_approvals WHERE purchase_order_id=$1 ORDER BY id`, [req.params.id]);
     const receipts = await pool.query(`SELECT * FROM purchase_receipts WHERE purchase_order_id=$1 ORDER BY id`, [req.params.id]);
     res.json({ order: po.rows[0], items: items.rows, approvals: approvals.rows, receipts: receipts.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/orders', requirePerm('stock.write'), async (req, res) => {
@@ -105,7 +105,7 @@ router.post('/orders', requirePerm('stock.write'), async (req, res) => {
     logAction({ user: req.user, action: 'purchase.order.create', entity: 'purchase_order', entity_id: poId, ip: req.ip, meta: { po_number } });
     const out = await getPool().query(`SELECT * FROM purchase_orders WHERE id=$1`, [poId]);
     res.json({ ok: true, order: out.rows[0] });
-  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
+  } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
 
@@ -125,7 +125,7 @@ router.patch('/orders/:id', requirePerm('stock.write'), async (req, res) => {
     await getPool().query(`UPDATE purchase_orders SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${args.length}`, args);
     if (discount_amount !== undefined) { const c = await getPool().connect(); try { await recomputeTotal(c, req.params.id); } finally { c.release(); } }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // draft → pending_approval
@@ -137,7 +137,7 @@ router.post('/orders/:id/submit', requirePerm('stock.write'), async (req, res) =
     await getPool().query(
       `INSERT INTO purchase_approvals(purchase_order_id, status, level) VALUES ($1,'pending',1)`, [req.params.id]);
     res.json({ ok: true, order: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // approve / reject
@@ -155,7 +155,7 @@ router.post('/orders/:id/approve', requirePerm('reports.finance'), async (req, r
        WHERE purchase_order_id=$1 AND status='pending'`, [req.params.id, req.body?.comment || null, req.user?.id || null]);
     logAction({ user: req.user, action: 'purchase.order.approve', entity: 'purchase_order', entity_id: +req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/orders/:id/reject', requirePerm('reports.finance'), async (req, res) => {
@@ -168,7 +168,7 @@ router.post('/orders/:id/reject', requirePerm('reports.finance'), async (req, re
       `UPDATE purchase_approvals SET status='rejected', comment=$2, decided_at=NOW(), approver_id=$3
        WHERE purchase_order_id=$1 AND status='pending'`, [req.params.id, req.body?.comment || null, req.user?.id || null]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // approved → ordered (отправлен поставщику)
@@ -178,7 +178,7 @@ router.post('/orders/:id/send', requirePerm('stock.write'), async (req, res) => 
       `UPDATE purchase_orders SET status='ordered', ordered_at=NOW(), updated_at=NOW() WHERE id=$1 AND status='approved' RETURNING *`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-approved' });
     res.json({ ok: true, order: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Приёмка товара → создаёт stock_receipt и увеличивает products.stock
@@ -251,7 +251,7 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'purchase.receive', entity: 'purchase_order', entity_id: +poId, ip: req.ip, meta: { stockReceiptId, status: newStatus } });
     res.json({ ok: true, receipt_id: prId, stock_receipt_id: stockReceiptId, status: newStatus, has_discrepancy: hasDisc });
-  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
+  } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
 
@@ -261,7 +261,7 @@ router.post('/orders/:id/close', requirePerm('stock.write'), async (req, res) =>
       `UPDATE purchase_orders SET status='closed', updated_at=NOW() WHERE id=$1 AND status IN ('received','partially_received') RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-received' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/orders/:id/cancel', requirePerm('stock.write'), async (req, res) => {
@@ -270,7 +270,7 @@ router.post('/orders/:id/cancel', requirePerm('stock.write'), async (req, res) =
       `UPDATE purchase_orders SET status='cancelled', updated_at=NOW() WHERE id=$1 AND status IN ('draft','pending_approval','approved','rejected') RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-cancellable' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/orders/:id', requirePerm('stock.write'), async (req, res) => {
@@ -278,7 +278,7 @@ router.delete('/orders/:id', requirePerm('stock.write'), async (req, res) => {
     const r = await getPool().query(`DELETE FROM purchase_orders WHERE id=$1 AND status IN ('draft','cancelled','rejected') RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-deletable' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────── АНАЛИТИКА ───────
@@ -313,7 +313,7 @@ router.get('/analytics', requirePerm('stock.read'), async (req, res) => {
       top_suppliers: topSuppliers.rows,
       discrepancy_rate: d.total ? Math.round((d.with_disc / d.total) * 100) : 0,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────── ПРАВИЛА АВТОЗАКУПКИ ───────
@@ -325,7 +325,7 @@ router.get('/auto-rules', requirePerm('stock.read'), async (req, res) => {
        LEFT JOIN products p ON p.id=ar.product_id
        LEFT JOIN suppliers s ON s.id=ar.preferred_supplier_id ORDER BY ar.id DESC`);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/auto-rules', requirePerm('stock.write'), async (req, res) => {
@@ -340,7 +340,7 @@ router.post('/auto-rules', requirePerm('stock.write'), async (req, res) => {
          auto_approve=EXCLUDED.auto_approve, active=TRUE, updated_at=NOW() RETURNING *`,
       [product_id, preferred_supplier_id || null, selection_strategy, max_auto_amount || null, auto_approve]);
     res.json({ ok: true, rule: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
@@ -354,14 +354,14 @@ router.put('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
     args.push(req.params.id);
     await getPool().query(`UPDATE auto_purchase_rules SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${args.length}`, args);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
   try {
     await getPool().query(`DELETE FROM auto_purchase_rules WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Прогон автозакупки: по правилам создаёт draft-заказы для товаров ниже минимума
@@ -411,7 +411,7 @@ async function runAutoPurchase() {
 
 router.post('/auto-run', requirePerm('stock.write'), async (req, res) => {
   try { res.json({ ok: true, ...(await runAutoPurchase()) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

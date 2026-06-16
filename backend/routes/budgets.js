@@ -66,7 +66,7 @@ router.get('/categories', async (req, res) => {
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const r = await pool.query(`SELECT * FROM budget_categories ${where} ORDER BY type, sort_order, id`, params);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/categories', async (req, res) => {
@@ -90,7 +90,7 @@ router.patch('/categories/:id', async (req, res) => {
     const r = await pool.query(`UPDATE budget_categories SET ${sets.join(', ')} WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, category: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ СЕЗОННІ ПРЕСЕТИ ════════
@@ -106,7 +106,7 @@ router.get('/', async (req, res) => {
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const r = await pool.query(`SELECT * FROM budgets ${where} ORDER BY period_start DESC, id DESC`, params);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST / — створити бюджет (+ авто-розбивка по місяцях, опц. копія з джерела)
@@ -137,7 +137,7 @@ router.post('/', async (req, res) => {
     await recomputeTotals(budget.id);
     logAction({ user: req.user, action: 'budget.create', entity: 'budget', entity_id: budget.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, budget: (await pool.query(`SELECT * FROM budgets WHERE id=$1`, [budget.id])).rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 async function recomputeTotals(budgetId) {
@@ -183,7 +183,7 @@ router.get('/:id', async (req, res) => {
         profit_plan: revPlan - expPlan, profit_actual: revAct - expAct
       }
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PUT /:id — оновити (тільки draft)
@@ -200,7 +200,7 @@ router.put('/:id', async (req, res) => {
     params.push(id);
     const r = await pool.query(`UPDATE budgets SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`, params);
     res.json({ ok: true, budget: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PUT /:id/items — масове оновлення планів (тільки draft)
@@ -225,7 +225,7 @@ router.put('/:id/items', async (req, res) => {
     }
     await recomputeTotals(id);
     res.json({ ok: true, updated: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/apply-seasonal — застосувати сезонний пресет до річної бази
@@ -252,7 +252,7 @@ router.post('/:id/apply-seasonal', async (req, res) => {
     }
     await recomputeTotals(id);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Workflow: activate / close / delete
@@ -262,14 +262,14 @@ router.post('/:id/activate', async (req, res) => {
     if (!r.rows[0]) return res.status(409).json({ error: 'not-draft-or-missing' });
     logAction({ user: req.user, action: 'budget.activate', entity: 'budget', entity_id: +req.params.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, budget: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/:id/close', async (req, res) => {
   try {
     const r = await pool.query(`UPDATE budgets SET status='closed', updated_at=NOW() WHERE id=$1 AND status='active' RETURNING *`, [+req.params.id]);
     if (!r.rows[0]) return res.status(409).json({ error: 'not-active-or-missing' });
     res.json({ ok: true, budget: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.delete('/:id', async (req, res) => {
   try {
@@ -278,7 +278,7 @@ router.delete('/:id', async (req, res) => {
     if (budget.status !== 'draft') return res.status(409).json({ error: 'not-draft' });
     await pool.query(`DELETE FROM budgets WHERE id=$1`, [+req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /:id/plan-fact — звіт план/факт за місяць (з прогнозом на кінець місяця і статусом)
@@ -308,7 +308,7 @@ router.get('/:id/plan-fact', async (req, res) => {
         percent: Math.round(pctv * 10) / 10, status, forecast_eom: forecast });
     }
     res.json({ budget_id: id, month, categories: out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

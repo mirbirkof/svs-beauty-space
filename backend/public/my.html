@@ -99,6 +99,11 @@ const API_DIK  = 'https://svs-shop-api.onrender.com';
 let myPhone = localStorage.getItem('myPhone') || '';
 let myRating = 5;
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 if (myPhone) showProfile();
 
 function normPhone(p) {
@@ -154,15 +159,15 @@ async function loadHistory() {
       <div class="border-b py-3">
         <div class="flex justify-between">
           <div>
-            <p class="font-medium">${x.service_name || x.title || 'Заказ #'+x.id}</p>
-            <p class="text-xs text-slate-500">${x.date_from || x.created_at || ''}</p>
+            <p class="font-medium">${escapeHtml(x.service_name || x.title) || 'Заказ #'+escapeHtml(String(x.id))}</p>
+            <p class="text-xs text-slate-500">${escapeHtml(x.date_from || x.created_at || '')}</p>
           </div>
-          <span class="text-sm">${x.total ? x.total+'₴' : (x.status||'')}</span>
+          <span class="text-sm">${x.total ? escapeHtml(String(x.total))+'₴' : escapeHtml(x.status||'')}</span>
         </div>
       </div>
     `).join('');
   } catch (e) {
-    document.getElementById('hist-list').innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки: '+e.message+'</p>';
+    document.getElementById('hist-list').innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки: '+escapeHtml(e.message)+'</p>';
   }
 }
 
@@ -176,10 +181,10 @@ async function loadFavs() {
   document.getElementById('fav-list').innerHTML = r.items.map(f => `
     <div class="flex justify-between items-center border-b py-3">
       <div>
-        <p class="font-medium">${f.target_name || f.target_id}</p>
+        <p class="font-medium">${escapeHtml(f.target_name || f.target_id)}</p>
         <p class="text-xs text-slate-500">${f.kind==='master'?'Мастер':f.kind==='service'?'Услуга':'Товар'} · добавлено ${new Date(f.created_at).toLocaleDateString('ru-UA')}</p>
       </div>
-      <button onclick="rmFav('${f.kind}','${f.target_id}')" class="text-red-500 text-sm hover:underline">Убрать</button>
+      <button onclick="rmFav('${escapeHtml(f.kind)}','${escapeHtml(f.target_id)}')" class="text-red-500 text-sm hover:underline">Убрать</button>
     </div>
   `).join('');
 }
@@ -208,8 +213,8 @@ async function loadReviews() {
         <span>${stars(rv.rating)}</span>
         <span class="text-xs text-slate-500">${new Date(rv.created_at).toLocaleDateString('ru-UA')}</span>
       </div>
-      <p class="text-sm text-slate-600 mb-1">${rv.master_name || rv.master_id || 'Без мастера'}</p>
-      <p class="text-sm">${rv.text||''}</p>
+      <p class="text-sm text-slate-600 mb-1">${escapeHtml(rv.master_name || rv.master_id) || 'Без мастера'}</p>
+      <p class="text-sm">${escapeHtml(rv.text||'')}</p>
       ${rv.is_anonymous ? '<p class="text-xs text-amber-700 mt-1">📌 Опубликован анонимно</p>' : ''}
     </div>
   `).join('');

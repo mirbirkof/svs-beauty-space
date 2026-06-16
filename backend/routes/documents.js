@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
         ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`, p);
     const total = (await one(`SELECT COUNT(*)::int n FROM documents WHERE ${w.join(' AND ')}`, p)).n;
     res.json({ items, total });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Дашборд строків, що спливають (ДО /:id)
@@ -80,7 +80,7 @@ router.get('/expiring', async (req, res) => {
       summary: { expired: buckets.expired.length, in7: buckets.in7.length, in30: buckets.in30.length },
       buckets,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Повнотекстовий пошук (ДО /:id)
@@ -102,7 +102,7 @@ router.get('/search', async (req, res) => {
          FROM documents WHERE ${w.join(' AND ')}
         ORDER BY rank DESC, created_at DESC LIMIT 50`, p);
     res.json({ items, total: items.length, took_ms: Date.now() - t0 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Картка документа (версії + коментарі)
@@ -116,7 +116,7 @@ router.get('/:id', async (req, res) => {
     doc.comments = await q(`SELECT id, author_id, author_name, body, created_at
                               FROM document_comments WHERE document_id=$1 ORDER BY created_at DESC`, [doc.id]);
     res.json(doc);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Створення документа (метадані + опційно прив'язка до файлу files.id)
@@ -146,7 +146,7 @@ router.post('/', async (req, res) => {
     logAction({ user: req.user, action: 'document.create', entity: 'document', entity_id: doc.id, ip: req.ip, meta: { title: b.title, category } });
     emit('document.created', { id: doc.id, category, title: b.title });
     res.status(201).json({ ok: true, id: doc.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Оновлення метаданих
@@ -176,7 +176,7 @@ router.put('/:id', async (req, res) => {
     logAction({ user: req.user, action: 'document.update', entity: 'document', entity_id: req.params.id, ip: req.ip });
     emit('document.updated', { id: Number(req.params.id) });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // М'яке видалення
@@ -187,7 +187,7 @@ router.delete('/:id', async (req, res) => {
     logAction({ user: req.user, action: 'document.delete', entity: 'document', entity_id: req.params.id, ip: req.ip });
     emit('document.deleted', { id: Number(req.params.id) });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Завантаження нової версії
@@ -209,7 +209,7 @@ router.post('/:id/upload-version', async (req, res) => {
     logAction({ user: req.user, action: 'document.version', entity: 'document', entity_id: doc.id, ip: req.ip, meta: { version: nextV } });
     emit('document.updated', { id: doc.id, version: nextV });
     res.json({ ok: true, version: nextV });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Список версій
@@ -218,7 +218,7 @@ router.get('/:id/versions', async (req, res) => {
     const rows = await q(`SELECT id, version_number, file_storage_id, file_name, file_size, mime_type, comment, created_by, created_at
                             FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC`, [req.params.id]);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Відкат до версії (створює нову версію-копію)
@@ -238,7 +238,7 @@ router.post('/:id/revert', async (req, res) => {
     logAction({ user: req.user, action: 'document.revert', entity: 'document', entity_id: doc.id, ip: req.ip, meta: { to: target.version_number, new: nextV } });
     emit('document.updated', { id: doc.id, version: nextV });
     res.json({ ok: true, version: nextV });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Блокування / розблокування
@@ -250,7 +250,7 @@ router.post('/:id/lock', async (req, res) => {
     await q(`UPDATE documents SET locked_by=$1, locked_at=NOW() WHERE id=$2`, [req.user?.id ?? null, req.params.id]);
     emit('document.locked', { id: Number(req.params.id), by: req.user?.id ?? null });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/:id/unlock', async (req, res) => {
   try {
@@ -259,7 +259,7 @@ router.post('/:id/unlock', async (req, res) => {
     await q(`UPDATE documents SET locked_by=NULL, locked_at=NULL WHERE id=$1`, [req.params.id]);
     emit('document.unlocked', { id: Number(req.params.id) });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Відправка на підпис (-> MGT-07)
@@ -271,7 +271,7 @@ router.post('/:id/send-to-sign', async (req, res) => {
     logAction({ user: req.user, action: 'document.send_to_sign', entity: 'document', entity_id: doc.id, ip: req.ip });
     emit('document.send_to_sign', { id: doc.id, title: doc.title, signers: req.body?.signers || [] });
     res.json({ ok: true, esign_status: 'pending' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Коментарі
@@ -279,7 +279,7 @@ router.get('/:id/comments', async (req, res) => {
   try {
     const rows = await q(`SELECT id, author_id, author_name, body, created_at FROM document_comments WHERE document_id=$1 ORDER BY created_at DESC`, [req.params.id]);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/:id/comments', async (req, res) => {
   try {
@@ -289,7 +289,7 @@ router.post('/:id/comments', async (req, res) => {
     const r = await one(`INSERT INTO document_comments (document_id, author_id, author_name, body) VALUES ($1,$2,$3,$4) RETURNING id, created_at`,
       [doc.id, req.user?.id ?? null, req.user?.name || null, req.body.body]);
     res.status(201).json({ ok: true, id: r.id, created_at: r.created_at });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ═══════════════════ ШАБЛОНИ ═══════════════════
@@ -302,7 +302,7 @@ router.get('/templates/list', async (req, res) => {
     const rows = await q(`SELECT id, name, description, category, output_format, language, version, is_system, active, created_at, updated_at
                             FROM document_templates WHERE ${w.join(' AND ')} ORDER BY category, name`, p);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/templates/:id', async (req, res) => {
@@ -311,7 +311,7 @@ router.get('/templates/:id', async (req, res) => {
     if (!tpl) return res.status(404).json({ error: 'not-found' });
     tpl.fields = await q(`SELECT * FROM document_template_fields WHERE template_id=$1 ORDER BY sort_order, id`, [tpl.id]);
     res.json(tpl);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/templates', async (req, res) => {
@@ -335,7 +335,7 @@ router.post('/templates', async (req, res) => {
     }
     logAction({ user: req.user, action: 'document_template.create', entity: 'document_template', entity_id: tpl.id, ip: req.ip });
     res.status(201).json({ ok: true, id: tpl.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/templates/:id', async (req, res) => {
@@ -366,7 +366,7 @@ router.put('/templates/:id', async (req, res) => {
       }
     }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/templates/:id', async (req, res) => {
@@ -374,14 +374,14 @@ router.delete('/templates/:id', async (req, res) => {
     const r = await one(`DELETE FROM document_templates WHERE id=$1 AND tenant_id=current_tenant_id() AND is_system=FALSE RETURNING id`, [req.params.id]);
     if (!r) return res.status(404).json({ error: 'not-found-or-system' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/templates/:id/fields', async (req, res) => {
   try {
     const rows = await q(`SELECT * FROM document_template_fields WHERE template_id=$1 ORDER BY sort_order, id`, [req.params.id]);
     res.json({ items: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Зібрати значення полів: автозаповнення з сутності + manual override
@@ -417,7 +417,7 @@ router.post('/templates/:id/preview', async (req, res) => {
     const fields = await q(`SELECT * FROM document_template_fields WHERE template_id=$1 ORDER BY sort_order, id`, [tpl.id]);
     const values = await resolveFieldValues(fields, req.body?.values || {}, req.body?.entities || req.body || {});
     res.json({ html: renderTemplate(tpl.body_html, values), values, fields: fields.map(f => f.field_key) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Генерація документа з шаблону -> новий documents запис
@@ -446,7 +446,7 @@ router.post('/templates/:id/generate', async (req, res) => {
     logAction({ user: req.user, action: 'document.generate', entity: 'document', entity_id: doc.id, ip: req.ip, meta: { template_id: tpl.id } });
     emit('document.generated', { id: doc.id, template_id: tpl.id });
     res.status(201).json({ ok: true, id: doc.id, html });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

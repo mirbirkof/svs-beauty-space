@@ -58,7 +58,7 @@ router.get('/public/:slug', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/forms/public/:slug/submit — отправить ответ на публичную форму
@@ -84,7 +84,7 @@ router.post('/public/:slug/submit', async (req, res) => {
     ))[0];
     await pool.query(`UPDATE forms SET submit_count = submit_count + 1 WHERE id=$1`, [f.id]);
     res.json({ ok: true, id: sub.id, message: f.success_message || 'Дякуємо!' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── АВТОРИЗОВАННЫЕ ЭНДПОИНТЫ ── */
@@ -105,7 +105,7 @@ router.get('/', async (req, res) => {
               jsonb_array_length(fields) AS field_count
        FROM forms WHERE ${where} ORDER BY updated_at DESC`, params);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/forms/:id — детали формы
@@ -114,7 +114,7 @@ router.get('/:id', async (req, res) => {
     const rows = await q(`SELECT * FROM forms WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/forms/:id/submissions — ответы на форму
@@ -130,7 +130,7 @@ router.get('/:id/submissions', async (req, res) => {
        ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`, [req.params.id]);
     const total = (await q(`SELECT count(*)::int n FROM form_submissions WHERE form_id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]))[0].n;
     res.json({ rows, total });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/forms — создать форму
@@ -148,7 +148,7 @@ router.post('/', async (req, res) => {
     res.json(row);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'slug_taken' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -173,7 +173,7 @@ router.patch('/:id', async (req, res) => {
     res.json(row);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'slug_taken' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -190,7 +190,7 @@ router.post('/:id/submit', async (req, res) => {
       [f.id, req.body?.client_id || null, JSON.stringify(data), req.ip || null]))[0];
     await pool.query(`UPDATE forms SET submit_count = submit_count + 1 WHERE id=$1`, [f.id]);
     res.json({ ok: true, id: sub.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/forms/:id — удалить форму (с ответами, CASCADE)
@@ -200,7 +200,7 @@ router.delete('/:id', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'form.delete', entity: 'forms', entity_id: req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

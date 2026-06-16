@@ -61,7 +61,7 @@ publicRouter.get('/:token', async (req, res) => {
       document: doc ? { id: doc.id, title: doc.title, category: doc.category, html: doc.metadata?.generated_html || null, file_storage_id: doc.file_storage_id, file_name: doc.file_name } : null,
       signers: sigs, completed: !!r.completed,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 function pickSignature(sigs, reqRow, sigId) {
@@ -82,7 +82,7 @@ publicRouter.post('/:token/view', async (req, res) => {
     await audit(r.reqRow, { action: 'document_viewed', actor_type: 'client', actor_name: sig?.signer_name, signature_id: sig?.id, ip: req.ip, ua: req.headers['user-agent'], geo: req.body?.geolocation, hash: r.reqRow.document_hash });
     emit('esign.document_viewed', { request_id: r.reqRow.id, signature_id: sig?.id });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 publicRouter.post('/:token/sign', async (req, res) => {
@@ -118,7 +118,7 @@ publicRouter.post('/:token/sign', async (req, res) => {
       emit('document.signed', { id: r.reqRow.document_id, request_id: r.reqRow.id });
     }
     res.json({ ok: true, completed: remaining.n === 0, document_hash: docHash });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 publicRouter.post('/:token/reject', async (req, res) => {
@@ -136,7 +136,7 @@ publicRouter.post('/:token/reject', async (req, res) => {
     await audit(r.reqRow, { action: 'rejected', actor_type: 'client', actor_name: sig?.signer_name, signature_id: sig?.id, ip: req.ip, ua: req.headers['user-agent'], details: { reason: b.reason } });
     emit('esign.rejected', { request_id: r.reqRow.id, reason: b.reason });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.use('/sign', publicRouter);
@@ -161,7 +161,7 @@ router.get('/requests', async (req, res) => {
          FROM esign_requests r WHERE ${w.join(' AND ')} ORDER BY created_at DESC
         LIMIT ${Math.min(num(req.query.limit) || 50, 200)} OFFSET ${num(req.query.offset) || 0}`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Аналітика (ДО /requests/:id не потрібно — інший префікс)
@@ -176,7 +176,7 @@ router.get('/analytics', async (req, res) => {
               AVG(EXTRACT(EPOCH FROM (completed_at-created_at))/3600) FILTER (WHERE completed_at IS NOT NULL) avg_hours_to_complete
          FROM esign_requests WHERE tenant_id=current_tenant_id()`);
     res.json({ ...a, avg_hours_to_complete: a.avg_hours_to_complete ? Number(a.avg_hours_to_complete).toFixed(2) : null });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Список підписів
@@ -189,7 +189,7 @@ router.get('/signatures', async (req, res) => {
     const items = await q(`SELECT id, request_id, signer_type, signer_name, signature_type, status, signed_at, document_hash
                              FROM esign_signatures WHERE ${w.join(' AND ')} ORDER BY created_at DESC LIMIT 200`, p);
     res.json({ items });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Створити запит
@@ -220,7 +220,7 @@ router.post('/requests', async (req, res) => {
     const r = await createRequest(req.body || {}, req.user);
     logAction({ user: req.user, action: 'esign.request_create', entity: 'esign_request', entity_id: r.id, ip: req.ip });
     res.status(201).json({ ok: true, id: r.id, sign_url_token: r.sign_url_token });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Масове створення
@@ -231,7 +231,7 @@ router.post('/requests/bulk', async (req, res) => {
     const created = [];
     for (const b of items) { const r = await createRequest(b, req.user); created.push({ id: r.id, token: r.sign_url_token }); }
     res.status(201).json({ ok: true, created });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Деталі запиту
@@ -241,7 +241,7 @@ router.get('/requests/:id', async (req, res) => {
     if (!r) return res.status(404).json({ error: 'not-found' });
     r.signatures = await q(`SELECT id, signer_type, signer_client_id, signer_employee_id, signer_name, signature_type, status, signed_at, rejected_at, reject_reason, ip_address, sort_order FROM esign_signatures WHERE request_id=$1 ORDER BY sort_order`, [r.id]);
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Оновити (до відправки)
@@ -260,7 +260,7 @@ router.put('/requests/:id', async (req, res) => {
     sets.push('updated_at=NOW()'); p.push(req.params.id);
     await q(`UPDATE esign_requests SET ${sets.join(', ')} WHERE id=$${p.length}`, p);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Відправити
@@ -273,7 +273,7 @@ router.post('/requests/:id/send', async (req, res) => {
     await audit(r, { action: 'request_sent', actor_type: 'employee', actor_id: req.user?.id ?? null, actor_name: req.user?.name, hash: r.document_hash });
     emit('esign.request_sent', { request_id: r.id, token: r.sign_url_token, method: r.signing_method });
     res.json({ ok: true, sign_url_token: r.sign_url_token });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Відкликати
@@ -286,7 +286,7 @@ router.post('/requests/:id/cancel', async (req, res) => {
     await audit(r, { action: 'cancelled', actor_type: 'employee', actor_id: req.user?.id ?? null, actor_name: req.user?.name, details: { reason: req.body?.reason } });
     emit('esign.cancelled', { request_id: r.id });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Нагадування
@@ -299,7 +299,7 @@ router.post('/requests/:id/remind', async (req, res) => {
     await audit(r, { action: 'reminder_sent', actor_type: 'employee', actor_id: req.user?.id ?? null });
     emit('esign.reminder_sent', { request_id: r.id, token: r.sign_url_token });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Аудит-трейл
@@ -310,7 +310,7 @@ router.get('/requests/:id/audit-trail', async (req, res) => {
     const items = await q(`SELECT id, signature_id, action, actor_type, actor_name, ip_address, user_agent, geolocation, details, document_hash, created_at
                              FROM esign_audit_trail WHERE request_id=$1 ORDER BY created_at`, [r.id]);
     res.json({ items });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Аудит-трейл як людиночитаний HTML (замість PDF — без залежностей)
@@ -324,7 +324,7 @@ router.get('/requests/:id/audit-trail/pdf', async (req, res) => {
     res.send(`<!doctype html><meta charset=utf-8><title>Аудит-трейл #${r.id}</title>
 <h2>Аудит-трейл підписання: ${r.title}</h2><p>Хеш документа: <code>${r.document_hash}</code></p>
 <table border=1 cellpadding=6 style="border-collapse:collapse"><tr><th>Час (UTC)</th><th>Дія</th><th>Актор</th><th>IP</th></tr>${rows}</table>`);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Сертифікат підписання (JSON-структура доказової бази)
@@ -334,7 +334,7 @@ router.get('/requests/:id/certificate', async (req, res) => {
     if (!r) return res.status(404).json({ error: 'not-found' });
     const sigs = await q(`SELECT signer_name, signer_type, signature_type, signed_at, document_hash, ip_address, user_agent, device_info, geolocation FROM esign_signatures WHERE request_id=$1 ORDER BY sort_order`, [r.id]);
     res.json({ certificate: { request_id: r.id, title: r.title, document_id: r.document_id, document_hash: r.document_hash, status: r.status, completed_at: r.completed_at, signatures: sigs } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Доказова база (JSON — документ + підписи + аудит + хеші)
@@ -346,7 +346,7 @@ router.get('/requests/:id/evidence', async (req, res) => {
     const sigs = await q(`SELECT * FROM esign_signatures WHERE request_id=$1 ORDER BY sort_order`, [r.id]);
     const trail = await q(`SELECT * FROM esign_audit_trail WHERE request_id=$1 ORDER BY created_at`, [r.id]);
     res.json({ evidence: { request: r, document: doc, signatures: sigs, audit_trail: trail, exported_at: new Date().toISOString() } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Верифікація: поточний хеш документа == зафіксований при підписанні
@@ -359,7 +359,7 @@ router.post('/requests/:id/verify', async (req, res) => {
     const checks = sigs.map(s => ({ signature_id: s.id, signer: s.signer_name, status: s.status, hash_match: s.document_hash ? s.document_hash === currentHash : null }));
     const tampered = checks.some(c => c.hash_match === false);
     res.json({ ok: true, current_hash: currentHash, request_hash: r.document_hash, request_hash_match: r.document_hash === currentHash, tampered, signatures: checks });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Слухач події від MGT-06: автостворення draft-запиту ──

@@ -69,7 +69,7 @@ router.post('/inbound/:channel', async (req, res) => {
     // публикуем событие для триггеров/уведомлений
     try { require('../lib/event-bus').emit('omni.message_in', { conversation_id: conv.id, channel, body: msg.body }, { entityType: 'omni_conversation', entityId: conv.id }); } catch (_) {}
     res.json({ ok: true, conversation_id: conv.id, message_id: msg.id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── АВТОРИЗОВАННЫЕ ── */
@@ -85,7 +85,7 @@ router.get('/channels', async (req, res) => {
         ((config ? 'token') OR (config ? 'api_key')) AS configured, updated_at
       FROM omni_channels WHERE tenant_id=current_tenant_id() ORDER BY channel`);
     res.json({ rows, available: CHANNELS });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PUT /api/omni/channels/:channel — настроить канал
@@ -101,7 +101,7 @@ router.put('/channels/:channel', async (req, res) => {
        RETURNING id, channel, enabled`,
       [channel, b.enabled !== false, JSON.stringify(b.config || {})]))[0];
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/omni/conversations — inbox
@@ -117,7 +117,7 @@ router.get('/conversations', async (req, res) => {
        FROM omni_conversations c LEFT JOIN clients cl ON cl.id=c.client_id
        WHERE ${where} ORDER BY last_message_at DESC NULLS LAST LIMIT ${limit}`, params);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/omni/conversations/:id/messages — лента
@@ -129,7 +129,7 @@ router.get('/conversations/:id/messages', async (req, res) => {
     // отметить прочитанным
     await pool.query(`UPDATE omni_conversations SET unread=0 WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/omni/conversations/:id/send — отправить ответ оператора
@@ -152,7 +152,7 @@ router.post('/conversations/:id/send', async (req, res) => {
     await pool.query(`UPDATE omni_conversations SET last_message=$2, last_message_at=now() WHERE id=$1`,
       [conv.id, body.slice(0, 500)]);
     res.json({ ok: true, message: msg, needs_config: !configured });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/omni/conversations/:id — статус/назначение/привязка клиента
@@ -166,7 +166,7 @@ router.patch('/conversations/:id', async (req, res) => {
     const row = (await q(`UPDATE omni_conversations SET ${sets.join(', ')} WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

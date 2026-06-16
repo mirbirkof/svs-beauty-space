@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
     );
     const cr = await pool.query(`SELECT COUNT(*)::int AS total FROM services s WHERE ${where}`, params.slice(0, params.length - 2));
     res.json({ items: r.rows, total: cr.rows[0].total, limit, offset });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* Список категорий услуг (distinct) + счётчики */
@@ -84,7 +84,7 @@ router.get('/categories', async (req, res) => {
         GROUP BY category ORDER BY category`
     );
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.05 Комплексы (список) ─────────────── */
@@ -92,7 +92,7 @@ router.get('/combos', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM service_combos ORDER BY sort_order, id`);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/combos/:id', async (req, res) => {
@@ -108,7 +108,7 @@ router.get('/combos/:id', async (req, res) => {
       [req.params.id]
     );
     res.json({ ...c.rows[0], items: items.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.02 Карточка услуги ─────────────── */
@@ -133,7 +133,7 @@ router.get('/:id', async (req, res) => {
       price_history: history.rows,
       combos: combos.rows,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── POST /  Создать услугу ─────────────── */
@@ -179,7 +179,7 @@ router.post('/', WRITE, async (req, res) => {
     );
     await logAction({ user: req.user, action: 'service.create', entity: 'service', entity_id: svc.id, meta: { name: b.name } });
     res.json({ ok: true, service: svc });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── PATCH /:id  Обновить ─────────────── */
@@ -221,7 +221,7 @@ router.patch('/:id', WRITE, async (req, res) => {
     }
     await logAction({ user: req.user, action: 'service.update', entity: 'service', entity_id: id, meta: { fields: Object.keys(b) } });
     res.json({ ok: true, service: svc });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── DELETE /:id  Soft-delete ─────────────── */
@@ -238,7 +238,7 @@ router.delete('/:id', WRITE, async (req, res) => {
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'service.delete', entity: 'service', entity_id: id });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── POST /:id/duplicate ─────────────── */
@@ -270,7 +270,7 @@ router.post('/:id/duplicate', WRITE, async (req, res) => {
          FROM service_variations WHERE service_id=$2`, [nid, id]);
     await logAction({ user: req.user, action: 'service.duplicate', entity: 'service', entity_id: nid, meta: { from: id } });
     res.json({ ok: true, service: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.03 Вариации ─────────────── */
@@ -278,7 +278,7 @@ router.get('/:id/variations', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM service_variations WHERE service_id=$1 ORDER BY sort_order, id`, [req.params.id]);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/variations', WRITE, async (req, res) => {
@@ -297,7 +297,7 @@ router.post('/:id/variations', WRITE, async (req, res) => {
     );
     await logAction({ user: req.user, action: 'service.variation.upsert', entity: 'service', entity_id: req.params.id, meta: { variation: b.name } });
     res.json({ ok: true, variation: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/variations/:vid', WRITE, async (req, res) => {
@@ -320,7 +320,7 @@ router.patch('/variations/:vid', WRITE, async (req, res) => {
         [old.service_id, old.id, old.price, b.price, req.user?.id || null, req.user?.display_name || null]);
     }
     res.json({ ok: true, variation: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/variations/:vid', WRITE, async (req, res) => {
@@ -328,7 +328,7 @@ router.delete('/variations/:vid', WRITE, async (req, res) => {
     const r = await pool.query(`DELETE FROM service_variations WHERE id=$1 RETURNING id`, [req.params.vid]);
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.04 Индивидуальные цены мастеров ─────────────── */
@@ -338,7 +338,7 @@ router.get('/:id/master-prices', async (req, res) => {
       `SELECT mp.*, m.name AS master_name FROM service_master_prices mp
          JOIN masters m ON m.id=mp.master_id WHERE mp.service_id=$1 ORDER BY m.name`, [req.params.id]);
     res.json({ items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/master-prices', WRITE, async (req, res) => {
@@ -354,7 +354,7 @@ router.post('/:id/master-prices', WRITE, async (req, res) => {
       [req.params.id, b.master_id, b.price ?? null, b.duration_min ?? null, b.active]);
     await logAction({ user: req.user, action: 'service.master_price.upsert', entity: 'service', entity_id: req.params.id, meta: { master_id: b.master_id } });
     res.json({ ok: true, master_price: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/master-prices/:mpid', WRITE, async (req, res) => {
@@ -362,7 +362,7 @@ router.delete('/master-prices/:mpid', WRITE, async (req, res) => {
     const r = await pool.query(`DELETE FROM service_master_prices WHERE id=$1 RETURNING id`, [req.params.mpid]);
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.05 Комплексы (создание/правка) ─────────────── */
@@ -389,7 +389,7 @@ router.post('/combos', WRITE, async (req, res) => {
        b.valid_from || null, b.valid_until || null, b.max_sales || null, b.sort_order]);
     await logAction({ user: req.user, action: 'service.combo.create', entity: 'combo', entity_id: r.rows[0].id, meta: { name: b.name } });
     res.json({ ok: true, combo: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/combos/:id', WRITE, async (req, res) => {
@@ -405,7 +405,7 @@ router.patch('/combos/:id', WRITE, async (req, res) => {
     const r = await pool.query(`UPDATE service_combos SET ${sets.join(', ')} WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true, combo: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/combos/:id', WRITE, async (req, res) => {
@@ -413,7 +413,7 @@ router.delete('/combos/:id', WRITE, async (req, res) => {
     const r = await pool.query(`DELETE FROM service_combos WHERE id=$1 RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/combos/:id/items', WRITE, async (req, res) => {
@@ -430,7 +430,7 @@ router.post('/combos/:id/items', WRITE, async (req, res) => {
       [req.params.id, b.service_id, b.variation_id || null, b.execution_order, b.allow_different_master]);
     await recalcComboDuration(req.params.id);
     res.json({ ok: true, item: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/combos/items/:itemId', WRITE, async (req, res) => {
@@ -439,7 +439,7 @@ router.delete('/combos/items/:itemId', WRITE, async (req, res) => {
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     await recalcComboDuration(r.rows[0].combo_id);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── 01.01 Групповые действия ─────────────── */
@@ -462,7 +462,7 @@ router.post('/bulk', WRITE, async (req, res) => {
     }
     await logAction({ user: req.user, action: 'service.bulk', entity: 'service', meta: { action, count: r.rowCount } });
     res.json({ ok: true, affected: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

@@ -96,7 +96,7 @@ router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
       net_margin_pct: revenueTotal > 0 ? Math.round(netProfit / revenueTotal * 100) : 0,
       counts: { orders: revOrders.rows[0].cnt, service_ops: revServices.rows[0].cnt }
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── KPI мастеров ────────────────────────────────────────
@@ -144,7 +144,7 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
     );
 
     res.json({ period: { from, to }, items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── RFM-сегментация клиентов ────────────────────────────
@@ -204,7 +204,7 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
     }
 
     res.json({ items: r.rows, count: r.rows.length, summary });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Отток (churn) ───────────────────────────────────────
@@ -227,7 +227,7 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
         LIMIT 500`, [days]
     );
     res.json({ threshold_days: days, items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Сводный дашборд (одним запросом) ────────────────────
@@ -322,7 +322,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
       out.top_master          = topMaster.rows[0] ? { name: topMaster.rows[0].name, revenue: Math.round(Number(topMaster.rows[0].rev)) } : null;
     }
     res.json(out);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Дневная динамика выручки (для графика) ──────────────
@@ -356,7 +356,7 @@ router.get('/revenue-series', requirePerm('reports.finance'), async (req, res) =
       [from, to]
     );
     res.json({ period: { from, to }, items: r.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -467,7 +467,7 @@ router.get('/clients-by-service', requirePerm('reports.read'), async (req, res) 
     for (const b of SERVICE_BUCKETS) summary[b].sum = Math.round(summary[b].sum);
 
     res.json({ period: { from, to }, count: items.length, items, summary });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Аналитика по мастеру: товары и услуги за период ─────
@@ -514,7 +514,7 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
       services: { total: Math.round(sSum), count: services.rows.reduce((a,r)=>a+r.count,0), items: services.rows },
       products: { total: Math.round(pSum), count: products.rows.reduce((a,r)=>a+r.count,0), items: products.rows },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Продажи товаров: по бренду / складу (филиалу) / периоду ─
@@ -612,7 +612,7 @@ router.get('/product-sales', requirePerm('reports.read'), async (req, res) => {
         by_master: salonByMaster.rows,
       },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Загрузка салона (utilization) ───────────────────────
@@ -659,7 +659,7 @@ router.get('/utilization', requirePerm('reports.read'), async (req, res) => {
       salon_busy_min: salonBusy, salon_avail_min: salonAvail,
       items,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── План месяца: список план/факт/% по всем мастерам ─────
@@ -726,7 +726,7 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
     });
 
     res.json({ year, month, period: { from, to }, items });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/reports/monthly-plan  — задать/обновить план мастера
@@ -747,7 +747,7 @@ router.post('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       [master_id, year, month, perShift, planTotal, auto]
     );
     res.json({ ok: true, plan: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Салонный обзор для дашборда (одним запросом) ─────────
@@ -877,7 +877,7 @@ router.get('/overview', requirePerm(), async (req, res) => {
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, done: r.done }));
     }
     res.json(out);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/reports/top-masters?from=&to= — топ майстрів за виручкою за довільний період.
@@ -908,7 +908,7 @@ router.get('/top-masters', requirePerm('reports.finance'), async (req, res) => {
        HAVING SUM(co.amount) > 0
         ORDER BY revenue DESC LIMIT 20`, [from, to]);
     res.json({ from, to, masters: r.rows.map(x => ({ id: x.id, name: x.name, revenue: Number(x.revenue), done: x.done })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

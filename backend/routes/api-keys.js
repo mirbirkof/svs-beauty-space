@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
     const rows = await q(`SELECT id,name,key_prefix,scopes,rate_limit_per_min,active,request_count,last_used_at,expires_at,created_at
                           FROM api_keys WHERE tenant_id=current_tenant_id() ORDER BY created_at DESC`);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/api-keys — выпустить ключ (раскрывается один раз)
@@ -49,7 +49,7 @@ router.post('/', async (req, res) => {
     await logAction({ user: req.user, action: 'apikey.create', entity: 'api_keys', entity_id: row.id, ip: req.ip });
     // полный ключ возвращается ТОЛЬКО сейчас
     res.json({ ...row, api_key: k.raw, warning: 'Збережіть ключ — він більше не буде показаний.' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/api-keys/:id — изменить scopes/limit/active
@@ -70,7 +70,7 @@ router.patch('/:id', async (req, res) => {
                           RETURNING id,name,key_prefix,scopes,rate_limit_per_min,active`, params))[0];
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/api-keys/:id/rotate — выпустить новый секрет для существующего ключа
@@ -83,7 +83,7 @@ router.post('/:id/rotate', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'apikey.rotate', entity: 'api_keys', entity_id: row.id, ip: req.ip });
     res.json({ ...row, api_key: k.raw, warning: 'Старий ключ більше не діє.' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/api-keys/:id
@@ -93,7 +93,7 @@ router.delete('/:id', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'apikey.delete', entity: 'api_keys', entity_id: req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

@@ -48,7 +48,7 @@ router.post('/reviews', async (req, res) => {
        rating, String(text || '').slice(0, 2000) || null, !!is_anonymous]
     );
     res.json({ ok: true, id: r.rows[0].id, created_at: r.rows[0].created_at });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/reviews — публичный список с фильтрами
@@ -71,7 +71,7 @@ router.get('/reviews', async (req, res) => {
        ORDER BY created_at DESC LIMIT $${args.length}`, args
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/reviews/stats/:master_id — средний рейтинг + распределение
@@ -89,7 +89,7 @@ router.get('/reviews/stats/:master_id', async (req, res) => {
       [req.params.master_id]
     );
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/reviews/:id — модерация (только персонал)
@@ -99,7 +99,7 @@ router.patch('/reviews/:id', requirePerm('reviews.write'), async (req, res) => {
     if (!['published', 'hidden', 'pending'].includes(status)) return res.status(400).json({ error: 'bad status' });
     await pool.query(`UPDATE reviews SET status=$1 WHERE id=$2`, [status, req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ FAVORITES ═══════════════ */
@@ -119,7 +119,7 @@ router.post('/favorites', authClient(), async (req, res) => {
       [phone, kind, target_id, target_name || null]
     );
     res.json({ ok: true, id: r.rows[0]?.id || null, already: !r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/favorites — убрать из избранного (только своё, по сессии)
@@ -132,7 +132,7 @@ router.delete('/favorites', authClient(), async (req, res) => {
       [phone, kind, target_id]
     );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ВАЖНО: req.client в Node — встроенный алиас сокета, он есть ВСЕГДА.
@@ -159,7 +159,7 @@ router.get('/favorites', authClient({ optional: true }), (req, res, next) => {
       args
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ BLACKLIST ═══════════════ */
@@ -177,7 +177,7 @@ router.post('/blacklist', requirePerm('blacklist.write'), async (req, res) => {
       [phone, reason || null, created_by || 'admin']
     );
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/blacklist/:phone — убрать (только персонал)
@@ -186,7 +186,7 @@ router.delete('/blacklist/:phone', requirePerm('blacklist.write'), async (req, r
     const phone = normPhone(req.params.phone);
     await pool.query(`DELETE FROM blacklist WHERE client_phone=$1`, [phone]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/blacklist — список (только персонал: телефоны и причины = персональные данные)
@@ -194,7 +194,7 @@ router.get('/blacklist', requirePerm('blacklist.read'), async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM blacklist ORDER BY created_at DESC`);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/blacklist/check/:phone — проверка перед записью (только персонал)
@@ -203,7 +203,7 @@ router.get('/blacklist/check/:phone', requirePerm('blacklist.read'), async (req,
     const phone = normPhone(req.params.phone);
     const r = await pool.query(`SELECT 1 FROM blacklist WHERE client_phone=$1`, [phone]);
     res.json({ blocked: r.rowCount > 0 });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ PROMOTIONS ═══════════════ */
@@ -222,7 +222,7 @@ router.post('/promotions', requirePerm('promo.write'), async (req, res) => {
        category || 'shop', service_category || null, starts_at || null, ends_at || null, banner_url || null]
     );
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/promotions — публичный список с фильтрами
@@ -239,7 +239,7 @@ router.get('/promotions', async (req, res) => {
       `SELECT * FROM promotions WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT 100`, args
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/promotions/:id (только персонал)
@@ -256,7 +256,7 @@ router.patch('/promotions/:id', requirePerm('promo.write'), async (req, res) => 
     args.push(req.params.id);
     await pool.query(`UPDATE promotions SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

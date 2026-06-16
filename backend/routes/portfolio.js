@@ -38,7 +38,7 @@ router.get('/public', async (req, res) => {
        ORDER BY p.featured DESC, p.sort_order NULLS LAST, p.created_at DESC
        LIMIT ${limit}`, params);
     res.json({ data: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── АВТОРИЗОВАННЫЕ ── */
@@ -63,7 +63,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN clients c ON c.id=p.client_id
        WHERE ${where} ORDER BY p.created_at DESC`, params);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/portfolio/:id
@@ -72,7 +72,7 @@ router.get('/:id', async (req, res) => {
     const rows = await q(`SELECT * FROM portfolio_items WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/portfolio — добавить работу
@@ -91,7 +91,7 @@ router.post('/', async (req, res) => {
        !!b.is_public, !!b.featured, b.sort_order || null, req.user?.id || null]))[0];
     await logAction({ user: req.user, action: 'portfolio.create', entity: 'portfolio_items', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/portfolio/:id
@@ -112,7 +112,7 @@ router.patch('/:id', async (req, res) => {
                           WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/portfolio/:id
@@ -122,7 +122,7 @@ router.delete('/:id', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'portfolio.delete', entity: 'portfolio_items', entity_id: req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

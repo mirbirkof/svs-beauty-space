@@ -270,17 +270,17 @@ router.post('/telegram', async (req, res) => {
 // === Catalog endpoints ==================================
 router.get('/services', async (req, res) => {
   try { res.json(await bp.listServices()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.get('/masters', async (req, res) => {
   try { res.json(await bp.listEmployees()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.get('/slots', async (req, res) => {
   try {
     const { duration, professional, from, to } = req.query;
     res.json(await bp.freeTime({ duration, professional, from, to }));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // === GET /catalog — нормализованный каталог из НАШЕЙ БД ==========

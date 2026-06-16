@@ -201,7 +201,7 @@ async function authRequired(req, res, next) {
     req.tokenPayload = decoded;
     next();
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'auth-mw-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'auth-mw-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 }
 
@@ -300,7 +300,7 @@ router.post('/login', async (req, res) => {
       user: publicUser(user),
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'login-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'login-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -358,7 +358,7 @@ router.post('/verify-2fa', async (req, res) => {
       user: publicUser(user),
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'verify-2fa-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'verify-2fa-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -407,7 +407,7 @@ router.post('/refresh-token', async (req, res) => {
       refresh_expires_at: expiresAt,
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'refresh-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'refresh-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -422,7 +422,7 @@ router.post('/logout', authRequired, async (req, res) => {
     clearRefreshCookie(res);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'logout-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'logout-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -435,7 +435,7 @@ router.post('/logout-all', authRequired, async (req, res) => {
     clearRefreshCookie(res);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'logout-all-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'logout-all-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -480,7 +480,7 @@ router.post('/forgot-password', async (req, res) => {
 
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'forgot-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'forgot-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -535,7 +535,7 @@ router.post('/reset-password', async (req, res) => {
 
     res.json({ ok: true, message: 'Пароль оновлено. Увійдіть знову.' });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'reset-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'reset-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -581,7 +581,7 @@ router.post('/change-password', authRequired, async (req, res) => {
 
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'change-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'change-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -607,7 +607,7 @@ router.get('/sessions', authRequired, async (req, res) => {
     );
     res.json({ ok: true, items: r.rows });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'sessions-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'sessions-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -624,7 +624,7 @@ router.delete('/sessions/:id', authRequired, async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'session-not-found' });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'session-revoke-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'session-revoke-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -690,7 +690,7 @@ router.post('/panel-login', async (req, res) => {
       permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
     }});
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'panel-login-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'panel-login-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -737,7 +737,7 @@ router.post('/tg-login-request', async (req, res) => {
     await recordAttempt(pool, { identifier, kind: 'tg-login', success: true, ip, ua, meta: { stage: 'code-sent' } });
     res.json({ ok: true, channel: 'telegram', hint: 'Код надіслано у ваш Telegram' });
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'tg-login-request-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'tg-login-request-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -789,7 +789,7 @@ router.post('/tg-login-verify', async (req, res) => {
       permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
     }});
   } catch (e) {
-    res.status(500).json({ ok: false, error: 'tg-login-verify-failed', detail: e.message });
+    res.status(500).json({ ok: false, error: 'tg-login-verify-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

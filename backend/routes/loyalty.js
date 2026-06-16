@@ -27,7 +27,7 @@ router.get('/loyalty/tiers', async (req, res) => {
   try {
     const r = await pool.query('SELECT * FROM loyalty_tiers ORDER BY min_spent');
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // === ПРОФИЛЬ КЛИЕНТА ===
@@ -89,7 +89,7 @@ router.get('/loyalty/profile/:phone', async (req, res) => {
         bonuses_earned: parseFloat(ref.rows[0].earned)
       }
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // === РЕФЕРАЛЫ ===
@@ -115,7 +115,7 @@ router.post('/loyalty/referrals', async (req, res) => {
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'already invited' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -129,7 +129,7 @@ router.get('/loyalty/referrals/:phone', async (req, res) => {
       [phone]
     );
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Кредитнуть бонус (после первой покупки приглашённого)
@@ -142,7 +142,7 @@ router.post('/loyalty/referrals/:id/credit', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(400).json({ error: 'not found or already credited' });
     res.json({ ok: true, referrer: r.rows[0].referrer_phone, bonus: r.rows[0].bonus_amount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // === ДНИ РОЖДЕНИЯ ===
@@ -158,7 +158,7 @@ router.post('/loyalty/birthday', async (req, res) => {
       [phone, birthday]
     );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Кредитнуть бонус ко дню рождения (вызывается воркером раз в день)
@@ -186,7 +186,7 @@ router.post('/loyalty/birthday/credit', async (req, res) => {
       credited.push({ phone: row.client_phone, bonus });
     }
     res.json({ ok: true, credited_count: credited.length, items: credited });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

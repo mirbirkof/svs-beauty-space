@@ -141,7 +141,7 @@ router.post('/generate', canWrite, async (req, res) => {
       out.push({ id: row.id, text: row.generated_text, ab_variant: row.ab_variant, status: row.status });
     }
     res.json({ generations: out, ab_group_id: abGroup });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /generations — список ──────────────────────────────
@@ -161,7 +161,7 @@ router.get('/generations', canRead, async (req, res) => {
          FROM ai_content_generations ${w.length ? 'WHERE ' + w.join(' AND ') : ''}
         ORDER BY created_at DESC LIMIT $${p.length}`, p);
     res.json({ generations: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── PUT /generations/:id — редактировать/утвердить/метрики ──
@@ -180,7 +180,7 @@ router.put('/generations/:id', canWrite, async (req, res) => {
     const rows = await q(`UPDATE ai_content_generations SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING id, generated_text, status, performance`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ generation: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /generate-reply — ответ на отзыв ──────────────────
@@ -212,7 +212,7 @@ ${service ? `Послуга: ${service}.` : ''}
       [req.body.branch_id || null, review_text, text, JSON.stringify({ reviewer_name, rating, service, sentiment }), brand_voice_id || null, req.user?.id || null]
     ))[0];
     res.json({ reply_text: text, id: row.id, sentiment });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Templates ──────────────────────────────────────────────
@@ -220,7 +220,7 @@ router.get('/templates', canRead, async (req, res) => {
   try {
     const rows = await q(`SELECT * FROM ai_content_templates WHERE active=true ORDER BY usage_count DESC, name LIMIT 200`);
     res.json({ templates: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/templates', canWrite, async (req, res) => {
   try {
@@ -232,7 +232,7 @@ router.post('/templates', canWrite, async (req, res) => {
       [req.body.branch_id || null, name, type, purpose, prompt_template, JSON.stringify(variables_schema), brand_voice_id || null, example_output || null]
     ))[0];
     res.json({ template: row });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.put('/templates/:id', canWrite, async (req, res) => {
   try {
@@ -245,7 +245,7 @@ router.put('/templates/:id', canWrite, async (req, res) => {
     const rows = await q(`UPDATE ai_content_templates SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING *`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ template: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Brand voice ────────────────────────────────────────────
@@ -253,7 +253,7 @@ router.get('/brand-voice', canRead, async (req, res) => {
   try {
     const rows = await q(`SELECT * FROM ai_brand_voice ORDER BY is_default DESC, name`);
     res.json({ brand_voices: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/brand-voice', canWrite, async (req, res) => {
   try {
@@ -269,7 +269,7 @@ router.post('/brand-voice', canWrite, async (req, res) => {
     res.json({ brand_voice: row });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'brand voice з такою назвою вже існує' });
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 router.put('/brand-voice/:id', canWrite, async (req, res) => {
@@ -283,7 +283,7 @@ router.put('/brand-voice/:id', canWrite, async (req, res) => {
     const rows = await q(`UPDATE ai_brand_voice SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING *`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ brand_voice: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Content plan ───────────────────────────────────────────
@@ -309,13 +309,13 @@ router.post('/content-plan/generate', canWrite, async (req, res) => {
       [branch_id || null, period_start, period_end, JSON.stringify(items)]
     ))[0];
     res.json({ plan: row });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.get('/content-plan', canRead, async (req, res) => {
   try {
     const rows = await q(`SELECT * FROM ai_content_plans ORDER BY period_start DESC LIMIT 100`);
     res.json({ plans: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.put('/content-plan/:id', canWrite, async (req, res) => {
   try {
@@ -331,7 +331,7 @@ router.put('/content-plan/:id', canWrite, async (req, res) => {
     const rows = await q(`UPDATE ai_content_plans SET ${sets.join(', ')} WHERE id=$${p.length} RETURNING *`, p);
     if (!rows.length) return res.status(404).json({ error: 'не знайдено' });
     res.json({ plan: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Analytics ──────────────────────────────────────────────
@@ -365,7 +365,7 @@ router.get('/analytics', canRead, async (req, res) => {
       ab_groups: (abGroups[0] || {}).ab_groups || 0,
       by_type: byType.map(r => ({ type: r.type, count: r.cnt, avg_open_rate: r.avg_open != null ? Number(r.avg_open.toFixed(3)) : null })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

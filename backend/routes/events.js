@@ -31,7 +31,7 @@ router.get('/', ADMIN, async (req, res) => {
     const r = await pool.query(sql, args);
     res.json({ events: r.rows, count: r.rowCount });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -50,7 +50,7 @@ router.get('/types', ADMIN, async (req, res) => {
     );
     res.json({ types: r.rows });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -61,7 +61,7 @@ router.post('/test', requirePerm('admin.write'), async (req, res) => {
       { entityType: 'system', actor: req.user?.display_name || 'admin' });
     res.json({ ok: true, event: evt });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

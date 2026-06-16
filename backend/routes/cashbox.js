@@ -58,7 +58,7 @@ router.post('/shifts/open', async (req, res) => {
       [branch_id || null, opened_by || null, opening_cash || 0, notes || null]
     );
     res.json({ ok: true, shift: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/shifts/current — текущая открытая
@@ -70,7 +70,7 @@ router.get('/shifts/current', async (req, res) => {
     const totals = await recalcShiftTotals(shift.id);
     const expected = Number(shift.opening_cash) + Number(totals.cash_in) - Number(totals.cash_out);
     res.json({ shift, totals, expected_cash: expected });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/today?date=YYYY-MM-DD — зведення каси за день (готівка/безготівка/разом)
@@ -105,7 +105,7 @@ router.get('/today', async (req, res) => {
       net: row.total_in - row.total_out,
       ops_in: row.ops_in,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Людські назви категорій операцій (DIKIDI-style)
@@ -180,7 +180,7 @@ router.get('/finance', requireHistory, async (req, res) => {
         master_name: t.master_name, created_at: t.created_at,
       })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/shifts — история смен (только владелец)
@@ -194,7 +194,7 @@ router.get('/shifts', requireHistory, async (req, res) => {
       [limit]
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/shifts/:id — детали смены
@@ -213,7 +213,7 @@ router.get('/shifts/:id', async (req, res) => {
     );
     const totals = await recalcShiftTotals(id);
     res.json({ shift: s.rows[0], operations: ops.rows, totals });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/cashbox/shifts/:id/close — закрыть смену + Z-отчёт
@@ -280,7 +280,7 @@ router.post('/shifts/:id/close', async (req, res) => {
     res.json({ ok: true, shift_id: id, z_report: z.rows[0] });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally {
     client.release();
   }
@@ -313,7 +313,7 @@ router.post('/operations', async (req, res) => {
       [sid, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null]
     );
     res.json({ ok: true, operation: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/operations?shift_id=N — операции по смене
@@ -331,7 +331,7 @@ router.get('/operations', async (req, res) => {
       [shiftId]
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/cashbox/operations/:id — удалить (только в открытой смене)
@@ -346,7 +346,7 @@ router.delete('/operations/:id', async (req, res) => {
     if (op.rows[0].shift_status !== 'open') return res.status(400).json({ error: 'shift-closed' });
     await pool.query(`DELETE FROM cash_operations WHERE id=$1`, [id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Z-REPORTS ──────────────────────────────────────────
@@ -359,7 +359,7 @@ router.get('/z-reports', requireHistory, async (req, res) => {
       `SELECT * FROM z_reports ORDER BY period_end DESC LIMIT $1`, [limit]
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/cashbox/z-reports/:id (только владелец)
@@ -368,7 +368,7 @@ router.get('/z-reports/:id', requireHistory, async (req, res) => {
     const r = await pool.query(`SELECT * FROM z_reports WHERE id=$1`, [Number(req.params.id)]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     res.json({ report: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── TAXES ──────────────────────────────────────────────
@@ -377,7 +377,7 @@ router.get('/taxes', requireHistory, async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM tax_records ORDER BY period_start DESC`);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/taxes', async (req, res) => {
@@ -390,7 +390,7 @@ router.post('/taxes', async (req, res) => {
       [period_start, period_end, type, base_amount || 0, tax_amount || 0, notes || null]
     );
     res.json({ ok: true, record: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/taxes/:id/pay', async (req, res) => {
@@ -403,7 +403,7 @@ router.post('/taxes/:id/pay', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, record: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

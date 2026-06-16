@@ -34,7 +34,7 @@ router.get('/', requirePerm('notify.write'), async (req, res) => {
        ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
        ORDER BY n.created_at DESC LIMIT $${args.length}`, args);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/notifications/stats — аналитика доставляемости
@@ -57,7 +57,7 @@ router.get('/stats', requirePerm('notify.write'), async (req, res) => {
       delivery_rate: r.total ? Math.round((r.delivered / r.total) * 100) : null,
     }));
     res.json({ ok: true, worker_active: !!cronRef, paused: settings.paused, today: today.rows[0].c, by_status: stats, by_channel: channels });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/notifications/send — ручная постановка в очередь
@@ -68,7 +68,7 @@ router.post('/send', requirePerm('notify.write'), async (req, res) => {
     // моментальная попытка отправки, чтобы UI сразу видел результат
     if (out.id) await hub.processQueue(5);
     res.json({ ok: !out.skipped, ...out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/notifications/:id/retry — ручной повтор
@@ -82,19 +82,19 @@ router.post('/:id/retry', requirePerm('notify.write'), async (req, res) => {
     if (!r.rowCount) return res.status(404).json({ error: 'not-found-or-not-retryable' });
     const result = await hub.processQueue(5);
     res.json({ ok: true, requeued: req.params.id, result });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/notifications/process — ручной тик воркера
 router.post('/process', requirePerm('notify.write'), async (req, res) => {
   try { res.json({ ok: true, ...(await hub.processQueue(parseInt(req.body?.limit, 10) || 30)) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Настройки доставки (пауза, лимиты, DND) ─────────────────────────
 router.get('/settings', requirePerm('notify.write'), async (req, res) => {
   try { res.json(await hub.getSettings(getPool())); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.patch('/settings', requirePerm('settings.write'), async (req, res) => {
   try {
@@ -106,7 +106,7 @@ router.patch('/settings', requirePerm('settings.write'), async (req, res) => {
     args.push(hub.DEFAULT_TENANT);
     await pool.query(`UPDATE notification_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE tenant_id=$${args.length}`, args);
     res.json(await hub.getSettings(pool));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Шаблоны ─────────────────────────────────────────────────────────
@@ -115,12 +115,12 @@ router.get('/templates', requirePerm('notify.write'), async (req, res) => {
     const pool = getPool();
     const r = await pool.query(`SELECT * FROM notification_templates ORDER BY category, key, channel, lang`);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 // preview: рендер с тестовыми переменными
 router.post('/templates/preview', requirePerm('notify.write'), async (req, res) => {
   try { res.json({ ok: true, rendered: hub.renderTemplate(req.body?.body || '', req.body?.vars || {}) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.post('/templates', requirePerm('notify.write'), async (req, res) => {
   try {
@@ -136,7 +136,7 @@ router.post('/templates', requirePerm('notify.write'), async (req, res) => {
        RETURNING *`,
       [key, channel, lang, category, subject || null, body, JSON.stringify(variables || [])]);
     res.json({ ok: true, template: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.delete('/templates/:id', requirePerm('notify.write'), async (req, res) => {
   try {
@@ -144,7 +144,7 @@ router.delete('/templates/:id', requirePerm('notify.write'), async (req, res) =>
     const r = await pool.query(`DELETE FROM notification_templates WHERE id=$1 AND is_system=FALSE RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found-or-system' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Подписки клиента / отписка ──────────────────────────────────────
@@ -153,7 +153,7 @@ router.get('/prefs/:clientId', requirePerm('notify.write'), async (req, res) => 
     const pool = getPool();
     const r = await pool.query(`SELECT * FROM notification_prefs WHERE client_id=$1`, [req.params.clientId]);
     res.json(r.rows[0] || { client_id: Number(req.params.clientId), marketing_opt_in: true, transactional_opt_in: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 router.patch('/prefs/:clientId', requirePerm('notify.write'), async (req, res) => {
   try {
@@ -173,7 +173,7 @@ router.patch('/prefs/:clientId', requirePerm('notify.write'), async (req, res) =
        b.transactional_opt_in ?? null, b.dnd_start ?? null, b.dnd_end ?? null,
        b.unsubscribe ? new Date() : (b.resubscribe ? null : (b.unsubscribed_at ?? null))]);
     res.json({ ok: true, prefs: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/health', (req, res) => res.json({ ok: true, worker_active: !!cronRef, channels: hub.channelStatus() }));

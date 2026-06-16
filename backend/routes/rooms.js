@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
       `SELECT * FROM rooms ${all ? '' : 'WHERE active=TRUE'} ORDER BY sort_order, id`
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/', requirePerm('settings.write'), async (req, res) => {
@@ -27,7 +27,7 @@ router.post('/', requirePerm('settings.write'), async (req, res) => {
     );
     await logAction({ user: req.user, action: 'room.create', entity: 'room', entity_id: r.rows[0].id, meta: { name } });
     res.json({ ok: true, room: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/:id', requirePerm('settings.write'), async (req, res) => {
@@ -48,7 +48,7 @@ router.patch('/:id', requirePerm('settings.write'), async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'room.update', entity: 'room', entity_id: id });
     res.json({ ok: true, room: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id', requirePerm('settings.write'), async (req, res) => {
@@ -58,7 +58,7 @@ router.delete('/:id', requirePerm('settings.write'), async (req, res) => {
     await pool.query(`UPDATE rooms SET active=FALSE WHERE id=$1`, [id]);
     await logAction({ user: req.user, action: 'room.disable', entity: 'room', entity_id: id });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

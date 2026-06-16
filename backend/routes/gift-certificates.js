@@ -58,7 +58,7 @@ router.post('/', async (req, res) => {
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'issue',$2,$2,$3,'випуск')`, [gc.id, amt, req.user?.display_name || null]);
     logAction({ user: req.user, action: 'gc.issue', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip, meta: { code, amount: amt } }).catch(() => {});
     res.json({ ok: true, certificate: gc });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET / — список ──
@@ -72,7 +72,7 @@ router.get('/', async (req, res) => {
     const lim = Math.min(+req.query.limit || 100, 500);
     const r = await pool.query(`SELECT * FROM gift_certificates ${where} ORDER BY created_at DESC LIMIT ${lim}`, params);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /analytics — аналітика ──
@@ -89,7 +89,7 @@ router.get('/analytics', async (req, res) => {
         COALESCE(SUM(remaining_amount) FILTER (WHERE status IN ('active','partially_used')),0)::numeric AS outstanding_amount
       FROM gift_certificates`, [from, to]);
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /check/:code — перевірка для каси ──
@@ -103,7 +103,7 @@ router.get('/check/:code', async (req, res) => {
     res.json({ valid, status: gc.status, id: gc.id, code: gc.code, type: gc.type, service_id: gc.service_id,
       remaining_amount: Number(gc.remaining_amount), original_amount: Number(gc.original_amount), valid_until: gc.valid_until,
       reason: valid ? null : (gc.status === 'expired' ? 'expired' : gc.status === 'cancelled' ? 'cancelled' : gc.status === 'fully_used' ? 'no-balance' : 'inactive') });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── GET /:id — деталі + транзакції ──
@@ -113,7 +113,7 @@ router.get('/:id', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     const tx = await pool.query(`SELECT * FROM gift_certificate_transactions WHERE gc_id=$1 ORDER BY created_at`, [+req.params.id]);
     res.json({ certificate: r.rows[0], transactions: tx.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /:id/use — використати (повне/часткове) ──
@@ -133,7 +133,7 @@ router.post('/:id/use', async (req, res) => {
       [gc.id, amt, balance, req.body?.appointment_id || null, req.body?.order_id || null, req.user?.display_name || null, req.body?.notes || null]);
     logAction({ user: req.user, action: 'gc.use', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip, meta: { amount: amt, balance } }).catch(() => {});
     res.json({ ok: true, certificate: upd.rows[0], used: amt, balance });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /:id/refund — повернення коштів на сертифікат ──
@@ -150,7 +150,7 @@ router.post('/:id/refund', async (req, res) => {
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'refund',$2,$3,$4,$5)`,
       [gc.id, amt, balance, req.user?.display_name || null, req.body?.reason || null]);
     res.json({ ok: true, certificate: upd.rows[0], balance });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── POST /:id/cancel — анулювати ──
@@ -164,7 +164,7 @@ router.post('/:id/cancel', async (req, res) => {
       [gc.id, gc.remaining_amount, req.user?.display_name || null, req.body?.reason || 'анульовано']);
     logAction({ user: req.user, action: 'gc.cancel', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, certificate: upd.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

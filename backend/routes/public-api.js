@@ -32,7 +32,7 @@ router.get('/services', apiKeyAuth('services.read'), async (req, res) => {
        WHERE tenant_id=current_tenant_id() AND deleted_at IS NULL AND coalesce(active,true)=true
        ORDER BY sort_order NULLS LAST, name`);
     res.json({ data: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/v1/services/categories — категории услуг
@@ -43,7 +43,7 @@ router.get('/services/categories', apiKeyAuth('services.read'), async (req, res)
        FROM services WHERE tenant_id=current_tenant_id() AND deleted_at IS NULL AND category IS NOT NULL
        GROUP BY category ORDER BY category`);
     res.json({ data: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/v1/masters — мастера с включённой онлайн-записью
@@ -56,7 +56,7 @@ router.get('/masters', apiKeyAuth('masters.read'), async (req, res) => {
          AND coalesce(online_booking_enabled,true)=true
        ORDER BY online_rank NULLS LAST, name`);
     res.json({ data: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/v1/leads — внешняя заявка (создаёт запись в form_submissions как лид)
@@ -77,7 +77,7 @@ router.post('/leads', apiKeyAuth('write'), async (req, res) => {
       `INSERT INTO form_submissions (form_id, data, ip) VALUES ($1,$2,$3) RETURNING id, created_at`,
       [form.id, JSON.stringify(data), req.ip || null]))[0];
     res.json({ ok: true, lead_id: sub.id, created_at: sub.created_at });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

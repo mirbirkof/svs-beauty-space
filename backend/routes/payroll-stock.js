@@ -34,7 +34,7 @@ router.post('/payroll/schemes', async (req, res) => {
       [master_id, master_name || null, scheme_type, percent || null, fixed_per_day || null, fixed_per_month || null, sales_commission_pct || 0, notes || null]
     );
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/payroll/schemes — все активные
@@ -42,7 +42,7 @@ router.get('/payroll/schemes', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM payroll_schemes WHERE is_active=TRUE ORDER BY master_name, master_id`);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/payroll/calculate — рассчитать ЗП за период
@@ -155,7 +155,7 @@ router.post('/payroll/calculate', async (req, res) => {
                 meta: { master_id, period_start, period_end, total: rec.rows[0].total } });
     res.json({ ok: true, record_id, total: rec.rows[0].total,
                breakdown: { services_count, services_revenue, percent_part, fixed_part, sales_revenue, sales_part, bonus_sum, penalty_sum, advance_sum } });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/payroll/records — список начислений
@@ -171,7 +171,7 @@ router.get('/payroll/records', async (req, res) => {
                  ORDER BY period_start DESC LIMIT $${args.length}`;
     const r = await pool.query(sql, args);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/payroll/records/:id — изменить статус (approve/paid)
@@ -218,7 +218,7 @@ router.patch('/payroll/records/:id', async (req, res) => {
     logAction({ user: req.user, action: status === 'paid' ? 'payroll.paid' : (status === 'approved' ? 'payroll.approved' : 'payroll.updated'),
                 entity: 'payroll_records', entity_id: req.params.id, ip: req.ip, meta: { status, bonus, deduction } });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ BONUSES / PENALTIES / ADVANCES ═══════════════ */
@@ -245,7 +245,7 @@ function tableFor(kind) { return kind === 'bonus' ? 'payroll_bonuses' : 'payroll
       );
       logAction({ user: req.user, action: kind === 'bonus' ? 'bonus.created' : 'penalty.created', entity: table, entity_id: r.rows[0].id, ip: req.ip, meta: { master_id, amount } });
       res.json({ ok: true, id: r.rows[0].id });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   });
 
   // GET — список с фильтрами master_id / from / to / applied
@@ -261,7 +261,7 @@ function tableFor(kind) { return kind === 'bonus' ? 'payroll_bonuses' : 'payroll
       const sql = `SELECT * FROM ${table} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ${dcol} DESC, id DESC LIMIT 300`;
       const r = await pool.query(sql, args);
       res.json({ items: r.rows, count: r.rows.length });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   });
 
   // DELETE — нельзя удалять уже учтённое в расчёте
@@ -272,7 +272,7 @@ function tableFor(kind) { return kind === 'bonus' ? 'payroll_bonuses' : 'payroll
       if (chk.rows[0].applied_record_id) return res.status(409).json({ error: 'already applied to a payroll record' });
       await pool.query(`DELETE FROM ${table} WHERE id=$1`, [req.params.id]);
       res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   });
 });
 
@@ -299,7 +299,7 @@ router.post('/payroll/advances', async (req, res) => {
     } catch (e) { console.warn('[advance-cashbox]', e.message); }
     logAction({ user: req.user, action: 'advance.created', entity: 'payroll_advances', entity_id: r.rows[0].id, ip: req.ip, meta: { master_id, amount } });
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/payroll/advances', async (req, res) => {
@@ -312,7 +312,7 @@ router.get('/payroll/advances', async (req, res) => {
     const sql = `SELECT * FROM payroll_advances ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY issued_at DESC, id DESC LIMIT 300`;
     const r = await pool.query(sql, args);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/payroll/advances/:id', async (req, res) => {
@@ -322,7 +322,7 @@ router.delete('/payroll/advances/:id', async (req, res) => {
     if (chk.rows[0].settled) return res.status(409).json({ error: 'already settled in a payroll record' });
     await pool.query(`DELETE FROM payroll_advances WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ PAYMENTS HISTORY ═══════════════ */
@@ -337,7 +337,7 @@ router.get('/payroll/payments', async (req, res) => {
     const sql = `SELECT * FROM payroll_payments ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY paid_at DESC LIMIT 300`;
     const r = await pool.query(sql, args);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ FINANCIAL ANALYTICS ═══════════════ */
@@ -390,7 +390,7 @@ router.get('/payroll/statistics', async (req, res) => {
         ratio: parseFloat(m.revenue) > 0 ? +(parseFloat(m.payroll) / parseFloat(m.revenue) * 100).toFixed(1) : 0
       }))
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ PAYSLIP (расчётный лист) ═══════════════ */
@@ -423,7 +423,7 @@ router.get('/payroll/payslip/:id', async (req, res) => {
       total: parseFloat(r.total),
       payment: payment.rows[0] || null
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ MASTER SELF-VIEW ═══════════════ */
@@ -441,7 +441,7 @@ router.get('/payroll/my', async (req, res) => {
       pool.query(`SELECT amount, method, paid_at, period_start, period_end FROM payroll_payments WHERE master_id=$1 ORDER BY paid_at DESC LIMIT 50`, [mid])
     ]);
     res.json({ master_id: mid, records: records.rows, bonuses: bonuses.rows, penalties: penalties.rows, advances: advances.rows, payments: payments.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ SUPPLIERS ═══════════════ */
@@ -455,14 +455,14 @@ router.post('/suppliers', async (req, res) => {
       [name, phone || null, email || null, notes || null]
     );
     res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/suppliers', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM suppliers ORDER BY name`);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ STOCK RECEIPTS (поставки) ═══════════════ */
@@ -506,7 +506,7 @@ router.post('/stock/receipts', async (req, res) => {
     res.json({ ok: true, receipt_id, total });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
 });
 
@@ -519,7 +519,7 @@ router.get('/stock/receipts', async (req, res) => {
        ORDER BY r.received_at DESC LIMIT 200`
     );
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/stock/receipts/:id', async (req, res) => {
@@ -531,7 +531,7 @@ router.get('/stock/receipts/:id', async (req, res) => {
     if (!head.rows[0]) return res.status(404).json({ error: 'not found' });
     const items = await pool.query(`SELECT * FROM stock_receipt_items WHERE receipt_id=$1 ORDER BY id`, [req.params.id]);
     res.json({ ...head.rows[0], items: items.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ═══════════════ MATERIAL CONSUMPTION (списания мастером) ═══════════════ */
@@ -562,7 +562,7 @@ router.post('/stock/consumption', async (req, res) => {
     res.json({ ok: true, id: r.rows[0].id, total_cost: r.rows[0].total_cost });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
 });
 
@@ -579,7 +579,7 @@ router.get('/stock/consumption', async (req, res) => {
                  ORDER BY consumed_at DESC LIMIT $${args.length}`;
     const r = await pool.query(sql, args);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

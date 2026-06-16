@@ -52,13 +52,13 @@ async function effectiveFeatures() {
 /* ── ЭФФЕКТИВНЫЕ ФИЧИ (для UI) ── */
 router.get('/features', async (req, res) => {
   try { res.json(await effectiveFeatures()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── ПЛАНЫ ── */
 router.get('/plans', async (req, res) => {
   try { res.json({ rows: await q(`SELECT * FROM saas_plans ORDER BY sort_order NULLS LAST, price_month`) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/plans', async (req, res) => {
@@ -77,13 +77,13 @@ router.post('/plans', async (req, res) => {
        b.active !== false, b.sort_order || null]))[0];
     await logAction({ user: req.user, action: 'saas.plan_upsert', entity: 'saas_plans', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── ФИЧ-ФЛАГИ ── */
 router.get('/flags', async (req, res) => {
   try { res.json({ rows: await q(`SELECT * FROM feature_flags ORDER BY key`) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/flags', async (req, res) => {
@@ -98,7 +98,7 @@ router.post('/flags', async (req, res) => {
        RETURNING *`,
       [b.key, b.name || null, b.description || null, !!b.default_enabled]))[0];
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── ЛИЦЕНЗИЯ АРЕНДАТОРА ── */
@@ -106,7 +106,7 @@ router.get('/license', async (req, res) => {
   try {
     const lic = (await q(`SELECT * FROM tenant_licenses WHERE tenant_id=current_tenant_id() LIMIT 1`))[0];
     res.json(lic || { plan_code: null, status: 'none' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PUT /api/saas/license — назначить/изменить план и overrides текущему арендатору
@@ -127,7 +127,7 @@ router.put('/license', async (req, res) => {
        b.trial_ends_at || null, b.expires_at || null]))[0];
     await logAction({ user: req.user, action: 'saas.license_update', entity: 'tenant_licenses', ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/saas/usage — текущее использование против лимитов плана
@@ -146,7 +146,7 @@ router.get('/usage', async (req, res) => {
         masters: limits.masters > 0 && masters > limits.masters,
       },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

@@ -67,7 +67,7 @@ router.get('/', async (req, res) => {
     res.json({ rows, total: totalRow[0].n, limit, offset, facets });
   } catch (e) {
     console.error('[audit] list error:', e.message);
-    res.status(500).json({ error: 'audit_failed', detail: e.message });
+    res.status(500).json({ error: 'audit_failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -93,7 +93,7 @@ router.get('/stats', async (req, res) => {
     res.json({ days, by_day: byDay, top_actions: topActions, top_users: topUsers, by_entity: byEntity });
   } catch (e) {
     console.error('[audit] stats error:', e.message);
-    res.status(500).json({ error: 'audit_stats_failed', detail: e.message });
+    res.status(500).json({ error: 'audit_stats_failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 
@@ -104,7 +104,7 @@ router.get('/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

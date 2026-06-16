@@ -118,6 +118,11 @@ const API = (function() {
 
 let CURRENT_PHONE = null;
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 // автозагрузка если уже логинились раньше
 window.addEventListener('DOMContentLoaded', () => {
   try {
@@ -175,10 +180,10 @@ async function loadProfile() {
   document.getElementById('tiers-list').innerHTML = tRes.items.map(x => {
     const isMe = x.name === t.name;
     return `<div class="tier-card flex items-center gap-3 p-3 rounded-lg ${isMe?'bg-amber-50 border-2 border-amber-300':'bg-gray-50'}">
-      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold" style="border-color:${x.color};color:${x.color}">${x.name[0]}</div>
+      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold" style="border-color:${escapeHtml(x.color)};color:${escapeHtml(x.color)}">${escapeHtml(x.name[0])}</div>
       <div class="flex-1">
-        <p class="font-medium text-sm">${x.name} ${isMe?'<span class="text-xs text-amber-600">— вы здесь</span>':''}</p>
-        <p class="text-xs text-gray-500">${x.perks||''}</p>
+        <p class="font-medium text-sm">${escapeHtml(x.name)} ${isMe?'<span class="text-xs text-amber-600">— вы здесь</span>':''}</p>
+        <p class="text-xs text-gray-500">${escapeHtml(x.perks||'')}</p>
       </div>
       <div class="text-right text-xs">
         <p class="font-bold">${parseFloat(x.bonus_percent)}%</p>
@@ -207,7 +212,7 @@ async function saveBday() {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({client_phone: CURRENT_PHONE, birthday: bday})
   }).then(r => r.json());
-  document.getElementById('bday-msg').textContent = r.ok ? '✓ Сохранено. Подарок придёт в день рождения' : 'Ошибка: ' + r.error;
+  document.getElementById('bday-msg').textContent = r.ok ? 'Сохранено. Подарок придёт в день рождения' : 'Ошибка: ' + (r.error || 'unknown');
 }
 </script>
 </body>

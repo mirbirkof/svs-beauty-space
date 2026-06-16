@@ -33,7 +33,7 @@ router.get('/public', async (req, res) => {
        WHERE tenant_id=current_tenant_id() AND moderation='approved' AND rating >= $1
        ORDER BY created_at DESC LIMIT ${limit}`, [minRating]);
     res.json({ data: rows, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ── МОДЕРАЦИЯ (требует прав) ── */
@@ -51,7 +51,7 @@ router.get('/', async (req, res) => {
               moderation, moderation_note, moderated_at, created_at
        FROM reviews WHERE ${where} ORDER BY created_at DESC LIMIT ${limit}`, params);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/reviews-moderation/summary
@@ -61,7 +61,7 @@ router.get('/summary', async (req, res) => {
     const summary = { pending: 0, approved: 0, rejected: 0, spam: 0 };
     for (const r of rows) summary[r.moderation] = r.n;
     res.json(summary);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // установить статус модерации одному отзыву
@@ -74,7 +74,7 @@ async function setModeration(req, res, status) {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: `review.${status}`, entity: 'reviews', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 }
 router.post('/:id/approve', (req, res) => setModeration(req, res, 'approved'));
 router.post('/:id/reject', (req, res) => setModeration(req, res, 'rejected'));
@@ -92,7 +92,7 @@ router.post('/bulk', async (req, res) => {
       [action, req.user?.id || null, ids]);
     await logAction({ user: req.user, action: `review.bulk_${action}`, entity: 'reviews', meta: { count: r.rowCount }, ip: req.ip });
     res.json({ ok: true, updated: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

@@ -95,7 +95,7 @@ router.post('/admin/create', requirePerm('promo.write'), async (req, res) => {
     res.status(201).json({ ok: true, promo: r.rows[0] });
   } catch (e) {
     console.error('[promo:create]', e);
-    res.status(500).json({ error: 'internal', detail: e.message });
+    res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

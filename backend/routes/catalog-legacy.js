@@ -76,7 +76,7 @@ router.get('/all', async (req, res) => {
     res.json(cache);
   } catch (e) {
     console.error('[legacy:all]', e);
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 

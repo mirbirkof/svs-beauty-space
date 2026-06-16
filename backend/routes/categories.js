@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
       return res.json({ items, total: items.length });
     }
     res.json({ tree: buildTree(r.rows, counts) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── GET /public — активные, без пустых ─────────────── */
@@ -89,7 +89,7 @@ router.get('/public', async (req, res) => {
     // скрываем категории без услуг в поддереве
     const visible = r.rows.filter(x => (counts.get(x.id)?.total || 0) > 0);
     res.json({ tree: buildTree(visible, counts) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── GET /:id — карточка ─────────────── */
@@ -107,7 +107,7 @@ router.get('/:id', async (req, res) => {
     const breadcrumbs = ids.map(i => bcMap.get(i)).filter(Boolean);
     const direct = (await pool.query(`SELECT COUNT(*)::int c FROM services WHERE deleted_at IS NULL AND active AND category=$1`, [cat.name])).rows[0].c;
     res.json({ category: cat, parent, children, breadcrumbs, services_count: direct });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── GET /:id/breadcrumbs ─────────────── */
@@ -119,7 +119,7 @@ router.get('/:id/breadcrumbs', async (req, res) => {
     const bc = await pool.query(`SELECT id,name,slug FROM service_categories WHERE id=ANY($1)`, [ids]);
     const m = new Map(bc.rows.map(r => [r.id, r]));
     res.json({ breadcrumbs: ids.map(i => m.get(i)).filter(Boolean) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── GET /:id/services ─────────────── */
@@ -143,7 +143,7 @@ router.get('/:id/services', async (req, res) => {
       `SELECT id,name,category,price,duration_min,status FROM services WHERE ${conds.join(' AND ')} ORDER BY name LIMIT $${lp} OFFSET $${op}`, params);
     const cr = await pool.query(`SELECT COUNT(*)::int total FROM services WHERE ${conds.join(' AND ')}`, params.slice(0, params.length - 2));
     res.json({ items: r.rows, total: cr.rows[0].total });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── POST / — создать ─────────────── */
@@ -173,7 +173,7 @@ router.post('/', WRITE, async (req, res) => {
     cat.materialized_path = path;
     await logAction({ user: req.user, action: 'category.create', entity: 'service_category', entity_id: cat.id, meta: { name: b.name } });
     res.json({ ok: true, category: cat });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── PATCH /reorder — пакетная сортировка (ДО /:id!) ─────────────── */
@@ -184,7 +184,7 @@ router.patch('/reorder', WRITE, async (req, res) => {
       if (it.id != null && it.sort_order != null) await pool.query(`UPDATE service_categories SET sort_order=$1, updated_at=NOW() WHERE id=$2`, [it.sort_order, it.id]);
     }
     res.json({ ok: true, updated: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 /* ─────────────── PATCH /:id — обновить (каскадное переименование) ─────────────── */
@@ -224,7 +224,7 @@ router.patch('/:id', WRITE, async (req, res) => {
     const out = await pool.query(`SELECT * FROM service_categories WHERE id=$1`, [id]);
     await logAction({ user: req.user, action: 'category.update', entity: 'service_category', entity_id: id, meta: { fields: Object.keys(b), renamed_services: renamed } });
     res.json({ ok: true, category: out.rows[0], renamed_services: renamed });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Пересчёт materialized_path/depth для категории и всего поддерева
@@ -281,7 +281,7 @@ router.delete('/:id', WRITE, async (req, res) => {
     await pool.query(`UPDATE service_categories SET deleted_at=NOW(), status='hidden', updated_at=NOW() WHERE id=$1`, [id]);
     await logAction({ user: req.user, action: 'category.delete', entity: 'service_category', entity_id: id });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

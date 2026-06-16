@@ -19,7 +19,7 @@ router.get('/', requirePerm('promo.write'), async (req, res) => {
       `SELECT c.*, s.name AS segment_name FROM campaigns c
        LEFT JOIN segments s ON s.id=c.segment_id ORDER BY c.created_at DESC`);
     res.json({ items: r.rows, count: r.rowCount });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Сводная аналитика по всем кампаниям
@@ -46,7 +46,7 @@ router.get('/analytics', requirePerm('promo.write'), async (req, res) => {
       delivery,
       delivery_rate: totalNotif ? Math.round((sent / totalNotif) * 100) : 0,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/:id', requirePerm('promo.write'), async (req, res) => {
@@ -60,7 +60,7 @@ router.get('/:id', requirePerm('promo.write'), async (req, res) => {
       ['campaign:' + req.params.id]);
     const byStatus = {}; stats.rows.forEach(r => byStatus[r.status] = r.n);
     res.json({ campaign: c.rows[0], delivery: byStatus });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/', requirePerm('promo.write'), async (req, res) => {
@@ -75,7 +75,7 @@ router.post('/', requirePerm('promo.write'), async (req, res) => {
       [name, segment_id || null, preset_key || null, channel, template_key || null, body || null,
        JSON.stringify(vars || {}), scheduled_at || null, scheduled_at ? 'scheduled' : 'draft', req.user?.id || null]);
     res.json({ ok: true, campaign: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/:id', requirePerm('promo.write'), async (req, res) => {
@@ -83,7 +83,7 @@ router.delete('/:id', requirePerm('promo.write'), async (req, res) => {
     const r = await getPool().query(`DELETE FROM campaigns WHERE id=$1 AND status IN ('draft','scheduled','cancelled') RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-found-or-running' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Запуск кампании: ставим уведомления в Hub для каждого клиента сегмента
@@ -139,7 +139,7 @@ router.post('/:id/test', requirePerm('promo.write'), async (req, res) => {
     });
     if (r.id) await hub.processQueue(3);
     res.json({ ok: !r.skipped, ...r });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Пауза/возобновление запланированной кампании
@@ -150,7 +150,7 @@ router.post('/:id/pause', requirePerm('promo.write'), async (req, res) => {
       [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-scheduled' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/:id/resume', requirePerm('promo.write'), async (req, res) => {
@@ -160,7 +160,7 @@ router.post('/:id/resume', requirePerm('promo.write'), async (req, res) => {
       [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-paused' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Планировщик: запускает кампании, у которых наступило время scheduled_at

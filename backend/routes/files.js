@@ -98,7 +98,7 @@ router.post('/upload', requirePerm('file.write'), uploadSingle, async (req, res)
     if (e instanceof multer.MulterError && e.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ error: 'file-too-large', max_mb: MAX_SIZE / 1024 / 1024 });
     }
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -118,7 +118,7 @@ router.get('/', requirePerm('file.read'), async (req, res) => {
       vals
     );
     res.json({ items: r.rows, total: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── метаданные ──────────────────────────────────────────
@@ -129,7 +129,7 @@ router.get('/:id/meta', requirePerm('file.read'), async (req, res) => {
          FROM files WHERE id=$1 AND deleted_at IS NULL`, [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     res.json(r.rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── отдать файл (public — без авторизации, private — с правом) ──
@@ -145,7 +145,7 @@ router.get('/:id', async (req, res) => {
       return requirePerm('file.read')(req, res, () => sendFile(res, f));
     }
     sendFile(res, f);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 function sendFile(res, f) {
@@ -153,8 +153,10 @@ function sendFile(res, f) {
   if (!abs.startsWith(UPLOAD_ROOT) || !fs.existsSync(abs)) {
     return res.status(410).json({ error: 'file-gone' });
   }
+  const isImage = f.mime_type.startsWith('image/');
+  const disposition = isImage ? 'inline' : 'attachment';
   res.setHeader('Content-Type', f.mime_type);
-  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(f.file_name)}"`);
+  res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(f.file_name)}"`);
   res.setHeader('Cache-Control', f.is_public ? 'public, max-age=86400' : 'private, no-cache');
   fs.createReadStream(abs).pipe(res);
 }
@@ -168,7 +170,7 @@ router.delete('/:id', requirePerm('file.write'), async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     logAction({ user: req.user, action: 'file.delete', entity: 'file', entity_id: req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

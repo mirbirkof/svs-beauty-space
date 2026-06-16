@@ -50,7 +50,7 @@ router.get('/standards', async (req, res) => {
     if (req.query.search) { p.push('%' + req.query.search + '%'); w.push(`(title ILIKE $${p.length} OR description ILIKE $${p.length})`); }
     const items = await q(`SELECT * FROM qc_standards WHERE ${w.join(' AND ')} ORDER BY id DESC`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/standards/:id(\\d+)', async (req, res) => {
@@ -58,7 +58,7 @@ router.get('/standards/:id(\\d+)', async (req, res) => {
     const r = (await q(`SELECT * FROM qc_standards WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]))[0];
     if (!r) return res.status(404).json({ error: 'not found' });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/standards', async (req, res) => {
@@ -74,7 +74,7 @@ router.post('/standards', async (req, res) => {
        b.photo_correct_url || null, b.photo_incorrect_url || null, b.status || 'draft']))[0];
     await logAction({ user: req.user, action: 'qc.standard.create', entity: 'qc_standard', entity_id: row.id, ip: req.ip });
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/standards/:id(\\d+)', async (req, res) => {
@@ -95,7 +95,7 @@ router.patch('/standards/:id(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE qc_standards SET ${f.join(',')}, updated_at=NOW() WHERE id=$${p.length} AND tenant_id=current_tenant_id() RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── ЧЕК-ЛИСТИ ───────────────────────────
@@ -111,7 +111,7 @@ router.get('/checklists', async (req, res) => {
       `SELECT c.*, (SELECT COUNT(*) FROM qc_checklist_items i WHERE i.checklist_id=c.id)::int items_count
        FROM qc_checklists c WHERE ${w.join(' AND ')} ORDER BY c.id DESC`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/checklists/:id(\\d+)', async (req, res) => {
@@ -120,7 +120,7 @@ router.get('/checklists/:id(\\d+)', async (req, res) => {
     if (!checklist) return res.status(404).json({ error: 'not found' });
     const items = await q(`SELECT * FROM qc_checklist_items WHERE checklist_id=$1 ORDER BY sort_order, id`, [checklist.id]);
     res.json({ checklist, items });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/checklists', async (req, res) => {
@@ -153,7 +153,7 @@ router.post('/checklists', async (req, res) => {
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
     client.release();
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -172,7 +172,7 @@ router.patch('/checklists/:id(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE qc_checklists SET ${f.join(',')}, updated_at=NOW() WHERE id=$${p.length} AND tenant_id=current_tenant_id() RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // додати пункт до існуючого чек-листа
@@ -189,7 +189,7 @@ router.post('/checklists/:id(\\d+)/items', async (req, res) => {
        !!b.requires_photo, b.evaluation_type || 'pass_fail', ord]))[0];
     await q(`UPDATE qc_checklists SET total_weight=(SELECT COALESCE(SUM(weight),0) FROM qc_checklist_items WHERE checklist_id=$1), updated_at=NOW() WHERE id=$1`, [req.params.id]);
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/checklists/:id(\\d+)/items/:itemId(\\d+)', async (req, res) => {
@@ -198,7 +198,7 @@ router.delete('/checklists/:id(\\d+)/items/:itemId(\\d+)', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not found' });
     await q(`UPDATE qc_checklists SET total_weight=(SELECT COALESCE(SUM(weight),0) FROM qc_checklist_items WHERE checklist_id=$1), updated_at=NOW() WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── ПЕРЕВІРКИ ───────────────────────────
@@ -223,7 +223,7 @@ router.get('/checks', async (req, res) => {
        LEFT JOIN masters m ON m.id=ch.inspected_employee_id
        WHERE ${w.join(' AND ')} ORDER BY ch.id DESC LIMIT $${li} OFFSET $${oi}`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/checks/:id(\\d+)', async (req, res) => {
@@ -236,7 +236,7 @@ router.get('/checks/:id(\\d+)', async (req, res) => {
        WHERE r.check_id=$1 ORDER BY i.sort_order`, [check.id]);
     const non_conformities = await q(`SELECT * FROM qc_non_conformities WHERE check_id=$1 ORDER BY id`, [check.id]);
     res.json({ check, results, non_conformities });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/checks', async (req, res) => {
@@ -251,7 +251,7 @@ router.post('/checks', async (req, res) => {
        b.inspected_zone || null, b.scheduled_date || null]))[0];
     await logAction({ user: req.user, action: 'qc.check.create', entity: 'qc_check', entity_id: row.id, ip: req.ip });
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/checks/:id(\\d+)/start', async (req, res) => {
@@ -259,7 +259,7 @@ router.post('/checks/:id(\\d+)/start', async (req, res) => {
     const row = (await q(`UPDATE qc_checks SET status='in_progress', started_at=COALESCE(started_at,NOW()), updated_at=NOW() WHERE id=$1 AND tenant_id=current_tenant_id() AND status='scheduled' RETURNING *`, [req.params.id]))[0];
     if (!row) return res.status(404).json({ error: 'not found or not scheduled' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // зберегти результати (batch, upsert по item)
@@ -289,7 +289,7 @@ router.post('/checks/:id(\\d+)/results', async (req, res) => {
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
     client.release();
-    res.status(500).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
 });
 
@@ -314,7 +314,7 @@ router.post('/checks/:id(\\d+)/complete', async (req, res) => {
     await logAction({ user: req.user, action: 'qc.check.complete', entity: 'qc_check', entity_id: chk.id, ip: req.ip, meta: { score: pct, result: tier } });
     await emit('qc.check_completed', { id: chk.id, score: pct, result: tier, employee_id: chk.inspected_employee_id }, { entityType: 'qc_check', entityId: chk.id, actor: String(req.user?.id || 'system') });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/checks/:id(\\d+)/review', async (req, res) => {
@@ -322,7 +322,7 @@ router.post('/checks/:id(\\d+)/review', async (req, res) => {
     const row = (await q(`UPDATE qc_checks SET status='reviewed', reviewed_by=$1, reviewed_at=NOW(), updated_at=NOW() WHERE id=$2 AND tenant_id=current_tenant_id() AND status='completed' RETURNING *`, [req.user?.id ?? null, req.params.id]))[0];
     if (!row) return res.status(404).json({ error: 'not found or not completed' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── НЕВІДПОВІДНОСТІ + CAPA ───────────────────────────
@@ -338,7 +338,7 @@ router.get('/non-conformities', async (req, res) => {
     if (req.query.open === '1') w.push("status NOT IN ('verified','closed')");
     const items = await q(`SELECT * FROM qc_non_conformities WHERE ${w.join(' AND ')} ORDER BY array_position(ARRAY['critical','major','minor'],severity), (status IN ('verified','closed')), id DESC`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/non-conformities/:id(\\d+)', async (req, res) => {
@@ -346,7 +346,7 @@ router.get('/non-conformities/:id(\\d+)', async (req, res) => {
     const r = (await q(`SELECT * FROM qc_non_conformities WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]))[0];
     if (!r) return res.status(404).json({ error: 'not found' });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/non-conformities', async (req, res) => {
@@ -374,7 +374,7 @@ router.post('/non-conformities', async (req, res) => {
     await logAction({ user: req.user, action: 'qc.nc.create', entity: 'qc_nc', entity_id: row.id, ip: req.ip, meta: { severity: sev, task: linkedTaskId } });
     await emit('qc.non_conformity_created', { id: row.id, severity: sev, employee_id: row.employee_id }, { entityType: 'qc_nc', entityId: row.id, actor: String(req.user?.id || 'system') });
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/non-conformities/:id(\\d+)', async (req, res) => {
@@ -393,7 +393,7 @@ router.patch('/non-conformities/:id(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE qc_non_conformities SET ${f.join(',')}, updated_at=NOW() WHERE id=$${p.length} AND tenant_id=current_tenant_id() RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/non-conformities/:id(\\d+)/verify', async (req, res) => {
@@ -407,7 +407,7 @@ router.post('/non-conformities/:id(\\d+)/verify', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not found' });
     await logAction({ user: req.user, action: 'qc.nc.verify', entity: 'qc_nc', entity_id: row.id, ip: req.ip, meta: { verified: ok } });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── ТАЄМНИЙ ПОКУПЕЦЬ ───────────────────────────
@@ -423,7 +423,7 @@ router.get('/mystery-shopper', async (req, res) => {
     if (req.query.date_to) { p.push(req.query.date_to); w.push(`visit_date<=$${p.length}`); }
     const items = await q(`SELECT * FROM mystery_shopper_reports WHERE ${w.join(' AND ')} ORDER BY visit_date DESC, id DESC`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/mystery-shopper/:id(\\d+)', async (req, res) => {
@@ -431,7 +431,7 @@ router.get('/mystery-shopper/:id(\\d+)', async (req, res) => {
     const r = (await q(`SELECT * FROM mystery_shopper_reports WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id]))[0];
     if (!r) return res.status(404).json({ error: 'not found' });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 function msOverall(b) {
@@ -452,7 +452,7 @@ router.post('/mystery-shopper', async (req, res) => {
     const row = (await q(`INSERT INTO mystery_shopper_reports (${cols.join(',')}) VALUES (${ph}) RETURNING *`, vals))[0];
     await logAction({ user: req.user, action: 'qc.mystery.create', entity: 'mystery_report', entity_id: row.id, ip: req.ip });
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/mystery-shopper/:id(\\d+)', async (req, res) => {
@@ -476,7 +476,7 @@ router.patch('/mystery-shopper/:id(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE mystery_shopper_reports SET ${f.join(',')}, updated_at=NOW() WHERE id=$${p.length} AND tenant_id=current_tenant_id() RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/mystery-shopper/:id(\\d+)/review', async (req, res) => {
@@ -484,7 +484,7 @@ router.post('/mystery-shopper/:id(\\d+)/review', async (req, res) => {
     const row = (await q(`UPDATE mystery_shopper_reports SET status='reviewed', reviewed_by=$1, reviewed_at=NOW(), updated_at=NOW() WHERE id=$2 AND tenant_id=current_tenant_id() RETURNING *`, [req.user?.id ?? null, req.params.id]))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── РОЗКЛАД ───────────────────────────
@@ -496,7 +496,7 @@ router.get('/schedule', async (req, res) => {
     if (req.query.branch_id) { p.push(num(req.query.branch_id)); w.push(`s.branch_id=$${p.length}`); }
     const items = await q(`SELECT s.*, cl.title checklist_title FROM qc_check_schedule s JOIN qc_checklists cl ON cl.id=s.checklist_id WHERE ${w.join(' AND ')} ORDER BY s.id DESC`, p);
     res.json({ items, total: items.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/schedule', async (req, res) => {
@@ -510,7 +510,7 @@ router.post('/schedule', async (req, res) => {
       [num(b.branch_id), num(b.checklist_id), num(b.inspector_id), freq,
        num(b.day_of_week), num(b.day_of_month), b.time_of_day || null, b.active]))[0];
     res.status(201).json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.patch('/schedule/:id(\\d+)', async (req, res) => {
@@ -528,7 +528,7 @@ router.patch('/schedule/:id(\\d+)', async (req, res) => {
     const row = (await q(`UPDATE qc_check_schedule SET ${f.join(',')}, updated_at=NOW() WHERE id=$${p.length} AND tenant_id=current_tenant_id() RETURNING *`, p))[0];
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ─────────────────────────── АНАЛІТИКА ───────────────────────────
@@ -572,7 +572,7 @@ router.get('/analytics', async (req, res) => {
       top_fail_items: topFail, employee_ranking: ranking, trend,
       mystery_avg_score: mystery.avg ? Number(mystery.avg) : null, mystery_count: mystery.cnt,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.get('/analytics/employee/:id(\\d+)', async (req, res) => {
@@ -583,7 +583,7 @@ router.get('/analytics/employee/:id(\\d+)', async (req, res) => {
     const ncCount = (await q(`SELECT COUNT(*)::int n FROM qc_non_conformities WHERE tenant_id=current_tenant_id() AND employee_id=$1`, [req.params.id]))[0].n;
     const last = await q(`SELECT id, scheduled_date, completed_at, total_score, result FROM qc_checks WHERE tenant_id=current_tenant_id() AND inspected_employee_id=$1 AND status IN ('completed','reviewed') ORDER BY completed_at DESC LIMIT 10`, [req.params.id]);
     res.json({ employee_id: Number(req.params.id), avg_score: main.avg_score ? Number(main.avg_score) : null, checks_count: main.checks_count, nc_count: ncCount, last_checks: last });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

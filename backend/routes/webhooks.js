@@ -97,7 +97,7 @@ router.get('/', async (req, res) => {
     const rows = await q(`SELECT id,url,description,events,active,failure_count,last_status,last_delivered_at,created_at
                           FROM webhooks WHERE tenant_id=current_tenant_id() ORDER BY created_at DESC`);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/webhooks/:id/deliveries — журнал доставок
@@ -107,7 +107,7 @@ router.get('/:id/deliveries', async (req, res) => {
     const rows = await q(`SELECT id,event_type,status_code,ok,error,attempt,created_at
                           FROM webhook_deliveries WHERE webhook_id=$1 ORDER BY created_at DESC LIMIT ${limit}`, [req.params.id]);
     res.json({ rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/webhooks — создать
@@ -122,7 +122,7 @@ router.post('/', async (req, res) => {
       [url, description || null, JSON.stringify(ev), secret || null, active !== false]))[0];
     await logAction({ user: req.user, action: 'webhook.create', entity: 'webhooks', entity_id: row.id, ip: req.ip });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/webhooks/:id — обновить
@@ -144,7 +144,7 @@ router.patch('/:id', async (req, res) => {
                           WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
     if (!row) return res.status(404).json({ error: 'not_found' });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/webhooks/:id/test — тестовая доставка
@@ -154,7 +154,7 @@ router.post('/:id/test', async (req, res) => {
     if (!wh) return res.status(404).json({ error: 'not_found' });
     const result = await deliver(wh, 'webhook.test', { message: 'Тестова доставка з SVS CRM', at: new Date().toISOString() });
     res.json(result);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /api/webhooks/:id
@@ -164,7 +164,7 @@ router.delete('/:id', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'not_found' });
     await logAction({ user: req.user, action: 'webhook.delete', entity: 'webhooks', entity_id: req.params.id, ip: req.ip });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

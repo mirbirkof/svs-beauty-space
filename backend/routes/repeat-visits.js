@@ -125,7 +125,7 @@ router.get('/candidates', async (req, res) => {
       })),
       count: clients.length,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /api/repeat-visits/run — ручной запуск (только admin)
@@ -133,7 +133,7 @@ router.post('/run', requirePerm('reminders.manage'), async (req, res) => {
   try {
     const result = await scheduleRepeatVisits();
     res.json({ ok: true, ...result });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/repeat-visits/stats — статистика
@@ -148,7 +148,7 @@ router.get('/stats', async (req, res) => {
       FROM scheduled_notifications
     `);
     res.json({ ok: true, ...r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

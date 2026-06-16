@@ -47,7 +47,7 @@ router.get('/plans', async (req, res) => {
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const r = await pool.query(`SELECT * FROM subscription_plans ${where} ORDER BY sort_order, id`, params);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /plans — створити план
@@ -70,7 +70,7 @@ router.post('/plans', async (req, res) => {
        b.max_users > 0 ? b.max_users : 1, b.active !== false, b.sort_order ?? 0]);
     logAction({ user: req.user, action: 'subscription.plan.create', entity: 'subscription_plan', entity_id: r.rows[0].id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, plan: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /plans/:id — оновити план
@@ -86,7 +86,7 @@ router.patch('/plans/:id', async (req, res) => {
     const r = await pool.query(`UPDATE subscription_plans SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`, params);
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, plan: r.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ════════ АБОНЕМЕНТИ ════════
@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
        LEFT JOIN clients c ON c.id=s.client_id
        ${where} ORDER BY s.created_at DESC LIMIT ${lim} OFFSET ${off}`, params);
     res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /analytics — аналітика
@@ -144,7 +144,7 @@ router.get('/analytics', async (req, res) => {
       churn_rate: Math.round(ch * 10) / 10,
       top_plans: top.rows
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /check/:client_id — перевірка абонемента клієнта для каси/запису
@@ -173,7 +173,7 @@ router.get('/check/:client_id', async (req, res) => {
       });
     }
     res.json({ has_active: false });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /:id — деталі (план, історія, заморозки, користувачі)
@@ -193,7 +193,7 @@ router.get('/:id', async (req, res) => {
       `SELECT su.*, c.name AS client_name, c.phone AS client_phone FROM subscription_users su
        LEFT JOIN clients c ON c.id=su.client_id WHERE su.subscription_id=$1 AND su.removed_at IS NULL`, [id]);
     res.json({ subscription: sub, usage_history: usage.rows, freezes: freezes.rows, users: users.rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST / — продати абонемент
@@ -219,7 +219,7 @@ router.post('/', async (req, res) => {
     await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [sub.id, +b.client_id]);
     logAction({ user: req.user, action: 'subscription.sell', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { number, plan: plan.name, price: plan.price } }).catch(() => {});
     res.json({ ok: true, subscription: sub, plan });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/use — списати візит/хвилини
@@ -249,7 +249,7 @@ router.post('/:id/use', async (req, res) => {
       [sub.id, req.body?.client_id || sub.client_id, req.body?.appointment_id || null, isMinutes ? 'minutes' : 'visit', qty, balance ?? 0, req.user?.display_name || null, req.body?.notes || null]);
     logAction({ user: req.user, action: 'subscription.use', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { qty, balance } }).catch(() => {});
     res.json({ ok: true, balance, status: newStatus });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/freeze — заморозити
@@ -264,7 +264,7 @@ router.post('/:id/freeze', async (req, res) => {
     await pool.query(`INSERT INTO subscription_freezes (subscription_id,frozen_at,reason) VALUES ($1,NOW(),$2)`, [sub.id, req.body?.reason || null]);
     logAction({ user: req.user, action: 'subscription.freeze', entity: 'subscription', entity_id: sub.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, unfreeze_at: unfreeze });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/unfreeze — розморозити (продовжує строк на дні заморозки)
@@ -279,7 +279,7 @@ router.post('/:id/unfreeze', async (req, res) => {
     await pool.query(`UPDATE subscription_freezes SET unfrozen_at=NOW(), days=$1 WHERE subscription_id=$2 AND unfrozen_at IS NULL`, [frozenDays, sub.id]);
     logAction({ user: req.user, action: 'subscription.unfreeze', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { frozenDays } }).catch(() => {});
     res.json({ ok: true, expires_at: newExpires, frozen_days: frozenDays });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/cancel — розірвати
@@ -291,7 +291,7 @@ router.post('/:id/cancel', async (req, res) => {
     const upd = await pool.query(`UPDATE subscriptions SET status='cancelled', cancelled_at=NOW(), cancel_reason=$1, updated_at=NOW() WHERE id=$2 RETURNING *`, [req.body?.reason || null, sub.id]);
     logAction({ user: req.user, action: 'subscription.cancel', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { refund: req.body?.refund_amount } }).catch(() => {});
     res.json({ ok: true, subscription: upd.rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // POST /:id/users — додати користувача (сімейний)
@@ -306,7 +306,7 @@ router.post('/:id/users', async (req, res) => {
     await pool.query(`INSERT INTO subscription_users (subscription_id,client_id) VALUES ($1,$2)
       ON CONFLICT (subscription_id,client_id) DO UPDATE SET removed_at=NULL`, [id, +req.body.client_id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // DELETE /:id/users/:client_id — видалити користувача
@@ -314,7 +314,7 @@ router.delete('/:id/users/:client_id', async (req, res) => {
   try {
     await pool.query(`UPDATE subscription_users SET removed_at=NOW() WHERE subscription_id=$1 AND client_id=$2 AND is_primary=false`, [+req.params.id, +req.params.client_id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;

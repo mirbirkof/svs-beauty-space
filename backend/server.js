@@ -58,8 +58,9 @@ app.get('/api/health', (req, res) => {
 
 // ── Error handler ──────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('[SVS-Shop]', err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal error' });
+  console.error('[SVS-Shop]', err);
+  const { safeMessage } = require('./lib/safe-error');
+  res.status(err.status || 500).json({ error: safeMessage(err, 'Internal error') });
 });
 
 app.listen(PORT, () => {

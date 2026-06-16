@@ -197,7 +197,7 @@ router.get('/', async (req, res) => {
     res.json({ query: raw, groups, results, total });
   } catch (e) {
     console.error('[search] error:', e.message);
-    res.status(500).json({ error: 'search_failed', detail: e.message });
+    res.status(500).json({ error: 'search_failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
   }
 });
 

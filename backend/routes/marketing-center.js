@@ -75,7 +75,7 @@ router.get('/dashboard', async (req, res) => {
       active_campaigns: activeCamp,
       upcoming_activities: upcoming,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Воронка привернення ──
@@ -105,7 +105,7 @@ router.get('/funnel', async (req, res) => {
       stages[i].conversion_pct = prev ? +((stages[i].value / prev) * 100).toFixed(1) : null;
     }
     res.json({ period: { from, to }, funnel: stages });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Порівняння каналів (клієнти, виручка, LTV, ROI) ──
@@ -136,7 +136,7 @@ router.get('/channels', async (req, res) => {
       };
     });
     res.json({ period: { from, to }, channels: out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Когортний аналіз: retention по місяцю першого візиту ──
@@ -175,7 +175,7 @@ router.get('/cohorts', async (req, res) => {
       }
     }
     res.json({ cohorts: Object.values(map) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Інсайти (data-driven рекомендації) ──
@@ -206,7 +206,7 @@ router.get('/insights', async (req, res) => {
     if (refRewarded > 0)
       insights.push({ type: 'referral', severity: 'opportunity', text: `Реферальна програма привела ${refRewarded} клієнтів за період — працює. Розкажи про неї більшій кількості клієнтів.`, action: 'open_referral' });
     res.json({ generated_at: new Date().toISOString(), insights });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── UTM-генератор ──
@@ -221,7 +221,7 @@ router.post('/utm', async (req, res) => {
     if (content) p.set('utm_content', content);
     const sep = base_url.includes('?') ? '&' : '?';
     res.json({ url: `${base_url}${sep}${p.toString()}` });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Маркетинг-календар ──
@@ -246,7 +246,7 @@ router.get('/calendar', async (req, res) => {
     if (req.query.type) { p.push(req.query.type); w.push(`type = $${p.length}`); }
     const rows = await q(`SELECT * FROM marketing_activities ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY start_date LIMIT 300`, p);
     res.json({ activities: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/calendar', async (req, res) => {
@@ -260,7 +260,7 @@ router.post('/calendar', async (req, res) => {
        b.campaign_id || null, b.promo_id || null, b.recurrence || null, b.color || null, b.description || null, b.status]);
     logAction({ user: req.user, action: 'marketing.activity_create', entity: 'marketing_activity', entity_id: r[0].id, ip: req.ip }).catch(() => {});
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/calendar/:id', async (req, res) => {
@@ -273,7 +273,7 @@ router.put('/calendar/:id', async (req, res) => {
     const r = await q(`UPDATE marketing_activities SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
     if (!r.length) return res.status(404).json({ error: 'не знайдено' });
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.delete('/calendar/:id', async (req, res) => {
@@ -281,7 +281,7 @@ router.delete('/calendar/:id', async (req, res) => {
     await q(`DELETE FROM marketing_activities WHERE id=$1`, [parseInt(req.params.id, 10)]);
     logAction({ user: req.user, action: 'marketing.activity_delete', entity: 'marketing_activity', entity_id: req.params.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Витрати по каналах (offline ручний ввід) ──
@@ -289,7 +289,7 @@ router.get('/spend', async (req, res) => {
   try {
     const rows = await q(`SELECT * FROM marketing_channel_spend ORDER BY period_month DESC, channel LIMIT 200`);
     res.json({ spend: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.post('/spend', async (req, res) => {
@@ -302,7 +302,7 @@ router.post('/spend', async (req, res) => {
        ON CONFLICT (tenant_id, channel, period_month) DO UPDATE SET amount=EXCLUDED.amount, note=EXCLUDED.note RETURNING *`,
       [channel, mon, amount || 0, note || null]);
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // ── Цілі/KPI ──
@@ -316,7 +316,7 @@ router.get('/goals', async (req, res) => {
     const rev = (await q(`SELECT COALESCE(SUM(price),0)::numeric s FROM appointments WHERE status='done' AND starts_at::date BETWEEN $1 AND $2`, [monStart, monEnd]))[0].s;
     const fact = { new_clients: newC, revenue: Math.round(Number(rev)) };
     res.json({ month: mon.slice(0, 7), goals: goals.map(g => ({ ...g, actual: fact[g.metric] ?? null })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 router.put('/goals', async (req, res) => {
@@ -329,7 +329,7 @@ router.put('/goals', async (req, res) => {
        ON CONFLICT (tenant_id, period_month, metric) DO UPDATE SET target_value=EXCLUDED.target_value RETURNING *`,
       [mon, metric, target_value]);
     res.json(r[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 module.exports = router;
