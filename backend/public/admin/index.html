@@ -4,7 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SVS Beauty — CRM</title>
-<script>try{if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');}catch(e){}</script>
+<script>try{
+  if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');
+  // Стан розкритих груп меню застосовуємо ДО першої відрисовки (pre-paint),
+  // інакше меню «стрибає»: спершу рисується одне, потім JS міняє на збережене.
+  var _g=JSON.parse(localStorage.getItem('svs_sb_groups')||'[]');
+  if(Array.isArray(_g)&&_g.length){
+    var _css=_g.map(function(id){return '#'+id+'>.sidebar-group-items{display:block}#'+id+'>.sidebar-group-header .chevron{transform:rotate(90deg)}';}).join('');
+    var _s=document.createElement('style');_s.textContent=_css;document.head.appendChild(_s);
+  }
+}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -640,7 +649,7 @@ select.input { background:var(--card); }
       </a>
 
       <!-- Клієнти -->
-      <div class="sidebar-group open" id="grp-clients">
+      <div class="sidebar-group" id="grp-clients">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
           <span class="material-icons-round">people</span> Клієнти
           <span class="material-icons-round chevron">chevron_right</span>
@@ -2346,11 +2355,9 @@ function go(page) {
   document.getElementById('page-' + page).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.page === page));
   document.body.dataset.page = page;
-  // Група активної сторінки лише ВІДКРИВАЄТЬСЯ; інші не чіпаємо —
-  // меню не перемальовується і не «стрибає» при кожній навігації.
-  const activeItem = document.querySelector('.sidebar-item.active');
-  const parentGroup = activeItem ? activeItem.closest('.sidebar-group') : null;
-  if (parentGroup && !parentGroup.classList.contains('open')) { parentGroup.classList.add('open'); saveSidebarGroups(); }
+  // Стан груп меню НЕ чіпаємо при навігації — лишається рівно таким, яким його
+  // залишив користувач (зберігається в localStorage). Жодного авто-розкриття →
+  // меню не перемальовується і не «стрибає» при кожному кліку.
   document.getElementById('pageTitle').textContent = pageTitles[page] || page;
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, shifts:loadShifts, clients:loadClients,
