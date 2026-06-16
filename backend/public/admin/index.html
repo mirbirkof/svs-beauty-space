@@ -304,7 +304,8 @@ select.input { background:var(--card); }
   border:1px solid rgba(90,90,110,.45); border-radius:5px; color:#444; font-size:11px; font-weight:600;
   display:flex; align-items:center; gap:3px; padding:2px 5px; box-sizing:border-box; }
 .jblock:hover { filter:brightness(.94); }
-.jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; }
+.jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; -webkit-touch-callout:none; -webkit-user-select:none; -moz-user-select:none; user-select:none; }
+.jappt.dragging { opacity:.4; }
 .jappt:hover { transform:scale(1.015); z-index:5; }
 .jappt .t { font-weight:700; font-size:11px; opacity:.95; }
 .jappt .s { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -5547,10 +5548,13 @@ function jBindTouchDrag(container){
     const mm = (el.getAttribute('onclick')||'').match(/openAppt\((\d+)\)/);
     if (!mm) return;
     const id = Number(mm[1]);
-    el.addEventListener('touchstart', (ev)=>jTouchStart(ev, id, el), { passive:true });
+    el.addEventListener('touchstart', (ev)=>jTouchStart(ev, id, el), { passive:false });
     el.addEventListener('touchmove', jTouchMove, { passive:false });
     el.addEventListener('touchend', jTouchEnd, { passive:false });
     el.addEventListener('touchcancel', jTouchCancel, { passive:true });
+    // Глушимо нативне меню браузера на довге натискання (Скачати/Поділитися) —
+    // воно перехоплювало жест і не давало спрацювати нашому перетягуванню.
+    el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); return false; });
   });
 }
 function _colAtPoint(x,y){ const el=document.elementFromPoint(x,y); return el?el.closest('.jcol-body[data-master]'):null; }
