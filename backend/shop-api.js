@@ -231,6 +231,7 @@ try { app.use('/api/webhooks', require('./routes/webhooks')); } catch(e) { conso
 try { app.use('/api/api-keys', require('./routes/api-keys')); } catch(e) { console.error('[api-keys] mount failed:', e.message); }
 try { app.use('/api/v1', require('./routes/public-api')); } catch(e) { console.error('[public-api] mount failed:', e.message); }
 try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { console.error('[portfolio] mount failed:', e.message); }
+try { app.use('/api/saas/analytics', require('./routes/saas-analytics')); } catch(e) { console.error('[saas-analytics] mount failed:', e.message); }
 try { app.use('/api/saas', require('./routes/saas')); } catch(e) { console.error('[saas] mount failed:', e.message); }
 try { app.use('/api/omni', require('./routes/omnichannel')); } catch(e) { console.error('[omni] mount failed:', e.message); }
 try { app.use('/api/reviews-moderation', require('./routes/reviews-moderation')); } catch(e) { console.error('[reviews-moderation] mount failed:', e.message); }
