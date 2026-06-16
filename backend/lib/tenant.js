@@ -67,4 +67,10 @@ function tenantMiddleware() {
   };
 }
 
-module.exports = { tenantMiddleware, getTenantId, DEFAULT_TENANT_ID };
+// Выполнить fn в контексте конкретного тенанта (для публичных эндпоинтов по slug,
+// кронов и т.п. — db-pg.js прочитает app.tenant_id из этого контекста для RLS).
+function runAs(tenantId, fn) {
+  return tenantContext.run({ tenantId }, fn);
+}
+
+module.exports = { tenantMiddleware, getTenantId, resolveBySlug, runAs, DEFAULT_TENANT_ID };
