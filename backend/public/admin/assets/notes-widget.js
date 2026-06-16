@@ -220,11 +220,23 @@
     api('/', { method: 'POST', body: { body: body, page_path: cp.page_path, page_label: cp.page_label } })
       .then(function (res) {
         btn.disabled = false; btn.textContent = 'Додати заметку';
-        if (res && res.ok) { ta.value = ''; state.tab = 'open'; panel.querySelectorAll('.svsN-tab').forEach(function (x){x.classList.toggle('active', x.dataset.tab==='open');}); load(); }
+        if (res && res.ok) { ta.value = ''; try{localStorage.removeItem('svs_note_draft');}catch(_){} state.tab = 'open'; panel.querySelectorAll('.svsN-tab').forEach(function (x){x.classList.toggle('active', x.dataset.tab==='open');}); load(); }
         else alert('Не вдалося зберегти: ' + ((res && res.message) || (res && res.error) || 'помилка'));
       })
       .catch(function () { btn.disabled = false; btn.textContent = 'Додати заметку'; });
   });
+
+  // Чернетка заметки: автозбереження тексту, що не відправлений.
+  // Раніше при переключенні меню (окремі сторінки → перезавантаження) текст зникав —
+  // тепер відновлюється навіть після повного перезавантаження сторінки.
+  (function () {
+    var ta = document.getElementById('svsNText');
+    if (!ta) return;
+    try { var d = localStorage.getItem('svs_note_draft'); if (d) ta.value = d; } catch (_) {}
+    ta.addEventListener('input', function () {
+      try { if (ta.value) localStorage.setItem('svs_note_draft', ta.value); else localStorage.removeItem('svs_note_draft'); } catch (_) {}
+    });
+  })();
 
   // делегирование кнопок в списке
   document.getElementById('svsNList').addEventListener('click', function (e) {
