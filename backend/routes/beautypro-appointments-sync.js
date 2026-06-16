@@ -497,10 +497,64 @@ async function backfillClients(limit = 500) {
   return { candidates: distinct.rows.length, clients_created: createdC, appointments_linked: linked, failed };
 }
 
+// Пряма синхра НОВИХ клієнтів — навіть тих, що ще НЕ мають жодного запису.
+// backfillClients ловить лише клієнтів, привʼязаних до записів; цей скан ловить будь-якого.
+// /clients не має фільтра за датою й не сортується за create_date (масовий імпорт лежить
+// упереміш), тож проходимо сторінки й беремо тих, у кого create_date свіжіша за поріг.
+// ~5к клієнтів = ~6 сторінок по 1000 — дешево навіть на кожну подію вебхука по clients.
+async function syncRecentClients(days = 14, pageSize = 1000, maxPages = 30) {
+  const pool = getPool();
+  const token = await getToken();
+  const since = Date.now() - days * 864e5;
+  const fields = encodeURIComponent('name,firstname,lastname,phone,email,birthday,create_date');
+  let created = 0, linked = 0, scanned = 0, recent = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const list = await httpsRequest('GET', `/clients?fields=${fields}&limit=${pageSize}&offset=${page * pageSize}`, { token });
+    const items = Array.isArray(list) ? list : (list && list.data) || [];
+    if (!items.length) break;
+    scanned += items.length;
+    for (const bp of items) {
+      const cd = bp.create_date ? Date.parse(bp.create_date) : 0;
+      if (!cd || cd < since) continue;                 // тільки свіжостворені
+      recent++;
+      try {
+        const guid = bp.id;
+        const exists = await pool.query('SELECT 1 FROM clients WHERE beautypro_id = $1', [guid]);
+        if (exists.rows.length) continue;              // вже є — нічого робити
+        const name = bp.name || [bp.firstname, bp.lastname].filter(Boolean).join(' ') || 'Клієнт BP';
+        const phone = Array.isArray(bp.phone) ? (bp.phone[0] || null) : (bp.phone || null);
+        const digits = phone ? String(phone).replace(/\D/g, '') : null;
+        const last9 = digits && digits.length >= 9 ? digits.slice(-9) : null;
+        const phoneNorm = last9 ? ('380' + last9) : digits;
+        const email = (bp.email && String(bp.email).trim()) || null;
+        // дедуп: спершу телефон (останні 9 цифр), потім email — щоб не плодити дублі
+        if (last9) {
+          const byPhone = await pool.query('SELECT id FROM clients WHERE right(regexp_replace(phone, \'\\D\', \'\', \'g\'), 9) = $1 LIMIT 1', [last9]);
+          if (byPhone.rows.length) { await pool.query('UPDATE clients SET beautypro_id=$1 WHERE id=$2', [guid, byPhone.rows[0].id]); linked++; continue; }
+        }
+        if (email) {
+          const byEmail = await pool.query('SELECT id FROM clients WHERE email = $1 LIMIT 1', [email]);
+          if (byEmail.rows.length) { await pool.query('UPDATE clients SET beautypro_id=$1 WHERE id=$2', [guid, byEmail.rows[0].id]); linked++; continue; }
+        }
+        await pool.query(
+          `INSERT INTO clients (name, phone, email, birthday, source, beautypro_id) VALUES ($1,$2,$3,$4,'beautypro',$5)`,
+          [name, phoneNorm, email, bp.birthday || null, guid]);
+        created++;
+      } catch (_) { /* пропускаємо один битий рядок, не валимо весь скан */ }
+    }
+  }
+  return { scanned, recent, clients_created: created, clients_linked: linked };
+}
+
 // ===== ROUTES =====
 
 router.post('/v2/clients-backfill', requirePerm('sync.write'), async (req, res) => {
   try { res.json({ ok: true, ...(await withAuthRetry(() => backfillClients(Number(req.query.limit) || 500))) }); }
+  catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+router.post('/v2/clients-recent', requirePerm('sync.write'), async (req, res) => {
+  try { res.json({ ok: true, ...(await withAuthRetry(() => syncRecentClients(Number(req.query.days) || 14))) }); }
   catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
@@ -597,6 +651,9 @@ async function slowTick() {
     if (sc.upserted) console.log(`[bp-appt-sync] графік: ${sc.upserted} днів-майстрів`);
     const ps = await withAuthRetry(() => syncProductSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
     if (ps.posted) console.log(`[bp-appt-sync] товари: +${ps.posted} позицій (${ps.matched} матч)`);
+    // підстраховка вебхука: підбираємо нових клієнтів (навіть без записів) за останні 2 дні
+    const rc = await withAuthRetry(() => syncRecentClients(2));
+    if (rc.clients_created || rc.clients_linked) console.log(`[bp-appt-sync] нові клієнти: +${rc.clients_created}, лінк ${rc.clients_linked}`);
   } catch (e) {
     console.error('[bp-appt-sync] slow cron error:', e.message);
   } finally {
@@ -612,26 +669,48 @@ async function slowTick() {
 // (довірене джерело), тож навіть зайвий/підроблений виклик = просто ще один прогін.
 // Поллінг 5/30 хв лишається гарантованою підстраховкою, якщо вебхук відвалиться.
 const WEBHOOK_SECRET = process.env.BEAUTYPRO_WEBHOOK_SECRET || '';
-let webhookDebounce = null, webhookHits = 0;
+let whFastDebounce = null, whFastHits = 0;     // записи/оплати/клієнти-із-записів → fastTick
+let whClientsDebounce = null, whClientsHits = 0; // нові клієнти (навіть без запису) → syncRecentClients
 
-function triggerWebhookSync() {
-  webhookHits++;
-  if (webhookDebounce) return;            // вже заплановано — склеюємо сплеск подій в один прогін
-  webhookDebounce = setTimeout(() => {
-    webhookDebounce = null;
-    const n = webhookHits; webhookHits = 0;
+function triggerFast() {
+  whFastHits++;
+  if (whFastDebounce) return;             // склеюємо сплеск подій в один прогін
+  whFastDebounce = setTimeout(() => {
+    whFastDebounce = null;
+    const n = whFastHits; whFastHits = 0;
     console.log(`[bp-webhook] подія×${n} → миттєвий синк`);
     fastTick().catch(() => {});           // fastBusy всередині не дасть накластись на крон-прогін
   }, 4000);
-  if (webhookDebounce.unref) webhookDebounce.unref();
+  if (whFastDebounce.unref) whFastDebounce.unref();
+}
+
+// Окремий дебаунс для сканування нових клієнтів — щоб скан НЕ ганявся на кожну подію
+// записів/продажів, а лише коли реально щось змінилось у таблиці clients.
+function triggerClients() {
+  whClientsHits++;
+  if (whClientsDebounce) return;
+  whClientsDebounce = setTimeout(() => {
+    whClientsDebounce = null;
+    const n = whClientsHits; whClientsHits = 0;
+    console.log(`[bp-webhook] клієнти×${n} → догрузка нових`);
+    withAuthRetry(() => syncRecentClients(14)).then((r) => {
+      if (r.clients_created || r.clients_linked) console.log(`[bp-webhook] нові клієнти: +${r.clients_created}, лінк ${r.clients_linked}`);
+    }).catch(() => {});
+  }, 4000);
+  if (whClientsDebounce.unref) whClientsDebounce.unref();
 }
 
 // Вхідний endpoint. Без RBAC (BeautyPro не має нашого токена) — захист секретом у path.
-// BeautyPro може слати або на чистий url, або з доданими сегментами {database}/{type}/{name}.
+// Таблицю, що змінилась, беремо з СВОГО ж суфікса URL (req.params.a) — ми його самі
+// зареєстрували в BeautyPro, тож це довірене джерело (а не тіло запиту).
 function handleWebhook(req, res) {
   if (WEBHOOK_SECRET && req.params.secret !== WEBHOOK_SECRET) return res.status(404).json({ ok: false });
   res.status(200).json({ ok: true });     // відповідаємо одразу, не чекаючи синку
-  try { triggerWebhookSync(); } catch (_) {}
+  try {
+    const table = String(req.params.a || '').toLowerCase();
+    triggerFast();                         // будь-яка подія → освіжаємо записи/касу
+    if (table === 'clients') triggerClients(); // подія саме по клієнтах → ще й скан нових клієнтів
+  } catch (_) {}
 }
 router.post('/bp-webhook/:secret', handleWebhook);
 router.post('/bp-webhook/:secret/:a', handleWebhook);
@@ -645,14 +724,18 @@ async function registerWebhooks() {
   if (!WEBHOOK_SECRET) { console.warn('[bp-webhook] register skipped — BEAUTYPRO_WEBHOOK_SECRET not set'); return { ok: false, reason: 'no_secret' }; }
   if (!base) { console.warn('[bp-webhook] register skipped — RENDER_EXTERNAL_URL not set'); return { ok: false, reason: 'no_base' }; }
   if (!process.env.BEAUTYPRO_ID_KEY || !process.env.BEAUTYPRO_SECRET_KEY) return { ok: false, reason: 'no_keys' };
-  const url = `${base}/api/sync/bp-webhook/${WEBHOOK_SECRET}`;
   const token = await getToken();
+  const legacy = `${base}/api/sync/bp-webhook/${WEBHOOK_SECRET}`; // стара реєстрація без суфікса таблиці
   const done = [];
   for (const table of ['appointments', 'clients', 'sales']) {
+    // суфікс таблиці у власному URL → handleWebhook прочитає її з req.params.a
+    const url = `${base}/api/sync/bp-webhook/${WEBHOOK_SECRET}/${table}`;
     try {
       await withAuthRetry(() => httpsRequest('PUT', '/updates/webhooks/register', { token, body: { url, table } }));
       done.push(table);
     } catch (e) { console.error(`[bp-webhook] register ${table} failed:`, e.message); }
+    // прибираємо стару реєстрацію без суфікса, щоб BeautyPro не слав дублі (ідемпотентно)
+    try { await withAuthRetry(() => httpsRequest('PUT', '/updates/webhooks/unregister', { token, body: { url: legacy, table } })); } catch (_) {}
   }
   console.log(`[bp-webhook] зареєстровано real-time для: ${done.join(', ') || '—'}`);
   return { ok: done.length === 3, registered: done };
@@ -687,3 +770,4 @@ module.exports.syncSchedules = syncSchedules;
 module.exports.syncProductSales = syncProductSales;
 module.exports.syncServicesCatalog = syncServicesCatalog;
 module.exports.registerWebhooks = registerWebhooks;
+module.exports.syncRecentClients = syncRecentClients;
