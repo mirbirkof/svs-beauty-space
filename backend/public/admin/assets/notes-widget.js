@@ -95,6 +95,13 @@
     '.svsN-link.reopen:hover{color:#8aa9ff}',
     '.svsN-link.del:hover{color:#ff6b6b}',
     '.svsN-empty{text-align:center;color:#7b8094;font-size:13px;padding:26px 10px}',
+    /* на мобільному кнопка більша, щоб не губилась і легко влучати пальцем */
+    '@media(max-width:768px){',
+    '#svsNotesFab{right:16px;bottom:16px;width:72px;height:72px;box-shadow:0 6px 24px rgba(0,0,0,.4)}',
+    '#svsNotesFab svg{width:34px;height:34px}',
+    '#svsNotesBadge{min-width:26px;height:26px;border-radius:13px;font-size:13px;line-height:26px;top:-5px;right:-5px}',
+    '#svsNotesPanel{bottom:100px}',
+    '}',
   ].join('');
   document.head.appendChild(css);
 
