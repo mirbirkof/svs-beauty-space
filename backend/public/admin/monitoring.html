@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Системний статус</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .dot { width:12px; height:12px; border-radius:50%; display:inline-block; flex:none; }
+  .dot.up { background: var(--success); box-shadow:0 0 8px #2DC96F88; }
+  .dot.degraded { background: var(--warning); box-shadow:0 0 8px #f59e0b88; }
+  .dot.down { background: var(--danger); box-shadow:0 0 8px #ef444488; }
+  .dot.unknown { background: var(--text-secondary); }
+  .svc { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--border,#eee); border-radius:10px; }
+  .svc .nm { font-weight:600; }
+  .svc .meta { margin-left:auto; text-align:right; font-size:12px; color:var(--text-secondary); }
+  .big-status { font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .pill { padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .pill.crit { background:#fee2e2; color:#b91c1c; } .pill.warn { background:#fef3c7; color:#92400e; }
+  .pill.info { background:#e0f2fe; color:#075985; } .pill.ok { background:#dcfce7; color:#166534; }
+  table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  table.tbl th, table.tbl td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--border,#eee); }
+  table.tbl th { color:var(--text-secondary); font-weight:600; }
+  .metric { text-align:center; }
+  .metric .v { font-size:22px; font-weight:700; } .metric .l { font-size:11px; color:var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="content">
+
+  <div class="card" id="token-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="muted">Admin token:</span>
+    <input id="tok" type="password" class="inp" style="flex:1;min-width:200px" placeholder="вставити x-admin-token">
+    <button class="btn" onclick="saveTok()">Зберегти</button>
+    <button class="btn" onclick="runNow()" style="margin-left:auto">Перевірити зараз</button>
+  </div>
+
+  <div class="card">
+    <div class="big-status" id="overall"><span class="dot unknown"></span> Завантаження…</div>
+    <div class="muted" id="overall-sub" style="margin-top:6px;font-size:13px"></div>
+  </div>
+
+  <div class="card">
+    <h3>Сервіси</h3>
+    <div id="services" class="grid grid-2" style="gap:10px">завантаження…</div>
+  </div>
+
+  <div class="card">
+    <h3>Активні алерти</h3>
+    <div id="alerts">завантаження…</div>
+  </div>
+
+  <div class="card">
+    <h3>Метрики</h3>
+    <div id="metrics" class="grid grid-4">завантаження…</div>
+  </div>
+
+  <p id="err" style="margin-top:16px;color:var(--danger);font-size:13px"></p>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Системний статус"></script>
+<script>
+const API = location.origin;
+document.getElementById('tok').value = (typeof adminToken === 'function' ? adminToken() : (localStorage.getItem('svs_admin_token')||''));
+function saveTok(){ localStorage.setItem('svs_admin_token', document.getElementById('tok').value.trim()); loadAll(); }
+function showErr(e){ document.getElementById('err').textContent = e || ''; }
+const esc = s => String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+async function af(path){ return adminFetch(API + path); }
+
+async function loadHealth(){
+  const r = await af('/api/monitoring/health');
+  if(!r.ok){ showErr('health: '+r.status); return; }
+  const d = await r.json();
+  const map = { healthy:['up','Все працює','ok'], degraded:['degraded','Часткова деградація','warn'], down:['down','Є збій','crit'] };
+  const m = map[d.status] || ['unknown','Невідомо','info'];
+  document.getElementById('overall').innerHTML = '<span class="dot '+m[0]+'"></span> '+m[1];
+  document.getElementById('overall-sub').textContent = 'Аптайм 24г: '+d.uptime_24h+'% · активних алертів: '+d.active_alerts;
+  document.getElementById('services').innerHTML = (d.services||[]).map(s=>(
+    '<div class="svc"><span class="dot '+s.status+'"></span>'+
+    '<span class="nm">'+esc(s.name)+'</span>'+
+    '<span class="meta">'+(s.status==='up'?'OK':esc(s.status))+
+      (s.response_time_ms!=null?' · '+s.response_time_ms+'мс':'')+
+      (s.consecutive_failures>0?' · збоїв підряд: '+s.consecutive_failures:'')+
+      (s.last_error?'<br><span style="color:var(--danger)">'+esc(s.last_error)+'</span>':'')+
+    '</span></div>'
+  )).join('') || '<span class="muted">немає перевірок</span>';
+}
+
+async function loadAlerts(){
+  const r = await af('/api/monitoring/alerts/active');
+  if(!r.ok) return;
+  const d = await r.json();
+  if(!d.rows || !d.rows.length){ document.getElementById('alerts').innerHTML = '<span class="muted">Активних алертів немає</span>'; return; }
+  document.getElementById('alerts').innerHTML =
+    '<table class="tbl"><thead><tr><th>Рівень</th><th>Правило</th><th>Повідомлення</th><th>З</th></tr></thead><tbody>'+
+    d.rows.map(a=>{
+      const cls = a.severity==='critical'||a.severity==='emergency'?'crit':a.severity==='warning'?'warn':'info';
+      return '<tr><td><span class="pill '+cls+'">'+esc(a.severity)+'</span></td><td>'+esc(a.rule_name)+
+        '</td><td>'+esc(a.message)+'</td><td>'+new Date(a.fired_at).toLocaleString('uk-UA')+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+async function loadMetrics(){
+  const r = await af('/api/monitoring/metrics');
+  if(!r.ok) return;
+  const m = (await r.json()).metrics || {};
+  const cards = [
+    ['Розмір БД', (m.db_size_mb!=null?m.db_size_mb+' MB':'—')],
+    ['Записів сьогодні', m.appointments_today ?? '—'],
+    ['Клієнтів', (m.clients_total!=null?Number(m.clients_total).toLocaleString('uk-UA'):'—')],
+    ['Замовлень сьогодні', m.orders_today ?? '—'],
+    ['З\'єднань з БД', m.db_connections ?? '—'],
+    ['Активних алертів', m.active_alerts ?? '—'],
+  ];
+  document.getElementById('metrics').innerHTML = cards.map(c=>
+    '<div class="stat metric"><div class="v">'+esc(c[1])+'</div><div class="l">'+c[0]+'</div></div>').join('');
+}
+
+async function runNow(){
+  showErr('');
+  const r = await af('/api/monitoring/run');
+  if(!r.ok){ showErr('run: '+r.status); return; }
+  loadAll();
+}
+
+async function loadAll(){
+  showErr('');
+  try { await Promise.all([loadHealth(), loadAlerts(), loadMetrics()]); }
+  catch(e){ showErr(e.message); }
+}
+
+loadAll();
+setInterval(loadAll, 30000); // автообновление каждые 30с
+</script>
+</body>
+</html>
