@@ -314,8 +314,10 @@ select.input { background:var(--card); }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
 /* Журнал: панель навігації по датах (DIKIDI-style) */
-.journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; flex-wrap:wrap; }
+.journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; }
 .jt-modes { display:flex; gap:6px; }
+/* фільтр майстрів — зліва, поруч із режимами (День/Тиждень/Список) */
+.jt-focus { height:36px; max-width:170px; box-sizing:border-box; flex:0 0 auto; }
 .jt-nav { display:flex; align-items:center; gap:6px; margin:0 auto; position:relative; }
 .jt-arrow { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); transition:background .12s; }
 .jt-arrow:hover { background:var(--primary-light); border-color:var(--primary); color:var(--primary); }
@@ -323,9 +325,8 @@ select.input { background:var(--card); }
 .jt-today:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
 .jt-date { height:34px; min-width:200px; padding:0 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:14px; font-weight:700; color:var(--text); text-transform:capitalize; }
 .jt-date:hover { border-color:var(--primary); }
-.jt-right { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
-/* Журнал: 5 функціональних кнопок (DIKIDI-style) — єдина висота для рівного вирівнювання */
-.jt-right .jt-act, .jt-right .jt-icon-btn, .jt-right > #journalFocus { height:36px; box-sizing:border-box; }
+.jt-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* Журнал: 5 функціональних кнопок (DIKIDI-style) */
 .jt-icon-btn { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); transition:background .12s,color .12s,border-color .12s; flex:0 0 auto; }
 .jt-icon-btn:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
 .jt-icon-btn .material-icons-round { font-size:20px; }
@@ -551,17 +552,6 @@ select.input { background:var(--card); }
 /* Червона лінія поточного часу (як у DIKIDI) */
 .jnow { position:absolute; left:0; right:0; height:2px; background:#ef4444; z-index:4; pointer-events:none; }
 .jnow::before { content:''; position:absolute; left:-3px; top:-3px; width:8px; height:8px; border-radius:50%; background:#ef4444; }
-/* Проміжний режим: контент звужений (відкрита шторка/ноутбук) — права панель рівним рядком на всю ширину */
-@media(min-width:769px) and (max-width:1300px){
-  .jt-modes { order:1; }
-  .jt-nav { order:2; margin:0 0 0 auto; }
-  .jt-right { order:3; width:100%; flex-wrap:wrap; justify-content:flex-start; gap:8px; }
-  .jt-right > #journalFocus { flex:1 1 100%; max-width:none !important; height:38px; }
-  .jt-right .jt-act { flex:1 1 0; min-width:120px; justify-content:center; height:40px; }
-  .jt-right .jt-icon-btn { flex:0 0 44px; width:44px; height:40px; }
-  .jt-right .jt-menu-wrap { flex:0 0 44px; }
-  .jt-right .jt-menu-wrap .jt-icon-btn { width:100%; }
-}
 @media(max-width:768px){
   .journal-toolbar { flex-wrap:wrap; gap:8px; }
   .jt-nav { order:3; width:100%; margin:0; justify-content:center; }
@@ -1094,6 +1084,9 @@ select.input { background:var(--card); }
             <button class="btn btn-outline btn-sm j-mode" data-mode="week" onclick="setJournalMode('week')">Тиждень</button>
             <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
           </div>
+          <select id="journalFocus" class="input btn-sm jt-focus" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
+            <option value="">Усі майстри</option>
+          </select>
           <div class="jt-nav">
             <button class="jt-arrow" onclick="shiftJournalDate(-1)" title="Назад"><span class="material-icons-round">chevron_left</span></button>
             <button class="jt-today" onclick="goToday()">Сьогодні</button>
@@ -1102,9 +1095,6 @@ select.input { background:var(--card); }
             <input type="date" id="journalDate" onchange="loadJournal()" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
           </div>
           <div class="jt-right">
-            <select id="journalFocus" class="input btn-sm" style="max-width:150px" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
-              <option value="">Усі майстри</option>
-            </select>
             <!-- 1. Довідка/Інформація -->
             <button class="jt-icon-btn" onclick="journalHelp()" title="Довідка по журналу"><span class="material-icons-round">help_outline</span></button>
             <!-- 2. Додати запис -->
@@ -5611,11 +5601,8 @@ async function renderJournalWeek(container, dateStr) {
   const slots=(maxM-minM)/30, colH=(maxM-minM)*J_PX_PER_MIN;
   const today = _ymd(new Date());
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
-  // та сама шкала, що й у режимі «День»: година — жирна мітка, :30 — тонка «30» (єдиний вигляд)
-  for (let i=0;i<slots;i++){ const m=minM+i*30; const isH=m%60===0; timeCol += `<div class="jslot-label${isH?' hh':' mm'}">${isH?_toHHMM(m):'30'}</div>`; }
+  for (let i=0;i<slots;i++){ timeCol += `<div class="jslot-label">${_toHHMM(minM+i*30)}</div>`; }
   timeCol += '</div>';
-  const _now = new Date();
-  const nowM = _now.getHours()*60 + _now.getMinutes();
   const cols = days.map((d,di) => {
     const ds = _ymd(d);
     const appts = (results[di].appointments||[]).slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
@@ -5630,7 +5617,6 @@ async function renderJournalWeek(container, dateStr) {
         <div class="c">${a.client_name||a.service_name||'—'}</div>
       </div>`;
     });
-    if (ds===today && nowM>=minM && nowM<maxM) body += `<div class="jnow" style="top:${(nowM-minM)*J_PX_PER_MIN}px"></div>`;
     const sum = appts.reduce((acc,a)=>acc+(Number(a.price)||0),0);
     return `<div class="jcol">
       <div class="jcol-head" style="${ds===today?'background:var(--primary-light)':''}">
@@ -5643,13 +5629,7 @@ async function renderJournalWeek(container, dateStr) {
       <div class="jcol-body" style="height:${colH}px;cursor:pointer" onclick="(function(){document.getElementById('journalDate').value='${ds}';setJournalMode('day');})()">${body}</div>
     </div>`;
   }).join('');
-  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>
-    <div class="jlegend">
-      <span><i style="background:#6366f1"></i>Заплановано</span>
-      <span><i style="background:#0ea5e9"></i>Підтверджено</span>
-      <span><i style="background:#10b981"></i>Виконано</span>
-      <span><i style="background:#9ca3af"></i>Не прийшов</span>
-    </div>`;
+  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>`;
 }
 
 // ── модалка запису: деталі + замітка + статус ──
