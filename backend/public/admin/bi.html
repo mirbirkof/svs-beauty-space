@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Конструктор звітів</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .builder { display:grid; grid-template-columns: 300px 1fr; gap:16px; align-items:start; }
+  @media(max-width:880px){ .builder{ grid-template-columns:1fr; } }
+  .panel { border:1px solid var(--border,#eee); border-radius:12px; padding:14px; }
+  .fld { margin-bottom:12px; }
+  .fld label { display:block; font-size:12px; color:var(--text-secondary); margin-bottom:5px; font-weight:600; }
+  .chip { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; margin:3px 4px 0 0; border-radius:999px;
+          border:1px solid var(--border,#ddd); font-size:12px; cursor:pointer; user-select:none; background:var(--card,#fff); }
+  .chip.on { background:var(--primary,#5B5FC7); color:#fff; border-color:var(--primary,#5B5FC7); }
+  .tmpl { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--border,#eee); border-radius:8px;
+          margin-bottom:6px; cursor:pointer; background:var(--card,#fff); font-size:13px; }
+  .tmpl:hover { background:var(--primary-light,#EDEDFA); }
+  .tmpl .c { font-size:11px; color:var(--text-secondary); }
+  table.rt { width:100%; border-collapse:collapse; font-size:13px; }
+  table.rt th, table.rt td { padding:7px 10px; border-bottom:1px solid var(--border,#eee); text-align:left; }
+  table.rt th { color:var(--text-secondary); font-weight:600; cursor:pointer; white-space:nowrap; }
+  table.rt td.num, table.rt th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .flt-row { display:flex; gap:6px; margin-bottom:6px; }
+  .flt-row select, .flt-row input { flex:1; min-width:0; }
+  .saved { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border,#f0f0f0); font-size:13px; }
+  .saved a { cursor:pointer; color:var(--primary,#5B5FC7); font-weight:600; }
+  .muted2 { color:var(--text-secondary); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="content">
+
+  <div class="card" id="token-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="muted">Admin token:</span>
+    <input id="tok" type="password" class="inp" style="flex:1;min-width:200px" placeholder="вставити x-admin-token">
+    <button class="btn" onclick="saveTok()">Зберегти</button>
+  </div>
+
+  <div class="builder">
+    <!-- ЛЕВАЯ ПАНЕЛЬ: построитель -->
+    <div>
+      <div class="panel" style="margin-bottom:14px">
+        <div class="fld">
+          <label>Дані</label>
+          <select id="dataset" class="inp" onchange="onDataset()"></select>
+        </div>
+        <div class="fld">
+          <label>Період</label>
+          <div style="display:flex;gap:6px">
+            <input id="from" type="date" class="inp" style="flex:1">
+            <input id="to" type="date" class="inp" style="flex:1">
+          </div>
+        </div>
+        <div class="fld">
+          <label>Розрізи (групування)</label>
+          <div id="dims"></div>
+        </div>
+        <div class="fld">
+          <label>Показники</label>
+          <div id="meas"></div>
+        </div>
+        <div class="fld">
+          <label>Фільтри</label>
+          <div id="filters"></div>
+          <button class="btn btn-sm" onclick="addFilter()" style="margin-top:6px">+ фільтр</button>
+        </div>
+        <div class="fld">
+          <label>Ліміт рядків</label>
+          <input id="limit" type="number" class="inp" value="500" min="1" max="10000">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="run()">Побудувати</button>
+          <button class="btn" onclick="exportCsv()">Експорт CSV</button>
+          <button class="btn" onclick="saveReport()">Зберегти звіт</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px">
+        <h3 style="margin:0 0 8px">Шаблони</h3>
+        <div id="templates" class="muted2">завантаження…</div>
+      </div>
+
+      <div class="panel">
+        <h3 style="margin:0 0 8px">Збережені звіти</h3>
+        <div id="saved" class="muted2">—</div>
+      </div>
+    </div>
+
+    <!-- ПРАВАЯ ПАНЕЛЬ: результат -->
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h3 id="rt-title" style="margin:0">Результат</h3>
+        <span id="rt-meta" class="muted2" style="margin-left:auto"></span>
+      </div>
+      <div id="result" class="muted2">Оберіть дані й натисніть «Побудувати».</div>
+    </div>
+  </div>
+
+  <p id="err" style="margin-top:16px;color:var(--danger);font-size:13px"></p>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Конструктор звітів"></script>
+<script>
+const API = location.origin;
+let META = {};       // datasets meta
+let OPS = [];
+let CUR = { dims:new Set(), meas:new Set(), filters:[] };
+let LAST = null;     // последний результат для CSV/сортировки
+
+document.getElementById('tok').value = (typeof adminToken === 'function' ? adminToken() : (localStorage.getItem('svs_admin_token')||''));
+function saveTok(){ localStorage.setItem('svs_admin_token', document.getElementById('tok').value.trim()); boot(); }
+function showErr(e){ document.getElementById('err').textContent = e || ''; }
+const esc = s => String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = v => (typeof v==='number' ? v.toLocaleString('uk-UA',{maximumFractionDigits:2}) : esc(v));
+async function af(path, opts){ return adminFetch(API + path, opts); }
+
+function curDataset(){ return document.getElementById('dataset').value; }
+function dsMeta(){ return META[curDataset()] || {dimensions:[],measures:[],filters:[]}; }
+
+function onDataset(){
+  CUR = { dims:new Set(), meas:new Set(), filters:[] };
+  renderPickers();
+}
+
+function renderPickers(){
+  const m = dsMeta();
+  document.getElementById('dims').innerHTML = m.dimensions.map(d=>
+    `<span class="chip ${CUR.dims.has(d.key)?'on':''}" onclick="toggle('dims','${d.key}')">${esc(d.label)}</span>`).join('') || '<span class="muted2">—</span>';
+  document.getElementById('meas').innerHTML = m.measures.map(d=>
+    `<span class="chip ${CUR.meas.has(d.key)?'on':''}" onclick="toggle('meas','${d.key}')">${esc(d.label)}</span>`).join('');
+  renderFilters();
+}
+function toggle(kind, key){
+  const set = kind==='dims'?CUR.dims:CUR.meas;
+  if(set.has(key)) set.delete(key); else { if(kind==='dims'&&set.size>=4){ showErr('Максимум 4 розрізи'); return; } set.add(key); }
+  showErr(''); renderPickers();
+}
+function addFilter(){ CUR.filters.push({field:'',op:'=',value:''}); renderFilters(); }
+function renderFilters(){
+  const m = dsMeta();
+  document.getElementById('filters').innerHTML = CUR.filters.map((f,i)=>{
+    const fopts = m.filters.map(x=>`<option value="${x.key}" ${f.field===x.key?'selected':''}>${esc(x.key)}</option>`).join('');
+    const oopts = OPS.map(o=>`<option ${f.op===o?'selected':''}>${o}</option>`).join('');
+    return `<div class="flt-row">
+      <select class="inp" onchange="setF(${i},'field',this.value)"><option value="">— поле —</option>${fopts}</select>
+      <select class="inp" style="flex:0 0 70px" onchange="setF(${i},'op',this.value)">${oopts}</select>
+      <input class="inp" value="${esc(f.value)}" placeholder="значення" onchange="setF(${i},'value',this.value)">
+      <button class="btn btn-sm" onclick="delF(${i})">×</button></div>`;
+  }).join('');
+}
+function setF(i,k,v){ CUR.filters[i][k]=v; }
+function delF(i){ CUR.filters.splice(i,1); renderFilters(); }
+
+function buildBody(){
+  return {
+    dataset: curDataset(),
+    dimensions: [...CUR.dims],
+    measures: [...CUR.meas],
+    filters: CUR.filters.filter(f=>f.field),
+    from: document.getElementById('from').value || undefined,
+    to: document.getElementById('to').value || undefined,
+    limit: parseInt(document.getElementById('limit').value,10)||500,
+    sort: LAST && LAST.sort ? LAST.sort : undefined,
+  };
+}
+
+async function run(){
+  showErr('');
+  document.getElementById('result').innerHTML = 'Будую…';
+  const body = buildBody();
+  const r = await af('/api/bi/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if(!r.ok){ showErr('run: '+r.status); document.getElementById('result').textContent='Помилка'; return; }
+  const d = await r.json();
+  LAST = { columns:d.columns, rows:d.rows, body, sort: body.sort };
+  renderResult(d);
+}
+
+function renderResult(d){
+  document.getElementById('rt-meta').textContent = d.row_count + ' рядків';
+  if(!d.rows.length){ document.getElementById('result').innerHTML='<span class="muted2">Немає даних за обраними умовами.</span>'; return; }
+  const cols = d.columns;
+  const head = cols.map(c=>`<th class="${c.kind==='measure'?'num':''}" onclick="sortBy('${c.key}')">${esc(c.label)}</th>`).join('');
+  const body = d.rows.map(r=>'<tr>'+cols.map(c=>`<td class="${c.kind==='measure'?'num':''}">${fmt(r[c.key])}</td>`).join('')+'</tr>').join('');
+  document.getElementById('result').innerHTML = `<div style="overflow:auto"><table class="rt"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function sortBy(key){
+  if(!LAST) return;
+  const cur = LAST.sort && LAST.sort.key===key && LAST.sort.dir==='desc';
+  LAST.sort = { key, dir: cur?'asc':'desc' };
+  run();
+}
+
+async function exportCsv(){
+  showErr('');
+  const body = buildBody();
+  const r = await af('/api/bi/export.csv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if(!r.ok){ showErr('export: '+r.status); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='svs-report.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+async function saveReport(){
+  const name = prompt('Назва звіту:'); if(!name) return;
+  const body = { name, dataset:curDataset(), config:{ dimensions:[...CUR.dims], measures:[...CUR.meas], filters:CUR.filters.filter(f=>f.field), sort: LAST&&LAST.sort } };
+  const r = await af('/api/bi', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if(!r.ok){ showErr('save: '+r.status); return; }
+  loadSaved();
+}
+
+async function loadTemplates(){
+  const r = await af('/api/bi/templates'); if(!r.ok) return;
+  const d = await r.json();
+  document.getElementById('templates').innerHTML = d.templates.map((t,i)=>
+    `<button class="tmpl" onclick="applyTemplate(${i})"><b>${esc(t.name)}</b><br><span class="c">${esc(t.category)} · ${esc(META[t.dataset]?META[t.dataset].label:t.dataset)}</span></button>`).join('');
+  window.__tmpls = d.templates;
+}
+function applyTemplate(i){
+  const t = window.__tmpls[i];
+  document.getElementById('dataset').value = t.dataset;
+  CUR = { dims:new Set(t.config.dimensions||[]), meas:new Set(t.config.measures||[]), filters:(t.config.filters||[]).map(f=>({...f})) };
+  LAST = { sort: t.config.sort };
+  if(t.config.limit) document.getElementById('limit').value = t.config.limit;
+  renderPickers();
+  run();
+}
+
+async function loadSaved(){
+  const r = await af('/api/bi'); if(!r.ok){ document.getElementById('saved').textContent='—'; return; }
+  const d = await r.json();
+  if(!d.rows.length){ document.getElementById('saved').innerHTML='<span class="muted2">Поки немає збережених.</span>'; return; }
+  document.getElementById('saved').innerHTML = d.rows.map(s=>
+    `<div class="saved"><span class="material-icons-round" style="font-size:16px;color:${s.is_favorite?'#f5a623':'#ccc'};cursor:pointer" onclick="fav(${s.id})">star</span>`+
+    `<a onclick="openSaved(${s.id})">${esc(s.name)}</a>`+
+    `<span class="muted2" style="margin-left:auto">${esc(META[s.dataset]?META[s.dataset].label:s.dataset)}</span>`+
+    `<span class="material-icons-round" style="font-size:16px;color:#d33;cursor:pointer" onclick="delSaved(${s.id})">delete</span></div>`).join('');
+}
+async function openSaved(id){
+  const r = await af('/api/bi/'+id); if(!r.ok){ showErr('load: '+r.status); return; }
+  const d = await r.json(); const rep = d.report;
+  document.getElementById('dataset').value = rep.dataset;
+  const cfg = rep.config||{};
+  CUR = { dims:new Set(cfg.dimensions||[]), meas:new Set(cfg.measures||[]), filters:(cfg.filters||[]).map(f=>({...f})) };
+  LAST = { sort: cfg.sort };
+  renderPickers();
+  if(d.result && d.result.columns) { LAST = {...LAST, columns:d.result.columns, rows:d.result.rows}; renderResult(d.result); }
+}
+async function fav(id){ await af('/api/bi/'+id+'/favorite',{method:'PATCH'}); loadSaved(); }
+async function delSaved(id){ if(!confirm('Видалити звіт?'))return; await af('/api/bi/'+id,{method:'DELETE'}); loadSaved(); }
+
+async function boot(){
+  showErr('');
+  try {
+    const r = await af('/api/bi/datasets');
+    if(!r.ok){ showErr('datasets: '+r.status); return; }
+    const d = await r.json(); META = d.datasets; OPS = d.operators;
+    document.getElementById('dataset').innerHTML = Object.entries(META).map(([k,v])=>`<option value="${k}">${esc(v.label)}</option>`).join('');
+    onDataset();
+    await Promise.all([loadTemplates(), loadSaved()]);
+  } catch(e){ showErr(e.message); }
+}
+boot();
+</script>
+</body>
+</html>
