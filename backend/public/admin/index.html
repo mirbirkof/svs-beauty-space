@@ -2103,7 +2103,7 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:1120px;width:96vw;min-height:86vh;max-height:94vh;display:flex;flex-direction:column">
+    <div class="modal" style="max-width:1200px;width:96vw;min-height:86vh;max-height:94vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
@@ -6525,7 +6525,7 @@ function _mcRenderShell(){
         </div>
       </div>
     </div>
-    <div style="display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--border,#e5e7eb);margin:0 -4px 14px">${tabsHtml}</div>
+    <div style="display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--border,#e5e7eb);margin:0 -4px 14px">${tabsHtml}</div>
     <div id="mcTabBody" style="padding-bottom:6px"></div>`;
   mcTab(_mcTabKey, true);
 }
