@@ -153,7 +153,7 @@ router.get('/analytics', requirePerm('reports.read'), async (req, res) => {
     const promoters = b.r5, detractors = b.r1 + b.r2 + b.r3;
     const nps = b.total ? Math.round(((promoters - detractors) / b.total) * 100) : null;
     const trend = await pool.query(
-      `SELECT to_char(date_trunc('month', created_at),'YYYY-MM') month,
+      `SELECT to_char(date_trunc('month', created_at),'YYYY-MM') AS month,
               COUNT(*)::int cnt, ROUND(AVG(rating)::numeric,2) avg_rating
          FROM reviews WHERE created_at > NOW() - INTERVAL '12 months'
         GROUP BY 1 ORDER BY 1`);

@@ -560,7 +560,7 @@ router.get('/analytics', async (req, res) => {
          AND ch.status IN ('completed','reviewed') AND ch.completed_at >= ${since}
        GROUP BY ch.inspected_employee_id, m.name ORDER BY avg_score DESC NULLS LAST`);
     const trend = await q(
-      `SELECT to_char(date_trunc('month',completed_at),'YYYY-MM') month, ROUND(AVG(total_score)::numeric,2) avg_score, COUNT(*)::int checks
+      `SELECT to_char(date_trunc('month',completed_at),'YYYY-MM') AS month, ROUND(AVG(total_score)::numeric,2) avg_score, COUNT(*)::int checks
        FROM qc_checks WHERE tenant_id=current_tenant_id() AND status IN ('completed','reviewed') AND completed_at >= date_trunc('month',NOW()) - INTERVAL '11 months'
        GROUP BY 1 ORDER BY 1`);
     const mystery = (await q(`SELECT ROUND(AVG(overall_score)::numeric,2) avg, COUNT(*)::int cnt FROM mystery_shopper_reports WHERE tenant_id=current_tenant_id() AND visit_date >= (NOW() - (${days} || ' days')::interval)::date`))[0];

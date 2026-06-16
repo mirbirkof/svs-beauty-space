@@ -2261,7 +2261,7 @@ async function api(path, opts = {}) {
 }
 async function dikidiApi(path, opts = {}) {
   const r = await fetch(DIKIDI_API + path, {
-    ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
   return r.json();
 }

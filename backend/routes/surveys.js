@@ -54,7 +54,7 @@ router.get('/nps/trend', async (req, res) => {
   try {
     const months = Math.min(24, Number(req.query.months) || 12);
     const rows = await q(
-      `SELECT to_char(date_trunc('month', completed_at),'YYYY-MM') month,
+      `SELECT to_char(date_trunc('month', completed_at),'YYYY-MM') AS month,
          COUNT(*) FILTER (WHERE nps_score >= 9)::int promoters,
          COUNT(*) FILTER (WHERE nps_score BETWEEN 0 AND 6)::int detractors,
          COUNT(*) FILTER (WHERE nps_score IS NOT NULL)::int total
@@ -344,7 +344,7 @@ router.get('/:id(\\d+)/analytics', async (req, res) => {
        FROM survey_responses WHERE survey_id=$1`, [s.id]))[0];
     const nps = a.nps_total ? Math.round(((a.promoters - a.detractors) / a.nps_total) * 100) : null;
     const trend = await q(
-      `SELECT to_char(date_trunc('month',completed_at),'YYYY-MM') month, COUNT(*)::int total,
+      `SELECT to_char(date_trunc('month',completed_at),'YYYY-MM') AS month, COUNT(*)::int total,
          ROUND(AVG(nps_score)::numeric,2) nps_avg, ROUND(AVG(csat_score)::numeric,2) csat_avg
        FROM survey_responses WHERE survey_id=$1 AND completed_at IS NOT NULL GROUP BY 1 ORDER BY 1`, [s.id]);
     res.json({
