@@ -247,6 +247,7 @@ try { app.use('/api/budgets', require('./routes/budgets')); } catch(e) { console
 try { app.use('/api/cash-flow', require('./routes/cash-flow')); } catch(e) { console.error('[cash-flow] mount failed:', e.message); }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
+try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
@@ -264,6 +265,8 @@ app.listen(PORT, '0.0.0.0', () => {
     remindersRoutes.startCron();
     notificationsRoutes.startCron(); // COM-01 Notification Hub воркер очереди
     triggersRoutes.startCron();      // MKT-02 авто-триггеры маркетинга
+    // INF-04 Monitoring: in-process чекер здоровья сервисов + алерты
+    try { require('./lib/monitor-checker').start(60000); } catch (e) { console.error('[monitor] start failed:', e.message); }
     // страховка вебхуков Mono: поллинг pending-инвойсов
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
