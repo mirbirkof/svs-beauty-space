@@ -333,6 +333,8 @@ select.input { background:var(--card); }
 .btn-jcash { background:var(--bg-soft,#f1f5f9); color:var(--text); border:1px solid var(--border); font-weight:600; }
 .btn-jcash:hover { background:#e2e8f0; }
 .btn-jcash.cash-in { color:#166534; } .btn-jcash.cash-out { color:#991b1b; }
+.jt-act { display:inline-flex; align-items:center; gap:6px; }
+.jt-act .material-icons-round { font-size:17px; }
 .jt-menu-wrap { position:relative; flex:0 0 auto; }
 .jt-menu { position:absolute; top:40px; right:0; min-width:210px; background:var(--card,#fff); border:1px solid var(--border,#e8e8ee); border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.16); padding:6px; z-index:60; display:none; }
 .jt-menu.open { display:block; }
@@ -552,7 +554,15 @@ select.input { background:var(--card); }
   .journal-toolbar { flex-wrap:wrap; gap:8px; }
   .jt-nav { order:3; width:100%; margin:0; justify-content:center; }
   .jt-modes { order:1; }
-  .jt-right { order:2; margin-left:auto; }
+  /* Журнал на мобільному: панель дій на всю ширину, кнопки = рівні іконки (DIKIDI-style) */
+  .jt-right { order:2; width:100%; margin-left:0; justify-content:space-between; flex-wrap:nowrap; gap:6px; }
+  #journalFocus { order:-1; flex:1 1 100%; max-width:none !important; margin-bottom:2px; }
+  .jt-right .jt-act, .jt-right .jt-icon-btn { flex:1 1 0; min-width:0; height:42px; padding:0; justify-content:center; }
+  .jt-right .jt-act .jtl { display:none; }
+  .jt-right .jt-act .material-icons-round { font-size:22px; }
+  .jt-right .jt-menu-wrap { flex:1 1 0; display:flex; }
+  .jt-right .jt-menu-wrap .jt-icon-btn { width:100%; }
+  .jt-menu { right:auto; left:0; }
   .jt-date { min-width:140px; font-size:13px; }
   /* журнал на мобільному: менші відступи картки + жорстке обрізання, щоб сітка не виходила за екран (#18) */
   .journal-main .card-body { padding:8px; }
@@ -1086,13 +1096,13 @@ select.input { background:var(--card); }
             <!-- 1. Довідка/Інформація -->
             <button class="jt-icon-btn" onclick="journalHelp()" title="Довідка по журналу"><span class="material-icons-round">help_outline</span></button>
             <!-- 2. Додати запис -->
-            <button class="btn btn-primary btn-sm" onclick="openCreate(null, document.getElementById('journalDate').value, 600)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Додати запис</button>
+            <button class="btn btn-primary btn-sm jt-act" onclick="openCreate(null, document.getElementById('journalDate').value, 600)" title="Додати запис"><span class="material-icons-round">add</span><span class="jtl">Додати запис</span></button>
             <!-- 3. Оформити продаж -->
-            <button class="btn btn-sm btn-jsale" onclick="openEmbed('/admin/crm-extra.html#cashbox','point_of_sale Каса · продаж')" title="Оформити продаж послуги або товару"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">shopping_cart_checkout</span> Оформити продаж</button>
+            <button class="btn btn-sm btn-jsale jt-act" onclick="openEmbed('/admin/crm-extra.html#cashbox','point_of_sale Каса · продаж')" title="Оформити продаж послуги або товару"><span class="material-icons-round">shopping_cart_checkout</span><span class="jtl">Оформити продаж</span></button>
             <!-- 4. Додати прихід коштів -->
-            <button class="btn btn-sm btn-jcash cash-in" onclick="finOpenOp('in')" title="Додати прихід (надходження коштів)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">savings</span>&nbsp;+&nbsp;Прихід</button>
+            <button class="btn btn-sm btn-jcash cash-in jt-act" onclick="finOpenOp('in')" title="Додати прихід (надходження коштів)"><span class="material-icons-round">payments</span><span class="jtl">Прихід</span></button>
             <!-- 5. Додати витрату коштів -->
-            <button class="btn btn-sm btn-jcash cash-out" onclick="finOpenOp('out')" title="Додати витрату (виплату коштів)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">savings</span>&nbsp;−&nbsp;Витрата</button>
+            <button class="btn btn-sm btn-jcash cash-out jt-act" onclick="finOpenOp('out')" title="Додати витрату (виплату коштів)"><span class="material-icons-round">money_off</span><span class="jtl">Витрата</span></button>
             <!-- Додаткові дії (три крапки) -->
             <div class="jt-menu-wrap">
               <button class="jt-icon-btn" onclick="journalMenuToggle(event)" title="Додаткові дії"><span class="material-icons-round">more_vert</span></button>
@@ -2133,12 +2143,12 @@ select.input { background:var(--card); }
             <div class="jhelp-txt"><b>Оформити продаж</b><span>Швидкий продаж послуги або товару через касу. Фіксує оплату й проводить операцію у фінансах.</span></div>
           </div>
           <div class="jhelp-item">
-            <div class="jhelp-ic" style="background:#f1f5f9;color:#166534"><span class="material-icons-round">savings</span></div>
-            <div class="jhelp-txt"><b>+ Прихід</b><span>Облік надходження коштів: передоплата, внесення в касу, інші доходи — не обов'язково пов'язані з продажем.</span></div>
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#166534"><span class="material-icons-round">payments</span></div>
+            <div class="jhelp-txt"><b>Прихід</b><span>Облік надходження коштів: передоплата, внесення в касу, інші доходи — не обов'язково пов'язані з продажем.</span></div>
           </div>
           <div class="jhelp-item">
-            <div class="jhelp-ic" style="background:#f1f5f9;color:#991b1b"><span class="material-icons-round">savings</span></div>
-            <div class="jhelp-txt"><b>− Витрата</b><span>Облік виплати коштів: матеріали, зарплата, оренда та інші операційні витрати.</span></div>
+            <div class="jhelp-ic" style="background:#f1f5f9;color:#991b1b"><span class="material-icons-round">money_off</span></div>
+            <div class="jhelp-txt"><b>Витрата</b><span>Облік виплати коштів: матеріали, зарплата, оренда та інші операційні витрати.</span></div>
           </div>
           <div class="jhelp-item">
             <div class="jhelp-ic" style="background:#f1f5f9;color:#64748b"><span class="material-icons-round">help_outline</span></div>
