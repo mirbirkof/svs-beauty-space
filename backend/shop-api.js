@@ -249,6 +249,11 @@ try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }
 try { app.use('/api/bi', require('./routes/bi')); } catch(e) { console.error('[bi] mount failed:', e.message); }
+try { app.use('/api/google-business', require('./routes/google-business')); } catch(e) { console.error('[google-business] mount failed:', e.message); }
+try { app.use('/api/kpi-branches', require('./routes/kpi-branches')); } catch(e) { console.error('[kpi-branches] mount failed:', e.message); }
+try { app.use('/api/backup', require('./routes/backup')); } catch(e) { console.error('[backup] mount failed:', e.message); }
+try { app.use('/api/dwh', require('./routes/data-warehouse')); } catch(e) { console.error('[dwh] mount failed:', e.message); }
+try { app.use('/api/marketplace', require('./routes/marketplace')); } catch(e) { console.error('[marketplace] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
