@@ -1,0 +1,258 @@
+/* lib/tenant-mgmt.js — SAS-06 Tenant Management.
+   Платформенные операции суперадмина: дашборд тенантов, health-score из реальных
+   метрик, онбординг, тикеты поддержки, usage. Таблицы без RLS (как saas_plans) —
+   запросы фильтруют по tenant_id явно; для записи в чужой тенант указываем tenant_id. */
+const { getPool } = require('../db-pg');
+
+// ── Health score ─────────────────────────────────────────────────────
+// 0-100 из доступных реальных сигналов. Категория: healthy(70+)/warning(40-69)/critical(<40).
+function categorize(score) {
+  return score >= 70 ? 'healthy' : score >= 40 ? 'warning' : 'critical';
+}
+
+// Считаем метрики тенанта напрямую из боевых таблиц (cross-tenant: фильтр по $1).
+async function computeHealth(tenantId) {
+  const pool = getPool();
+  const one = async (sql) => (await pool.query(sql, [tenantId])).rows[0] || {};
+  const m = {};
+  m.clients = Number((await one(`SELECT count(*)::int n FROM clients WHERE tenant_id=$1`)).n || 0);
+  m.appointments_7d = Number((await one(
+    `SELECT count(*)::int n FROM appointments WHERE tenant_id=$1 AND created_at >= NOW()-INTERVAL '7 days'`)).n || 0);
+  m.appointments_30d = Number((await one(
+    `SELECT count(*)::int n FROM appointments WHERE tenant_id=$1 AND created_at >= NOW()-INTERVAL '30 days'`)).n || 0);
+  m.masters = Number((await one(
+    `SELECT count(*)::int n FROM masters WHERE tenant_id=$1 AND COALESCE(active,true)=true`)).n || 0);
+  // заполненность профиля салона (white_label_configs / tenants.settings)
+  const t = await one(`SELECT name, slug, settings FROM tenants WHERE id=$1`);
+  let profile = 0;
+  if (t.name) profile += 40;
+  if (t.slug) profile += 20;
+  if (t.settings && Object.keys(t.settings).length) profile += 40;
+  m.profile_completeness = profile;
+
+  // скоринг: активность записей (40) + база клиентов (20) + мастера (20) + профиль (20)
+  const sAppt = Math.min(40, m.appointments_7d * 4);                 // 10+ записей/нед = max
+  const sClients = Math.min(20, Math.floor(m.clients / 25) * 5);      // 100+ клиентов = max
+  const sMasters = m.masters > 0 ? Math.min(20, m.masters * 5) : 0;   // 4+ мастера = max
+  const sProfile = Math.round(profile * 0.2);                         // профиль → 20
+  const score = Math.max(0, Math.min(100, sAppt + sClients + sMasters + sProfile));
+  return { score, category: categorize(score), metrics: m };
+}
+
+// Записать health-чек в историю (для cron каждые 6ч).
+async function runHealthCheck(tenantId) {
+  const pool = getPool();
+  const { score, category, metrics } = await computeHealth(tenantId);
+  const prev = (await pool.query(
+    `SELECT health_score FROM tenant_health_checks WHERE tenant_id=$1 ORDER BY check_date DESC LIMIT 1`, [tenantId])).rows[0];
+  const previousScore = prev ? prev.health_score : null;
+  const alerts = [];
+  if (previousScore != null && previousScore - score > 20)
+    alerts.push({ type: 'score_drop', severity: 'high', message: `Health впав на ${previousScore - score} за період` });
+  const row = (await pool.query(
+    `INSERT INTO tenant_health_checks (tenant_id, health_score, category, metrics, alerts, previous_score)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [tenantId, score, category, JSON.stringify(metrics), JSON.stringify(alerts), previousScore])).rows[0];
+  return row;
+}
+
+async function runHealthAll() {
+  const tenants = (await getPool().query(`SELECT id FROM tenants WHERE status='active'`)).rows;
+  let checked = 0;
+  for (const t of tenants) { try { await runHealthCheck(t.id); checked++; } catch (e) { console.error('[tenant-mgmt] health', t.id, e.message); } }
+  return { tenants: tenants.length, checked };
+}
+
+// ── Дашборд / список / детали ────────────────────────────────────────
+async function dashboard() {
+  const pool = getPool();
+  const byStatus = (await pool.query(`SELECT status, count(*)::int n FROM tenants GROUP BY status`)).rows;
+  const status = {}; byStatus.forEach(r => status[r.status] = r.n);
+  const total = Object.values(status).reduce((a, b) => a + b, 0);
+  // последний health по каждому тенанту → распределение по категориям
+  const health = (await pool.query(
+    `SELECT category, count(*)::int n FROM (
+       SELECT DISTINCT ON (tenant_id) tenant_id, category
+       FROM tenant_health_checks ORDER BY tenant_id, check_date DESC
+     ) x GROUP BY category`)).rows;
+  const healthOverview = {}; health.forEach(r => healthOverview[r.category] = r.n);
+  const openTickets = Number((await pool.query(
+    `SELECT count(*)::int n FROM tenant_support_tickets WHERE status IN ('open','in_progress')`)).rows[0].n);
+  return {
+    total, active: status.active || 0, trial: status.trial || status.trialing || 0,
+    suspended: status.suspended || 0, by_status: status,
+    health_overview: healthOverview, open_tickets: openTickets,
+  };
+}
+
+async function listTenants({ status = null, search = null, limit = 50, offset = 0 } = {}) {
+  const pool = getPool();
+  const where = [], params = []; let i = 1;
+  if (status) { where.push(`t.status=$${i++}`); params.push(status); }
+  if (search) { where.push(`(t.name ILIKE $${i} OR t.slug ILIKE $${i})`); params.push('%' + search + '%'); i++; }
+  const ws = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  params.push(limit, offset);
+  const rows = (await pool.query(
+    `SELECT t.id, t.name, t.slug, t.status, t.plan, t.created_at,
+            l.plan_code, l.status AS license_status,
+            h.health_score, h.category AS health_category
+       FROM tenants t
+       LEFT JOIN tenant_licenses l ON l.tenant_id=t.id
+       LEFT JOIN LATERAL (SELECT health_score, category FROM tenant_health_checks
+                          WHERE tenant_id=t.id ORDER BY check_date DESC LIMIT 1) h ON true
+       ${ws} ORDER BY t.created_at DESC LIMIT $${i++} OFFSET $${i}`, params)).rows;
+  const total = Number((await pool.query(`SELECT count(*)::int n FROM tenants t ${ws}`, params.slice(0, where.length))).rows[0].n);
+  return { rows, total };
+}
+
+async function tenantDetail(tenantId) {
+  const pool = getPool();
+  const t = (await pool.query(`SELECT * FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+  if (!t) return null;
+  const lic = (await pool.query(`SELECT * FROM tenant_licenses WHERE tenant_id=$1`, [tenantId])).rows[0] || null;
+  const onb = (await pool.query(`SELECT * FROM tenant_onboarding WHERE tenant_id=$1`, [tenantId])).rows[0] || null;
+  const health = await computeHealth(tenantId);
+  const tickets = Number((await pool.query(
+    `SELECT count(*)::int n FROM tenant_support_tickets WHERE tenant_id=$1 AND status IN ('open','in_progress')`, [tenantId])).rows[0].n);
+  return { tenant: t, license: lic, onboarding: onb, health, open_tickets: tickets };
+}
+
+async function setStatus(tenantId, status, reason = null) {
+  const pool = getPool();
+  const r = (await pool.query(
+    `UPDATE tenants SET status=$2, updated_at=NOW() WHERE id=$1 RETURNING id, name, status`, [tenantId, status])).rows[0];
+  if (!r) throw new Error('tenant-not-found');
+  if (reason) await pool.query(
+    `UPDATE tenant_onboarding SET notes=COALESCE(notes,'')||$2, updated_at=NOW() WHERE tenant_id=$1`,
+    [tenantId, `\n[${new Date().toISOString()}] ${status}: ${reason}`]).catch(() => {});
+  return r;
+}
+
+// ── Онбординг ────────────────────────────────────────────────────────
+const ONB_STEPS = ['registration', 'profile', 'services', 'employees', 'first_booking'];
+
+async function getOnboarding(tenantId) {
+  const pool = getPool();
+  let row = (await pool.query(`SELECT * FROM tenant_onboarding WHERE tenant_id=$1`, [tenantId])).rows[0];
+  if (!row) row = (await pool.query(
+    `INSERT INTO tenant_onboarding (tenant_id) VALUES ($1)
+     ON CONFLICT (tenant_id) DO UPDATE SET updated_at=NOW() RETURNING *`, [tenantId])).rows[0];
+  return row;
+}
+
+async function completeStep(tenantId, step) {
+  if (!ONB_STEPS.includes(step)) throw new Error('invalid-step');
+  const pool = getPool();
+  const o = await getOnboarding(tenantId);
+  const done = new Set(o.steps_completed || []); done.add(step);
+  const arr = ONB_STEPS.filter(s => done.has(s));
+  const percent = Math.round((arr.length / ONB_STEPS.length) * 100);
+  const completed = percent === 100;
+  const curStep = Math.min(5, arr.length + (completed ? 0 : 1));
+  const row = (await pool.query(
+    `UPDATE tenant_onboarding SET steps_completed=$2, completion_percent=$3, current_step=$4,
+       completed_at=CASE WHEN $5 THEN COALESCE(completed_at,NOW()) ELSE NULL END, updated_at=NOW()
+     WHERE tenant_id=$1 RETURNING *`,
+    [tenantId, JSON.stringify(arr), percent, curStep, completed])).rows[0];
+  return row;
+}
+
+async function updateOnboarding(tenantId, patch = {}) {
+  await getOnboarding(tenantId);
+  const cols = [], vals = []; let i = 1;
+  if (patch.assigned_csm !== undefined) { cols.push(`assigned_csm=$${i++}`); vals.push(patch.assigned_csm); }
+  if (patch.notes !== undefined) { cols.push(`notes=$${i++}`); vals.push(patch.notes); }
+  if (!cols.length) return getOnboarding(tenantId);
+  cols.push('updated_at=NOW()'); vals.push(tenantId);
+  return (await getPool().query(
+    `UPDATE tenant_onboarding SET ${cols.join(', ')} WHERE tenant_id=$${i} RETURNING *`, vals)).rows[0];
+}
+
+// ── Тикеты поддержки ─────────────────────────────────────────────────
+async function nextTicketNumber() {
+  const n = Number((await getPool().query(`SELECT nextval('tenant_support_tickets_id_seq') AS v`)).rows[0].v);
+  return 'TKT-' + String(n).padStart(6, '0');
+}
+
+async function createTicket(tenantId, b = {}, user = null) {
+  if (!b.subject || !b.description) throw new Error('subject-and-description-required');
+  const num = await nextTicketNumber();
+  const row = (await getPool().query(
+    `INSERT INTO tenant_support_tickets (tenant_id, ticket_number, subject, description, category, priority, created_by, created_by_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [tenantId, num, b.subject, b.description, b.category || 'question', b.priority || 'medium',
+     user?.id || null, user?.name || user?.username || null])).rows[0];
+  return row;
+}
+
+async function listTickets({ tenantId = null, status = null, priority = null, assigned = null, limit = 50, offset = 0 } = {}) {
+  const where = [], params = []; let i = 1;
+  if (tenantId) { where.push(`tenant_id=$${i++}`); params.push(tenantId); }
+  if (status) { where.push(`status=$${i++}`); params.push(status); }
+  if (priority) { where.push(`priority=$${i++}`); params.push(priority); }
+  if (assigned) { where.push(`assigned_to=$${i++}`); params.push(assigned); }
+  const ws = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  params.push(limit, offset);
+  const rows = (await getPool().query(
+    `SELECT * FROM tenant_support_tickets ${ws} ORDER BY
+       CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+       created_at DESC LIMIT $${i++} OFFSET $${i}`, params)).rows;
+  return { rows };
+}
+
+async function getTicket(id, { includeInternal = true } = {}) {
+  const pool = getPool();
+  const t = (await pool.query(`SELECT * FROM tenant_support_tickets WHERE id=$1`, [id])).rows[0];
+  if (!t) return null;
+  const replies = (await pool.query(
+    `SELECT * FROM ticket_replies WHERE ticket_id=$1 ${includeInternal ? '' : 'AND internal=false'} ORDER BY created_at`, [id])).rows;
+  return { ticket: t, replies };
+}
+
+async function updateTicket(id, patch = {}) {
+  const cols = [], vals = []; let i = 1;
+  for (const k of ['status', 'priority', 'assigned_to', 'internal_notes']) {
+    if (patch[k] !== undefined) { cols.push(`${k}=$${i++}`); vals.push(patch[k]); }
+  }
+  if (patch.status === 'resolved') cols.push('resolved_at=COALESCE(resolved_at,NOW())');
+  if (patch.status === 'closed') cols.push('closed_at=COALESCE(closed_at,NOW())');
+  if (!cols.length) return null;
+  cols.push('updated_at=NOW()'); vals.push(id);
+  return (await getPool().query(
+    `UPDATE tenant_support_tickets SET ${cols.join(', ')} WHERE id=$${i} RETURNING *`, vals)).rows[0] || null;
+}
+
+async function replyTicket(id, { message, internal = false, isStaff = false, user = null } = {}) {
+  if (!message) throw new Error('message-required');
+  const pool = getPool();
+  const reply = (await pool.query(
+    `INSERT INTO ticket_replies (ticket_id, author_id, author_name, is_staff, internal, message)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [id, user?.id || null, user?.name || user?.username || null, isStaff, internal, message])).rows[0];
+  // первый ответ персонала → first_response_at; статус → in_progress
+  if (isStaff && !internal) await pool.query(
+    `UPDATE tenant_support_tickets SET first_response_at=COALESCE(first_response_at,NOW()),
+       status=CASE WHEN status='open' THEN 'in_progress' ELSE status END, updated_at=NOW() WHERE id=$1`, [id]);
+  return reply;
+}
+
+async function supportStats() {
+  const pool = getPool();
+  const open = Number((await pool.query(`SELECT count(*)::int n FROM tenant_support_tickets WHERE status IN ('open','in_progress')`)).rows[0].n);
+  const resp = (await pool.query(
+    `SELECT AVG(EXTRACT(EPOCH FROM (first_response_at-created_at))/3600)::numeric(10,1) h
+       FROM tenant_support_tickets WHERE first_response_at IS NOT NULL`)).rows[0];
+  const resolv = (await pool.query(
+    `SELECT AVG(EXTRACT(EPOCH FROM (resolved_at-created_at))/3600)::numeric(10,1) h
+       FROM tenant_support_tickets WHERE resolved_at IS NOT NULL`)).rows[0];
+  const byStatus = (await pool.query(`SELECT status, count(*)::int n FROM tenant_support_tickets GROUP BY status`)).rows;
+  const st = {}; byStatus.forEach(r => st[r.status] = r.n);
+  return { open, avg_first_response_h: Number(resp.h) || 0, avg_resolution_h: Number(resolv.h) || 0, by_status: st };
+}
+
+module.exports = {
+  computeHealth, runHealthCheck, runHealthAll, categorize,
+  dashboard, listTenants, tenantDetail, setStatus,
+  getOnboarding, completeStep, updateOnboarding, ONB_STEPS,
+  createTicket, listTickets, getTicket, updateTicket, replyTicket, supportStats,
+};
