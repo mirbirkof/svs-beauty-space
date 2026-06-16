@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    SVS Beauty Space — Checkout
-   Stripe Payment Element: Card, Google Pay, Apple Pay
+   Повна онлайн-оплата через Mono (картка · Apple Pay · Google Pay).
+   Накладений платіж / оплата при отриманні — вимкнено.
    ═══════════════════════════════════════════════════════ */
 
 const API = '/api';
@@ -27,7 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  await initStripe();
+  // Оплата лише онлайн через Mono — Stripe не ініціалізуємо
   render();
 });
 
@@ -130,16 +131,16 @@ function render() {
           <div class="checkout-error" id="checkoutError"></div>
 
           <div class="checkout-payment-methods">
-            <p class="checkout-payment-note">Оплата при отриманні (накладений платіж) або за реквізитами після підтвердження замовлення менеджером.</p>
+            <p class="checkout-payment-note">Повна оплата онлайн карткою через Mono — Visa, Mastercard, Apple&nbsp;Pay, Google&nbsp;Pay. Замовлення підтверджується одразу після оплати.</p>
           </div>
 
           <button class="checkout-pay-btn" id="payBtn">
-            Оформити замовлення · ${total.toLocaleString('uk-UA')} ₴
+            Перейти до оплати · ${total.toLocaleString('uk-UA')} ₴
           </button>
 
           <div class="checkout-secure-note">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            Ваші дані захищені · Менеджер зв'яжеться для підтвердження
+            Захищена оплата через Mono · кошти повертаються при скасуванні
           </div>
         </div>
       </section>
@@ -363,48 +364,26 @@ async function handlePay() {
     return;
   }
 
-  // Основной путь (без Stripe) — реальный заказ на сервер
-  if (!stripe || !elements) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="checkout-spinner-sm"></span>Оформлення...';
-    hideError();
-    try {
-      const order = await submitOrder();
-      showSuccess(order);
-    } catch (err) {
-      showError(err.message);
-      btn.disabled = false;
-      btn.textContent = `Оформити замовлення · ${getCartTotal().toLocaleString('uk-UA')} ₴`;
-    }
-    return;
-  }
-
+  // Єдиний шлях оплати — повна предоплата онлайн через Mono
   btn.disabled = true;
-  btn.innerHTML = '<span class="checkout-spinner-sm"></span>Обробка...';
+  btn.innerHTML = '<span class="checkout-spinner-sm"></span>Оформлення...';
   hideError();
-
-  const { error } = await stripe.confirmPayment({
-    elements,
-    confirmParams: {
-      return_url: window.location.origin + '/checkout.html?success=1',
-      payment_method_data: {
-        billing_details: {
-          name: document.getElementById('deliveryName')?.value || currentUser.name || '',
-          phone: document.getElementById('deliveryPhone')?.value || currentUser.phone || '',
-        },
-      },
-    },
-    redirect: 'if_required',
-  });
-
-  if (error) {
-    showError(translateStripeError(error));
+  try {
+    const order = await submitOrder();
+    localStorage.removeItem(STORAGE_CART);
+    if (order && order.pay_url) {
+      // повна оплата: одразу ведемо на платіжну сторінку Mono
+      btn.innerHTML = '<span class="checkout-spinner-sm"></span>Перехід до оплати...';
+      window.location.href = order.pay_url;
+      return;
+    }
+    // Mono тимчасово недоступний — показуємо замовлення з кнопкою оплати/контактом
+    showSuccess(order);
+  } catch (err) {
+    showError(err.message);
     btn.disabled = false;
-    btn.textContent = `Сплатити ${getCartTotal().toLocaleString('uk-UA')} ₴`;
-    return;
+    btn.textContent = `Перейти до оплати · ${getCartTotal().toLocaleString('uk-UA')} ₴`;
   }
-
-  showSuccess();
 }
 
 // ── Реальный сабмит заказа на сервер ─────────────────────

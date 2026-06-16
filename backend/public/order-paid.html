@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Оплата отримана — SVS Beauty World</title>
+  <style>
+    :root { --gold:#c9a96e; --ink:#1a1a1a; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:#faf8f5; color:var(--ink);
+           min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:#fff; border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.08);
+            max-width:440px; width:100%; padding:48px 32px; text-align:center; }
+    .icon { width:84px; height:84px; border-radius:50%; background:#eaf7ee; color:#27ae60;
+            display:flex; align-items:center; justify-content:center; margin:0 auto 24px; font-size:44px; }
+    .icon.pending { background:#fff7e6; color:#d9a400; }
+    h1 { font-size:24px; margin-bottom:12px; }
+    p { color:#555; line-height:1.55; margin-bottom:8px; font-size:15px; }
+    .order { margin:18px 0; font-size:14px; color:#888; }
+    .order strong { color:var(--ink); }
+    .btn { display:inline-block; margin-top:24px; background:var(--gold); color:#fff; text-decoration:none;
+           padding:14px 28px; border-radius:12px; font-weight:600; transition:.2s; }
+    .btn:hover { filter:brightness(.95); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon" id="icon">✓</div>
+    <h1 id="title">Оплату отримано!</h1>
+    <p id="msg">Дякуємо за покупку. Ми вже готуємо ваше замовлення до відправлення.</p>
+    <div class="order" id="orderLine"></div>
+    <a class="btn" href="https://svsbeauty.com.ua/shop.html">Продовжити покупки</a>
+  </div>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var order = q.get('order');
+      if (order) {
+        document.getElementById('orderLine').innerHTML =
+          'Замовлення <strong>№' + order.replace(/[^a-z0-9\-]/gi, '') + '</strong>';
+      }
+      // якщо повернулись без підтвердження статусу — підкажемо, що оплата обробляється
+      if (q.get('status') === 'pending') {
+        document.getElementById('icon').className = 'icon pending';
+        document.getElementById('icon').textContent = '⏳';
+        document.getElementById('title').textContent = 'Оплата обробляється';
+        document.getElementById('msg').textContent =
+          'Платіж обробляється банком. Щойно кошти підтвердяться, ми сповістимо вас.';
+      }
+    })();
+  </script>
+</body>
+</html>
