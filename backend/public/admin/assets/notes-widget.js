@@ -96,10 +96,10 @@
     '.svsN-link.del:hover{color:#ff6b6b}',
     '.svsN-empty{text-align:center;color:#7b8094;font-size:13px;padding:26px 10px}',
     '@media(min-width:769px){',
-    '#svsNotesFab{right:26px;bottom:26px;width:72px;height:72px;box-shadow:0 8px 26px rgba(0,0,0,.36)}',
-    '#svsNotesFab svg{width:33px;height:33px}',
-    '#svsNotesBadge{min-width:26px;height:26px;border-radius:13px;font:700 13px/26px Inter,system-ui,sans-serif;top:-5px;right:-5px}',
-    '#svsNotesPanel{bottom:108px}',
+    '#svsNotesFab{right:28px;bottom:28px;width:90px;height:90px;box-shadow:0 10px 30px rgba(0,0,0,.4)}',
+    '#svsNotesFab svg{width:42px;height:42px}',
+    '#svsNotesBadge{min-width:30px;height:30px;border-radius:15px;font:700 15px/30px Inter,system-ui,sans-serif;top:-6px;right:-6px;box-shadow:0 0 0 3px #fff}',
+    '#svsNotesPanel{bottom:128px}',
     '}',
   ].join('');
   document.head.appendChild(css);
