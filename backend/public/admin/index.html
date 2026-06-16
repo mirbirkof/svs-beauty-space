@@ -2489,7 +2489,14 @@ function openEmbed(url, title) {
   // на місці, не перемальовується і не зникає. Більше жодних «переходів на окрему сторінку».
   currentPage = 'embed';
   const f = document.getElementById('embedFrame');
-  if (f.getAttribute('data-url') !== url) { f.setAttribute('data-url', url); f.src = url; }
+  if (f.getAttribute('data-url') !== url) {
+    f.setAttribute('data-url', url);
+    // Антикеш: мобільні браузери агресивно кешують iframe → нові правки модулів не видно.
+    // Додаємо ?v= (стабільний на сесію) перед #hash, щоб при кожному завантаженні панелі тягнути свіже.
+    const v = (window._ASSET_V || (window._ASSET_V = Date.now()));
+    const h = url.indexOf('#'); const path = h>=0?url.slice(0,h):url; const hash = h>=0?url.slice(h):'';
+    f.src = path + (path.indexOf('?')>=0?'&':'?') + 'v=' + v + hash;
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-embed').classList.add('active');
   document.getElementById('pageTitle').textContent = title || 'Модуль';
