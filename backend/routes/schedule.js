@@ -574,6 +574,19 @@ router.get('/journal', async (req, res) => {
                           AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
                               = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
               ) AS paid,
+              -- Спосіб оплати (cash/card) — той самий матчинг, що й «оплачено».
+              COALESCE(
+                (SELECT co.method FROM cash_operations co
+                   WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id
+                   ORDER BY co.id DESC LIMIT 1),
+                (SELECT co.method FROM cash_operations co
+                   WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+                     AND a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
+                     AND co.bp_client = a.bp_client AND co.master_id = a.master_id
+                     AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                         = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date
+                   ORDER BY co.id DESC LIMIT 1)
+              ) AS pay_method,
               COALESCE(
                 NULLIF(c.name,''),
                 CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
@@ -721,6 +734,9 @@ router.patch('/appointments/:id', async (req, res) => {
       newEnd = new Date(baseStart.getTime() + dur * 60000).toISOString();
     }
 
+    // Ручний перенос (час/майстер/тривалість) → позначаємо manual_override,
+    // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
+    const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined);
     const r = await pool.query(
       `UPDATE appointments
           SET notes = COALESCE($2, notes),
@@ -729,11 +745,12 @@ router.patch('/appointments/:id', async (req, res) => {
               master_id = COALESCE($5, master_id),
               starts_at = COALESCE($6, starts_at),
               ends_at = COALESCE($7, ends_at),
+              manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
               updated_at = NOW()
         WHERE id = $1
         RETURNING id, notes, status, room_id, master_id, starts_at, ends_at`,
       [req.params.id, notes ?? null, status ?? null, room_id ?? null,
-       master_id != null ? Number(master_id) : null, newStart, newEnd]
+       master_id != null ? Number(master_id) : null, newStart, newEnd, markManual]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 

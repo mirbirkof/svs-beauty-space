@@ -184,9 +184,13 @@ async function syncAppointments(from, to) {
         // Не понижуємо вже ВИКОНАНИЙ (оплачений) запис назад у 'confirmed':
         // BeautyPro для оплаченого запису все одно віддає state='confirmed' (оплата окремо в /sales),
         // тож зберігаємо локальний 'done'. Реальну відміну/неявку з BP — пропускаємо.
-        `UPDATE appointments SET client_id=$1, master_id=$2, service_id=$3,
-           starts_at=($4::timestamp AT TIME ZONE 'Europe/Kyiv'),
-           ends_at=($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
+        // manual_override=true → запис перенесено вручну в нашій CRM: НЕ перетираємо
+        // час/майстра назад значеннями BeautyPro (інакше перенос «відкочується» кожні 5 хв).
+        `UPDATE appointments SET client_id=$1,
+           master_id=CASE WHEN manual_override THEN master_id ELSE $2 END,
+           service_id=$3,
+           starts_at=CASE WHEN manual_override THEN starts_at ELSE ($4::timestamp AT TIME ZONE 'Europe/Kyiv') END,
+           ends_at=CASE WHEN manual_override THEN ends_at ELSE ($5::timestamp AT TIME ZONE 'Europe/Kyiv') END,
            status=CASE WHEN $6 IN ('cancelled','noshow') THEN $6
                        WHEN status='done' THEN 'done'
                        ELSE $6 END,

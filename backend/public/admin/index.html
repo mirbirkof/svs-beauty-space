@@ -5475,7 +5475,7 @@ function renderJournalDay(container, data) {
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
         ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
-        ${h>64?`<div class="p">${_money(a.price)}${a.paid?' <span class="paid-tag">оплачено</span>':''}</div>`:''}
+        ${h>64?`<div class="p">${_money(a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':'оплачено'}</span>`:''}</div>`:''}
         ${a.paid?'<span class="paid-ico material-icons-round" title="Оплачено">paid</span>':okIcon}
       </div>`;
     });
@@ -5673,6 +5673,12 @@ function apptContactRow(a){
     <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="https://wa.me/${d}" target="_blank" rel="noopener"><span class="material-icons-round" style="font-size:16px">chat</span> WhatsApp</a>
   </div>`;
 }
+// Бейдж способу оплати: готівка / безготівка (картка)
+function _payBadge(method) {
+  if (method === 'cash') return `<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💵 Готівка</span>`;
+  if (method === 'card') return `<span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💳 Безготівка</span>`;
+  return '';
+}
 async function openAppt(id) {
   const a = (journalData?.appointments||[]).find(x => x.id===id);
   if (!a) return;
@@ -5741,8 +5747,8 @@ async function openAppt(id) {
       ${a.paid ? `
         <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
           <span style="font-size:18px">✓</span>
-          <div>Оплачено · ${_money(a.price)}
-            <div style="font-size:11px;font-weight:400;color:#059669">Проведено через BeautyPro — у касі вже враховано</div>
+          <div style="flex:1">Оплачено · ${_money(a.price)} ${_payBadge(a.pay_method)}
+            <div style="font-size:11px;font-weight:400;color:#059669">У касі вже враховано</div>
           </div>
         </div>` : `
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
@@ -5826,7 +5832,9 @@ async function transferAppt(id) {
   const msg = document.getElementById('apptMsg');
   if (!date || !time) { msg.style.color='#ef4444'; msg.textContent='Вкажіть дату і час'; return; }
   msg.style.color='var(--text-secondary)'; msg.textContent='Переношу запис…';
-  const starts_at = `${date}T${time}:00`;
+  // Будуємо момент у локальному часі браузера (Київ) → ISO з зоною (Z),
+  // щоб сервер не трактував час як UTC і не зсував запис на ±3 год.
+  const starts_at = new Date(`${date}T${time}:00`).toISOString();
   try {
     const body = { starts_at };
     if (masterId) body.master_id = masterId;
@@ -5969,7 +5977,8 @@ async function saveCreate() {
   const masterSel = document.getElementById('ncMaster');
   const masterId = _createCtx.masterId || (masterSel ? Number(masterSel.value) : null);
   if (!masterId) { msg.style.color='#ef4444'; msg.textContent='Оберіть майстра'; return; }
-  const starts_at = `${_createCtx.dateStr}T${time}:00`;
+  // ISO з зоною браузера (Київ) — щоб сервер у UTC не зсував час запису.
+  const starts_at = new Date(`${_createCtx.dateStr}T${time}:00`).toISOString();
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
   const body = { master_id: masterId, service_id: svc, starts_at, notes: note };
   if (_createCtx.clientId) body.client_id = _createCtx.clientId;
