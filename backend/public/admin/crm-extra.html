@@ -265,7 +265,7 @@ main { padding:24px 0; }
 
 <!-- модалка картки майстра/користувача -->
 <div id="cardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeCard()">
-  <div style="background:#fff;border-radius:14px;max-width:460px;width:92%;max-height:85vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+  <div style="background:#fff;border-radius:14px;max-width:1200px;width:96vw;min-height:88vh;max-height:95vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
     <div id="cardBody">—</div>
     <button class="btn ghost" style="width:100%;margin-top:14px" onclick="closeCard()">Закрити</button>
   </div>
@@ -635,10 +635,11 @@ async function setMasterActive(id, active){
   catch(e){ alert(e.message); }
 }
 function closeCard(){ document.getElementById('cardModal').style.display='none'; }
-function _mcAvatar(ms){
+function _mcAvatar(ms, size){
+  const s = size || 64, rad = Math.round(s/4.5), fs = Math.round(s*0.37);
   const init = (ms.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
-  if (ms.avatar) return `<img src="${ms.avatar}" style="width:64px;height:64px;border-radius:16px;object-fit:cover;flex:none">`;
-  return `<div style="width:64px;height:64px;border-radius:16px;flex:none;background:linear-gradient(135deg,#7c5cff,#b18cff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700">${init||'★'}</div>`;
+  if (ms.avatar) return `<img src="${ms.avatar}" style="width:${s}px;height:${s}px;border-radius:${rad}px;object-fit:cover;flex:none">`;
+  return `<div style="width:${s}px;height:${s}px;border-radius:${rad}px;flex:none;background:linear-gradient(135deg,#7c5cff,#b18cff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:700">${init||'★'}</div>`;
 }
 function _mcSchedule(sj){
   let sched=sj; try{ if(typeof sj==='string') sched=JSON.parse(sj);}catch(_){ sched=null; }
@@ -683,11 +684,17 @@ function _mcRenderShell(){
   const fullName=[ms.name,ms.surname].filter(Boolean).join(' ');
   const tabsHtml=_MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'#888'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
   document.getElementById('cardBody').innerHTML = `
-    <div style="display:flex;gap:14px;align-items:center;padding:4px 0 12px">
-      ${_mcAvatar(ms)}
-      <div style="min-width:0">
-        <div style="font-size:20px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
+    <div style="display:flex;gap:22px;align-items:flex-start;padding:4px 0 14px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:none">
+        ${_mcAvatar(ms, 130)}
+        <input type="file" id="mcHeaderAvatarFile" accept="image/*" style="display:none" onchange="uploadMasterAvatar(this)">
+        <button class="btn sm" style="width:130px;justify-content:center;background:#7c5cff;color:#fff" onclick="document.getElementById('mcHeaderAvatarFile').click()">📷 ${ms.avatar?'Змінити фото':'Завантажити фото'}</button>
+        ${ms.avatar?`<button class="btn sm" style="width:130px;justify-content:center;background:#fee2e2;color:#dc2626" onclick="removeMasterAvatar()">Видалити фото</button>`:''}
+        <div id="mcAvatarStatus" style="font-size:11px;color:#888;text-align:center;min-height:14px"></div>
+      </div>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:24px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
           ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
           ${bpBadge}
@@ -695,7 +702,7 @@ function _mcRenderShell(){
         </div>
       </div>
     </div>
-    <div style="display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid #e5e7eb;margin:0 0 14px">${tabsHtml}</div>
+    <div style="display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb;margin:0 0 14px">${tabsHtml}</div>
     <div id="mcTabBody" style="padding-bottom:6px"></div>`;
   mcTab(_mcTabKey,true);
 }
@@ -909,6 +916,40 @@ async function saveMasterAvatar(){
     const r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify({avatar:v||null})});
     if(!r||!r.ok){ alert('Помилка'); return; }
     _mcData.ms=r.master; _mcToast('Фото оновлено'); _mcRenderShell(); mcTab('photos');
+  }catch(e){ alert(e.message||'Помилка'); }
+}
+async function uploadMasterAvatar(inp){
+  if(!_mcId || !inp.files || !inp.files[0]) return;
+  const file = inp.files[0];
+  const st = document.getElementById('mcAvatarStatus');
+  if (file.size > 10*1024*1024){ if(st) st.textContent='Файл завеликий (макс 10 МБ)'; inp.value=''; return; }
+  if (st){ st.textContent='Завантаження…'; }
+  try{
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('is_public', 'true');
+    fd.append('entity_type', 'master_avatar');
+    fd.append('entity_id', String(_mcId));
+    const h = {}; if(TOKEN){ h['Authorization']='Bearer '+TOKEN; h['X-Admin-Token']=TOKEN; }
+    const up = await fetch(API + '/api/files/upload', { method:'POST', headers:h, body:fd });
+    const j = await up.json();
+    if (!up.ok || !j.ok || !j.id){ if(st) st.textContent='Помилка завантаження'; inp.value=''; return; }
+    const url = API + '/api/files/' + j.id;
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar:url }) });
+    if (!r || !r.ok){ if(st) st.textContent='Фото завантажено, але не збереглось'; return; }
+    _mcData.ms = r.master; _mcToast('Фото оновлено'); _mcRenderShell();
+    if(typeof loadMasters==='function') loadMasters();
+  }catch(e){ if(st) st.textContent='Помилка'; }
+  finally{ inp.value=''; }
+}
+async function removeMasterAvatar(){
+  if(!_mcId) return;
+  if(!confirm('Видалити фото профілю?')) return;
+  try{
+    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar:null }) });
+    if (!r || !r.ok){ alert('Помилка'); return; }
+    _mcData.ms = r.master; _mcToast('Фото видалено'); _mcRenderShell();
+    if(typeof loadMasters==='function') loadMasters();
   }catch(e){ alert(e.message||'Помилка'); }
 }
 async function toggleMasterActive(id, makeActive){
