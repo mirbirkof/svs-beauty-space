@@ -2103,7 +2103,7 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:1200px;width:96vw;min-height:86vh;max-height:94vh;display:flex;flex-direction:column">
+    <div class="modal" style="max-width:1400px;width:97vw;min-height:88vh;max-height:95vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
@@ -6513,11 +6513,18 @@ function _mcRenderShell(){
   const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
   const tabsHtml = _MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
   document.getElementById('masterCardBody').innerHTML = `
-    <div style="display:flex;gap:18px;align-items:center;padding:16px 0 14px">
-      ${_mcAvatarClickable(ms)}
-      <div style="min-width:0">
-        <div style="font-size:22px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
+    <div style="display:flex;gap:22px;align-items:flex-start;padding:16px 0 14px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:none">
+        ${_mcAvatar(ms, 130)}
+        <input type="file" id="mcHeaderAvatarFile" accept="image/*" style="display:none" onchange="uploadMasterAvatar(this)">
+        <button class="btn btn-sm" style="width:130px;justify-content:center;background:#7c5cff;color:#fff" onclick="document.getElementById('mcHeaderAvatarFile').click()">
+          <span class="material-icons-round" style="font-size:16px">photo_camera</span>${ms.avatar?'Змінити фото':'Завантажити фото'}</button>
+        ${ms.avatar?`<button class="btn btn-sm" style="width:130px;justify-content:center;background:#fee2e2;color:#dc2626" onclick="removeMasterAvatar()">Видалити фото</button>`:''}
+        <div id="mcAvatarStatus" style="font-size:11px;color:var(--text-secondary);text-align:center;min-height:14px"></div>
+      </div>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:24px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
           ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
           ${bpBadge}
@@ -6742,7 +6749,7 @@ async function uploadMasterAvatar(inp){
 }
 async function removeMasterAvatar(){
   if(!_mcId) return;
-  if(!confirm('Видалити фото профілю?')) return;
+  if(!await jConfirm('Видалити фото профілю?', { okText:'Видалити' })) return;
   try {
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: null }) });
     if (!r || !r.ok){ toast('Помилка','error'); return; }
