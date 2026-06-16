@@ -904,13 +904,22 @@ router.delete('/appointments/:id', async (req, res) => {
     const pool = getPool();
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
-    const chk = await pool.query(`SELECT id FROM appointments WHERE id=$1`, [id]);
+    const chk = await pool.query(`SELECT id, beautypro_id FROM appointments WHERE id=$1`, [id]);
     if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     // прибрати привʼязані касові операції лише з відкритих змін (минулі не чіпаємо)
     await pool.query(
       `DELETE FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1
          AND shift_id IN (SELECT id FROM cash_shifts WHERE status='open')`, [id]
     );
+    // BeautyPro-запис не можна видаляти жорстко: автосинк побачить його в BP і
+    // відтворить знову (саме тому видалені записи «поверталися»). Тому мʼяке
+    // видалення: cancelled + manual_override, щоб синк більше його не воскрешав.
+    if (chk.rows[0].beautypro_id) {
+      await pool.query(
+        `UPDATE appointments SET status='cancelled', manual_override=true, updated_at=NOW() WHERE id=$1`, [id]
+      );
+      return res.json({ ok: true, deleted: id, soft: true });
+    }
     await pool.query(`DELETE FROM appointments WHERE id=$1`, [id]);
     res.json({ ok: true, deleted: id });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

@@ -5525,6 +5525,7 @@ function renderJournalDay(container, data) {
       <span><i style="background:#10b981"></i>Виконано</span>
       <span><i style="background:#9ca3af"></i>Не прийшов</span>
     </div>`;
+  if (IS_TOUCH) jBindTouchDrag(container);
 }
 const _hm2 = (hhmm) => { const [h,m]=String(hhmm||'0:0').split(':').map(Number); return h*60+(m||0); };
 const _plural = (n,one,few,many) => { const m10=n%10,m100=n%100; if(m10===1&&m100!==11)return one; if(m10>=2&&m10<=4&&(m100<10||m100>=20))return few; return many; };
@@ -5535,6 +5536,86 @@ function jDragStart(ev, id) { _dragId = id; ev.dataTransfer.effectAllowed='move'
 function jDragEnd(ev) { ev.target.classList.remove('dragging'); document.querySelectorAll('.drop-active').forEach(e=>e.classList.remove('drop-active')); }
 function jDragOver(ev) { ev.preventDefault(); ev.dataTransfer.dropEffect='move'; ev.currentTarget.classList.add('drop-active'); }
 function jDragLeave(ev) { ev.currentTarget.classList.remove('drop-active'); }
+
+// ── Тач-перенос: довге натискання (≈0.5с) піднімає запис, далі тягнемо пальцем ──
+// Захист від випадкового переносу: треба саме УТРИМАТИ. Якщо палець рушив до
+// спрацювання — це скрол, підняття скасовується. На відпусканні — підтвердження.
+let _tDrag = null;
+const TOUCH_HOLD_MS = 500;
+function jBindTouchDrag(container){
+  container.querySelectorAll('.jcol-body .jappt').forEach(el => {
+    const mm = (el.getAttribute('onclick')||'').match(/openAppt\((\d+)\)/);
+    if (!mm) return;
+    const id = Number(mm[1]);
+    el.addEventListener('touchstart', (ev)=>jTouchStart(ev, id, el), { passive:true });
+    el.addEventListener('touchmove', jTouchMove, { passive:false });
+    el.addEventListener('touchend', jTouchEnd, { passive:false });
+    el.addEventListener('touchcancel', jTouchCancel, { passive:true });
+  });
+}
+function _colAtPoint(x,y){ const el=document.elementFromPoint(x,y); return el?el.closest('.jcol-body[data-master]'):null; }
+function jTouchStart(ev, id, el){
+  if (ev.touches.length !== 1) return;
+  const t = ev.touches[0];
+  _tDrag = { id, el, x0:t.clientX, y0:t.clientY, active:false, moved:false, ghost:null, timer:null, gw:0, gh:0 };
+  _tDrag.timer = setTimeout(()=>{
+    if (!_tDrag) return;
+    _tDrag.active = true;
+    if (navigator.vibrate) try { navigator.vibrate(45); } catch(e){}
+    el.classList.add('dragging');
+    const r = el.getBoundingClientRect();
+    const g = el.cloneNode(true);
+    g.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;z-index:99999;opacity:.92;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.35);transform:scale(1.04);border-radius:8px`;
+    document.body.appendChild(g);
+    _tDrag.ghost = g; _tDrag.gw = r.width; _tDrag.gh = r.height;
+  }, TOUCH_HOLD_MS);
+}
+function jTouchMove(ev){
+  if (!_tDrag) return;
+  const t = ev.touches[0];
+  if (!_tDrag.active){
+    if (Math.abs(t.clientX-_tDrag.x0)>10 || Math.abs(t.clientY-_tDrag.y0)>10){ clearTimeout(_tDrag.timer); _tDrag=null; }
+    return;
+  }
+  ev.preventDefault();
+  _tDrag.moved = true;
+  if (_tDrag.ghost){ _tDrag.ghost.style.left=(t.clientX-_tDrag.gw/2)+'px'; _tDrag.ghost.style.top=(t.clientY-_tDrag.gh/2)+'px'; }
+  document.querySelectorAll('.jcol-body.drop-active').forEach(e=>e.classList.remove('drop-active'));
+  const col = _colAtPoint(t.clientX, t.clientY); if (col) col.classList.add('drop-active');
+}
+async function jTouchEnd(ev){
+  if (!_tDrag) return;
+  clearTimeout(_tDrag.timer);
+  const td = _tDrag; _tDrag = null;
+  td.el.classList.remove('dragging');
+  if (td.ghost) td.ghost.remove();
+  document.querySelectorAll('.jcol-body.drop-active').forEach(e=>e.classList.remove('drop-active'));
+  if (!td.active) return;                 // не утримав → звичайний тап відкриє запис
+  ev.preventDefault();                    // був перенос → не відкривати модалку
+  if (!td.moved) return;
+  const t = (ev.changedTouches && ev.changedTouches[0]); if (!t) return;
+  const col = _colAtPoint(t.clientX, t.clientY); if (!col) return;
+  const minM = Number(col.dataset.min), masterId = Number(col.dataset.master), dateStr = col.dataset.date;
+  const rect = col.getBoundingClientRect();
+  let mins = minM + Math.round(((t.clientY-rect.top)/J_PX_PER_MIN)/15)*15;
+  mins = Math.max(0, Math.min(24*60-15, mins));
+  const mName = (journalData?.masters||[]).find(m=>m.id===masterId);
+  if (!confirm(`Перенести запис на ${_toHHMM(mins)}${mName?(' до '+mName.name):''}?`)) { loadJournal(); return; }
+  const starts_at = new Date(`${dateStr}T${_toHHMM(mins)}:00`).toISOString();
+  try {
+    const r = await api('/api/schedule/appointments/'+td.id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });
+    if (r.ok) loadJournal();
+    else alert(r.error==='different-profession' ? 'Перенесення лише на майстра тієї самої професії' : (r.error||'Не вдалося перенести'));
+  } catch { alert('Помилка мережі'); }
+}
+function jTouchCancel(){
+  if (!_tDrag) return;
+  clearTimeout(_tDrag.timer);
+  if (_tDrag.ghost) _tDrag.ghost.remove();
+  _tDrag.el.classList.remove('dragging');
+  document.querySelectorAll('.jcol-body.drop-active').forEach(e=>e.classList.remove('drop-active'));
+  _tDrag = null;
+}
 async function jDrop(ev) {
   ev.preventDefault();
   const col = ev.currentTarget;
@@ -5547,7 +5628,8 @@ async function jDrop(ev) {
   const y = ev.clientY - rect.top;
   let mins = minM + Math.round((y / J_PX_PER_MIN) / 15) * 15;   // прив'язка до 15 хв
   mins = Math.max(0, Math.min(24*60-15, mins));
-  const starts_at = `${dateStr}T${_toHHMM(mins)}:00`;
+  // ISO з зоною браузера (Київ) — щоб сервер у UTC не зсував час.
+  const starts_at = new Date(`${dateStr}T${_toHHMM(mins)}:00`).toISOString();
   const id = _dragId; _dragId = null;
   try {
     const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });

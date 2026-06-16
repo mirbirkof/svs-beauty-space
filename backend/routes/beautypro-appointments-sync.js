@@ -191,7 +191,8 @@ async function syncAppointments(from, to) {
            service_id=$3,
            starts_at=CASE WHEN manual_override THEN starts_at ELSE ($4::timestamp AT TIME ZONE 'Europe/Kyiv') END,
            ends_at=CASE WHEN manual_override THEN ends_at ELSE ($5::timestamp AT TIME ZONE 'Europe/Kyiv') END,
-           status=CASE WHEN $6 IN ('cancelled','noshow') THEN $6
+           status=CASE WHEN manual_override AND status='cancelled' THEN 'cancelled'
+                       WHEN $6 IN ('cancelled','noshow') THEN $6
                        WHEN status='done' THEN 'done'
                        ELSE $6 END,
            bp_state=$7, price=$8, bp_client=$9, synced_at=NOW(), updated_at=NOW()
