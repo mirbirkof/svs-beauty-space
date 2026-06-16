@@ -2093,12 +2093,12 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:880px;width:96vw">
+    <div class="modal" style="max-width:1120px;width:96vw;min-height:86vh;max-height:94vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
       </div>
-      <div class="modal-body" id="masterCardBody" style="padding-top:0"></div>
+      <div class="modal-body" id="masterCardBody" style="padding-top:0;flex:1;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -6258,11 +6258,24 @@ async function saveClientCard(){
 let _mcId = null, _mcData = null, _mcTabKey = 'profile';
 function closeMasterCard(){ document.getElementById('masterCardModal').style.display='none'; _mcId=null; _mcData=null; }
 // аватар-кружок: фото або ініціали
-function _mcAvatar(ms){
+function _mcAvatar(ms, size){
+  const s = size || 72;
   const init = (ms.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
   const grad = 'linear-gradient(135deg,#7c5cff,#b18cff)';
-  if (ms.avatar) return `<img src="${ms.avatar}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;flex:none">`;
-  return `<div style="width:72px;height:72px;border-radius:18px;flex:none;background:${grad};color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700">${init||'★'}</div>`;
+  const radius = Math.round(s/4);
+  if (ms.avatar) return `<img src="${ms.avatar}" style="width:${s}px;height:${s}px;border-radius:${radius}px;object-fit:cover;flex:none">`;
+  return `<div style="width:${s}px;height:${s}px;border-radius:${radius}px;flex:none;background:${grad};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${Math.round(s*0.36)}px;font-weight:700">${init||'★'}</div>`;
+}
+// Кликабельний аватар у шапці: клік → завантаження фото профілю
+function _mcAvatarClickable(ms){
+  return `<div style="position:relative;flex:none;cursor:pointer" title="Натисніть, щоб завантажити фото майстра"
+       onclick="document.getElementById('mcHeaderAvatarFile').click()">
+      ${_mcAvatar(ms, 104)}
+      <div style="position:absolute;right:-5px;bottom:-5px;width:34px;height:34px;border-radius:50%;background:#7c5cff;border:3px solid var(--card,#fff);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25)">
+        <span class="material-icons-round" style="font-size:18px;color:#fff">photo_camera</span>
+      </div>
+      <input type="file" id="mcHeaderAvatarFile" accept="image/*" style="display:none" onchange="uploadMasterAvatar(this)">
+    </div>`;
 }
 // тиждневий графік з schedule_json
 function _mcSchedule(sj){
@@ -6306,10 +6319,10 @@ function _mcRenderShell(){
   const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
   const tabsHtml = _MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
   document.getElementById('masterCardBody').innerHTML = `
-    <div style="display:flex;gap:14px;align-items:center;padding:14px 0 12px">
-      ${_mcAvatar(ms)}
+    <div style="display:flex;gap:18px;align-items:center;padding:16px 0 14px">
+      ${_mcAvatarClickable(ms)}
       <div style="min-width:0">
-        <div style="font-size:20px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
           ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
@@ -6508,7 +6521,7 @@ async function saveMasterAvatar(){
   try {
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: v||null }) });
     if (!r || !r.ok) { toast('Помилка','error'); return; }
-    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab('photos');
+    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab(_mcTabKey||'photos');
   } catch(e){ toast('Помилка','error'); }
 }
 async function uploadMasterAvatar(inp){
@@ -6529,7 +6542,7 @@ async function uploadMasterAvatar(inp){
     const url = API + '/api/files/' + j.id;
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: url }) });
     if (!r || !r.ok){ toast('Фото завантажено, але не збереглось','error'); return; }
-    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab('photos');
+    _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab(_mcTabKey||'photos');
   } catch(e){ if(st) st.textContent='Помилка'; toast('Помилка завантаження','error'); }
   finally { inp.value=''; }
 }
@@ -6539,7 +6552,7 @@ async function removeMasterAvatar(){
   try {
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: null }) });
     if (!r || !r.ok){ toast('Помилка','error'); return; }
-    _mcData.ms = r.master; toast('Фото видалено','success'); _mcRenderShell(); mcTab('photos');
+    _mcData.ms = r.master; toast('Фото видалено','success'); _mcRenderShell(); mcTab(_mcTabKey||'photos');
   } catch(e){ toast('Помилка','error'); }
 }
 async function saveMasterOnline(){
