@@ -557,33 +557,65 @@ router.get('/v2/appointments/status', requirePerm('sync.write'), async (req, res
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// ===== CRON: окно [-1 .. +14 дней] каждые 30 мин =====
-let cronRef = null;
-async function cronTick() {
+// ===== CRON: автономна синхронізація BeautyPro → наша CRM =====
+// Працює на сервері постійно, незалежно від агента/чату.
+//   FAST (кожні 5 хв)  — те, що має бачитись "одразу": записи, оплати/каса, нові клієнти.
+//   SLOW (кожні 30 хв) — важче й менш термінове: графік майстрів (30 днів), детальні продажі товарів.
+let fastRef = null, slowRef = null, fastBusy = false, slowBusy = false;
+
+// FAST: запис / оплата / новий клієнт — головне для Боса.
+async function fastTick() {
+  if (fastBusy) return;            // не накладати прогони, якщо попередній ще йде
+  fastBusy = true;
   try {
     const iso = (d) => d.toISOString().slice(0, 10);
     const now = new Date();
+    // 1) записи у вікні [-1 .. +14 днів] — нові/змінені бронювання
     const r = await withAuthRetry(() => syncAppointments(iso(new Date(now.getTime() - 864e5)), iso(new Date(now.getTime() + 14 * 864e5))));
     if (r.created || r.updated) console.log(`[bp-appt-sync] +${r.created} new, ~${r.updated} upd`);
-    // продажи в кассу за последние 3 дня (включая сегодня) — держим кассу синхронной с BP
+    // 2) нові клієнти, що зʼявились з цих записів (ще не злінковані) — створюємо/лінкуємо
+    const bc = await withAuthRetry(() => backfillClients(500));
+    if (bc.clients_created || bc.appointments_linked) console.log(`[bp-appt-sync] клієнти: +${bc.clients_created} нових, ${bc.appointments_linked} лінк`);
+    // 3) продажі в касу за останні 3 дні — тримаємо касу/оплати синхронними з BP
     const s = await withAuthRetry(() => syncSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
-    if (s.posted) console.log(`[bp-appt-sync] касса: +${s.posted} продаж, ${s.shifts} змін`);
-    // графік майстрів на 30 днів вперёд — журнал бачить реальні робочі години з BP
+    if (s.posted) console.log(`[bp-appt-sync] каса: +${s.posted} продажів, ${s.shifts} змін`);
+  } catch (e) {
+    console.error('[bp-appt-sync] fast cron error:', e.message);
+  } finally {
+    fastBusy = false;
+  }
+}
+
+// SLOW: графік майстрів + позиційні продажі товарів (важче, не критично по часу).
+async function slowTick() {
+  if (slowBusy) return;
+  slowBusy = true;
+  try {
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const now = new Date();
     const sc = await withAuthRetry(() => syncSchedules(iso(now), iso(new Date(now.getTime() + 30 * 864e5))));
     if (sc.upserted) console.log(`[bp-appt-sync] графік: ${sc.upserted} днів-майстрів`);
-    // детальні продажі товарів за 3 дні — позиційна аналітика складу
     const ps = await withAuthRetry(() => syncProductSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
     if (ps.posted) console.log(`[bp-appt-sync] товари: +${ps.posted} позицій (${ps.matched} матч)`);
   } catch (e) {
-    console.error('[bp-appt-sync] cron error:', e.message);
+    console.error('[bp-appt-sync] slow cron error:', e.message);
+  } finally {
+    slowBusy = false;
   }
 }
+
 function startCron() {
-  if (cronRef) return;
-  setTimeout(cronTick, 20 * 1000); // первый прогон через 20с после старта
-  cronRef = setInterval(cronTick, 30 * 60 * 1000);
-  cronRef.unref();
-  console.log('[bp-appt-sync] cron started (every 30 min)');
+  if (fastRef) return;
+  if (!process.env.BEAUTYPRO_ID_KEY || !process.env.BEAUTYPRO_SECRET_KEY) {
+    console.warn('[bp-appt-sync] cron NOT started — BeautyPro keys missing in env');
+    return;
+  }
+  setTimeout(fastTick, 20 * 1000);        // перший швидкий прогон через 20с після старту
+  setTimeout(slowTick, 90 * 1000);        // перший повільний — через 90с (не одночасно з fast)
+  fastRef = setInterval(fastTick, 5 * 60 * 1000);    // кожні 5 хв
+  slowRef = setInterval(slowTick, 30 * 60 * 1000);   // кожні 30 хв
+  fastRef.unref(); slowRef.unref();
+  console.log('[bp-appt-sync] cron started (fast=5min: appts+clients+sales, slow=30min: schedules+products)');
 }
 startCron();
 
