@@ -38,16 +38,7 @@ const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
 // чтобы не ломать popup-вход в кабинет.
 const helmet = require('helmet');
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://svsbeautyworld.com", "https://svs-shop-api.onrender.com"],
-    },
-  },
+  contentSecurityPolicy: false,   // админка-SPA: inline scripts + onclick handlers повсюду, строгий CSP ломает всё
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginOpenerPolicy: false,
   crossOriginEmbedderPolicy: false,
