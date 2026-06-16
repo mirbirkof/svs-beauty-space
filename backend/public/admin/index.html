@@ -5611,8 +5611,11 @@ async function renderJournalWeek(container, dateStr) {
   const slots=(maxM-minM)/30, colH=(maxM-minM)*J_PX_PER_MIN;
   const today = _ymd(new Date());
   let timeCol = '<div class="jgrid-time"><div class="jhead"></div>';
-  for (let i=0;i<slots;i++){ timeCol += `<div class="jslot-label">${_toHHMM(minM+i*30)}</div>`; }
+  // та сама шкала, що й у режимі «День»: година — жирна мітка, :30 — тонка «30» (єдиний вигляд)
+  for (let i=0;i<slots;i++){ const m=minM+i*30; const isH=m%60===0; timeCol += `<div class="jslot-label${isH?' hh':' mm'}">${isH?_toHHMM(m):'30'}</div>`; }
   timeCol += '</div>';
+  const _now = new Date();
+  const nowM = _now.getHours()*60 + _now.getMinutes();
   const cols = days.map((d,di) => {
     const ds = _ymd(d);
     const appts = (results[di].appointments||[]).slice().sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at));
@@ -5627,6 +5630,7 @@ async function renderJournalWeek(container, dateStr) {
         <div class="c">${a.client_name||a.service_name||'—'}</div>
       </div>`;
     });
+    if (ds===today && nowM>=minM && nowM<maxM) body += `<div class="jnow" style="top:${(nowM-minM)*J_PX_PER_MIN}px"></div>`;
     const sum = appts.reduce((acc,a)=>acc+(Number(a.price)||0),0);
     return `<div class="jcol">
       <div class="jcol-head" style="${ds===today?'background:var(--primary-light)':''}">
@@ -5639,7 +5643,13 @@ async function renderJournalWeek(container, dateStr) {
       <div class="jcol-body" style="height:${colH}px;cursor:pointer" onclick="(function(){document.getElementById('journalDate').value='${ds}';setJournalMode('day');})()">${body}</div>
     </div>`;
   }).join('');
-  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>`;
+  container.innerHTML = `<div class="jgrid" style="--jh:${30*J_PX_PER_MIN}px">${timeCol}${cols}</div>
+    <div class="jlegend">
+      <span><i style="background:#6366f1"></i>Заплановано</span>
+      <span><i style="background:#0ea5e9"></i>Підтверджено</span>
+      <span><i style="background:#10b981"></i>Виконано</span>
+      <span><i style="background:#9ca3af"></i>Не прийшов</span>
+    </div>`;
 }
 
 // ── модалка запису: деталі + замітка + статус ──
