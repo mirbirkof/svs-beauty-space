@@ -205,6 +205,7 @@ const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/segments', require('./routes/segments'));
 try { app.use('/api/rfm', require('./routes/rfm')); } catch(e) { console.error('[rfm] mount failed:', e.message); }
+try { app.use('/api/attribution', require('./routes/attribution')); } catch(e) { console.error('[attribution] mount failed:', e.message); }
 app.use('/api/campaigns', require('./routes/campaigns'));
 try { app.use('/api/purchasing', require('./routes/purchasing')); } catch(e) { console.error('[purchasing] mount failed:', e.message); }
 try { app.use('/api/referral', require('./routes/referral')); } catch(e) { console.error('[referral] mount failed:', e.message); }
