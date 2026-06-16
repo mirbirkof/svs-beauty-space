@@ -314,11 +314,11 @@ select.input { background:var(--card); }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
 /* Журнал: панель навігації по датах (DIKIDI-style) */
-.journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; }
+.journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; flex-wrap:wrap; }
 .jt-modes { display:flex; gap:6px; }
 /* фільтр майстрів — зліва, поруч із режимами (День/Тиждень/Список) */
 .jt-focus { height:36px; max-width:170px; box-sizing:border-box; flex:0 0 auto; }
-.jt-nav { display:flex; align-items:center; gap:6px; margin:0 auto; position:relative; }
+.jt-nav { display:flex; align-items:center; gap:6px; margin:0; position:relative; }
 .jt-arrow { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); transition:background .12s; }
 .jt-arrow:hover { background:var(--primary-light); border-color:var(--primary); color:var(--primary); }
 .jt-today { height:34px; padding:0 12px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:12.5px; font-weight:600; color:var(--text-secondary); }
