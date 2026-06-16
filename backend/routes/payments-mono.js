@@ -36,7 +36,15 @@ async function applyInvoiceStatus(data) {
     `SELECT id, order_id, booking_id, amount, status, purpose FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
   );
-  if (!cur.rowCount) return { ok: false, reason: 'unknown-invoice' };
+  if (!cur.rowCount) {
+    // не замовлення магазину — можливо, це рахунок підписки SaaS (payments_saas)
+    try {
+      const billing = require('../lib/billing');
+      const r = await billing.payInvoiceViaMono(invoiceId, data);
+      if (r.ok) return r; // оброблено білінгом підписок
+    } catch (e) { console.error('[mono:saas-webhook]', e.message); }
+    return { ok: false, reason: 'unknown-invoice' };
+  }
   const p = cur.rows[0];
 
   // финальный статус уже зафиксирован — идемпотентность (вебхук может прийти повторно)
@@ -479,6 +487,21 @@ function startCron() {
           await applyInvoiceStatus(live);
         } catch (e) { console.error('[mono:cron]', row.invoice_id, e.message); }
       }
+
+      // страховка для рахунків підписки SaaS (payments_saas) — поллимо pending mono-лінки
+      try {
+        const sr = await pool.query(
+          `SELECT gateway_payment_id FROM payments_saas
+           WHERE gateway='monobank' AND status IN ('pending','processing')
+             AND created_at > NOW() - INTERVAL '25 hours' LIMIT 50`
+        );
+        for (const row of sr.rows) {
+          try {
+            const live = await mono.getInvoiceStatus(row.gateway_payment_id);
+            await applyInvoiceStatus(live);
+          } catch (e) { console.error('[mono:cron:saas]', row.gateway_payment_id, e.message); }
+        }
+      } catch (e) { console.error('[mono:cron:saas-scan]', e.message); }
 
       // новые подтверждённые записи (из TG-бота) без предоплаты и без инвойса →
       // создать инвойс и прислать кнопку «Оплатити» прямо в чат клиента

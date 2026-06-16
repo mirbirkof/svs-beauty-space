@@ -23,7 +23,13 @@ const GATEWAYS = {
   },
   stripe: gatewayStub('STRIPE_SECRET_KEY'),
   liqpay: gatewayStub('LIQPAY_PRIVATE_KEY'),
-  monobank: gatewayStub('MONOBANK_TOKEN'),
+  // Mono — оплата за посиланням (без збереженої картки): авто-charge неможливий,
+  // рахунок підписки оплачується через pay-link (createSubscriptionPayLink) + вебхук.
+  monobank: {
+    configured: () => !!process.env.MONO_TOKEN,
+    async charge() { return { status: 'pending', gateway_payment_id: null, raw: { mode: 'mono-link' } }; },
+    async refund() { return { status: 'refunded', raw: { mode: 'mono-manual' } }; },
+  },
 };
 function gatewayStub(envKey) {
   return {
@@ -250,6 +256,76 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
     }
   }
   return pay;
+}
+
+// ── Оплата рахунку підписки через Mono (pay-link) ────────────────────
+// Створює інвойс Mono на суму рахунку й повертає посилання на оплату.
+// Ідемпотентно: живий pending-лінк повертається повторно.
+async function createSubscriptionPayLink(invoiceId) {
+  if (!process.env.MONO_TOKEN) throw new Error('gateway-not-configured');
+  const pool = getPool();
+  const inv = (await pool.query(`SELECT * FROM invoices_saas WHERE id=$1`, [invoiceId])).rows[0];
+  if (!inv) throw new Error('invoice-not-found');
+  if (inv.status === 'paid') return { alreadyPaid: true };
+  if (inv.status === 'void') throw new Error('invoice-void');
+  if (Number(inv.total) <= 0) throw new Error('invoice-zero-amount');
+
+  const existing = (await pool.query(
+    `SELECT gateway_payment_id, gateway_response FROM payments_saas
+       WHERE invoice_id=$1 AND gateway='monobank' AND status IN ('pending','processing')
+         AND created_at > NOW()-INTERVAL '24 hours' ORDER BY id DESC LIMIT 1`, [invoiceId])).rows[0];
+  if (existing && existing.gateway_response && existing.gateway_response.page_url) {
+    return { pay_url: existing.gateway_response.page_url, mono_invoice_id: existing.gateway_payment_id, reused: true };
+  }
+
+  const mono = require('./mono');
+  const monoInv = await mono.createInvoice({
+    amountUah: Number(inv.total),
+    orderId: `saas-${invoiceId}`,
+    destination: `Підписка SVS CRM — рахунок ${inv.invoice_number}`.slice(0, 280),
+  });
+  await pool.query(
+    `INSERT INTO payments_saas (tenant_id, invoice_id, amount, currency, status, gateway, gateway_payment_id, gateway_response)
+     VALUES ($1,$2,$3,$4,'pending','monobank',$5,$6)`,
+    [inv.tenant_id, invoiceId, Number(inv.total), inv.currency || 'UAH', monoInv.invoiceId,
+     JSON.stringify({ page_url: monoInv.pageUrl })]);
+  return { pay_url: monoInv.pageUrl, mono_invoice_id: monoInv.invoiceId };
+}
+
+// Викликається вебхуком/полінгом Mono (payments-mono.js), коли рахунок підписки
+// має фінальний статус. На success — позначає рахунок оплаченим і активує підписку.
+async function payInvoiceViaMono(monoInvoiceId, data) {
+  const pool = getPool();
+  const pay = (await pool.query(
+    `SELECT * FROM payments_saas WHERE gateway='monobank' AND gateway_payment_id=$1 ORDER BY id DESC LIMIT 1`,
+    [monoInvoiceId])).rows[0];
+  if (!pay) return { ok: false, reason: 'unknown-saas-invoice' };
+  if (pay.status === 'succeeded') return { ok: true, status: 'paid', dedup: true };
+
+  if (data.status === 'success') {
+    await pool.query(`UPDATE payments_saas SET status='succeeded', gateway_response=$2, updated_at=NOW() WHERE id=$1`,
+      [pay.id, JSON.stringify(data)]);
+    const inv = (await pool.query(
+      `UPDATE invoices_saas SET status='paid', paid_at=NOW(), updated_at=NOW()
+         WHERE id=$1 AND status<>'paid' RETURNING *`, [pay.invoice_id])).rows[0];
+    if (inv && inv.subscription_id) {
+      const sub = (await pool.query(
+        `UPDATE subscriptions_saas SET status='active', updated_at=NOW() WHERE id=$1 RETURNING *`, [inv.subscription_id])).rows[0];
+      if (sub) {
+        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
+        await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1`, [sub.tenant_id]).catch(() => {});
+      }
+      await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [pay.invoice_id]).catch(() => {});
+    }
+    return { ok: true, status: 'paid' };
+  }
+
+  if (['failure', 'expired', 'reversed'].includes(data.status)) {
+    await pool.query(`UPDATE payments_saas SET status='failed', failure_reason=$2, gateway_response=$3, updated_at=NOW() WHERE id=$1`,
+      [pay.id, data.status, JSON.stringify(data)]);
+    return { ok: true, status: 'failed' };
+  }
+  return { ok: true, status: data.status };
 }
 
 async function listPayments({ tenantId = null, limit = 50, offset = 0 } = {}) {
@@ -482,6 +558,7 @@ module.exports = {
   generateInvoice, listInvoices, getInvoice, voidInvoice,
   // payments
   recordPayment, listPayments, refundPayment,
+  createSubscriptionPayLink, payInvoiceViaMono,
   // methods
   listPaymentMethods, addPaymentMethod, removePaymentMethod, setDefaultPaymentMethod,
   // promo crud

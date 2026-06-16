@@ -102,6 +102,18 @@ router.get('/invoices/:id', TENANT_R, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// Створити/отримати посилання на онлайн-оплату рахунку підписки через Mono
+router.post('/invoices/:id/pay-link', TENANT_W, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const inv = await billing.getInvoice(id, getTenantId()); // перевірка належності тенанту
+    if (!inv) return res.status(404).json({ error: 'invoice-not-found' });
+    const link = await billing.createSubscriptionPayLink(id);
+    await logAction({ user: req.user, action: 'billing.pay_link', entity: 'invoices_saas', entityId: id, ip: req.ip }).catch(() => {});
+    res.json({ ok: true, ...link });
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/payments', TENANT_R, async (req, res) => {
   try {
     res.json(await billing.listPayments({
