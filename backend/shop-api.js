@@ -254,6 +254,7 @@ try { app.use('/api/kpi-branches', require('./routes/kpi-branches')); } catch(e)
 try { app.use('/api/backup', require('./routes/backup')); } catch(e) { console.error('[backup] mount failed:', e.message); }
 try { app.use('/api/dwh', require('./routes/data-warehouse')); } catch(e) { console.error('[dwh] mount failed:', e.message); }
 try { app.use('/api/marketplace', require('./routes/marketplace')); } catch(e) { console.error('[marketplace] mount failed:', e.message); }
+try { app.use('/api/integrations', require('./routes/integrations')); } catch(e) { console.error('[integrations] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 

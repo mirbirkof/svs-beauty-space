@@ -67,6 +67,7 @@
     { group: 'Система', icon: 'tune', items: [
       { icon: 'monitor_heart', label: 'Системний статус', href: '/admin/dashboard.html' },
       { icon: 'store', label: 'Управління магазинами', href: '/admin/crm-extra.html#branches' },
+      { icon: 'hub', label: 'Інтеграції', href: '/admin/integrations.html' },
       { icon: 'sync', label: 'BeautyPro синхро', href: '/admin/index.html#sync' },
       { icon: 'history', label: 'Аудит', href: '/admin/crm-extra.html#audit' },
     ] },

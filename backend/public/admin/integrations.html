@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Інтеграції</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro { color:var(--text-secondary); font-size:14px; margin:2px 0 16px; }
+  .sumbar { display:flex; gap:18px; flex-wrap:wrap; margin-bottom:18px; }
+  .sumbox { border:1px solid var(--border,#eee); border-radius:12px; padding:12px 18px; min-width:130px; }
+  .sumbox .n { font-size:24px; font-weight:700; }
+  .sumbox .l { font-size:12px; color:var(--text-secondary); }
+  .grp-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+               color:var(--text-secondary); margin:22px 0 10px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+  .icard { border:1px solid var(--border,#eee); border-radius:14px; padding:16px; background:var(--card,#fff);
+           display:flex; flex-direction:column; gap:8px; }
+  .icard .top { display:flex; align-items:center; gap:10px; }
+  .icard .ic { width:40px; height:40px; border-radius:10px; display:grid; place-items:center;
+               background:var(--primary-light,#EDEDFA); color:var(--primary,#5B5FC7); }
+  .icard .ic .material-icons-round { font-size:22px; }
+  .icard .nm { font-weight:700; font-size:15px; }
+  .icard .desc { font-size:13px; color:var(--text-secondary); line-height:1.45; }
+  .badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px;
+           font-size:12px; font-weight:600; width:fit-content; }
+  .badge.on  { background:#E3F6E9; color:#1B7A3D; }
+  .badge.off { background:#FBE9E7; color:#B23B2E; }
+  .badge .material-icons-round { font-size:14px; }
+  .how { font-size:12px; color:var(--text-secondary); background:var(--bg,#F7F7FB); border-radius:8px;
+         padding:8px 10px; line-height:1.45; }
+  .how b { color:var(--text,#222); }
+  .reload { float:right; }
+</style>
+</head>
+<body>
+<div class="content">
+
+  <h2 style="margin:0">Інтеграції <button class="btn reload" onclick="load()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button></h2>
+  <div class="intro">Всі зовнішні сервіси, які можна підключити до CRM. Зелений статус — працює, сірий — чекає підключення.</div>
+
+  <div class="sumbar" id="sumbar"></div>
+  <div id="groups"></div>
+
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Інтеграції"></script>
+<script>
+async function load() {
+  const wrap = document.getElementById('groups');
+  wrap.innerHTML = '<div class="muted" style="padding:20px">Завантаження…</div>';
+  try {
+    const r = await adminFetch('/api/integrations/status');
+    if (r.status === 401) { wrap.innerHTML = '<div class="muted" style="padding:20px">Потрібна авторизація.</div>'; return; }
+    const data = await r.json();
+    renderSummary(data.summary);
+    renderGroups(data.groups);
+  } catch (e) {
+    wrap.innerHTML = '<div class="muted" style="padding:20px;color:#B23B2E">Помилка: ' + e.message + '</div>';
+  }
+}
+
+function renderSummary(s) {
+  const pending = s.total - s.connected;
+  document.getElementById('sumbar').innerHTML =
+    `<div class="sumbox"><div class="n">${s.total}</div><div class="l">усього інтеграцій</div></div>
+     <div class="sumbox"><div class="n" style="color:#1B7A3D">${s.connected}</div><div class="l">підключено</div></div>
+     <div class="sumbox"><div class="n" style="color:#B23B2E">${pending}</div><div class="l">очікують</div></div>`;
+}
+
+function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function renderGroups(groups) {
+  document.getElementById('groups').innerHTML = groups.map(g => {
+    const cards = g.items.map(it => {
+      const badge = it.configured
+        ? '<span class="badge on"><span class="material-icons-round">check_circle</span>Підключено</span>'
+        : '<span class="badge off"><span class="material-icons-round">radio_button_unchecked</span>Не підключено</span>';
+      const how = it.configured ? '' :
+        `<div class="how"><b>Як підключити:</b> ${esc(it.how)}</div>`;
+      return `<div class="icard">
+        <div class="top">
+          <div class="ic"><span class="material-icons-round">${esc(it.icon)}</span></div>
+          <div><div class="nm">${esc(it.name)}</div></div>
+        </div>
+        ${badge}
+        <div class="desc">${esc(it.desc)}</div>
+        ${how}
+      </div>`;
+    }).join('');
+    return `<div class="grp-title">${esc(g.category)}</div><div class="cards">${cards}</div>`;
+  }).join('');
+}
+
+load();
+</script>
+</body>
+</html>
