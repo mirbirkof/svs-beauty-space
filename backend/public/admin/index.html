@@ -684,7 +684,7 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
             <span class="material-icons-round">star_rate</span> Відгуки
           </a>
-          <a class="sidebar-item" href="/admin/dikidi.html">
+          <a class="sidebar-item" data-embed="/admin/dikidi.html" onclick="openEmbed('/admin/dikidi.html','reviews Відгуки / Промо (запис)')" style="cursor:pointer">
             <span class="material-icons-round">reviews</span> Відгуки / Промо (запис)
           </a>
         </div>
@@ -697,16 +697,16 @@ select.input { background:var(--card); }
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
-          <a class="sidebar-item" href="/admin/crm-marketing.html#center">
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#center" onclick="openEmbed('/admin/crm-marketing.html#center','notifications_active Центр повідомлень')" style="cursor:pointer">
             <span class="material-icons-round">notifications_active</span> Центр повідомлень
           </a>
-          <a class="sidebar-item" href="/admin/crm-marketing.html#segments">
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#segments" onclick="openEmbed('/admin/crm-marketing.html#segments','groups Сегменти')" style="cursor:pointer">
             <span class="material-icons-round">groups</span> Сегменти
           </a>
-          <a class="sidebar-item" href="/admin/crm-marketing.html#campaigns">
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#campaigns" onclick="openEmbed('/admin/crm-marketing.html#campaigns','send Кампанії / Розсилки')" style="cursor:pointer">
             <span class="material-icons-round">send</span> Кампанії / Розсилки
           </a>
-          <a class="sidebar-item" href="/admin/crm-marketing.html#triggers">
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#triggers" onclick="openEmbed('/admin/crm-marketing.html#triggers','bolt Авто-тригери')" style="cursor:pointer">
             <span class="material-icons-round">bolt</span> Авто-тригери
           </a>
           <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
@@ -745,7 +745,7 @@ select.input { background:var(--card); }
             <span class="material-icons-round">shopping_bag</span> Замовлення
             <span class="sidebar-badge" id="badge-orders" style="display:none">0</span>
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#cashbox">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#cashbox" onclick="openEmbed('/admin/crm-extra.html#cashbox','point_of_sale Каса магазину')" style="cursor:pointer">
             <span class="material-icons-round">point_of_sale</span> Каса магазину
           </a>
           <a class="sidebar-item" data-page="giftcerts" onclick="go('giftcerts')">
@@ -771,16 +771,16 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="finance" onclick="go('finance')">
             <span class="material-icons-round">swap_vert</span> Доходи і Витрати
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html" onclick="openEmbed('/admin/crm-extra.html','point_of_sale Рахунки і каси')" style="cursor:pointer">
             <span class="material-icons-round">point_of_sale</span> Рахунки і каси
           </a>
           <a class="sidebar-item" data-page="contractors" onclick="go('contractors')">
             <span class="material-icons-round">groups</span> Контрагенти
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#reports">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#reports" onclick="openEmbed('/admin/crm-extra.html#reports','insights Звіти (P&amp;L, RFM)')" style="cursor:pointer">
             <span class="material-icons-round">insights</span> Звіти (P&amp;L, RFM)
           </a>
-          <a class="sidebar-item" href="/admin/export.html">
+          <a class="sidebar-item" data-embed="/admin/export.html" onclick="openEmbed('/admin/export.html','file_download Експорт CSV')" style="cursor:pointer">
             <span class="material-icons-round">file_download</span> Експорт CSV
           </a>
         </div>
@@ -802,14 +802,14 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="purchasing" onclick="go('purchasing')">
             <span class="material-icons-round">local_shipping</span> Закупівлі
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#inventory">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#inventory" onclick="openEmbed('/admin/crm-extra.html#inventory','fact_check Інвентаризація')" style="cursor:pointer">
             <span class="material-icons-round">fact_check</span> Інвентаризація
           </a>
         </div>
       </div>
 
       <!-- Майстри -->
-      <a class="sidebar-item" href="/admin/crm-extra.html#users">
+      <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
         <span class="material-icons-round">badge</span> Майстри / Співробітники
       </a>
 
@@ -844,7 +844,7 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="settings" data-tab="consumables" onclick="go('settings');setTab('consumables')">
             <span class="material-icons-round">inventory_2</span> Розхідники
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#users-access">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#users-access" onclick="openEmbed('/admin/crm-extra.html#users-access','admin_panel_settings Доступ до проєкту')" style="cursor:pointer">
             <span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту
           </a>
         </div>
@@ -857,16 +857,16 @@ select.input { background:var(--card); }
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
-          <a class="sidebar-item" href="/admin/dashboard.html">
+          <a class="sidebar-item" data-embed="/admin/dashboard.html" onclick="openEmbed('/admin/dashboard.html','monitor_heart Системний статус')" style="cursor:pointer">
             <span class="material-icons-round">monitor_heart</span> Системний статус
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#branches">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#branches" onclick="openEmbed('/admin/crm-extra.html#branches','store Управління магазинами')" style="cursor:pointer">
             <span class="material-icons-round">store</span> Управління магазинами
           </a>
           <a class="sidebar-item" data-page="sync" onclick="go('sync')">
             <span class="material-icons-round">sync</span> BeautyPro синхро
           </a>
-          <a class="sidebar-item" href="/admin/crm-extra.html#audit">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#audit" onclick="openEmbed('/admin/crm-extra.html#audit','history Аудит')" style="cursor:pointer">
             <span class="material-icons-round">history</span> Аудит
           </a>
         </div>
@@ -903,6 +903,11 @@ select.input { background:var(--card); }
     </div>
 
     <div class="content">
+
+      <!-- ═══ ВБУДОВАНІ МОДУЛІ — єдиний каркас, без переходу на окрему сторінку ═══ -->
+      <div class="page" id="page-embed" style="padding:0">
+        <iframe id="embedFrame" title="Модуль" style="width:100%;height:calc(100vh - 60px);border:0;display:block;background:#fff"></iframe>
+      </div>
 
       <!-- ═══ DASHBOARD ═══ -->
       <div class="page active" id="page-dashboard">
@@ -2346,7 +2351,24 @@ function restoreSidebarGroups() {
   } catch (_) {}
 }
 
+function openEmbed(url, title) {
+  // Відкриваємо модуль ВСЕРЕДИНІ єдиного каркаса (iframe) — меню зліва лишається
+  // на місці, не перемальовується і не зникає. Більше жодних «переходів на окрему сторінку».
+  currentPage = 'embed';
+  const f = document.getElementById('embedFrame');
+  if (f.getAttribute('data-url') !== url) { f.setAttribute('data-url', url); f.src = url; }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-embed').classList.add('active');
+  document.getElementById('pageTitle').textContent = title || 'Модуль';
+  document.body.dataset.page = 'embed';
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.embed === url));
+  document.getElementById('sidebar').classList.remove('open');
+  if (location.hash !== '#embed') history.replaceState(null, '', '#embed');
+}
+
 function go(page) {
+  // після перезавантаження на #embed адреса модуля не зберігається — повертаємо в журнал
+  if (page === 'embed' && !document.getElementById('embedFrame').getAttribute('data-url')) page = 'journal';
   // зупиняємо авто-оновлення воронки при переході на іншу сторінку
   if (page !== 'pipeline' && window._pipelineTimer) { clearInterval(window._pipelineTimer); window._pipelineTimer = null; }
   currentPage = page;

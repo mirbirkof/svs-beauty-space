@@ -5,6 +5,9 @@
      <script src="/admin/assets/admin-shell.js" data-title="Назва сторінки"></script>
    Контент страницы должен лежать в <div class="content"> (шелл обернёт его в .main). */
 (function () {
+  // Якщо сторінка відкрита ВСЕРЕДИНІ iframe (єдиний каркас index.html) — НЕ малюємо
+  // власне ліве меню й topbar: вони вже є у батьківському вікні. Лишаємо тільки контент.
+  const EMBEDDED = window.self !== window.top;
   // Единое меню в стиле DIKIDI — зеркало admin/index.html.
   const NAV = [
     { icon: 'dashboard', label: 'Дашборд', href: '/admin/index.html#dashboard' },
@@ -124,14 +127,17 @@
   const me = document.currentScript;
   const title = (me && me.dataset.title) || document.title || '';
 
-  // Обернуть контент в .main + topbar
+  // Обернуть контент в .main + topbar.
+  // У вбудованому режимі (iframe всередині index.html) topbar НЕ малюємо —
+  // він уже є в батьківському каркасі; лишаємо тільки контент.
   const main = document.createElement('div');
   main.className = 'main';
-  main.innerHTML =
+  main.innerHTML = EMBEDDED ? '' :
     '<div class="topbar">' +
     '<button class="sb-toggle" title="Згорнути меню" onclick="window.toggleSidebar()"><span class="material-icons-round">menu_open</span></button>' +
     '<button class="burger" onclick="document.getElementById(\'svsSidebar\').classList.toggle(\'open\')">' +
     '<span class="material-icons-round">menu</span></button><h2>' + title + '</h2></div>';
+  if (EMBEDDED) { main.style.marginLeft = '0'; main.style.width = '100%'; }
 
   const body = document.body;
   const content = document.querySelector('.content');
@@ -145,7 +151,7 @@
     while (body.firstChild) wrap.appendChild(body.firstChild);
     main.appendChild(wrap);
   }
-  body.appendChild(aside);
+  if (!EMBEDDED) body.appendChild(aside); // у вбудованому режимі своє ліве меню не малюємо
   body.appendChild(main);
 
   // ── Згортання меню (icon-rail), стан спільний з index.html ──
@@ -190,8 +196,9 @@
     document.head.appendChild(l);
   }
 
-  // Плавающая кнопка "Заметки" — единый виджет обратной связи на всех страницах
-  if (!document.querySelector('script[src*="notes-widget.js"]')) {
+  // Плавающая кнопка "Заметки" — единый виджет обратной связи на всех страницах.
+  // У вбудованому режимі кнопку дає батьківський каркас — щоб не було двох однакових.
+  if (!EMBEDDED && !document.querySelector('script[src*="notes-widget.js"]')) {
     const s = document.createElement('script');
     s.src = '/admin/assets/notes-widget.js';
     document.body.appendChild(s);
