@@ -2397,6 +2397,27 @@ function toast(msg, type = 'ok') {
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
 }
 
+// ── Стилізоване підтвердження (заміна нативного confirm) — по центру, світле ──
+function jConfirm(html, { okText='Перенести', cancelText='Скасувати' } = {}){
+  return new Promise(resolve => {
+    document.getElementById('jConfirmOv')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'jConfirmOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(20,24,38,.45);backdrop-filter:blur(2px);padding:20px';
+    const done = (v)=>{ ov.remove(); resolve(v); };
+    ov.onclick = e => { if (e.target === ov) done(false); };
+    ov.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:340px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.28);overflow:hidden;animation:jcPop .16s ease-out">
+      <div style="padding:22px 22px 18px;font-size:15px;line-height:1.5;color:#1f2533;text-align:center">${html}</div>
+      <div style="display:flex;gap:10px;padding:0 18px 18px">
+        <button id="jcNo" style="flex:1;padding:12px;border-radius:12px;border:1px solid #e3e6ef;background:#f7f8fb;color:#5a6275;font-weight:600;font-size:14px;cursor:pointer">${cancelText}</button>
+        <button id="jcYes" style="flex:1;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#7c5cff,#5b8def);color:#fff;font-weight:700;font-size:14px;cursor:pointer">${okText}</button>
+      </div></div>`;
+    if (!document.getElementById('jcPopKf')){ const st=document.createElement('style'); st.id='jcPopKf'; st.textContent='@keyframes jcPop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}'; document.head.appendChild(st); }
+    document.body.appendChild(ov);
+    ov.querySelector('#jcNo').onclick = ()=>done(false);
+    ov.querySelector('#jcYes').onclick = ()=>done(true);
+  });
+}
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // ── Інфо-іконки «i» з поясненнями (#15) ──
 function iInfo(text){ return `<button type="button" class="info-i" aria-label="Пояснення" data-t="${escapeHtml(text)}" onclick="showInfo(event,this.dataset.t)">i</button>`; }
@@ -5601,10 +5622,14 @@ async function jTouchEnd(ev){
   const col = _colAtPoint(t.clientX, t.clientY); if (!col) return;
   const minM = Number(col.dataset.min), masterId = Number(col.dataset.master), dateStr = col.dataset.date;
   const rect = col.getBoundingClientRect();
-  let mins = minM + Math.round(((t.clientY-rect.top)/J_PX_PER_MIN)/15)*15;
+  // Час рахуємо від ВЕРХНЬОГО краю картки (як її бачить користувач),
+  // а не від пальця — палець у центрі картки давав зсув на пів-висоти (~30 хв).
+  const topY = t.clientY - (td.gh ? td.gh/2 : 0);
+  let mins = minM + Math.round(((topY-rect.top)/J_PX_PER_MIN)/15)*15;
   mins = Math.max(0, Math.min(24*60-15, mins));
   const mName = (journalData?.masters||[]).find(m=>m.id===masterId);
-  if (!confirm(`Перенести запис на ${_toHHMM(mins)}${mName?(' до '+mName.name):''}?`)) { loadJournal(); return; }
+  const ok = await jConfirm(`Перенести запис на <b>${_toHHMM(mins)}</b>${mName?(' до '+escapeHtml(mName.name)):''}?`);
+  if (!ok) { loadJournal(); return; }
   const starts_at = new Date(`${dateStr}T${_toHHMM(mins)}:00`).toISOString();
   try {
     const r = await api('/api/schedule/appointments/'+td.id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });
