@@ -12,6 +12,7 @@ const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const seg = require('../lib/segments');
 const hub = require('../lib/notification-hub');
+const drip = require('../lib/drip');
 
 router.get('/', requirePerm('promo.write'), async (req, res) => {
   try {
@@ -65,15 +66,18 @@ router.get('/:id', requirePerm('promo.write'), async (req, res) => {
 
 router.post('/', requirePerm('promo.write'), async (req, res) => {
   try {
-    const { name, segment_id, preset_key, channel = 'telegram', template_key, body, vars, scheduled_at } = req.body || {};
+    const { name, segment_id, preset_key, channel = 'telegram', template_key, body, vars, scheduled_at,
+            type = 'blast', exit_on_conversion = true, frequency_cap_per_week = null } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name-required' });
-    if (!template_key && !body) return res.status(400).json({ error: 'template-or-body-required' });
     if (!segment_id && !preset_key) return res.status(400).json({ error: 'segment-or-preset-required' });
+    // blast: контент обязателен сразу; drip: контент задаётся шагами (steps)
+    if (type !== 'drip' && !template_key && !body) return res.status(400).json({ error: 'template-or-body-required' });
     const r = await getPool().query(
-      `INSERT INTO campaigns(name, segment_id, preset_key, channel, template_key, body, vars, scheduled_at, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO campaigns(name, segment_id, preset_key, channel, template_key, body, vars, scheduled_at, status, created_by, type, exit_on_conversion, frequency_cap_per_week)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
       [name, segment_id || null, preset_key || null, channel, template_key || null, body || null,
-       JSON.stringify(vars || {}), scheduled_at || null, scheduled_at ? 'scheduled' : 'draft', req.user?.id || null]);
+       JSON.stringify(vars || {}), scheduled_at || null, scheduled_at ? 'scheduled' : 'draft', req.user?.id || null,
+       type === 'drip' ? 'drip' : 'blast', exit_on_conversion !== false, frequency_cap_per_week]);
     res.json({ ok: true, campaign: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -120,8 +124,49 @@ async function launchCampaign(id) {
 }
 
 router.post('/:id/launch', requirePerm('promo.write'), async (req, res) => {
-  try { res.json({ ok: true, ...(await launchCampaign(req.params.id)) }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    const c = (await getPool().query(`SELECT type FROM campaigns WHERE id=$1`, [req.params.id])).rows[0];
+    if (!c) return res.status(404).json({ error: 'not-found' });
+    if (c.type === 'drip') return res.json({ ok: true, mode: 'drip', ...(await drip.enroll(req.params.id)) });
+    res.json({ ok: true, mode: 'blast', ...(await launchCampaign(req.params.id)) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── Drip: шаги цепочки (MKT-03.03) ───────────────────────────────────
+router.get('/:id/steps', requirePerm('promo.write'), async (req, res) => {
+  try { res.json({ steps: await drip.listSteps(req.params.id) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.post('/:id/steps', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const s = req.body || {};
+    if (!s.template_key && !s.body && !(Array.isArray(s.variants) && s.variants.length))
+      return res.status(400).json({ error: 'step-content-required' });
+    res.json({ ok: true, step: await drip.addStep(req.params.id, s) });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.put('/:id/steps/:stepId', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const s = await drip.updateStep(req.params.stepId, req.body || {});
+    if (!s) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, step: s });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.delete('/:id/steps/:stepId', requirePerm('promo.write'), async (req, res) => {
+  try {
+    const ok = await drip.deleteStep(req.params.stepId);
+    if (!ok) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// Воронка прохождения drip-цепочки по шагам
+router.get('/:id/funnel', requirePerm('promo.write'), async (req, res) => {
+  try { res.json(await drip.funnel(req.params.id)); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // Тестовая отправка себе перед массовой рассылкой
@@ -170,16 +215,24 @@ async function processScheduled() {
   _schedRunning = true;
   try {
     const due = await getPool().query(
-      `SELECT id FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20`);
+      `SELECT id, type FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20`);
     let launched = 0;
     for (const row of due.rows) {
-      try { await launchCampaign(row.id); launched++; }
-      catch (e) { console.error('[campaigns] auto-launch', row.id, e.message); }
+      try {
+        if (row.type === 'drip') await drip.enroll(row.id);
+        else await launchCampaign(row.id);
+        launched++;
+      } catch (e) { console.error('[campaigns] auto-launch', row.id, e.message); }
     }
-    return { due: due.rowCount, launched };
+    // продвигаем активные drip-цепочки (шаги, у которых наступил срок)
+    let dripTick = null;
+    try { dripTick = await drip.processDrip(200); }
+    catch (e) { console.error('[campaigns] drip tick', e.message); }
+    return { due: due.rowCount, launched, drip: dripTick };
   } finally { _schedRunning = false; }
 }
 
 module.exports = router;
 module.exports.launchCampaign = launchCampaign;
 module.exports.processScheduled = processScheduled;
+module.exports.processDrip = drip.processDrip;
