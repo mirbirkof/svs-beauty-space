@@ -181,10 +181,16 @@ async function syncAppointments(from, to) {
     if (ex.rows.length) {
       apptId = ex.rows[0].id;
       await pool.query(
+        // Не понижуємо вже ВИКОНАНИЙ (оплачений) запис назад у 'confirmed':
+        // BeautyPro для оплаченого запису все одно віддає state='confirmed' (оплата окремо в /sales),
+        // тож зберігаємо локальний 'done'. Реальну відміну/неявку з BP — пропускаємо.
         `UPDATE appointments SET client_id=$1, master_id=$2, service_id=$3,
            starts_at=($4::timestamp AT TIME ZONE 'Europe/Kyiv'),
            ends_at=($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
-           status=$6, bp_state=$7, price=$8, bp_client=$9, synced_at=NOW(), updated_at=NOW()
+           status=CASE WHEN $6 IN ('cancelled','noshow') THEN $6
+                       WHEN status='done' THEN 'done'
+                       ELSE $6 END,
+           bp_state=$7, price=$8, bp_client=$9, synced_at=NOW(), updated_at=NOW()
          WHERE id=$10`,
         [cl.rows[0]?.id || null, firstMasterId, sv.rows[0]?.id || null,
          startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.client || null, apptId]
@@ -399,7 +405,27 @@ async function syncSales(from, to) {
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
   }
-  return { posted, skipped, shifts, removed };
+
+  // Оплачена послуга → запис ВИКОНАНО (status='done').
+  // BeautyPro тримає запис у стані 'confirmed' навіть після оплати (оплата окремо в /sales),
+  // тому статус виводимо з факту реального продажу: bp_client+майстер+день співпали з продажем послуги.
+  // Та сама логіка матчингу, що й прапорець «оплачено» в журналі — повна узгодженість.
+  // Ідемпотентно: чіпаємо лише ще-не-виконані/не-скасовані bp-записи у вікні [from,to].
+  const md = await pool.query(
+    `UPDATE appointments a
+        SET status='done', updated_at=NOW()
+      WHERE a.status NOT IN ('done','cancelled','noshow')
+        AND a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
+        AND a.starts_at >= $1::date AND a.starts_at < ($2::date + INTERVAL '1 day')
+        AND EXISTS (
+          SELECT 1 FROM cash_operations co
+           WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+             AND co.bp_client = a.bp_client AND co.master_id = a.master_id
+             AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                 = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)`,
+    [from, to]);
+  const marked_done = md.rowCount || 0;
+  return { posted, skipped, shifts, removed, marked_done };
 }
 
 // ── Детальні продажі товарів BP (/sales type=Product) → salon_product_sales ──
