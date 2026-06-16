@@ -10,12 +10,19 @@ const pool = getPool();
 router.get('/catalog', async (req, res) => {
   try {
     const svc = await pool.query(`
-      SELECT COALESCE(beautypro_id::text,'svc-'||id) AS id, name,
-             COALESCE(name_ua,name) AS name_ua, duration_min AS duration,
-             price::float AS price, category, color, photo_urls
-        FROM services
-       WHERE active IS NOT FALSE AND deleted_at IS NULL
-       ORDER BY sort_order NULLS LAST, name`);
+      SELECT COALESCE(s.beautypro_id::text,'svc-'||s.id) AS id, s.name,
+             COALESCE(s.name_ua,s.name) AS name_ua, s.duration_min AS duration,
+             s.price::float AS price, s.category, s.color, s.photo_urls
+        FROM services s
+       WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL
+         -- лише послуги, які реально надає хоча б один активний майстер з онлайн-записом
+         -- (інакше клієнт бачить послугу, але записатися нема до кого = тупик)
+         AND EXISTS (
+           SELECT 1 FROM master_services ms
+             JOIN masters m ON m.id = ms.master_id
+            WHERE ms.service_id = s.id AND ms.active IS NOT FALSE
+              AND m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE)
+       ORDER BY s.sort_order NULLS LAST, s.name`);
 
     const mst = await pool.query(`
       SELECT COALESCE(m.beautypro_id::text,'mst-'||m.id) AS id,
