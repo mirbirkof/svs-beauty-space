@@ -4223,7 +4223,7 @@ async function loadMonthlyPlan(){
     const rows=r.items.map(m=>{
       const pct=m.pct==null?'—':m.pct+'%';
       const pctColor=m.pct==null?'var(--text-secondary)':m.pct>=100?'#10b981':m.pct>=70?'#f59e0b':'#ef4444';
-      const shiftSrc=m.has_schedule?'графік':'факт';
+      const shiftSrc=m.shift_source||(m.has_schedule?'графік':'факт');
       return `<tr>
         <td><a href="#" onclick="openMasterCard(${m.master_id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${m.name}</a></td>
         <td><input type="number" class="input btn-sm pl-pershift" data-mid="${m.master_id}" value="${m.plan_per_shift||''}" style="width:110px" placeholder="0"></td>

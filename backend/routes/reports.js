@@ -704,11 +704,26 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
     ).catch(()=>({rows:[]}));
     const workedMap = new Map(worked.rows.map(r => [r.master_id, r.days]));
 
+    // реально выставленные смены из сетки графіка (те, что редагує адмін у розділі
+    // «Персонал → Графіки»). ЦЕ ПРІОРИТЕТНЕ ДЖЕРЕЛО для кількості змін у плані обороту —
+    // schedule_json лише тижневий шаблон і не відображає ручні правки графіка.
+    const grid = await pool.query(
+      `SELECT master_id, COUNT(DISTINCT (work_date)::date)::int AS days
+         FROM master_schedule_days
+        WHERE work_date >= $1::date AND work_date < ($2::date + INTERVAL '1 day')
+          AND start_time IS NOT NULL
+        GROUP BY master_id`, [from, to]
+    ).catch(()=>({rows:[]}));
+    const gridMap = new Map(grid.rows.map(r => [r.master_id, r.days]));
+
     const items = masters.rows.map(m => {
       const p = planMap.get(m.id);
       const sc = shiftsFromSchedule(m.schedule_json, fromD, toD);
       const workedDays = workedMap.get(m.id) || 0;
-      const shifts = sc.hasSchedule ? sc.shifts : workedDays;
+      const gridDays = gridMap.get(m.id) || 0;
+      // приоритет: реально виставлений графік (сітка) → тижневий шаблон → факт відпрацьовано
+      const shifts = gridDays > 0 ? gridDays : (sc.hasSchedule ? sc.shifts : workedDays);
+      const shiftSource = gridDays > 0 ? 'графік' : (sc.hasSchedule ? 'шаблон' : 'факт');
       const perShift = p ? Number(p.plan_per_shift) : 0;
       const auto = p ? p.auto_from_shifts : true;
       const planTotal = p
@@ -718,8 +733,9 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       return {
         master_id: m.id, name: m.name,
         plan_per_shift: perShift, auto_from_shifts: auto,
-        shifts_scheduled: sc.shifts, shifts_worked: workedDays,
-        shifts_used: shifts, has_schedule: sc.hasSchedule,
+        shifts_scheduled: gridDays || sc.shifts, shifts_worked: workedDays,
+        shifts_used: shifts, has_schedule: gridDays > 0 || sc.hasSchedule,
+        shift_source: shiftSource,
         plan_total: planTotal, revenue,
         pct: planTotal > 0 ? Math.round(revenue / planTotal * 100) : null,
       };
