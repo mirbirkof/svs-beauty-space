@@ -584,9 +584,20 @@ async function syncProductSales(from, to) {
       const bpClient = s.client ? String(s.client) : null;
       const clientId = await resolveClientId(bpClient);
       if (clientId) linked++;
+      // Захист від дублів: BP інколи віддає ту саму продажу з НОВИМ ext_ref
+      // (повторне збереження чека) → ON CONFLICT(ext_ref) не спрацьовує і рядок задвоюється.
+      // NOT EXISTS перевіряє натуральний ключ (клієнт+товар+ціна+к-сть+київський день) з ІНШИМ ext_ref.
       const r = await pool.query(
         `INSERT INTO salon_product_sales (ext_ref, sale_date, product_name, qty, total_price, unit_price, master_id, master_name, stock_id, matched, bp_client, client_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+         WHERE $11::text IS NULL OR NOT EXISTS (
+           SELECT 1 FROM salon_product_sales e
+            WHERE e.ext_ref <> $1
+              AND e.bp_client = $11::text
+              AND e.product_name = $3 AND e.total_price = $5 AND e.qty = $4
+              AND (e.sale_date AT TIME ZONE 'Europe/Kyiv')::date
+                  = (($2::timestamptz) AT TIME ZONE 'Europe/Kyiv')::date
+         )
          ON CONFLICT (ext_ref) DO UPDATE SET
            product_name=EXCLUDED.product_name, qty=EXCLUDED.qty, total_price=EXCLUDED.total_price,
            unit_price=EXCLUDED.unit_price, master_id=EXCLUDED.master_id, master_name=EXCLUDED.master_name,
