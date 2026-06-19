@@ -490,40 +490,37 @@ async function syncSales(from, to) {
           AND a.status NOT IN ('cancelled','noshow')
           AND a.starts_at >= $1::date AND a.starts_at < ($2::date + INTERVAL '1 day')
      ),
+     -- Денний факт по клієнту+майстру (усі послуги візиту, незалежно від часу кожного продажу)
+     day_sales AS (
+       SELECT s.bp_client, s.master_id, s.sale_day, SUM(s.amount) AS day_sum
+         FROM sales s GROUP BY s.bp_client, s.master_id, s.sale_day
+     ),
+     -- Скільки невідмінених записів у клієнта+майстра за день
+     appt_day AS (
+       SELECT bp_client, master_id, appt_day, COUNT(*) AS cnt
+         FROM appts GROUP BY bp_client, master_id, appt_day
+     ),
+     -- Точний матчинг по слоту (для днів з кількома візитами — щоб розділити їх)
      precise AS (
        SELECT ap.id AS appt_id, SUM(s.amount) AS real_sum
          FROM appts ap JOIN sales s
            ON s.bp_client=ap.bp_client AND s.master_id=ap.master_id AND s.slot_ts=ap.slot_ts
         GROUP BY ap.id
      ),
-     consumed AS (
-       SELECT DISTINCT s.id
-         FROM sales s JOIN appts ap
-           ON s.bp_client=ap.bp_client AND s.master_id=ap.master_id AND s.slot_ts=ap.slot_ts
-     ),
-     leftover AS (
-       SELECT s.bp_client, s.master_id, s.sale_day, SUM(s.amount) AS left_sum
-         FROM sales s
-        WHERE s.id NOT IN (SELECT id FROM consumed)
-        GROUP BY s.bp_client, s.master_id, s.sale_day
-     ),
-     unmatched AS (
-       SELECT ap.* FROM appts ap WHERE ap.id NOT IN (SELECT appt_id FROM precise)
-     ),
-     singleton AS (
-       SELECT bp_client, master_id, appt_day
-         FROM unmatched GROUP BY bp_client, master_id, appt_day HAVING COUNT(*)=1
-     ),
-     fallback AS (
-       SELECT ua.id AS appt_id, lo.left_sum AS real_sum
-         FROM unmatched ua
-         JOIN singleton sg ON sg.bp_client=ua.bp_client AND sg.master_id=ua.master_id AND sg.appt_day=ua.appt_day
-         JOIN leftover  lo ON lo.bp_client=ua.bp_client AND lo.master_id=ua.master_id AND lo.sale_day=ua.appt_day
-     ),
      matched AS (
-       SELECT appt_id, real_sum FROM precise
+       -- ОДИН візит цього дня → уся денна оплата за послуги (повна сума мульти-послуг візиту).
+       -- Раніше точний матч по слоту ловив лише ту послугу, що почалась у час старту запису,
+       -- а решта послуг візиту (з іншим часом продажу) губилась → real_amount був неповний.
+       SELECT ap.id AS appt_id, ds.day_sum AS real_sum
+         FROM appts ap
+         JOIN appt_day  ad ON ad.bp_client=ap.bp_client AND ad.master_id=ap.master_id AND ad.appt_day=ap.appt_day AND ad.cnt=1
+         JOIN day_sales ds ON ds.bp_client=ap.bp_client AND ds.master_id=ap.master_id AND ds.sale_day=ap.appt_day
        UNION ALL
-       SELECT appt_id, real_sum FROM fallback
+       -- Кілька візитів того ж дня → точний матч по слоту (розділяє різні візити).
+       SELECT p.appt_id, p.real_sum
+         FROM precise p
+         JOIN appts ap     ON ap.id=p.appt_id
+         JOIN appt_day ad  ON ad.bp_client=ap.bp_client AND ad.master_id=ap.master_id AND ad.appt_day=ap.appt_day AND ad.cnt>1
      )
      UPDATE appointments a
         SET real_amount = m.real_sum, real_synced_at = NOW()
