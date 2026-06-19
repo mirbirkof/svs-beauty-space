@@ -48,8 +48,28 @@ router.get('/payroll/schemes', async (req, res) => {
 // POST /api/payroll/calculate — рассчитать ЗП за период
 router.post('/payroll/calculate', async (req, res) => {
   try {
-    const { master_id, period_start, period_end } = req.body || {};
+    const { master_id, period_start, period_end, force } = req.body || {};
     if (!master_id || !period_start || !period_end) return res.status(400).json({ error: 'master_id, period_start, period_end required' });
+
+    // 0. защита от двойного начисления: период не должен пересекаться с уже существующим
+    //    расчётом этого мастера (кроме отменённых). Иначе один визит оплачивается дважды.
+    //    force=true — осознанный пересчёт (фронт должен сначала удалить/отменить старый).
+    if (!force) {
+      const overlap = await pool.query(
+        `SELECT id, period_start, period_end, status, total FROM payroll_records
+          WHERE master_id=$1 AND status <> 'cancelled'
+            AND period_start <= $3::date AND period_end >= $2::date
+          ORDER BY period_start LIMIT 5`,
+        [master_id, period_start, period_end]
+      );
+      if (overlap.rows.length) {
+        return res.status(409).json({
+          error: 'period_overlap',
+          message: 'Период пересекается с существующим расчётом ЗП — иначе визиты оплатятся дважды. Удалите старый расчёт или используйте перерасчёт.',
+          conflicts: overlap.rows
+        });
+      }
+    }
 
     // 1. найти активную схему
     const scheme = await pool.query(

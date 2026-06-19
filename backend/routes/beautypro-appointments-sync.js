@@ -424,6 +424,16 @@ async function syncSales(from, to) {
          saleMethod(s.payments), masterId, s.name || null, s.sale_date, s.id, bpClient, bpCalendar]);
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
+
+    // Перерахунок підсумку зміни: closing_cash = фактична готівкова виручка зміни (cash-продажі).
+    // Раніше писався лише при створенні (cashSum першого батчу) → при повторній синхрі застаряв
+    // і Z-звіт показував занижену суму. Тепер завжди = факт cash-продажів із cash_operations.
+    // Беремо лише type='in'/method='cash' (виплати ЗП/оренди — окремі рядки, не зменшують виручку).
+    await pool.query(
+      `UPDATE cash_shifts SET closing_cash = COALESCE((
+         SELECT SUM(amount) FROM cash_operations
+          WHERE shift_id=$1 AND type='in' AND method='cash'), 0)
+       WHERE id=$1`, [shiftId]);
   }
 
   // Оплачена послуга → запис ВИКОНАНО (status='done').
