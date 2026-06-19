@@ -3,6 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
+const { shiftDaysByMaster } = require('../lib/schedule-month');
 
 const router = express.Router();
 const pool = getPool();
@@ -704,17 +705,11 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
     ).catch(()=>({rows:[]}));
     const workedMap = new Map(worked.rows.map(r => [r.master_id, r.days]));
 
-    // реально выставленные смены из сетки графіка (те, что редагує адмін у розділі
-    // «Персонал → Графіки»). ЦЕ ПРІОРИТЕТНЕ ДЖЕРЕЛО для кількості змін у плані обороту —
-    // schedule_json лише тижневий шаблон і не відображає ручні правки графіка.
-    const grid = await pool.query(
-      `SELECT master_id, COUNT(DISTINCT (work_date)::date)::int AS days
-         FROM master_schedule_days
-        WHERE work_date >= $1::date AND work_date < ($2::date + INTERVAL '1 day')
-          AND start_time IS NOT NULL
-        GROUP BY master_id`, [from, to]
-    ).catch(()=>({rows:[]}));
-    const gridMap = new Map(grid.rows.map(r => [r.master_id, r.days]));
+    // Кількість змін рахуємо ТОЧНО як їх показує сітка графіка (Персонал → Графіки):
+    // явні per-day рядки + розгорнутий тижневий шаблон - вихідні. Спільний модуль
+    // schedule-month гарантує, що план і сітка ніколи не розійдуться в числах.
+    const ym = `${year}-${String(month).padStart(2, '0')}`;
+    const gridMap = await shiftDaysByMaster(pool, ym).catch(() => new Map());
 
     const items = masters.rows.map(m => {
       const p = planMap.get(m.id);
