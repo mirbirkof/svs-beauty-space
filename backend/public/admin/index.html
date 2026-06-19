@@ -679,7 +679,7 @@ select.input { background:var(--card); }
       <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
         <span class="material-icons-round">view_kanban</span> Воронка візитів
       </a>
-      <a class="sidebar-item" data-page="shifts" onclick="go('shifts')">
+      <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
         <span class="material-icons-round">event_available</span> Зміни / Табель
       </a>
       <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
@@ -1124,7 +1124,7 @@ select.input { background:var(--card); }
               <div class="jt-menu" id="journalMenu">
                 <button onclick="journalMenuClose();openBlockModal()"><span class="material-icons-round">lock</span> Заблокувати час майстра</button>
                 <button onclick="journalMenuClose();go('pipeline')"><span class="material-icons-round">view_kanban</span> Воронка візитів</button>
-                <button onclick="journalMenuClose();go('shifts')"><span class="material-icons-round">event_available</span> Табель змін</button>
+                <button class="mod-shifts" onclick="journalMenuClose();go('shifts')"><span class="material-icons-round">event_available</span> Табель змін</button>
                 <button onclick="journalMenuClose();go('finance')"><span class="material-icons-round">swap_vert</span> Доходи і витрати</button>
                 <button onclick="journalMenuClose();window.print()"><span class="material-icons-round">print</span> Друк журналу</button>
               </div>
@@ -1957,6 +1957,14 @@ select.input { background:var(--card); }
             <!-- БІЗНЕС-НАЛАШТУВАННЯ (власник) -->
             <div class="set-pane" id="tab-business">
               <div class="card"><div class="card-body">
+                <h3 class="set-h">Модулі</h3>
+                <p class="set-p">Увімкнення / вимкнення необовʼязкових розділів. Вимкнений модуль зникає з меню, дані зберігаються.</p>
+                <div class="set-form">
+                  <label class="set-toggle"><input type="checkbox" id="bz_mod_shifts" onchange="toggleShiftsModule(this.checked)"><span><b>Зміни / Табель</b><i>Окремий облік змін і clock-in/out. Для плану обороту кількість змін береться з графіка незалежно від цього модуля.</i></span></label>
+                </div>
+              </div></div>
+
+              <div class="card"><div class="card-body">
                 <h3 class="set-h">Лояльність</h3>
                 <p class="set-p">Кешбек балами за візити. 1 бал = 1 грн при списанні.</p>
                 <div class="set-form">
@@ -2196,9 +2204,25 @@ window.toggleSidebar = function () {
   try { localStorage.setItem('svs_sb_collapsed', on ? '1' : '0'); } catch (_) {}
 };
 
+// ── Модуль «Зміни / Табель» (вмик/вимик у Налаштуваннях → Бізнес) ──
+function shiftsModuleOn(){ return localStorage.getItem('zvetla_mod_shifts')==='1'; }
+function applyShiftsModule(){
+  const on=shiftsModuleOn();
+  document.querySelectorAll('.mod-shifts').forEach(el=>{ el.style.display=on?'':'none'; });
+  const cb=document.getElementById('bz_mod_shifts'); if(cb) cb.checked=on;
+  // якщо модуль вимкнено, а ми стоїмо на цій сторінці — повертаємось у журнал
+  if(!on && document.body.dataset.page==='shifts' && typeof go==='function') go('journal');
+}
+function toggleShiftsModule(on){
+  localStorage.setItem('zvetla_mod_shifts', on?'1':'0');
+  applyShiftsModule();
+  if(typeof toast==='function') toast(on?'Модуль «Зміни / Табель» увімкнено':'Модуль «Зміни / Табель» вимкнено');
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   // (стан згорнутого меню вже застосовано inline-скриптом у <head> — без мигання)
   restoreSidebarGroups();
+  applyShiftsModule();
   document.getElementById('journalDate').value = _ymd(new Date());
   if (TOKEN) {
     // Оптимистично сразу открываем кабинет, токен проверяем в фоне.
