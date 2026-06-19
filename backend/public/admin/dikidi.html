@@ -44,6 +44,7 @@
 
   .promo-form { background:var(--primary-light); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; margin-bottom:14px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .promo-form .span2 { grid-column:span 2; }
+  @media (max-width:700px){ .promo-form { grid-template-columns:1fr; } .promo-form .span2 { grid-column:auto; } }
 
   .sec-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
   .sec-head h2 { font-size:15px; font-weight:700; }
