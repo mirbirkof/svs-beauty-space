@@ -804,9 +804,10 @@ router.delete('/blocks/:id', async (req, res) => {
 router.patch('/appointments/:id', async (req, res) => {
   try {
     const pool = getPool();
-    const { notes, status, room_id, starts_at, master_id, duration_min } = req.body || {};
+    const { notes, status, room_id, starts_at, master_id, duration_min, service_id } = req.body || {};
     if (notes === undefined && status === undefined && room_id === undefined
-        && starts_at === undefined && master_id === undefined && duration_min === undefined) {
+        && starts_at === undefined && master_id === undefined && duration_min === undefined
+        && service_id === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
     const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
@@ -816,7 +817,7 @@ router.patch('/appointments/:id', async (req, res) => {
 
     // Поточний стан запису (тривалість, старт, майстер) — потрібен для переносу/зміни тривалості/перевірки професії
     let curRow = null;
-    if (starts_at !== undefined || duration_min !== undefined || master_id !== undefined) {
+    if (starts_at !== undefined || duration_min !== undefined || master_id !== undefined || service_id !== undefined) {
       const cur = await pool.query(
         `SELECT starts_at, EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur, master_id
            FROM appointments WHERE id=$1`,
@@ -824,6 +825,15 @@ router.patch('/appointments/:id', async (req, res) => {
       );
       if (!cur.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
       curRow = cur.rows[0];
+    }
+
+    // Зміна послуги → підтягуємо планову ціну й тривалість нової послуги.
+    // Фактичну оплату (поле price тут = планова сума запису) оновлюємо на ціну послуги.
+    let svcRow = null;
+    if (service_id !== undefined && service_id != null) {
+      const sv = await pool.query('SELECT price, duration_min, name FROM services WHERE id=$1', [Number(service_id)]);
+      if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
+      svcRow = sv.rows[0];
     }
 
     // Перенос лише на майстра тієї самої професії (заметка #30)
@@ -842,21 +852,27 @@ router.patch('/appointments/:id', async (req, res) => {
       }
     }
 
-    // Перенос (нове starts_at) та/або зміна тривалості процедури (duration_min) → перераховуємо ends_at
+    // Перенос (нове starts_at), зміна тривалості (duration_min) або зміна послуги → перераховуємо ends_at.
+    // Пріоритет тривалості: явний duration_min → тривалість нової послуги → поточна тривалість запису.
     let newStart = null, newEnd = null;
-    if (starts_at !== undefined || duration_min !== undefined) {
+    if (starts_at !== undefined || duration_min !== undefined || service_id !== undefined) {
       const baseStart = starts_at !== undefined ? new Date(starts_at) : new Date(curRow.starts_at);
       if (isNaN(baseStart)) return res.status(400).json({ error: 'bad-starts_at' });
-      let dur = duration_min !== undefined ? Number(duration_min) : (Number(curRow.dur) || 30);
+      let dur = duration_min !== undefined ? Number(duration_min)
+              : (svcRow && Number(svcRow.duration_min) > 0 ? Number(svcRow.duration_min)
+              : (Number(curRow.dur) || 30));
       if (!Number.isFinite(dur) || dur <= 0) return res.status(400).json({ error: 'bad-duration_min' });
       dur = Math.min(dur, 24 * 60); // запобіжник
       if (starts_at !== undefined) newStart = baseStart.toISOString();
       newEnd = new Date(baseStart.getTime() + dur * 60000).toISOString();
     }
 
-    // Ручний перенос (час/майстер/тривалість) → позначаємо manual_override,
+    // Планова сума запису при зміні послуги (фактичні оплати в продажах не чіпаємо)
+    const newPrice = svcRow ? Number(svcRow.price) : null;
+
+    // Ручний перенос (час/майстер/тривалість/послуга) → позначаємо manual_override,
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
-    const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined);
+    const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined);
     const r = await pool.query(
       `UPDATE appointments
           SET notes = COALESCE($2, notes),
@@ -865,12 +881,15 @@ router.patch('/appointments/:id', async (req, res) => {
               master_id = COALESCE($5, master_id),
               starts_at = COALESCE($6, starts_at),
               ends_at = COALESCE($7, ends_at),
+              service_id = COALESCE($9, service_id),
+              price = COALESCE($10, price),
               manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
               updated_at = NOW()
         WHERE id = $1
-        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at`,
+        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price`,
       [req.params.id, notes ?? null, status ?? null, room_id ?? null,
-       master_id != null ? Number(master_id) : null, newStart, newEnd, markManual]
+       master_id != null ? Number(master_id) : null, newStart, newEnd, markManual,
+       service_id != null ? Number(service_id) : null, newPrice]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 

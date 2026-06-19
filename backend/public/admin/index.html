@@ -6019,14 +6019,15 @@ async function openAppt(id) {
   });
   let trfMasterOpts = _eligible.map(m=>`<option value="${m.id}"${a.master_id===m.id?' selected':''}>${escapeHtml(m.name)}${m.specialty?' · '+escapeHtml(m.specialty):''}</option>`).join('');
   if (!_eligible.some(m=>m.id===a.master_id)) trfMasterOpts = `<option value="${a.master_id||''}" selected>${escapeHtml(a.master_name||'Поточний майстер')}</option>` + trfMasterOpts;
-  document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
+  document.getElementById('apptTitle').innerHTML = `<span onclick="apptQuickTime(${a.id})" title="Натисніть, щоб змінити час" style="cursor:pointer;border-bottom:1px dashed currentColor">${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))}</span> · ${escapeHtml(a.master_name||'')}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
-      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7)">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span> · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}</div></div>
       <div>
-        <span style="color:var(--text-secondary);font-size:12px">Загальний час процедури (хв)</span>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-          <input id="apptDuration" type="number" class="input" min="5" max="1440" step="5" style="flex:1 1 110px" value="${Math.round(a.duration_min)||30}">
+        <span style="color:var(--text-secondary);font-size:12px">Загальний час процедури</span>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <input id="apptDuration" type="number" class="input" min="5" max="1440" step="5" style="flex:1 1 90px" value="${Math.round(a.duration_min)||30}">
+          <span style="color:var(--text-secondary);font-size:12px">хв ≈ <b id="apptDurHuman" style="color:var(--text)">${_humanDur(Math.round(a.duration_min)||30)}</b></span>
           <span style="color:var(--text-secondary);font-size:12px">завершення о <b id="apptEndPreview">${_toHHMM(_hm(a.ends_at))}</b></span>
         </div>
       </div>
@@ -6108,9 +6109,10 @@ async function openAppt(id) {
   if (_durEl) _durEl.oninput = () => {
     const d = Math.round(Number(_durEl.value));
     const prev = document.getElementById('apptEndPreview');
-    if (prev && Number.isFinite(d) && d > 0) {
-      const end = new Date(new Date(a.starts_at).getTime() + d*60000);
-      prev.textContent = _toHHMM(_hm(end));
+    const human = document.getElementById('apptDurHuman');
+    if (Number.isFinite(d) && d > 0) {
+      if (prev) { const end = new Date(new Date(a.starts_at).getTime() + d*60000); prev.textContent = _toHHMM(_hm(end)); }
+      if (human) human.textContent = _humanDur(d);
     }
   };
   loadApptPhotos(a.id, 'before');
@@ -6194,6 +6196,57 @@ async function transferAppt(id) {
     else { msg.style.color='#ef4444'; msg.textContent=r.error||'Не вдалося перенести запис'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
+// Тривалість у людському форматі: 90 → «1 год 30 хв», 60 → «1 год», 45 → «45 хв»
+function _humanDur(min) {
+  min = Math.round(Number(min) || 0);
+  if (min <= 0) return '0 хв';
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h && m) return `${h} год ${m} хв`;
+  if (h) return `${h} год`;
+  return `${m} хв`;
+}
+
+// Швидка зміна часу запису прямо з шапки вікна (заметка #47)
+async function apptQuickTime(id) {
+  const a = (journalData?.appointments||[]).find(x => x.id === id);
+  if (!a) return;
+  showModal('Змінити час запису', `
+    <div style="display:grid;gap:10px">
+      <div><span style="color:var(--text-secondary);font-size:12px">Дата</span>
+        <input id="qtDate" type="date" class="input" value="${_ymd(new Date(a.starts_at))}"></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Час початку</span>
+        <input id="qtTime" type="time" class="input" step="300" value="${_toHHMM(_hm(a.starts_at))}"></div>
+    </div>`, async () => {
+    const date = document.getElementById('qtDate').value;
+    const time = document.getElementById('qtTime').value;
+    if (!date || !time) { toast('Вкажіть дату і час', 'error'); throw new Error('no-time'); }
+    const starts_at = new Date(`${date}T${time}:00`).toISOString();
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at }) });
+    if (r && r.ok) { toast('Час змінено', 'ok'); closeAppt(); loadJournal(); }
+    else { toast((r && r.error) || 'Не вдалося змінити час', 'error'); throw new Error('save-failed'); }
+  });
+}
+
+// Зміна послуги прямо з вікна запису (заметка #47) — планова сума й тривалість підтягнуться з нової послуги
+async function apptChangeService(id) {
+  const a = (journalData?.appointments||[]).find(x => x.id === id);
+  if (!a) return;
+  const services = await getServices();
+  if (!services.length) { toast('Список послуг порожній', 'error'); return; }
+  const opts = services.map(s =>
+    `<option value="${s.id}"${Number(s.id)===Number(a.service_id)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
+  ).join('');
+  showModal('Змінити послугу', `
+    <select id="svcPick" class="input">${opts}</select>
+    <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Планова сума й тривалість оновляться за новою послугою. Уже проведені оплати не змінюються.</div>`, async () => {
+    const sid = Number(document.getElementById('svcPick').value);
+    if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
+    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ service_id: sid }) });
+    if (r && r.ok) { toast('Послугу змінено', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
+    else { toast((r && r.error) || 'Не вдалося змінити послугу', 'error'); throw new Error('save-failed'); }
+  });
+}
+
 function closeAppt() { document.getElementById('apptModal').style.display = 'none'; }
 
 // ── Фото до/після (через files.js, entity_type=appt_before/appt_after) ──
