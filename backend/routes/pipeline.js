@@ -49,6 +49,7 @@ router.get('/board', async (req, res) => {
          LEFT JOIN masters  m ON m.id = a.master_id
         WHERE (a.starts_at AT TIME ZONE 'Europe/Kiev')::date = $1::date
           AND ($2::int IS NULL OR a.master_id = $2)
+          AND a.bp_state IS DISTINCT FROM 'bp_deleted'
         ORDER BY a.starts_at`,
       [date, masterId]
     );
@@ -94,6 +95,10 @@ router.get('/stats', async (req, res) => {
     if (from) { params.push(from); where.push(`(starts_at AT TIME ZONE 'Europe/Kiev')::date >= $${params.length}::date`); }
     if (to)   { params.push(to);   where.push(`(starts_at AT TIME ZONE 'Europe/Kiev')::date <= $${params.length}::date`); }
     if (!from && !to) where.push(`starts_at >= NOW() - INTERVAL '30 days'`);
+    // Записи, видалені в BeautyPro (дублі, чистка адміном), синк позначає
+    // status='cancelled', bp_state='bp_deleted'. Це НЕ скасування клієнтом —
+    // не рахуємо їх у воронці, інакше відсоток відмін штучно завищений.
+    where.push(`bp_state IS DISTINCT FROM 'bp_deleted'`);
     const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
     const r = await pool.query(
