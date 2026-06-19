@@ -42,6 +42,10 @@ const DATASETS = {
       service: 'LEFT JOIN services s ON s.id = a.service_id',
     },
     dateField: 'a.starts_at',
+    // Скасовані та неявки НЕ є виручкою — виключаємо за замовчуванням.
+    // Якщо користувач явно фільтрує за статусом — цей дефолт не застосовується.
+    defaultWhere: "a.status NOT IN ('cancelled','noshow')",
+    defaultWhereSkipFilter: 'status',
     dimensions: {
       master:           { sql: "COALESCE(NULLIF(m.name,''), a.client_name, '—')", label: 'Майстер', join: 'master' },
       service:          { sql: "COALESCE(NULLIF(s.name,''), NULLIF(a.services_text,''), '—')", label: 'Послуга', join: 'service' },
@@ -207,6 +211,14 @@ function buildQuery(ds, cfg = {}) {
       params.push(val);
       where.push(`${fd.sql} ${OPS[f.op]} $${params.length}`);
     }
+  }
+
+  // Дефолтний фільтр датасету (напр. виключення скасованих візитів),
+  // якщо користувач не задав явний фільтр по відповідному полю.
+  if (ds.defaultWhere) {
+    const skip = ds.defaultWhereSkipFilter;
+    const userOverrode = skip && (cfg.filters || []).some(f => f && f.field === skip);
+    if (!userOverrode) where.push(ds.defaultWhere);
   }
 
   const joins = Object.keys(ds.joins || {}).filter(j => needJoins.has(j)).map(j => ds.joins[j]).join('\n    ');

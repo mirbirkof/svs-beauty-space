@@ -52,10 +52,10 @@ async function snapshot(from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
   const [svc, prodSalon, orders, expRows, cogsR, appts, newCli] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount),0)::numeric s, COUNT(*)::int c FROM cash_operations WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COALESCE(SUM(amount),0)::numeric s, COUNT(*)::int c FROM cash_operations WHERE type='in' AND category='sale_product' AND created_at BETWEEN $1 AND $2`, [from, to]),
+    q(`SELECT COALESCE(SUM(amount),0)::numeric s, COUNT(*)::int c FROM cash_operations WHERE type='in' AND category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric sum FROM cash_operations WHERE type='out' AND created_at BETWEEN $1 AND $2 GROUP BY category ORDER BY sum DESC`, [from, to]),
-    q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE sm.reason LIKE 'order:%' AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
+    q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*) FILTER (WHERE status='done')::int done, COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int uniq FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*)::int c FROM clients WHERE created_at BETWEEN $1 AND $2`, [from, to]),
   ]);
