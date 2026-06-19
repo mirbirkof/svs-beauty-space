@@ -1908,7 +1908,10 @@ select.input { background:var(--card); }
         <div class="saas-pane" id="saas-tenants" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
             <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3>
-            <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
+              <button class="btn btn-primary btn-sm" onclick="saasNewTenant()"><span class="material-icons-round" style="font-size:16px">add_business</span> Новий салон</button>
+            </div>
           </div>
           <div id="saasTenantsList"></div>
         </div>
@@ -7674,6 +7677,46 @@ async function saasTenant(id, action){
   if(!ok) return;
   const r=await api('/api/tenant-mgmt/tenants/'+id+'/'+action,{method:'POST',body:JSON.stringify({})});
   if(r&&(r.ok||r.tenant)){ toast(action==='block'?'Салон призупинено':'Доступ відновлено'); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+// Створення нового салону: тенант + власник + підписка з авто-строком оплати
+function saasNewTenant(){
+  showModal('Новий салон', `
+    <label class="fld"><span>Назва салону *</span><input id="ntName" class="input" placeholder="Beauty Studio Львів"></label>
+    <label class="fld"><span>Ім'я власника</span><input id="ntOwner" class="input" placeholder="Власник"></label>
+    <label class="fld"><span>Телефон для входу *</span><input id="ntPhone" class="input" placeholder="380501234567"></label>
+    <label class="fld"><span>Пароль для входу * (мін. 6)</span><input id="ntPass" class="input" type="text" placeholder="напр. salon2026"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fld" style="flex:1"><span>Тариф</span><select id="ntPlan" class="input"><option value="pro">Pro (990₴/міс)</option><option value="free">Free (0₴)</option><option value="enterprise">Enterprise (2990₴/міс)</option></select></label>
+      <label class="fld" style="flex:1"><span>Цикл оплати</span><select id="ntCycle" class="input"><option value="monthly">Місяць</option><option value="yearly">Рік (-2 міс)</option></select></label>
+    </div>
+    <label class="fld" style="display:flex;align-items:center;gap:8px;flex-direction:row"><input id="ntTrial" type="checkbox" checked style="width:auto"><span style="margin:0">Пробний період 14 днів</span></label>
+  `, async ()=>{
+    const body={
+      name:saasV('ntName').trim(), owner_name:saasV('ntOwner').trim()||undefined,
+      phone:saasV('ntPhone').trim(), password:saasV('ntPass'),
+      plan_code:saasV('ntPlan'), cycle:saasV('ntCycle'),
+      trial:document.getElementById('ntTrial').checked,
+    };
+    if(!body.name||!body.phone||!body.password){ toast('Назва, телефон і пароль обовʼязкові','error'); throw new Error('validation'); }
+    if(body.password.length<6){ toast('Пароль мінімум 6 символів','error'); throw new Error('validation'); }
+    const rr=await api('/api/tenant-mgmt/tenants',{method:'POST',body:JSON.stringify(body)});
+    if(!rr||!rr.ok){ toast((rr&&rr.error)||'Помилка створення','error'); throw new Error('save'); }
+    toast('Салон створено');
+    loadSaasTenants();
+    const end=rr.subscription&&rr.subscription.current_period_end?String(rr.subscription.current_period_end).slice(0,10):'—';
+    const trialEnd=rr.subscription&&rr.subscription.trial_ends_at?String(rr.subscription.trial_ends_at).slice(0,10):null;
+    setTimeout(()=>showModal('Салон «'+escapeHtml(body.name)+'» створено', `
+      <p style="margin:0 0 10px">Дані для входу власника (передайте клієнту):</p>
+      <div style="background:var(--bg2,#f6f6f8);border-radius:10px;padding:12px;font-size:14px;line-height:1.9">
+        <div>Slug салону: <code>${escapeHtml(rr.slug)}</code></div>
+        <div>Логін (телефон): <code>${escapeHtml(body.phone)}</code></div>
+        <div>Пароль: <code>${escapeHtml(body.password)}</code></div>
+        <div>Тариф: <b>${escapeHtml(body.plan_code)}</b>, цикл: ${body.cycle==='yearly'?'річний':'місячний'}</div>
+        <div>Оплата до: <b>${end}</b>${trialEnd?` (trial до ${trialEnd})`:''}</div>
+      </div>
+      <p style="margin:12px 0 0;opacity:.7;font-size:13px">Для входу як цей салон використовуйте заголовок <code>X-Tenant-Slug: ${escapeHtml(rr.slug)}</code> або піддомен, коли він буде налаштований.</p>
+    `),120);
+  });
 }
 
 async function loadSaasBilling(){

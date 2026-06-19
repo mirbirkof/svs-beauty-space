@@ -3,6 +3,101 @@
    метрик, онбординг, тикеты поддержки, usage. Таблицы без RLS (как saas_plans) —
    запросы фильтруют по tenant_id явно; для записи в чужой тенант указываем tenant_id. */
 const { getPool } = require('../db-pg');
+const { runAs } = require('./tenant');
+const { hashPassword } = require('./auth-core');
+const billing = require('./billing');
+
+// Роли нового салона (зеркало migration 008 — у каждого тенанта свои роли: RLS per-tenant).
+const ROLE_SEED = [
+  ['owner', 'Власник', 100, '["*"]'],
+  ['admin', 'Адмін', 80, '["crm.*","shop.*","cashbox.*","reports.*","clients.*","masters.*","stock.*"]'],
+  ['manager', 'Менеджер', 60, '["shop.read","shop.write","cashbox.read","cashbox.write","clients.*","reports.read","stock.read"]'],
+  ['master', 'Майстер', 40, '["bookings.own","clients.read","cashbox.read.own","reports.own"]'],
+  ['reception', 'Рецепшен', 30, '["bookings.*","clients.*","cashbox.in","shop.read"]'],
+  ['readonly', 'Тільки читання', 10, '["*.read"]'],
+];
+
+// Транслитерация назви салону → slug (укр/рус → latin, безпечний для сабдомена).
+const TRANSLIT = {
+  а: 'a', б: 'b', в: 'v', г: 'g', ґ: 'g', д: 'd', е: 'e', є: 'ie', ё: 'e', ж: 'zh',
+  з: 'z', и: 'y', і: 'i', ї: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+  п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh',
+  щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'iu', я: 'ia',
+};
+function slugify(name) {
+  const base = String(name || '').toLowerCase()
+    .split('').map(ch => TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch).join('')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return base || 'salon';
+}
+async function uniqueSlug(name) {
+  const pool = getPool();
+  const base = slugify(name);
+  let slug = base, i = 1;
+  // tenants — без RLS, читаем напрямую
+  while ((await pool.query('SELECT 1 FROM tenants WHERE slug=$1', [slug])).rowCount) {
+    i += 1; slug = `${base}-${i}`;
+  }
+  return slug;
+}
+
+// ── Создание салона (SAS-06): тенант + владелец + подписка с авто-сроком ──
+// admin-managed онбординг. Возвращает данные для входа владельца.
+async function createTenant(name, opts = {}, actor = null) {
+  if (!name || !String(name).trim()) throw new Error('name-required');
+  const phone = String(opts.phone || '').replace(/\D/g, '');
+  const password = opts.password ? String(opts.password) : null;
+  if (!phone) throw new Error('owner-phone-required');
+  if (!password || password.length < 6) throw new Error('owner-password-required'); // >=6 для входа
+  const planCode = opts.plan_code || 'pro';
+  const cycle = opts.cycle === 'yearly' ? 'yearly' : 'monthly';
+  const trial = opts.trial !== false; // по умолчанию trial 14д
+  const ownerName = opts.owner_name || 'Власник';
+  const email = opts.email || null;
+
+  const pool = getPool();
+  const slug = await uniqueSlug(name);
+  // 1) Тенант. status=active (доступ открыт; платёжный статус живёт в subscription).
+  const tenant = (await pool.query(
+    `INSERT INTO tenants (name, slug, status, plan) VALUES ($1,$2,'active',$3) RETURNING *`,
+    [String(name).trim(), slug, planCode])).rows[0];
+
+  // 2) Роли + владелец — в контексте нового тенанта (RLS WITH CHECK + DEFAULT tenant_id).
+  const hash = await hashPassword(password);
+  const owner = await runAs(tenant.id, async () => {
+    for (const [code, rname, level, perms] of ROLE_SEED) {
+      await pool.query(
+        `INSERT INTO roles (code, name, level, permissions) VALUES ($1,$2,$3,$4::jsonb)
+         ON CONFLICT (tenant_id, code) DO NOTHING`, [code, rname, level, perms]);
+    }
+    const roleId = (await pool.query(`SELECT id FROM roles WHERE code='owner' LIMIT 1`)).rows[0].id;
+    return (await pool.query(
+      `INSERT INTO users (phone, email, display_name, role_id, password_hash, is_active)
+       VALUES ($1,$2,$3,$4,$5,true) RETURNING id, phone, email, display_name`,
+      [phone, email, ownerName, roleId, hash])).rows[0];
+  });
+
+  // 3) Подписка с авто-расчётом срока (trial 14д → monthly 30д / yearly 365д). RLS-free таблицы.
+  let subscription = null;
+  try {
+    subscription = await billing.createSubscription(tenant.id, { plan_code: planCode, cycle, trial }, actor);
+  } catch (e) { console.error('[tenant-mgmt:createTenant:sub]', e.message); }
+
+  // 4) Онбординг: шаг registration выполнен.
+  try { await completeStep(tenant.id, 'registration'); } catch (_) {}
+
+  return {
+    tenant, slug,
+    owner: { id: owner.id, phone: owner.phone, display_name: owner.display_name },
+    subscription: subscription ? {
+      plan_code: subscription.plan_code, status: subscription.status,
+      billing_cycle: subscription.billing_cycle,
+      current_period_end: subscription.current_period_end,
+      trial_ends_at: subscription.trial_ends_at,
+    } : null,
+    login: { tenant_slug: slug, phone, header: 'X-Tenant-Slug: ' + slug },
+  };
+}
 
 // ── Health score ─────────────────────────────────────────────────────
 // 0-100 из доступных реальных сигналов. Категория: healthy(70+)/warning(40-69)/critical(<40).
@@ -252,7 +347,7 @@ async function supportStats() {
 
 module.exports = {
   computeHealth, runHealthCheck, runHealthAll, categorize,
-  dashboard, listTenants, tenantDetail, setStatus,
+  dashboard, listTenants, tenantDetail, setStatus, createTenant,
   getOnboarding, completeStep, updateOnboarding, ONB_STEPS,
   createTicket, listTickets, getTicket, updateTicket, replyTicket, supportStats,
 };

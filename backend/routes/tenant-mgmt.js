@@ -50,6 +50,16 @@ router.get('/tenants', requirePerm('saas.read'), async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// Создать новый салон: тенант + владелец + подписка с авто-сроком (admin-managed онбординг)
+router.post('/tenants', requirePerm('saas.write'), async (req, res) => {
+  try {
+    const { name, phone, password, owner_name, email, plan_code, cycle, trial } = req.body || {};
+    const r = await tm.createTenant(name, { phone, password, owner_name, email, plan_code, cycle, trial }, req.user);
+    await logAction({ user: req.user, action: 'tenant.create', entity: 'tenants', entity_id: r.tenant.id, ip: req.ip });
+    res.status(201).json({ ok: true, ...r });
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/tenants/:id', requirePerm('saas.read'), async (req, res) => {
   try {
     const d = await tm.tenantDetail(req.params.id);

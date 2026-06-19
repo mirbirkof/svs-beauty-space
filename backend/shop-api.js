@@ -326,3 +326,30 @@ try {
     console.log('[shop-api] campaign scheduler enabled');
   }
 } catch (e) { console.error('[campaigns] scheduler init failed:', e.message); }
+
+// ── Биллинг-планировщик (SAS-03): продление подписок + dunning + health ──
+// Раз в час: runRecurring (trial/период истёк → продление + счёт), processDunning
+// (просроченные попытки оплаты; 4-я неудача → tenant suspended → 403 на входе).
+// Раз в сутки: health-чек всех активных тенантов. RLS-free таблицы, явный tenant_id.
+if (process.env.DATABASE_URL) {
+  try {
+    const billing = require('./lib/billing');
+    const tm = require('./lib/tenant-mgmt');
+    const runBillingCycle = async () => {
+      try { const r = await billing.runRecurring(); if (r.renewed || r.cancelled) console.log('[billing] recurring', r); }
+      catch (e) { console.error('[billing] recurring:', e.message); }
+      try { const d = await billing.processDunning(); if (d.attempted || d.suspended) console.log('[billing] dunning', d); }
+      catch (e) { console.error('[billing] dunning:', e.message); }
+    };
+    setInterval(runBillingCycle, 60 * 60 * 1000).unref();
+    setTimeout(runBillingCycle, 60 * 1000).unref(); // первый прогон через минуту после старта
+    let lastHealth = 0;
+    setInterval(() => {
+      if (Date.now() - lastHealth < 24 * 60 * 60 * 1000) return;
+      lastHealth = Date.now();
+      tm.runHealthAll().then((r) => console.log('[tenant-health] checked', r.checked, '/', r.tenants))
+        .catch((e) => console.error('[tenant-health]', e.message));
+    }, 60 * 60 * 1000).unref();
+    console.log('[shop-api] billing scheduler enabled');
+  } catch (e) { console.error('[billing] scheduler init failed:', e.message); }
+}
