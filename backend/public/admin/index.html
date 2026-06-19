@@ -1845,17 +1845,17 @@ select.input { background:var(--card); }
 
       <!-- ═══ CONTRACTORS (Контрагенти) ═══ -->
       <div class="page" id="page-contractors">
-        <div class="card" style="max-width:640px">
-          <div class="card-header"><h3>Контрагенти</h3></div>
-          <div class="card-body">
-            <p style="font-size:14px;color:var(--muted);line-height:1.6">
-              Контрагенти — це постачальники товарів, орендодавці та інші партнери, з якими ведуться взаєморозрахунки.
-              Облік взаєморозрахунків ведеться у касі через статті «Товари / постачальники», «Оренда», «Комунальні послуги».
-            </p>
-            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-              <a class="btn btn-sm btn-primary" href="/admin/crm-extra.html#cashbox"><span class="material-icons-round" style="font-size:16px">point_of_sale</span> Перейти до каси</a>
-              <button class="btn btn-sm" onclick="go('finance')"><span class="material-icons-round" style="font-size:16px">swap_vert</span> Доходи і Витрати</button>
+        <div class="card" style="max-width:760px">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <h3 style="display:flex;align-items:center;gap:6px">Контрагенти
+              <button type="button" class="info-i" data-t="<b>Контрагенти</b> — постачальники, орендодавці та партнери. Тут їх додають і ведуть. Регулярні фіксовані витрати (оренда, комуналка) плануються кнопкою «Регулярний платіж» — система сама нагадає у вибране число місяця." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-primary" onclick="contractorModal()"><span class="material-icons-round" style="font-size:16px">add</span> Додати контрагента</button>
+              <button class="btn btn-sm" onclick="cfPaymentModal()"><span class="material-icons-round" style="font-size:16px">event_repeat</span> Регулярний платіж</button>
             </div>
+          </div>
+          <div class="card-body">
+            <div id="contractorsList"><div class="empty">Завантаження…</div></div>
           </div>
         </div>
       </div>
@@ -2967,7 +2967,46 @@ async function finSaveOp(){
     setTimeout(()=>{ finCloseOp(); btn.disabled=false; loadFinance(); }, 600);
   }catch(e){ btn.disabled=false; msg.style.color='#991b1b'; msg.textContent=e.message; }
 }
-function loadContractors(){ /* статична сторінка */ }
+async function loadContractors(){
+  const box=document.getElementById('contractorsList'); if(!box) return;
+  box.innerHTML='<div class="empty">Завантаження…</div>';
+  try{
+    const r=await api('/api/suppliers');
+    const items=r.items||[];
+    window._contractors=items;
+    box.innerHTML = items.length ? `<table class="tbl" style="width:100%"><thead><tr><th style="text-align:left">Назва</th><th style="text-align:left">Телефон</th><th style="text-align:left">Email</th><th style="text-align:left">Примітка</th><th></th></tr></thead><tbody>${
+      items.map(s=>`<tr>
+        <td style="text-align:left"><b>${escapeHtml(s.name)}</b></td>
+        <td style="text-align:left">${escapeHtml(s.phone||'—')}</td>
+        <td style="text-align:left">${escapeHtml(s.email||'—')}</td>
+        <td style="text-align:left;color:var(--text-secondary,#777)">${escapeHtml(s.notes||'')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-sm btn-icon" onclick="contractorModal(${s.id})"><span class="material-icons-round" style="font-size:15px">edit</span></button>
+          <button class="btn btn-sm btn-icon" onclick="contractorDelete(${s.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button>
+        </td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty"><span class="material-icons-round">groups</span>Контрагентів ще немає. Натисніть «Додати контрагента».</div>';
+  }catch{ box.innerHTML='<div class="empty">Сервер недоступний</div>'; }
+}
+function contractorModal(id){
+  const c=(typeof id==='number'||typeof id==='string')?(window._contractors||[]).find(x=>x.id==id):null;
+  showModal(c?'Редагувати контрагента':'Новий контрагент',`
+    <label class="fld"><span>Назва *</span><input id="ctrName" class="input" value="${c?escapeHtml(c.name):''}" placeholder="ТОВ «Постачальник» / Орендодавець"></label>
+    <label class="fld"><span>Телефон</span><input id="ctrPhone" class="input" value="${c?escapeHtml(c.phone||''):''}" placeholder="+38 (0XX) XXX-XX-XX"></label>
+    <label class="fld"><span>Email</span><input id="ctrEmail" class="input" value="${c?escapeHtml(c.email||''):''}"></label>
+    <label class="fld"><span>Примітка</span><textarea id="ctrNotes" class="input" rows="2" placeholder="Що постачає, умови оплати тощо">${c?escapeHtml(c.notes||''):''}</textarea></label>`,
+    async ()=>{
+      const body={ name:document.getElementById('ctrName').value.trim(), phone:document.getElementById('ctrPhone').value.trim()||null,
+        email:document.getElementById('ctrEmail').value.trim()||null, notes:document.getElementById('ctrNotes').value.trim()||null };
+      if(!body.name){ toast('Вкажіть назву','error'); return; }
+      const r=c?await api('/api/suppliers/'+c.id,{method:'PATCH',body:JSON.stringify(body)}):await api('/api/suppliers',{method:'POST',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast('Збережено'); loadContractors(); } else { toast(r.error||'Помилка','error'); }
+    });
+}
+async function contractorDelete(id){
+  if(!confirm('Видалити контрагента?')) return;
+  const r=await api('/api/suppliers/'+id,{method:'DELETE'});
+  if(r&&r.ok){ toast('Видалено'); loadContractors(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
 
 // ═══ SETTINGS ═════════════════════════════════
 function setTab(tab) {
@@ -6575,8 +6614,8 @@ function _mcTabProfile(){
       <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
       <span>Надає послуги <span style="color:var(--text-secondary)">— показується в журналі та онлайн-записі. Вимкнено = адміністратор.</span></span></label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding-top:14px">
-      <button class="btn btn-primary btn-sm" onclick="saveMasterCard()">Зберегти профіль</button>
-      <button class="btn btn-sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+      <button class="btn btn-primary" style="padding:11px 26px;font-size:15px;font-weight:700" onclick="saveMasterCard()">Зберегти профіль</button>
+      <button class="btn btn-sm" style="margin-left:auto;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
     </div>`;
 }
 function _mcTabSchedule(){

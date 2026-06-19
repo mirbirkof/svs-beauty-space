@@ -467,6 +467,25 @@ router.get('/suppliers', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+router.patch('/suppliers/:id', async (req, res) => {
+  try {
+    const { name, phone, email, notes } = req.body || {};
+    const r = await pool.query(
+      `UPDATE suppliers SET name=COALESCE($2,name), phone=$3, email=$4, notes=$5 WHERE id=$1 RETURNING id`,
+      [req.params.id, name || null, phone || null, email || null, notes || null]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.delete('/suppliers/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM suppliers WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 /* ═══════════════ STOCK RECEIPTS (поставки) ═══════════════ */
 
 router.post('/stock/receipts', async (req, res) => {
