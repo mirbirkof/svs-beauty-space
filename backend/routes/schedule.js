@@ -613,6 +613,7 @@ router.get('/journal', async (req, res) => {
       `SELECT a.id, a.master_id, a.service_id, a.client_id, a.room_id,
               a.starts_at, a.ends_at, a.status, a.notes,
               COALESCE(a.price, s.price) AS price,
+              a.real_amount,
               s.name AS service_name,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,

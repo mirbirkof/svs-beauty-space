@@ -5503,7 +5503,7 @@ function renderJournalList(container, data) {
         <td>${a.master_name||'—'}</td>
         <td>${a.service_name||'—'} <span style="color:var(--text-secondary)">· ${Math.round(a.duration_min)}хв</span></td>
         <td>${a.client_name||'—'}${a.client_phone?'<br><span style="color:var(--text-secondary);font-size:11px">'+fmtPhone(a.client_phone)+'</span>':''}</td>
-        <td style="font-weight:600">${_money(a.price)}</td>
+        <td style="font-weight:600">${_money(a.real_amount!=null?a.real_amount:a.price)}</td>
         <td><span class="badge">${ST_LABEL[a.status]||a.status||'—'}</span></td>
         <td>${a.notes?'<span class="material-icons-round" style="font-size:16px;color:var(--primary)" title="Є замітка">sticky_note_2</span>':''}</td>
       </tr>`;
@@ -5567,7 +5567,7 @@ function renderJournalDay(container, data) {
     // денна статистика майстра: к-ть записів + сума (без скасованих)
     const mAppts = (apptByMaster[m.id]||[]);
     const cnt = mAppts.length;
-    const sum = mAppts.reduce((acc,a)=> acc + (Number(a.price)||0), 0);
+    const sum = mAppts.reduce((acc,a)=> acc + (Number(a.real_amount!=null?a.real_amount:a.price)||0), 0);
     let body = '';
     // ряди сітки: робочий час — клікабельний для броні «в моменті»
     for (let i=0;i<slots;i++){
@@ -5609,7 +5609,7 @@ function renderJournalDay(container, data) {
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
         ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
-        ${h>64?`<div class="p">${_money(a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':'оплачено'}</span>`:''}</div>`:''}
+        ${h>64?`<div class="p">${_money(a.real_amount!=null?a.real_amount:a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':'оплачено'}</span>`:''}</div>`:''}
         ${a.paid?'<span class="paid-ico material-icons-round" title="Оплачено">paid</span>':okIcon}
       </div>`;
     });
@@ -5852,7 +5852,7 @@ async function renderJournalWeek(container, dateStr) {
         <div class="c">${a.client_name||a.service_name||'—'}</div>
       </div>`;
     });
-    const sum = appts.reduce((acc,a)=>acc+(Number(a.price)||0),0);
+    const sum = appts.reduce((acc,a)=>acc+(Number(a.real_amount!=null?a.real_amount:a.price)||0),0);
     return `<div class="jcol">
       <div class="jcol-head" style="${ds===today?'background:var(--primary-light)':''}">
         <div style="min-width:0">
@@ -5922,7 +5922,7 @@ async function openAppt(id) {
   document.getElementById('apptTitle').textContent = `${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))} · ${a.master_name||''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
-      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${_money(a.price)}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600">${a.service_name||'—'} · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}</div></div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Загальний час процедури (хв)</span>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
@@ -5970,8 +5970,8 @@ async function openAppt(id) {
       ${a.paid ? `
         <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
           <span style="font-size:18px">✓</span>
-          <div style="flex:1">Оплачено · ${_money(a.price)} ${_payBadge(a.pay_method)}
-            <div style="font-size:11px;font-weight:400;color:#059669">У касі вже враховано</div>
+          <div style="flex:1">Оплачено · ${_money(a.real_amount!=null?a.real_amount:a.price)} ${_payBadge(a.pay_method)}
+            <div style="font-size:11px;font-weight:400;color:#059669">${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `Факт оплати (план ${_money(a.price)}) · у касі враховано` : 'У касі вже враховано'}</div>
           </div>
         </div>` : `
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>

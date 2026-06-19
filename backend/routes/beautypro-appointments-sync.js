@@ -430,7 +430,35 @@ async function syncSales(from, to) {
                  = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)`,
     [from, to]);
   const marked_done = md.rowCount || 0;
-  return { posted, skipped, shifts, removed, marked_done };
+
+  // Реальна сплачена сума → у сам запис (real_amount).
+  // price лишається ПЛАНОВОЮ, real_amount = факт із продажів послуг.
+  // Точний матчинг по слоту: bp_calendar зберігає КИЇВСЬКИЙ настінний час як UTC,
+  // тому (bp_calendar у UTC-настінному) має дорівнювати (starts_at у Київ-настінному).
+  // Це відсікає фантомні кросджойни «той самий клієнт+майстер того ж дня, інший слот»,
+  // які date-only матчинг помилково склеював. SUM — на випадок кількох послуг в одному слоті.
+  const ra = await pool.query(
+    `UPDATE appointments a
+        SET real_amount = s.real_sum, real_synced_at = NOW()
+       FROM (
+         SELECT a2.id,
+                SUM(co.amount) AS real_sum
+           FROM appointments a2
+           JOIN cash_operations co
+             ON co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+            AND co.bp_client = a2.bp_client AND co.master_id = a2.master_id
+            AND (co.bp_calendar AT TIME ZONE 'UTC') = (a2.starts_at AT TIME ZONE 'Europe/Kyiv')
+          WHERE a2.bp_client IS NOT NULL AND a2.master_id IS NOT NULL
+            AND co.bp_calendar IS NOT NULL
+            AND a2.starts_at >= $1::date AND a2.starts_at < ($2::date + INTERVAL '1 day')
+          GROUP BY a2.id
+       ) s
+      WHERE a.id = s.id
+        AND (a.real_amount IS DISTINCT FROM s.real_sum)`,
+    [from, to]);
+  const real_updated = ra.rowCount || 0;
+
+  return { posted, skipped, shifts, removed, marked_done, real_updated };
 }
 
 // ── Детальні продажі товарів BP (/sales type=Product) → salon_product_sales ──
