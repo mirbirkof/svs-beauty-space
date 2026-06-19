@@ -14,8 +14,15 @@ const { requirePerm, logAction } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
 
-// Любой авторизованный пользователь админки может работать с заметками
+// Заметки = бэк-офисная обратная связь по CRM. Мастер/клиент их не видят.
 router.use(requirePerm());
+router.use((req, res, next) => {
+  const role = req.user && req.user.role;
+  if (role === 'master' || role === 'client') {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  next();
+});
 
 // ── список ─────────────────────────────────────────────
 router.get('/', async (req, res) => {

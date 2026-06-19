@@ -191,6 +191,7 @@ app.use('/api/client-tags', require('./routes/client-tags'));
 app.use('/api/consumables', require('./routes/consumables'));
 try { app.use('/api/master-services', require('./routes/master-services')); } catch(e) { console.error('[master-services] mount failed:', e.message); }
 app.use('/api/notes', require('./routes/notes'));
+try { app.use('/api/me', require('./routes/master-cabinet')); } catch(e) { console.error('[master-cabinet] mount failed:', e.message); }
 try { app.use('/api/events', require('./routes/events')); } catch(e) { console.error('[events] mount failed:', e.message); }
 const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);

@@ -66,7 +66,7 @@ function buildCatalog() {
   ];
 }
 
-router.get('/status', requirePerm(), (req, res) => {
+router.get('/status', requirePerm('integrations.read'), (req, res) => {
   try {
     const catalog = buildCatalog();
     const all = catalog.flatMap(c => c.items);

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Кабінет майстра · SVS Beauty</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d212b; --line:#262b36;
+    --txt:#e8eaf0; --mut:#9aa3b2; --acc:#c8a24a; --acc2:#e3c478;
+    --green:#3ecf8e; --red:#ff6b6b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.45}
+  header{position:sticky;top:0;z-index:10;background:linear-gradient(180deg,#151821,#11141b);
+    border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:12px}
+  header .av{width:42px;height:42px;border-radius:50%;background:var(--card2);object-fit:cover;
+    display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--acc2);
+    border:1px solid var(--line);overflow:hidden}
+  header .who{flex:1;min-width:0}
+  header .who b{display:block;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .who span{font-size:12px;color:var(--mut)}
+  header .logout{background:none;border:1px solid var(--line);color:var(--mut);
+    border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+  header .logout:active{background:var(--card2)}
+  .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--line);
+    position:sticky;top:71px;z-index:9;overflow-x:auto}
+  .tabs button{flex:1;min-width:90px;background:none;border:none;color:var(--mut);
+    padding:13px 8px;font-size:13.5px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+  .tabs button.active{color:var(--acc2);border-bottom-color:var(--acc)}
+  main{padding:16px;max-width:680px;margin:0 auto}
+  .sec{display:none} .sec.active{display:block}
+  h2{font-size:18px;margin:2px 0 14px;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:10px}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .row .t{font-weight:600} .row .s{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .amt{font-weight:700;color:var(--acc2);white-space:nowrap}
+  .amt.green{color:var(--green)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
+    background:var(--card2);color:var(--mut);margin-top:6px}
+  .pill.done{background:rgba(62,207,142,.12);color:var(--green)}
+  .pill.cancel{background:rgba(255,107,107,.12);color:var(--red)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat b{display:block;font-size:22px;color:var(--acc2)} .stat span{font-size:12px;color:var(--mut)}
+  .muted{color:var(--mut);text-align:center;padding:30px 10px;font-size:14px}
+  .dayhdr{font-size:13px;color:var(--acc2);margin:16px 0 8px;font-weight:600;
+    text-transform:capitalize}
+  .ldr{text-align:center;color:var(--mut);padding:40px}
+  .err{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);
+    color:var(--red);padding:12px;border-radius:10px;margin-bottom:12px;font-size:13.5px}
+</style>
+</head>
+<body>
+<header>
+  <div class="av" id="av">—</div>
+  <div class="who"><b id="who">Майстер</b><span id="role">Кабінет майстра</span></div>
+  <button class="logout" onclick="logout()">Вийти</button>
+</header>
+<div class="tabs">
+  <button class="active" data-t="schedule" onclick="tab('schedule')">Графік</button>
+  <button data-t="clients" onclick="tab('clients')">Клієнти</button>
+  <button data-t="payroll" onclick="tab('payroll')">Зарплата</button>
+  <button data-t="services" onclick="tab('services')">Послуги</button>
+</div>
+<main>
+  <section class="sec active" id="sec-schedule"><div class="ldr">Завантаження…</div></section>
+  <section class="sec" id="sec-clients"><div class="ldr">Завантаження…</div></section>
+  <section class="sec" id="sec-payroll"><div class="ldr">Завантаження…</div></section>
+  <section class="sec" id="sec-services"><div class="ldr">Завантаження…</div></section>
+</main>
+<script>
+const API = location.origin;
+const TOKEN = localStorage.getItem('svs_admin_token') || '';
+const H = { 'X-Admin-Token': TOKEN };
+const loaded = {};
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function money(v){ const n=Number(v||0); return n.toLocaleString('uk-UA',{maximumFractionDigits:0})+' ₴'; }
+function fmtTime(iso){ try{ return new Date(iso).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Kyiv'});}catch{return'';} }
+function fmtDay(iso){ try{ return new Date(iso).toLocaleDateString('uk-UA',{weekday:'long',day:'numeric',month:'long',timeZone:'Europe/Kyiv'});}catch{return'';} }
+function dayKey(iso){ try{ return new Date(iso).toLocaleDateString('en-CA',{timeZone:'Europe/Kyiv'});}catch{return'';} }
+function statusPill(st){
+  const done=['done','confirmed','completed'].includes(st);
+  const cancel=['cancelled','canceled','noshow','no_show'].includes(st);
+  const lbl={done:'Виконано',confirmed:'Підтверджено',completed:'Виконано',booked:'Заплановано',
+    cancelled:'Скасовано',canceled:'Скасовано',noshow:'Не прийшов',no_show:'Не прийшов'}[st]||st||'';
+  return `<span class="pill ${done?'done':cancel?'cancel':''}">${esc(lbl)}</span>`;
+}
+
+async function api(path){
+  const r = await fetch(API+path,{headers:H});
+  if(r.status===401||r.status===403){ logout(); throw new Error('auth'); }
+  return r.json();
+}
+function logout(){
+  localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user');
+  location.replace('/admin/index.html');
+}
+
+// ── Перевірка ролі: тільки майстер ──
+(async function init(){
+  if(!TOKEN){ location.replace('/admin/index.html'); return; }
+  let me;
+  try{ me = await api('/api/users/me'); }catch{ return; }
+  const u = me && me.user;
+  if(!u){ logout(); return; }
+  if(u.role!=='master'){ location.replace('/admin/index.html'); return; }
+  document.getElementById('who').textContent = u.display_name || 'Майстер';
+  const av = document.getElementById('av');
+  if(u.display_name) av.textContent = u.display_name.trim().charAt(0).toUpperCase();
+  loadSchedule();
+})();
+
+function tab(name){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.t===name));
+  document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('active',s.id==='sec-'+name));
+  if(loaded[name]) return; loaded[name]=true;
+  ({schedule:loadSchedule,clients:loadClients,payroll:loadPayroll,services:loadServices}[name])();
+}
+
+// ── Графік ──
+async function loadSchedule(){
+  const el=document.getElementById('sec-schedule'); loaded.schedule=true;
+  try{
+    const d=await api('/api/me/schedule');
+    const items=(d.items||[]);
+    if(!items.length){ el.innerHTML='<div class="muted">Немає запланованих записів на найближчі 30 днів</div>'; return; }
+    const today=dayKey(new Date().toISOString());
+    let html='', curDay='';
+    for(const a of items){
+      const dk=dayKey(a.starts_at);
+      if(dk!==curDay){ curDay=dk;
+        html+=`<div class="dayhdr">${dk===today?'Сьогодні · ':''}${esc(fmtDay(a.starts_at))}</div>`; }
+      html+=`<div class="card"><div class="row">
+        <div><div class="t">${esc(a.client)}</div>
+          <div class="s">${esc(a.service||'—')}</div>${statusPill(a.status)}</div>
+        <div style="text-align:right"><div class="amt">${fmtTime(a.starts_at)}</div>
+          <div class="s">${money(a.amount)}</div></div>
+      </div></div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') el.innerHTML='<div class="err">Не вдалося завантажити графік</div>'; }
+}
+
+// ── Клієнти ──
+async function loadClients(){
+  const el=document.getElementById('sec-clients');
+  try{
+    const d=await api('/api/me/clients');
+    const items=(d.items||[]);
+    if(!items.length){ el.innerHTML='<div class="muted">Поки немає клієнтів</div>'; return; }
+    let html=`<h2>Мої клієнти · ${items.length}</h2>`;
+    for(const c of items){
+      const last=c.last_visit?new Date(c.last_visit).toLocaleDateString('uk-UA',{timeZone:'Europe/Kyiv'}):'—';
+      html+=`<div class="card"><div class="row">
+        <div><div class="t">${esc(c.name)}</div>
+          <div class="s">${c.visits} візит(ів) · остання ${esc(last)}</div></div>
+        <div class="amt green">${money(c.spent)}</div>
+      </div></div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') el.innerHTML='<div class="err">Не вдалося завантажити клієнтів</div>'; }
+}
+
+// ── Зарплата ──
+async function loadPayroll(){
+  const el=document.getElementById('sec-payroll');
+  try{
+    const d=await api('/api/payroll/my');
+    const recs=d.records||[], bons=d.bonuses||[], pens=d.penalties||[], pays=d.payments||[];
+    const lastPaid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
+    const totalAccr=recs.reduce((s,r)=>s+Number(r.total||0),0);
+    let html=`<div class="stats">
+      <div class="stat"><b>${money(totalAccr)}</b><span>Нараховано (останні періоди)</span></div>
+      <div class="stat"><b>${money(lastPaid)}</b><span>Виплачено</span></div></div>`;
+    if(recs.length){
+      html+=`<h2>Нарахування по періодах</h2>`;
+      for(const r of recs){
+        const p=`${new Date(r.period_start).toLocaleDateString('uk-UA')} – ${new Date(r.period_end).toLocaleDateString('uk-UA')}`;
+        html+=`<div class="card"><div class="row">
+          <div><div class="t">${esc(p)}</div>
+            <div class="s">${r.services_count||0} послуг · виручка ${money(r.services_revenue)}</div>
+            <span class="pill ${r.status==='paid'?'done':''}">${r.status==='paid'?'Виплачено':'Очікує'}</span></div>
+          <div class="amt">${money(r.total)}</div></div></div>`;
+      }
+    } else { html+=`<div class="muted">Нарахувань поки немає</div>`; }
+    if(bons.length){ html+=`<h2 style="margin-top:18px">Бонуси</h2>`;
+      for(const b of bons) html+=`<div class="card"><div class="row"><div><div class="t">${esc(b.reason||b.kind||'Бонус')}</div><div class="s">${b.bonus_date?new Date(b.bonus_date).toLocaleDateString('uk-UA'):''}</div></div><div class="amt green">+${money(b.amount)}</div></div></div>`; }
+    if(pens.length){ html+=`<h2 style="margin-top:18px">Утримання</h2>`;
+      for(const p of pens) html+=`<div class="card"><div class="row"><div><div class="t">${esc(p.reason||p.kind||'Штраф')}</div><div class="s">${p.penalty_date?new Date(p.penalty_date).toLocaleDateString('uk-UA'):''}</div></div><div class="amt" style="color:var(--red)">−${money(p.amount)}</div></div></div>`; }
+    el.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') el.innerHTML='<div class="err">Не вдалося завантажити зарплату</div>'; }
+}
+
+// ── Послуги ──
+async function loadServices(){
+  const el=document.getElementById('sec-services');
+  try{
+    const d=await api('/api/me/services');
+    const items=(d.items||[]);
+    if(!items.length){ el.innerHTML='<div class="muted">Послуги не налаштовані</div>'; return; }
+    let html=`<h2>Мої послуги · ${items.length}</h2>`, curCat='\0';
+    for(const s of items){
+      const cat=s.category||'Інше';
+      if(cat!==curCat){ curCat=cat; html+=`<div class="dayhdr">${esc(cat)}</div>`; }
+      html+=`<div class="card"><div class="row">
+        <div><div class="t">${esc(s.name)}</div>
+          <div class="s">${s.duration_min?s.duration_min+' хв':''}</div></div>
+        <div class="amt">${money(s.price)}</div></div></div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') el.innerHTML='<div class="err">Не вдалося завантажити послуги</div>'; }
+}
+</script>
+</body>
+</html>

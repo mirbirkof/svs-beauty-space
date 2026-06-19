@@ -36,9 +36,18 @@ const ALLOWED = {
 
 router.use(requirePerm()); // будь-який авторизований може читати
 
+// Чутливі налаштування власника — не віддаємо майстру/клієнту.
+const SENSITIVE_KEYS = ['finance', 'loyalty', 'masters_visibility', 'notifications', 'cancellation'];
+const BACK_OFFICE = ['owner', 'admin', 'manager', 'accountant', 'marketer', 'reception'];
+
 router.get('/', async (req, res) => {
   try {
-    res.json({ ok: true, settings: await getAllSettings() });
+    const all = await getAllSettings();
+    const role = (req.user && req.user.role) || '';
+    if (!BACK_OFFICE.includes(role) && all && typeof all === 'object') {
+      for (const k of SENSITIVE_KEYS) delete all[k];
+    }
+    res.json({ ok: true, settings: all });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

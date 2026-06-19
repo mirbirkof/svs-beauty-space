@@ -2252,6 +2252,8 @@ async function checkToken() {
   }
   if (r.status === 200) {
     try { const j = await r.json(); if (j.user) { USER = j.user; localStorage.setItem('svs_user', JSON.stringify(USER)); } } catch {}
+    // Майстер не має доступу до хазяйської адмінки — його місце у власному кабінеті.
+    if (USER && USER.role === 'master') { location.replace('/admin/master.html'); return; }
     applyRoleUI();
     showApp();
     return;
@@ -2356,6 +2358,8 @@ function logout() { localStorage.removeItem('svs_admin_token'); localStorage.rem
 // owner / admin / manager — бачать усе. master — лише свій дашборд + журнал записів.
 function isMasterRole(){ return !!USER && USER.role === 'master'; }
 function applyRoleUI(){
+  // Майстер працює виключно у власному кабінеті — у хазяйську адмінку не пускаємо.
+  if (USER && USER.role === 'master') { location.replace('/admin/master.html'); return; }
   // показуємо ім'я та роль користувача у шапці
   try {
     const lbl = document.getElementById('userBadge');
