@@ -901,7 +901,7 @@ router.patch('/appointments/:id', async (req, res) => {
               manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
               updated_at = NOW()
         WHERE id = $1
-        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price`,
+        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price, real_amount`,
       [req.params.id, notes ?? null, status ?? null, room_id ?? null,
        master_id != null ? Number(master_id) : null, newStart, newEnd, markManual,
        service_id != null ? Number(service_id) : null, newPrice]
