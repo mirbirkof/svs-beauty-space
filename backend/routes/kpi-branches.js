@@ -39,7 +39,7 @@ router.get('/', READ, async (req, res) => {
       WITH agg AS (
         SELECT b.id, b.name, b.code,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-          COALESCE(SUM(a.price) FILTER (WHERE ${DONE}),0) AS revenue,
+          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
           COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled
         FROM branches b
@@ -73,7 +73,7 @@ router.get('/:id(\\d+)', READ, async (req, res) => {
     if (!branch.rowCount) return res.status(404).json({ error: 'branch_not_found' });
     const kpi = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(a.price) FILTER (WHERE ${DONE}),0) AS revenue,
+        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
         COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled
       FROM appointments a
@@ -82,7 +82,7 @@ router.get('/:id(\\d+)', READ, async (req, res) => {
     const masters = await pool.query(`
       SELECT COALESCE(NULLIF(m.name,''),'—') AS master,
         COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(a.price) FILTER (WHERE ${DONE}),0) AS revenue
+        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue
       FROM appointments a
       LEFT JOIN masters m ON m.id=a.master_id
       WHERE a.branch_id=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)
@@ -105,7 +105,7 @@ router.get('/:id(\\d+)/plan-fact', READ, async (req, res) => {
        FROM fin_branch_targets WHERE branch_id=$1 AND period_month=$2`, [id, month]);
     const fact = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(a.price) FILTER (WHERE ${DONE}),0) AS revenue,
+        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients
       FROM appointments a
       WHERE a.branch_id=$1 AND to_char(a.starts_at,'YYYY-MM')=$2`, [id, month]);

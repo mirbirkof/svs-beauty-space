@@ -85,7 +85,7 @@ async function loyaltyFor(client) {
     `SELECT
        GREATEST(
          COALESCE((SELECT total_spent FROM clients WHERE id = $1), 0),
-         COALESCE((SELECT SUM(price) FROM appointments
+         COALESCE((SELECT SUM(COALESCE(real_amount, price)) FROM appointments
                    WHERE client_id = $1 AND starts_at < NOW() AND status NOT IN ('cancelled')), 0)
        ) +
        COALESCE((SELECT SUM(total) FROM orders WHERE client_id = $1 AND status IN ('paid','completed','delivered')), 0) AS total`,

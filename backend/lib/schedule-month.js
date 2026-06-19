@@ -106,4 +106,58 @@ async function shiftDaysByMaster(pool, ym) {
   return map;
 }
 
-module.exports = { buildMonthGrid, shiftDaysByMaster, DAYK };
+// Кількість робочих змін КОНКРЕТНОГО майстра у діапазоні [from,to] (включно).
+// Те саме джерело, що сітка графіка — використовується у розрахунку ЗП за фікс/день,
+// щоб майстер отримував за реально відпрацьовані зміни, а не за календарні дні.
+async function shiftDaysForMasterInRange(pool, masterId, from, to) {
+  const start = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
+  if (isNaN(start) || isNaN(end) || end < start) return 0;
+  // перебираємо місяці діапазону
+  const months = new Set();
+  const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cur <= end) {
+    months.add(`${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, '0')}`);
+    cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+  const fromStr = from, toStr = to;
+  let count = 0;
+  for (const ym of months) {
+    const grid = await buildMonthGrid(pool, ym);
+    const it = grid.items.find(x => x.id === Number(masterId));
+    if (!it) continue;
+    count += it.days.filter(d => !d.off && d.date >= fromStr && d.date <= toStr).length;
+  }
+  return count;
+}
+
+// Зміни + доступні хвилини per master у діапазоні [from,to] — для utilization (% завантаження).
+// Хвилини рахуємо з годин кожної робочої зміни сітки (end-start). Повертає Map<id,{shifts,minutes}>.
+async function shiftStatsByMasterInRange(pool, from, to) {
+  const start = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
+  const out = new Map();
+  if (isNaN(start) || isNaN(end) || end < start) return out;
+  const months = new Set();
+  const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cur <= end) {
+    months.add(`${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, '0')}`);
+    cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+  const toMin = (hhmm) => { const m = /^(\d{2}):(\d{2})$/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : 0; };
+  for (const ym of months) {
+    const grid = await buildMonthGrid(pool, ym);
+    for (const it of grid.items) {
+      for (const d of it.days) {
+        if (d.off || d.date < from || d.date > to) continue;
+        const mins = Math.max(0, toMin(d.end) - toMin(d.start));
+        const cell = out.get(it.id) || { shifts: 0, minutes: 0 };
+        cell.shifts += 1; cell.minutes += mins;
+        out.set(it.id, cell);
+      }
+    }
+  }
+  return out;
+}
+
+module.exports = { buildMonthGrid, shiftDaysByMaster, shiftDaysForMasterInRange, shiftStatsByMasterInRange, DAYK };

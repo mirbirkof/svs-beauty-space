@@ -273,7 +273,38 @@ async function syncAppointments(from, to) {
     reconciled = rc.rowCount || 0;
   }
 
+  // Актуалізуємо clients.last_visit_at живими записами. last_visit_at прийшов
+  // зі знімка MyClients (24.05) і застаріває. Усі місця (картка, дашборд, пошук,
+  // сегменти, маркетинг-тригери, RFM, win-back) читають це поле — тримаємо його
+  // = max(знімок, остання реальна відвідана запис). total_visits не чіпаємо
+  // (заморожений еталон, імена клієнтів колізяться у звіті візитів).
+  await refreshClientLastVisit(from, to);
+
   return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients, reconciled };
+}
+
+// Зсуває clients.last_visit_at вперед за реальними відвіданими записами.
+// window — необов'язковий діапазон [from,to] для звуження (інакше всі клієнти з записами).
+async function refreshClientLastVisit(from, to) {
+  const pool = getPool();
+  const params = [];
+  let scope = '';
+  if (from && to) { scope = 'WHERE a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)'; params.push(from, to); }
+  const r = await pool.query(
+    `UPDATE clients c
+        SET last_visit_at = lv.mx
+       FROM (
+         SELECT a.client_id, MAX(a.starts_at) AS mx
+           FROM appointments a
+          ${scope}
+          ${scope ? 'AND' : 'WHERE'} a.client_id IS NOT NULL
+            AND a.starts_at < NOW()
+            AND a.status NOT IN ('cancelled','noshow')
+          GROUP BY a.client_id
+       ) lv
+      WHERE c.id = lv.client_id
+        AND (c.last_visit_at IS NULL OR lv.mx > c.last_visit_at)`, params);
+  return r.rowCount || 0;
 }
 
 // ── Графік майстрів BP (/schedule) → master_schedule_days ───────────────
@@ -962,3 +993,4 @@ module.exports.syncProductSales = syncProductSales;
 module.exports.syncServicesCatalog = syncServicesCatalog;
 module.exports.registerWebhooks = registerWebhooks;
 module.exports.syncRecentClients = syncRecentClients;
+module.exports.refreshClientLastVisit = refreshClientLastVisit;

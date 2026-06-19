@@ -3,6 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
 const router = express.Router();
 const pool = getPool();
 
@@ -110,8 +111,19 @@ router.post('/payroll/calculate', async (req, res) => {
     if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
       if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
       else if (s.fixed_per_day) {
-        const days = Math.ceil((new Date(period_end) - new Date(period_start)) / 86400000) + 1;
-        fixed_part = parseFloat(s.fixed_per_day) * days;
+        // фікс за день платимо за РОБОЧІ зміни з графіка (як у сітці), а не за
+        // календарні дні періоду — інакше переплата за вихідні.
+        const fromStr = String(period_start).slice(0, 10);
+        const toStr = String(period_end).slice(0, 10);
+        let shifts = await shiftDaysForMasterInRange(pool, master_id, fromStr, toStr).catch(() => 0);
+        if (!shifts) { // нема графіка — fallback на фактично відпрацьовані дні
+          const wd = await pool.query(
+            `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
+               FROM appointments WHERE master_id=$1::int AND status NOT IN ('cancelled','noshow')
+                AND starts_at >= $2::date AND starts_at < ($3::date + 1)`, [master_id, fromStr, toStr]);
+          shifts = wd.rows[0]?.d || 0;
+        }
+        fixed_part = parseFloat(s.fixed_per_day) * shifts;
       }
     }
 
@@ -489,8 +501,20 @@ router.get('/payroll/my', async (req, res) => {
       if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
         if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
         else if (s.fixed_per_day) {
-          const days = new Date().getDate();
-          fixed_part = parseFloat(s.fixed_per_day) * days;
+          // оцінка за поточний місяць: робочі зміни з графіка від 1-го числа по сьогодні
+          // (раніше тут був баг — бралося число дня місяця через getDate()).
+          const now = new Date();
+          const fromStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+          const toStr = now.toISOString().slice(0, 10);
+          let shifts = await shiftDaysForMasterInRange(pool, mid, fromStr, toStr).catch(() => 0);
+          if (!shifts) {
+            const wd = await pool.query(
+              `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
+                 FROM appointments WHERE master_id=$1::int AND status NOT IN ('cancelled','noshow')
+                  AND starts_at >= date_trunc('month',NOW()) AND starts_at < (NOW() + INTERVAL '1 day')`, [mid]);
+            shifts = wd.rows[0]?.d || 0;
+          }
+          fixed_part = parseFloat(s.fixed_per_day) * shifts;
         }
       }
       const bsum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_bonuses WHERE master_id=$1 AND applied_record_id IS NULL AND bonus_date >= date_trunc('month',NOW())`, [mid]);

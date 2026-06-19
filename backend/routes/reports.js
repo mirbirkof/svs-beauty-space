@@ -3,7 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
-const { shiftDaysByMaster } = require('../lib/schedule-month');
+const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 
 const router = express.Router();
 const pool = getPool();
@@ -636,19 +636,22 @@ router.get('/utilization', requirePerm('reports.read'), async (req, res) => {
         GROUP BY master_id`, [from, to]
     );
     const busyMap = new Map(busy.rows.map(r => [r.master_id, r]));
+    // Доступний час — з тієї ж сітки графіка, що бачить адмін (а не лише з тижневого
+    // шаблону). Так % завантаження узгоджений з кількістю змін у плані місяця.
+    const statMap = await shiftStatsByMasterInRange(pool, from.slice(0,10), to.slice(0,10)).catch(() => new Map());
 
     let salonBusy = 0, salonAvail = 0;
     const items = masters.rows.map(m => {
-      const sc = shiftsFromSchedule(m.schedule_json, fromD, toD);
+      const st = statMap.get(m.id) || { shifts: 0, minutes: 0 };
       const b = busyMap.get(m.id) || { busy_min: 0, appts: 0 };
       const busyMin = Math.round(Number(b.busy_min));
-      const availMin = sc.minutes;
+      const availMin = st.minutes;
       // В салонную загрузку берём только мастеров с заданным графиком,
       // иначе busy без avail задирает % выше 100.
       if (availMin > 0) { salonBusy += busyMin; salonAvail += availMin; }
       return {
         master_id: m.id, name: m.name,
-        shifts: sc.shifts, has_schedule: sc.hasSchedule,
+        shifts: st.shifts, has_schedule: st.shifts > 0,
         busy_min: busyMin, avail_min: availMin, appts: b.appts,
         util_pct: availMin > 0 ? Math.round(busyMin / availMin * 100) : null,
       };

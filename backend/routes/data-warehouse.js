@@ -64,7 +64,7 @@ router.post('/etl', MANAGE, async (req, res) => {
              COALESCE(NULLIF(s.category,''), '—'),
              COALESCE(NULLIF(a.source,''),'—'),
              a.status,
-             COALESCE(a.price,0), 1, a.id
+             COALESCE(a.real_amount, a.price, 0), 1, a.id
       FROM appointments a
       LEFT JOIN masters m ON m.id=a.master_id
       LEFT JOIN services s ON s.id=a.service_id
