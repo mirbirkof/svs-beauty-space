@@ -2460,6 +2460,19 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'
 function iInfo(text){ return `<button type="button" class="info-i" aria-label="Пояснення" data-t="${escapeHtml(text)}" onclick="showInfo(event,this.dataset.t)">i</button>`; }
 // Клік по всій KPI-картці дашборда → показати її детальне пояснення
 function kpiInfo(ev, el){ const t = el.getAttribute('data-info'); if (t) showInfo(ev, t); }
+// Клік по KPI-картці → перехід у відповідний розділ (значок «i» лишається для пояснення)
+function kpiNav(ev, el){
+  const n = el.getAttribute('data-nav');
+  if (!n) return;
+  if (n === 'react'){ // «Відтік клієнтів» → блок «Повернути клієнтів» одразу під цифрами
+    const rc = document.getElementById('reactCard');
+    if (rc){ rc.scrollIntoView({ behavior:'smooth', block:'start' });
+      rc.style.transition='box-shadow .3s'; rc.style.boxShadow='0 0 0 3px var(--primary,#6c5ce7)';
+      setTimeout(()=>{ rc.style.boxShadow=''; }, 1600); }
+    return;
+  }
+  try { go(n); } catch {}
+}
 function showInfo(ev, text){
   ev.preventDefault(); ev.stopPropagation();
   let p = document.getElementById('infoPop');
@@ -3679,18 +3692,18 @@ async function loadDashboard() {
   if (fin && o.revenue_today) {
     // Каса сьогодні + динаміка до вчора + розбивка послуги/товари
     const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
-    kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.']);
-    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.']);
-    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус усі витрати (зарплати, закупівлі, оренда тощо), проведені через касу/фінанси. Якщо число червоне — витрати перевищили дохід.']);
-    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.']);
+    kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.', 'finance']);
+    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.', 'finance']);
+    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус усі витрати (зарплати, закупівлі, оренда тощо), проведені через касу/фінанси. Якщо число червоне — витрати перевищили дохід.', 'fincenter']);
+    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.', 'plan']);
   }
-  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.']);
-  kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue', 'Загальна кількість клієнтів у базі та скільки нових додалося цього місяця.']);
-  if ((o.open_shifts ?? 0) > 0) kpis.push(['Відкриті зміни', o.open_shifts, 'green', 'Кількість касових змін, які зараз відкриті та ще не закриті. Наприкінці дня зміну треба закрити для звірки каси.']);
-  if ((o.churn_clients ?? 0) > 0) kpis.push(['Відтік клієнтів', o.churn_clients + _sub('не були &gt;90 днів'), 'orange', 'Клієнти, які були щонайменше 2 рази, але не приходили понад 90 днів. Це ризик втрати — їх варто повернути (див. блок «Повернути клієнтів»).']);
-  if ((o.low_stock_count ?? 0) > 0) kpis.push(['Товари на виході', o.low_stock_count + _sub('≤ порогу залишку'), 'orange', 'Кількість товарних позицій, залишок яких опустився до порогу або нижче — час замовляти.']);
-  document.getElementById('kpi').innerHTML = kpis.map(([l, v, c, info]) =>
-    `<div class="kpi-card ${c}"${info?` data-info="${escapeHtml(info)}" onclick="kpiInfo(event,this)" style="cursor:pointer" title="Натисніть для деталей"`:''}><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
+  kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.', 'journal']);
+  kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue', 'Загальна кількість клієнтів у базі та скільки нових додалося цього місяця.', 'clients']);
+  if ((o.open_shifts ?? 0) > 0) kpis.push(['Відкриті зміни', o.open_shifts, 'green', 'Кількість касових змін, які зараз відкриті та ще не закриті. Наприкінці дня зміну треба закрити для звірки каси.', 'shifts']);
+  if ((o.churn_clients ?? 0) > 0) kpis.push(['Відтік клієнтів', o.churn_clients + _sub('не були &gt;90 днів'), 'orange', 'Клієнти, які були щонайменше 2 рази, але не приходили понад 90 днів. Це ризик втрати — їх варто повернути (див. блок «Повернути клієнтів»).', 'react']);
+  if ((o.low_stock_count ?? 0) > 0) kpis.push(['Товари на виході', o.low_stock_count + _sub('≤ порогу залишку'), 'orange', 'Кількість товарних позицій, залишок яких опустився до порогу або нижче — час замовляти.', 'stock']);
+  document.getElementById('kpi').innerHTML = kpis.map(([l, v, c, info, nav]) =>
+    `<div class="kpi-card ${c}"${nav?` data-nav="${nav}" onclick="kpiNav(event,this)" style="cursor:pointer" title="Перейти до розділу"`:''}><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
   // Блок «Повернути клієнтів» — одразу під цифрами дашборда
   try { const rc=document.getElementById('reactCard'), kpiEl=document.getElementById('kpi'); if(rc&&kpiEl) kpiEl.insertAdjacentElement('afterend', rc); } catch {}
 
