@@ -61,7 +61,11 @@ router.post('/payroll/calculate', async (req, res) => {
 
     // 2. посчитать услуги мастера за период (из appointments — реальные визиты салона)
     //    online_bookings = только онлайн-записи с сайта (почти пусто), выручка живёт в appointments.
-    //    Считаем состоявшиеся визиты: done + confirmed (BeautyPro оставляет статус 'confirmed').
+    //    Считаем ТОЛЬКО фактически оказанные+оплаченные визиты:
+    //      - done / completed — явно закрытые салоном (источник правды);
+    //      - confirmed — ТОЛЬКО при наличии пруфа оплаты (real_synced_at): синк продаж BeautyPro
+    //        ставит done при матче оплаты, поэтому confirmed без real_synced_at = деньги не прошли.
+    //    Это исключает оплату % за визиты, которые не состоялись / не оплачены.
     //    cancelled / noshow / booked (будущие) — не оплачиваются.
     // Виручка для ЗП — по ФАКТИЧНО сплаченому (real_amount із продажу BeautyPro),
     // якщо факт невідомий — планова ціна. Майстер отримує % з реально отриманих грошей,
@@ -72,7 +76,7 @@ router.post('/payroll/calculate', async (req, res) => {
        WHERE master_id = $1::int
          AND starts_at >= $2::date
          AND starts_at <  ($3::date + INTERVAL '1 day')
-         AND status IN ('done','confirmed','completed')`,
+         AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))`,
       [master_id, period_start, period_end]
     );
     const services_count = ob.rows[0]?.cnt || 0;
@@ -455,7 +459,7 @@ router.get('/payroll/my', async (req, res) => {
       const ob = await pool.query(
         `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
            FROM appointments
-          WHERE master_id=$1::int AND status IN ('done','confirmed','completed')
+          WHERE master_id=$1::int AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))
             AND starts_at >= date_trunc('month', NOW())
             AND starts_at <  (date_trunc('month', NOW()) + INTERVAL '1 month')`, [mid]);
       const cnt = ob.rows[0]?.cnt || 0;
