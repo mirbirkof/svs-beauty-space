@@ -829,8 +829,13 @@ router.get('/overview', requirePerm(), async (req, res) => {
                          COUNT(*) FILTER (WHERE status='done')::int AS done,
                          COUNT(*) FILTER (WHERE status IN ('booked','confirmed'))::int AS upcoming
                   FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
-      // новые клиенты за месяц
-      pool.query(`SELECT COUNT(*)::int AS n FROM clients WHERE created_at >= $1`, [monFrom]).catch(()=>({rows:[{n:0}]})),
+      // новые клиенты за месяц — рахуємо за датою ПЕРШОГО візиту, а не clients.created_at
+      // (вся база імпортована одним днем, тож created_at у всіх = дата імпорту → KPI був завищений у десятки разів)
+      pool.query(`SELECT COUNT(*)::int AS n FROM (
+                    SELECT client_id, MIN(starts_at) AS first_visit
+                      FROM appointments WHERE client_id IS NOT NULL
+                     GROUP BY client_id
+                  ) t WHERE first_visit >= $1`, [monFrom]).catch(()=>({rows:[{n:0}]})),
       // топ мастеров месяца по выручке — источник правды касса (BeautyPro оставляет записи 'confirmed', а не 'done')
       pool.query(`SELECT m.id, m.name,
                          COALESCE(SUM(co.amount),0)::numeric AS revenue,
