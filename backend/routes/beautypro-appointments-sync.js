@@ -433,32 +433,92 @@ async function syncSales(from, to) {
 
   // Реальна сплачена сума → у сам запис (real_amount).
   // price лишається ПЛАНОВОЮ, real_amount = факт із продажів послуг.
-  // Точний матчинг по слоту: bp_calendar зберігає КИЇВСЬКИЙ настінний час як UTC,
-  // тому (bp_calendar у UTC-настінному) має дорівнювати (starts_at у Київ-настінному).
-  // Це відсікає фантомні кросджойни «той самий клієнт+майстер того ж дня, інший слот»,
-  // які date-only матчинг помилково склеював. SUM — на випадок кількох послуг в одному слоті.
+  //
+  // ДВА РІВНІ матчингу (інакше факт губиться при переносі запису):
+  //  1) ТОЧНИЙ по слоту — bp_calendar (UTC-настінний) == starts_at (Київ-настінний).
+  //     Розрізняє кілька РІЗНИХ візитів того ж клієнта+майстра в один день.
+  //  2) FALLBACK по дню — якщо клієнта перенесли на інший час, а продаж BeautyPro
+  //     лишився на ОРИГІНАЛЬНОМУ слоті (тоді точний матчинг не спрацює). Прив'язуємо
+  //     «осиротілий» продаж до ЄДИНОЇ невідматченої виконаної/підтвердженої записи
+  //     цього клієнта+майстра за день. Якщо таких записів кілька — не вгадуємо (пропуск).
+  //
+  // ВАЖЛИВО: скасовані/неявки ВИКЛЮЧЕНІ з матчингу — на них не може висіти реальна
+  // оплата (інакше факт сідає на відмінений дубль, а жива запис лишається з планом).
   const ra = await pool.query(
-    `UPDATE appointments a
-        SET real_amount = s.real_sum, real_synced_at = NOW()
-       FROM (
-         SELECT a2.id,
-                SUM(co.amount) AS real_sum
-           FROM appointments a2
-           JOIN cash_operations co
-             ON co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-            AND co.bp_client = a2.bp_client AND co.master_id = a2.master_id
-            AND (co.bp_calendar AT TIME ZONE 'UTC') = (a2.starts_at AT TIME ZONE 'Europe/Kyiv')
-          WHERE a2.bp_client IS NOT NULL AND a2.master_id IS NOT NULL
-            AND co.bp_calendar IS NOT NULL
-            AND a2.starts_at >= $1::date AND a2.starts_at < ($2::date + INTERVAL '1 day')
-          GROUP BY a2.id
-       ) s
-      WHERE a.id = s.id
-        AND (a.real_amount IS DISTINCT FROM s.real_sum)`,
+    `WITH sales AS (
+       SELECT co.id, co.amount, co.bp_client, co.master_id,
+              (co.bp_calendar AT TIME ZONE 'UTC') AS slot_ts,
+              (co.bp_calendar AT TIME ZONE 'UTC')::date AS sale_day
+         FROM cash_operations co
+        WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+          AND co.bp_calendar IS NOT NULL
+          AND co.bp_client IS NOT NULL AND co.master_id IS NOT NULL
+          AND (co.bp_calendar AT TIME ZONE 'UTC') >= $1::date
+          AND (co.bp_calendar AT TIME ZONE 'UTC') < ($2::date + INTERVAL '1 day')
+     ),
+     appts AS (
+       SELECT a.id, a.bp_client, a.master_id,
+              (a.starts_at AT TIME ZONE 'Europe/Kyiv') AS slot_ts,
+              (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date AS appt_day
+         FROM appointments a
+        WHERE a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
+          AND a.status NOT IN ('cancelled','noshow')
+          AND a.starts_at >= $1::date AND a.starts_at < ($2::date + INTERVAL '1 day')
+     ),
+     precise AS (
+       SELECT ap.id AS appt_id, SUM(s.amount) AS real_sum
+         FROM appts ap JOIN sales s
+           ON s.bp_client=ap.bp_client AND s.master_id=ap.master_id AND s.slot_ts=ap.slot_ts
+        GROUP BY ap.id
+     ),
+     consumed AS (
+       SELECT DISTINCT s.id
+         FROM sales s JOIN appts ap
+           ON s.bp_client=ap.bp_client AND s.master_id=ap.master_id AND s.slot_ts=ap.slot_ts
+     ),
+     leftover AS (
+       SELECT s.bp_client, s.master_id, s.sale_day, SUM(s.amount) AS left_sum
+         FROM sales s
+        WHERE s.id NOT IN (SELECT id FROM consumed)
+        GROUP BY s.bp_client, s.master_id, s.sale_day
+     ),
+     unmatched AS (
+       SELECT ap.* FROM appts ap WHERE ap.id NOT IN (SELECT appt_id FROM precise)
+     ),
+     singleton AS (
+       SELECT bp_client, master_id, appt_day
+         FROM unmatched GROUP BY bp_client, master_id, appt_day HAVING COUNT(*)=1
+     ),
+     fallback AS (
+       SELECT ua.id AS appt_id, lo.left_sum AS real_sum
+         FROM unmatched ua
+         JOIN singleton sg ON sg.bp_client=ua.bp_client AND sg.master_id=ua.master_id AND sg.appt_day=ua.appt_day
+         JOIN leftover  lo ON lo.bp_client=ua.bp_client AND lo.master_id=ua.master_id AND lo.sale_day=ua.appt_day
+     ),
+     matched AS (
+       SELECT appt_id, real_sum FROM precise
+       UNION ALL
+       SELECT appt_id, real_sum FROM fallback
+     )
+     UPDATE appointments a
+        SET real_amount = m.real_sum, real_synced_at = NOW()
+       FROM matched m
+      WHERE a.id = m.appt_id
+        AND a.real_amount IS DISTINCT FROM m.real_sum`,
     [from, to]);
   const real_updated = ra.rowCount || 0;
 
-  return { posted, skipped, shifts, removed, marked_done, real_updated };
+  // Прибираємо фантомний факт зі скасованих/неявок: реальна оплата не може на них
+  // висіти. Інакше відмінений дубль показує суму, а каса/звіти двоять виручку.
+  const rc2 = await pool.query(
+    `UPDATE appointments
+        SET real_amount = NULL, real_synced_at = NOW()
+      WHERE status IN ('cancelled','noshow') AND real_amount IS NOT NULL
+        AND starts_at >= $1::date AND starts_at < ($2::date + INTERVAL '1 day')`,
+    [from, to]);
+  const real_cleared = rc2.rowCount || 0;
+
+  return { posted, skipped, shifts, removed, marked_done, real_updated, real_cleared };
 }
 
 // ── Детальні продажі товарів BP (/sales type=Product) → salon_product_sales ──
