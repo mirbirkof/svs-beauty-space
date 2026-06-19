@@ -355,16 +355,11 @@ router.get('/clients', async (req, res) => {
     args.push(parseInt(limit, 10), parseInt(offset, 10));
     const r = await pool.query(
       `SELECT c.id, c.phone, c.name, c.email, c.loyalty_points,
-              c.created_at, c.last_visit_at,
-              -- Витрачено рахуємо НАЖИВО з фактично оплачених візитів + оплачених замовлень магазину,
-              -- а не з застарілого кешу clients.total_spent (він міг бути роздутий старим імпортом)
-              (COALESCE((SELECT SUM(COALESCE(a.real_amount, a.price)) FROM appointments a
-                          WHERE a.client_id = c.id AND a.status IN ('done','completed')), 0)
-               + COALESCE((SELECT SUM(o.total) FROM orders o
-                          WHERE o.client_id = c.id AND o.status IN ('paid','packing','shipped','delivered')), 0)
-              ) AS total_spent,
-              (SELECT COUNT(*) FROM appointments a
-                 WHERE a.client_id = c.id AND a.status IN ('done','completed')) AS visits_count,
+              c.created_at, c.last_visit_at, c.first_visit_at,
+              -- Витрачено/візити — еталонні цифри з BeautyPro/букона (синхронізовані по телефону)
+              -- + живі візити після вигрузки. Не рахуємо з appointments (там стара склейка по імені).
+              COALESCE(c.total_spent, 0) AS total_spent,
+              COALESCE(c.total_visits, 0) AS visits_count,
               (SELECT COUNT(*) FROM orders WHERE client_id = c.id) AS orders_count,
               COALESCE((SELECT json_agg(json_build_object('id',d.id,'name',d.name,'color',d.color) ORDER BY d.sort_order)
                           FROM client_tags ct JOIN client_tag_defs d ON d.id = ct.tag_id

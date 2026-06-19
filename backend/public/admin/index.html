@@ -1296,7 +1296,7 @@ select.input { background:var(--card); }
                 <th class="sortable" onclick="sortClients('visits_count')">Візитів <span class="sort-ind" data-k="visits_count"></span></th>
                 <th class="sortable" onclick="sortClients('total_spent')">Витрачено <span class="sort-ind" data-k="total_spent"></span></th>
                 <th class="sortable" onclick="sortClients('loyalty_points')">Бонуси <span class="sort-ind" data-k="loyalty_points"></span></th>
-                <th class="sortable" onclick="sortClients('created_at')">Зареєстр. <span class="sort-ind" data-k="created_at"></span></th>
+                <th class="sortable" onclick="sortClients('first_visit_at')">Перший візит <span class="sort-ind" data-k="first_visit_at"></span></th>
               </tr></thead>
               <tbody id="clientsBody"></tbody>
             </table>
@@ -6330,7 +6330,7 @@ function renderClientsTable() {
   const numKeys = ['orders_count', 'visits_count', 'total_spent', 'loyalty_points'];
   const arr = _clientsData.slice().sort((a, b) => {
     let va, vb;
-    if (key === 'created_at') { va = new Date(a.created_at || 0).getTime(); vb = new Date(b.created_at || 0).getTime(); }
+    if (key === 'created_at' || key === 'first_visit_at') { va = new Date(a[key] || 0).getTime(); vb = new Date(b[key] || 0).getTime(); }
     else if (numKeys.includes(key)) { va = Number(a[key] || 0); vb = Number(b[key] || 0); }
     else { va = (a[key] || '').toString().toLowerCase(); vb = (b[key] || '').toString().toLowerCase(); }
     if (va < vb) return dir === 'asc' ? -1 : 1;
@@ -6341,7 +6341,7 @@ function renderClientsTable() {
     <tr><td><a href="#" onclick="openClientCard(${c.id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a>${_tagBadges(c.tags)}</td>
     <td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
     <td>${(c.visits_count!=null?c.visits_count:c.orders_count)||0}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
-    <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
+    <td>${c.loyalty_points}</td><td>${(c.first_visit_at||c.created_at)?new Date(c.first_visit_at||c.created_at).toLocaleDateString('uk-UA'):'—'}</td></tr>`).join('')
     || '<tr><td colspan="7"><div class="empty">Клієнтів немає</div></td></tr>';
   document.querySelectorAll('#clientsTable .sort-ind').forEach(s => {
     s.textContent = (s.dataset.k === key) ? (dir === 'asc' ? '▲' : '▼') : '';
@@ -6495,8 +6495,8 @@ async function openClientCard(id){
     document.getElementById('clientCardTitle').textContent = c.name || 'Картка клієнта';
     document.getElementById('clientCardBody').innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-        ${kpiBox('Візитів', st.visits_done||0)}
-        ${kpiBox('Витрачено в салоні', (st.visits_spent||0).toLocaleString()+' ₴')}
+        ${kpiBox('Візитів', (c.total_visits!=null?c.total_visits:(st.visits_done||0)))}
+        ${kpiBox('Витрачено в салоні', (Number(c.total_spent!=null?c.total_spent:(st.visits_spent||0))).toLocaleString()+' ₴')}
         ${kpiBox('Куплено товарів', (st.products_spent||0).toLocaleString()+' ₴')}
         ${kpiBox('Бонуси', c.loyalty_points||0)}
       </div>
