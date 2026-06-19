@@ -377,6 +377,59 @@ router.post('/day', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── POST /api/schedule/apply-pattern — застосувати схему графіка (2/2, 3/2, 5/2…) на весь місяць ──
+// Body: { master_id, ym:"YYYY-MM", work_days:Int, off_days:Int, anchor:"YYYY-MM-DD" (перший робочий день циклу),
+//         start:"09:00", end:"18:00", overwrite_offs:true }
+// Генерує робочі дні та вихідні за циклом (work_days підряд, потім off_days вихідних) від дати anchor.
+// Всі записи source='manual' (захищені від синхронізації BeautyPro). Ідемпотентно (ON CONFLICT).
+// overwrite_offs:false → у дні-вихідні схеми НЕ чіпає наявний графік (тільки виставляє робочі зміни).
+router.post('/apply-pattern', async (req, res) => {
+  try {
+    const pool = getPool();
+    let { master_id, ym, work_days, off_days, anchor, start, end, overwrite_offs } = req.body || {};
+    if (!master_id || !ym) return res.status(400).json({ error: 'master_id and ym required' });
+    if (!/^\d{4}-\d{2}$/.test(ym)) return res.status(400).json({ error: 'ym must be YYYY-MM' });
+    work_days = parseInt(work_days, 10); off_days = parseInt(off_days, 10);
+    if (!(work_days >= 1) || !(off_days >= 0) || (work_days + off_days) < 1)
+      return res.status(400).json({ error: 'work_days/off_days invalid' });
+    if (!/^\d{2}:\d{2}$/.test(start || '') || !/^\d{2}:\d{2}$/.test(end || ''))
+      return res.status(400).json({ error: 'start/end must be HH:MM' });
+    if (end <= start) return res.status(400).json({ error: 'end must be after start' });
+    const [Y, M] = ym.split('-').map(Number);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor || '')) anchor = `${ym}-01`;
+    const cycle = work_days + off_days;
+    const anchorD = new Date(anchor + 'T00:00:00Z');
+    const dayMs = 86400000;
+    const daysInMonth = new Date(Date.UTC(Y, M, 0)).getUTCDate();
+    let workCount = 0, offCount = 0, skipped = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const cur = new Date(Date.UTC(Y, M - 1, d));
+      const iso = cur.toISOString().slice(0, 10);
+      let idx = Math.round((cur - anchorD) / dayMs) % cycle;
+      if (idx < 0) idx += cycle;
+      const isWork = idx < work_days;
+      if (isWork) {
+        await pool.query(
+          `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+             VALUES ($1,$2,$3,$4,'manual',NOW())
+           ON CONFLICT (master_id, work_date)
+           DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
+          [master_id, iso, start, end]);
+        workCount++;
+      } else if (overwrite_offs !== false) {
+        await pool.query(
+          `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+             VALUES ($1,$2,NULL,NULL,'manual',NOW())
+           ON CONFLICT (master_id, work_date)
+           DO UPDATE SET start_time=NULL, end_time=NULL, source='manual', synced_at=NOW()`,
+          [master_id, iso]);
+        offCount++;
+      } else { skipped++; }
+    }
+    res.json({ ok: true, work_days: workCount, off_days: offCount, skipped, days_total: daysInMonth });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 // ── DELETE /api/schedule/day?master_id=&date= — прибрати ручний запис, повернути до шаблону ──
 router.delete('/day', async (req, res) => {
   try {

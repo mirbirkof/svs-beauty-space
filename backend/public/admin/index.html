@@ -3200,6 +3200,7 @@ async function renderScheduleOverview(grid) {
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
        <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+       <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одним кліком"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
        <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
        <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
@@ -3230,6 +3231,47 @@ function schCopyWeek(){
     const r=await api('/api/schedule/copy-week',{method:'POST',body:JSON.stringify({master_id,from,to})});
     if(r&&r.ok){ toast(`Скопійовано днів: ${r.copied}`); renderScheduleOverview(document.getElementById('schGrid')); }
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('copy'); }
+  });
+}
+// SAL-04 — швидке виставлення схеми графіка (2/2, 3/2, 5/2…) на весь місяць
+function schApplyPattern(){
+  const ym = _schMonth || _ymNow();
+  const [Y,M] = ym.split('-').map(Number);
+  const monName = _SCH_MON[M-1]+' '+Y;
+  const items = (_schMonthData && _schMonthData.items) || _schMastersCache || [];
+  const opts = items.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+  const presets = [['2','2','2/2 — два через два'],['3','2','3/2'],['5','2','5/2 — пн-пт'],['6','1','6/1'],['1','1','1/1 — день через день'],['custom','','Своя схема…']];
+  const presetOpts = presets.map(p=>`<option value="${p[0]}/${p[1]}">${p[2]}</option>`).join('');
+  showModal('Схема графіка — '+monName, `
+    <p class="set-p" style="margin-bottom:12px">Виставить робочі дні та вихідні за обраним циклом на весь місяць. Перший робочий день — дата-якір. Усі зміни захищені від перезапису синхронізацією BeautyPro.</p>
+    <label class="set-p" style="display:block;margin-bottom:4px">Майстер</label>
+    <select id="apMaster" class="inp" style="margin-bottom:12px">${opts||'<option value="">Немає майстрів</option>'}</select>
+    <label class="set-p" style="display:block;margin-bottom:4px">Схема</label>
+    <select id="apPreset" class="inp" style="margin-bottom:12px" onchange="document.getElementById('apCustom').style.display=this.value==='custom/'?'flex':'none'">${presetOpts}</select>
+    <div id="apCustom" style="display:none;gap:10px;margin-bottom:12px">
+      <label style="flex:1">Робочих днів<br><input type="number" id="apWork" class="inp" value="2" min="1" max="30" style="width:100%"></label>
+      <label style="flex:1">Вихідних<br><input type="number" id="apOff" class="inp" value="2" min="0" max="30" style="width:100%"></label>
+    </div>
+    <label class="set-p" style="display:block;margin-bottom:4px">Перший робочий день (якір)</label>
+    <input type="date" id="apAnchor" class="inp" value="${ym}-01" min="${ym}-01" style="margin-bottom:12px">
+    <div style="display:flex;gap:10px;margin-bottom:6px">
+      <label style="flex:1">Початок зміни<br><input type="time" id="apStart" class="inp" value="09:00" style="width:100%"></label>
+      <label style="flex:1">Кінець зміни<br><input type="time" id="apEnd" class="inp" value="18:00" style="width:100%"></label>
+    </div>
+  `, async ()=>{
+    const master_id = document.getElementById('apMaster').value;
+    if(!master_id){ toast('Оберіть майстра','error'); throw new Error('master'); }
+    let wd, od;
+    const pv = document.getElementById('apPreset').value;
+    if(pv==='custom/'){ wd=+document.getElementById('apWork').value; od=+document.getElementById('apOff').value; }
+    else { const parts=pv.split('/'); wd=+parts[0]; od=+parts[1]; }
+    if(!(wd>=1)){ toast('Робочих днів має бути ≥1','error'); throw new Error('wd'); }
+    const start=document.getElementById('apStart').value, end=document.getElementById('apEnd').value;
+    const anchor=document.getElementById('apAnchor').value||(ym+'-01');
+    if(end<=start){ toast('Кінець має бути пізніше початку','error'); throw new Error('time'); }
+    const r=await api('/api/schedule/apply-pattern',{method:'POST',body:JSON.stringify({master_id,ym,work_days:wd,off_days:od,anchor,start,end})});
+    if(r&&r.ok){ toast(`Схему ${wd}/${od} виставлено: ${r.work_days} робочих, ${r.off_days} вихідних`); renderScheduleOverview(document.getElementById('schGrid')); }
+    else { toast((r&&r.error)||'Помилка','error'); throw new Error('apply'); }
   });
 }
 // #10 — виділення всього стовпця дня для зручного перегляду «хто працює / вихідний»
