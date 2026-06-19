@@ -122,21 +122,24 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 30), 365);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    // Источник истины — эталонные показатели карточки (выгрузка букона по телефону):
+    // total_visits / last_visit_at / total_spent. Записи (appointments) склеены по имени
+    // у однофамильцев, поэтому для фильтра «кого возвращать» они недостоверны.
+    // last_master / last_service берём из записей best-effort (вторичная справка).
     const rows = await pool.query(
       `SELECT c.id, c.name, c.phone, c.total_spent,
-              MAX(a.starts_at) AS last_visit,
-              COUNT(a.id) FILTER (WHERE a.status='done')::int AS visits,
-              (CURRENT_DATE - MAX(a.starts_at)::date)::int AS days_since,
+              c.last_visit_at AS last_visit,
+              c.total_visits::int AS visits,
+              (CURRENT_DATE - c.last_visit_at::date)::int AS days_since,
               (SELECT m.name FROM appointments a2 JOIN masters m ON m.id=a2.master_id
                 WHERE a2.client_id=c.id AND a2.status='done' ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
               (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
                  FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
                 WHERE a3.client_id=c.id AND a3.status='done' ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
-         FROM clients c JOIN appointments a ON a.client_id=c.id
-        WHERE a.status NOT IN ('cancelled','noshow')
-        GROUP BY c.id, c.name, c.phone, c.total_spent
-       HAVING MAX(a.starts_at) < NOW() - ($1 || ' days')::interval
-          AND COUNT(a.id) FILTER (WHERE a.status='done') >= 2
+         FROM clients c
+        WHERE c.last_visit_at IS NOT NULL
+          AND c.last_visit_at::date < CURRENT_DATE - ($1)::int
+          AND COALESCE(c.total_visits,0) >= 2
         ORDER BY c.total_spent DESC NULLS LAST, days_since ASC
         LIMIT $2`, [days, limit]).then(r => r.rows).catch(() => []);
     const out = rows.map(r => ({
