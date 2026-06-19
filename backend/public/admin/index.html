@@ -1024,7 +1024,7 @@ select.input { background:var(--card); }
 
         <div class="card" id="qualCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">verified</span> Контроль якості</h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">verified</span> Контроль якості <button type="button" class="info-i" data-t="<b>Контроль якості.</b> Оцінки роботи майстрів і виконання стандартів сервісу. Допомагає бачити, де якість просідає, і вчасно реагувати." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="qualInfo" style="font-size:12px;color:var(--text-secondary)"></span>
             </div>
@@ -1036,7 +1036,7 @@ select.input { background:var(--card); }
 
         <div class="card" id="salesCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">trending_up</span> AI-продажі</h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">trending_up</span> AI-продажі <button type="button" class="info-i" data-t="<b>AI-продажі.</b> Розумні підказки, які товари чи послуги варто запропонувати клієнту (допродаж). Базується на історії покупок і популярних поєднаннях." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="salesInfo" style="font-size:12px;color:var(--text-secondary)"></span>
             </div>
@@ -1348,7 +1348,7 @@ select.input { background:var(--card); }
       <!-- ═══ STOCK ═══ -->
       <div class="page" id="page-stock">
         <div class="card" style="max-width:500px">
-          <div class="card-header"><h3>Прихід / списання товару</h3></div>
+          <div class="card-header"><h3>Прихід / списання товару <button type="button" class="info-i" data-t="<b>Прихід / списання товару.</b> Тут оприбутковують нову поставку (+ на склад) або списують зіпсоване/використане (− зі складу). Кожна дія змінює залишок і фіксується в історії." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
             <input id="stockVariantId" type="number" placeholder="ID варіанту" class="input">
             <input id="stockQty" type="number" placeholder="Кількість (+ прихід, − списання)" class="input">
@@ -1374,11 +1374,11 @@ select.input { background:var(--card); }
           </select>
         </div>
         <div class="card" style="margin-bottom:14px">
-          <div class="card-header"><h3>Потреба в закупівлі</h3><span class="hint" id="puNeedsHint"></span></div>
+          <div class="card-header"><h3>Потреба в закупівлі <button type="button" class="info-i" data-t="<b>Потреба в закупівлі.</b> Система сама рахує, яких товарів скоро не вистачить (за залишком і темпом продажів), і пропонує, що замовити постачальнику." onclick="showInfo(event,this.dataset.t)">i</button></h3><span class="hint" id="puNeedsHint"></span></div>
           <div class="card-body"><table class="tbl"><tbody id="puNeeds"></tbody></table></div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Заказы постачальникам</h3></div>
+          <div class="card-header"><h3>Заказы постачальникам <button type="button" class="info-i" data-t="<b>Замовлення постачальникам.</b> Список сформованих заявок на закупівлю: статус, очікувана дата поставки. Після отримання — оприбутковуєте товар на склад." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body"><table class="tbl"><tbody id="puOrders"></tbody></table></div>
         </div>
       </div>
@@ -1539,7 +1539,7 @@ select.input { background:var(--card); }
         <!-- СХЕМИ -->
         <div class="py-pane" id="pypane-schemes">
           <div class="card">
-            <div class="card-header"><h3>Схеми нарахування</h3>
+            <div class="card-header"><h3>Схеми нарахування <button type="button" class="info-i" data-t="<b>Схеми нарахування зарплати.</b> Правила, за якими рахується оплата майстрам: відсоток від виручки, ставка за зміну або фікс. Призначаються кожному співробітнику." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <button class="btn btn-primary btn-sm" onclick="schemeForm()"><span class="material-icons-round">add</span>Нова / змінити схему</button></div>
             <div class="card-body" id="payrollList"><div class="empty"><span class="material-icons-round">payments</span>Завантаження...</div></div>
           </div>
@@ -1548,7 +1548,7 @@ select.input { background:var(--card); }
         <!-- РОЗРАХУНКИ -->
         <div class="py-pane" id="pypane-calc" style="display:none">
           <div class="card">
-            <div class="card-header"><h3>Розрахувати зарплату</h3></div>
+            <div class="card-header"><h3>Розрахувати зарплату <button type="button" class="info-i" data-t="<b>Розрахунок зарплати.</b> Обираєте майстра і період — система рахує суму за схемою нарахування: відсоток від виконаних послуг плюс/мінус бонуси, штрафи й аванси." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
             <div class="card-body">
               <div class="py-row">
                 <select id="pyCalcMaster" class="inp"></select>
@@ -1560,7 +1560,7 @@ select.input { background:var(--card); }
             </div>
           </div>
           <div class="card">
-            <div class="card-header"><h3>Нарахування</h3>
+            <div class="card-header"><h3>Нарахування <button type="button" class="info-i" data-t="<b>Нарахування.</b> Підсумкова сума до виплати кожному майстру за період з розбивкою: база, бонуси, штрафи, видані аванси." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <select id="pyRecFilter" class="inp" style="max-width:200px" onchange="loadPayrollRecords()">
                 <option value="">Усі статуси</option><option value="draft">Чернетка</option>
                 <option value="approved">Підтверджено</option><option value="paid">Виплачено</option></select></div>
@@ -1571,7 +1571,7 @@ select.input { background:var(--card); }
         <!-- БОНУСИ / ШТРАФИ / АВАНСИ -->
         <div class="py-pane" id="pypane-adjust" style="display:none">
           <div class="py-grid3">
-            <div class="card"><div class="card-header"><h3>Бонуси</h3></div><div class="card-body">
+            <div class="card"><div class="card-header"><h3>Бонуси <button type="button" class="info-i" data-t="<b>Бонуси.</b> Додаткові доплати майстру (за план, акції, ініціативу). Додаються до зарплати при розрахунку." onclick="showInfo(event,this.dataset.t)">i</button></h3></div><div class="card-body">
               <div class="py-form">
                 <select id="pyBonMaster" class="inp"></select>
                 <input type="number" id="pyBonAmount" class="inp" placeholder="Сума ₴" min="0">
@@ -1581,7 +1581,7 @@ select.input { background:var(--card); }
               </div>
               <div id="pyBonusList" style="margin-top:10px"></div>
             </div></div>
-            <div class="card"><div class="card-header"><h3>Штрафи</h3></div><div class="card-body">
+            <div class="card"><div class="card-header"><h3>Штрафи <button type="button" class="info-i" data-t="<b>Штрафи.</b> Утримання із зарплати (запізнення, порушення). Віднімаються при розрахунку виплати." onclick="showInfo(event,this.dataset.t)">i</button></h3></div><div class="card-body">
               <div class="py-form">
                 <select id="pyPenMaster" class="inp"></select>
                 <input type="number" id="pyPenAmount" class="inp" placeholder="Сума ₴" min="0">
@@ -1591,7 +1591,7 @@ select.input { background:var(--card); }
               </div>
               <div id="pyPenaltyList" style="margin-top:10px"></div>
             </div></div>
-            <div class="card"><div class="card-header"><h3>Аванси</h3></div><div class="card-body">
+            <div class="card"><div class="card-header"><h3>Аванси <button type="button" class="info-i" data-t="<b>Аванси.</b> Гроші, видані майстру наперед до зарплати. При розрахунку віднімаються від підсумкової суми." onclick="showInfo(event,this.dataset.t)">i</button></h3></div><div class="card-body">
               <div class="py-form">
                 <select id="pyAdvMaster" class="inp"></select>
                 <input type="number" id="pyAdvAmount" class="inp" placeholder="Сума ₴" min="0">
@@ -1606,13 +1606,13 @@ select.input { background:var(--card); }
 
         <!-- ВИПЛАТИ -->
         <div class="py-pane" id="pypane-payments" style="display:none">
-          <div class="card"><div class="card-header"><h3>Історія виплат</h3></div>
+          <div class="card"><div class="card-header"><h3>Історія виплат <button type="button" class="info-i" data-t="<b>Історія виплат.</b> Журнал усіх проведених зарплатних виплат: кому, скільки, коли і за який період." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
             <div class="card-body" id="payrollPayments"><div class="empty">Завантаження...</div></div></div>
         </div>
 
         <!-- АНАЛІТИКА -->
         <div class="py-pane" id="pypane-analytics" style="display:none">
-          <div class="card"><div class="card-header"><h3>Фінансова аналітика</h3>
+          <div class="card"><div class="card-header"><h3>Фінансова аналітика <button type="button" class="info-i" data-t="<b>Фінансова аналітика.</b> Графіки доходів, витрат і прибутку за період. Показує динаміку й структуру грошового потоку салону." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px">
               <input type="date" id="pyStatFrom" class="inp"><input type="date" id="pyStatTo" class="inp">
               <button class="btn btn-outline btn-sm" onclick="loadPayrollStats()">Оновити</button></div></div>
@@ -1642,7 +1642,7 @@ select.input { background:var(--card); }
         <div class="plan-pane" id="pt-month">
           <div class="card">
             <div class="card-header" style="flex-wrap:wrap;gap:10px">
-              <h3>План обороту на місяць</h3>
+              <h3>План обороту на місяць <button type="button" class="info-i" data-t="<b>План обороту.</b> Цільова виручка на місяць для кожного майстра. % показує виконання плану за фактичним оборотом (послуги + товари). План на місяць рахується з кількості змін у графіку." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
                 <select id="planMonth" class="input btn-sm" style="max-width:140px" onchange="loadMonthlyPlan()"></select>
                 <select id="planYear" class="input btn-sm" style="max-width:100px" onchange="loadMonthlyPlan()"></select>
@@ -1660,7 +1660,7 @@ select.input { background:var(--card); }
         <div class="plan-pane" id="pt-util" style="display:none">
           <div class="card">
             <div class="card-header" style="flex-wrap:wrap;gap:10px">
-              <h3>Завантаження салону</h3>
+              <h3>Завантаження салону <button type="button" class="info-i" data-t="<b>Завантаження салону.</b> Наскільки щільно зайнятий робочий час майстрів записами. Рахується як зайнятий записами час ÷ робочий час за графіком. Без графіка % не рахується." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
                 <input type="date" id="utilFrom" class="input btn-sm" style="max-width:150px">
                 <span style="color:var(--text-secondary)">–</span>
@@ -1680,7 +1680,7 @@ select.input { background:var(--card); }
         <div class="plan-pane" id="pt-master" style="display:none">
           <div class="card">
             <div class="card-header" style="flex-wrap:wrap;gap:10px">
-              <h3>Аналітика по майстру</h3>
+              <h3>Аналітика по майстру <button type="button" class="info-i" data-t="<b>Аналітика по майстру.</b> Детальні показники одного майстра за період: виручка, кількість послуг, середній чек, повторні клієнти, завантаження." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
                 <select id="mdMaster" class="input btn-sm" style="max-width:200px"></select>
                 <input type="date" id="mdFrom" class="input btn-sm" style="max-width:150px">
@@ -1701,7 +1701,7 @@ select.input { background:var(--card); }
         <div class="plan-pane" id="pt-goods" style="display:none">
           <div class="card">
             <div class="card-header" style="flex-wrap:wrap;gap:10px">
-              <h3>Продажі товарів</h3>
+              <h3>Продажі товарів <button type="button" class="info-i" data-t="<b>Продажі товарів.</b> Скільки і яких товарів продано за період, на яку суму. Допомагає бачити ходові позиції й планувати закупівлю." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
                 <select id="psBrand" class="input btn-sm" style="max-width:160px"><option value="">Усі бренди</option></select>
                 <select id="psBranch" class="input btn-sm" style="max-width:160px"><option value="">Усі склади</option></select>
@@ -1761,7 +1761,7 @@ select.input { background:var(--card); }
           <button onclick="runReminders()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Розіслати зараз</button>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Заплановані нагадування</h3></div>
+          <div class="card-header"><h3>Заплановані нагадування <button type="button" class="info-i" data-t="<b>Заплановані нагадування.</b> Автоматичні сповіщення клієнтам (про запис, повернення тощо), які чекають на відправку. Видно час і статус кожного." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body" style="padding:0">
             <table class="tbl">
               <thead><tr><th>Коли</th><th>Клієнт</th><th>Телефон</th><th>Тип</th><th>Канал</th><th>Статус</th></tr></thead>
@@ -1779,7 +1779,7 @@ select.input { background:var(--card); }
           <button onclick="runRepeat()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Запустити кампанію</button>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Кандидати на повторний візит</h3></div>
+          <div class="card-header"><h3>Кандидати на повторний візит <button type="button" class="info-i" data-t="<b>Кандидати на повторний візит.</b> Клієнти, яких час запросити знову (за типовим інтервалом їхньої послуги). Готовий список для дзвінка чи розсилки." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body" style="padding:0">
             <table class="tbl">
               <thead><tr><th>Клієнт</th><th>Телефон</th><th>Останній візит</th><th>Послуга</th><th>Сума</th><th>Дій</th></tr></thead>
@@ -1830,7 +1830,7 @@ select.input { background:var(--card); }
           <span>Результат: <b id="finSumRes">0 ₴</b></span>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Рух коштів</h3></div>
+          <div class="card-header"><h3>Рух коштів <button type="button" class="info-i" data-t="<b>Рух коштів.</b> Усі надходження і витрати грошей за період — повна картина, звідки гроші приходять і куди йдуть." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body" style="padding:0;overflow:auto">
             <table class="fin-table" id="finTable">
               <thead><tr>
@@ -1867,7 +1867,7 @@ select.input { background:var(--card); }
             <!-- ПРОФІЛЬ САЛОНУ -->
             <div class="set-pane active" id="tab-profile">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Профіль салону</h3>
+                <h3 class="set-h">Профіль салону <button type="button" class="info-i" data-t="<b>Профіль салону.</b> Назва, адреса, телефон, графік роботи й лого. Ці дані бачать клієнти на сторінці онлайн-запису та в сповіщеннях." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Основна інформація про салон — показується клієнтам в онлайн-записі та чеках.</p>
                 <div class="set-form">
                   <label class="set-field"><span>Назва салону</span><input id="sp_name" class="input" placeholder="SVS Beauty Space"></label>
@@ -1888,7 +1888,7 @@ select.input { background:var(--card); }
             <!-- ОНЛАЙН-ЗАПИС -->
             <div class="set-pane" id="tab-booking">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Онлайн-запис</h3>
+                <h3 class="set-h">Онлайн-запис <button type="button" class="info-i" data-t="<b>Онлайн-запис.</b> Налаштування сторінки самостійного запису клієнтів: які послуги показувати, інтервали слотів, за скільки наперед і на скільки днів уперед можна записатись." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Налаштування форми запису, якою користуються клієнти.</p>
                 <label class="set-toggle">
                   <input type="checkbox" id="ob_enabled" onchange="saveBooking()">
@@ -1910,7 +1910,7 @@ select.input { background:var(--card); }
             <!-- ПЕРЕДПЛАТА -->
             <div class="set-pane" id="tab-prepay">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Передплата за онлайн-запис</h3>
+                <h3 class="set-h">Передплата за онлайн-запис <button type="button" class="info-i" data-t="<b>Передплата.</b> Вимога часткової або повної оплати наперед при онлайн-записі — щоб зменшити неявки. Можна увімкнути для всіх або окремих послуг." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">При онлайн-записі клієнту автоматично виставляється рахунок на передоплату через Monobank (картка / Apple Pay / Google Pay). Це знижує кількість неявок.</p>
                 <label class="set-toggle">
                   <input type="checkbox" id="pp_enabled" onchange="savePrepay()">
@@ -1931,7 +1931,7 @@ select.input { background:var(--card); }
             <!-- ГРАФІК ЗМІН -->
             <div class="set-pane" id="tab-schedule">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Графік змін майстрів</h3>
+                <h3 class="set-h">Графік змін майстрів <button type="button" class="info-i" data-t="<b>Графік змін.</b> Загальні правила робочого часу й змін майстрів. Детальний помісячний графік редагується в розділі «Персонал → Графіки»." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Робочі дні й години кожного майстра на тиждень. Журнал показує лише робочий час, онлайн-запис пропонує тільки вільні слоти в межах зміни.</p>
                 <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
                   <select id="schMaster" class="input" style="max-width:260px" onchange="loadSchedule()"><option value="">— оберіть майстра —</option></select>
@@ -1944,7 +1944,7 @@ select.input { background:var(--card); }
             <!-- КОНФІДЕНЦІЙНІСТЬ -->
             <div class="set-pane" id="tab-privacy">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Приватність клієнтів</h3>
+                <h3 class="set-h">Приватність клієнтів <button type="button" class="info-i" data-t="<b>Приватність клієнтів.</b> Хто з персоналу бачить телефони й персональні дані клієнтів. Можна маскувати номери для майстрів." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Керування тим, що бачать співробітники.</p>
                 <label class="set-toggle">
                   <input type="checkbox" id="set-masters-phone" onchange="saveSettings()">
@@ -1957,7 +1957,7 @@ select.input { background:var(--card); }
             <!-- БІЗНЕС-НАЛАШТУВАННЯ (власник) -->
             <div class="set-pane" id="tab-business">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Модулі</h3>
+                <h3 class="set-h">Модулі <button type="button" class="info-i" data-t="<b>Модулі.</b> Вмикання/вимикання функцій CRM (зміни, табель тощо). Вимкнені модулі ховаються з меню, щоб не заважати." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Увімкнення / вимкнення необовʼязкових розділів. Вимкнений модуль зникає з меню, дані зберігаються.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_mod_shifts" onchange="toggleShiftsModule(this.checked)"><span><b>Зміни / Табель</b><i>Окремий облік змін і clock-in/out. Для плану обороту кількість змін береться з графіка незалежно від цього модуля.</i></span></label>
@@ -1965,7 +1965,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Лояльність</h3>
+                <h3 class="set-h">Лояльність <button type="button" class="info-i" data-t="<b>Лояльність.</b> Бонусна програма: відсоток нарахування балів від суми покупки і правила їх списання. Бали клієнт може витрачати на наступні візити." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Кешбек балами за візити. 1 бал = 1 грн при списанні.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_loy_enabled"><span><b>Програма лояльності увімкнена</b></span></label>
@@ -1978,7 +1978,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Сповіщення</h3>
+                <h3 class="set-h">Сповіщення <button type="button" class="info-i" data-t="<b>Сповіщення.</b> Які повідомлення й коли надсилати клієнтам (підтвердження запису, нагадування, подяка) через Telegram-бота салону." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Нагадування клієнтам про запис.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_ntf_sms"><span><b>SMS</b></span></label>
@@ -1990,7 +1990,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Способи оплати</h3>
+                <h3 class="set-h">Способи оплати <button type="button" class="info-i" data-t="<b>Способи оплати.</b> Доступні методи розрахунку в касі (готівка, картка, переказ) і онлайн-оплата. Впливає на касові операції та звіти." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Які методи доступні при розрахунку.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_pay_cash"><span><b>Готівка</b></span></label>
@@ -2004,7 +2004,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Фінанси</h3>
+                <h3 class="set-h">Фінанси <button type="button" class="info-i" data-t="<b>Фінанси.</b> Налаштування фінансового обліку: статті доходів і витрат, регулярні платежі (оренда, комуналка), правила формування прибутку в звітах." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Валюта та комісія майстрів за замовчуванням.</p>
                 <div class="set-form">
                   <div class="set-field"><label>Валюта</label>
@@ -2019,7 +2019,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Скасування та неявка</h3>
+                <h3 class="set-h">Скасування та неявка <button type="button" class="info-i" data-t="<b>Скасування та неявка.</b> Правила: за скільки можна безкоштовно скасувати запис і що рахувати неявкою. Впливає на статистику й передплату." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Політика скасування записів.</p>
                 <div class="set-form">
                   <div class="set-field"><label>Мін. годин до скасування</label><input id="bz_can_hours" class="input" type="number" min="0" value="24"></div>
@@ -2030,7 +2030,7 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Видимість для майстрів</h3>
+                <h3 class="set-h">Видимість для майстрів <button type="button" class="info-i" data-t="<b>Видимість для майстрів.</b> Що бачить майстер у своєму кабінеті: лише свій графік і записи, без фінансів власника. Залежить від ролі." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Що бачать майстри у своєму кабінеті.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_vis_others"><span><b>Бачать чужі записи</b><i>Записи інших майстрів у журналі.</i></span></label>
@@ -2045,7 +2045,7 @@ select.input { background:var(--card); }
             <!-- КАБІНЕТИ / РЕСУРСИ -->
             <div class="set-pane" id="tab-rooms">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Кабінети / робочі місця</h3>
+                <h3 class="set-h">Кабінети / робочі місця <button type="button" class="info-i" data-t="<b>Кабінети / робочі місця.</b> Перелік кабінетів салону. Запис можна привʼязати до кабінету, щоб не було накладок двох майстрів в одному місці." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Кабінети можна призначати запису в журналі.</p>
                 <div id="roomsList" style="display:grid;gap:8px;margin-bottom:12px"></div>
                 <div style="display:flex;gap:8px">
@@ -2060,7 +2060,7 @@ select.input { background:var(--card); }
             <!-- РОЗХІДНИКИ -->
             <div class="set-pane" id="tab-consumables">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Розхідники на послуги</h3>
+                <h3 class="set-h">Розхідники на послуги <button type="button" class="info-i" data-t="<b>Розхідники на послуги.</b> Які матеріали й скільки витрачається на кожну послугу. При виконанні запису вони автоматично списуються зі складу." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Які товари списуються зі складу при виконанні послуги. Списання — автоматичне, коли запис стає «Виконано».</p>
                 <select id="consSvc" class="input" onchange="loadCons()"><option value="">— оберіть послугу —</option></select>
                 <div id="consList" style="display:grid;gap:8px;margin:12px 0"></div>
