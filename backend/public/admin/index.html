@@ -1293,7 +1293,7 @@ select.input { background:var(--card); }
                 <th class="sortable" onclick="sortClients('name')">Імʼя <span class="sort-ind" data-k="name"></span></th>
                 <th class="sortable" onclick="sortClients('phone')">Телефон <span class="sort-ind" data-k="phone"></span></th>
                 <th class="sortable" onclick="sortClients('email')">Email <span class="sort-ind" data-k="email"></span></th>
-                <th class="sortable" onclick="sortClients('orders_count')">Замовлень <span class="sort-ind" data-k="orders_count"></span></th>
+                <th class="sortable" onclick="sortClients('visits_count')">Візитів <span class="sort-ind" data-k="visits_count"></span></th>
                 <th class="sortable" onclick="sortClients('total_spent')">Витрачено <span class="sort-ind" data-k="total_spent"></span></th>
                 <th class="sortable" onclick="sortClients('loyalty_points')">Бонуси <span class="sort-ind" data-k="loyalty_points"></span></th>
                 <th class="sortable" onclick="sortClients('created_at')">Зареєстр. <span class="sort-ind" data-k="created_at"></span></th>
@@ -6327,7 +6327,7 @@ function sortClients(key) {
 }
 function renderClientsTable() {
   const { key, dir } = _clientSort;
-  const numKeys = ['orders_count', 'total_spent', 'loyalty_points'];
+  const numKeys = ['orders_count', 'visits_count', 'total_spent', 'loyalty_points'];
   const arr = _clientsData.slice().sort((a, b) => {
     let va, vb;
     if (key === 'created_at') { va = new Date(a.created_at || 0).getTime(); vb = new Date(b.created_at || 0).getTime(); }
@@ -6340,7 +6340,7 @@ function renderClientsTable() {
   document.getElementById('clientsBody').innerHTML = arr.map(c => `
     <tr><td><a href="#" onclick="openClientCard(${c.id});return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${c.name||'—'}</a>${_tagBadges(c.tags)}</td>
     <td>${fmtPhone(c.phone)}</td><td>${c.email||'—'}</td>
-    <td>${c.orders_count}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
+    <td>${(c.visits_count!=null?c.visits_count:c.orders_count)||0}</td><td>${Number(c.total_spent).toLocaleString()} ₴</td>
     <td>${c.loyalty_points}</td><td>${new Date(c.created_at).toLocaleDateString('uk-UA')}</td></tr>`).join('')
     || '<tr><td colspan="7"><div class="empty">Клієнтів немає</div></td></tr>';
   document.querySelectorAll('#clientsTable .sort-ind').forEach(s => {
