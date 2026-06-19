@@ -5970,6 +5970,7 @@ async function openAppt(id) {
           </div>
         </div>
       </div>
+      <div id="apptProducts"></div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
       ${a.paid ? `
         <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
@@ -6018,6 +6019,33 @@ async function openAppt(id) {
   };
   loadApptPhotos(a.id, 'before');
   loadApptPhotos(a.id, 'after');
+  loadApptProducts(a.id);
+}
+
+// Товари / розхідники візиту — підтягуємо реальні продажі товарів цього клієнта того дня
+async function loadApptProducts(id) {
+  const box = document.getElementById('apptProducts');
+  if (!box) return;
+  try {
+    const d = await api('/api/schedule/appointments/' + id + '/details');
+    const products = (d && d.products) || [];
+    if (!products.length) { box.innerHTML = ''; return; }
+    const total = Number(d.products_total || products.reduce((s,p)=>s+Number(p.total_price||0),0));
+    box.innerHTML = `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="color:var(--text-secondary);font-size:12px">Товари / розхідники візиту</span>
+          <span style="font-weight:600">${_money(total)}</span>
+        </div>
+        <div style="display:grid;gap:6px">
+          ${products.map(p=>`
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
+              <span>${escapeHtml(p.name||'Товар')}${(Number(p.qty)>1)?` <span style="color:var(--text-secondary)">×${p.qty}</span>`:''}</span>
+              <span style="font-weight:600;white-space:nowrap">${_money(p.total_price)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  } catch (_) { box.innerHTML = ''; }
 }
 
 // Провести оплату: запис → виконано + прихід у касу (готівка/картка)

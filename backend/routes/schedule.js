@@ -695,6 +695,72 @@ router.get('/journal', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── GET /api/schedule/appointments/:id/details — деталі візиту: послуги + товари/розхідники ──
+// Повертає реальні товари (salon_product_sales) того ж клієнта того ж дня (київський),
+// щоб у картці запису було видно «що продано/витрачено», а не лише послугу.
+router.get('/appointments/:id/details', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
+
+    const aRes = await pool.query(
+      `SELECT a.id, a.master_id, a.client_id, a.bp_client, a.starts_at, a.status,
+              COALESCE(a.price, s.price) AS price, a.real_amount,
+              s.name AS service_name
+         FROM appointments a
+         LEFT JOIN services s ON s.id = a.service_id
+        WHERE a.id = $1`, [id]
+    );
+    if (!aRes.rows.length) return res.status(404).json({ error: 'not-found' });
+    const a = aRes.rows[0];
+
+    // Майстер бачить деталі лише власного запису
+    if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(a.master_id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    // Послуги візиту (якщо є кілька в appointment_services) + сама послуга запису
+    let services = [];
+    try {
+      const sRes = await pool.query(
+        `SELECT COALESCE(s.name, 'Послуга') AS name, asv.price
+           FROM appointment_services asv
+           LEFT JOIN services s ON s.id = asv.service_id
+          WHERE asv.appointment_id = $1
+          ORDER BY asv.id`, [id]
+      );
+      services = sRes.rows;
+    } catch (_) { /* таблиці може не бути */ }
+    if (!services.length && a.service_name) {
+      services = [{ name: a.service_name, price: a.price }];
+    }
+
+    // Товари/розхідники: продажі того ж клієнта того ж київського дня.
+    // DISTINCT ON знімає дублі синхри (та сама позиція з різним ext_ref) —
+    // інакше картка показала б подвоєні товари (баг подвоєння BP-sales).
+    let products = [];
+    if (a.bp_client) {
+      const pRes = await pool.query(
+        `SELECT DISTINCT ON (product_name, total_price, qty)
+                product_name AS name, qty, total_price, master_name
+           FROM salon_product_sales
+          WHERE bp_client = $1
+            AND (sale_date AT TIME ZONE 'Europe/Kyiv')::date
+                = (($2::timestamptz) AT TIME ZONE 'Europe/Kyiv')::date
+          ORDER BY product_name, total_price, qty, id`, [a.bp_client, a.starts_at]
+      );
+      products = pRes.rows;
+    }
+    const products_total = products.reduce((s, p) => s + Number(p.total_price || 0), 0);
+
+    res.json({
+      id: a.id, status: a.status, price: a.price, real_amount: a.real_amount,
+      services, products, products_total,
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 // ── POST /api/schedule/blocks — заблокувати час майстра (CRM-06 06.05) ──
 // Body: { master_id, starts_at, ends_at, reason?, block_type? }
 router.post('/blocks', async (req, res) => {
