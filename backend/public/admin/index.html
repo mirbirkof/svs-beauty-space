@@ -6880,7 +6880,7 @@ function _mcTabProfile(){
       <span>Надає послуги <span style="color:var(--text-secondary)">— показується в журналі та онлайн-записі. Вимкнено = адміністратор.</span></span></label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding-top:14px">
       <button class="btn btn-primary" style="padding:11px 26px;font-size:15px;font-weight:700" onclick="saveMasterCard()">Зберегти профіль</button>
-      <button class="btn btn-sm" style="margin-left:auto;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+      <button class="btn" style="margin-left:auto;padding:11px 28px;font-size:15px;font-weight:700;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'};border:1px solid ${ms.active?'#fca5a5':'#86efac'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
     </div>`;
 }
 function _mcTabSchedule(){
