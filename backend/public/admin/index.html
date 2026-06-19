@@ -114,7 +114,7 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .sb-collapsed .sidebar-logo .logo-stack { display:block; }
 .sb-collapsed .sidebar-logo .logo-top { display:block; font-size:0; }
 .sb-collapsed .sidebar-logo .logo-top span { font-size:0; }
-.sb-collapsed .sidebar-logo .logo-top::after { content:"Z"; font-size:18px; color:#fff; font-weight:800; }
+.sb-collapsed .sidebar-logo .logo-top::after { content:"SVS"; font-size:15px; letter-spacing:.5px; color:#fff; font-weight:800; }
 .sb-collapsed .sidebar-logo .logo-bot { font-size:0; }
 .sb-collapsed .sidebar-item, .sb-collapsed .sidebar-group-header { font-size:0; gap:0; justify-content:center; padding:11px 0; margin:2px 8px; }
 .sb-collapsed .sidebar-item .material-icons-round, .sb-collapsed .sidebar-group-header .material-icons-round { font-size:21px; }
@@ -927,6 +927,19 @@ select.input { background:var(--card); }
           </a>
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#audit" onclick="openEmbed('/admin/crm-extra.html#audit','history Аудит')" style="cursor:pointer">
             <span class="material-icons-round">history</span> Аудит
+          </a>
+        </div>
+      </div>
+
+      <!-- Управління SaaS — лише для власника платформи -->
+      <div class="sidebar-group" id="grp-saas" style="display:none">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">cloud</span> SaaS / Платформа
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="saas" onclick="go('saas')">
+            <span class="material-icons-round">dashboard_customize</span> Панель SaaS
           </a>
         </div>
       </div>
@@ -1869,6 +1882,55 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом для салонів) ═══ -->
+      <div class="page" id="page-saas">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--border,#eee);padding-bottom:12px">
+          <button class="btn btn-sm saas-tab active" data-tab="analytics" onclick="saasTab('analytics')">Аналітика</button>
+          <button class="btn btn-sm saas-tab" data-tab="plans" onclick="saasTab('plans')">Тарифи</button>
+          <button class="btn btn-sm saas-tab" data-tab="tenants" onclick="saasTab('tenants')">Орендарі</button>
+          <button class="btn btn-sm saas-tab" data-tab="billing" onclick="saasTab('billing')">Біллинг</button>
+          <button class="btn btn-sm saas-tab" data-tab="flags" onclick="saasTab('flags')">Фіч-флаги</button>
+        </div>
+
+        <div class="saas-pane" id="saas-analytics">
+          <div id="saasMetrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px"></div>
+          <div id="saasFunnel"></div>
+        </div>
+
+        <div class="saas-pane" id="saas-plans" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="margin:0;font-size:17px">Тарифні плани</h3>
+            <button class="btn btn-primary btn-sm" onclick="saasPlanEdit()"><span class="material-icons-round" style="font-size:16px">add</span> Новий тариф</button>
+          </div>
+          <div id="saasPlansList"></div>
+        </div>
+
+        <div class="saas-pane" id="saas-tenants" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+            <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3>
+            <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
+          </div>
+          <div id="saasTenantsList"></div>
+        </div>
+
+        <div class="saas-pane" id="saas-billing" style="display:none">
+          <div id="saasBillingMetrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="margin:0;font-size:17px">Підписки салонів</h3>
+            <button class="btn btn-sm" onclick="saasPromoModal()"><span class="material-icons-round" style="font-size:16px">sell</span> Промокоди</button>
+          </div>
+          <div id="saasSubsList"></div>
+        </div>
+
+        <div class="saas-pane" id="saas-flags" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="margin:0;font-size:17px">Фіч-флаги</h3>
+            <button class="btn btn-primary btn-sm" onclick="saasFlagEdit()"><span class="material-icons-round" style="font-size:16px">add</span> Новий флаг</button>
+          </div>
+          <div id="saasFlagsList"></div>
+        </div>
+      </div>
+
       <!-- ═══ SETTINGS (DIKIDI-style: ліве підменю + панелі) ═══ -->
       <div class="page" id="page-settings">
         <div class="settings-layout">
@@ -2390,6 +2452,13 @@ function applyRoleUI(){
   document.querySelectorAll('.sidebar-nav > .sidebar-group').forEach(g => {
     g.style.display = master ? 'none' : '';
   });
+  // Панель SaaS (управління CRM як продуктом) — лише власник/адміністратор платформи
+  const saasGrp = document.getElementById('grp-saas');
+  if (saasGrp) {
+    const canSaaS = !!USER && (USER.role === 'owner' || USER.role === 'admin');
+    saasGrp.style.display = canSaaS ? '' : 'none';
+    if (!canSaaS && currentPage === 'saas') { try { go('dashboard'); } catch {} }
+  }
   // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
 }
@@ -2502,6 +2571,7 @@ const pageTitles = {
   blacklist:'Чорний список', sync:'BeautyPro синхро',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
+  saas:'SaaS / Платформа',
   settings:'Налаштування'
 };
 
@@ -2578,7 +2648,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats };
+    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -7439,6 +7509,163 @@ async function runSync() {
   const r = await api('/api/sync/all-clients', { method:'POST' });
   document.getElementById('syncLog').textContent = JSON.stringify(r, null, 2);
   loadSync();
+}
+
+// ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом) ═══════════════
+function saasMoney(v){ return Number(v||0).toLocaleString('uk-UA') + ' ₴'; }
+function saasV(id){ const e=document.getElementById(id); return e?e.value:''; }
+function saasKpi(label, value, color){
+  return `<div class="kpi-card ${color||'purple'}" style="min-width:150px"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`;
+}
+function saasLimStr(l){ if(!l) return '—'; const p=[]; if(l.clients) p.push('клієнтів: '+l.clients); if(l.masters) p.push('майстрів: '+l.masters); if(l.sms_month) p.push('SMS: '+l.sms_month); return p.join(', ')||'—'; }
+function saasTenantStatus(s){ const m={active:['активний','#0a8f5f'],trial:['тріал','#d9863b'],suspended:['призупинено','#d9534f'],cancelled:['скасовано','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600">${a[0]}</span>`; }
+function saasSubStatus(s){ const m={trialing:['тріал','#d9863b'],active:['активна','#0a8f5f'],past_due:['прострочена','#d9534f'],suspended:['призупинена','#d9534f'],cancelled:['скасована','#9aa0a6'],expired:['завершена','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600">${a[0]}</span>`; }
+
+let _saasTab = 'analytics';
+function saasTab(name){
+  _saasTab = name;
+  document.querySelectorAll('#page-saas .saas-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('#page-saas .saas-pane').forEach(p=>p.style.display = (p.id==='saas-'+name)?'':'none');
+  const ld = { analytics:loadSaasAnalytics, plans:loadSaasPlans, tenants:loadSaasTenants, billing:loadSaasBilling, flags:loadSaasFlags };
+  if (ld[name]) ld[name]();
+}
+function loadSaaS(){ saasTab(_saasTab || 'analytics'); }
+
+async function loadSaasAnalytics(){
+  const box = document.getElementById('saasMetrics');
+  box.innerHTML = '<div style="opacity:.6;padding:8px">Завантаження...</div>';
+  let a; try { a = await api('/api/saas/analytics'); } catch { a = null; }
+  if (!a || a.error){ box.innerHTML='<div style="opacity:.6;padding:8px">Поки що немає даних — підписок ще немає.</div>'; document.getElementById('saasFunnel').innerHTML=''; return; }
+  const m = a.metrics || a;
+  const churn = (a.churn && a.churn.rate!=null) ? a.churn.rate : (m.churn!=null ? m.churn : 0);
+  const ltv = (a.ltv && a.ltv.avg_ltv!=null) ? a.ltv.avg_ltv : (m.ltv||0);
+  box.innerHTML = [
+    saasKpi('MRR · міс. дохід', saasMoney(m.mrr), 'green'),
+    saasKpi('ARR · річний', saasMoney(m.arr), 'purple'),
+    saasKpi('ARPU · на салон', saasMoney(m.arpu), 'blue'),
+    saasKpi('Churn · відтік', (Math.round(Number(churn)*10)/10)+'%', 'orange'),
+    saasKpi('LTV · цінність', saasMoney(ltv), 'teal'),
+  ].join('');
+  const f = a.funnel || {};
+  const fr = [['Реєстрації', f.signup], ['Тріал', f.trial], ['Платні', f.paid]];
+  document.getElementById('saasFunnel').innerHTML = `<h3 style="font-size:16px;margin:8px 0 12px">Воронка підключень салонів</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${fr.map(x=>`<div class="kpi-card" style="min-width:130px"><div class="kpi-label">${x[0]}</div><div class="kpi-value">${x[1]??0}</div></div>`).join('')}</div>`;
+}
+
+async function loadSaasPlans(){
+  const box=document.getElementById('saasPlansList');
+  box.innerHTML='<div style="opacity:.6;padding:8px">Завантаження...</div>';
+  let r; try{ r=await api('/api/saas/plans'); }catch{ r=null; }
+  const rows=(r&&r.rows)||[];
+  if(!rows.length){ box.innerHTML='<div style="opacity:.6;padding:8px">Тарифів ще немає. Створіть перший — кнопка вгорі праворуч.</div>'; return; }
+  box.innerHTML=`<table class="tbl"><thead><tr><th>Код</th><th>Назва</th><th>Міс.</th><th>Рік</th><th>Ліміти</th><th>Статус</th><th></th></tr></thead><tbody>${rows.map(p=>`
+    <tr><td><code>${escapeHtml(p.code||'')}</code></td><td>${escapeHtml(p.name||'')}</td><td>${saasMoney(p.price_month)}</td><td>${saasMoney(p.price_year)}</td>
+    <td style="font-size:12px;opacity:.8">${saasLimStr(p.limits)}</td>
+    <td>${p.active!==false?'<span style="color:#0a8f5f;font-weight:600">активний</span>':'<span style="opacity:.5">вимкнено</span>'}</td>
+    <td><button class="btn btn-sm" onclick='saasPlanEdit(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Редагувати</button></td></tr>`).join('')}</tbody></table>`;
+}
+function saasPlanEdit(plan){
+  plan=plan||{}; const lim=plan.limits||{};
+  showModal(plan.code?('Тариф: '+plan.name):'Новий тариф', `
+    <label class="fld"><span>Код (унікальний, латиницею)</span><input id="spCode" class="input" value="${escapeHtml(plan.code||'')}" ${plan.code?'readonly':''}></label>
+    <label class="fld"><span>Назва</span><input id="spName" class="input" value="${escapeHtml(plan.name||'')}"></label>
+    <label class="fld"><span>Ціна / місяць (₴)</span><input id="spPm" class="input" type="number" value="${plan.price_month||0}"></label>
+    <label class="fld"><span>Ціна / рік (₴)</span><input id="spPy" class="input" type="number" value="${plan.price_year||0}"></label>
+    <label class="fld"><span>Ліміт клієнтів (порожньо = без обмежень)</span><input id="spLc" class="input" type="number" value="${lim.clients||''}"></label>
+    <label class="fld"><span>Ліміт майстрів</span><input id="spLm" class="input" type="number" value="${lim.masters||''}"></label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px"><input id="spActive" type="checkbox" ${plan.active!==false?'checked':''}><span>Активний</span></label>
+  `, async ()=>{
+    const body={ code:saasV('spCode').trim(), name:saasV('spName').trim(),
+      price_month:+saasV('spPm')||0, price_year:+saasV('spPy')||0,
+      limits:{ clients:+saasV('spLc')||null, masters:+saasV('spLm')||null },
+      active:document.getElementById('spActive').checked };
+    if(!body.code||!body.name){ toast('Код і назва обовʼязкові','error'); throw new Error('validation'); }
+    const r=await api('/api/saas/plans',{method:'POST',body:JSON.stringify(body)});
+    if(r&&(r.id||r.ok||r.code)){ toast('Тариф збережено'); loadSaasPlans(); } else { toast((r&&r.error)||'Помилка збереження','error'); throw new Error('save'); }
+  });
+}
+
+async function loadSaasTenants(){
+  const box=document.getElementById('saasTenantsList');
+  const q=(document.getElementById('saasTenantSearch')||{}).value||'';
+  box.innerHTML='<div style="opacity:.6;padding:8px">Завантаження...</div>';
+  let r; try{ r=await api('/api/tenant-mgmt/tenants?limit=100'+(q.trim()?'&search='+encodeURIComponent(q.trim()):'')); }catch{ r=null; }
+  const rows=(r&&r.rows)||[];
+  if(!rows.length){ box.innerHTML='<div style="opacity:.6;padding:8px">Орендарів не знайдено. Поки що CRM використовує лише ваш салон.</div>'; return; }
+  box.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Статус</th><th>Health</th><th></th></tr></thead><tbody>${rows.map(t=>`
+    <tr><td>${escapeHtml(t.name||t.tenant_name||String(t.id||''))}</td>
+    <td>${escapeHtml(t.plan_code||'—')}</td>
+    <td>${saasTenantStatus(t.status)}</td>
+    <td>${t.health_score!=null?t.health_score:'—'}</td>
+    <td>${t.status==='suspended'
+      ? `<button class="btn btn-sm" onclick="saasTenant('${t.id}','unblock')">Розблокувати</button>`
+      : `<button class="btn btn-sm" onclick="saasTenant('${t.id}','block')">Заблокувати</button>`}</td></tr>`).join('')}</tbody></table>`;
+}
+async function saasTenant(id, action){
+  const ok = await jConfirm(action==='block'?'Призупинити цей салон? Він втратить доступ до CRM.':'Відновити доступ салону до CRM?',{okText:'Так',cancelText:'Скасувати'});
+  if(!ok) return;
+  const r=await api('/api/tenant-mgmt/tenants/'+id+'/'+action,{method:'POST',body:JSON.stringify({})});
+  if(r&&(r.ok||r.tenant)){ toast(action==='block'?'Салон призупинено':'Доступ відновлено'); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+
+async function loadSaasBilling(){
+  const mbox=document.getElementById('saasBillingMetrics');
+  const lbox=document.getElementById('saasSubsList');
+  mbox.innerHTML='<div style="opacity:.6;padding:8px">Завантаження...</div>';
+  let m; try{ m=await api('/api/billing/admin/metrics'); }catch{ m=null; }
+  mbox.innerHTML = (m&&!m.error)
+    ? [saasKpi('MRR',saasMoney(m.mrr),'green'),saasKpi('ARR',saasMoney(m.arr),'purple'),saasKpi('Churn',(Math.round(Number(m.churn||0)*10)/10)+'%','orange')].join('')
+    : '';
+  let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
+  const rows=(r&&r.rows)||[];
+  if(!rows.length){ lbox.innerHTML='<div style="opacity:.6;padding:8px">Активних підписок немає.</div>'; return; }
+  lbox.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`
+    <tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':(s.billing_cycle==='monthly'?'місячний':'—')}</td>
+    <td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`;
+}
+async function saasPromoModal(){
+  let r; try{ r=await api('/api/billing/admin/promo-codes?limit=100'); }catch{ r=null; }
+  const rows=(r&&r.rows)||[];
+  const list = rows.length? rows.map(p=>`<tr><td><code>${escapeHtml(p.code||'')}</code></td><td>${p.discount_type==='percent'?p.discount_value+'%':saasMoney(p.discount_value)}</td><td>${p.times_used||0}/${p.max_uses||'∞'}</td><td>${p.is_active?'✓':'—'}</td></tr>`).join('') : '<tr><td colspan="4" style="opacity:.6">Немає промокодів</td></tr>';
+  showModal('Промокоди для підписок', `
+    <table class="tbl" style="margin-bottom:14px"><thead><tr><th>Код</th><th>Знижка</th><th>Викор.</th><th>Активний</th></tr></thead><tbody>${list}</tbody></table>
+    <div style="border-top:1px solid var(--border,#eee);padding-top:12px"><b style="display:block;margin-bottom:8px">Новий промокод</b>
+    <label class="fld"><span>Код</span><input id="pcCode" class="input" placeholder="SUMMER25"></label>
+    <label class="fld"><span>Тип знижки</span><select id="pcType" class="input"><option value="percent">Відсоток %</option><option value="fixed_amount">Фікс. сума ₴</option></select></label>
+    <label class="fld"><span>Значення</span><input id="pcVal" class="input" type="number"></label>
+    <label class="fld"><span>Макс. використань (0 = без ліміту)</span><input id="pcMax" class="input" type="number" value="0"></label></div>
+  `, async ()=>{
+    const body={ code:saasV('pcCode').trim().toUpperCase(), discount_type:saasV('pcType'), discount_value:+saasV('pcVal')||0, max_uses:+saasV('pcMax')||null };
+    if(!body.code||!body.discount_value){ toast('Код і значення обовʼязкові','error'); throw new Error('validation'); }
+    const rr=await api('/api/billing/admin/promo-codes',{method:'POST',body:JSON.stringify(body)});
+    if(rr&&(rr.ok||rr.promo||rr.id)){ toast('Промокод створено'); } else { toast((rr&&rr.error)||'Помилка','error'); throw new Error('save'); }
+  });
+}
+
+async function loadSaasFlags(){
+  const box=document.getElementById('saasFlagsList');
+  box.innerHTML='<div style="opacity:.6;padding:8px">Завантаження...</div>';
+  let r; try{ r=await api('/api/saas/flags'); }catch{ r=null; }
+  const rows=(r&&r.rows)||[];
+  if(!rows.length){ box.innerHTML='<div style="opacity:.6;padding:8px">Фіч-флагів ще немає. Це перемикачі функцій для тарифів.</div>'; return; }
+  box.innerHTML=`<table class="tbl"><thead><tr><th>Ключ</th><th>Назва</th><th>Опис</th><th>За замовч.</th><th></th></tr></thead><tbody>${rows.map(f=>`
+    <tr><td><code>${escapeHtml(f.key||'')}</code></td><td>${escapeHtml(f.name||'')}</td><td style="font-size:12px;opacity:.8">${escapeHtml(f.description||'')}</td>
+    <td>${f.default_enabled?'<span style="color:#0a8f5f;font-weight:600">увімк.</span>':'<span style="opacity:.5">вимк.</span>'}</td>
+    <td><button class="btn btn-sm" onclick='saasFlagEdit(${JSON.stringify(f).replace(/'/g,"&#39;")})'>Редагувати</button></td></tr>`).join('')}</tbody></table>`;
+}
+function saasFlagEdit(flag){
+  flag=flag||{};
+  showModal(flag.key?('Флаг: '+flag.key):'Новий фіч-флаг', `
+    <label class="fld"><span>Ключ (унікальний, латиницею)</span><input id="ffKey" class="input" value="${escapeHtml(flag.key||'')}" ${flag.key?'readonly':''}></label>
+    <label class="fld"><span>Назва</span><input id="ffName" class="input" value="${escapeHtml(flag.name||'')}"></label>
+    <label class="fld"><span>Опис</span><input id="ffDesc" class="input" value="${escapeHtml(flag.description||'')}"></label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px"><input id="ffDef" type="checkbox" ${flag.default_enabled?'checked':''}><span>Увімкнено за замовчуванням</span></label>
+  `, async ()=>{
+    const body={ key:saasV('ffKey').trim(), name:saasV('ffName').trim(), description:saasV('ffDesc').trim(), default_enabled:document.getElementById('ffDef').checked };
+    if(!body.key){ toast('Ключ обовʼязковий','error'); throw new Error('validation'); }
+    const r=await api('/api/saas/flags',{method:'POST',body:JSON.stringify(body)});
+    if(r&&(r.ok||r.id||r.key)){ toast('Флаг збережено'); loadSaasFlags(); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('save'); }
+  });
 }
 </script>
 <script>
