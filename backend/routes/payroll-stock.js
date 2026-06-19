@@ -59,15 +59,17 @@ router.post('/payroll/calculate', async (req, res) => {
     if (!scheme.rows[0]) return res.status(400).json({ error: 'no active scheme for master' });
     const s = scheme.rows[0];
 
-    // 2. посчитать услуги мастера за период (из online_bookings)
+    // 2. посчитать услуги мастера за период (из appointments — реальные визиты салона)
+    //    online_bookings = только онлайн-записи с сайта (почти пусто), выручка живёт в appointments.
+    //    Считаем состоявшиеся визиты: done + confirmed (BeautyPro оставляет статус 'confirmed').
+    //    cancelled / noshow / booked (будущие) — не оплачиваются.
     const ob = await pool.query(
-      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(s.price), 0)::numeric AS revenue
-       FROM online_bookings ob
-       LEFT JOIN services s ON s.id::text = ob.service_id
-       WHERE ob.master_id=$1
-         AND ob.date_from >= $2::date
-         AND ob.date_from <  ($3::date + INTERVAL '1 day')
-         AND ob.status IN ('confirmed','completed')`,
+      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(price), 0)::numeric AS revenue
+       FROM appointments
+       WHERE master_id = $1::int
+         AND starts_at >= $2::date
+         AND starts_at <  ($3::date + INTERVAL '1 day')
+         AND status IN ('done','confirmed','completed')`,
       [master_id, period_start, period_end]
     );
     const services_count = ob.rows[0]?.cnt || 0;

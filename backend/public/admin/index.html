@@ -110,7 +110,7 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .sb-collapsed .main { margin-left:66px; }
 .sb-collapsed .sidebar-logo { padding:20px 0 16px; text-align:center; }
 .sb-collapsed .sidebar-logo h1, .sb-collapsed .sidebar-logo span { font-size:0; }
-.sb-collapsed .sidebar-logo h1::after { content:"S"; font-size:18px; }
+.sb-collapsed .sidebar-logo h1::after { content:"Z"; font-size:18px; }
 .sb-collapsed .sidebar-item, .sb-collapsed .sidebar-group-header { font-size:0; gap:0; justify-content:center; padding:11px 0; margin:2px 8px; }
 .sb-collapsed .sidebar-item .material-icons-round, .sb-collapsed .sidebar-group-header .material-icons-round { font-size:21px; }
 .sb-collapsed .sidebar-group-header .chevron, .sb-collapsed .sidebar-badge { display:none; }
@@ -665,8 +665,8 @@ select.input { background:var(--card); }
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <h1>SVS Beauty</h1>
-      <span>CRM &amp; Управління</span>
+      <h1>ZVETLA CRM</h1>
+      <span>by SVS</span>
     </div>
     <nav class="sidebar-nav">
       <!-- Журнал + дашборд -->
@@ -7041,7 +7041,7 @@ async function loadPayroll() {
 async function loadPayrollMasters() {
   if (_pyMasters.length) return;
   try {
-    const r = await dikidiApi('/api/schedule/masters?all=1');
+    const r = await dikidiApi('/api/schedule/masters');
     _pyMasters = (r.items || []).map(m => ({ id: String(m.id), name: m.name || ('#' + m.id) }));
   } catch { _pyMasters = []; }
   const opts = '<option value="">— майстер —</option>' + _pyMasters.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
@@ -7120,7 +7120,7 @@ async function loadPayrollRecords() {
     const r = await api('/api/payroll/records?limit=100' + (status ? '&status=' + status : ''));
     const items = r.items || [];
     el.innerHTML = items.length ? `<table class="tbl"><thead><tr><th>Майстер</th><th>Період</th><th>Послуг</th><th>До виплати</th><th>Статус</th><th></th></tr></thead><tbody>${
-      items.map(x => `<tr><td>${x.master_name || x.master_id}</td>
+      items.map(x => `<tr><td><a href="#" onclick="openMasterCard('${x.master_id}');return false" style="color:var(--primary,#7c5cff);font-weight:600;text-decoration:none">${x.master_name || x.master_id}</a></td>
         <td>${(x.period_start || '').slice(0, 10)} — ${(x.period_end || '').slice(0, 10)}</td>
         <td>${x.services_count || 0} · ${_pyMoney(x.services_revenue)}</td>
         <td><b>${_pyMoney(x.total)}</b></td><td>${_pyStatusBadge(x.status)}</td>
