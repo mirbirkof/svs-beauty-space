@@ -438,14 +438,54 @@ router.get('/payroll/my', async (req, res) => {
   try {
     const mid = req.user?.master_id;
     if (!mid) return res.status(403).json({ error: 'no master linked to this account' });
-    const [records, bonuses, penalties, advances, payments] = await Promise.all([
+    const [records, bonuses, penalties, advances, payments, scheme] = await Promise.all([
       pool.query(`SELECT id, period_start, period_end, services_count, services_revenue, total, status FROM payroll_records WHERE master_id=$1 ORDER BY period_start DESC LIMIT 24`, [mid]),
       pool.query(`SELECT amount, kind, reason, bonus_date FROM payroll_bonuses WHERE master_id=$1 ORDER BY bonus_date DESC LIMIT 50`, [mid]),
       pool.query(`SELECT amount, kind, reason, penalty_date FROM payroll_penalties WHERE master_id=$1 ORDER BY penalty_date DESC LIMIT 50`, [mid]),
       pool.query(`SELECT amount, reason, issued_at, settled FROM payroll_advances WHERE master_id=$1 ORDER BY issued_at DESC LIMIT 50`, [mid]),
-      pool.query(`SELECT amount, method, paid_at, period_start, period_end FROM payroll_payments WHERE master_id=$1 ORDER BY paid_at DESC LIMIT 50`, [mid])
+      pool.query(`SELECT amount, method, paid_at, period_start, period_end FROM payroll_payments WHERE master_id=$1 ORDER BY paid_at DESC LIMIT 50`, [mid]),
+      pool.query(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE LIMIT 1`, [mid])
     ]);
-    res.json({ master_id: mid, records: records.rows, bonuses: bonuses.rows, penalties: penalties.rows, advances: advances.rows, payments: payments.rows });
+
+    // Живая оценка текущего месяца — чтобы мастер видел сколько уже наработал,
+    // даже если хозяин ещё не закрыл расчётный период. Формула = как в /calculate.
+    let current = null;
+    const s = scheme.rows[0];
+    if (s) {
+      const ob = await pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
+           FROM appointments
+          WHERE master_id=$1::int AND status IN ('done','confirmed','completed')
+            AND starts_at >= date_trunc('month', NOW())
+            AND starts_at <  (date_trunc('month', NOW()) + INTERVAL '1 month')`, [mid]);
+      const cnt = ob.rows[0]?.cnt || 0;
+      const revenue = parseFloat(ob.rows[0]?.revenue || 0);
+      let percent_part = 0, fixed_part = 0;
+      if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = revenue * (parseFloat(s.percent || 0) / 100);
+      if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
+        if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
+        else if (s.fixed_per_day) {
+          const days = new Date().getDate();
+          fixed_part = parseFloat(s.fixed_per_day) * days;
+        }
+      }
+      const bsum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_bonuses WHERE master_id=$1 AND applied_record_id IS NULL AND bonus_date >= date_trunc('month',NOW())`, [mid]);
+      const psum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_penalties WHERE master_id=$1 AND applied_record_id IS NULL AND penalty_date >= date_trunc('month',NOW())`, [mid]);
+      const asum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_advances WHERE master_id=$1 AND settled=FALSE AND issued_at >= date_trunc('month',NOW())`, [mid]);
+      const bonus = parseFloat(bsum.rows[0].s), penalty = parseFloat(psum.rows[0].s), advance = parseFloat(asum.rows[0].s);
+      const earned = percent_part + fixed_part + bonus;
+      current = {
+        period_start: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10),
+        services_count: cnt, services_revenue: revenue,
+        scheme_type: s.scheme_type, percent: parseFloat(s.percent || 0),
+        percent_part: Math.round(percent_part), fixed_part: Math.round(fixed_part),
+        bonus, penalty, advance,
+        earned: Math.round(earned),
+        to_pay: Math.round(earned - penalty - advance),
+        estimate: true
+      };
+    }
+    res.json({ master_id: mid, current, records: records.rows, bonuses: bonuses.rows, penalties: penalties.rows, advances: advances.rows, payments: payments.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

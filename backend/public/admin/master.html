@@ -174,8 +174,22 @@ async function loadPayroll(){
     const recs=d.records||[], bons=d.bonuses||[], pens=d.penalties||[], pays=d.payments||[];
     const lastPaid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
     const totalAccr=recs.reduce((s,r)=>s+Number(r.total||0),0);
-    let html=`<div class="stats">
-      <div class="stat"><b>${money(totalAccr)}</b><span>Нараховано (останні періоди)</span></div>
+    let html='';
+    const cur=d.current;
+    if(cur){
+      const mName=new Date(cur.period_start).toLocaleDateString('uk-UA',{month:'long',year:'numeric'});
+      html+=`<div class="card" style="background:linear-gradient(135deg,#1a1a1a,#2a2416);border:1px solid var(--gold)">
+        <div class="s" style="text-transform:capitalize">${esc(mName)} · наразі</div>
+        <div class="amt" style="font-size:30px;color:var(--gold);margin:6px 0">${money(cur.to_pay)}</div>
+        <div class="s">${cur.services_count} візитів · виручка ${money(cur.services_revenue)} · ${cur.percent?cur.percent+'%':cur.scheme_type}</div>`;
+      if(cur.fixed_part) html+=`<div class="s">Ставка: ${money(cur.fixed_part)}</div>`;
+      if(cur.bonus) html+=`<div class="s green">Бонуси: +${money(cur.bonus)}</div>`;
+      if(cur.penalty) html+=`<div class="s" style="color:var(--red)">Штрафи: −${money(cur.penalty)}</div>`;
+      if(cur.advance) html+=`<div class="s" style="color:var(--red)">Аванс видано: −${money(cur.advance)}</div>`;
+      html+=`<div class="s muted" style="margin-top:6px">Попередній розрахунок, остаточну суму закриває власник</div></div>`;
+    }
+    html+=`<div class="stats">
+      <div class="stat"><b>${money(totalAccr)}</b><span>Нараховано (закриті періоди)</span></div>
       <div class="stat"><b>${money(lastPaid)}</b><span>Виплачено</span></div></div>`;
     if(recs.length){
       html+=`<h2>Нарахування по періодах</h2>`;
