@@ -122,26 +122,37 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 30), 365);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
-    // Источник истины — эталонные показатели карточки (выгрузка букона по телефону):
-    // total_visits / last_visit_at / total_spent. Записи (appointments) склеены по имени
-    // у однофамильцев, поэтому для фильтра «кого возвращать» они недостоверны.
-    // last_master / last_service берём из записей best-effort (вторичная справка).
+    // «Останній візит» = максимум з ДВОХ джерел:
+    //   1) last_visit_at — заморожений знімок вигрузки MyClients (24.05.2026);
+    //   2) жива синхронізація appointments (status не cancelled/noshow, включно з майбутніми записами).
+    // Знімок 24.05 застарілий: клієнт міг повернутися ПІСЛЯ нього → у списку на повернення
+    // його бути НЕ повинно. Тому фільтр і days_since рахуємо від eff_last (реальний останній контакт).
     const rows = await pool.query(
-      `SELECT c.id, c.name, c.phone, c.total_spent,
-              c.last_visit_at AS last_visit,
-              c.total_visits::int AS visits,
-              (CURRENT_DATE - c.last_visit_at::date)::int AS days_since,
-              (SELECT m.name FROM appointments a2 JOIN masters m ON m.id=a2.master_id
-                WHERE a2.client_id=c.id AND a2.status='done' ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
-              (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
-                 FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
-                WHERE a3.client_id=c.id AND a3.status='done' ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
-         FROM clients c
-        WHERE c.last_visit_at IS NOT NULL
-          AND c.last_visit_at::date < CURRENT_DATE - ($1)::int
-          AND COALESCE(c.total_visits,0) >= 2
-        ORDER BY c.total_spent DESC NULLS LAST, days_since ASC
-        LIMIT $2`, [days, limit]).then(r => r.rows).catch(() => []);
+      `SELECT * FROM (
+         SELECT c.id, c.name, c.phone, c.total_spent,
+                GREATEST(c.last_visit_at::date, COALESCE(lv.live_last, c.last_visit_at::date)) AS last_visit,
+                c.last_visit_at::date AS snapshot_visit,
+                lv.live_last,
+                c.total_visits::int AS visits,
+                (CURRENT_DATE - GREATEST(c.last_visit_at::date, COALESCE(lv.live_last, c.last_visit_at::date)))::int AS days_since,
+                (SELECT m.name FROM appointments a2 JOIN masters m ON m.id=a2.master_id
+                  WHERE a2.client_id=c.id AND a2.status='done' ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
+                (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
+                   FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
+                  WHERE a3.client_id=c.id AND a3.status='done' ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
+           FROM clients c
+           LEFT JOIN LATERAL (
+             SELECT MAX(a.starts_at)::date AS live_last
+               FROM appointments a
+              WHERE a.client_id = c.id
+                AND a.status NOT IN ('cancelled','noshow')
+           ) lv ON TRUE
+          WHERE c.last_visit_at IS NOT NULL
+            AND COALESCE(c.total_visits,0) >= 2
+       ) t
+       WHERE t.last_visit < CURRENT_DATE - ($1)::int
+       ORDER BY t.total_spent DESC NULLS LAST, t.days_since ASC
+       LIMIT $2`, [days, limit]).then(r => r.rows).catch((e) => { console.error('[rec:reactivation:q]', e.message); return []; });
     const out = rows.map(r => ({
       client_id: r.id, name: r.name, phone: r.phone,
       total_spent: Math.round(Number(r.total_spent || 0)),
