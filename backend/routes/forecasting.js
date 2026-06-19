@@ -239,7 +239,7 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
     const rows = await pool.query(
       `SELECT COALESCE(NULLIF(a.services_text,''), s.name, 'Послуга #'||a.service_id) AS service,
               COUNT(*)::int AS cnt,
-              COALESCE(SUM(a.price),0)::numeric AS revenue
+              COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)::numeric AS revenue
          FROM appointments a
          LEFT JOIN services s ON s.id = a.service_id
         WHERE a.status='done' AND a.starts_at >= NOW() - INTERVAL '60 days'
@@ -294,7 +294,7 @@ router.post('/what-if', requirePerm('reports.finance'), async (req, res) => {
       const mrow = await pool.query(
         `SELECT COALESCE(AVG(daily),0)::numeric AS avg_daily FROM (
            SELECT a.master_id, to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
-                  SUM(a.price) daily
+                  SUM(COALESCE(a.real_amount,a.price)) daily
              FROM appointments a
             WHERE a.status='done' AND a.starts_at >= NOW() - INTERVAL '60 days'
             GROUP BY a.master_id, d) t`

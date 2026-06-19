@@ -63,8 +63,11 @@ router.post('/payroll/calculate', async (req, res) => {
     //    online_bookings = только онлайн-записи с сайта (почти пусто), выручка живёт в appointments.
     //    Считаем состоявшиеся визиты: done + confirmed (BeautyPro оставляет статус 'confirmed').
     //    cancelled / noshow / booked (будущие) — не оплачиваются.
+    // Виручка для ЗП — по ФАКТИЧНО сплаченому (real_amount із продажу BeautyPro),
+    // якщо факт невідомий — планова ціна. Майстер отримує % з реально отриманих грошей,
+    // а не з планової ціни (знижки/зміна послуги мають зменшувати базу).
     const ob = await pool.query(
-      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(price), 0)::numeric AS revenue
+      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)), 0)::numeric AS revenue
        FROM appointments
        WHERE master_id = $1::int
          AND starts_at >= $2::date

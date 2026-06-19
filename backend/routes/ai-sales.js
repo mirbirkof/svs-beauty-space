@@ -29,7 +29,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
       // візит = клієнт + день; чек = сума price послуг візиту
       pool.query(`
         WITH visits AS (
-          SELECT client_id, starts_at::date d, COUNT(*) svc, SUM(price) tot
+          SELECT client_id, starts_at::date d, COUNT(*) svc, SUM(COALESCE(real_amount,price)) tot
             FROM appointments
            WHERE status='done' AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
            GROUP BY client_id, starts_at::date
@@ -42,7 +42,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
           FROM visits`, [W]).then(r => r.rows[0] || {}).catch(() => ({})),
       pool.query(`
         WITH visits AS (
-          SELECT master_id, client_id, starts_at::date d, SUM(price) tot, COUNT(*) svc
+          SELECT master_id, client_id, starts_at::date d, SUM(COALESCE(real_amount,price)) tot, COUNT(*) svc
             FROM appointments
            WHERE status='done' AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
            GROUP BY master_id, client_id, starts_at::date

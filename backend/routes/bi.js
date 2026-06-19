@@ -57,8 +57,8 @@ const DATASETS = {
     },
     measures: {
       count:     { sql: 'COUNT(*)', label: 'К-сть записів' },
-      revenue:   { sql: 'COALESCE(SUM(a.price),0)', label: 'Виручка' },
-      avg_check: { sql: 'COALESCE(ROUND(AVG(NULLIF(a.price,0)),2),0)', label: 'Середній чек' },
+      revenue:   { sql: 'COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)', label: 'Виручка' },
+      avg_check: { sql: 'COALESCE(ROUND(AVG(NULLIF(COALESCE(a.real_amount,a.price),0)),2),0)', label: 'Середній чек' },
       cashback:  { sql: 'COALESCE(SUM(a.cashback),0)', label: 'Кешбек' },
       clients:   { sql: 'COUNT(DISTINCT a.client_id)', label: 'Унік. клієнтів' },
     },

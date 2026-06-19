@@ -113,7 +113,7 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(*) FILTER (WHERE status='cancelled')::int AS canceled_appts,
                 COUNT(*) FILTER (WHERE status='noshow')::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients,
-                COALESCE(SUM(price) FILTER (WHERE status='done'),0)::numeric AS revenue
+                COALESCE(SUM(COALESCE(real_amount, price)) FILTER (WHERE status='done'),0)::numeric AS revenue
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2
           GROUP BY master_id
@@ -160,7 +160,7 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
                 COUNT(DISTINCT o.id) FILTER (WHERE o.status='paid')
                 + COUNT(DISTINCT a.id) FILTER (WHERE a.status='done')  AS frequency,
                 COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
-                + COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0) AS monetary
+                + COALESCE(SUM(COALESCE(a.real_amount, a.price)) FILTER (WHERE a.status='done'),0) AS monetary
            FROM clients c
            LEFT JOIN orders o       ON o.client_id = c.id
            LEFT JOIN appointments a ON a.client_id = c.id

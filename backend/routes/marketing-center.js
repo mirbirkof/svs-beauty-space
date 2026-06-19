@@ -42,7 +42,7 @@ router.get('/dashboard', async (req, res) => {
 
     const newClients = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [from, to]))[0].n;
     const prevNew = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [prevFrom, prevTo]))[0].n;
-    const revenue = (await q(`SELECT COALESCE(SUM(price),0)::numeric s FROM appointments WHERE status='done' AND starts_at::date BETWEEN $1 AND $2`, [from, to]))[0].s;
+    const revenue = (await q(`SELECT COALESCE(SUM(COALESCE(real_amount,price)),0)::numeric s FROM appointments WHERE status='done' AND starts_at::date BETWEEN $1 AND $2`, [from, to]))[0].s;
     const ltv = (await q(`SELECT COALESCE(AVG(total_spent),0)::numeric s FROM clients WHERE total_spent > 0`))[0].s;
     const spend = await marketingSpend(from, to);
     const cac = newClients ? +(spend.total / newClients).toFixed(0) : 0;
