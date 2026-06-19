@@ -32,6 +32,25 @@
          padding:8px 10px; line-height:1.45; }
   .how b { color:var(--text,#222); }
   .reload { float:right; }
+  .icard.clk { cursor:pointer; transition:box-shadow .15s, transform .15s; }
+  .icard.clk:hover { box-shadow:0 4px 16px rgba(0,0,0,.10); transform:translateY(-1px); }
+  .icard .edit-hint { font-size:12px; color:var(--primary,#5B5FC7); display:flex; align-items:center; gap:4px; margin-top:2px; }
+  .icard .edit-hint .material-icons-round { font-size:15px; }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center;
+              justify-content:center; z-index:9999; padding:16px; }
+  .modal-bg.show { display:flex; }
+  .modal { background:var(--card,#fff); border-radius:16px; max-width:460px; width:100%; padding:22px;
+           box-shadow:0 20px 60px rgba(0,0,0,.3); max-height:90vh; overflow:auto; }
+  .modal h3 { margin:0 0 4px; font-size:18px; }
+  .modal .sub { color:var(--text-secondary); font-size:13px; margin-bottom:16px; line-height:1.4; }
+  .fld { margin-bottom:14px; }
+  .fld label { display:block; font-size:13px; font-weight:600; margin-bottom:5px; }
+  .fld .st { font-weight:500; font-size:12px; margin-left:6px; }
+  .fld .st.on { color:#1B7A3D; } .fld .st.off { color:#B23B2E; }
+  .fld input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border,#ddd);
+               border-radius:9px; font-size:14px; font-family:inherit; }
+  .modal-act { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  .modal-msg { font-size:13px; min-height:18px; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -43,6 +62,19 @@
   <div class="sumbar" id="sumbar"></div>
   <div id="groups"></div>
 
+</div>
+
+<div class="modal-bg" id="cfgBg">
+  <div class="modal">
+    <h3 id="cfgTitle">Налаштування</h3>
+    <div class="sub" id="cfgSub"></div>
+    <div id="cfgFields"></div>
+    <div class="modal-msg" id="cfgMsg"></div>
+    <div class="modal-act">
+      <button class="btn" onclick="cfgClose()">Скасувати</button>
+      <button class="btn primary" id="cfgSave" onclick="cfgSaveDo()">Зберегти</button>
+    </div>
+  </div>
 </div>
 
 <script src="/admin/assets/admin-shell.js" data-title="Інтеграції"></script>
@@ -71,15 +103,21 @@ function renderSummary(s) {
 
 function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+const ITEMS = {}; // key → item (для модалки)
+
 function renderGroups(groups) {
   document.getElementById('groups').innerHTML = groups.map(g => {
     const cards = g.items.map(it => {
+      ITEMS[it.key] = it;
       const badge = it.configured
         ? '<span class="badge on"><span class="material-icons-round">check_circle</span>Підключено</span>'
         : '<span class="badge off"><span class="material-icons-round">radio_button_unchecked</span>Не підключено</span>';
       const how = it.configured ? '' :
         `<div class="how"><b>Як підключити:</b> ${esc(it.how)}</div>`;
-      return `<div class="icard">
+      const editable = (it.fields || []).some(f => f.allowed);
+      const hint = editable
+        ? `<div class="edit-hint"><span class="material-icons-round">tune</span>Натисніть, щоб ${it.configured ? 'змінити' : 'ввести'} ключі</div>` : '';
+      return `<div class="icard${editable ? ' clk' : ''}"${editable ? ` onclick="cfgOpen('${esc(it.key)}')"` : ''}>
         <div class="top">
           <div class="ic"><span class="material-icons-round">${esc(it.icon)}</span></div>
           <div><div class="nm">${esc(it.name)}</div></div>
@@ -87,10 +125,56 @@ function renderGroups(groups) {
         ${badge}
         <div class="desc">${esc(it.desc)}</div>
         ${how}
+        ${hint}
       </div>`;
     }).join('');
     return `<div class="grp-title">${esc(g.category)}</div><div class="cards">${cards}</div>`;
   }).join('');
+}
+
+let cfgKey = null;
+function cfgOpen(key) {
+  const it = ITEMS[key]; if (!it) return;
+  cfgKey = key;
+  document.getElementById('cfgTitle').textContent = it.name;
+  document.getElementById('cfgSub').innerHTML = esc(it.how || '');
+  document.getElementById('cfgMsg').textContent = '';
+  const fields = (it.fields || []).filter(f => f.allowed);
+  document.getElementById('cfgFields').innerHTML = fields.map(f => {
+    const st = f.set ? '<span class="st on">збережено</span>' : '<span class="st off">не задано</span>';
+    const ph = f.set ? 'Залиште порожнім, щоб не змінювати' : 'Вставте ключ';
+    return `<div class="fld">
+      <label>${esc(f.name)} ${st}</label>
+      <input type="text" autocomplete="off" data-name="${esc(f.name)}" placeholder="${ph}">
+    </div>`;
+  }).join('');
+  document.getElementById('cfgBg').classList.add('show');
+}
+function cfgClose() { document.getElementById('cfgBg').classList.remove('show'); cfgKey = null; }
+document.getElementById('cfgBg').addEventListener('click', e => { if (e.target.id === 'cfgBg') cfgClose(); });
+
+async function cfgSaveDo() {
+  const btn = document.getElementById('cfgSave');
+  const msg = document.getElementById('cfgMsg');
+  const values = {};
+  document.querySelectorAll('#cfgFields input').forEach(inp => {
+    const v = inp.value.trim();
+    if (v) values[inp.getAttribute('data-name')] = v; // порожні не чіпаємо
+  });
+  if (!Object.keys(values).length) { msg.style.color = '#B23B2E'; msg.textContent = 'Нема що зберігати — введіть хоча б один ключ.'; return; }
+  btn.disabled = true; msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Зберігаю…';
+  try {
+    const r = await adminFetch('/api/integrations/configure', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    msg.style.color = '#1B7A3D'; msg.textContent = 'Збережено ✓';
+    setTimeout(() => { cfgClose(); load(); }, 700);
+  } catch (e) {
+    msg.style.color = '#B23B2E'; msg.textContent = 'Помилка: ' + e.message;
+  } finally { btn.disabled = false; }
 }
 
 load();

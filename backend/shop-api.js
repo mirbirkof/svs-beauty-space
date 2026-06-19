@@ -270,6 +270,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`[shop-api] DB: ${process.env.DATABASE_URL ? 'connected' : 'MISSING'}`);
   // Запуск cron напоминаний
   if (process.env.DATABASE_URL) {
+    // Підвантажити секрети інтеграцій, задані з UI, у process.env (env Render пріоритетніший)
+    try { require('./lib/integration-secrets').loadIntegrationSecrets(); } catch (e) { console.error('[integration-secrets]', e.message); }
     remindersRoutes.startCron();
     notificationsRoutes.startCron(); // COM-01 Notification Hub воркер очереди
     triggersRoutes.startCron();      // MKT-02 авто-триггеры маркетинга

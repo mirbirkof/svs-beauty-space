@@ -8,9 +8,11 @@
  */
 const express = require('express');
 const { requirePerm } = require('../lib/rbac');
+const { isAllowed, saveIntegrationSecret } = require('../lib/integration-secrets');
 const router = express.Router();
 
-const has = (...names) => names.every(n => !!(process.env[n] && String(process.env[n]).trim()));
+const isSet = (n) => !!(process.env[n] && String(process.env[n]).trim());
+const has = (...names) => names.every(isSet);
 
 // Каталог. needs — какие env нужны (для подсказки админу, без значений).
 function buildCatalog() {
@@ -69,11 +71,35 @@ function buildCatalog() {
 router.get('/status', requirePerm('integrations.read'), (req, res) => {
   try {
     const catalog = buildCatalog();
+    // до кожної інтеграції додаємо per-field статус (тільки факт «задано», без значень)
+    for (const grp of catalog) {
+      for (const it of grp.items) {
+        it.fields = (it.needs || []).map(n => ({ name: n, set: isSet(n), allowed: isAllowed(n) }));
+      }
+    }
     const all = catalog.flatMap(c => c.items);
     res.json({
       groups: catalog,
       summary: { total: all.length, connected: all.filter(x => x.configured).length },
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/integrations/configure — зберегти ключі інтеграції з UI.
+// body: { values: { ENV_NAME: "значення", ... } }  (порожнє значення → очистити ключ)
+// Значення пишуться в app_settings + одразу в process.env. Назовні нічого не повертаємо.
+router.post('/configure', requirePerm('integrations.write'), async (req, res) => {
+  try {
+    const values = (req.body && req.body.values) || {};
+    const names = Object.keys(values).filter(isAllowed);
+    if (!names.length) return res.status(400).json({ error: 'no valid keys to save' });
+    const userId = req.user && req.user.id ? req.user.id : null;
+    const saved = [];
+    for (const name of names) {
+      const r = await saveIntegrationSecret(name, values[name], userId);
+      saved.push(r);
+    }
+    res.json({ ok: true, saved }); // saved: [{name, set}] — без значень
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
