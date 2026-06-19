@@ -123,10 +123,16 @@ router.post('/telegram', async (req, res) => {
     if (msg.text && msg.text.startsWith('/start')) {
       const parts = msg.text.split(' ');
       const token = parts[1];
-      if (!token) {
+      if (!token || token === 'link') {
+        // Холодний старт або deep-link ?start=link → пропонуємо підвʼязати номер
         return tg('sendMessage', {
           chat_id: msg.chat.id,
-          text: 'Вітаємо! Цей бот підтверджує онлайн-записи на сайті SVS Beauty Space. Перейдіть на сайт щоб почати.',
+          text: 'Вітаємо у SVS Beauty Space! 👋\nЩоб отримувати нагадування про візити, персональні пропозиції та підтверджувати онлайн-записи — підвʼяжіть свій номер телефону одним дотиком:',
+          reply_markup: {
+            keyboard: [[{ text: '📱 Поділитись номером', request_contact: true }]],
+            one_time_keyboard: true,
+            resize_keyboard: true,
+          },
         });
       }
       const row = await db.get(token);
@@ -159,7 +165,50 @@ router.post('/telegram', async (req, res) => {
       const phone = '+' + phoneDigits; // для BeautyPro — с плюсом
       const row = await db.byTgUser(msg.from.id);
       if (!row) {
-        return tg('sendMessage', { chat_id: msg.chat.id, text: 'Активних записів немає.' });
+        // Немає активного запису → режим привʼязки акаунта до клієнта за номером.
+        // Telegram гарантує що номер належить відправнику (перевірка user_id вище).
+        try {
+          const upd2 = await getPool().query(
+            `UPDATE clients SET telegram_id = $1,
+               name = COALESCE(NULLIF(name,''), $3)
+             WHERE regexp_replace(phone, '\\D', '', 'g') = $2
+               AND (telegram_id IS NULL OR telegram_id = $1)
+             RETURNING id, name`,
+            [msg.from.id, phoneDigits, msg.from.first_name || null]
+          );
+          if (upd2.rowCount) {
+            return tg('sendMessage', {
+              chat_id: msg.chat.id,
+              text: `✅ Готово${upd2.rows[0].name ? ', ' + upd2.rows[0].name : ''}! Ваш Telegram підвʼязано. Тепер ви отримуватимете нагадування про візити та персональні пропозиції.`,
+              reply_markup: { remove_keyboard: true },
+            });
+          }
+          // номер є в базі, але вже зайнятий іншим Telegram-акаунтом
+          const exists = await getPool().query(
+            `SELECT telegram_id FROM clients WHERE regexp_replace(phone,'\\D','','g') = $1 LIMIT 1`,
+            [phoneDigits]
+          );
+          if (exists.rowCount && exists.rows[0].telegram_id && String(exists.rows[0].telegram_id) !== String(msg.from.id)) {
+            return tg('sendMessage', { chat_id: msg.chat.id, text: '⚠️ Цей номер вже підвʼязано до іншого Telegram-акаунта. Якщо це помилка — звʼяжіться з адміністратором салону.' });
+          }
+          // номера ще немає в базі → створюємо картку клієнта
+          await getPool().query(
+            `INSERT INTO clients (phone, name, telegram_id, source)
+             VALUES ($1, $2, $3, 'bot-link')
+             ON CONFLICT (tenant_id, phone) DO UPDATE SET
+               telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
+               name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)`,
+            [phoneDigits, msg.from.first_name || null, msg.from.id]
+          );
+          return tg('sendMessage', {
+            chat_id: msg.chat.id,
+            text: '✅ Ваш номер збережено та підвʼязано до Telegram. Дякуємо!',
+            reply_markup: { remove_keyboard: true },
+          });
+        } catch (linkErr) {
+          console.error('[booking/link]', linkErr.message);
+          return tg('sendMessage', { chat_id: msg.chat.id, text: '⚠️ Не вдалось підвʼязати номер зараз. Спробуйте трохи пізніше.' });
+        }
       }
 
       let bookingId = null;
