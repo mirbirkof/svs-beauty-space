@@ -678,28 +678,35 @@ select.input { background:var(--card); }
       </div>
     </div>
     <nav class="sidebar-nav">
-      <!-- Журнал + дашборд -->
+      <!-- Дашборд -->
       <a class="sidebar-item" data-page="dashboard" onclick="go('dashboard')">
         <span class="material-icons-round">dashboard</span> Дашборд
       </a>
-      <a class="sidebar-item active" data-page="journal" onclick="go('journal')">
-        <span class="material-icons-round">event_note</span> Журнал записів
-      </a>
-      <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
-        <span class="material-icons-round">view_kanban</span> Воронка візитів
-      </a>
-      <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
-        <span class="material-icons-round">event_available</span> Зміни / Табель
-      </a>
-      <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
-        <span class="material-icons-round">calendar_month</span> Графік роботи
-      </a>
-      <a class="sidebar-item" data-page="services" onclick="go('services')">
-        <span class="material-icons-round">content_cut</span> Послуги
-      </a>
-      <a class="sidebar-item" data-page="svccats" onclick="go('svccats')">
-        <span class="material-icons-round">account_tree</span> Категорії послуг
-      </a>
+
+      <!-- Робота салону -->
+      <div class="sidebar-group open" id="grp-work">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">event_note</span> Робота салону
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item active" data-page="journal" onclick="go('journal')">
+            <span class="material-icons-round">event_note</span> Журнал записів
+          </a>
+          <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
+            <span class="material-icons-round">view_kanban</span> Воронка візитів
+          </a>
+          <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
+            <span class="material-icons-round">event_available</span> Зміни / Табель
+          </a>
+          <a class="sidebar-item" data-page="services" onclick="go('services')">
+            <span class="material-icons-round">content_cut</span> Послуги
+          </a>
+          <a class="sidebar-item" data-page="svccats" onclick="go('svccats')">
+            <span class="material-icons-round">account_tree</span> Категорії послуг
+          </a>
+        </div>
+      </div>
 
       <!-- Клієнти -->
       <div class="sidebar-group" id="grp-clients">
@@ -723,69 +730,6 @@ select.input { background:var(--card); }
           </a>
         </div>
       </div>
-
-      <!-- Просування -->
-      <div class="sidebar-group" id="grp-promo">
-        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
-          <span class="material-icons-round">campaign</span> Просування
-          <span class="material-icons-round chevron">chevron_right</span>
-        </div>
-        <div class="sidebar-group-items">
-          <a class="sidebar-item" data-page="promos" onclick="go('promos')">
-            <span class="material-icons-round">local_offer</span> Акції / Промокоди
-          </a>
-          <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
-            <span class="material-icons-round">star_rate</span> Відгуки
-          </a>
-          <a class="sidebar-item" data-embed="/admin/dikidi.html" onclick="openEmbed('/admin/dikidi.html','reviews Відгуки / Промо (запис)')" style="cursor:pointer">
-            <span class="material-icons-round">reviews</span> Відгуки / Промо (запис)
-          </a>
-        </div>
-      </div>
-
-      <!-- Маркетинг -->
-      <div class="sidebar-group" id="grp-marketing">
-        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
-          <span class="material-icons-round">campaign</span> Маркетинг
-          <span class="material-icons-round chevron">chevron_right</span>
-        </div>
-        <div class="sidebar-group-items">
-          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#center" onclick="openEmbed('/admin/crm-marketing.html#center','notifications_active Центр повідомлень')" style="cursor:pointer">
-            <span class="material-icons-round">notifications_active</span> Центр повідомлень
-          </a>
-          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#segments" onclick="openEmbed('/admin/crm-marketing.html#segments','groups Сегменти')" style="cursor:pointer">
-            <span class="material-icons-round">groups</span> Сегменти
-          </a>
-          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#campaigns" onclick="openEmbed('/admin/crm-marketing.html#campaigns','send Кампанії / Розсилки')" style="cursor:pointer">
-            <span class="material-icons-round">send</span> Кампанії / Розсилки
-          </a>
-          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#triggers" onclick="openEmbed('/admin/crm-marketing.html#triggers','bolt Авто-тригери')" style="cursor:pointer">
-            <span class="material-icons-round">bolt</span> Авто-тригери
-          </a>
-          <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
-            <span class="material-icons-round">history</span> Нагадування (записи)
-          </a>
-        </div>
-      </div>
-
-      <!-- Зарплата -->
-      <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
-        <span class="material-icons-round">payments</span> Зарплата
-      </a>
-
-      <!-- План місяця та аналітика -->
-      <a class="sidebar-item" data-page="plan" onclick="go('plan')">
-        <span class="material-icons-round">flag</span> План місяця
-      </a>
-      <a class="sidebar-item" data-page="fincenter" onclick="go('fincenter')">
-        <span class="material-icons-round">account_balance</span> Фінансовий центр
-      </a>
-      <a class="sidebar-item" data-page="budgets" onclick="go('budgets')">
-        <span class="material-icons-round">savings</span> Бюджети
-      </a>
-      <a class="sidebar-item" data-page="cashflow" onclick="go('cashflow')">
-        <span class="material-icons-round">trending_up</span> Грошовий потік
-      </a>
 
       <!-- Продажі -->
       <div class="sidebar-group" id="grp-sales">
@@ -814,15 +758,24 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- Фінанси -->
+      <!-- Гроші -->
       <div class="sidebar-group" id="grp-finance">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
-          <span class="material-icons-round">account_balance_wallet</span> Фінанси
+          <span class="material-icons-round">account_balance_wallet</span> Гроші
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
           <a class="sidebar-item" data-page="finance" onclick="go('finance')">
             <span class="material-icons-round">swap_vert</span> Доходи і Витрати
+          </a>
+          <a class="sidebar-item" data-page="fincenter" onclick="go('fincenter')">
+            <span class="material-icons-round">account_balance</span> Фінансовий центр
+          </a>
+          <a class="sidebar-item" data-page="cashflow" onclick="go('cashflow')">
+            <span class="material-icons-round">trending_up</span> Грошовий потік
+          </a>
+          <a class="sidebar-item" data-page="budgets" onclick="go('budgets')">
+            <span class="material-icons-round">savings</span> Бюджети
           </a>
           <a class="sidebar-item" data-embed="/admin/crm-extra.html" onclick="openEmbed('/admin/crm-extra.html','point_of_sale Рахунки і каси')" style="cursor:pointer">
             <span class="material-icons-round">point_of_sale</span> Рахунки і каси
@@ -842,10 +795,66 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- Товари -->
-      <div class="sidebar-group" id="grp-goods">
+      <!-- Маркетинг -->
+      <div class="sidebar-group" id="grp-marketing">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
-          <span class="material-icons-round">storefront</span> Товари
+          <span class="material-icons-round">campaign</span> Маркетинг
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#center" onclick="openEmbed('/admin/crm-marketing.html#center','notifications_active Центр повідомлень')" style="cursor:pointer">
+            <span class="material-icons-round">notifications_active</span> Центр повідомлень
+          </a>
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#segments" onclick="openEmbed('/admin/crm-marketing.html#segments','groups Сегменти')" style="cursor:pointer">
+            <span class="material-icons-round">groups</span> Сегменти
+          </a>
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#campaigns" onclick="openEmbed('/admin/crm-marketing.html#campaigns','send Кампанії / Розсилки')" style="cursor:pointer">
+            <span class="material-icons-round">send</span> Кампанії / Розсилки
+          </a>
+          <a class="sidebar-item" data-embed="/admin/crm-marketing.html#triggers" onclick="openEmbed('/admin/crm-marketing.html#triggers','bolt Авто-тригери')" style="cursor:pointer">
+            <span class="material-icons-round">bolt</span> Авто-тригери
+          </a>
+          <a class="sidebar-item" data-page="reminders" onclick="go('reminders')">
+            <span class="material-icons-round">history</span> Нагадування (записи)
+          </a>
+          <a class="sidebar-item" data-page="promos" onclick="go('promos')">
+            <span class="material-icons-round">local_offer</span> Акції / Промокоди
+          </a>
+          <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
+            <span class="material-icons-round">star_rate</span> Відгуки
+          </a>
+          <a class="sidebar-item" data-embed="/admin/dikidi.html" onclick="openEmbed('/admin/dikidi.html','reviews Відгуки / Промо (запис)')" style="cursor:pointer">
+            <span class="material-icons-round">reviews</span> Відгуки / Промо (запис)
+          </a>
+        </div>
+      </div>
+
+      <!-- Команда -->
+      <div class="sidebar-group" id="grp-team">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">badge</span> Команда
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
+            <span class="material-icons-round">badge</span> Майстри / Співробітники
+          </a>
+          <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
+            <span class="material-icons-round">payments</span> Зарплата
+          </a>
+          <a class="sidebar-item" data-page="plan" onclick="go('plan')">
+            <span class="material-icons-round">flag</span> План місяця
+          </a>
+          <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
+            <span class="material-icons-round">calendar_month</span> Графіки роботи
+          </a>
+        </div>
+      </div>
+
+      <!-- Склад -->
+      <div class="sidebar-group" id="grp-stock">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">storefront</span> Склад
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
@@ -861,13 +870,11 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#inventory" onclick="openEmbed('/admin/crm-extra.html#inventory','fact_check Інвентаризація')" style="cursor:pointer">
             <span class="material-icons-round">fact_check</span> Інвентаризація
           </a>
+          <a class="sidebar-item" data-page="settings" data-tab="consumables" onclick="go('settings');setTab('consumables')">
+            <span class="material-icons-round">science</span> Розхідники
+          </a>
         </div>
       </div>
-
-      <!-- Майстри -->
-      <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
-        <span class="material-icons-round">badge</span> Майстри / Співробітники
-      </a>
 
       <!-- Налаштування (підменю в самому сайдбарі, без другої колонки на сторінці) -->
       <div class="sidebar-group" id="grp-settings">
@@ -896,9 +903,6 @@ select.input { background:var(--card); }
           </a>
           <a class="sidebar-item" data-page="settings" data-tab="rooms" onclick="go('settings');setTab('rooms')">
             <span class="material-icons-round">meeting_room</span> Кабінети / ресурси
-          </a>
-          <a class="sidebar-item" data-page="settings" data-tab="consumables" onclick="go('settings');setTab('consumables')">
-            <span class="material-icons-round">inventory_2</span> Розхідники
           </a>
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#users-access" onclick="openEmbed('/admin/crm-extra.html#users-access','admin_panel_settings Доступ до проєкту')" style="cursor:pointer">
             <span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту
