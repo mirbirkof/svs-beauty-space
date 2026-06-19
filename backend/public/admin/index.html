@@ -39,14 +39,9 @@
   --radius-sm: 8px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-/* Корневая защита от горизонтального раздувания: широкие таблицы больше не
-   растягивают страницу за ширину экрана → мобильный viewport стабилен,
-   сайдбар не «прыгает» в размере между страницами. */
+/* Захист від горизонтального розпирання: широкі таблиці скролляться
+   всередині контенту, а не розтягують сторінку за ширину екрана. */
 html, body { overflow-x:hidden; max-width:100%; width:100%; }
-/* clip надійніше за hidden: hidden на body НЕ завжди стримує розширення
-   мобільного layout-viewport від широкого контенту → тоді @media(768px) не
-   спрацьовує і меню показується в десктоп-режимі (різна ширина на кожній
-   сторінці). clip жорстко фіксує ICB по ширині екрана. */
 html { overflow-x:clip; overflow-y:visible; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
 
@@ -232,48 +227,6 @@ select.input { background:var(--card); }
 .login-card .input { width:100%; margin-bottom:12px; }
 .login-card .btn { width:100%; justify-content:center; padding:10px; }
 
-/* MOBILE */
-.mobile-toggle { display:none; background:none; border:none; cursor:pointer; color:var(--text); }
-@media(max-width:768px) {
-  /* Залізна страховка: на мобільному жоден елемент не може розпирати сторінку за екран.
-     Off-canvas сайдбар лежить за лівим краєм (translateX -100%) і лишається прихованим;
-     внутрішні скроли (.jgrid, .content) працюють незалежно. */
-  html, body { overflow-x:hidden; max-width:100vw; }
-  .sidebar, .sb-collapsed .sidebar { transform:translateX(-100%); width:240px; }
-  .sidebar.open { transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.35); }
-  .main, .sb-collapsed .main { margin-left:0; max-width:100vw; min-width:0; }
-  /* Затемнення-бекдроп: зʼявляється тільки коли шторка відкрита, тап = закрити.
-     Через :has() не потрібно міняти існуючий toggle. Блокуємо скрол фону. */
-  .sidebar-backdrop { position:fixed; inset:0; background:rgba(15,17,28,.45); z-index:99; opacity:0; pointer-events:none; transition:opacity .2s; }
-  body:has(.sidebar.open) .sidebar-backdrop { opacity:1; pointer-events:auto; }
-  body:has(.sidebar.open) { overflow:hidden; }
-  .mobile-toggle { display:flex; }
-  .sb-toggle { display:none; }
-  .topbar > div:first-child { padding-left:0; } /* на мобільному плаваюча кнопка прихована */
-  /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
-  .content { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100vw; }
-  /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
-     Перекриваємо базове правило з !important, щоб розкрита група показувала пункти. */
-  .sb-collapsed .sidebar-group-items { display:none; }
-  .sb-collapsed .sidebar-group.open .sidebar-group-items { display:block !important; }
-  .sb-collapsed .sidebar-item, .sb-collapsed .sidebar-group-header { font-size:14px; gap:11px; justify-content:flex-start; padding:10px 16px; }
-  .sb-collapsed .sidebar-logo .logo-top { display:flex; }
-  .sb-collapsed .sidebar-logo .logo-top span { font-size:17px; }
-  .sb-collapsed .sidebar-logo .logo-top::after { content:""; }
-  .sb-collapsed .sidebar-logo .logo-bot { font-size:12.5px; }
-  .sb-collapsed .sidebar-footer button { font-size:13px; }
-  .kpi-grid { grid-template-columns:1fr 1fr; }
-  /* журнал на мобільному: вужча колонка часу, компактні картки */
-  .jgrid-time { flex:0 0 40px; }
-  .jslot-label { font-size:10px; padding-right:4px; }
-  .jcol { flex:1 0 130px; }
-  .jcol-head { padding:0 6px; gap:6px; }
-  .jcol-head .av { width:28px; height:28px; font-size:11px; }
-  .jcol-head .nm { font-size:12px; }
-  .jappt { left:2px; right:2px; padding:4px 5px; font-size:11px; }
-  .jappt .t { font-size:10px; }
-}
-
 /* SCROLLBAR */
 .sidebar-nav::-webkit-scrollbar { width:4px; }
 .sidebar-nav::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1); border-radius:4px; }
@@ -376,7 +329,6 @@ select.input { background:var(--card); }
 .fc-kpi .chg { font-size:12px; font-weight:700; }
 .fc-kpi .chg.up { color:#16a34a; } .fc-kpi .chg.down { color:#dc2626; } .fc-kpi .chg.flat { color:#94a3b8; }
 .fc-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-@media(max-width:760px){ .fc-grid{ grid-template-columns:1fr; } }
 .fc-card { background:var(--card,#fff); border:1px solid var(--border,#eee); border-radius:14px; padding:16px; }
 .fc-card h4 { margin:0 0 12px; font-size:14px; }
 .fc-bar { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; }
@@ -407,7 +359,6 @@ select.input { background:var(--card); }
 .pl-card-client { font-weight:600; font-size:13.5px; margin-top:2px; }
 .pl-card-sub { font-size:12px; color:var(--text-secondary); margin-top:1px; }
 .pl-card-master { font-size:11.5px; color:var(--primary,#6366f1); margin-top:3px; }
-@media(max-width:768px){ .pl-col{ flex:1 0 78%; min-width:78%; } }
 /* Журнал: права панель — календар + каса */
 .journal-layout { display:flex; gap:16px; align-items:flex-start; }
 .journal-main { flex:1; min-width:0; overflow-x:hidden; }
@@ -437,17 +388,6 @@ select.input { background:var(--card); }
 .jcash-row .val { margin-left:auto; font-weight:700; }
 .jcash-row.tot { border-top:1px solid var(--border); padding-top:8px; font-size:14px; }
 .jcash-lock { font-size:12px; color:var(--text-secondary); text-align:center; padding:8px 4px; }
-@media(max-width:1100px){
-  .journal-layout { flex-direction:column; }
-  .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
-  .journal-side > .card { flex:1 1 240px; min-width:0; }
-  /* Коли журнал у стовпчик — .journal-main інакше розпирається неущільнюваними
-     колонками майстрів (flex-shrink:0) за межі екрана, і clip обрізає скрол →
-     до правих майстрів не дотягнутися. Явна ширина прив'язує main до екрана,
-     і горизонтальний скрол працює ВСЕРЕДИНІ .jgrid, а не розпирає сторінку. */
-  .journal-main { width:100%; max-width:100%; min-width:0; overflow-x:hidden; }
-  .jgrid { max-width:100%; }
-}
 /* Налаштування: підменю перенесено в бічне меню — внутрішня колонка прихована */
 .settings-layout { display:flex; gap:20px; align-items:flex-start; }
 .settings-nav { display:none; }
@@ -473,23 +413,6 @@ select.input { background:var(--card); }
 .set-toggle input { width:20px; height:20px; margin-top:2px; flex-shrink:0; }
 .set-toggle b { display:block; font-size:14px; }
 .set-toggle i { color:var(--text-secondary); font-size:13px; font-style:normal; }
-@media(max-width:768px){
-  .settings-layout { flex-direction:column; }
-  .set-form { grid-template-columns:1fr; }
-}
-/* ── Мобільні картки замість широких таблиць (≤768px) ── */
-@media(max-width:768px){
-  .tbl thead { position:absolute; left:-9999px; }
-  .tbl, .tbl tbody, .tbl tr, .tbl td { display:block; width:100%; box-sizing:border-box; }
-  .tbl tr { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; padding:4px 2px; background:var(--card); }
-  .tbl tr:hover td { background:transparent; }
-  .tbl td { padding:8px 14px; border:none; border-bottom:1px solid #f2f3f7; display:flex; justify-content:space-between; align-items:center; gap:14px; font-size:13.5px; text-align:right; min-height:0; }
-  .tbl td:last-child { border-bottom:none; }
-  .tbl td::before { content:attr(data-label); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--text-secondary); text-align:left; flex:0 0 38%; white-space:normal; }
-  .tbl td:not([data-label])::before, .tbl td[data-label=""]::before { display:none; }
-  .tbl td[colspan] { display:block; text-align:center; }
-  .tbl td[colspan]::before { display:none; }
-}
 .jappt .ph { font-size:10px; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .jappt .ok { position:absolute; bottom:5px; right:6px; font-size:13px; opacity:.9; }
 /* Графік змін */
@@ -558,36 +481,11 @@ select.input { background:var(--card); }
 .schfs-close { display:none; }
 .schmon-wrap.fs .schfs-close { display:inline-flex; }
 .schmon-wrap.fs [onclick*="schToggleFs"]:not(.schfs-close) { display:none; }
-@media(max-width:768px){
-  .schboard-grid { grid-template-columns:140px repeat(7, 82px); min-width:714px; }
-  .schb-nm { font-size:12px; }
-  .smc-name { min-width:0; }
-  .schmon-title { min-width:120px; font-size:14px; }
-}
 .jappt.dragging { opacity:.45; }
 .jcol-body.drop-active { background:var(--primary-light); }
 /* Червона лінія поточного часу (як у DIKIDI) */
 .jnow { position:absolute; left:0; right:0; height:2px; background:#ef4444; z-index:4; pointer-events:none; }
 .jnow::before { content:''; position:absolute; left:-3px; top:-3px; width:8px; height:8px; border-radius:50%; background:#ef4444; }
-@media(max-width:768px){
-  .journal-toolbar { flex-wrap:wrap; gap:8px; }
-  .jt-nav { order:3; width:100%; margin:0; justify-content:center; }
-  .jt-modes { order:1; }
-  /* Журнал на мобільному: панель дій на всю ширину, кнопки = рівні іконки (DIKIDI-style) */
-  .jt-right { order:2; width:100%; margin-left:0; justify-content:space-between; flex-wrap:nowrap; gap:6px; }
-  #journalFocus { order:-1; flex:1 1 100%; max-width:none !important; margin-bottom:2px; }
-  .jt-right .jt-act, .jt-right .jt-icon-btn { flex:1 1 0; min-width:0; height:42px; padding:0; justify-content:center; }
-  .jt-right .jt-act .jtl { display:none; }
-  .jt-right .jt-act .material-icons-round { font-size:22px; }
-  .jt-right .jt-menu-wrap { flex:1 1 0; display:flex; }
-  .jt-right .jt-menu-wrap .jt-icon-btn { width:100%; }
-  .jt-menu { right:auto; left:0; }
-  .jt-date { min-width:140px; font-size:13px; }
-  /* журнал на мобільному: менші відступи картки + жорстке обрізання, щоб сітка не виходила за екран (#18) */
-  .journal-main .card-body { padding:8px; }
-  .journal-main .card { overflow:hidden; max-width:100%; }
-  #journalContent { max-width:100%; overflow-x:hidden; }
-}
 /* ── Інфо-іконки «i» з поясненнями (#15) ── */
 .info-i { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; min-width:18px;
   border-radius:50%; border:1px solid var(--primary,#7c5cff); color:var(--primary,#7c5cff); background:transparent;
@@ -628,8 +526,6 @@ select.input { background:var(--card); }
 .fin-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:20px; font-size:11.5px; font-weight:600; }
 .fin-pill.in { background:#dcfce7; color:#166534; }
 .fin-pill.out { background:#fee2e2; color:#991b1b; }
-@media(max-width:1100px){ .fin-donuts { grid-template-columns:repeat(2,1fr); } }
-@media(max-width:640px){ .fin-donuts { grid-template-columns:1fr; } .fin-actions { margin-left:0; width:100%; } }
 </style>
 </head>
 <body>
@@ -951,18 +847,12 @@ select.input { background:var(--card); }
     </div>
   </aside>
 
-  <!-- Затемнення під висувною шторкою меню (мобільний). Тап — закрити. -->
-  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="document.getElementById('sidebar').classList.remove('open')"></div>
-
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
       <div style="display:flex;align-items:center;gap:12px">
         <button class="sb-toggle" title="Згорнути меню" onclick="toggleSidebar()">
           <span class="material-icons-round">menu_open</span>
-        </button>
-        <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
-          <span class="material-icons-round">menu</span>
         </button>
         <span class="topbar-title" id="pageTitle">Журнал записів</span>
       </div>
@@ -1539,7 +1429,6 @@ select.input { background:var(--card); }
           #page-payroll .py-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
           #page-payroll .py-form{display:flex;flex-direction:column;gap:8px}
           #page-payroll .py-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-          @media(max-width:980px){#page-payroll .py-grid3{grid-template-columns:1fr}}
           #page-payroll .py-mini{width:100%;border-collapse:collapse;font-size:13px}
           #page-payroll .py-mini td{padding:6px 4px;border-bottom:1px solid var(--border,#eee)}
           #page-payroll .py-mini .x{color:#d9534f;cursor:pointer;font-size:16px}
@@ -2616,7 +2505,7 @@ function openEmbed(url, title) {
   const f = document.getElementById('embedFrame');
   if (f.getAttribute('data-url') !== url) {
     f.setAttribute('data-url', url);
-    // Антикеш: мобільні браузери агресивно кешують iframe → нові правки модулів не видно.
+    // Антикеш: браузери агресивно кешують iframe → нові правки модулів не видно.
     // Додаємо ?v= (стабільний на сесію) перед #hash, щоб при кожному завантаженні панелі тягнути свіже.
     const v = (window._ASSET_V || (window._ASSET_V = Date.now()));
     const h = url.indexOf('#'); const path = h>=0?url.slice(0,h):url; const hash = h>=0?url.slice(h):'';
@@ -4547,7 +4436,7 @@ function setJournalMode(mode) {
 let journalData = null;             // кеш останнього завантаження
 const JOURNAL_OPEN = 7*60;          // салон відкривається о 07:00
 const JOURNAL_CLOSE = 22*60;        // зачиняється о 22:00
-let journalFocusMaster = '';        // фокус на одному майстрі (зручно на мобільному)
+let journalFocusMaster = '';        // фокус на одному майстрі
 const J_PX_PER_MIN = 1.4;           // висота сітки: 1 хв = 1.4px → 30хв ≈ 42px
 const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
 
@@ -5621,7 +5510,7 @@ function renderJournalDay(container, data) {
   if (!masters.length) masters = data.masters || [];
   if (!masters.length) { container.innerHTML = '<div class="empty"><span class="material-icons-round">groups</span>Немає активних майстрів. Додайте майстрів у розділі «Майстри».</div>'; return; }
 
-  // селектор фокусу на одному майстрі (зручно на мобільному)
+  // селектор фокусу на одному майстрі
   const focusSel = document.getElementById('journalFocus');
   if (focusSel) {
     const cur = journalFocusMaster;
@@ -7787,38 +7676,6 @@ function saasFlagEdit(flag){
     if(r&&(r.ok||r.id||r.key)){ toast('Флаг збережено'); loadSaasFlags(); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('save'); }
   });
 }
-</script>
-<script>
-/* Мобільні картки: автопідстановка назв полів із шапки таблиці у data-label.
-   Працює і для динамічно перемальованих таблиць (MutationObserver). */
-(function(){
-  function labelTable(tbl){
-    var heads = Array.prototype.map.call(tbl.querySelectorAll('thead th'), function(th){ return th.textContent.trim(); });
-    if(!heads.length) return;
-    Array.prototype.forEach.call(tbl.querySelectorAll('tbody tr'), function(tr){
-      Array.prototype.forEach.call(tr.children, function(td, i){
-        if(td.colSpan > 1) return;
-        if(heads[i] !== undefined && heads[i] !== '') td.setAttribute('data-label', heads[i]);
-      });
-    });
-  }
-  function labelAll(root){ (root||document).querySelectorAll('table.tbl').forEach(labelTable); }
-  var obs = new MutationObserver(function(muts){
-    for(var i=0;i<muts.length;i++){
-      var added = muts[i].addedNodes;
-      for(var j=0;j<added.length;j++){
-        var n = added[j];
-        if(n.nodeType !== 1) continue;
-        var t = n.closest && n.closest('table.tbl');
-        if(t){ labelTable(t); continue; }
-        if(n.querySelectorAll) n.querySelectorAll('table.tbl').forEach(labelTable);
-      }
-    }
-  });
-  function start(){ labelAll(); obs.observe(document.body, {childList:true, subtree:true}); }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
-})();
 </script>
 <script src="/admin/assets/notes-widget.js"></script>
 </body>
