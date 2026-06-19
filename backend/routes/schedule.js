@@ -614,7 +614,22 @@ router.get('/journal', async (req, res) => {
               a.starts_at, a.ends_at, a.status, a.notes,
               COALESCE(a.price, s.price) AS price,
               a.real_amount,
-              s.name AS service_name,
+              -- Назва послуги: якщо у записі кілька послуг (appointment_services) —
+              -- показуємо ВСІ через « + », а не лише першу (інакше «стрижка» замість
+              -- реального «холодне відновлення + …»). Якщо мульти-послуг нема — беремо s.name.
+              COALESCE(
+                (SELECT string_agg(s2.name, ' + ' ORDER BY aps.starts_at, aps.id)
+                   FROM appointment_services aps
+                   LEFT JOIN services s2 ON s2.id = aps.service_id
+                  WHERE aps.appointment_id = a.id AND s2.name IS NOT NULL),
+                s.name
+              ) AS service_name,
+              (SELECT COUNT(*)::int FROM appointment_services aps WHERE aps.appointment_id = a.id) AS services_count,
+              (SELECT COALESCE(json_agg(json_build_object(
+                        'name', s2.name, 'price', aps.price, 'duration', aps.duration_min) ORDER BY aps.starts_at, aps.id), '[]')
+                   FROM appointment_services aps
+                   LEFT JOIN services s2 ON s2.id = aps.service_id
+                  WHERE aps.appointment_id = a.id) AS services_list,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,
               -- Оплата = ПРАВДА: вручну (ref_type=appointment) АБО конкретний продаж послуги

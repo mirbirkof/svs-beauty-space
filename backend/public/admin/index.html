@@ -6023,6 +6023,11 @@ async function openAppt(id) {
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
       <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7)">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span> · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}</div></div>
+      ${(a.services_count>1 && Array.isArray(a.services_list) && a.services_list.length) ? `<div style="background:var(--bg-secondary,#f7f7fb);border-radius:10px;padding:8px 12px">
+        <span style="color:var(--text-secondary);font-size:12px">Склад візиту · ${a.services_count} послуги</span>
+        ${a.services_list.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px"><span>${escapeHtml(s.name||'—')}${s.duration?` <span style="color:var(--text-secondary);font-size:11px">· ${_humanDur(Math.round(s.duration))}</span>`:''}</span><span style="font-weight:600;white-space:nowrap">${s.price!=null?_money(s.price):'—'}</span></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border,#e5e5ef);font-weight:700"><span>Разом план</span><span>${_money(a.price)}</span></div>
+      </div>` : ''}
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Загальний час процедури</span>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
