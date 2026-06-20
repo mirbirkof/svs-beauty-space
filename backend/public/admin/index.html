@@ -252,6 +252,11 @@ select.input { background:var(--card); }
   .topbar > div:first-child { padding-left:0; } /* на мобільному плаваюча кнопка прихована */
   /* Широкие таблицы скроллятся внутри контента, а не растягивают страницу */
   .content { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100vw; }
+  /* Модалки на мобільному — на всю ширину і вище, щоб уся інформація вміщалась
+     і не доводилось «возити» дрібне віконце по фону (скарга Боса 20.06).
+     !important перекриває inline max-width на конкретних модалках. */
+  .modal-overlay { padding:8px; align-items:flex-start; }
+  .modal { max-width:100% !important; width:100% !important; max-height:96vh; }
   /* На мобільному меню — це висувна шторка на всю ширину, режим icon-rail не діє.
      Перекриваємо базове правило з !important, щоб розкрита група показувала пункти. */
   .sb-collapsed .sidebar-group-items { display:none; }
@@ -5669,22 +5674,27 @@ function renderJournalDay(container, data) {
   const showNow = isToday && nowM >= minM && nowM < maxM;
   const cols = masters.map(m => {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0];
-    const wStart = m.working ? _hm2(m.start) : null;
-    const wEnd   = m.working ? _hm2(m.end)   : null;
     // денна статистика майстра: к-ть записів + сума (без скасованих)
     const mAppts = (apptByMaster[m.id]||[]);
     const cnt = mAppts.length;
     const sum = mAppts.reduce((acc,a)=> acc + (Number(a.real_amount!=null?a.real_amount:a.price)||0), 0);
+    // Майстер вважається робочим, якщо є графік АБО вже є записи цього дня.
+    // Інакше адмін не міг додати запис мастеру, який фактично працює: колонка
+    // світилась «вихідний» і жоден слот не був клікабельний (скарга Боса 20.06).
+    const hasAppts = mAppts.length > 0;
+    const effWorking = m.working || hasAppts;
+    const wStart = m.working ? _hm2(m.start) : JOURNAL_OPEN;
+    const wEnd   = m.working ? _hm2(m.end)   : JOURNAL_CLOSE;
     let body = '';
     // ряди сітки: робочий час — клікабельний для броні «в моменті»
     for (let i=0;i<slots;i++){
       const m2=minM+i*15;
       const lineCls = m2%60===0 ? ' hour' : (m2%30===0 ? ' half' : '');
-      const bookable = m.working && m2>=wStart && m2<wEnd;
+      const bookable = effWorking && m2>=wStart && m2<wEnd;
       body += `<div class="jslot${lineCls}${bookable?' jbook':''}"${bookable?` onclick="openCreate(${m.id},'${dateStr}',${m2})"`:''}></div>`;
     }
-    // вихідний — затіняємо всю колонку
-    if (!m.working) body += `<div class="joff">${m.day_off_reason||'Вихідний'}</div>`;
+    // справжній вихідний (немає ні графіка, ні записів) — затіняємо всю колонку
+    if (!effWorking) body += `<div class="joff">${m.day_off_reason||'Вихідний'}</div>`;
     // не робочі години в межах 08–22 (до початку та після кінця зміни)
     if (m.working) {
       if (wStart>minM) body += `<div class="joff joff-part" style="top:0;height:${(wStart-minM)*J_PX_PER_MIN}px"></div>`;
@@ -5726,7 +5736,7 @@ function renderJournalDay(container, data) {
         <div class="av">${av}</div>
         <div style="min-width:0">
           <div class="nm">${m.name}</div>
-          <div class="sp">${m.working?(m.start+'–'+m.end):'вихідний'}</div>
+          <div class="sp">${m.working?(m.start+'–'+m.end):(hasAppts?'поза графіком':'вихідний')}</div>
           ${cnt?`<div class="stat">${cnt} ${_plural(cnt,'запис','записи','записів')} · ${_money(sum)}</div>`:''}
         </div>
       </div>
