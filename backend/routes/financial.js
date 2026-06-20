@@ -178,8 +178,14 @@ router.put('/digest/settings', requirePerm('reports.finance'), async (req, res) 
 router.post('/digest/send-now', requirePerm('reports.finance'), async (req, res) => {
   try {
     const st = (await pool.query(`SELECT * FROM financial_digest_settings WHERE id=1`)).rows[0] || {};
-    const chat = st.telegram_chat_id || process.env.ADMIN_TG_CHAT;
-    if (!chat) return res.status(400).json({ error: 'no-chat-id', hint: 'вкажіть telegram_chat_id або ADMIN_TG_CHAT' });
+    let chat = st.telegram_chat_id || process.env.ADMIN_TG_CHAT;
+    // Фолбэк: если chat_id нигде не задан — шлём текущему залогиненному админу
+    // (его telegram_id, если аккаунт залинкован с Telegram — тем же каналом, что и коды входа).
+    if (!chat && req.user?.id) {
+      const u = await pool.query(`SELECT telegram_id FROM users WHERE id=$1`, [req.user.id]);
+      if (u.rows[0]?.telegram_id) chat = String(u.rows[0].telegram_id);
+    }
+    if (!chat) return res.status(400).json({ error: 'no-chat-id', hint: 'відкрийте «Щоденна зведення» і вкажіть Telegram chat_id, або залінкуйте свій акаунт із Telegram' });
     const text = await buildDigest(st);
     await tgSend(chat, text);
     res.json({ ok: true, sent_to: chat });

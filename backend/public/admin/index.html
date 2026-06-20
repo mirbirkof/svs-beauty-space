@@ -4921,7 +4921,9 @@ async function fcSendDigest(btn){
   if(btn){ btn.disabled=true; }
   try{
     const r=await api('/api/financial/digest/send-now',{method:'POST'});
-    if(r&&r.ok) toast('Зведення надіслано в Telegram'); else toast(r.error==='no-chat-id'?'Не вказано Telegram chat_id':(r.error||'Помилка'),'error');
+    if(r&&r.ok){ toast('Зведення надіслано в Telegram'+(r.sent_to?(' (chat '+r.sent_to+')'):'')); }
+    else if(r&&r.error==='no-chat-id'){ toast('Вкажіть Telegram chat_id для зведення','error'); fcDigestSettings(); }
+    else { toast((r&&r.error)||'Помилка','error'); }
   }catch{ toast('Помилка надсилання','error'); }
   finally{ if(btn) btn.disabled=false; }
 }
