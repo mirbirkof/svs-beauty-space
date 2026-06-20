@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=1280">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SVS Beauty — CRM</title>
 <script>try{
   if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');
@@ -5904,21 +5904,26 @@ async function jRemoveBlock(id){
     if (r.ok) loadJournal(); else toast(r.error||'Помилка','error');
   } catch { toast('Помилка мережі','error'); }
 }
-function openBlockModal(){
+function openBlockModal(prefMaster, prefStart){
   const ms = (journalData && journalData.masters || []);
   if (!ms.length) { toast('Немає майстрів на цей день','error'); return; }
   const dateStr = document.getElementById('journalDate').value || _ymd(new Date());
-  const opts = ms.map(m=>`<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  const opts = ms.map(m=>`<option value="${m.id}"${String(m.id)===String(prefMaster)?' selected':''}>${escapeHtml(m.name)}</option>`).join('');
   const typeOpts = Object.keys(BLOCK_LABELS).map(k=>`<option value="${k}">${BLOCK_LABELS[k]}</option>`).join('');
-  showModal('Блокувати час · '+dateStr, `
+  // якщо клікнули по слоту — підставляємо час початку, кінець = +1 година
+  const stVal = prefStart || '12:00';
+  const [_sh,_sm] = stVal.split(':').map(Number);
+  const _endM = Math.min(_sh*60 + (_sm||0) + 60, 23*60+45);
+  const enVal = String(Math.floor(_endM/60)).padStart(2,'0')+':'+String(_endM%60).padStart(2,'0');
+  showModal('Зайняти / заблокувати час · '+dateStr, `
     <div style="display:flex;flex-direction:column;gap:10px">
       <div><label style="font-size:12px;color:var(--text-secondary)">Майстер</label>
         <select id="blkMaster" class="input">${opts}</select></div>
       <div style="display:flex;gap:8px">
         <div style="flex:1"><label style="font-size:12px;color:var(--text-secondary)">З</label>
-          <input id="blkStart" type="time" class="input" value="12:00" step="900"></div>
+          <input id="blkStart" type="time" class="input" value="${stVal}" step="900"></div>
         <div style="flex:1"><label style="font-size:12px;color:var(--text-secondary)">До</label>
-          <input id="blkEnd" type="time" class="input" value="13:00" step="900"></div>
+          <input id="blkEnd" type="time" class="input" value="${enVal}" step="900"></div>
       </div>
       <div><label style="font-size:12px;color:var(--text-secondary)">Тип</label>
         <select id="blkType" class="input">${typeOpts}</select></div>
@@ -6365,9 +6370,12 @@ async function openCreate(masterId, dateStr, minutes) {
         <span style="color:var(--text-secondary);font-size:12px">Замітка</span>
         <textarea id="ncNote" class="input" rows="2" placeholder="Напр.: перший візит"></textarea>
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
-        <button class="btn btn-primary" onclick="saveCreate()">Записати</button>
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-outline" style="color:#6E7191" onclick="closeAppt();openBlockModal(${masterId||'null'},'${hh}:${mm}')" title="Зайняти цей час, щоб ніхто не записався"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">lock</span> Зайняти час</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
+          <button class="btn btn-primary" onclick="saveCreate()">Записати</button>
+        </div>
       </div>
       <div id="ncMsg" style="font-size:13px"></div>
     </div>`;
