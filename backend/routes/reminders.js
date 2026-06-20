@@ -41,7 +41,6 @@ async function scheduleReminders() {
     LEFT JOIN services s ON s.id = a.service_id
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '23 hours' AND NOW() + interval '25 hours'
-      AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_24h')
   `);
   for (const row of in24h.rows) {
@@ -60,7 +59,6 @@ async function scheduleReminders() {
     LEFT JOIN masters m ON m.id = a.master_id
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '90 minutes' AND NOW() + interval '150 minutes'
-      AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_2h')
   `);
   for (const row of in2h.rows) {
@@ -79,7 +77,6 @@ async function scheduleReminders() {
     LEFT JOIN masters m ON m.id = a.master_id
     WHERE a.status = 'done'
       AND COALESCE(a.ends_at, a.starts_at + interval '1 hour') BETWEEN NOW() - interval '150 minutes' AND NOW() - interval '90 minutes'
-      AND c.telegram_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':feedback')
   `);
   for (const row of after2h.rows) {

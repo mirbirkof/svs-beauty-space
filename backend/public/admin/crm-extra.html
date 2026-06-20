@@ -635,6 +635,12 @@ async function setMasterActive(id, active){
   catch(e){ alert(e.message); }
 }
 function closeCard(){ document.getElementById('cardModal').style.display='none'; }
+function goToAccessList(){
+  closeCard();
+  const btn=document.querySelector('nav.tabs button[data-tab="users"]');
+  if(btn && !btn.classList.contains('active')) btn.onclick();
+  setTimeout(()=>{ const el=document.getElementById('access-section'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }, 200);
+}
 function _mcAvatar(ms, size){
   const s = size || 64, rad = Math.round(s/4.5), fs = Math.round(s*0.37);
   const init = (ms.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
@@ -875,7 +881,7 @@ function _mcTabAccess(){
       </div>`;
   } else {
     access=`<p style="font-size:13px;color:#888;margin-bottom:12px">У цього співробітника ще немає облікового запису для входу. Створіть його у вкладці <b>Доступи до системи</b>.</p>
-      <a class="btn sm" href="#users">До списку доступів</a>`;
+      <button class="btn sm" onclick="goToAccessList()">До списку доступів</button>`;
   }
   return `<h4 style="margin:0 0 10px;font-size:14px">Доступ до системи</h4>${access}
     <p style="font-size:12px;color:#888;margin-top:12px">Майстер бачить лише свій графік і записи. Адміністратор — журнал без фінансів власника (залежить від ролі).</p>`;
