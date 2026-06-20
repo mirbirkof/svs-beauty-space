@@ -4554,8 +4554,12 @@ function setJournalMode(mode) {
 }
 
 let journalData = null;             // кеш останнього завантаження
-const JOURNAL_OPEN = 7*60;          // салон відкривається о 07:00
-const JOURNAL_CLOSE = 22*60;        // зачиняється о 22:00
+const JOURNAL_OPEN = 7*60;          // діапазон ВІДОБРАЖЕННЯ сітки (щоб ранні/пізні записи не губились)
+const JOURNAL_CLOSE = 22*60;        // діапазон відображення сітки
+// Реальні робочі години салону (app_settings.salon_profile.hours = "Пн-Нд 8:00-19:00").
+// У ці межі вкладаємо запис для майстрів без графіка — щоб не було розбіжності з онлайн-записом (заметка #51).
+const SALON_OPEN = 8*60;            // 08:00
+const SALON_CLOSE = 19*60;          // 19:00
 let journalFocusMaster = '';        // фокус на одному майстрі (зручно на мобільному)
 const J_PX_PER_MIN = 1.4;           // висота сітки: 1 хв = 1.4px → 30хв ≈ 42px
 const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
@@ -5683,8 +5687,8 @@ function renderJournalDay(container, data) {
     // світилась «вихідний» і жоден слот не був клікабельний (скарга Боса 20.06).
     const hasAppts = mAppts.length > 0;
     const effWorking = m.working || hasAppts;
-    const wStart = m.working ? _hm2(m.start) : JOURNAL_OPEN;
-    const wEnd   = m.working ? _hm2(m.end)   : JOURNAL_CLOSE;
+    const wStart = m.working ? _hm2(m.start) : SALON_OPEN;
+    const wEnd   = m.working ? _hm2(m.end)   : SALON_CLOSE;
     let body = '';
     // ряди сітки: робочий час — клікабельний для броні «в моменті»
     for (let i=0;i<slots;i++){
