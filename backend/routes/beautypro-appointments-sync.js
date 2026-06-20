@@ -467,6 +467,32 @@ async function syncSales(from, to) {
        WHERE id=$1`, [shiftId]);
   }
 
+  // Бэкфилл майстра на продаж послуги, що прийшов із BeautyPro без professional (master_id NULL).
+  // BeautyPro часто не проставляє майстра в чеку продажу (касир не обрав) → продаж не матчиться
+  // ні зі статусом «проведено», ні з real_amount, ні із ЗП. Якщо за день у цього клієнта є
+  // РІВНО ОДИН майстер з невідміненим записом — продаж однозначно його, проставляємо master_id.
+  // Кілька майстрів того дня → не вгадуємо (лишаємо NULL). Той самий вираз дня, що й у done-flip нижче,
+  // тож після бэкфиллу матчинг гарантовано спрацює.
+  await pool.query(
+    `UPDATE cash_operations co
+        SET master_id = t.master_id
+       FROM (
+         SELECT a.bp_client,
+                (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date AS d,
+                MIN(a.master_id) AS master_id
+           FROM appointments a
+          WHERE a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
+            AND a.status NOT IN ('cancelled','noshow')
+            AND a.starts_at >= $1::date AND a.starts_at < ($2::date + INTERVAL '1 day')
+          GROUP BY a.bp_client, (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date
+         HAVING COUNT(DISTINCT a.master_id) = 1
+       ) t
+      WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+        AND co.master_id IS NULL
+        AND co.bp_client = t.bp_client
+        AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date = t.d`,
+    [from, to]);
+
   // Оплачена послуга → запис ВИКОНАНО (status='done').
   // BeautyPro тримає запис у стані 'confirmed' навіть після оплати (оплата окремо в /sales),
   // тому статус виводимо з факту реального продажу: bp_client+майстер+день співпали з продажем послуги.
