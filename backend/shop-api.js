@@ -84,6 +84,12 @@ const uploadLimiter = rateLimit({
 });
 app.use('/api', globalLimiter);
 app.use('/api/cabinet', authLimiter);
+// Анти-брутфорс на конкретні точки входу/скидання пароля (15 спроб/5хв з IP).
+// Точково, щоб не throttle-ити /me, /refresh-token, /logout (їх викликають часто).
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/staff/login-password', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 app.use('/api/files/upload', uploadLimiter);
 
 // статика админки — HTML без кэша, чтобы обновления панели сразу были видны (не залипал старый index.html)

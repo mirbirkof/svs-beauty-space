@@ -60,7 +60,8 @@ function requirePerm(perm) {
       req.user = user;
       next();
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      console.error('[rbac]', e);
+      res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'internal' : e.message });
     }
   };
 }
