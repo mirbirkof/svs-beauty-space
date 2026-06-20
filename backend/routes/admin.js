@@ -438,7 +438,7 @@ router.patch('/clients/:id', async (req, res) => {
   try {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
-    const allowed = ['name', 'phone', 'email', 'birthday', 'notes'];
+    const allowed = ['name', 'phone', 'email', 'birthday', 'notes', 'prepayment_required'];
     // старое состояние — для истории изменений (CRM-03)
     const before = (await pool.query(`SELECT * FROM clients WHERE id = $1`, [id])).rows[0];
     if (!before) return res.status(404).json({ error: 'not-found' });
@@ -447,6 +447,7 @@ router.patch('/clients/:id', async (req, res) => {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
         let v = req.body[f];
         if (f === 'birthday' && (v === '' || v == null)) v = null;
+        if (f === 'prepayment_required') v = (v === true || v === 'true' || v === 1); // нормалізуємо в boolean
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
     }

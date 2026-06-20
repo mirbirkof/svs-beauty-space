@@ -290,13 +290,14 @@ function bookingBotSend(chatId, text, opts = {}) {
 
 async function createInvoiceForBooking(bookingId) {
   const cfg = await getPrepaymentConfig();
-  if (!cfg.enabled || !cfg.percent) return null; // предоплата выключена
   const pool = getPool();
   const r = await pool.query(
     `SELECT b.id, b.status, b.service_name, b.client_name, b.telegram_id, b.prepaid_at,
-            s.price, s.name AS local_service_name
+            s.price, s.name AS local_service_name,
+            cl.prepayment_required
      FROM online_bookings b
      LEFT JOIN services s ON s.beautypro_id = b.service_id
+     LEFT JOIN clients cl ON cl.id = b.client_id
      WHERE b.id = $1`,
     [bookingId]
   );
@@ -305,8 +306,13 @@ async function createInvoiceForBooking(bookingId) {
   if (b.prepaid_at) return { alreadyPaid: true };
   if (!b.price || Number(b.price) <= 0) return null; // цена неизвестна — без предоплаты
 
-  let deposit = Math.round(Number(b.price) * cfg.percent / 100);
-  if (cfg.minAmount) deposit = Math.max(deposit, cfg.minAmount); // мін. сума предоплати
+  // Передоплата: індивідуальна вимога клієнта (100%) має пріоритет над глобальною політикою.
+  // За замовч. передоплати немає — лише для «ризикових» клієнтів з прапорцем у картці.
+  const percent = b.prepayment_required === true ? 100 : (cfg.enabled ? cfg.percent : 0);
+  if (!percent) return null; // ні флага клієнта, ні глобальної передоплати → без рахунку
+
+  let deposit = Math.round(Number(b.price) * percent / 100);
+  if (percent < 100 && cfg.minAmount) deposit = Math.max(deposit, cfg.minAmount); // мін. сума (тільки для часткової)
   deposit = Math.min(Math.max(1, deposit), Math.round(Number(b.price))); // не більше повної ціни
   const serviceName = b.service_name || b.local_service_name || 'послугу';
 

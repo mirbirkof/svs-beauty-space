@@ -6680,6 +6680,11 @@ async function openClientCard(id){
         <div id="ccTags">${_ccRenderTags(c.tags)}</div></div>
       <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Особисті нотатки</label>
         <textarea id="ccNotes" class="input" rows="3" placeholder="Уподобання, алергії, важливі деталі…">${c.notes||''}</textarea></div>
+      <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;padding:10px 12px;background:#fff7f0;border:1px solid #ffd9b3;border-radius:8px;cursor:pointer">
+        <input type="checkbox" id="ccPrepay" ${c.prepayment_required?'checked':''} style="margin-top:2px">
+        <span style="font-size:13px;line-height:1.4"><b>Вимагати 100% передоплату</b><br>
+        <span style="color:var(--text-secondary)">Для ненадійних клієнтів: при онлайн-записі бот надішле рахунок на повну суму. Інші клієнти платять у салоні.</span></span>
+      </label>
       <div style="display:flex;gap:8px;margin-bottom:18px;align-items:center">
         <button class="btn btn-primary btn-sm" onclick="saveClientCard()">Зберегти</button>
         <button class="btn btn-sm" style="color:#c0392b;border-color:#c0392b;background:transparent" onclick="archiveClient(${id})">Архівувати</button>
@@ -6763,6 +6768,7 @@ async function saveClientCard(){
     email: document.getElementById('ccEmail').value.trim(),
     birthday: document.getElementById('ccBday').value || null,
     notes: document.getElementById('ccNotes').value.trim(),
+    prepayment_required: !!(document.getElementById('ccPrepay') && document.getElementById('ccPrepay').checked),
   };
   try {
     const r = await api('/api/admin/clients/'+_ccId, { method:'PATCH', body: JSON.stringify(body) });
