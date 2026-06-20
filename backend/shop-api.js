@@ -82,14 +82,23 @@ const uploadLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'too-many-uploads' },
 });
+// Окремий лічильник саме для введення пароля/входу — НЕ ділиться з трафіком
+// кабінету (/visits /orders /loyalty), щоб активний клієнт не вичерпав ліміт
+// і не заблокував вхід в адмінку з того ж офісного IP. 20 спроб/5хв з IP.
+const credentialLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 20,
+  standardHeaders: true, legacyHeaders: false,
+  skipSuccessfulRequests: true,             // успішний логін не зараховується — рахуємо лише невдалі спроби
+  message: { error: 'too-many-auth-attempts' },
+});
 app.use('/api', globalLimiter);
 app.use('/api/cabinet', authLimiter);
-// Анти-брутфорс на конкретні точки входу/скидання пароля (15 спроб/5хв з IP).
+// Анти-брутфорс на конкретні точки входу/скидання пароля (лише невдалі спроби).
 // Точково, щоб не throttle-ити /me, /refresh-token, /logout (їх викликають часто).
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/staff/login-password', authLimiter);
-app.use('/api/auth/forgot-password', authLimiter);
-app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/login', credentialLimiter);
+app.use('/api/auth/staff/login-password', credentialLimiter);
+app.use('/api/auth/forgot-password', credentialLimiter);
+app.use('/api/auth/reset-password', credentialLimiter);
 app.use('/api/files/upload', uploadLimiter);
 
 // статика админки — HTML без кэша, чтобы обновления панели сразу были видны (не залипал старый index.html)

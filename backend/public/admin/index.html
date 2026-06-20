@@ -6680,9 +6680,10 @@ async function openClientCard(id){
         <div id="ccTags">${_ccRenderTags(c.tags)}</div></div>
       <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Особисті нотатки</label>
         <textarea id="ccNotes" class="input" rows="3" placeholder="Уподобання, алергії, важливі деталі…">${c.notes||''}</textarea></div>
-      <div style="display:flex;gap:8px;margin-bottom:18px">
+      <div style="display:flex;gap:8px;margin-bottom:18px;align-items:center">
         <button class="btn btn-primary btn-sm" onclick="saveClientCard()">Зберегти</button>
-        ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);align-self:center">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
+        <button class="btn btn-sm" style="color:#c0392b;border-color:#c0392b;background:transparent" onclick="archiveClient(${id})">Архівувати</button>
+        ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);margin-left:auto">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
       </div>
       <div id="ccRecs" style="margin-bottom:18px"></div>
       <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
@@ -6770,6 +6771,20 @@ async function saveClientCard(){
     closeClientCard();
     if (typeof loadClients==='function' && currentPage==='clients') loadClients();
   } catch(e){ alert('Помилка збереження'); }
+}
+// Архівація клієнта (soft-delete): ховає з активних списків, дані/візити/витрати збережені.
+async function archiveClient(id){
+  const cid = id || _ccId;
+  if (!cid) return;
+  const nm = (document.getElementById('ccName') && document.getElementById('ccName').value.trim()) || 'цього клієнта';
+  if (!confirm('Перемістити «'+nm+'» в архів?\n\nКлієнт зникне зі списків, але вся історія візитів і витрат збережеться. Відновити можна буде пізніше.')) return;
+  try {
+    const r = await api('/api/admin/clients/'+cid, { method:'DELETE' });
+    if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
+    alert('Клієнта переміщено в архів');
+    closeClientCard();
+    if (typeof loadClients==='function' && currentPage==='clients') loadClients();
+  } catch(e){ alert('Помилка архівації'); }
 }
 
 // ═══ ПОРТФОЛІО МАЙСТРА ══════════════════════════════════
