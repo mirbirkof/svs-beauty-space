@@ -341,7 +341,7 @@ router.get('/clients', async (req, res) => {
   try {
     const pool = getPool();
     const { search, limit = 50, offset = 0, tag_id } = req.query;
-    const cond = []; const args = [];
+    const cond = ['c.deleted_at IS NULL']; const args = [];
     if (search) {
       args.push(`%${search}%`); args.push(`%${search}%`);
       cond.push(`(c.phone ILIKE $${args.length - 1} OR c.name ILIKE $${args.length})`);
@@ -471,6 +471,36 @@ router.patch('/clients/:id', async (req, res) => {
     }
     res.json({ ok: true, client: r.rows[0] });
   } catch (e) { console.error('[admin:client:patch]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── DELETE /api/admin/clients/:id — архивация клиента (soft-delete) ──
+// Зв'язки/історія/витрати збережені. Прибирає з активних списків, дані не стираються.
+router.delete('/clients/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const r = await pool.query(
+      `UPDATE clients SET deleted_at = NOW(), updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL RETURNING id, name, phone`, [id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
+    logAction({ user: req.user, action: 'client.archive', entity: 'client', entity_id: id,
+      ip: req.ip, meta: { name: r.rows[0].name, phone: r.rows[0].phone } });
+    res.json({ ok: true, archived: id });
+  } catch (e) { console.error('[admin:client:archive]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── POST /api/admin/clients/:id/restore — вернуть из архива ──
+router.post('/clients/:id/restore', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    const r = await pool.query(
+      `UPDATE clients SET deleted_at = NULL, updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id`, [id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
+    logAction({ user: req.user, action: 'client.restore', entity: 'client', entity_id: id, ip: req.ip });
+    res.json({ ok: true, restored: id });
+  } catch (e) { console.error('[admin:client:restore]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // ── GET /api/admin/clients/:id/history — история изменений карточки (CRM-03) ──
