@@ -711,6 +711,11 @@ router.post('/blocks', async (req, res) => {
     if (req.user && req.user.role === 'master' && req.user.master_id && Number(req.user.master_id) !== Number(master_id)) {
       return res.status(403).json({ error: 'forbidden' });
     }
+    // дозвіл майстрам займати час керується власником салону (заметка #50, дефолт — заборонено)
+    if (req.user && req.user.role === 'master') {
+      const allowMasters = await getSetting('masters_can_block_time', false);
+      if (!allowMasters) return res.status(403).json({ error: 'Блокування часу вимкнено адміністратором салону' });
+    }
     const r = await pool.query(
       `INSERT INTO time_blocks (master_id, starts_at, ends_at, reason, block_type, created_by)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,

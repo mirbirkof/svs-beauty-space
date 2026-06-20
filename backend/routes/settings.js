@@ -11,6 +11,8 @@ const { getAllSettings, setSetting } = require('../lib/settings');
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const ALLOWED = {
   masters_see_phone: (v) => typeof v === 'boolean',
+  // Чи можуть майстри самі займати/блокувати свій час у журналі (заметка #50, дефолт false)
+  masters_can_block_time: (v) => typeof v === 'boolean',
   // Профіль салону (DIKIDI-style): назва, телефони, адреса, час роботи, опис, напрямки, фото
   salon_profile: (v) => isObj(v),
   // Онлайн-запис: вкл/вимк, посилання, крок часу, мін. час до запису
