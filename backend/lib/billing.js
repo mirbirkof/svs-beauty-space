@@ -522,24 +522,33 @@ async function runRecurring(limit = 200) {
 // ── Метрики (для SAS-07) ─────────────────────────────────────────────
 async function billingMetrics() {
   const pool = getPool();
-  // MRR: сумма месячного эквивалента активных подписок
+  // MRR: місячний еквівалент підписок, що РЕАЛЬНО платять (active/past_due + є успішна оплата),
+  // тільки справжні клієнти (is_internal=false). Тріал у MRR не входить (#56/#57).
   const subs = (await pool.query(
     `SELECT s.plan_code, s.billing_cycle, p.price_month, p.price_year
-       FROM subscriptions_saas s JOIN saas_plans p ON p.code=s.plan_code
-      WHERE s.status IN ('active','trialing')`)).rows;
+       FROM subscriptions_saas s
+       JOIN tenants t ON t.id=s.tenant_id AND t.is_internal=FALSE
+       JOIN saas_plans p ON p.code=s.plan_code
+      WHERE s.status IN ('active','past_due')
+        AND EXISTS (SELECT 1 FROM payments_saas pay WHERE pay.tenant_id=s.tenant_id AND pay.status='succeeded')`)).rows;
   let mrr = 0;
   for (const s of subs) mrr += s.billing_cycle === 'yearly' ? Number(s.price_year) / 12 : Number(s.price_month);
   mrr = Math.round(mrr * 100) / 100;
-  const byStatus = (await pool.query(`SELECT status, count(*)::int n FROM subscriptions_saas GROUP BY status`)).rows;
+  const byStatus = (await pool.query(
+    `SELECT s.status, count(*)::int n FROM subscriptions_saas s
+       JOIN tenants t ON t.id=s.tenant_id AND t.is_internal=FALSE GROUP BY s.status`)).rows;
   const st = {}; byStatus.forEach(r => st[r.status] = r.n);
   const active = (st.active || 0) + (st.trialing || 0);
   const cancelled30 = Number((await pool.query(
-    `SELECT count(*)::int n FROM subscriptions_saas WHERE status='cancelled' AND cancelled_at>=NOW()-INTERVAL '30 days'`)).rows[0].n);
+    `SELECT count(*)::int n FROM subscriptions_saas s JOIN tenants t ON t.id=s.tenant_id AND t.is_internal=FALSE
+      WHERE s.status='cancelled' AND s.cancelled_at>=NOW()-INTERVAL '30 days'`)).rows[0].n);
   const churn = active + cancelled30 > 0 ? Math.round((cancelled30 / (active + cancelled30)) * 1000) / 10 : 0;
   const revenue30 = Number((await pool.query(
-    `SELECT COALESCE(SUM(amount),0) s FROM payments_saas WHERE status='succeeded' AND created_at>=NOW()-INTERVAL '30 days'`)).rows[0].s);
+    `SELECT COALESCE(SUM(pay.amount),0) s FROM payments_saas pay JOIN tenants t ON t.id=pay.tenant_id AND t.is_internal=FALSE
+      WHERE pay.status='succeeded' AND pay.created_at>=NOW()-INTERVAL '30 days'`)).rows[0].s);
   const outstanding = Number((await pool.query(
-    `SELECT COALESCE(SUM(total),0) s FROM invoices_saas WHERE status='open'`)).rows[0].s);
+    `SELECT COALESCE(SUM(i.total),0) s FROM invoices_saas i JOIN tenants t ON t.id=i.tenant_id AND t.is_internal=FALSE
+      WHERE i.status='open'`)).rows[0].s);
   return {
     mrr, arr: Math.round(mrr * 12 * 100) / 100, active_subscriptions: active,
     by_status: st, churn_rate_30d: churn, revenue_30d: Math.round(revenue30 * 100) / 100,

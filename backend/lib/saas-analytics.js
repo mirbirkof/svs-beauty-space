@@ -1,45 +1,83 @@
 /* lib/saas-analytics.js — SaaS-метрики (SAS-07): MRR/ARR/ARPU/churn/LTV, воронка, когорти.
-   Контрольна площина SaaS (cross-tenant): tenants + tenant_licenses + saas_plans.
-   MRR рахується по активних ліцензіях × місячна ціна плану (річні плани → /12 нема ознаки
-   циклу в схемі, тому беремо price_month). Підписки рахуються як monthly. */
+   Контрольна площина SaaS (cross-tenant): tenants + subscriptions_saas + payments_saas + saas_plans.
+
+   ПРАВИЛО ДОХОДУ (узгоджено з власником, заметки #56/#57):
+   - Дохід рахується ЛИШЕ з моменту, коли оплата реально пройшла (payments_saas.status='succeeded').
+   - MRR = місячний еквівалент підписок, які РЕАЛЬНО платять: підписка active + має успішну
+     оплату + тенант НЕ внутрішній (is_internal=false). Тріал у MRR не входить (це безкоштовний період).
+   - Річний цикл → price_year/12 (а не price_month), бо платять за рік наперед.
+   - Внутрішні тенанти (власний салон оператора + тестові) виключені — інакше виручка «надувається».
+   - collected_total / collected_30d = фактично отримані гроші (сума успішних оплат). */
 const { getPool } = require('../db-pg');
 
-const ACTIVE = ['active', 'trialing', 'trial', 'past_due'];
-const PAYING = ['active', 'past_due'];
+// Підписки, що формують виручку: active або прострочена (була платною). Тріал — ні.
+const PAYING_SUB = ['active', 'past_due'];
 
-// Базові метрики доходу.
+// Базові метрики доходу. Джерело істини — реальні оплати, а не статус ліцензії.
 async function metrics() {
   const pool = getPool();
+  // Платні підписки: НЕ внутрішній тенант + active/past_due + є хоч одна успішна оплата.
   const rows = (await pool.query(
-    `SELECT l.tenant_id, l.plan_code, l.status,
-            COALESCE(p.price_month,0)::float AS price_month
-       FROM tenant_licenses l
-       LEFT JOIN saas_plans p ON p.code = l.plan_code`)).rows;
+    `SELECT s.tenant_id, s.plan_code, s.status, s.billing_cycle,
+            COALESCE(p.price_month,0)::float AS price_month,
+            COALESCE(p.price_year,0)::float  AS price_year
+       FROM subscriptions_saas s
+       JOIN tenants t      ON t.id = s.tenant_id AND t.is_internal = FALSE
+       LEFT JOIN saas_plans p ON p.code = s.plan_code
+      WHERE s.status = ANY($1)
+        AND EXISTS (SELECT 1 FROM payments_saas pay
+                     WHERE pay.tenant_id = s.tenant_id AND pay.status = 'succeeded')`,
+    [PAYING_SUB])).rows;
 
   let mrr = 0, payingCount = 0;
-  const byStatus = {};
   for (const r of rows) {
-    byStatus[r.status] = (byStatus[r.status] || 0) + 1;
-    if (PAYING.includes(r.status) && r.price_month > 0) { mrr += r.price_month; payingCount++; }
+    const monthly = r.billing_cycle === 'yearly'
+      ? (r.price_year > 0 ? r.price_year / 12 : 0)
+      : r.price_month;
+    if (monthly > 0) { mrr += monthly; payingCount++; }
   }
   const arr = mrr * 12;
   const arpu = payingCount ? Math.round((mrr / payingCount) * 100) / 100 : 0;
-  const activeCount = rows.filter(r => ACTIVE.includes(r.status)).length;
+
+  // Фактично отримані гроші (виключаючи внутрішні тенанти).
+  const collected = (await pool.query(
+    `SELECT COALESCE(SUM(pay.amount),0)::float total,
+            COALESCE(SUM(pay.amount) FILTER (WHERE pay.created_at >= NOW()-INTERVAL '30 days'),0)::float d30
+       FROM payments_saas pay
+       JOIN tenants t ON t.id = pay.tenant_id AND t.is_internal = FALSE
+      WHERE pay.status = 'succeeded'`)).rows[0];
+
+  // Активні підписки (вкл. тріал) серед справжніх клієнтів — для контексту.
+  const counts = (await pool.query(
+    `SELECT s.status, COUNT(*)::int n
+       FROM subscriptions_saas s
+       JOIN tenants t ON t.id = s.tenant_id AND t.is_internal = FALSE
+      GROUP BY s.status`)).rows;
+  const byStatus = {}; counts.forEach(r => byStatus[r.status] = r.n);
+  const activeCount = (byStatus.active || 0) + (byStatus.trialing || 0) + (byStatus.past_due || 0);
 
   return {
     mrr: Math.round(mrr * 100) / 100, arr: Math.round(arr * 100) / 100,
     arpu, paying_tenants: payingCount, active_tenants: activeCount,
-    total_licenses: rows.length, by_status: byStatus,
+    collected_total: Math.round(collected.total * 100) / 100,
+    collected_30d: Math.round(collected.d30 * 100) / 100,
+    total_licenses: payingCount, by_status: byStatus,
   };
 }
 
 // Воронка життєвого циклу: реєстрації → тріал → платні.
 async function funnel() {
   const pool = getPool();
-  const signups = (await pool.query(`SELECT COUNT(*)::int n FROM tenants`)).rows[0].n;
-  const lic = (await pool.query(`SELECT status, trial_ends_at FROM tenant_licenses`)).rows;
+  // Лише справжні клієнти (внутрішні/тестові тенанти не рахуються).
+  const signups = (await pool.query(`SELECT COUNT(*)::int n FROM tenants WHERE is_internal = FALSE`)).rows[0].n;
+  const lic = (await pool.query(
+    `SELECT s.status, s.trial_ends_at,
+            EXISTS (SELECT 1 FROM payments_saas pay WHERE pay.tenant_id=s.tenant_id AND pay.status='succeeded') AS has_paid
+       FROM subscriptions_saas s
+       JOIN tenants t ON t.id = s.tenant_id AND t.is_internal = FALSE`)).rows;
   const trial = lic.filter(l => ['trial', 'trialing'].includes(l.status) || l.trial_ends_at).length;
-  const paid = lic.filter(l => PAYING.includes(l.status)).length;
+  // Платний = active/past_due І є реальна оплата.
+  const paid = lic.filter(l => PAYING_SUB.includes(l.status) && l.has_paid).length;
   return {
     signups, trial, paid,
     signup_to_trial: signups ? Math.round((trial / signups) * 1000) / 10 : 0,
@@ -88,6 +126,7 @@ async function cohorts() {
             COUNT(*) FILTER (WHERE l.status IN ('active','past_due','trial','trialing'))::int still_active
        FROM tenants t
        LEFT JOIN tenant_licenses l ON l.tenant_id = t.id
+      WHERE t.is_internal = FALSE
       GROUP BY 1 ORDER BY 1`)).rows;
   return rows.map(r => ({
     ...r, retention_pct: r.signed_up ? Math.round((r.still_active / r.signed_up) * 1000) / 10 : 0,

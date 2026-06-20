@@ -7656,8 +7656,10 @@ async function runSync() {
 // ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом) ═══════════════
 function saasMoney(v){ return Number(v||0).toLocaleString('uk-UA') + ' ₴'; }
 function saasV(id){ const e=document.getElementById(id); return e?e.value:''; }
-function saasKpi(label, value, color){
-  return `<div class="kpi-card ${color||'purple'}" style="min-width:150px"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`;
+function saasKpi(label, value, color, onclick, hint){
+  const click = onclick ? ` onclick="${onclick}" style="min-width:150px;cursor:pointer"` : ' style="min-width:150px"';
+  const sub = hint ? `<div class="kpi-label" style="opacity:.7;font-size:11px;margin-top:2px">${hint}</div>` : '';
+  return `<div class="kpi-card ${color||'purple'}"${click}><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub}</div>`;
 }
 function saasLimStr(l){ if(!l) return '—'; const p=[]; if(l.clients) p.push('клієнтів: '+l.clients); if(l.masters) p.push('майстрів: '+l.masters); if(l.sms_month) p.push('SMS: '+l.sms_month); return p.join(', ')||'—'; }
 function saasTenantStatus(s){ const m={active:['активний','#0a8f5f'],trial:['тріал','#d9863b'],suspended:['призупинено','#d9534f'],cancelled:['скасовано','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600">${a[0]}</span>`; }
@@ -7679,19 +7681,44 @@ async function loadSaasAnalytics(){
   let a; try { a = await api('/api/saas/analytics'); } catch { a = null; }
   if (!a || a.error){ box.innerHTML='<div style="opacity:.6;padding:8px">Поки що немає даних — підписок ще немає.</div>'; document.getElementById('saasFunnel').innerHTML=''; return; }
   const m = a.metrics || a;
-  const churn = (a.churn && a.churn.rate!=null) ? a.churn.rate : (m.churn!=null ? m.churn : 0);
-  const ltv = (a.ltv && a.ltv.avg_ltv!=null) ? a.ltv.avg_ltv : (m.ltv||0);
+  const churn = (a.churn && a.churn.monthly_churn_rate!=null) ? a.churn.monthly_churn_rate : (a.churn && a.churn.rate!=null ? a.churn.rate : (m.churn!=null ? m.churn : 0));
+  const ltv = (a.ltv && a.ltv.ltv!=null) ? a.ltv.ltv : (a.ltv && a.ltv.avg_ltv!=null ? a.ltv.avg_ltv : (m.ltv||0));
   box.innerHTML = [
-    saasKpi('MRR · міс. дохід', saasMoney(m.mrr), 'green'),
-    saasKpi('ARR · річний', saasMoney(m.arr), 'purple'),
-    saasKpi('ARPU · на салон', saasMoney(m.arpu), 'blue'),
-    saasKpi('Churn · відтік', (Math.round(Number(churn)*10)/10)+'%', 'orange'),
+    saasKpi('Отримано всього', saasMoney(m.collected_total), 'green', "saasDrill('collected')", 'реальні оплати'),
+    saasKpi('Отримано за 30 днів', saasMoney(m.collected_30d), 'teal', "saasDrill('collected')", 'останні 30 днів'),
+    saasKpi('MRR · міс. дохід', saasMoney(m.mrr), 'blue', "saasDrill('paying')", m.paying_tenants+' платних'),
+    saasKpi('ARR · річний', saasMoney(m.arr), 'purple', "saasDrill('paying')", 'прогноз ×12'),
+    saasKpi('ARPU · на салон', saasMoney(m.arpu), 'orange', "saasDrill('paying')"),
+    saasKpi('Churn · відтік', (Math.round(Number(churn)*10)/10)+'%', 'orange', "saasTab('tenants')"),
     saasKpi('LTV · цінність', saasMoney(ltv), 'teal'),
   ].join('');
+  const zn = document.getElementById('saasZeroNote'); if (zn) zn.remove();
+  if (!Number(m.collected_total) && !Number(m.mrr)) {
+    box.insertAdjacentHTML('afterend', '<div id="saasZeroNote" style="opacity:.65;font-size:13px;padding:6px 2px">Доходу ще немає: жоден клієнт не оплатив. Власний та тестові салони у виручку не входять — рахуються лише реальні оплати.</div>');
+  }
   const f = a.funnel || {};
-  const fr = [['Реєстрації', f.signup], ['Тріал', f.trial], ['Платні', f.paid]];
+  const fr = [['Реєстрації', f.signups ?? f.signup], ['Тріал', f.trial], ['Платні', f.paid]];
   document.getElementById('saasFunnel').innerHTML = `<h3 style="font-size:16px;margin:8px 0 12px">Воронка підключень салонів</h3>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">${fr.map(x=>`<div class="kpi-card" style="min-width:130px"><div class="kpi-label">${x[0]}</div><div class="kpi-value">${x[1]??0}</div></div>`).join('')}</div>`;
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${fr.map(x=>`<div class="kpi-card" style="min-width:130px;cursor:pointer" onclick="saasTab('tenants')"><div class="kpi-label">${x[0]}</div><div class="kpi-value">${x[1]??0}</div></div>`).join('')}</div>`;
+}
+
+// Розгортання деталей по кліку на картку (#56: квадратики мають бути клікабельні).
+async function saasDrill(kind){
+  if (kind==='paying'){
+    let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
+    const rows=((r&&r.rows)||[]).filter(s=>['active','past_due'].includes(s.status));
+    const body = rows.length
+      ? `<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`<tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':'місячний'}</td><td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`
+      : '<div style="opacity:.7;padding:8px">Платних підписок ще немає. MRR/ARR з\'являться після першої реальної оплати клієнта.</div>';
+    showModal('Платні підписки (джерело MRR)', body);
+  } else if (kind==='collected'){
+    let r; try{ r=await api('/api/billing/admin/payments?limit=100'); }catch{ r=null; }
+    const rows=(r&&r.rows)||[];
+    const body = rows.length
+      ? `<table class="tbl"><thead><tr><th>Дата</th><th>Салон</th><th>Сума</th><th>Шлюз</th><th>Статус</th></tr></thead><tbody>${rows.map(p=>`<tr><td>${p.created_at?String(p.created_at).slice(0,10):'—'}</td><td>${escapeHtml(p.tenant_name||String(p.tenant_id||''))}</td><td>${saasMoney(p.amount)}</td><td>${escapeHtml(p.gateway||'—')}</td><td>${escapeHtml(p.status||'—')}</td></tr>`).join('')}</tbody></table>`
+      : '<div style="opacity:.7;padding:8px">Оплат ще не було. Тут зʼявляться реальні платежі салонів за підписку.</div>';
+    showModal('Отримані оплати', body);
+  }
 }
 
 async function loadSaasPlans(){
@@ -7739,9 +7766,64 @@ async function loadSaasTenants(){
     <td>${escapeHtml(t.plan_code||'—')}</td>
     <td>${saasTenantStatus(t.status)}</td>
     <td>${t.health_score!=null?t.health_score:'—'}</td>
-    <td>${t.status==='suspended'
+    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="saasManageTenant('${t.id}','${escapeHtml(String(t.name||t.tenant_name||'')).replace(/'/g,"&#39;")}')">Керувати</button>
+    ${t.status==='suspended'
       ? `<button class="btn btn-sm" onclick="saasTenant('${t.id}','unblock')">Розблокувати</button>`
       : `<button class="btn btn-sm" onclick="saasTenant('${t.id}','block')">Заблокувати</button>`}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// Меню керування салоном (#54): підписка, тариф, оплата, доступ — все в одному місці.
+async function saasManageTenant(id, name){
+  let s; try{ s=await api('/api/billing/admin/subscriptions/'+id); }catch{ s=null; }
+  const sub = s&&s.subscription;
+  const invs = (s&&s.invoices)||[];
+  const openInv = invs.find(i=>i.status==='open');
+  const subBlock = sub
+    ? `<div style="background:var(--bg2,#f6f6f8);border-radius:10px;padding:12px;font-size:14px;line-height:1.9;margin-bottom:12px">
+        <div>Тариф: <b>${escapeHtml(sub.plan_code||'—')}</b> · цикл: ${sub.billing_cycle==='yearly'?'річний':'місячний'}</div>
+        <div>Статус: ${saasSubStatus(sub.status)}</div>
+        <div>Період до: <b>${sub.current_period_end?String(sub.current_period_end).slice(0,10):'—'}</b></div>
+        ${sub.trial_ends_at?`<div>Тріал до: ${String(sub.trial_ends_at).slice(0,10)}</div>`:''}
+      </div>`
+    : '<div style="opacity:.7;margin-bottom:12px">Підписки ще немає — створіть нижче.</div>';
+  const invBlock = invs.length
+    ? `<details style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:600">Рахунки (${invs.length})</summary>
+       <table class="tbl" style="margin-top:8px"><thead><tr><th>№</th><th>Сума</th><th>Статус</th></tr></thead><tbody>${invs.map(i=>`<tr><td>${escapeHtml(i.invoice_number||'')}</td><td>${saasMoney(i.total)}</td><td>${escapeHtml(i.status||'')}</td></tr>`).join('')}</tbody></table></details>`
+    : '';
+  showModal('Керування: '+escapeHtml(name||''), `
+    ${subBlock}${invBlock}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="saasChangePlan('${id}')">Змінити тариф</button>
+      ${openInv?`<button class="btn btn-sm" onclick="saasMarkPaid(${openInv.id},'${id}')">Позначити оплату (${saasMoney(openInv.total)})</button>`:''}
+      ${sub&&sub.status!=='cancelled'?`<button class="btn btn-sm" onclick="saasCancelSub('${id}')">Скасувати підписку</button>`:''}
+    </div>
+  `);
+}
+async function saasChangePlan(id){
+  let p; try{ p=await api('/api/saas/plans'); }catch{ p=null; }
+  const plans=(p&&p.rows)||[];
+  const opts=plans.map(x=>`<option value="${escapeHtml(x.code)}">${escapeHtml(x.name)} (${saasMoney(x.price_month)}/міс)</option>`).join('');
+  showModal('Змінити тариф салону', `
+    <label class="fld"><span>Тариф</span><select id="cpPlan" class="input">${opts}</select></label>
+    <label class="fld"><span>Цикл</span><select id="cpCycle" class="input"><option value="monthly">Місячний</option><option value="yearly">Річний</option></select></label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px"><input id="cpTrial" type="checkbox"><span>Пробний період</span></label>
+  `, async ()=>{
+    const body={ plan_code:saasV('cpPlan'), cycle:saasV('cpCycle'), trial:document.getElementById('cpTrial').checked };
+    const r=await api('/api/billing/admin/subscriptions/'+id+'/override',{method:'POST',body:JSON.stringify(body)});
+    if(r&&r.ok){ toast('Тариф оновлено'); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('save'); }
+  });
+}
+async function saasMarkPaid(invoiceId, tenantId){
+  const ok=await jConfirm('Позначити рахунок як оплачений (офлайн-переказ)? Це активує підписку й врахується у виручці.',{okText:'Так, оплачено',cancelText:'Скасувати'});
+  if(!ok) return;
+  const r=await api('/api/billing/admin/invoices/'+invoiceId+'/pay',{method:'POST',body:JSON.stringify({})});
+  if(r&&r.ok){ toast('Оплату зафіксовано'); document.getElementById('genModal')?.remove(); loadSaasAnalytics&&loadSaasAnalytics(); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+async function saasCancelSub(id){
+  const ok=await jConfirm('Скасувати підписку салону наприкінці поточного періоду? Доступ збережеться до кінця оплаченого терміну.',{okText:'Так, скасувати',cancelText:'Ні'});
+  if(!ok) return;
+  const r=await api('/api/billing/admin/subscriptions/'+id+'/cancel',{method:'POST',body:JSON.stringify({})}).catch(()=>null);
+  if(r&&r.ok){ toast('Підписку скасовано (до кінця періоду)'); document.getElementById('genModal')?.remove(); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function saasTenant(id, action){
   const ok = await jConfirm(action==='block'?'Призупинити цей салон? Він втратить доступ до CRM.':'Відновити доступ салону до CRM?',{okText:'Так',cancelText:'Скасувати'});

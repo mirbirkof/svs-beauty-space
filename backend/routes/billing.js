@@ -184,6 +184,17 @@ router.post('/admin/subscriptions/:tenantId/override', ADMIN_W, async (req, res)
   } catch (e) { fail(res, e); }
 });
 
+// Скасування підписки салону адміном (наприкінці періоду або негайно).
+router.post('/admin/subscriptions/:tenantId/cancel', ADMIN_W, async (req, res) => {
+  try {
+    const sub = await billing.cancelSubscription(req.params.tenantId, {
+      reason: req.body?.reason || 'admin', immediate: req.body?.immediate === true,
+    });
+    await logAction({ user: req.user, action: 'billing.cancel', entity: 'subscriptions_saas', entity_id: req.params.tenantId, ip: req.ip });
+    res.json({ ok: true, subscription: sub });
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/admin/invoices', ADMIN_R, async (req, res) => {
   try {
     res.json(await billing.listInvoices({
@@ -243,6 +254,23 @@ router.post('/admin/recurring/run', ADMIN_W, async (req, res) => {
 
 router.get('/admin/metrics', ADMIN_R, async (req, res) => {
   try { res.json(await billing.billingMetrics()); } catch (e) { fail(res, e); }
+});
+
+// Усі отримані оплати (cross-tenant, з назвою салону) — для drill-down картки «Отримано».
+router.get('/admin/payments', ADMIN_R, async (req, res) => {
+  try {
+    const { getPool } = require('../db-pg');
+    const where = [], params = []; let i = 1;
+    if (req.query.status) { where.push(`pay.status=$${i++}`); params.push(req.query.status); }
+    const ws = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    params.push(Math.min(Number(req.query.limit) || 50, 200), Number(req.query.offset) || 0);
+    const rows = (await getPool().query(
+      `SELECT pay.id, pay.tenant_id, pay.amount, pay.status, pay.gateway, pay.created_at,
+              t.name AS tenant_name
+         FROM payments_saas pay LEFT JOIN tenants t ON t.id=pay.tenant_id ${ws}
+        ORDER BY pay.created_at DESC LIMIT $${i++} OFFSET $${i}`, params)).rows;
+    res.json({ rows });
+  } catch (e) { fail(res, e); }
 });
 
 router.get('/admin/promo-codes', ADMIN_R, async (req, res) => {
