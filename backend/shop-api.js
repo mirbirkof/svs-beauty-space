@@ -82,11 +82,11 @@ const uploadLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'too-many-uploads' },
 });
-// Окремий лічильник саме для введення пароля/входу — НЕ ділиться з трафіком
-// кабінету (/visits /orders /loyalty), щоб активний клієнт не вичерпав ліміт
-// і не заблокував вхід в адмінку з того ж офісного IP. 20 спроб/5хв з IP.
+// М'який анти-брутфорс: НЕ блокуємо за звичайні помилки вводу.
+// Спрацьовує лише на шквал — 10 невдалих спроб за 1 хв з одного IP (бот/скрипт),
+// блок автоматично спадає за хвилину. Людина з парою опечаток не зачіпається.
 const credentialLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, max: 20,
+  windowMs: 60 * 1000, max: 10,
   standardHeaders: true, legacyHeaders: false,
   skipSuccessfulRequests: true,             // успішний логін не зараховується — рахуємо лише невдалі спроби
   message: { error: 'too-many-auth-attempts' },
