@@ -366,14 +366,26 @@ router.get('/revenue-series', requirePerm('reports.finance'), async (req, res) =
 
 // Классификация услуги по названию/категории в укрупнённый сегмент.
 // Порядок важен: педикюр проверяем до маникюра.
-function classifyService(text) {
-  const t = String(text || '').toLowerCase();
-  if (/педик|pedic/.test(t)) return 'pedicure';
-  if (/манік|маник|manic|нігт|ногт|nail|френч|втирк|зняття|нарощенн.*ніг|нарощенн.*ногт/.test(t)) return 'manicure';
-  if (/фарбув|покрас|окраш|колор|тонуван|airtouch|air\s*touch|шатуш|балаяж|melt|highlight|мелірув|освітл|вихід з чорн|корекц.*кольор/.test(t)) return 'coloring';
-  if (/вій|вии|ресн|lash|hollywood|нарощенн.*ві|ламінув.*ві/.test(t)) return 'lashes';
-  if (/брів|брови|brow/.test(t)) return 'brows';
-  if (/стрижк|зачіск|зачес|укладк|миття|вкладенн|hair|віднов|вирів|біовирів|biomimetic|кератин|ботокс|нанопласт|реконструкц|полірув|накрутк|вкладанн|контур|завивк|догляд.*волосс|волосс/.test(t)) return 'hair';
+// Класифікація по НАЗВІ (специфічне раніше загального), категорія — лише запасний сигнал.
+// Чому так: категорія «Брови та вії» змішана (і брови, і вії) + загальні слова
+// «зняття»/«фарбування» раніше перехоплювали специфічні послуги:
+//   «Зняття вій» → манікюр, «Фарбування брів» → фарбування волосся. Тепер ні.
+function _svcMatch(t) {
+  return {
+    pedicure: /педик|pedic/.test(t),
+    lashes:   /вій|вії|вие|вии|ресн|lash|hollywood/.test(t),
+    brows:    /брів|брови|brow/.test(t),
+    manicure: /манік|маник|manic|нігт|ногт|nail|френч|втирк|зняття|нарощенн.*ніг|нарощенн.*ногт/.test(t),
+    coloring: /фарбув|покрас|окраш|колор|тонуван|airtouch|air\s*touch|шатуш|балаяж|melt|highlight|мелірув|освітл|вихід з чорн|корекц.*кольор/.test(t),
+    hair:     /стрижк|зачіск|зачес|укладк|миття|вкладенн|hair|віднов|вирів|біовирів|biomimetic|кератин|ботокс|нанопласт|реконструкц|полірув|накрутк|вкладанн|контур|завивк|догляд.*волосс|волосс/.test(t),
+  };
+}
+function classifyService(name, cat) {
+  const order = ['pedicure', 'lashes', 'brows', 'manicure', 'coloring', 'hair'];
+  const byName = _svcMatch(String(name || '').toLowerCase());
+  for (const b of order) if (byName[b]) return b;
+  const byCat = _svcMatch(String(cat || '').toLowerCase());
+  for (const b of order) if (byCat[b]) return b;
   return 'other';
 }
 const SERVICE_BUCKETS = ['manicure','pedicure','coloring','lashes','brows','hair','other'];
@@ -444,7 +456,7 @@ router.get('/clients-by-service', requirePerm('reports.read'), async (req, res) 
         });
       }
       const c = map.get(row.client_id);
-      const b = classifyService(`${row.svc_name||''} ${row.svc_cat||''}`);
+      const b = classifyService(row.svc_name, row.svc_cat);
       const price = Number(row.price) || 0;
       c.buckets[b].count++; c.buckets[b].sum += price;
       c.total_visits++; c.total_sum += price;
