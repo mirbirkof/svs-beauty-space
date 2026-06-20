@@ -13,6 +13,7 @@ const https = require('https');
 const router = express.Router();
 const bp = require('../beautyproClient');
 const { getPool } = require('../db-pg');
+const bookingBot = require('../lib/booking-bot');
 
 const db = {
   async insert(token, row) {
@@ -116,6 +117,14 @@ router.post('/telegram', async (req, res) => {
   res.json({ ok: true }); // ack immediately
   try {
     const upd = req.body;
+    const botCtx = { tg, pool: getPool(), bp };
+
+    // Розмовна запис: натискання inline-кнопок → повністю в booking-bot
+    if (upd.callback_query) {
+      await bookingBot.onCallback(upd.callback_query, botCtx);
+      return;
+    }
+
     const msg = upd.message;
     if (!msg) return;
 
@@ -134,7 +143,7 @@ router.post('/telegram', async (req, res) => {
             const nm = known.rows[0].name || known.rows[0].tg_first_name || '';
             return tg('sendMessage', {
               chat_id: msg.chat.id,
-              text: `З поверненням${nm ? ', ' + nm : ''}! 👋 Ваш номер вже підвʼязано — можна записуватись без зайвих кроків.`,
+              text: `З поверненням${nm ? ', ' + nm : ''}! 👋\nЩоб записатись — просто напишіть послугу (напр. «манікюр», «стрижка і фарбування»), і я підберу час.`,
               reply_markup: { remove_keyboard: true },
             });
           }
@@ -170,6 +179,12 @@ router.post('/telegram', async (req, res) => {
       });
     }
 
+    // Вільний текст (не команда) → розмовна онлайн-запис: пишемо послугу, бот веде до запису
+    if (msg.text && !msg.text.startsWith('/')) {
+      await bookingBot.onText(msg, botCtx);
+      return;
+    }
+
     // contact received
     if (msg.contact) {
       // critical: contact must belong to sender
@@ -184,6 +199,8 @@ router.post('/telegram', async (req, res) => {
       const tgUser  = msg.from.username || null;
       const row = await db.byTgUser(msg.from.id);
       if (!row) {
+        // Розмовна запис чекає номер для завершення? → бронюємо й виходимо.
+        if (await bookingBot.onContact(msg, botCtx)) return;
         // Немає активного запису → режим привʼязки акаунта до клієнта за номером.
         // Telegram гарантує що номер належить відправнику (перевірка user_id вище).
         try {
@@ -201,7 +218,7 @@ router.post('/telegram', async (req, res) => {
           if (upd2.rowCount) {
             return tg('sendMessage', {
               chat_id: msg.chat.id,
-              text: `✅ Готово${upd2.rows[0].name ? ', ' + upd2.rows[0].name : ''}! Ваш Telegram підвʼязано. Тепер ви отримуватимете нагадування про візити та персональні пропозиції.`,
+              text: `✅ Готово${upd2.rows[0].name ? ', ' + upd2.rows[0].name : ''}! Ваш Telegram підвʼязано.\nЩоб записатись — просто напишіть послугу (напр. «манікюр»), і я підберу вільний час.`,
               reply_markup: { remove_keyboard: true },
             });
           }
