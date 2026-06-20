@@ -74,15 +74,18 @@ function compileCond(cond, params) {
   }
 }
 
+// Базовий фільтр: архівні клієнти (deleted_at) ніколи не потрапляють у сегменти/розсилки.
+const ACTIVE = 'c.deleted_at IS NULL';
+
 // Компиляция правил → { where, params }
 function compileRules(rules) {
   const params = [];
   if (!rules || !Array.isArray(rules.conditions) || !rules.conditions.length) {
-    return { where: 'TRUE', params };
+    return { where: ACTIVE, params };
   }
   const glue = rules.op === 'OR' ? ' OR ' : ' AND ';
   const frags = rules.conditions.map((c) => compileCond(c, params).frag);
-  return { where: '(' + frags.join(glue) + ')', params };
+  return { where: `${ACTIVE} AND (` + frags.join(glue) + ')', params };
 }
 
 // Предустановленные сегменты (правила в коде)
@@ -106,7 +109,9 @@ function resolveRules(segment) {
 async function countSegment(segment) {
   const pool = getPool();
   if (segment.type === 'static') {
-    const r = await pool.query(`SELECT count(*)::int c FROM segment_members WHERE segment_id=$1`, [segment.id]);
+    const r = await pool.query(
+      `SELECT count(*)::int c FROM segment_members sm JOIN clients c ON c.id=sm.client_id
+        WHERE sm.segment_id=$1 AND c.deleted_at IS NULL`, [segment.id]);
     return r.rows[0].c;
   }
   const { where, params } = compileRules(resolveRules(segment));
@@ -121,7 +126,7 @@ async function membersOf(segment, { limit = 1000 } = {}) {
     const r = await pool.query(
       `SELECT c.id, c.name, c.phone, c.email, c.telegram_id
        FROM segment_members sm JOIN clients c ON c.id=sm.client_id
-       WHERE sm.segment_id=$1 LIMIT $2`, [segment.id, limit]);
+       WHERE sm.segment_id=$1 AND c.deleted_at IS NULL LIMIT $2`, [segment.id, limit]);
     return r.rows;
   }
   const { where, params } = compileRules(resolveRules(segment));
