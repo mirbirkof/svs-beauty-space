@@ -124,7 +124,22 @@ router.post('/telegram', async (req, res) => {
       const parts = msg.text.split(' ');
       const token = parts[1];
       if (!token || token === 'link') {
-        // Холодний старт або deep-link ?start=link → пропонуємо підвʼязати номер
+        // Холодний старт. Якщо вже знаємо цей Telegram — вітаємо на імʼя, номер не питаємо.
+        try {
+          const known = await getPool().query(
+            `SELECT name, tg_first_name FROM clients WHERE telegram_id = $1 LIMIT 1`,
+            [msg.from.id]
+          );
+          if (known.rowCount) {
+            const nm = known.rows[0].name || known.rows[0].tg_first_name || '';
+            return tg('sendMessage', {
+              chat_id: msg.chat.id,
+              text: `З поверненням${nm ? ', ' + nm : ''}! 👋 Ваш номер вже підвʼязано — можна записуватись без зайвих кроків.`,
+              reply_markup: { remove_keyboard: true },
+            });
+          }
+        } catch (e) { console.error('[booking/cold-start]', e.message); }
+        // Новий користувач → пропонуємо підвʼязати номер
         return tg('sendMessage', {
           chat_id: msg.chat.id,
           text: 'Вітаємо у SVS Beauty Space! 👋\nЩоб отримувати нагадування про візити, персональні пропозиції та підтверджувати онлайн-записи — підвʼяжіть свій номер телефону одним дотиком:',
@@ -163,6 +178,10 @@ router.post('/telegram', async (req, res) => {
       }
       const phoneDigits = msg.contact.phone_number.replace(/\D/g, ''); // локальная БД хранит цифры (380...)
       const phone = '+' + phoneDigits; // для BeautyPro — с плюсом
+      // повний профіль Telegram (зберігаємо один раз, щоб упізнавати клієнта)
+      const tgFirst = msg.contact.first_name || msg.from.first_name || null;
+      const tgLast  = msg.contact.last_name  || msg.from.last_name  || null;
+      const tgUser  = msg.from.username || null;
       const row = await db.byTgUser(msg.from.id);
       if (!row) {
         // Немає активного запису → режим привʼязки акаунта до клієнта за номером.
@@ -170,11 +189,14 @@ router.post('/telegram', async (req, res) => {
         try {
           const upd2 = await getPool().query(
             `UPDATE clients SET telegram_id = $1,
-               name = COALESCE(NULLIF(name,''), $3)
+               name = COALESCE(NULLIF(name,''), $3),
+               tg_first_name = COALESCE($4, tg_first_name),
+               tg_last_name  = COALESCE($5, tg_last_name),
+               tg_username   = COALESCE($6, tg_username)
              WHERE regexp_replace(phone, '\\D', '', 'g') = $2
                AND (telegram_id IS NULL OR telegram_id = $1)
              RETURNING id, name`,
-            [msg.from.id, phoneDigits, msg.from.first_name || null]
+            [msg.from.id, phoneDigits, tgFirst, tgFirst, tgLast, tgUser]
           );
           if (upd2.rowCount) {
             return tg('sendMessage', {
@@ -193,12 +215,15 @@ router.post('/telegram', async (req, res) => {
           }
           // номера ще немає в базі → створюємо картку клієнта
           await getPool().query(
-            `INSERT INTO clients (phone, name, telegram_id, source)
-             VALUES ($1, $2, $3, 'bot-link')
+            `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username)
+             VALUES ($1, $2, $3, 'bot-link', $4, $5, $6)
              ON CONFLICT (tenant_id, phone) DO UPDATE SET
                telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
-               name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)`,
-            [phoneDigits, msg.from.first_name || null, msg.from.id]
+               name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
+               tg_first_name = COALESCE(EXCLUDED.tg_first_name, clients.tg_first_name),
+               tg_last_name  = COALESCE(EXCLUDED.tg_last_name, clients.tg_last_name),
+               tg_username   = COALESCE(EXCLUDED.tg_username, clients.tg_username)`,
+            [phoneDigits, tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
           );
           return tg('sendMessage', {
             chat_id: msg.chat.id,
@@ -249,18 +274,24 @@ router.post('/telegram', async (req, res) => {
           if (cl.rows.length) {
             await getPool().query(
               `UPDATE clients SET telegram_id = COALESCE(telegram_id, $2),
-                 name = COALESCE(NULLIF(name,''), $3) WHERE id = $1`,
-              [cl.rows[0].id, msg.from.id, row.client_name || msg.from.first_name || null]
+                 name = COALESCE(NULLIF(name,''), $3),
+                 tg_first_name = COALESCE($4, tg_first_name),
+                 tg_last_name  = COALESCE($5, tg_last_name),
+                 tg_username   = COALESCE($6, tg_username) WHERE id = $1`,
+              [cl.rows[0].id, msg.from.id, row.client_name || tgFirst, tgFirst, tgLast, tgUser]
             );
           } else {
             cl = await getPool().query(
-              `INSERT INTO clients (phone, name, telegram_id, source)
-               VALUES ($1, $2, $3, 'bot-salon')
+              `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username)
+               VALUES ($1, $2, $3, 'bot-salon', $4, $5, $6)
                ON CONFLICT (tenant_id, phone) DO UPDATE SET
                  telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
-                 name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
+                 name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
+                 tg_first_name = COALESCE(EXCLUDED.tg_first_name, clients.tg_first_name),
+                 tg_last_name  = COALESCE(EXCLUDED.tg_last_name, clients.tg_last_name),
+                 tg_username   = COALESCE(EXCLUDED.tg_username, clients.tg_username)
                RETURNING id`,
-              [phoneDigits, row.client_name || msg.from.first_name || null, msg.from.id]
+              [phoneDigits, row.client_name || tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
             );
           }
           const ob = await getPool().query(
