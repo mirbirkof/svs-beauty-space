@@ -260,7 +260,8 @@ async function createInvoiceForOrder(orderId) {
 // ── предоплата за онлайн-запись (online_bookings) ──
 // Налаштування читаються з кабінету (app_settings.prepayment); якщо там нічого —
 // fallback на серверну змінну BOOKING_DEPOSIT_PERCENT (історична поведінка).
-const ENV_DEPOSIT_PERCENT = Math.min(100, Math.max(0, parseInt(process.env.BOOKING_DEPOSIT_PERCENT || '30', 10) || 0));
+// Дефолт 0 = передоплата ВИМКНЕНА глобально (вимога Боса: лише для «ризикових» клієнтів за прапорцем).
+const ENV_DEPOSIT_PERCENT = Math.min(100, Math.max(0, parseInt(process.env.BOOKING_DEPOSIT_PERCENT || '0', 10) || 0));
 async function getPrepaymentConfig() {
   const s = await getSetting('prepayment', null);
   if (s && typeof s === 'object') {
