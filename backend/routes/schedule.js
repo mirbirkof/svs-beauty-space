@@ -545,7 +545,8 @@ router.get('/journal', async (req, res) => {
               ) AS service_name,
               (SELECT COUNT(*)::int FROM appointment_services aps WHERE aps.appointment_id = a.id) AS services_count,
               (SELECT COALESCE(json_agg(json_build_object(
-                        'name', s2.name, 'price', aps.price, 'duration', aps.duration_min) ORDER BY aps.starts_at, aps.id), '[]')
+                        'name', s2.name, 'price', aps.price, 'duration', aps.duration_min,
+                        'master_id', aps.master_id, 'start', aps.starts_at) ORDER BY aps.starts_at, aps.id), '[]')
                    FROM appointment_services aps
                    LEFT JOIN services s2 ON s2.id = aps.service_id
                   WHERE aps.appointment_id = a.id) AS services_list,
@@ -598,10 +599,54 @@ router.get('/journal', async (req, res) => {
         WHERE a.starts_at >= $1::date
           AND a.starts_at <  ($1::date + INTERVAL '1 day')
           AND COALESCE(a.status,'') NOT IN ('cancelled')
-          ${masterOnly ? 'AND a.master_id = $2' : ''}
+          ${masterOnly ? `AND (a.master_id = $2 OR EXISTS(
+                SELECT 1 FROM appointment_services aps2
+                 WHERE aps2.appointment_id = a.id AND aps2.master_id = $2))` : ''}
         ORDER BY a.starts_at`,
       masterOnly ? [date, masterOnly] : [date]
     );
+
+    // Один візит у BeautyPro може містити послуги РІЗНИХ майстрів (напр. манікюр у
+    // Кушнерук + мелірування у Вери в одному записі). Запис цілком висів на майстрі
+    // ПЕРШОЇ послуги, тягнучи чужу послугу та її тривалість у його колонку (баг
+    // «у нігтьового майстра стоїть мелір на 7 годин»). Розбиваємо такий запис на
+    // сегменти ПО МАЙСТРАХ: кожен бачить лише свої послуги, свій час і свою суму.
+    const splitByMaster = (a) => {
+      const list = Array.isArray(a.services_list) ? a.services_list : [];
+      if (list.length < 2) return [a];
+      const effMid = (s) => (s.master_id != null ? Number(s.master_id) : Number(a.master_id));
+      const distinct = [...new Set(list.map(effMid).filter((x) => Number.isFinite(x)))];
+      if (distinct.length < 2) return [a]; // всі послуги одного майстра — не чіпаємо
+      return distinct.map((mid) => {
+        const svcs = list.filter((s) => effMid(s) === mid);
+        const startsMs = svcs.map((s) => (s.start ? new Date(s.start).getTime() : NaN)).filter((x) => !Number.isNaN(x));
+        const endsMs = svcs.map((s) => (s.start ? new Date(s.start).getTime() + (Number(s.duration) || 0) * 60000 : NaN)).filter((x) => !Number.isNaN(x));
+        const segStart = startsMs.length ? new Date(Math.min(...startsMs)) : new Date(a.starts_at);
+        let segEnd = endsMs.length ? new Date(Math.max(...endsMs)) : new Date(a.ends_at);
+        if (segEnd.getTime() <= segStart.getTime()) segEnd = new Date(segStart.getTime() + 15 * 60000);
+        const price = svcs.reduce((acc, s) => acc + (Number(s.price) || 0), 0);
+        const sameMaster = Number(mid) === Number(a.master_id);
+        return {
+          ...a,
+          master_id: mid,
+          starts_at: segStart.toISOString(),
+          ends_at: segEnd.toISOString(),
+          price: price || a.price,
+          service_name: svcs.map((s) => s.name).filter(Boolean).join(' + ') || a.service_name,
+          services_count: svcs.length,
+          services_list: svcs,
+          duration_min: Math.round((segEnd.getTime() - segStart.getTime()) / 60000),
+          // оплата рахувалась SQL-ом саме для майстра запису; для чужого сегмента
+          // не знаємо → краще пропуск, ніж брехливе «оплачено»
+          paid: sameMaster ? a.paid : false,
+          pay_method: sameMaster ? a.pay_method : null,
+          _split: true,
+        };
+      });
+    };
+    aRes.rows = aRes.rows.flatMap(splitByMaster);
+    // майстер у власному кабінеті бачить лише свої сегменти (не чужі послуги візиту)
+    if (masterOnly) aRes.rows = aRes.rows.filter((a) => Number(a.master_id) === Number(masterOnly));
 
     // Майстер не бачить номери клієнтів, якщо опція вимкнена
     let appts = aRes.rows;
