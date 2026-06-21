@@ -241,6 +241,7 @@ try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { con
 try { app.use('/api/saas/analytics', require('./routes/saas-analytics')); } catch(e) { console.error('[saas-analytics] mount failed:', e.message); }
 try { app.use('/api/saas', require('./routes/saas')); } catch(e) { console.error('[saas] mount failed:', e.message); }
 try { app.use('/api/white-label', require('./routes/white-label')); } catch(e) { console.error('[white-label] mount failed:', e.message); }
+try { app.use('/api/public', require('./routes/public-signup')); } catch(e) { console.error('[public-signup] mount failed:', e.message); }
 try { app.use('/api/tenant-mgmt', require('./routes/tenant-mgmt')); } catch(e) { console.error('[tenant-mgmt] mount failed:', e.message); }
 try { app.use('/api/billing', require('./routes/billing')); } catch(e) { console.error('[billing] mount failed:', e.message); }
 try { app.use('/api/domains', require('./routes/domains')); } catch(e) { console.error('[domains] mount failed:', e.message); }
