@@ -152,18 +152,26 @@ async function cronTick() {
 
 // ── API endpoints ──
 
-// GET /api/reminders/status — статистика
+// GET /api/reminders/status — статистика (из Notification Hub)
 router.get('/status', async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(`
-      SELECT status, count(*)::int AS cnt
-      FROM scheduled_notifications
-      GROUP BY status
+      SELECT
+        count(*) FILTER (WHERE status IN ('queued','sending'))                              AS scheduled,
+        count(*) FILTER (WHERE status IN ('sent','delivered') AND sent_at::date = CURRENT_DATE) AS sent_today,
+        count(*) FILTER (WHERE status = 'failed')                                           AS failed
+      FROM notifications
+      WHERE source = 'reminders'
     `);
-    const stats = {};
-    r.rows.forEach(row => stats[row.status] = row.cnt);
-    res.json({ ok: true, cron_active: !!cronRef, stats });
+    const row = r.rows[0] || {};
+    const stats = {
+      scheduled: Number(row.scheduled) || 0,
+      sent_today: Number(row.sent_today) || 0,
+      failed: Number(row.failed) || 0,
+    };
+    // cron_active (новое имя) + cron_enabled (legacy для совместимости фронта)
+    res.json({ ok: true, cron_active: !!cronRef, cron_enabled: !!cronRef, stats });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -176,16 +184,21 @@ router.post('/run', requirePerm('reminders.manage'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// GET /api/reminders/pending — список pending
+// GET /api/reminders/pending — список запланированных (из Notification Hub)
 router.get('/pending', async (req, res) => {
   try {
     const pool = getPool();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 200);
     const r = await pool.query(
-      `SELECT id, appointment_id, event, telegram_chat_id, scheduled_at, attempts
-       FROM scheduled_notifications
-       WHERE status = 'pending'
-       ORDER BY scheduled_at
-       LIMIT 50`
+      `SELECT n.id, n.template_key AS type, n.channel, n.status,
+              n.scheduled_at, n.attempts,
+              c.name AS client_name, c.phone AS client_phone
+       FROM notifications n
+       LEFT JOIN clients c ON c.id = n.client_id
+       WHERE n.source = 'reminders' AND n.status IN ('queued','sending')
+       ORDER BY n.scheduled_at
+       LIMIT $1`,
+      [limit]
     );
     res.json({ items: r.rows, count: r.rowCount });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
