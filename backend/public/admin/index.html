@@ -327,6 +327,7 @@ select.input { background:var(--card); }
 .jappt .p { font-weight:700; }
 .jappt .note-dot { position:absolute; top:5px; right:6px; font-size:11px; }
 .jappt .jflag { position:absolute; top:4px; right:22px; font-size:11px; line-height:1; }
+.jappt .wish-badge { position:absolute; top:3px; left:4px; font-size:11px; line-height:1; background:#f59e0b; color:#fff; border-radius:5px; padding:1px 3px; box-shadow:0 1px 3px rgba(0,0,0,.25); }
 .jst-booked   { background:#6366f1; }
 .jst-confirmed{ background:#0ea5e9; }
 .jst-done     { background:#10b981; }
@@ -5737,6 +5738,7 @@ function renderJournalDay(container, data) {
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
       const tileFlag = a.client_id ? (Number(a.no_show_count)>0 ? '<span class="jflag warn" title="Є неявки">⚠</span>' : (Number(a.visit_count)===0 ? '<span class="jflag new" title="Новий клієнт">🆕</span>' : '')) : '';
       body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
+        ${a.client_wish?'<span class="wish-badge" title="Є повідомлення від клієнта">💬</span>':''}
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         ${tileFlag}
         <div class="t">${_toHHMM(s)}–${_toHHMM(e)}</div>
@@ -6094,13 +6096,13 @@ async function openAppt(id) {
         <span style="color:var(--text-secondary);font-size:12px">Кабінет</span>
         <select id="apptRoom" class="input">${roomOpts}</select>
       </div>
-      ${a.client_wish ? `<div style="background:#eef4ff;border:1px solid #c7d8ff;border-radius:10px;padding:8px 12px">
-        <div style="display:flex;align-items:center;gap:6px;color:#2563eb;font-size:12px;font-weight:600;margin-bottom:4px"><span class="material-icons-round" style="font-size:15px">chat</span> Побажання клієнта · онлайн-запис</div>
-        <div style="font-size:13px;color:#1e3a8a;white-space:pre-wrap">${escapeHtml(a.client_wish)}</div>
+      ${a.client_wish ? `<div style="background:#fff7e6;border:2px solid #f59e0b;border-radius:12px;padding:12px 14px;box-shadow:0 2px 8px rgba(245,158,11,.15)">
+        <div style="display:flex;align-items:center;gap:7px;color:#b45309;font-size:14px;font-weight:800;margin-bottom:6px"><span class="material-icons-round" style="font-size:20px">mark_chat_unread</span> Повідомлення від клієнта <span style="font-weight:600;font-size:11px;color:#92400e;background:#fde68a;border-radius:6px;padding:1px 8px">онлайн-запис</span></div>
+        <div style="font-size:15px;color:#78350f;white-space:pre-wrap;line-height:1.45">${escapeHtml(a.client_wish)}</div>
       </div>` : ''}
-      <div>
-        <span style="color:var(--text-secondary);font-size:12px"><span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit_note</span> Замітка майстра / адміна <i style="color:var(--text-secondary);font-weight:400">(формула, деталі)</i></span>
-        <textarea id="apptNote" class="input" rows="3" placeholder="Напр.: формула 8.1 + 6%, алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
+      <div style="background:#f5f3ff;border:2px solid #7c5cff;border-radius:12px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:7px;color:#5b21b6;font-size:14px;font-weight:800;margin-bottom:8px"><span class="material-icons-round" style="font-size:20px">edit_note</span> ЗАМІТКИ МАЙСТРА / АДМІНА <span style="font-weight:600;font-size:11px;color:#6d28d9;background:#ede9fe;border-radius:6px;padding:1px 8px">формула, деталі</span></div>
+        <textarea id="apptNote" class="input" rows="6" style="font-size:15px;min-height:130px;background:#fff" placeholder="Напр.: формула 8.1 + 6%, алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
       </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Фото до / після</span>
