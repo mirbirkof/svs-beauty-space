@@ -14,7 +14,6 @@ const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const tm = require('../lib/tenant-mgmt');
-const { getPool } = require('../db-pg');
 
 // Жорсткий ліміт: 5 реєстрацій на годину з одного IP
 const signupLimiter = rateLimit({
@@ -44,11 +43,8 @@ router.post('/signup', signupLimiter, async (req, res) => {
     if (!phone || phone.length < 10) return res.status(400).json({ error: 'valid-phone-required' });
     if (!password || password.length < 6) return res.status(400).json({ error: 'password-min-6' });
 
-    // Дедуп: телефон уже зайнятий власником діючого салону
-    const dup = await getPool().query(
-      `SELECT 1 FROM users WHERE regexp_replace(phone,'\\D','','g') = $1 LIMIT 1`, [phone]);
-    if (dup.rowCount) return res.status(409).json({ error: 'phone-already-registered' });
-
+    // Дедуп не потрібен: телефон унікальний ПЕР-САЛОН (migration 016),
+    // один власник може мати кілька салонів. Від спаму захищає rate-limit вище.
     // Створення салону + власника + trial (trial=true за замовчуванням у createTenant)
     const r = await tm.createTenant(salonName, {
       phone, password, owner_name: ownerName, email,
