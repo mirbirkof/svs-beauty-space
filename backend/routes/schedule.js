@@ -636,6 +636,11 @@ router.get('/journal', async (req, res) => {
           services_count: svcs.length,
           services_list: svcs,
           duration_min: Math.round((segEnd.getTime() - segStart.getTime()) / 60000),
+          // real_amount — це сума, СПЛАЧЕНА за ВЕСЬ візит (усі майстри разом).
+          // Не можна тягнути її в кожен сегмент: інакше колонка чужого майстра
+          // показує гроші іншого (баг «у Вери 850₴ за нігті Лери»). Скидаємо в null —
+          // плитка й підсумок колонки впадуть на price сегмента (лише свої послуги).
+          real_amount: null,
           // оплата рахувалась SQL-ом саме для майстра запису; для чужого сегмента
           // не знаємо → краще пропуск, ніж брехливе «оплачено»
           paid: sameMaster ? a.paid : false,
