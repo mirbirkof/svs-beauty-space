@@ -18,6 +18,17 @@ const { apiKeyAuth } = require('../lib/api-auth');
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
 
+// GET /api/v1/openapi.json — OpenAPI 3.0 спецификация (публичная, без ключа: это документация контракта)
+router.get('/openapi.json', (req, res) => {
+  try {
+    const { buildSpec } = require('../lib/openapi-spec');
+    const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const base = process.env.PUBLIC_API_BASE_URL || (host ? `${proto}://${host}` : undefined);
+    res.json(buildSpec(base));
+  } catch (e) { console.error('[openapi]', e.message); res.status(500).json({ error: 'spec_unavailable' }); }
+});
+
 // GET /api/v1/ping — проверка ключа
 router.get('/ping', apiKeyAuth('read'), (req, res) => {
   res.json({ ok: true, key: req.apiKey.name, scopes: req.apiKey.scopes, ts: new Date().toISOString() });

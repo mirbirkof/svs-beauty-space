@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — API-документація</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 14px}
+  .note{background:#E7F0FB;border:1px solid #BcD4F0;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#2A5C9A;margin-bottom:14px}
+  #swagger{background:#fff;border:1px solid var(--border,#eee);border-radius:14px;padding:6px 10px}
+  .swagger-ui .topbar{display:none}
+  .swagger-ui .info{margin:18px 0}
+</style>
+</head>
+<body>
+<main class="content">
+  <h1>API-документація</h1>
+  <div class="intro">Інтерактивна специфікація публічного API салону (<code>/api/v1</code>) для інтеграцій: сайт, мобільний застосунок, партнери.</div>
+  <div class="note">Авторизація — за API-ключем (заголовок <code>x-api-key</code> або <code>Authorization: Bearer &lt;key&gt;</code>). Ключі створюються у розділі «Система → API-ключі». Натисніть <b>Authorize</b> у формі нижче, щоб тестувати запити прямо звідси.</div>
+  <div id="swagger"></div>
+</main>
+
+<script src="/admin/assets/admin-shell.js" data-title="API-документація"></script>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+window.addEventListener('load', function () {
+  SwaggerUIBundle({
+    url: '/api/v1/openapi.json',
+    dom_id: '#swagger',
+    deepLinking: true,
+    persistAuthorization: true,
+    tryItOutEnabled: true,
+    presets: [SwaggerUIBundle.presets.apis],
+    layout: 'BaseLayout',
+  });
+});
+</script>
+</body>
+</html>
