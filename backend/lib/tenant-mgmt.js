@@ -4,7 +4,7 @@
    запросы фильтруют по tenant_id явно; для записи в чужой тенант указываем tenant_id. */
 const { getPool } = require('../db-pg');
 const { runAs } = require('./tenant');
-const { hashPassword } = require('./auth-core');
+const { hashPassword, normalizePhone } = require('./auth-core');
 const billing = require('./billing');
 
 // Роли нового салона (зеркало migration 008 — у каждого тенанта свои роли: RLS per-tenant).
@@ -45,7 +45,9 @@ async function uniqueSlug(name) {
 // admin-managed онбординг. Возвращает данные для входа владельца.
 async function createTenant(name, opts = {}, actor = null) {
   if (!name || !String(name).trim()) throw new Error('name-required');
-  const phone = String(opts.phone || '').replace(/\D/g, '');
+  const phoneDigits = String(opts.phone || '').replace(/\D/g, '');
+  // Зберігаємо телефон у канонічному вигляді +380…, який очікує логін (auth-core.normalizePhone).
+  const phone = phoneDigits ? normalizePhone(phoneDigits) : '';
   const password = opts.password ? String(opts.password) : null;
   if (!phone) throw new Error('owner-phone-required');
   if (!password || password.length < 6) throw new Error('owner-password-required'); // >=6 для входа
