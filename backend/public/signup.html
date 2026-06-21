@@ -17,10 +17,10 @@
   input{ width:100%; padding:13px 14px; border-radius:11px; border:1px solid var(--line); background:#13142a; color:var(--ink); font-size:15px; outline:none; transition:border .15s; }
   input:focus{ border-color:var(--acc); }
   .plans{ display:flex; gap:8px; margin-top:6px; }
-  .plan{ flex:1; cursor:pointer; border:1px solid var(--line); border-radius:11px; padding:11px 8px; text-align:center; font-size:13px; background:#13142a; transition:.15s; }
-  .plan b{ display:block; font-size:14px; margin-bottom:2px; }
-  .plan small{ color:var(--muted); font-size:11px; }
-  .plan.active{ border-color:var(--acc); background:#1d1b3e; box-shadow:0 0 0 1px var(--acc) inset; }
+  .plan,.acct{ flex:1; cursor:pointer; border:1px solid var(--line); border-radius:11px; padding:11px 8px; text-align:center; font-size:13px; background:#13142a; transition:.15s; }
+  .plan b,.acct b{ display:block; font-size:14px; margin-bottom:2px; }
+  .plan small,.acct small{ color:var(--muted); font-size:11px; }
+  .plan.active,.acct.active{ border-color:var(--acc); background:#1d1b3e; box-shadow:0 0 0 1px var(--acc) inset; }
   button{ width:100%; margin-top:22px; padding:14px; border:0; border-radius:12px; background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; font-size:16px; font-weight:600; cursor:pointer; transition:.15s; }
   button:disabled{ opacity:.55; cursor:not-allowed; }
   .hint{ font-size:12px; color:var(--muted); margin-top:14px; text-align:center; }
@@ -39,10 +39,16 @@
     </div>
     <div class="card">
       <form id="f" autocomplete="on">
-        <label>Назва салону</label>
+        <label>Тип акаунта</label>
+        <div class="plans">
+          <div class="acct active" data-acct="salon"><b>Салон</b><small>команда майстрів</small></div>
+          <div class="acct" data-acct="solo"><b>Майстер</b><small>безкоштовно</small></div>
+        </div>
+
+        <label id="lbl_salon">Назва салону</label>
         <input id="salon_name" required maxlength="120" placeholder="Напр. Beauty Studio">
 
-        <label>Ваше ім'я (власник)</label>
+        <label id="lbl_owner">Ваше ім'я (власник)</label>
         <input id="owner_name" placeholder="Напр. Олена">
 
         <label>Телефон (логін у CRM)</label>
@@ -54,13 +60,15 @@
         <label>E-mail (необов'язково)</label>
         <input id="email" type="email" placeholder="you@example.com">
 
-        <label>Тариф</label>
-        <div class="plans">
-          <div class="plan" data-plan="free"><b>Free</b><small>базовий</small></div>
-          <div class="plan active" data-plan="pro"><b>Pro</b><small>популярний</small></div>
-          <div class="plan" data-plan="enterprise"><b>Enterprise</b><small>мережа</small></div>
+        <div id="plan_block">
+          <label>Тариф</label>
+          <div class="plans">
+            <div class="plan" data-plan="free"><b>Free</b><small>базовий</small></div>
+            <div class="plan active" data-plan="pro"><b>Pro</b><small>популярний</small></div>
+            <div class="plan" data-plan="enterprise"><b>Enterprise</b><small>мережа</small></div>
+          </div>
         </div>
-        <div class="trial">14 днів безкоштовно · оплата пізніше · картка не потрібна</div>
+        <div class="trial" id="trial_note">14 днів безкоштовно · оплата пізніше · картка не потрібна</div>
 
         <button type="submit" id="btn">Почати безкоштовно</button>
         <div class="msg" id="msg"></div>
@@ -72,9 +80,28 @@
 <script>
   const API = location.origin;
   let plan = 'pro';
+  let acct = 'salon';
   document.querySelectorAll('.plan').forEach(p => p.addEventListener('click', () => {
     document.querySelectorAll('.plan').forEach(x => x.classList.remove('active'));
     p.classList.add('active'); plan = p.dataset.plan;
+  }));
+
+  const planBlock = document.getElementById('plan_block');
+  const trialNote = document.getElementById('trial_note');
+  const lblSalon = document.getElementById('lbl_salon');
+  const lblOwner = document.getElementById('lbl_owner');
+  const btnEl = document.getElementById('btn');
+  document.querySelectorAll('.acct').forEach(a => a.addEventListener('click', () => {
+    document.querySelectorAll('.acct').forEach(x => x.classList.remove('active'));
+    a.classList.add('active'); acct = a.dataset.acct;
+    const solo = acct === 'solo';
+    planBlock.style.display = solo ? 'none' : '';
+    lblSalon.textContent = solo ? 'Назва профілю (ваше імʼя чи бренд)' : 'Назва салону';
+    lblOwner.textContent = solo ? 'Ваше імʼя (майстер)' : "Ваше ім'я (власник)";
+    trialNote.textContent = solo
+      ? 'Безкоштовно назавжди · базові функції + платні модулі за бажанням'
+      : '14 днів безкоштовно · оплата пізніше · картка не потрібна';
+    btnEl.textContent = solo ? 'Створити безкоштовний профіль' : 'Почати безкоштовно';
   }));
 
   const msg = document.getElementById('msg');
@@ -90,7 +117,8 @@
       phone: document.getElementById('phone').value.trim(),
       password: document.getElementById('password').value,
       email: document.getElementById('email').value.trim() || null,
-      plan_code: plan,
+      account_type: acct,
+      plan_code: acct === 'solo' ? 'solo' : plan,
     };
     try {
       const r = await fetch(API + '/api/public/signup', {
@@ -108,8 +136,10 @@
         show('err', human); return;
       }
       const url = data.login_url || ('/admin/?tenant=' + encodeURIComponent(data.slug));
-      show('ok', 'Салон <b>' + (data.salon_name || '') + '</b> створено! Тріал активний 14 днів.<br><br>'
-        + '<a href="' + url + '">Увійти в кабінет →</a>');
+      const okText = acct === 'solo'
+        ? 'Профіль <b>' + (data.salon_name || '') + '</b> створено! Базові функції безкоштовні назавжди.'
+        : 'Салон <b>' + (data.salon_name || '') + '</b> створено! Тріал активний 14 днів.';
+      show('ok', okText + '<br><br><a href="' + url + '">Увійти в кабінет →</a>');
       btn.textContent = 'Готово';
     } catch (err) {
       show('err', 'Мережна помилка. Перевірте зʼєднання і спробуйте ще раз.');
