@@ -7901,9 +7901,28 @@ function renderMySub(){
 }
 
 async function mysubToggleAddon(key, enable){
+  const a = (_mysub.addons||[]).find(x=>x.feature_key===key) || {};
+  const isOper = (typeof TENANT_SLUG !== 'undefined') ? !TENANT_SLUG : false;
+  const cyc = _mysub.cycle === 'yearly' ? 'yearly' : 'monthly';
   if (enable) {
-    const a = (_mysub.addons||[]).find(x=>x.feature_key===key) || {};
-    showModal('Підключити модуль', `<div style="font-size:14px;color:#444">Підключити модуль <b>${escapeHtml(a.name||key)}</b> за <b>${_msMoney(a.price_month)}/міс</b>?</div>`, async ()=>{
+    const paid = Number(a.price_month) > 0 && !a.included_in_plan;
+    // Салон платить за модуль (Mono pay-link → авто-вмикання). Оператор платформи — напряму.
+    if (paid && !isOper) {
+      const price = cyc==='yearly' ? Number(a.price_year) : Number(a.price_month);
+      showModal('Підключити модуль', `<div style="font-size:14px;color:#444">Модуль <b>${escapeHtml(a.name||key)}</b> — <b>${_msMoney(price)}${cyc==='yearly'?'/рік':'/міс'}</b>.<br><br>Після оплати карткою модуль увімкнеться автоматично.</div>`, async ()=>{
+        try {
+          const r = await api('/api/saas/addons/'+encodeURIComponent(key)+'/subscribe', { method:'POST', body: JSON.stringify({ cycle: cyc }) });
+          if (r && r.error) {
+            if (r.error === 'pay_gateway_unavailable') { toast('Онлайн-оплата тимчасово недоступна — зверніться до підтримки', 'err'); return; }
+            toast(_msErr(r.error), 'err'); return;
+          }
+          if (r && r.pay_url) { window.open(r.pay_url, '_blank'); toast('Відкрили оплату. Після сплати модуль увімкнеться сам', 'ok'); }
+          else { toast('Не вдалося створити рахунок', 'err'); }
+        } catch(e){ toast('Помилка підключення', 'err'); }
+      });
+      return;
+    }
+    showModal('Підключити модуль', `<div style="font-size:14px;color:#444">Підключити модуль <b>${escapeHtml(a.name||key)}</b>?</div>`, async ()=>{
       try {
         const r = await api('/api/saas/addons/'+encodeURIComponent(key), { method:'POST', body: JSON.stringify({ enabled:true }) });
         if (r && r.error === 'payment_required') {

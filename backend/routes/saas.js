@@ -211,8 +211,52 @@ router.post('/addons/:key', async (req, res) => {
       `UPDATE tenant_licenses SET overrides=$1, updated_at=now() WHERE tenant_id=current_tenant_id() RETURNING plan_code, overrides`,
       [JSON.stringify(overrides)]))[0];
     await logAction({ user: req.user, action: enabled ? 'saas.addon_enable' : 'saas.addon_disable', entity: 'tenant_licenses', meta: { addon: key }, ip: req.ip }).catch(() => {});
+    // якщо вимкнули — синхронізуємо add-on-підписку (status=cancelled), щоб cron не плутав
+    if (!enabled) {
+      await q(`UPDATE tenant_addon_subscriptions SET status='cancelled', updated_at=now()
+                 WHERE tenant_id=current_tenant_id() AND feature_key=$1 AND status<>'cancelled'`, [key]).catch(() => {});
+    }
     res.json({ ok: true, addon: addon.feature_key, enabled, price_month: addon.price_month, license: row });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/saas/addons/:key/subscribe — самостійна оплата платного модуля.
+// Створює рахунок + Mono pay-link. Після оплати (вебхук/полінг) модуль вмикається сам
+// (billing.applyAddonInvoicePaid → override[feature]=true). { cycle: 'monthly'|'yearly' }
+router.post('/addons/:key/subscribe', async (req, res) => {
+  try {
+    const key = String(req.params.key);
+    const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
+    const tenantId = (await q(`SELECT current_tenant_id() AS id`))[0]?.id;
+    if (!tenantId) return res.status(400).json({ error: 'no_tenant' });
+
+    // якщо модуль уже входить у тариф — платити нема за що
+    const lic = (await q(`SELECT plan_code FROM tenant_licenses WHERE tenant_id=current_tenant_id() LIMIT 1`))[0];
+    if (lic) {
+      const planFeatures = (await q(`SELECT features FROM saas_plans WHERE code=$1`, [lic.plan_code]))[0]?.features || [];
+      const inPlan = Array.isArray(planFeatures) && (planFeatures.includes('*') || planFeatures.includes(key));
+      if (inPlan) return res.status(400).json({ error: 'already_in_plan' });
+    }
+
+    const billing = require('../lib/billing');
+    const { invoice, addon } = await billing.createAddonInvoice(tenantId, key, cycle);
+    let pay;
+    try { pay = await billing.createSubscriptionPayLink(invoice.id); }
+    catch (e) {
+      if (e.message === 'gateway-not-configured') return res.status(503).json({ error: 'pay_gateway_unavailable' });
+      throw e;
+    }
+    await logAction({ user: req.user, action: 'saas.addon_subscribe', entity: 'tenant_addon_subscriptions',
+      meta: { addon: key, cycle, invoice_id: invoice.id }, ip: req.ip }).catch(() => {});
+    res.json({ ok: true, addon: addon.feature_key, name: addon.name, cycle,
+      price: Number(invoice.total), invoice_id: invoice.id,
+      pay_url: pay.pay_url, mono_invoice_id: pay.mono_invoice_id });
+  } catch (e) {
+    const msg = e.message || '';
+    if (msg === 'addon-not-found') return res.status(404).json({ error: 'addon_not_found' });
+    if (msg === 'addon-not-paid') return res.status(400).json({ error: 'addon_is_free' });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  }
 });
 
 module.exports = router;

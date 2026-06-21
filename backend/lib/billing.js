@@ -299,6 +299,9 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
       }
       // снять dunning
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [invoiceId]).catch(() => {});
+    } else {
+      // рахунок без підписки = оплата платного модуля (add-on) → вмикаємо фічу
+      await applyAddonInvoicePaid(invoiceId).catch(e => console.error('[billing] addon-paid', e.message));
     }
   }
   return pay;
@@ -363,6 +366,9 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
         _invalidateTenantCache(sub.tenant_id);
       }
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [pay.invoice_id]).catch(() => {});
+    } else if (inv) {
+      // рахунок без підписки = оплата платного модуля (add-on) → вмикаємо фічу
+      await applyAddonInvoicePaid(inv.id).catch(e => console.error('[billing] addon-paid', e.message));
     }
     return { ok: true, status: 'paid' };
   }
@@ -373,6 +379,108 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
     return { ok: true, status: 'failed' };
   }
   return { ok: true, status: data.status };
+}
+
+// ── Add-on модулі: self-service оплата (SAS-11) ──────────────────────
+// Салон сам купує платний модуль: рахунок (subscription_id=NULL) → Mono pay-link
+// → оплата → applyAddonInvoicePaid вмикає override[feature]=true. Несплата = вимкнено.
+const ADDON_PERIOD_DAYS = { monthly: 30, yearly: 365 };
+
+// Створити рахунок на платний модуль + запис-замовлення (status='pending').
+// Повертає {invoice, addon}. Кидає addon-not-found / addon-not-paid.
+async function createAddonInvoice(tenantId, featureKey, cycle = 'monthly') {
+  if (!tenantId) throw new Error('tenant-required');
+  const pool = getPool();
+  const addon = (await pool.query(
+    `SELECT feature_key, name, price_month, price_year FROM saas_addons WHERE feature_key=$1 AND active=true`,
+    [featureKey])).rows[0];
+  if (!addon) throw new Error('addon-not-found');
+  const billingCycle = cycle === 'yearly' ? 'yearly' : 'monthly';
+  const price = Number(billingCycle === 'yearly' ? addon.price_year : addon.price_month) || 0;
+  if (price <= 0) throw new Error('addon-not-paid');
+  const days = ADDON_PERIOD_DAYS[billingCycle];
+
+  const num = await nextInvoiceNumber();
+  const inv = (await pool.query(
+    `INSERT INTO invoices_saas (tenant_id, subscription_id, invoice_number, status, subtotal,
+       discount_amount, tax_amount, total, period_start, period_end, line_items, notes)
+     VALUES ($1,NULL,$2,'open',$3,0,0,$3, NOW(), NOW()+($4||' days')::interval, $5, $6) RETURNING *`,
+    [tenantId, num, price, days,
+     JSON.stringify([{ description: `Модуль «${addon.name}» (${billingCycle === 'yearly' ? 'рік' : 'місяць'})`, amount: price, qty: 1 }]),
+     `addon:${featureKey}`])).rows[0];
+
+  // upsert замовлення; якщо вже active — не збиваємо статус (це продовження)
+  await pool.query(
+    `INSERT INTO tenant_addon_subscriptions (tenant_id, feature_key, status, billing_cycle, price, last_invoice_id, updated_at)
+     VALUES ($1,$2,'pending',$3,$4,$5,now())
+     ON CONFLICT (tenant_id, feature_key) DO UPDATE SET
+       billing_cycle=EXCLUDED.billing_cycle, price=EXCLUDED.price,
+       last_invoice_id=EXCLUDED.last_invoice_id, updated_at=now()`,
+    [tenantId, featureKey, billingCycle, price, inv.id]);
+  return { invoice: inv, addon };
+}
+
+// Викликається після оплати рахунку модуля (вебхук Mono / ручна оплата):
+// вмикає override[feature]=true, продовжує період add-on-підписки.
+async function applyAddonInvoicePaid(invoiceId) {
+  const pool = getPool();
+  const order = (await pool.query(
+    `SELECT * FROM tenant_addon_subscriptions WHERE last_invoice_id=$1 LIMIT 1`, [invoiceId])).rows[0];
+  if (!order) return { ok: false, reason: 'not-addon-invoice' };
+  const days = ADDON_PERIOD_DAYS[order.billing_cycle] || 30;
+  // продовження від поточного кінця періоду (якщо ще не минув), інакше від тепер
+  await pool.query(
+    `UPDATE tenant_addon_subscriptions
+        SET status='active',
+            current_period_end = GREATEST(COALESCE(current_period_end, now()), now()) + ($2||' days')::interval,
+            updated_at=now()
+      WHERE id=$1`, [order.id, days]);
+  // увімкнути фічу в overrides; гарантуємо наявність ліцензії (solo за замовч.)
+  await pool.query(
+    `INSERT INTO tenant_licenses (tenant_id, plan_code, status, overrides, updated_at)
+     VALUES ($1,'solo','active', jsonb_build_object($2::text,true), now())
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       overrides = COALESCE(tenant_licenses.overrides,'{}'::jsonb) || jsonb_build_object($2::text,true),
+       updated_at=now()`,
+    [order.tenant_id, order.feature_key]);
+  _invalidateTenantCache(order.tenant_id);
+  return { ok: true, feature: order.feature_key, tenant_id: order.tenant_id };
+}
+
+// Прострочені add-on підписки: період скінчився, оплати продовження не було →
+// вимкнути модуль (override=false), статус past_due. Без витоку: несплата = вимкнено.
+// Викликається з runRecurring (той самий cron, що й продовження підписок).
+async function runAddonExpiry(limit = 200) {
+  const pool = getPool();
+  const due = (await pool.query(
+    `SELECT * FROM tenant_addon_subscriptions
+      WHERE status='active' AND current_period_end IS NOT NULL AND current_period_end <= now()
+      ORDER BY current_period_end LIMIT $1`, [limit])).rows;
+  let expired = 0;
+  for (const o of due) {
+    await pool.query(`UPDATE tenant_addon_subscriptions SET status='past_due', updated_at=now() WHERE id=$1`, [o.id]);
+    await pool.query(
+      `UPDATE tenant_licenses
+          SET overrides = COALESCE(overrides,'{}'::jsonb) || jsonb_build_object($2::text,false), updated_at=now()
+        WHERE tenant_id=$1`, [o.tenant_id, o.feature_key]);
+    _invalidateTenantCache(o.tenant_id);
+    expired++;
+  }
+  return { due: due.length, expired };
+}
+
+// Скасувати модуль вручну (салон сам вимикає): override=false + cancelled.
+async function cancelAddon(tenantId, featureKey) {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE tenant_addon_subscriptions SET status='cancelled', updated_at=now()
+      WHERE tenant_id=$1 AND feature_key=$2`, [tenantId, featureKey]);
+  await pool.query(
+    `UPDATE tenant_licenses
+        SET overrides = COALESCE(overrides,'{}'::jsonb) || jsonb_build_object($2::text,false), updated_at=now()
+      WHERE tenant_id=$1`, [tenantId, featureKey]);
+  _invalidateTenantCache(tenantId);
+  return { ok: true };
 }
 
 async function listPayments({ tenantId = null, limit = 50, offset = 0 } = {}) {
@@ -564,7 +672,9 @@ async function runRecurring(limit = 200) {
       }
     }
   }
-  return { due: due.length, renewed, cancelled, invoiced };
+  // прострочені платні модулі (несплата продовження) → вимкнути, без витоку
+  const addons = await runAddonExpiry().catch(e => { console.error('[billing] addon-expiry', e.message); return { expired: 0 }; });
+  return { due: due.length, renewed, cancelled, invoiced, addons_expired: addons.expired };
 }
 
 // ── Метрики (для SAS-07) ─────────────────────────────────────────────
@@ -616,6 +726,8 @@ module.exports = {
   // payments
   recordPayment, listPayments, refundPayment,
   createSubscriptionPayLink, payInvoiceViaMono,
+  // add-on modules (SAS-11)
+  createAddonInvoice, applyAddonInvoicePaid, runAddonExpiry, cancelAddon,
   // methods
   listPaymentMethods, addPaymentMethod, removePaymentMethod, setDefaultPaymentMethod,
   // promo crud
