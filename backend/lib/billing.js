@@ -116,7 +116,11 @@ async function createSubscription(tenantId, { plan_code, cycle = 'monthly', prom
     [tenantId, plan_code, status, cycle, trial ? TRIAL_DAYS : days, trial ? new Date(Date.now() + TRIAL_DAYS * 864e5) : null, gw, promoId])).rows[0];
   // зеркалим в tenant_licenses (источник для feature-gating)
   await syncLicense(tenantId, plan_code, status, sub.current_period_end).catch(() => {});
-  if (!trial) await generateInvoice(sub, { promoId }).catch(e => console.error('[billing] invoice', e.message));
+  // Рахунок — лише для платних планів. Безкоштовні (solo/free, ціна 0) активні без рахунку.
+  if (!trial) {
+    const price = await planPrice(plan_code, cycle).catch(() => 0);
+    if (Number(price) > 0) await generateInvoice(sub, { promoId }).catch(e => console.error('[billing] invoice', e.message));
+  }
   return sub;
 }
 

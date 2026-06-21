@@ -16,6 +16,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { isPlatformTenant } = require('../lib/tenant');
 
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -146,6 +147,71 @@ router.get('/usage', async (req, res) => {
         masters: limits.masters > 0 && masters > limits.masters,
       },
     });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+/* ── ADD-ON МОДУЛІ (SAS-11, freemium для solo) ──
+   Платні модулі підключаються поштучно поверх будь-якого плану через
+   overrides[feature]=true. GET — каталог з цінами і станом; enable/disable
+   перемикають override поточного тенанта. */
+
+// GET /api/saas/addons — каталог платних модулів + чи увімкнено у тенанта
+router.get('/addons', async (req, res) => {
+  try {
+    const addons = await q(`SELECT feature_key, name, description, price_month, price_year, sort_order
+                              FROM saas_addons WHERE active=true ORDER BY sort_order, name`);
+    const lic = (await q(`SELECT plan_code, overrides FROM tenant_licenses WHERE tenant_id=current_tenant_id() LIMIT 1`))[0];
+    const planFeatures = lic ? ((await q(`SELECT features FROM saas_plans WHERE code=$1`, [lic.plan_code]))[0]?.features || []) : [];
+    const planHasAll = Array.isArray(planFeatures) && planFeatures.includes('*');
+    const overrides = (lic && lic.overrides) || {};
+    const rows = addons.map(a => {
+      const inPlan = planHasAll || (Array.isArray(planFeatures) && planFeatures.includes(a.feature_key));
+      const enabled = Object.prototype.hasOwnProperty.call(overrides, a.feature_key)
+        ? !!overrides[a.feature_key] : inPlan;
+      return { ...a, included_in_plan: inPlan, enabled };
+    });
+    res.json({ plan: lic ? lic.plan_code : null, addons: rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/saas/addons/:key — { enabled: true|false } перемкнути модуль для тенанта
+router.post('/addons/:key', async (req, res) => {
+  try {
+    const key = String(req.params.key);
+    const addon = (await q(`SELECT feature_key, name, price_month FROM saas_addons WHERE feature_key=$1 AND active=true`, [key]))[0];
+    if (!addon) return res.status(404).json({ error: 'addon_not_found' });
+    const enabled = req.body?.enabled !== false;
+
+    // переконатися, що ліцензія існує (solo за замовчуванням)
+    let lic = (await q(`SELECT plan_code, overrides FROM tenant_licenses WHERE tenant_id=current_tenant_id() LIMIT 1`))[0];
+    if (!lic) {
+      await q(`INSERT INTO tenant_licenses (tenant_id, plan_code, status) VALUES (current_tenant_id(),'solo','active')
+               ON CONFLICT (tenant_id) DO NOTHING`);
+      lic = { plan_code: 'solo', overrides: {} };
+    }
+
+    // БЕЗПЕКА (privilege escalation, той самий клас що self-grant Enterprise, фікс 11.06):
+    // власник салону має saas.write → без гарду він би ввімкнув собі платний модуль за 0₴.
+    // Платний add-on, якого НЕМА в плані, вмикає лише оператор платформи (після оплати).
+    // Вимкнути — салон може сам. Модулі, що входять у план, — вільно.
+    if (enabled) {
+      const planFeatures = (await q(`SELECT features FROM saas_plans WHERE code=$1`, [lic.plan_code]))[0]?.features || [];
+      const inPlan = Array.isArray(planFeatures) && (planFeatures.includes('*') || planFeatures.includes(key));
+      const paid = Number(addon.price_month) > 0;
+      if (paid && !inPlan && !isPlatformTenant()) {
+        return res.status(402).json({
+          error: 'payment_required', addon: key, price_month: addon.price_month,
+          message: 'Платний модуль вмикається після оплати. Зверніться до підключення модуля.',
+        });
+      }
+    }
+    const overrides = lic.overrides || {};
+    overrides[key] = enabled;
+    const row = (await q(
+      `UPDATE tenant_licenses SET overrides=$1, updated_at=now() WHERE tenant_id=current_tenant_id() RETURNING plan_code, overrides`,
+      [JSON.stringify(overrides)]))[0];
+    await logAction({ user: req.user, action: enabled ? 'saas.addon_enable' : 'saas.addon_disable', entity: 'tenant_licenses', meta: { addon: key }, ip: req.ip }).catch(() => {});
+    res.json({ ok: true, addon: addon.feature_key, enabled, price_month: addon.price_month, license: row });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

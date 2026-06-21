@@ -24,7 +24,7 @@ const signupLimiter = rateLimit({
   message: { error: 'Забагато реєстрацій з цієї адреси. Спробуйте за годину.' },
 });
 
-const ALLOWED_PLANS = ['free', 'pro', 'enterprise'];
+const ALLOWED_PLANS = ['solo', 'free', 'pro', 'enterprise'];
 
 router.post('/signup', signupLimiter, async (req, res) => {
   try {
@@ -34,8 +34,13 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const phone = String(b.phone || '').replace(/\D/g, '');
     const password = b.password ? String(b.password) : '';
     const email = b.email ? String(b.email).trim() : null;
-    const planCode = ALLOWED_PLANS.includes(b.plan_code) ? b.plan_code : 'pro';
+    // account_type='solo' → майстер-одиночка: безкоштовний план solo
+    const accountType = b.account_type === 'solo' ? 'solo' : 'salon';
+    let planCode = ALLOWED_PLANS.includes(b.plan_code) ? b.plan_code : 'pro';
+    if (accountType === 'solo') planCode = 'solo';
     const cycle = b.cycle === 'yearly' ? 'yearly' : 'monthly';
+    // solo та free — безкоштовні назавжди, trial не потрібен
+    const needTrial = !['solo', 'free'].includes(planCode);
 
     // Валідація на межі системи
     if (!salonName) return res.status(400).json({ error: 'salon-name-required' });
@@ -45,10 +50,11 @@ router.post('/signup', signupLimiter, async (req, res) => {
 
     // Дедуп не потрібен: телефон унікальний ПЕР-САЛОН (migration 016),
     // один власник може мати кілька салонів. Від спаму захищає rate-limit вище.
-    // Створення салону + власника + trial (trial=true за замовчуванням у createTenant)
+    // Створення салону + власника. Платні плани → 14-денний trial.
+    // solo/free → trial:false: одразу постійна безкоштовна active-підписка без рахунку.
     const r = await tm.createTenant(salonName, {
       phone, password, owner_name: ownerName, email,
-      plan_code: planCode, cycle, trial: true,
+      plan_code: planCode, cycle, trial: needTrial,
     }, { id: null, source: 'public-signup' });
 
     res.status(201).json({
