@@ -2380,8 +2380,16 @@ async function loadBillingAlert() {
       const sum = `${Number(a.total).toLocaleString('uk-UA')} ${a.currency || 'UAH'}`;
       const over = a.days_overdue > 0 ? ` — прострочено ${a.days_overdue} дн.` : '';
       const cntTxt = a.count > 1 ? ` (рахунків: ${a.count})` : '';
-      document.getElementById('billingBannerText').textContent =
-        `У вас неоплачений рахунок на ${sum}${cntTxt}${over}. Сплатіть, щоб уникнути призупинення сервісу.`;
+      if (a.blocked) {
+        // Салон заблоковано за несплату — доступ до CRM закритий, лишилась тільки оплата.
+        bn.style.background = 'linear-gradient(135deg,#b02a26,#d9534f)';
+        document.getElementById('billingBannerText').textContent =
+          `Доступ до CRM призупинено через несплату ${sum}${cntTxt}${over}. Сплатіть рахунок, щоб одразу відновити роботу.`;
+      } else {
+        bn.style.background = 'linear-gradient(135deg,#d9534f,#e07b5a)';
+        document.getElementById('billingBannerText').textContent =
+          `У вас неоплачений рахунок на ${sum}${cntTxt}${over}. Сплатіть, щоб уникнути призупинення сервісу.`;
+      }
       bn.style.display = 'flex';
     } else {
       bn.style.display = 'none';

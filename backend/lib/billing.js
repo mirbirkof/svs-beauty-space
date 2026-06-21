@@ -242,6 +242,8 @@ async function dueAlert(tenantId) {
   const oldest = rows[0];
   const ref = oldest.due_date || oldest.created_at;
   const daysOverdue = ref ? Math.floor((Date.now() - new Date(ref).getTime()) / 86400000) : 0;
+  // Салон заблоковано за несплату? (tenants.status='suspended' → доступ до CRM закритий)
+  const tstatus = (await getPool().query(`SELECT status FROM tenants WHERE id=$1`, [tenantId])).rows[0]?.status || null;
   return {
     has_due: true,
     count: rows.length,
@@ -251,6 +253,7 @@ async function dueAlert(tenantId) {
     invoice_number: oldest.invoice_number,
     status: oldest.status,
     days_overdue: daysOverdue > 0 ? daysOverdue : 0,
+    blocked: tstatus === 'suspended',
   };
 }
 

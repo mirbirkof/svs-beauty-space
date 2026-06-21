@@ -72,7 +72,17 @@ function tenantMiddleware() {
       if (slug) {
         const t = await resolveBySlug(slug);
         if (!t) return res.status(404).json({ error: 'tenant-not-found' });
-        if (t.status !== 'active') return res.status(403).json({ error: 'tenant-' + t.status });
+        if (t.status !== 'active') {
+          // Заблокований салон (несплата) МУСИТЬ мати доступ до оплати, інакше глухий
+          // кут: заблокований за борг, але заплатити не може → ніколи не розблокується.
+          // Пускаємо лише маршрути біллингу/автентифікації у контексті тенанта; решту
+          // CRM — 403. Оплата → вебхук Mono (без slug, не блокується) → салон active.
+          const p = req.path || '';
+          const billingRecovery = p === '/api/users/me'
+            || p.startsWith('/api/billing')
+            || p.startsWith('/api/pay');
+          if (!billingRecovery) return res.status(403).json({ error: 'tenant-' + t.status, billing_blocked: true });
+        }
         req.tenant_id = t.id;
         req.is_platform = !!t.is_internal;
       } else {
