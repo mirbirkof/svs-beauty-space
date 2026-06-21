@@ -37,6 +37,14 @@ router.post('/webhook', async (req, res) => {
   const check = ig.verifySignature(req.rawBody, sig, process.env.META_APP_SECRET);
   if (!check.ok) return res.sendStatus(401);
 
+  // Безопасность по умолчанию: если подпись пропущена (META_APP_SECRET не задан),
+  // в продакшене НЕ обрабатываем — иначе открытый вебхук позволил бы вброс
+  // фейковых входящих по известному ig_user_id. Отвечаем 200, чтобы Meta не ретраил.
+  if (check.skipped && process.env.NODE_ENV === 'production') {
+    console.warn('[ig] webhook event skipped: META_APP_SECRET not configured');
+    return res.sendStatus(200);
+  }
+
   // Meta требует быстрый 200, иначе ретраит. Обрабатываем асинхронно.
   res.sendStatus(200);
 
