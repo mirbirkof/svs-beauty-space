@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Реклама Meta</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .kpi .sub{font-size:11.5px;color:var(--text-secondary);margin-top:3px}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0)}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.on{background:#E3F6E9;color:#1B7A3D}.pill.off{background:#FBE9E7;color:#B23B2E}.pill.err{background:#FBE9E7;color:#B23B2E}
+  .st-new{background:#E8EEFF;color:#3A55B0}.st-contacted{background:#FFF4E0;color:#9A6B00}
+  .st-booked{background:#E3F6E9;color:#1B7A3D}.st-visited{background:#DDF3EC;color:#0E6B52}.st-lost{background:#F0F0F0;color:#888}
+  .roas-bad{color:#B23B2E;font-weight:700}.roas-mid{color:#9A6B00;font-weight:700}.roas-good{color:#1B7A3D;font-weight:700}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:20px;width:440px;max-width:92vw}
+  .modal h3{margin:0 0 14px}
+</style>
+</head>
+<body>
+<div class="content">
+  <h2 style="margin:0">Реклама Meta (Facebook / Instagram)
+    <button class="btn" style="float:right" onclick="loadAll()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button>
+  </h2>
+  <div class="intro">Рекламні кабінети Meta, кампанії зі статистикою та воронка лідів (Lead Ads → клієнт → запис). Синк статистики — щогодини.</div>
+
+  <div class="cards" id="kpis"><div class="kpi"><div class="lbl">Завантаження…</div></div></div>
+
+  <!-- Акаунти -->
+  <div class="card">
+    <h3>Рекламні кабінети <button class="btn primary sm" style="float:right" onclick="openConnect()">+ Підключити кабінет</button></h3>
+    <table id="accTbl"><thead><tr><th>Назва</th><th>Ad Account</th><th>FB Page</th><th>Статус</th><th>Синк</th><th></th></tr></thead><tbody><tr><td colspan="6" class="muted">Завантаження…</td></tr></tbody></table>
+    <div class="msg" id="accMsg"></div>
+  </div>
+
+  <!-- Кампанії -->
+  <div class="card">
+    <h3>Кампанії</h3>
+    <table id="campTbl"><thead><tr><th>Назва</th><th>Ціль</th><th>Статус</th><th>Покази</th><th>Кліки</th><th>Витрати</th><th>Ліди</th><th>CPL</th><th>ROAS</th><th></th></tr></thead><tbody><tr><td colspan="10" class="muted">Немає даних. Підключіть кабінет і дочекайтесь синку.</td></tr></tbody></table>
+  </div>
+
+  <!-- Ліди -->
+  <div class="card">
+    <h3>Ліди (Lead Ads)
+      <select id="leadFilter" class="btn sm" style="float:right;width:auto" onchange="loadLeads()">
+        <option value="">Усі</option><option value="new">Нові</option><option value="contacted">В роботі</option>
+        <option value="booked">Записані</option><option value="visited">Прийшли</option><option value="lost">Втрачені</option>
+      </select>
+    </h3>
+    <table id="leadTbl"><thead><tr><th>Дата</th><th>Імʼя</th><th>Телефон</th><th>Інтерес</th><th>Статус</th><th>Дії</th></tr></thead><tbody><tr><td colspan="6" class="muted">Лідів ще немає.</td></tr></tbody></table>
+    <div class="msg" id="leadMsg"></div>
+  </div>
+</div>
+
+<!-- Модалка підключення кабінета -->
+<div class="modal-bg" id="connectBg">
+  <div class="modal">
+    <h3>Підключити рекламний кабінет</h3>
+    <div class="fld"><label>Ad Account ID (act_XXXXXXXX або число)</label><input id="c_acc" placeholder="act_123456789"></div>
+    <div class="fld"><label>Access Token (зі скоупом ads_read, leads_retrieval)</label><input id="c_tok" placeholder="EAAB..."></div>
+    <div class="row">
+      <div class="fld"><label>Facebook Page ID (для лідів)</label><input id="c_page" placeholder="опц."></div>
+      <div class="fld"><label>Instagram Account ID</label><input id="c_ig" placeholder="опц."></div>
+    </div>
+    <div class="fld"><label>Pixel ID</label><input id="c_pixel" placeholder="опц."></div>
+    <div class="msg" id="connectMsg"></div>
+    <div style="text-align:right;margin-top:6px">
+      <button class="btn" onclick="closeConnect()">Скасувати</button>
+      <button class="btn primary" onclick="doConnect()">Підключити</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка лід → запис -->
+<div class="modal-bg" id="apptBg">
+  <div class="modal">
+    <h3>Створити запис з ліда</h3>
+    <div class="row">
+      <div class="fld"><label>Послуга (ID)</label><input id="a_service" type="number" placeholder="опц."></div>
+      <div class="fld"><label>Майстер (ID)</label><input id="a_master" type="number" placeholder="опц."></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Дата і час</label><input id="a_start" type="datetime-local"></div>
+      <div class="fld"><label>Ціна</label><input id="a_price" type="number" placeholder="опц."></div>
+    </div>
+    <div class="msg" id="apptMsg"></div>
+    <div style="text-align:right;margin-top:6px">
+      <button class="btn" onclick="closeAppt()">Скасувати</button>
+      <button class="btn primary" onclick="doAppt()">Створити запис</button>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Реклама Meta"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const money = (n) => (Number(n)||0).toLocaleString('uk-UA',{maximumFractionDigits:0}) + ' ₴';
+const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const stLabel = {new:'Новий',contacted:'В роботі',booked:'Записаний',visited:'Прийшов',lost:'Втрачений'};
+
+async function loadAll(){ await Promise.all([loadKpi(), loadAccounts(), loadCampaigns(), loadLeads()]); }
+
+async function loadKpi(){
+  try{
+    const r = await adminFetch('/api/meta-ads/roi');
+    const roas = r.conversions>0 && r.spend>0 ? '—' : '—';
+    $('kpis').innerHTML = [
+      ['Витрати (30 дн)', money(r.spend)],
+      ['Ліди', r.leads||0],
+      ['CPL', r.cpl!=null ? money(r.cpl) : '—'],
+      ['Кліки', r.clicks||0],
+      ['CPC', r.cpc!=null ? money(r.cpc) : '—'],
+      ['Записані', (r.funnel&&r.funnel.booked)||0],
+    ].map(([l,v])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('');
+  }catch(e){ $('kpis').innerHTML = `<div class="kpi"><div class="lbl">Помилка</div><div class="val">—</div></div>`; }
+}
+
+async function loadAccounts(){
+  try{
+    const r = await adminFetch('/api/meta-ads/accounts'); const items = r.items||[];
+    const tb = $('accTbl').querySelector('tbody');
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Кабінетів немає. Підключіть перший.</td></tr>'; return; }
+    tb.innerHTML = items.map(a=>{
+      const cls = a.status==='active'?'on':(a.status==='error'?'err':'off');
+      const sync = a.last_synced_at ? new Date(a.last_synced_at).toLocaleString('uk-UA') : '—';
+      return `<tr><td>${esc(a.name||'—')}</td><td>${esc(a.ad_account_id)}</td><td>${esc(a.facebook_page_id||'—')}</td>
+        <td><span class="pill ${cls}">${esc(a.status)}</span>${a.last_error?` <span class="muted" title="${esc(a.last_error)}">⚠</span>`:''}</td>
+        <td class="muted">${sync}</td>
+        <td><button class="btn sm" onclick="syncAcc(${a.id})">Синк</button>
+            <button class="btn sm" onclick="disconnectAcc(${a.id})">Відключити</button></td></tr>`;
+    }).join('');
+  }catch(e){ $('accMsg').textContent = 'Помилка: '+e.message; }
+}
+
+async function loadCampaigns(){
+  try{
+    const r = await adminFetch('/api/meta-ads/campaigns'); const items = r.items||[];
+    const tb = $('campTbl').querySelector('tbody');
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="10" class="muted">Немає кампаній. Дочекайтесь синку після підключення кабінета.</td></tr>'; return; }
+    tb.innerHTML = items.map(c=>{
+      const on = c.status==='ACTIVE';
+      const roas = c.roas!=null ? `<span class="${c.roas<1?'roas-bad':(c.roas<3?'roas-mid':'roas-good')}">${Number(c.roas).toFixed(2)}×</span>` : '—';
+      const cpl = c.leads>0 ? money(c.spend/c.leads) : '—';
+      return `<tr><td>${esc(c.name||'—')}</td><td class="muted">${esc(c.objective||'—')}</td>
+        <td><span class="pill ${on?'on':'off'}">${esc(c.status||'—')}</span></td>
+        <td>${(c.impressions||0).toLocaleString('uk-UA')}</td><td>${c.clicks||0}</td>
+        <td>${money(c.spend)}</td><td>${c.leads||0}</td><td>${cpl}</td><td>${roas}</td>
+        <td><button class="btn sm" onclick="toggleCamp(${c.id},'${on?'PAUSED':'ACTIVE'}')">${on?'Пауза':'Запуск'}</button></td></tr>`;
+    }).join('');
+  }catch(e){ /* без кампаній — мовчки */ }
+}
+
+async function loadLeads(){
+  try{
+    const f = $('leadFilter').value;
+    const r = await adminFetch('/api/meta-ads/leads'+(f?`?status=${f}`:'')); const items = r.items||[];
+    const tb = $('leadTbl').querySelector('tbody');
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Лідів немає.</td></tr>'; return; }
+    tb.innerHTML = items.map(l=>{
+      const d = new Date(l.created_at).toLocaleString('uk-UA');
+      const acts = [];
+      if(!l.client_id) acts.push(`<button class="btn sm" onclick="toClient(${l.id})">→ Клієнт</button>`);
+      if(l.status!=='booked'&&l.status!=='visited') acts.push(`<button class="btn sm" onclick="openAppt(${l.id})">→ Запис</button>`);
+      if(l.status!=='lost') acts.push(`<button class="btn sm" onclick="setLead(${l.id},'lost')">Втрачений</button>`);
+      if(l.status==='booked') acts.push(`<button class="btn sm" onclick="setLead(${l.id},'visited')">Прийшов</button>`);
+      return `<tr><td class="muted">${d}</td><td>${esc(l.client_name||'—')}</td><td>${esc(l.phone||'—')}</td>
+        <td>${esc(l.service_interest||'—')}</td>
+        <td><span class="pill st-${l.status}">${stLabel[l.status]||l.status}</span></td>
+        <td>${acts.join(' ')}</td></tr>`;
+    }).join('');
+  }catch(e){ $('leadMsg').textContent = 'Помилка: '+e.message; }
+}
+
+// ── Акаунти ──
+function openConnect(){ $('connectMsg').textContent=''; $('connectBg').classList.add('show'); }
+function closeConnect(){ $('connectBg').classList.remove('show'); }
+async function doConnect(){
+  $('connectMsg').textContent = 'Перевірка токена…';
+  try{
+    await adminFetch('/api/meta-ads/accounts/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      ad_account_id:$('c_acc').value.trim(), access_token:$('c_tok').value.trim(),
+      facebook_page_id:$('c_page').value.trim()||undefined, instagram_account_id:$('c_ig').value.trim()||undefined,
+      pixel_id:$('c_pixel').value.trim()||undefined,
+    })});
+    closeConnect(); await loadAccounts(); syncAccSilent();
+  }catch(e){ $('connectMsg').textContent = 'Помилка: '+e.message; }
+}
+async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminFetch(`/api/meta-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('Graph: '+r.error):(`Синхронізовано кампаній: ${r.synced||0}`); await loadCampaigns(); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+async function syncAccSilent(){ try{ const a=await adminFetch('/api/meta-ads/accounts'); const last=(a.items||[]).slice(-1)[0]; if(last) await adminFetch(`/api/meta-ads/accounts/${last.id}/sync`,{method:'POST'}); await loadAll(); }catch(e){} }
+async function disconnectAcc(id){ if(!confirm('Відключити кабінет? Статистика залишиться, синк припиниться.'))return; try{ await adminFetch(`/api/meta-ads/accounts/${id}`,{method:'DELETE'}); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+
+// ── Кампанії ──
+async function toggleCamp(id,status){ try{ await adminFetch(`/api/meta-ads/campaigns/${id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await loadCampaigns(); }catch(e){ alert('Помилка: '+e.message); } }
+
+// ── Ліди ──
+async function setLead(id,status){ try{ await adminFetch(`/api/meta-ads/leads/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await Promise.all([loadLeads(),loadKpi()]); }catch(e){ $('leadMsg').textContent='Помилка: '+e.message; } }
+async function toClient(id){ $('leadMsg').textContent='Створення клієнта…'; try{ const r=await adminFetch(`/api/meta-ads/leads/${id}/create-client`,{method:'POST'}); $('leadMsg').textContent = r.existed?'Клієнт уже існував, привʼязано.':'Клієнта створено.'; await loadLeads(); }catch(e){ $('leadMsg').textContent='Помилка: '+e.message; } }
+let apptLead=null;
+function openAppt(id){ apptLead=id; $('apptMsg').textContent=''; $('apptBg').classList.add('show'); }
+function closeAppt(){ $('apptBg').classList.remove('show'); }
+async function doAppt(){
+  if(!$('a_start').value){ $('apptMsg').textContent='Вкажіть дату і час.'; return; }
+  $('apptMsg').textContent='Створення запису…';
+  try{
+    await adminFetch(`/api/meta-ads/leads/${apptLead}/create-appointment`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      service_id:$('a_service').value?Number($('a_service').value):undefined,
+      master_id:$('a_master').value?Number($('a_master').value):undefined,
+      starts_at:$('a_start').value, price:$('a_price').value?Number($('a_price').value):undefined,
+    })});
+    closeAppt(); await Promise.all([loadLeads(),loadKpi()]);
+  }catch(e){ $('apptMsg').textContent='Помилка: '+e.message; }
+}
+
+loadAll();
+</script>
+</body>
+</html>

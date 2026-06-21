@@ -111,4 +111,4 @@ async function saveIntegrationSecret(name, value, userId = null) {
   return { name, set: true };
 }
 
-module.exports = { ALLOWED, isAllowed, loadIntegrationSecrets, saveIntegrationSecret };
+module.exports = { ALLOWED, isAllowed, loadIntegrationSecrets, saveIntegrationSecret, encryptVal, decryptVal };

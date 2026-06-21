@@ -34,6 +34,7 @@
       { icon: 'groups', label: 'Сегменти', href: '/admin/crm-marketing.html#segments' },
       { icon: 'send', label: 'Кампанії / Розсилки', href: '/admin/crm-marketing.html#campaigns' },
       { icon: 'bolt', label: 'Авто-тригери', href: '/admin/crm-marketing.html#triggers' },
+      { icon: 'ads_click', label: 'Реклама Meta', href: '/admin/meta-ads.html' },
       { icon: 'history', label: 'Нагадування (записи)', href: '/admin/index.html#reminders' },
     ] },
     { icon: 'payments', label: 'Зарплата', href: '/admin/index.html#payroll' },
