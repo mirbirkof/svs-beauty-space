@@ -169,4 +169,69 @@ router.patch('/conversations/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+/* ── INSTAGRAM CONNECT (per-salon) ──
+   POST /api/omni/instagram/connect  { page_token, auto_agent?, auto_book?, agent_id? }
+   Валидирует Page Access Token через Meta, достаёт ig_user_id и включает канал.
+   GET  /api/omni/instagram/status   — текущее состояние подключения (без секретов). */
+const igMeta = require('../lib/channels/instagram-meta');
+
+router.post('/instagram/connect', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const pageToken = String(b.page_token || '').trim();
+    if (!pageToken) return res.status(400).json({ error: 'page_token_required' });
+
+    const probe = await igMeta.probeAccount(pageToken);
+    if (!probe.ok || !probe.id) return res.status(400).json({ error: 'token_invalid', detail: probe.error || 'no ig account' });
+
+    const config = {
+      ig_user_id: String(probe.id),
+      username: probe.username || null,
+      page_id: b.page_id || null,
+      page_token: pageToken,
+      auto_agent: b.auto_agent !== false,   // по умолчанию агент отвечает
+      auto_book: !!b.auto_book,             // авто-запись процедур — явно включить
+      agent_id: b.agent_id || null,
+    };
+    const row = (await q(
+      `INSERT INTO omni_channels (channel, enabled, config) VALUES ('instagram', true, $1)
+       ON CONFLICT (tenant_id, channel) DO UPDATE SET enabled=true, config=EXCLUDED.config, updated_at=now()
+       RETURNING id, channel, enabled`,
+      [JSON.stringify(config)]))[0];
+    res.json({ ok: true, channel: row, ig_username: probe.username, ig_user_id: probe.id });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.get('/instagram/status', async (req, res) => {
+  try {
+    const ch = (await q(`SELECT enabled, config, updated_at FROM omni_channels WHERE channel='instagram' AND tenant_id=current_tenant_id()`))[0];
+    if (!ch) return res.json({ connected: false });
+    const c = ch.config || {};
+    res.json({
+      connected: !!c.ig_user_id, enabled: ch.enabled,
+      ig_user_id: c.ig_user_id || null, ig_username: c.username || null,
+      auto_agent: !!c.auto_agent, auto_book: !!c.auto_book, agent_id: c.agent_id || null,
+      has_token: !!c.page_token, updated_at: ch.updated_at,
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// PATCH /api/omni/instagram/settings — переключатели авто-агента/авто-записи
+router.patch('/instagram/settings', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const ch = (await q(`SELECT config FROM omni_channels WHERE channel='instagram' AND tenant_id=current_tenant_id()`))[0];
+    if (!ch) return res.status(404).json({ error: 'not_connected' });
+    const c = ch.config || {};
+    if (b.auto_agent !== undefined) c.auto_agent = !!b.auto_agent;
+    if (b.auto_book !== undefined) c.auto_book = !!b.auto_book;
+    if (b.agent_id !== undefined) c.agent_id = b.agent_id || null;
+    if (b.enabled !== undefined) {
+      await q(`UPDATE omni_channels SET enabled=$1, updated_at=now() WHERE channel='instagram' AND tenant_id=current_tenant_id()`, [!!b.enabled]);
+    }
+    await q(`UPDATE omni_channels SET config=$1, updated_at=now() WHERE channel='instagram' AND tenant_id=current_tenant_id()`, [JSON.stringify(c)]);
+    res.json({ ok: true, auto_agent: !!c.auto_agent, auto_book: !!c.auto_book, agent_id: c.agent_id || null });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 module.exports = router;

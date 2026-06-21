@@ -161,6 +161,10 @@ app.get('/api/shop/readiness', (req, res) => {
   });
 });
 
+// Instagram вебхук (COM-10) — ДО tenantMiddleware: тенант определяется по
+// ig_user_id из payload (Meta шлёт все салоны на один URL), не по запросу.
+try { app.use('/api/instagram', require('./routes/instagram-webhook')); } catch(e) { console.error('[instagram-webhook] mount failed:', e.message); }
+
 // Tenant context (SAS-01): резолв тенанта до всех роутов; текущий трафик → дефолтный тенант
 const { tenantMiddleware } = require('./lib/tenant');
 app.use(tenantMiddleware());

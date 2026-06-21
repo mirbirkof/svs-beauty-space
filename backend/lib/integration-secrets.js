@@ -57,6 +57,9 @@ const ALLOWED = new Set([
   'NOVAPOSHTA_API_KEY',
   'BEAUTYPRO_ID_KEY', 'BEAUTYPRO_SECRET_KEY', 'BEAUTYPRO_DATABASE_CODE',
   'GEMINI_API_KEY',
+  // Instagram (Meta) — платформенный уровень: подпись и верификация вебхука.
+  // Токены конкретного салона хранятся per-tenant в omni_channels.config.
+  'META_APP_SECRET', 'META_VERIFY_TOKEN', 'META_APP_ID',
 ]);
 
 const PREFIX = 'integration:';

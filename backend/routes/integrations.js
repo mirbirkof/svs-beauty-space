@@ -33,6 +33,13 @@ function buildCatalog() {
         configured: has('GOOGLE_BUSINESS_TOKEN'), needs: ['GOOGLE_BUSINESS_TOKEN'],
         how: 'Підключити Google-акаунт салону, отримати OAuth-токен, вставити в GOOGLE_BUSINESS_TOKEN.' },
     ]},
+    { category: 'Соцмережі та діалоги', items: [
+      { key: 'instagram', name: 'Instagram (Direct + коментарі)', icon: 'photo_camera',
+        desc: 'Підключити Instagram салону: вхідні Direct і коментарі падають у єдиний інбокс, AI-агент відповідає і навіть записує на процедуру замість адміна.',
+        configured: has('META_APP_SECRET') && has('META_VERIFY_TOKEN'),
+        needs: ['META_APP_SECRET', 'META_VERIFY_TOKEN'],
+        how: 'Потрібен Instagram Professional (бізнес/творець), звʼязаний з FB-сторінкою. У Meta-застосунку платформи задати META_APP_SECRET і META_VERIFY_TOKEN, пройти App Review (instagram_manage_messages). Далі салон підключає свій акаунт у розділі «Omni → Instagram» (Page Access Token зберігається окремо для кожного салону).' },
+    ]},
     { category: 'Сповіщення клієнтам', items: [
       { key: 'telegram', name: 'Telegram-сповіщення', icon: 'send',
         desc: 'Сповіщення про записи, нагадування й кампанії у Telegram.',

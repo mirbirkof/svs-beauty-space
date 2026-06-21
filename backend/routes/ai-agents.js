@@ -365,3 +365,5 @@ router.get('/:id/memory', canRead, async (req, res) => {
 });
 
 module.exports = router;
+// экспорт ядра для серверных вызовов (Instagram-вебхук, триггеры): запуск агента вне HTTP
+module.exports.runAgent = runAgent;
