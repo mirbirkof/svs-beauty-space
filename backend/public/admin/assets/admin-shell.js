@@ -26,6 +26,9 @@
       { icon: 'star_rate', label: 'Відгуки', href: '/admin/index.html#reviews' },
       { icon: 'reviews', label: 'Відгуки / Промо (запис)', href: '/admin/dikidi.html' },
     ] },
+    { group: 'Спілкування', icon: 'forum', items: [
+      { icon: 'inbox', label: 'Інбокс (Instagram/DM)', href: '/admin/inbox.html' },
+    ] },
     { group: 'Маркетинг', icon: 'campaign', items: [
       { icon: 'notifications_active', label: 'Центр повідомлень', href: '/admin/crm-marketing.html#center' },
       { icon: 'groups', label: 'Сегменти', href: '/admin/crm-marketing.html#segments' },

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Інбокс</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro { color:var(--text-secondary); font-size:14px; margin:2px 0 14px; }
+  .ig-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; border:1px solid var(--border,#eee);
+            border-radius:14px; padding:12px 16px; margin-bottom:16px; background:var(--card,#fff); }
+  .ig-bar .ic { width:40px;height:40px;border-radius:10px;display:grid;place-items:center;
+                background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); color:#fff; }
+  .ig-bar .ic .material-icons-round { font-size:22px; }
+  .ig-bar .nm { font-weight:700; font-size:15px; }
+  .ig-bar .st { font-size:12.5px; color:var(--text-secondary); }
+  .badge { display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;
+           font-size:12px;font-weight:600; }
+  .badge.on { background:#E3F6E9;color:#1B7A3D; } .badge.off { background:#FBE9E7;color:#B23B2E; }
+  .badge .material-icons-round { font-size:14px; }
+  .ig-bar .spacer { flex:1; }
+  .tog { display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none; }
+  .tog input { width:16px;height:16px; }
+
+  .inbox { display:grid; grid-template-columns:340px 1fr; gap:14px; height:calc(100vh - 230px); min-height:420px; }
+  .pane { border:1px solid var(--border,#eee); border-radius:14px; background:var(--card,#fff);
+          display:flex; flex-direction:column; overflow:hidden; }
+  .filters { display:flex; gap:6px; padding:10px; border-bottom:1px solid var(--border,#eee); flex-wrap:wrap; }
+  .chip { font-size:12px; padding:5px 11px; border-radius:999px; border:1px solid var(--border,#ddd);
+          cursor:pointer; background:transparent; color:var(--text-secondary); }
+  .chip.act { background:var(--primary,#5B5FC7); color:#fff; border-color:var(--primary,#5B5FC7); }
+  .conv-list { overflow:auto; flex:1; }
+  .conv { padding:11px 14px; border-bottom:1px solid var(--border,#f0f0f0); cursor:pointer; display:flex; gap:10px; }
+  .conv:hover { background:var(--bg,#F7F7FB); }
+  .conv.sel { background:var(--primary-light,#EDEDFA); }
+  .conv .av { width:38px;height:38px;border-radius:50%;background:var(--primary-light,#EDEDFA);
+              color:var(--primary,#5B5FC7); display:grid;place-items:center;font-weight:700;flex:none; }
+  .conv .mid { flex:1; min-width:0; }
+  .conv .nm { font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:6px; }
+  .conv .ch { font-size:10px; padding:1px 6px; border-radius:6px; background:#eee; color:#666; text-transform:uppercase; }
+  .conv .ch.instagram { background:#fce4ec; color:#c2185b; }
+  .conv .last { font-size:12.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .conv .meta { text-align:right; font-size:11px; color:var(--text-secondary); flex:none; }
+  .conv .unread { display:inline-block; min-width:18px; height:18px; line-height:18px; text-align:center;
+                  background:var(--primary,#5B5FC7); color:#fff; border-radius:9px; font-size:11px; padding:0 5px; }
+
+  .thread-head { padding:12px 16px; border-bottom:1px solid var(--border,#eee); display:flex; align-items:center; gap:10px; }
+  .thread-head .nm { font-weight:700; }
+  .thread-head .spacer { flex:1; }
+  .msgs { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; background:var(--bg,#F7F7FB); }
+  .bub { max-width:72%; padding:9px 13px; border-radius:14px; font-size:14px; line-height:1.4; white-space:pre-wrap; word-break:break-word; }
+  .bub .t { font-size:10.5px; opacity:.6; margin-top:4px; }
+  .bub.in { background:#fff; border:1px solid var(--border,#eee); align-self:flex-start; border-bottom-left-radius:4px; }
+  .bub.out { background:var(--primary,#5B5FC7); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+  .bub.ai { background:#EDE7F6; color:#4527A0; align-self:flex-end; border-bottom-right-radius:4px; }
+  .bub .who { font-size:10.5px; font-weight:700; opacity:.7; margin-bottom:2px; }
+  .composer { display:flex; gap:8px; padding:12px; border-top:1px solid var(--border,#eee); }
+  .composer textarea { flex:1; resize:none; height:42px; padding:10px 12px; border:1px solid var(--border,#ddd);
+                       border-radius:10px; font-size:14px; font-family:inherit; }
+  .empty { flex:1; display:grid; place-items:center; color:var(--text-secondary); font-size:14px; text-align:center; padding:20px; }
+
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:9999; padding:16px; }
+  .modal-bg.show { display:flex; }
+  .modal { background:var(--card,#fff); border-radius:16px; max-width:480px; width:100%; padding:22px; box-shadow:0 20px 60px rgba(0,0,0,.3); max-height:90vh; overflow:auto; }
+  .modal h3 { margin:0 0 4px; font-size:18px; }
+  .modal .sub { color:var(--text-secondary); font-size:13px; margin-bottom:16px; line-height:1.45; }
+  .fld { margin-bottom:14px; }
+  .fld label { display:block; font-size:13px; font-weight:600; margin-bottom:5px; }
+  .fld input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border,#ddd); border-radius:9px; font-size:14px; font-family:inherit; }
+  .fld .hint { font-size:11.5px; color:var(--text-secondary); margin-top:4px; line-height:1.4; }
+  .modal-act { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  .modal-msg { font-size:13px; min-height:18px; margin-top:8px; }
+  @media(max-width:900px){ .inbox{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="content">
+
+  <h2 style="margin:0">Інбокс <button class="btn" style="float:right" onclick="loadAll()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button></h2>
+  <div class="intro">Повідомлення та коментарі з усіх каналів в одному місці. AI-агент може відповідати і записувати клієнтів автоматично.</div>
+
+  <!-- Instagram панель підключення -->
+  <div class="ig-bar" id="igBar">
+    <div class="ic"><span class="material-icons-round">photo_camera</span></div>
+    <div>
+      <div class="nm">Instagram</div>
+      <div class="st" id="igSt">Завантаження…</div>
+    </div>
+    <div class="spacer"></div>
+    <label class="tog" id="igAgentTog" style="display:none"><input type="checkbox" id="igAgent" onchange="igSetting('auto_agent',this.checked)">AI-агент відповідає</label>
+    <label class="tog" id="igBookTog" style="display:none"><input type="checkbox" id="igBook" onchange="igSetting('auto_book',this.checked)">Авто-запис процедур</label>
+    <span id="igBadge"></span>
+    <button class="btn primary" id="igConnectBtn" onclick="igOpen()">Підключити</button>
+  </div>
+
+  <div class="inbox">
+    <div class="pane">
+      <div class="filters" id="filters">
+        <button class="chip act" data-f="open" onclick="setFilter('open')">Відкриті</button>
+        <button class="chip" data-f="" onclick="setFilter('')">Усі</button>
+        <button class="chip" data-f="closed" onclick="setFilter('closed')">Закриті</button>
+        <button class="chip" data-c="instagram" onclick="setChannel('instagram')">Instagram</button>
+      </div>
+      <div class="conv-list" id="convList"><div class="empty">Завантаження…</div></div>
+    </div>
+    <div class="pane" id="threadPane">
+      <div class="empty">Оберіть діалог зліва, щоб переглянути переписку.</div>
+    </div>
+  </div>
+</div>
+
+<!-- модалка підключення Instagram -->
+<div class="modal-bg" id="igBg">
+  <div class="modal">
+    <h3>Підключення Instagram</h3>
+    <div class="sub">Вставте <b>Page Access Token</b> вашої Facebook-сторінки, до якої прив'язаний Instagram-акаунт. Ми перевіримо токен і автоматично визначимо акаунт.</div>
+    <div class="fld">
+      <label>Page Access Token</label>
+      <input type="text" id="igToken" autocomplete="off" placeholder="EAAG...">
+      <div class="hint">Отримати: Meta for Developers → ваш застосунок → Instagram → Generate token. Потрібні дозволи instagram_manage_messages, pages_messaging.</div>
+    </div>
+    <label class="tog" style="margin-bottom:10px"><input type="checkbox" id="igModalAgent" checked>AI-агент автоматично відповідає на повідомлення</label><br>
+    <label class="tog"><input type="checkbox" id="igModalBook">Дозволити агенту записувати на процедури</label>
+    <div class="modal-msg" id="igMsg"></div>
+    <div class="modal-act">
+      <button class="btn" onclick="igClose()">Скасувати</button>
+      <button class="btn primary" id="igSave" onclick="igConnect()">Підключити</button>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Інбокс"></script>
+<script>
+function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function tShort(ts){ if(!ts) return ''; const d=new Date(ts); const n=new Date();
+  if(d.toDateString()===n.toDateString()) return d.toLocaleTimeString('uk',{hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleDateString('uk',{day:'2-digit',month:'2-digit'}); }
+
+let curFilter='open', curChannel='', curConv=null;
+
+async function loadAll(){ await igStatus(); await loadConvs(); }
+
+/* ── Instagram статус/підключення ── */
+async function igStatus(){
+  try{
+    const r=await adminFetch('/api/omni/instagram/status');
+    const d=await r.json().catch(()=>({}));
+    const st=document.getElementById('igSt'), badge=document.getElementById('igBadge');
+    const aTog=document.getElementById('igAgentTog'), bTog=document.getElementById('igBookTog');
+    const btn=document.getElementById('igConnectBtn');
+    if(d.connected){
+      st.innerHTML = d.ig_username ? '@'+esc(d.ig_username) : ('акаунт '+esc(d.ig_user_id||''));
+      badge.innerHTML = d.enabled
+        ? '<span class="badge on"><span class="material-icons-round">check_circle</span>Активний</span>'
+        : '<span class="badge off"><span class="material-icons-round">pause_circle</span>Вимкнено</span>';
+      aTog.style.display='inline-flex'; bTog.style.display='inline-flex';
+      document.getElementById('igAgent').checked=!!d.auto_agent;
+      document.getElementById('igBook').checked=!!d.auto_book;
+      btn.textContent='Перепідключити';
+    }else{
+      st.textContent='Не підключено — клієнти не побачать ваших відповідей в Instagram.';
+      badge.innerHTML='<span class="badge off"><span class="material-icons-round">radio_button_unchecked</span>Не підключено</span>';
+      aTog.style.display='none'; bTog.style.display='none';
+      btn.textContent='Підключити';
+    }
+  }catch(e){ document.getElementById('igSt').textContent='Помилка: '+e.message; }
+}
+function igOpen(){ document.getElementById('igMsg').textContent=''; document.getElementById('igToken').value=''; document.getElementById('igBg').classList.add('show'); }
+function igClose(){ document.getElementById('igBg').classList.remove('show'); }
+document.getElementById('igBg').addEventListener('click',e=>{ if(e.target.id==='igBg') igClose(); });
+async function igConnect(){
+  const btn=document.getElementById('igSave'), msg=document.getElementById('igMsg');
+  const token=document.getElementById('igToken').value.trim();
+  if(!token){ msg.style.color='#B23B2E'; msg.textContent='Вставте токен.'; return; }
+  btn.disabled=true; msg.style.color='var(--text-secondary)'; msg.textContent='Перевіряю токен через Meta…';
+  try{
+    const r=await adminFetch('/api/omni/instagram/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ page_token:token, auto_agent:document.getElementById('igModalAgent').checked, auto_book:document.getElementById('igModalBook').checked })});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.detail||d.error||('HTTP '+r.status));
+    msg.style.color='#1B7A3D'; msg.textContent='Підключено: @'+(d.ig_username||d.ig_user_id)+' ✓';
+    setTimeout(()=>{ igClose(); igStatus(); },900);
+  }catch(e){ msg.style.color='#B23B2E'; msg.textContent='Помилка: '+e.message; }
+  finally{ btn.disabled=false; }
+}
+async function igSetting(key,val){
+  try{ await adminFetch('/api/omni/instagram/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({[key]:val})}); }
+  catch(e){ alert('Не вдалось зберегти: '+e.message); igStatus(); }
+}
+
+/* ── Список діалогів ── */
+function setFilter(f){ curFilter=f; document.querySelectorAll('.chip[data-f]').forEach(c=>c.classList.toggle('act',c.getAttribute('data-f')===f)); loadConvs(); }
+function setChannel(c){ curChannel=curChannel===c?'':c; document.querySelectorAll('.chip[data-c]').forEach(x=>x.classList.toggle('act',curChannel&&x.getAttribute('data-c')===curChannel)); loadConvs(); }
+async function loadConvs(){
+  const list=document.getElementById('convList');
+  try{
+    const qs=new URLSearchParams(); if(curFilter) qs.set('status',curFilter); if(curChannel) qs.set('channel',curChannel);
+    const r=await adminFetch('/api/omni/conversations?'+qs.toString());
+    const d=await r.json().catch(()=>({rows:[]}));
+    const rows=d.rows||[];
+    if(!rows.length){ list.innerHTML='<div class="empty">Поки немає діалогів у цій вкладці.</div>'; return; }
+    list.innerHTML=rows.map(c=>{
+      const nm=c.client_name||c.contact_name||('Гість '+(c.id||'').toString().slice(0,6));
+      const ch=(c.channel||'').toLowerCase();
+      return `<div class="conv${curConv===c.id?' sel':''}" onclick="openConv('${esc(c.id)}')">
+        <div class="av">${esc((nm[0]||'?').toUpperCase())}</div>
+        <div class="mid">
+          <div class="nm">${esc(nm)} <span class="ch ${esc(ch)}">${esc(ch)}</span></div>
+          <div class="last">${esc(c.last_message||'')}</div>
+        </div>
+        <div class="meta">${tShort(c.last_message_at)}${c.unread>0?`<br><span class="unread">${c.unread}</span>`:''}</div>
+      </div>`;
+    }).join('');
+  }catch(e){ list.innerHTML='<div class="empty" style="color:#B23B2E">Помилка: '+esc(e.message)+'</div>'; }
+}
+
+/* ── Тред переписки ── */
+async function openConv(id){
+  curConv=id; loadConvs();
+  const pane=document.getElementById('threadPane');
+  pane.innerHTML='<div class="empty">Завантаження…</div>';
+  try{
+    const r=await adminFetch('/api/omni/conversations/'+id+'/messages');
+    const d=await r.json().catch(()=>({rows:[]}));
+    const msgs=d.rows||[];
+    const head=`<div class="thread-head">
+      <div class="nm" id="thNm">Діалог</div><div class="spacer"></div>
+      <button class="btn" onclick="closeConv('${esc(id)}')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">check</span> Закрити діалог</button>
+    </div>`;
+    const body=`<div class="msgs" id="msgs">${msgs.map(m=>{
+      const out=m.direction==='out';
+      const ai=out && m.meta && (m.meta.by==='ai_agent');
+      const cls=out?(ai?'ai':'out'):'in';
+      const who=ai?'<div class="who">AI-агент</div>':'';
+      return `<div class="bub ${cls}">${who}${esc(m.body||'')}<div class="t">${tShort(m.created_at)}${m.status&&m.status!=='sent'?' · '+esc(m.status):''}</div></div>`;
+    }).join('')||'<div class="empty">Повідомлень ще немає.</div>'}</div>`;
+    const composer=`<div class="composer">
+      <textarea id="reply" placeholder="Напишіть відповідь… (Enter — надіслати)"></textarea>
+      <button class="btn primary" onclick="sendReply('${esc(id)}')">Надіслати</button>
+    </div>`;
+    pane.innerHTML=head+body+composer;
+    const ta=document.getElementById('reply');
+    ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendReply(id); } });
+    const box=document.getElementById('msgs'); box.scrollTop=box.scrollHeight;
+  }catch(e){ pane.innerHTML='<div class="empty" style="color:#B23B2E">Помилка: '+esc(e.message)+'</div>'; }
+}
+async function sendReply(id){
+  const ta=document.getElementById('reply'); const body=ta.value.trim(); if(!body) return;
+  ta.disabled=true;
+  try{
+    const r=await adminFetch('/api/omni/conversations/'+id+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    ta.value=''; await openConv(id); loadConvs();
+    if(d.needs_config){ const m=document.getElementById('msgs'); if(m) m.insertAdjacentHTML('beforeend','<div class="empty" style="color:#B23B2E;font-size:12px">Канал не підключено — повідомлення збережено, але не відправлено клієнту. Підключіть Instagram вгорі.</div>'); }
+  }catch(e){ alert('Не вдалось надіслати: '+e.message); }
+  finally{ ta.disabled=false; ta.focus(); }
+}
+async function closeConv(id){
+  try{ await adminFetch('/api/omni/conversations/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'closed'})});
+    curConv=null; document.getElementById('threadPane').innerHTML='<div class="empty">Діалог закрито.</div>'; loadConvs();
+  }catch(e){ alert('Помилка: '+e.message); }
+}
+
+loadAll();
+</script>
+</body>
+</html>
