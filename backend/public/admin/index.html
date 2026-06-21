@@ -7982,22 +7982,22 @@ async function loadSaasAnalytics(){
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:4px 2px">${bars}</div>`;
   }
 
-  // ── Утримання когорт (retention) ──
+  // ── Утримання когорт (retention) — бекенд віддає плоский список:
+  //    { cohort, signed_up, still_active, retention_pct } по місяцю реєстрації.
   const co = (a.cohorts && (a.cohorts.rows || a.cohorts.cohorts || a.cohorts)) || [];
   let cohortBlock = '';
   if (Array.isArray(co) && co.length) {
-    const rows = co.slice(0, 6).map(c => {
-      const ret = (c.retention || c.values || []);
-      const cells = ret.slice(0, 6).map(v => {
-        const pct = typeof v === 'number' ? v : (v && v.pct != null ? v.pct : null);
-        if (pct == null) return '<td style="padding:4px 8px;color:#c2c2cc">—</td>';
-        const bg = pct >= 70 ? '#0a8f5f' : pct >= 40 ? '#d9863b' : '#d9534f';
-        return `<td style="padding:4px 8px"><span style="background:${bg}1a;color:${bg};padding:2px 8px;border-radius:6px;font-weight:600;font-size:12px">${Math.round(pct)}%</span></td>`;
-      }).join('');
-      return `<tr><td style="padding:4px 8px;font-weight:600">${escapeHtml(String(c.cohort||c.month||''))}</td>${cells}</tr>`;
+    const rows = co.slice(-8).map(c => {
+      const pct = c.retention_pct != null ? c.retention_pct : (c.signed_up ? Math.round((c.still_active / c.signed_up) * 1000) / 10 : 0);
+      const bg = pct >= 70 ? '#0a8f5f' : pct >= 40 ? '#d9863b' : '#d9534f';
+      return `<tr>
+        <td style="padding:4px 8px;font-weight:600">${escapeHtml(String(c.cohort || c.month || ''))}</td>
+        <td style="padding:4px 8px">${c.signed_up ?? 0}</td>
+        <td style="padding:4px 8px">${c.still_active ?? 0}</td>
+        <td style="padding:4px 8px"><span style="background:${bg}1a;color:${bg};padding:2px 8px;border-radius:6px;font-weight:600;font-size:12px">${Math.round(pct)}%</span></td></tr>`;
     }).join('');
-    cohortBlock = `<h3 style="font-size:16px;margin:20px 0 10px">Утримання когорт</h3>
-      <div style="overflow-x:auto"><table class="tbl" style="font-size:12.5px"><thead><tr><th>Когорта</th><th>М0</th><th>М1</th><th>М2</th><th>М3</th><th>М4</th><th>М5</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    cohortBlock = `<h3 style="font-size:16px;margin:20px 0 10px">Утримання когорт <span style="font-weight:400;font-size:12px;color:#9aa0a6">(скільки салонів з місяця реєстрації досі активні)</span></h3>
+      <div style="overflow-x:auto"><table class="tbl" style="font-size:12.5px"><thead><tr><th>Когорта (місяць)</th><th>Зареєстровано</th><th>Активні зараз</th><th>Утримання</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   document.getElementById('saasFunnel').innerHTML =
