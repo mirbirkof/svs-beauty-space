@@ -7,6 +7,14 @@
    Таблицы без RLS (как saas_plans) — tenant-facing фильтрует по tenant_id явно. */
 const { getPool } = require('../db-pg');
 
+// Сбросить кэш статуса салона после смены tenants.status (оплата/блокировка),
+// иначе вход остаётся в старом статусе до 5 мин. Ленивый require — tenant.js
+// тоже тянет db-pg; цикла нет (tenant.js не зависит от billing).
+function _invalidateTenantCache(id) {
+  if (!id) return;
+  try { require('./tenant').invalidateTenant({ id }); } catch { /* в тестах без middleware */ }
+}
+
 const CYCLES = { monthly: 'price_month', yearly: 'price_year' };
 const PERIOD_DAYS = { monthly: 30, yearly: 365 };
 const TRIAL_DAYS = 14;
@@ -250,7 +258,13 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
     if (inv.subscription_id) {
       const sub = (await pool.query(
         `UPDATE subscriptions_saas SET status='active', updated_at=NOW() WHERE id=$1 RETURNING *`, [inv.subscription_id])).rows[0];
-      if (sub) await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
+      if (sub) {
+        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
+        // Реактивировать сам салон: если он был suspended за неоплату, оплата
+        // обязана его разблокировать (иначе остаётся заперт навсегда). + сброс кэша.
+        await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1 AND status<>'active'`, [sub.tenant_id]).catch(() => {});
+        _invalidateTenantCache(sub.tenant_id);
+      }
       // снять dunning
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [invoiceId]).catch(() => {});
     }
@@ -314,6 +328,7 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
       if (sub) {
         await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
         await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1`, [sub.tenant_id]).catch(() => {});
+        _invalidateTenantCache(sub.tenant_id);
       }
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [pay.invoice_id]).catch(() => {});
     }
@@ -474,6 +489,7 @@ async function processDunning(limit = 100) {
       if (d.attempt_number >= DUNNING_OFFSETS_H.length) {
         await pool.query(`UPDATE subscriptions_saas SET status='suspended', updated_at=NOW() WHERE id=$1`, [d.subscription_id]);
         await pool.query(`UPDATE tenants SET status='suspended', updated_at=NOW() WHERE id=$1`, [d.tenant_id]).catch(() => {});
+        _invalidateTenantCache(d.tenant_id);
         suspended++;
       }
     }

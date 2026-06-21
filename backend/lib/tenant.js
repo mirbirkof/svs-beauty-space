@@ -41,6 +41,19 @@ async function resolveBySlug(slug) {
   return tenant;
 }
 
+// Сбросить кэш статуса салона. ОБЯЗАТЕЛЬНО вызывать при смене tenants.status
+// (оплата → active, неоплата → suspended), иначе салон до 5 мин висит в старом
+// статусе: оплатил, но ещё заблокирован, или наоборот. Биллинг знает tenant_id,
+// кэш по slug → ищем по id в (маленькой) карте.
+function invalidateTenant({ slug, id } = {}) {
+  if (slug) { cache.delete(slug); return; }
+  if (id) {
+    for (const [k, v] of cache) {
+      if (v.tenant && v.tenant.id === id) cache.delete(k);
+    }
+  }
+}
+
 function tenantMiddleware() {
   return async function (req, res, next) {
     try {
@@ -83,4 +96,4 @@ function runAs(tenantId, fn) {
   return tenantContext.run({ tenantId }, fn);
 }
 
-module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, runAs, DEFAULT_TENANT_ID };
+module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, invalidateTenant, runAs, DEFAULT_TENANT_ID };
