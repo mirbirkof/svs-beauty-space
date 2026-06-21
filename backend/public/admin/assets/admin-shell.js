@@ -76,6 +76,7 @@
       { icon: 'hub', label: 'Інтеграції', href: '/admin/integrations.html' },
       { icon: 'sync', label: 'BeautyPro синхро', href: '/admin/index.html#sync' },
       { icon: 'history', label: 'Аудит', href: '/admin/crm-extra.html#audit' },
+      { icon: 'security', label: 'Безпека', href: '/admin/security.html' },
     ] },
   ];
 

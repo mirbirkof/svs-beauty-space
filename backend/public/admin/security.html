@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Безпека</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0)}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.on{background:#E3F6E9;color:#1B7A3D}.pill.off{background:#FBE9E7;color:#B23B2E}
+  .sev-low{color:#1B7A3D;font-weight:700}.sev-medium{color:#9A6B00;font-weight:700}
+  .sev-high{color:#B23B2E;font-weight:700}.sev-critical{color:#fff;background:#B23B2E;padding:1px 7px;border-radius:6px;font-weight:700}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+  .chk{display:flex;align-items:center;gap:7px;font-size:13px;margin:7px 0}
+  .chk input{width:auto}
+  .bars{display:flex;gap:6px;align-items:flex-end;height:90px;margin-top:8px}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px}
+  .bar .ok{width:100%;background:#7CC4A0;border-radius:3px 3px 0 0}
+  .bar .fail{width:100%;background:#E08A82;border-radius:3px 3px 0 0}
+  .bar .d{font-size:10px;color:var(--text-secondary);margin-top:3px}
+</style>
+</head>
+<body>
+<main class="content">
+  <h1>Безпека</h1>
+  <div class="intro">Центр безпеки: журнал загроз, активні сесії, IP-whitelist, політика паролів. Детектор brute-force працює щогодини.</div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="card">
+    <h3>Спроби входу за 7 днів</h3>
+    <div class="bars" id="bars"></div>
+    <div class="muted" id="barsLegend" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">
+      <span>Події безпеки</span>
+      <button class="btn sm" onclick="runDetect()">Запустити детектор</button>
+    </h3>
+    <div class="tabs" style="margin-bottom:10px">
+      <select id="evFilter" onchange="loadEvents()" style="padding:6px 10px;border-radius:9px;border:1px solid var(--border,#ddd)">
+        <option value="false">Активні</option>
+        <option value="">Усі</option>
+        <option value="true">Розв'язані</option>
+      </select>
+    </div>
+    <table><thead><tr><th>Час</th><th>Тип</th><th>Важливість</th><th>Опис</th><th>IP</th><th></th></tr></thead>
+    <tbody id="evBody"><tr><td colspan="6" class="muted">Завантаження…</td></tr></tbody></table>
+    <div class="msg" id="evMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>IP-whitelist (адмін-доступ)</h3>
+    <div class="muted" style="margin-bottom:10px">Якщо список порожній — обмеження вимкнено (доступ з будь-якого IP). Додайте IP, щоб обмежити адмінку.</div>
+    <table><thead><tr><th>IP / CIDR</th><th>Опис</th><th>Scope</th><th>Діє до</th><th></th></tr></thead>
+    <tbody id="wlBody"></tbody></table>
+    <div class="row3" style="margin-top:12px">
+      <div class="fld"><label>IP-адреса</label><input id="wlIp" placeholder="напр. 203.0.113.5"></div>
+      <div class="fld"><label>CIDR (опц.)</label><input id="wlCidr" placeholder="напр. 203.0.113.0/24"></div>
+      <div class="fld"><label>Scope</label><select id="wlScope"><option value="admin">admin</option><option value="api">api</option><option value="all">all</option></select></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Опис</label><input id="wlDesc" placeholder="напр. Офіс"></div>
+      <div class="fld"><label>Діє до (опц.)</label><input id="wlExp" type="date"></div>
+    </div>
+    <button class="btn" onclick="addWl()">Додати IP</button>
+    <div class="msg" id="wlMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Політика паролів</h3>
+    <div class="row3">
+      <div class="fld"><label>Мін. довжина</label><input id="pMin" type="number" min="4" max="64"></div>
+      <div class="fld"><label>Макс. вік (днів, 0=без)</label><input id="pAge" type="number" min="0"></div>
+      <div class="fld"><label>Історія паролів</label><input id="pHist" type="number" min="0"></div>
+    </div>
+    <div class="row3">
+      <div class="fld"><label>Блокування після N спроб</label><input id="pLock" type="number" min="0"></div>
+      <div class="fld"><label>Тривалість блоку (хв)</label><input id="pLockMin" type="number" min="0"></div>
+      <div class="fld"></div>
+    </div>
+    <div class="chk"><input type="checkbox" id="pUp"><label for="pUp" style="margin:0">Велика літера</label></div>
+    <div class="chk"><input type="checkbox" id="pLow"><label for="pLow" style="margin:0">Мала літера</label></div>
+    <div class="chk"><input type="checkbox" id="pDig"><label for="pDig" style="margin:0">Цифра</label></div>
+    <div class="chk"><input type="checkbox" id="pSpec"><label for="pSpec" style="margin:0">Спецсимвол</label></div>
+    <div class="chk"><input type="checkbox" id="p2fa"><label for="p2fa" style="margin:0">Обов'язкова 2FA для owner/admin</label></div>
+    <button class="btn" onclick="savePolicy()">Зберегти політику</button>
+    <div class="msg" id="pMsg"></div>
+  </div>
+</main>
+
+<script src="/admin/assets/admin-shell.js" data-title="Безпека"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtT = t => t ? new Date(t).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+
+async function loadDash(){
+  try{
+    const d = await adminFetch('/api/security/dashboard');
+    const sev = (d.events_by_severity||[]).reduce((a,x)=>(a[x.severity]=x.n,a),{});
+    $('cards').innerHTML = [
+      ['Активні сесії', d.active_sessions||0],
+      ['Відкриті події', d.open_events||0],
+      ['Критичні/High', (sev.critical||0)+(sev.high||0)],
+      ['IP у whitelist', d.whitelist_count||0],
+      ['2FA для адмінів', d.password_policy?.require_2fa ? 'Так':'Ні'],
+    ].map(([l,v])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${esc(v)}</div></div>`).join('');
+    // bars
+    const days = d.login_attempts_7d||[];
+    const max = Math.max(1, ...days.map(x=>(x.ok||0)+(x.fail||0)));
+    $('bars').innerHTML = days.length ? days.map(x=>{
+      const ok=Math.round((x.ok||0)/max*80), fail=Math.round((x.fail||0)/max*80);
+      const d2=new Date(x.day).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit'});
+      return `<div class="bar" title="успіх ${x.ok||0} / невдач ${x.fail||0}"><div class="fail" style="height:${fail}px"></div><div class="ok" style="height:${ok}px"></div><div class="d">${d2}</div></div>`;
+    }).join('') : '<div class="muted">Немає даних</div>';
+    $('barsLegend').innerHTML = '<span style="color:#1B7A3D">▌</span> успішні &nbsp; <span style="color:#B23B2E">▌</span> невдалі';
+    // policy form
+    const p = d.password_policy||{};
+    $('pMin').value=p.min_length; $('pAge').value=p.max_age_days; $('pHist').value=p.history_count;
+    $('pLock').value=p.lockout_attempts; $('pLockMin').value=p.lockout_duration_min;
+    $('pUp').checked=!!p.require_uppercase; $('pLow').checked=!!p.require_lowercase;
+    $('pDig').checked=!!p.require_digits; $('pSpec').checked=!!p.require_special; $('p2fa').checked=!!p.require_2fa;
+  }catch(e){ $('cards').innerHTML='<div class="muted">Помилка: '+esc(e.message)+'</div>'; }
+}
+
+async function loadEvents(){
+  try{
+    const f = $('evFilter').value;
+    const r = await adminFetch('/api/security/events?resolved='+encodeURIComponent(f)+'&limit=100');
+    const rows = r.rows||[];
+    $('evBody').innerHTML = rows.length ? rows.map(e=>`<tr>
+      <td>${fmtT(e.created_at)}</td><td>${esc(e.event_type)}</td>
+      <td><span class="sev-${esc(e.severity)}">${esc(e.severity)}</span></td>
+      <td>${esc(e.description)}</td><td>${esc(e.ip_address||'—')}</td>
+      <td>${e.resolved?'<span class="pill on">розв.</span>':`<button class="btn sm" onclick="resolveEv(${e.id})">Розв'язати</button>`}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="muted">Подій немає</td></tr>';
+  }catch(e){ $('evBody').innerHTML='<tr><td colspan="6" class="muted">Помилка: '+esc(e.message)+'</td></tr>'; }
+}
+async function resolveEv(id){ try{ await adminFetch('/api/security/events/'+id+'/resolve',{method:'POST'}); loadEvents(); loadDash(); }catch(e){ $('evMsg').textContent='Помилка: '+e.message; } }
+async function runDetect(){ $('evMsg').textContent='Скан…'; try{ const r=await adminFetch('/api/security/events/detect',{method:'POST'}); $('evMsg').textContent=`Кластерів: ${r.clusters||0}, нових подій: ${r.created||0}`; loadEvents(); loadDash(); }catch(e){ $('evMsg').textContent='Помилка: '+e.message; } }
+
+async function loadWl(){
+  try{
+    const r = await adminFetch('/api/security/ip-whitelist');
+    const rows = r.rows||[];
+    $('wlBody').innerHTML = rows.length ? rows.map(w=>`<tr>
+      <td>${esc(w.ip_address||w.cidr_range||'—')}</td><td>${esc(w.description||'—')}</td>
+      <td>${esc(w.scope)}</td><td>${w.expires_at?fmtT(w.expires_at):'безстроково'}</td>
+      <td><button class="btn sm" onclick="delWl(${w.id})">✕</button></td></tr>`).join('')
+      : '<tr><td colspan="5" class="muted">Список порожній — доступ не обмежено</td></tr>';
+  }catch(e){ $('wlBody').innerHTML='<tr><td colspan="5" class="muted">Помилка: '+esc(e.message)+'</td></tr>'; }
+}
+async function addWl(){
+  $('wlMsg').textContent='Збереження…';
+  try{
+    await adminFetch('/api/security/ip-whitelist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      ip_address:$('wlIp').value.trim()||null, cidr_range:$('wlCidr').value.trim()||null,
+      description:$('wlDesc').value.trim()||null, scope:$('wlScope').value, expires_at:$('wlExp').value||null })});
+    $('wlIp').value=$('wlCidr').value=$('wlDesc').value=$('wlExp').value=''; $('wlMsg').textContent='Додано'; loadWl(); loadDash();
+  }catch(e){ $('wlMsg').textContent='Помилка: '+e.message; }
+}
+async function delWl(id){ try{ await adminFetch('/api/security/ip-whitelist/'+id,{method:'DELETE'}); loadWl(); loadDash(); }catch(e){ $('wlMsg').textContent='Помилка: '+e.message; } }
+
+async function savePolicy(){
+  $('pMsg').textContent='Збереження…';
+  try{
+    await adminFetch('/api/security/password-policy',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      min_length:+$('pMin').value, max_age_days:+$('pAge').value, history_count:+$('pHist').value,
+      lockout_attempts:+$('pLock').value, lockout_duration_min:+$('pLockMin').value,
+      require_uppercase:$('pUp').checked, require_lowercase:$('pLow').checked, require_digits:$('pDig').checked,
+      require_special:$('pSpec').checked, require_2fa:$('p2fa').checked })});
+    $('pMsg').textContent='Збережено'; loadDash();
+  }catch(e){ $('pMsg').textContent='Помилка: '+e.message; }
+}
+
+loadDash(); loadEvents(); loadWl();
+</script>
+</body>
+</html>
