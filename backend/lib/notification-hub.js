@@ -83,21 +83,36 @@ function buildChain({ explicitChannel, prefs, settings, client }) {
 
 // ── Каналы доставки (адаптеры) ──────────────────────────────────────
 // COM-02 SMS / COM-03 Email подключатся сюда же.
-const smsChannel = require('./channels/sms-twilio');
+const smsTwilio = require('./channels/sms-twilio');
+const smsTurbo = require('./channels/sms-turbosms');
 const emailChannel = require('./channels/email-resend');
+
+// Вибір SMS-провайдера: укр. TurboSMS пріоритетний (альфа-ім'я, дешевше,
+// доставка на укр. номери), Twilio — запасний. Перемикання — лише через env.
+function smsProvider() {
+  if (smsTurbo.isConfigured()) return smsTurbo;
+  if (smsTwilio.isConfigured()) return smsTwilio;
+  return null;
+}
+function smsConfigured() { return !!smsProvider(); }
+
 const channels = {
   telegram: async (to, { body }) => {
     const res = await tgSend(to, body);
     return { providerId: res?.message_id ? String(res.message_id) : null };
   },
-  sms: (to, msg) => smsChannel.send(to, msg),
+  sms: (to, msg) => {
+    const p = smsProvider();
+    if (!p) throw new Error('channel-sms-not-configured');
+    return p.send(to, msg);
+  },
   email: (to, msg) => emailChannel.send(to, msg),
 };
 function registerChannel(name, fn) { channels[name] = fn; }
 
 // Какие каналы реально настроены (для UI/health и оптимизации цепочек)
 function channelStatus() {
-  return { telegram: true, sms: smsChannel.isConfigured(), email: emailChannel.isConfigured() };
+  return { telegram: true, sms: smsConfigured(), email: emailChannel.isConfigured() };
 }
 
 async function getSettings(pool) {
