@@ -21,15 +21,21 @@ function getTenantId() {
   const store = tenantContext.getStore();
   return store ? store.tenantId : null;
 }
+// true только для оператора платформы (внутренний салон Босса).
+// Используется для гард-доступа к супер-админ эндпоинтам SaaS.
+function isPlatformTenant() {
+  const store = tenantContext.getStore();
+  return store ? !!store.isPlatform : false;
+}
 
-// slug → {id, status}, кэш 5 мин
+// slug → {id, status, is_internal}, кэш 5 мин
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
 async function resolveBySlug(slug) {
   const hit = cache.get(slug);
   if (hit && Date.now() - hit.at < CACHE_TTL) return hit.tenant;
-  const r = await getPool().query('SELECT id, status FROM tenants WHERE slug = $1', [slug]);
+  const r = await getPool().query('SELECT id, status, is_internal FROM tenants WHERE slug = $1', [slug]);
   const tenant = r.rows[0] || null;
   cache.set(slug, { tenant, at: Date.now() });
   return tenant;
@@ -55,14 +61,18 @@ function tenantMiddleware() {
         if (!t) return res.status(404).json({ error: 'tenant-not-found' });
         if (t.status !== 'active') return res.status(403).json({ error: 'tenant-' + t.status });
         req.tenant_id = t.id;
+        req.is_platform = !!t.is_internal;
       } else {
+        // Без slug = прямой доступ оператора платформы (салон Босса).
         req.tenant_id = DEFAULT_TENANT_ID;
+        req.is_platform = true;
       }
-      tenantContext.run({ tenantId: req.tenant_id }, next);
+      tenantContext.run({ tenantId: req.tenant_id, isPlatform: req.is_platform }, next);
     } catch (e) {
       // не валим запрос из-за сбоя резолва — фолбэк на дефолтный тенант
       req.tenant_id = DEFAULT_TENANT_ID;
-      tenantContext.run({ tenantId: DEFAULT_TENANT_ID }, next);
+      req.is_platform = true;
+      tenantContext.run({ tenantId: DEFAULT_TENANT_ID, isPlatform: true }, next);
     }
   };
 }
@@ -73,4 +83,4 @@ function runAs(tenantId, fn) {
   return tenantContext.run({ tenantId }, fn);
 }
 
-module.exports = { tenantMiddleware, getTenantId, resolveBySlug, runAs, DEFAULT_TENANT_ID };
+module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, runAs, DEFAULT_TENANT_ID };

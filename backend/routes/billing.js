@@ -35,7 +35,7 @@
 const express = require('express');
 const router = express.Router();
 const { requirePerm, logAction } = require('../lib/rbac');
-const { getTenantId } = require('../lib/tenant');
+const { getTenantId, isPlatformTenant } = require('../lib/tenant');
 const billing = require('../lib/billing');
 
 const TENANT_R = requirePerm('saas.read');
@@ -162,6 +162,17 @@ router.get('/plans', TENANT_R, async (req, res) => {
 });
 
 // ── SUPERADMIN ───────────────────────────────────────────────────────
+// Платформенный гард: все /admin/* эндпоинты управляют ЧУЖИМИ тенантами и
+// глобальными таблицами (promo_codes_saas, override подписок). Гард saas.write
+// есть у любого owner салона — поэтому требуем именно оператора платформы
+// (tenants.is_internal). Иначе покупатель мог бы выписать себе бесплатный
+// Enterprise через /admin/subscriptions/:tenantId/override или создать
+// глобальный промокод. Защита 11.06 (privilege escalation, найдено через QA).
+function platformOnly(req, res, next) {
+  if (!isPlatformTenant()) return res.status(403).json({ error: 'platform-admin-only' });
+  next();
+}
+router.use('/admin', platformOnly);
 router.get('/admin/subscriptions', ADMIN_R, async (req, res) => {
   try {
     const { getPool } = require('../db-pg');

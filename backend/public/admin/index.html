@@ -2503,7 +2503,11 @@ function applyRoleUI(){
   // Панель SaaS (управління CRM як продуктом) — лише власник/адміністратор платформи
   const saasGrp = document.getElementById('grp-saas');
   if (saasGrp) {
-    const canSaaS = !!USER && (USER.role === 'owner' || USER.role === 'admin');
+    // Лише оператор платформи (Босс) керує CRM як продуктом. Він заходить БЕЗ
+    // ?tenant=<slug> → TENANT_SLUG порожній (бекенд так само трактує: немає slug =
+    // is_platform). Покупець завжди має slug → панель прихована (бекенд теж дає 403).
+    const isPlatformUser = !TENANT_SLUG;
+    const canSaaS = isPlatformUser && !!USER && (USER.role === 'owner' || USER.role === 'admin');
     saasGrp.style.display = canSaaS ? '' : 'none';
     if (!canSaaS && currentPage === 'saas') { try { go('dashboard'); } catch {} }
   }
