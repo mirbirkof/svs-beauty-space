@@ -150,6 +150,17 @@ router.get('/gateways', TENANT_R, async (req, res) => {
   try { res.json(billing.gatewayStatus()); } catch (e) { fail(res, e); }
 });
 
+// Доступні тарифи для self-service салону (тільки активні, лише публічні поля).
+router.get('/plans', TENANT_R, async (req, res) => {
+  try {
+    const { getPool } = require('../db-pg');
+    const rows = (await getPool().query(
+      `SELECT code, name, price_month, price_year, features, limits, sort_order
+         FROM saas_plans WHERE active = true ORDER BY sort_order, price_month`)).rows;
+    res.json({ rows });
+  } catch (e) { fail(res, e); }
+});
+
 // ── SUPERADMIN ───────────────────────────────────────────────────────
 router.get('/admin/subscriptions', ADMIN_R, async (req, res) => {
   try {

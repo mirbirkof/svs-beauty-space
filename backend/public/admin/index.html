@@ -943,6 +943,19 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- Моя підписка — самообслуговування салону (тариф, рахунки, оплата) -->
+      <div class="sidebar-group" id="grp-mysub">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">card_membership</span> Підписка
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="mysub" onclick="go('mysub')">
+            <span class="material-icons-round">workspace_premium</span> Моя підписка
+          </a>
+        </div>
+      </div>
+
       <!-- Управління SaaS — лише для власника платформи -->
       <div class="sidebar-group" id="grp-saas" style="display:none">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
@@ -1894,6 +1907,11 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ МОЯ ПІДПИСКА (self-service: тариф, рахунки, онлайн-оплата) ═══ -->
+      <div class="page" id="page-mysub">
+        <div id="mysubBody"><div style="padding:40px;text-align:center;color:#9aa0a6">Завантаження…</div></div>
+      </div>
+
       <!-- ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом для салонів) ═══ -->
       <div class="page" id="page-saas">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--border,#eee);padding-bottom:12px">
@@ -2489,6 +2507,13 @@ function applyRoleUI(){
     saasGrp.style.display = canSaaS ? '' : 'none';
     if (!canSaaS && currentPage === 'saas') { try { go('dashboard'); } catch {} }
   }
+  // Моя підписка — лише власник салону керує тарифом/оплатою
+  const mysubGrp = document.getElementById('grp-mysub');
+  if (mysubGrp) {
+    const canSub = !!USER && USER.role === 'owner';
+    mysubGrp.style.display = canSub ? '' : 'none';
+    if (!canSub && currentPage === 'mysub') { try { go('dashboard'); } catch {} }
+  }
   // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
 }
@@ -2602,6 +2627,7 @@ const pageTitles = {
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
   saas:'SaaS / Платформа',
+  mysub:'Моя підписка',
   settings:'Налаштування'
 };
 
@@ -2678,7 +2704,7 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS };
+    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -7682,6 +7708,164 @@ function saasKpi(label, value, color, onclick, hint){
   const sub = hint ? `<div class="kpi-label" style="opacity:.7;font-size:11px;margin-top:2px">${hint}</div>` : '';
   return `<div class="kpi-card ${color||'purple'}"${click}><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub}</div>`;
 }
+// ═══ МОЯ ПІДПИСКА — self-service салону ════════════════════════════════
+let _mysub = { sub:null, plans:[], invoices:[], gateways:{}, cycle:'monthly' };
+function _msMoney(v){ return Number(v||0).toLocaleString('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2})+' ₴'; }
+function _msDate(d){ if(!d) return '—'; const x=new Date(d); return isNaN(x)?'—':x.toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function _msDaysLeft(d){ if(!d) return null; return Math.ceil((new Date(d)-Date.now())/864e5); }
+function _msSubBadge(s){ const m={trialing:['Тріал','#d9863b'],active:['Активна','#0a8f5f'],past_due:['Прострочена','#d9534f'],suspended:['Призупинена','#d9534f'],cancelled:['Скасована','#9aa0a6'],expired:['Завершена','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="background:${a[1]}1a;color:${a[1]};padding:3px 12px;border-radius:20px;font-weight:600;font-size:13px">${a[0]}</span>`; }
+function _msInvBadge(s){ const m={paid:['Сплачено','#0a8f5f'],open:['Очікує оплати','#d9863b'],pending:['Очікує оплати','#d9863b'],overdue:['Прострочено','#d9534f'],void:['Анульовано','#9aa0a6'],draft:['Чернетка','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600;font-size:12.5px">${a[0]}</span>`; }
+const _MS_FEAT = { online_booking:'Онлайн-запис', clients:'База клієнтів', services:'Послуги', loyalty:'Лояльність', marketing:'Маркетинг', webhooks:'Webhooks/інтеграції', portfolio:'Портфоліо', forms:'Форми', ai_recommendations:'AI-рекомендації', '*':'Усі можливості' };
+
+async function loadMySub(){
+  const box = document.getElementById('mysubBody');
+  box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Завантаження…</div>';
+  try {
+    const [sub, plansR, invR, gw] = await Promise.all([
+      api('/api/billing/subscription'),
+      api('/api/billing/plans'),
+      api('/api/billing/invoices?limit=20'),
+      api('/api/billing/gateways'),
+    ]);
+    if (sub && sub.error === 'forbidden') { box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Керування підпискою доступне лише власнику салону.</div>'; return; }
+    _mysub.sub = (sub && !sub.error) ? sub : null;
+    _mysub.plans = (plansR && plansR.rows) || [];
+    _mysub.invoices = (invR && invR.rows) || [];
+    _mysub.gateways = gw || {};
+    renderMySub();
+  } catch (e) {
+    box.innerHTML = '<div style="padding:40px;text-align:center;color:#d9534f">Не вдалося завантажити підписку. Спробуйте оновити сторінку.</div>';
+  }
+}
+
+function renderMySub(){
+  const box = document.getElementById('mysubBody');
+  const s = _mysub.sub, cyc = _mysub.cycle;
+  const monoOn = !!_mysub.gateways.monobank;
+  // ── Поточна підписка ──
+  let cur = '';
+  if (s) {
+    const plan = _mysub.plans.find(p=>p.code===s.plan_code) || { name:s.plan_code };
+    const isTrial = s.status==='trialing';
+    const endDate = isTrial ? (s.trial_ends_at||s.current_period_end) : s.current_period_end;
+    const left = _msDaysLeft(endDate);
+    const warn = (left!=null && left<=5);
+    const leftStr = left!=null ? (left>0 ? `залишилось ${left} дн.` : 'термін минув') : '';
+    cur = `<div style="background:linear-gradient(135deg,#6d5ae6,#8b6ff0);color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:22px;box-shadow:0 8px 24px rgba(109,90,230,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="opacity:.85;font-size:13px;margin-bottom:4px">Ваш тариф</div>
+          <div style="font-size:26px;font-weight:700;line-height:1.1">${plan.name||s.plan_code}</div>
+          <div style="margin-top:8px">${_msSubBadge(s.status)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="opacity:.85;font-size:13px">${isTrial?'Тріал діє до':'Наступне списання'}</div>
+          <div style="font-size:18px;font-weight:600;margin-top:2px">${_msDate(endDate)}</div>
+          <div style="font-size:13px;margin-top:2px;${warn?'color:#ffd76e;font-weight:700':'opacity:.85'}">${leftStr}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+        ${s.status==='cancelled' ? `<button class="btn btn-sm" style="background:#fff;color:#6d5ae6;font-weight:600" onclick="mysubResume()">Відновити підписку</button>`
+          : `<button class="btn btn-sm" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.4)" onclick="mysubCancel()">Скасувати підписку</button>`}
+      </div>
+    </div>`;
+  } else {
+    cur = `<div style="background:#f6f3ff;border:1px solid #e0d8ff;border-radius:16px;padding:22px 24px;margin-bottom:22px;text-align:center">
+      <div style="font-size:18px;font-weight:600;color:#4a3fa0">У вас ще немає активної підписки</div>
+      <div style="color:#7a72a8;margin-top:6px;font-size:14px">Оберіть тариф нижче — перші 14 днів безкоштовно.</div>
+    </div>`;
+  }
+  // ── Перемикач циклу ──
+  const cycleSw = `<div style="display:inline-flex;background:#f0eefb;border-radius:10px;padding:3px;margin-bottom:16px">
+    <button class="btn btn-sm" style="border:0;${cyc==='monthly'?'background:#6d5ae6;color:#fff':'background:transparent;color:#6d5ae6'}" onclick="_mysub.cycle='monthly';renderMySub()">Щомісяця</button>
+    <button class="btn btn-sm" style="border:0;${cyc==='yearly'?'background:#6d5ae6;color:#fff':'background:transparent;color:#6d5ae6'}" onclick="_mysub.cycle='yearly';renderMySub()">Щороку <span style="opacity:.8;font-size:11px">−2 міс</span></button>
+  </div>`;
+  // ── Сітка тарифів ──
+  const cards = _mysub.plans.map(p=>{
+    const price = cyc==='yearly' ? Number(p.price_year) : Number(p.price_month);
+    const per = cyc==='yearly' ? '/рік' : '/міс';
+    const isCur = s && s.plan_code===p.code && (s.status==='active'||s.status==='trialing');
+    const feats = (p.features||[]).map(f=>`<div style="display:flex;gap:7px;align-items:center;font-size:13px;color:#444;margin:5px 0"><span class="material-icons-round" style="font-size:16px;color:#0a8f5f">check</span>${_MS_FEAT[f]||f}</div>`).join('');
+    const lim = p.limits||{};
+    const limStr = [lim.clients?(lim.clients<0?'клієнти ∞':'до '+lim.clients+' клієнтів'):null, lim.masters?(lim.masters<0?'майстри ∞':'до '+lim.masters+' майстрів'):null].filter(Boolean).join(' · ');
+    let btn;
+    if (isCur) btn = `<button class="btn btn-sm" style="width:100%;background:#e8f5ee;color:#0a8f5f;font-weight:600;border:0" disabled>Ваш поточний тариф</button>`;
+    else if (Number(price)===0) btn = `<button class="btn btn-sm btn-outline" style="width:100%" onclick="mysubChoose('${p.code}')">Обрати Free</button>`;
+    else btn = `<button class="btn btn-sm btn-primary" style="width:100%" onclick="mysubChoose('${p.code}')">${s?'Перейти на '+(p.name||p.code):'Обрати '+(p.name||p.code)}</button>`;
+    return `<div style="border:2px solid ${isCur?'#6d5ae6':'#eee'};border-radius:14px;padding:18px;background:#fff;display:flex;flex-direction:column;gap:6px">
+      <div style="font-size:18px;font-weight:700;color:#222">${p.name||p.code}</div>
+      <div style="margin:4px 0"><span style="font-size:28px;font-weight:800;color:#6d5ae6">${_msMoney(price)}</span><span style="color:#9aa0a6;font-size:14px">${per}</span></div>
+      ${limStr?`<div style="font-size:12px;color:#9aa0a6;margin-bottom:6px">${limStr}</div>`:''}
+      <div style="flex:1">${feats}</div>
+      <div style="margin-top:12px">${btn}</div>
+    </div>`;
+  }).join('');
+  const plansBlock = `<h3 style="margin:6px 0 4px;font-size:18px">Тарифи</h3>${cycleSw}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:26px">${cards}</div>`;
+  // ── Рахунки ──
+  let invRows = _mysub.invoices.map(inv=>{
+    const unpaid = ['open','pending','overdue'].includes(inv.status);
+    const payBtn = unpaid && Number(inv.total)>0 && monoOn
+      ? `<button class="btn btn-sm btn-primary" onclick="mysubPay(${inv.id})">Сплатити</button>`
+      : (unpaid && !monoOn ? '<span style="font-size:12px;color:#9aa0a6">оплата офлайн</span>' : '');
+    return `<tr style="border-bottom:1px solid #f0f0f0">
+      <td style="padding:10px 8px;font-size:13px">${inv.invoice_number||('#'+inv.id)}</td>
+      <td style="padding:10px 8px;font-size:13px;color:#777">${_msDate(inv.created_at)}</td>
+      <td style="padding:10px 8px;font-weight:600">${_msMoney(inv.total)}</td>
+      <td style="padding:10px 8px">${_msInvBadge(inv.status)}</td>
+      <td style="padding:10px 8px;text-align:right">${payBtn}</td>
+    </tr>`;
+  }).join('');
+  if (!invRows) invRows = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9aa0a6">Рахунків поки немає</td></tr>';
+  const invBlock = `<h3 style="margin:6px 0 12px;font-size:18px">Рахунки та платежі</h3>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:2px solid #eee;text-align:left;color:#9aa0a6;font-size:12px">
+        <th style="padding:8px">Рахунок</th><th style="padding:8px">Дата</th><th style="padding:8px">Сума</th><th style="padding:8px">Статус</th><th></th>
+      </tr></thead><tbody>${invRows}</tbody></table></div>
+    ${!monoOn?'<div style="margin-top:10px;font-size:12.5px;color:#d9863b">Онлайн-оплата картою тимчасово недоступна — зверніться до підтримки для офлайн-оплати.</div>':''}`;
+
+  box.innerHTML = cur + plansBlock + invBlock;
+}
+
+async function mysubChoose(code){
+  const cyc = _mysub.cycle;
+  const has = !!_mysub.sub;
+  showModal('Зміна тарифу', `<div style="font-size:14px;color:#444">Перейти на тариф <b>${code}</b> (${cyc==='yearly'?'річний':'місячний'})?${has?' Зміна застосується з перерахунком залишку.':' Перші 14 днів — безкоштовний тріал.'}</div>`, async ()=>{
+    try {
+      const r = has
+        ? await api('/api/billing/subscription', { method:'PATCH', body: JSON.stringify({ plan_code:code, cycle:cyc }) })
+        : await api('/api/billing/subscription', { method:'POST', body: JSON.stringify({ plan_code:code, cycle:cyc }) });
+      if (r && r.error) { toast(_msErr(r.error), 'err'); return; }
+      toast('Тариф оновлено', 'ok');
+      loadMySub();
+    } catch(e){ toast('Помилка зміни тарифу', 'err'); }
+  });
+}
+async function mysubCancel(){
+  showModal('Скасувати підписку', '<div style="font-size:14px;color:#444">Підписку буде скасовано в кінці оплаченого періоду. Доступ збережеться до цієї дати.</div>', async ()=>{
+    try { const r = await api('/api/billing/subscription/cancel', { method:'POST', body: JSON.stringify({}) });
+      if (r && r.error) { toast(_msErr(r.error),'err'); return; }
+      toast('Підписку скасовано', 'ok'); loadMySub();
+    } catch(e){ toast('Помилка', 'err'); }
+  });
+}
+async function mysubResume(){
+  try { const r = await api('/api/billing/subscription/resume', { method:'POST', body: JSON.stringify({}) });
+    if (r && r.error) { toast(_msErr(r.error),'err'); return; }
+    toast('Підписку відновлено', 'ok'); loadMySub();
+  } catch(e){ toast('Помилка', 'err'); }
+}
+async function mysubPay(invoiceId){
+  toast('Готуємо посилання на оплату…', 'ok');
+  try {
+    const r = await api('/api/billing/invoices/'+invoiceId+'/pay-link', { method:'POST', body: JSON.stringify({}) });
+    if (r && r.alreadyPaid) { toast('Рахунок вже сплачено', 'ok'); loadMySub(); return; }
+    if (r && r.pay_url) { window.open(r.pay_url, '_blank'); return; }
+    toast(_msErr(r && r.error || 'Не вдалося створити оплату'), 'err');
+  } catch(e){ toast('Помилка створення оплати', 'err'); }
+}
+function _msErr(e){ const m={ 'gateway-not-configured':'Онлайн-оплата не налаштована','plan-not-found':'Тариф не знайдено','forbidden':'Недостатньо прав','invoice-not-found':'Рахунок не знайдено' }; return m[e]||('Помилка: '+e); }
+
 function saasLimStr(l){ if(!l) return '—'; const p=[]; if(l.clients) p.push('клієнтів: '+l.clients); if(l.masters) p.push('майстрів: '+l.masters); if(l.sms_month) p.push('SMS: '+l.sms_month); return p.join(', ')||'—'; }
 function saasTenantStatus(s){ const m={active:['активний','#0a8f5f'],trial:['тріал','#d9863b'],suspended:['призупинено','#d9534f'],cancelled:['скасовано','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600">${a[0]}</span>`; }
 function saasSubStatus(s){ const m={trialing:['тріал','#d9863b'],active:['активна','#0a8f5f'],past_due:['прострочена','#d9534f'],suspended:['призупинена','#d9534f'],cancelled:['скасована','#9aa0a6'],expired:['завершена','#9aa0a6']}; const a=m[s]||[s||'—','#9aa0a6']; return `<span style="color:${a[1]};font-weight:600">${a[0]}</span>`; }
