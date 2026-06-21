@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Instagram-контент</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0);vertical-align:top}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select,.fld textarea{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .fld textarea{min-height:72px;resize:vertical}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.published{background:#E3F6E9;color:#1B7A3D}.pill.scheduled{background:#E7F0FB;color:#2A5C9A}
+  .pill.failed{background:#FBE9E7;color:#B23B2E}.pill.canceled{background:#EEE;color:#666}.pill.publishing{background:#FFF3D6;color:#9A6B00}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+  .note{background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#7A5C00;margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+  .thumb{width:46px;height:46px;object-fit:cover;border-radius:8px;background:#f0f0f0}
+  @media(max-width:1000px){.grid2{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<main class="content">
+  <h1>Instagram-контент</h1>
+  <div class="intro">Аналітика акаунта, публікація фото/каруселі/Reels та планувальник. Працює з підключеним Instagram-каналом (Інбокс → підключення).</div>
+
+  <div class="note" id="connNote" style="display:none">Instagram-канал не підключено або немає токена. Підключіть акаунт у розділі «Інбокс», після цього зʼявиться аналітика та публікація.</div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Нова публікація</h3>
+      <div class="fld"><label>Тип</label>
+        <select id="mType" onchange="onTypeChange()">
+          <option value="IMAGE">Фото</option>
+          <option value="CAROUSEL">Карусель (кілька фото)</option>
+          <option value="REELS">Reels (відео)</option>
+        </select></div>
+      <div class="fld" id="fImg"><label>URL зображення</label><input id="imgUrl" placeholder="https://…/photo.jpg"></div>
+      <div class="fld" id="fChildren" style="display:none"><label>URL фото каруселі (по одному в рядку, до 10)</label><textarea id="children" placeholder="https://…/1.jpg&#10;https://…/2.jpg"></textarea></div>
+      <div class="fld" id="fVideo" style="display:none"><label>URL відео (mp4)</label><input id="videoUrl" placeholder="https://…/reel.mp4"></div>
+      <div class="fld"><label>Підпис</label><textarea id="caption" placeholder="Текст публікації, #хештеги"></textarea></div>
+      <div class="fld"><label>Запланувати на (порожньо = опублікувати зараз)</label><input id="schedAt" type="datetime-local"></div>
+      <button class="btn" onclick="publish()">Опублікувати / запланувати</button>
+      <div class="msg" id="pubMsg"></div>
+      <div class="muted" style="margin-top:8px">Заплановані пости публікуються автоматично (перевірка щогодини). Зображення/відео мають бути доступні за публічним URL.</div>
+    </div>
+
+    <div class="card">
+      <h3>Останні публікації</h3>
+      <table><thead><tr><th></th><th>Підпис</th><th>♥ / 💬</th></tr></thead>
+      <tbody id="mediaBody"><tr><td colspan="3" class="muted">Завантаження…</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Заплановані / історія публікацій</h3>
+    <table><thead><tr><th>Час</th><th>Тип</th><th>Підпис</th><th>Статус</th><th></th></tr></thead>
+    <tbody id="schedBody"><tr><td colspan="5" class="muted">Завантаження…</td></tr></tbody></table>
+    <div class="msg" id="schedMsg"></div>
+  </div>
+</main>
+
+<script src="/admin/assets/admin-shell.js" data-title="Instagram-контент"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtT = t => t ? new Date(t).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const cut = (s,n=40) => { s=String(s||''); return s.length>n ? s.slice(0,n)+'…' : (s||'—'); };
+
+function onTypeChange(){
+  const t = $('mType').value;
+  $('fImg').style.display = t==='IMAGE' ? '' : 'none';
+  $('fChildren').style.display = t==='CAROUSEL' ? '' : 'none';
+  $('fVideo').style.display = t==='REELS' ? '' : 'none';
+}
+
+async function loadSummary(){
+  try{
+    const d = await adminFetch('/api/instagram-content/summary');
+    const ins = d.insights||{};
+    if(ins.skipped==='not-connected'){ $('connNote').style.display='block'; }
+    const v = x => (x==null?'—':x);
+    $('cards').innerHTML = [
+      ['Підписники', v(ins.followers_count)],
+      ['Охоплення 28д', v(ins.reach)],
+      ['Покази 28д', v(ins.impressions)],
+      ['Перегляди профілю', v(ins.profile_views)],
+      ['Заплановано', d.scheduled_count||0],
+    ].map(([l,x])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${esc(v(x))}</div></div>`).join('');
+  }catch(e){ $('cards').innerHTML='<div class="muted">Помилка: '+esc(e.message)+'</div>'; }
+}
+
+async function loadMedia(){
+  try{
+    const r = await adminFetch('/api/instagram-content/media?limit=8');
+    const items = r.items||[];
+    $('mediaBody').innerHTML = items.length ? items.map(m=>`<tr>
+      <td><img class="thumb" src="${esc(m.thumbnail_url||m.media_url||'')}" onerror="this.style.visibility='hidden'"></td>
+      <td>${esc(cut(m.caption,50))}<div class="muted">${fmtT(m.timestamp)}</div></td>
+      <td>${m.like_count??0} / ${m.comments_count??0}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="muted">${r.skipped==='not-connected'?'Канал не підключено':'Публікацій немає'}</td></tr>`;
+  }catch(e){ $('mediaBody').innerHTML='<tr><td colspan="3" class="muted">Помилка: '+esc(e.message)+'</td></tr>'; }
+}
+
+async function loadScheduled(){
+  try{
+    const r = await adminFetch('/api/instagram-content/scheduled?limit=50');
+    const rows = r.rows||[];
+    $('schedBody').innerHTML = rows.length ? rows.map(p=>`<tr>
+      <td>${fmtT(p.scheduled_at||p.published_at||p.created_at)}</td><td>${esc(p.media_type)}</td>
+      <td>${esc(cut(p.caption,40))}${p.error?`<div class="muted" style="color:#B23B2E">${esc(cut(p.error,60))}</div>`:''}
+        ${p.permalink?`<div><a href="${esc(p.permalink)}" target="_blank" class="muted">переглянути ↗</a></div>`:''}</td>
+      <td><span class="pill ${esc(p.status)}">${esc(p.status)}</span></td>
+      <td>${p.status==='scheduled'?`<button class="btn sm" onclick="cancelPost(${p.id})">Скасувати</button>`:''}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="muted">Публікацій ще немає</td></tr>';
+  }catch(e){ $('schedBody').innerHTML='<tr><td colspan="5" class="muted">Помилка: '+esc(e.message)+'</td></tr>'; }
+}
+
+async function publish(){
+  $('pubMsg').textContent='Надсилання…';
+  try{
+    const t = $('mType').value;
+    const body = { media_type:t, caption:$('caption').value.trim()||null, scheduled_at:$('schedAt').value||null };
+    if(t==='IMAGE') body.image_url=$('imgUrl').value.trim()||null;
+    if(t==='CAROUSEL') body.children=$('children').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(t==='REELS') body.video_url=$('videoUrl').value.trim()||null;
+    const r = await adminFetch('/api/instagram-content/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = r.data||{};
+    const res = d._result||{};
+    if(d.status==='published') $('pubMsg').textContent='Опубліковано ✓';
+    else if(d.status==='scheduled' && res.skipped==='not-connected') $('pubMsg').textContent='Канал не підключено — збережено в чергу.';
+    else if(d.status==='scheduled') $('pubMsg').textContent='Заплановано на '+fmtT(d.scheduled_at);
+    else if(d.status==='failed') $('pubMsg').textContent='Помилка публікації: '+esc(res.error||d.error||'');
+    else $('pubMsg').textContent='Збережено';
+    $('imgUrl').value=$('videoUrl').value=$('children').value=$('caption').value=$('schedAt').value='';
+    loadScheduled(); loadMedia(); loadSummary();
+  }catch(e){ $('pubMsg').textContent='Помилка: '+e.message; }
+}
+async function cancelPost(id){ try{ await adminFetch('/api/instagram-content/scheduled/'+id,{method:'DELETE'}); loadScheduled(); loadSummary(); }catch(e){ $('schedMsg').textContent='Помилка: '+e.message; } }
+
+onTypeChange(); loadSummary(); loadMedia(); loadScheduled();
+</script>
+</body>
+</html>

@@ -196,6 +196,7 @@ try { app.use('/api/bonus', require('./routes/bonus')); } catch(e) { console.err
 try { app.use('/api/meta-ads', require('./routes/meta-ads')); } catch(e) { console.error('[meta-ads] mount failed:', e.message); }
 try { app.use('/api/google-ads', require('./routes/google-ads')); } catch(e) { console.error('[google-ads] mount failed:', e.message); }
 try { app.use('/api/security', require('./routes/security')); } catch(e) { console.error('[security] mount failed:', e.message); }
+try { app.use('/api/instagram-content', require('./routes/instagram-content')); } catch(e) { console.error('[ig-content] mount failed:', e.message); }
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/auth/staff', require('./routes/auth-staff'));
 app.use('/api/cashbox', require('./routes/cashbox'));
@@ -372,6 +373,8 @@ if (process.env.DATABASE_URL) {
       catch (e) { console.error('[google-ads] sync:', e.message); }
       try { const s = await require('./lib/security-center').detectThreats(); if (s.created) console.log('[security] threats detected', s); }
       catch (e) { console.error('[security] detect:', e.message); }
+      try { const ig = await require('./lib/instagram-content').runScheduled(); if (ig.published) console.log('[ig-content] published', ig); }
+      catch (e) { console.error('[ig-content] scheduled:', e.message); }
     };
     setInterval(runBillingCycle, 60 * 60 * 1000).unref();
     setTimeout(runBillingCycle, 60 * 1000).unref(); // первый прогон через минуту после старта

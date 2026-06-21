@@ -28,6 +28,7 @@
     ] },
     { group: 'Спілкування', icon: 'forum', items: [
       { icon: 'inbox', label: 'Інбокс (Instagram/DM)', href: '/admin/inbox.html' },
+      { icon: 'photo_camera', label: 'Instagram-контент', href: '/admin/instagram-content.html' },
     ] },
     { group: 'Маркетинг', icon: 'campaign', items: [
       { icon: 'notifications_active', label: 'Центр повідомлень', href: '/admin/crm-marketing.html#center' },
