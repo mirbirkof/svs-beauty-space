@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Реклама Google</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0)}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.on{background:#E3F6E9;color:#1B7A3D}.pill.off{background:#FBE9E7;color:#B23B2E}.pill.err{background:#FBE9E7;color:#B23B2E}
+  .roas-bad{color:#B23B2E;font-weight:700}.roas-mid{color:#9A6B00;font-weight:700}.roas-good{color:#1B7A3D;font-weight:700}
+  .qs-bad{color:#B23B2E;font-weight:700}.qs-mid{color:#9A6B00;font-weight:700}.qs-good{color:#1B7A3D;font-weight:700}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+  .note{background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#7A5C00;margin-bottom:14px}
+  .recs{font-size:12.5px;color:var(--text-secondary);margin-top:8px}.recs li{margin:3px 0}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:20px;width:440px;max-width:92vw}
+  .modal h3{margin:0 0 14px}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tab{padding:5px 12px;border-radius:9px;border:1px solid var(--border,#ddd);cursor:pointer;font-size:12.5px}
+  .tab.active{background:var(--primary,#5B5FC7);color:#fff;border-color:var(--primary,#5B5FC7)}
+</style>
+</head>
+<body>
+<div class="content">
+  <h2 style="margin:0">Реклама Google (Search / Display / PMax)
+    <button class="btn" style="float:right" onclick="loadAll()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button>
+  </h2>
+  <div class="intro">Кампанії Google Ads зі статистикою, конверсіями від кліку до візиту та offline-конверсіями (запис/візит → Google Ads для Smart Bidding).</div>
+
+  <div class="note" id="apiNote" style="display:none">Live-синк і вивантаження конверсій вимкнені (не задано Google Ads API developer-token). Кампанії та статистику можна вести вручну, gclid-конверсії накопичуються і вивантажаться автоматично після підключення API.</div>
+
+  <div class="cards" id="kpis"><div class="kpi"><div class="lbl">Завантаження…</div></div></div>
+
+  <!-- Акаунти -->
+  <div class="card">
+    <h3>Google Ads акаунти <button class="btn primary sm" style="float:right" onclick="openConnect()">+ Підключити акаунт</button></h3>
+    <table id="accTbl"><thead><tr><th>Назва</th><th>Customer ID</th><th>GA4</th><th>Статус</th><th>Синк</th><th></th></tr></thead><tbody><tr><td colspan="6" class="muted">Завантаження…</td></tr></tbody></table>
+    <div class="msg" id="accMsg"></div>
+  </div>
+
+  <!-- Кампанії -->
+  <div class="card">
+    <h3>Кампанії</h3>
+    <table id="campTbl"><thead><tr><th>Назва</th><th>Тип</th><th>Статус</th><th>Покази</th><th>Кліки</th><th>Витрати</th><th>Конв.</th><th>CPA</th><th>ROAS</th><th></th></tr></thead><tbody><tr><td colspan="10" class="muted">Немає даних. Підключіть акаунт і дочекайтесь синку.</td></tr></tbody></table>
+  </div>
+
+  <!-- Конверсії та ключові слова -->
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" id="tab-conv" onclick="showTab('conv')">Конверсії</div>
+      <div class="tab" id="tab-kw" onclick="showTab('kw')">Ключові слова</div>
+    </div>
+    <div id="pane-conv">
+      <div style="margin-bottom:8px"><button class="btn sm" onclick="uploadConv()">Вивантажити offline-конверсії в Google</button> <span class="msg" id="convMsg" style="display:inline"></span></div>
+      <table id="convTbl"><thead><tr><th>Час</th><th>Тип</th><th>GCLID</th><th>Цінність</th><th>Вивантажено</th></tr></thead><tbody><tr><td colspan="5" class="muted">Конверсій ще немає.</td></tr></tbody></table>
+    </div>
+    <div id="pane-kw" style="display:none">
+      <div class="fld" style="max-width:280px"><label>Акаунт для запиту</label><select id="kwAcc" onchange="loadKeywords()"><option value="">—</option></select></div>
+      <table id="kwTbl"><thead><tr><th>Ключове слово</th><th>QS</th><th>Покази</th><th>Кліки</th><th>Конв.</th><th>Витрати</th></tr></thead><tbody><tr><td colspan="6" class="muted">Доступно лише при підключеному Google Ads API.</td></tr></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка підключення -->
+<div class="modal-bg" id="connectBg">
+  <div class="modal">
+    <h3>Підключити Google Ads акаунт</h3>
+    <div class="fld"><label>Customer ID (10 цифр, без дефісів)</label><input id="c_cust" placeholder="1234567890"></div>
+    <div class="fld"><label>Назва (для зручності)</label><input id="c_name" placeholder="опц."></div>
+    <div class="row">
+      <div class="fld"><label>GA4 Property ID</label><input id="c_ga4" placeholder="опц."></div>
+      <div class="fld"><label>Refresh Token (OAuth)</label><input id="c_refresh" placeholder="опц., для live-синку"></div>
+    </div>
+    <div class="msg" id="connectMsg"></div>
+    <div style="text-align:right;margin-top:6px">
+      <button class="btn" onclick="closeConnect()">Скасувати</button>
+      <button class="btn primary" onclick="doConnect()">Підключити</button>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Реклама Google"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const money = (n) => (Number(n)||0).toLocaleString('uk-UA',{maximumFractionDigits:0}) + ' ₴';
+const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cTypeLabel = {SEARCH:'Пошук',DISPLAY:'Медійна',PMAX:'PMax',LOCAL:'Локальна'};
+let apiConfigured = true;
+
+async function loadAll(){ await Promise.all([loadKpi(), loadAccounts(), loadCampaigns(), loadConversions()]); }
+
+async function loadKpi(){
+  try{
+    const r = await adminFetch('/api/google-ads/roi');
+    $('kpis').innerHTML = [
+      ['Витрати (30 дн)', money(r.total_spend)],
+      ['Кліки', r.clicks||0],
+      ['Конверсії', r.total_conversions||0],
+      ['CPA', r.cpa!=null ? money(r.cpa) : '—'],
+      ['ROAS', r.roas!=null ? Number(r.roas).toFixed(2)+'×' : '—'],
+      ['Очікують upload', (r.funnel&&r.funnel.pending_upload)||0],
+    ].map(([l,v])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('');
+    if(r.recommendations && r.recommendations.length){
+      $('kpis').insertAdjacentHTML('afterend', `<ul class="recs" id="recsBox">${r.recommendations.map(x=>`<li>• ${esc(x)}</li>`).join('')}</ul>`);
+      const old=document.querySelectorAll('#recsBox'); if(old.length>1) old[0].remove();
+    }
+  }catch(e){ $('kpis').innerHTML = `<div class="kpi"><div class="lbl">Помилка</div><div class="val">—</div></div>`; }
+}
+
+async function loadAccounts(){
+  try{
+    const r = await adminFetch('/api/google-ads/accounts'); const items = r.items||[];
+    const tb = $('accTbl').querySelector('tbody');
+    const sel = $('kwAcc'); sel.innerHTML = '<option value="">—</option>';
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Акаунтів немає. Підключіть перший.</td></tr>'; return; }
+    let anyError = false;
+    tb.innerHTML = items.map(a=>{
+      const cls = a.status==='active'?'on':(a.status==='error'?'err':'off');
+      if(a.status==='error') anyError = true;
+      const sync = a.last_synced_at ? new Date(a.last_synced_at).toLocaleString('uk-UA') : '—';
+      sel.insertAdjacentHTML('beforeend', `<option value="${a.id}">${esc(a.name||a.customer_id)}</option>`);
+      return `<tr><td>${esc(a.name||'—')}</td><td>${esc(a.customer_id)}</td><td>${esc(a.ga4_property_id||'—')}</td>
+        <td><span class="pill ${cls}">${esc(a.status)}</span>${a.last_error?` <span class="muted" title="${esc(a.last_error)}">⚠</span>`:''}</td>
+        <td class="muted">${sync}</td>
+        <td><button class="btn sm" onclick="syncAcc(${a.id})">Синк</button>
+            <button class="btn sm" onclick="disconnectAcc(${a.id})">Відключити</button></td></tr>`;
+    }).join('');
+  }catch(e){ $('accMsg').textContent = 'Помилка: '+e.message; }
+}
+
+async function loadCampaigns(){
+  try{
+    const r = await adminFetch('/api/google-ads/campaigns'); const items = r.items||[];
+    const tb = $('campTbl').querySelector('tbody');
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="10" class="muted">Немає кампаній. Дочекайтесь синку після підключення акаунта.</td></tr>'; return; }
+    tb.innerHTML = items.map(c=>{
+      const on = c.status==='ENABLED';
+      const roas = c.roas!=null ? `<span class="${c.roas<1?'roas-bad':(c.roas<3?'roas-mid':'roas-good')}">${Number(c.roas).toFixed(2)}×</span>` : '—';
+      const cpa = c.conversions>0 ? money(c.spend/c.conversions) : '—';
+      return `<tr><td>${esc(c.name||'—')}</td><td class="muted">${cTypeLabel[c.type]||esc(c.type||'—')}</td>
+        <td><span class="pill ${on?'on':'off'}">${esc(c.status||'—')}</span></td>
+        <td>${(c.impressions||0).toLocaleString('uk-UA')}</td><td>${c.clicks||0}</td>
+        <td>${money(c.spend)}</td><td>${c.conversions||0}</td><td>${cpa}</td><td>${roas}</td>
+        <td><button class="btn sm" onclick="toggleCamp(${c.id},'${on?'PAUSED':'ENABLED'}')">${on?'Пауза':'Запуск'}</button></td></tr>`;
+    }).join('');
+  }catch(e){ /* без кампаній — мовчки */ }
+}
+
+async function loadConversions(){
+  try{
+    const r = await adminFetch('/api/google-ads/conversions?limit=100'); const items = r.items||[];
+    const tb = $('convTbl').querySelector('tbody');
+    if(!items.length){ tb.innerHTML = '<tr><td colspan="5" class="muted">Конверсій ще немає. Зʼявляться коли клієнт з gclid зробить запис/візит.</td></tr>'; return; }
+    let pending=false;
+    tb.innerHTML = items.map(c=>{
+      if(!c.uploaded_to_google) pending=true;
+      const g = c.gclid ? (String(c.gclid).slice(0,14)+'…') : '—';
+      return `<tr><td class="muted">${new Date(c.conversion_time).toLocaleString('uk-UA')}</td>
+        <td>${esc(c.conversion_type)}</td><td class="muted" title="${esc(c.gclid||'')}">${esc(g)}</td>
+        <td>${c.conversion_value!=null?money(c.conversion_value):'—'}</td>
+        <td>${c.uploaded_to_google?'<span class="pill on">так</span>':'<span class="pill off">ні</span>'}</td></tr>`;
+    }).join('');
+  }catch(e){ $('convMsg').textContent = 'Помилка: '+e.message; }
+}
+
+async function loadKeywords(){
+  const accId = $('kwAcc').value;
+  const tb = $('kwTbl').querySelector('tbody');
+  if(!accId){ tb.innerHTML = '<tr><td colspan="6" class="muted">Оберіть акаунт.</td></tr>'; return; }
+  try{
+    const r = await adminFetch(`/api/google-ads/keywords?account_id=${accId}`); const items = r.items||[];
+    if(r.note==='live-only' || !items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Доступно лише при підключеному Google Ads API (developer-token + OAuth).</td></tr>'; return; }
+    tb.innerHTML = items.map(k=>{
+      const qs = k.quality_score!=null ? `<span class="${k.quality_score<5?'qs-bad':(k.quality_score<8?'qs-mid':'qs-good')}">${k.quality_score}</span>` : '—';
+      return `<tr><td>${esc(k.text||'—')}</td><td>${qs}</td><td>${k.impressions}</td><td>${k.clicks}</td><td>${k.conversions}</td><td>${money(k.spend)}</td></tr>`;
+    }).join('');
+  }catch(e){ tb.innerHTML = `<tr><td colspan="6" class="muted">Помилка: ${esc(e.message)}</td></tr>`; }
+}
+
+function showTab(t){
+  $('tab-conv').classList.toggle('active', t==='conv'); $('tab-kw').classList.toggle('active', t==='kw');
+  $('pane-conv').style.display = t==='conv'?'':'none'; $('pane-kw').style.display = t==='kw'?'':'none';
+  if(t==='kw') loadKeywords();
+}
+
+// ── Акаунти ──
+function openConnect(){ $('connectMsg').textContent=''; $('connectBg').classList.add('show'); }
+function closeConnect(){ $('connectBg').classList.remove('show'); }
+async function doConnect(){
+  $('connectMsg').textContent = 'Підключення…';
+  try{
+    await adminFetch('/api/google-ads/accounts/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      customer_id:$('c_cust').value.trim(), name:$('c_name').value.trim()||undefined,
+      ga4_property_id:$('c_ga4').value.trim()||undefined, refresh_token:$('c_refresh').value.trim()||undefined,
+    })});
+    closeConnect(); await loadAccounts();
+  }catch(e){ $('connectMsg').textContent = 'Помилка: '+e.message; }
+}
+async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminFetch(`/api/google-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('API: '+r.error):(r.skipped?'Live-синк вимкнено (немає API-доступу).':`Синхронізовано кампаній: ${r.synced||0}`); await Promise.all([loadCampaigns(),loadAccounts()]); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+async function disconnectAcc(id){ if(!confirm('Відключити акаунт? Статистика залишиться, синк припиниться.'))return; try{ await adminFetch(`/api/google-ads/accounts/${id}`,{method:'DELETE'}); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+
+// ── Кампанії ──
+async function toggleCamp(id,status){ try{ await adminFetch(`/api/google-ads/campaigns/${id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await loadCampaigns(); }catch(e){ alert('Помилка: '+e.message); } }
+
+// ── Конверсії ──
+async function uploadConv(){ $('convMsg').textContent='Вивантаження…'; try{ const r=await adminFetch('/api/google-ads/conversions/upload',{method:'POST'}); $('convMsg').textContent = r.skipped?`${r.pending} конверсій очікують (немає API-доступу).`:`Вивантажено: ${r.uploaded}, лишилось: ${r.pending}`; await loadConversions(); }catch(e){ $('convMsg').textContent='Помилка: '+e.message; } }
+
+loadAll();
+</script>
+</body>
+</html>
