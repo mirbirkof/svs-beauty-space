@@ -7749,7 +7749,7 @@ function saasKpi(label, value, color, onclick, hint){
   return `<div class="kpi-card ${color||'purple'}"${click}><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub}</div>`;
 }
 // ═══ МОЯ ПІДПИСКА — self-service салону ════════════════════════════════
-let _mysub = { sub:null, plans:[], invoices:[], gateways:{}, cycle:'monthly' };
+let _mysub = { sub:null, plans:[], invoices:[], gateways:{}, cycle:'monthly', addons:[] };
 function _msMoney(v){ return Number(v||0).toLocaleString('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2})+' ₴'; }
 function _msDate(d){ if(!d) return '—'; const x=new Date(d); return isNaN(x)?'—':x.toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 function _msDaysLeft(d){ if(!d) return null; return Math.ceil((new Date(d)-Date.now())/864e5); }
@@ -7761,17 +7761,19 @@ async function loadMySub(){
   const box = document.getElementById('mysubBody');
   box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Завантаження…</div>';
   try {
-    const [sub, plansR, invR, gw] = await Promise.all([
+    const [sub, plansR, invR, gw, addR] = await Promise.all([
       api('/api/billing/subscription'),
       api('/api/billing/plans'),
       api('/api/billing/invoices?limit=20'),
       api('/api/billing/gateways'),
+      api('/api/saas/addons').catch(()=>({addons:[]})),
     ]);
     if (sub && sub.error === 'forbidden') { box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Керування підпискою доступне лише власнику салону.</div>'; return; }
     _mysub.sub = (sub && !sub.error) ? sub : null;
     _mysub.plans = (plansR && plansR.rows) || [];
     _mysub.invoices = (invR && invR.rows) || [];
     _mysub.gateways = gw || {};
+    _mysub.addons = (addR && addR.addons) || [];
     renderMySub();
   } catch (e) {
     box.innerHTML = '<div style="padding:40px;text-align:center;color:#d9534f">Не вдалося завантажити підписку. Спробуйте оновити сторінку.</div>';
@@ -7857,6 +7859,37 @@ function renderMySub(){
     </tr>`;
   }).join('');
   if (!invRows) invRows = '<tr><td colspan="5" style="padding:20px;text-align:center;color:#9aa0a6">Рахунків поки немає</td></tr>';
+  // ── Платні модулі (add-on) ──
+  let addonsBlock = '';
+  if (_mysub.addons && _mysub.addons.length) {
+    const isOper = (typeof TENANT_SLUG !== 'undefined') ? !TENANT_SLUG : false;
+    const cards = _mysub.addons.map(a=>{
+      const price = cyc==='yearly' ? Number(a.price_year) : Number(a.price_month);
+      const per = cyc==='yearly' ? '/рік' : '/міс';
+      const inPlan = !!a.included_in_plan;
+      const on = !!a.enabled;
+      let badge, btn;
+      if (inPlan) { badge = `<span style="font-size:12px;color:#0a8f5f;font-weight:600">входить у тариф</span>`; btn=''; }
+      else if (on) {
+        badge = `<span style="font-size:12px;color:#0a8f5f;font-weight:600">підключено</span>`;
+        btn = `<button class="btn btn-sm btn-outline" style="width:100%" onclick="mysubToggleAddon('${a.feature_key}',false)">Вимкнути</button>`;
+      } else {
+        badge = `<span style="font-size:18px;font-weight:800;color:#6d5ae6">${_msMoney(price)}</span><span style="color:#9aa0a6;font-size:13px">${per}</span>`;
+        btn = isOper
+          ? `<button class="btn btn-sm btn-primary" style="width:100%" onclick="mysubToggleAddon('${a.feature_key}',true)">Увімкнути</button>`
+          : `<button class="btn btn-sm btn-primary" style="width:100%" onclick="mysubToggleAddon('${a.feature_key}',true)">Підключити</button>`;
+      }
+      return `<div style="border:1px solid ${on||inPlan?'#cdeadd':'#eee'};border-radius:14px;padding:16px;background:${on||inPlan?'#f4fbf7':'#fff'};display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:15px;font-weight:700;color:#222">${escapeHtml(a.name||a.feature_key)}</div>${inPlan||on?badge:''}</div>
+        <div style="font-size:12.5px;color:#777;flex:1">${escapeHtml(a.description||'')}</div>
+        <div style="margin-top:4px">${inPlan||on?'':badge}</div>
+        <div style="margin-top:8px">${btn}</div>
+      </div>`;
+    }).join('');
+    addonsBlock = `<h3 style="margin:18px 0 4px;font-size:18px">Платні модулі</h3>
+      <div style="font-size:13px;color:#9aa0a6;margin-bottom:12px">Підключайте лише те, що потрібно — поверх вашого тарифу.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:26px">${cards}</div>`;
+  }
   const invBlock = `<h3 style="margin:6px 0 12px;font-size:18px">Рахунки та платежі</h3>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
       <thead><tr style="border-bottom:2px solid #eee;text-align:left;color:#9aa0a6;font-size:12px">
@@ -7864,7 +7897,30 @@ function renderMySub(){
       </tr></thead><tbody>${invRows}</tbody></table></div>
     ${!monoOn?'<div style="margin-top:10px;font-size:12.5px;color:#d9863b">Онлайн-оплата картою тимчасово недоступна — зверніться до підтримки для офлайн-оплати.</div>':''}`;
 
-  box.innerHTML = cur + plansBlock + invBlock;
+  box.innerHTML = cur + plansBlock + addonsBlock + invBlock;
+}
+
+async function mysubToggleAddon(key, enable){
+  if (enable) {
+    const a = (_mysub.addons||[]).find(x=>x.feature_key===key) || {};
+    showModal('Підключити модуль', `<div style="font-size:14px;color:#444">Підключити модуль <b>${escapeHtml(a.name||key)}</b> за <b>${_msMoney(a.price_month)}/міс</b>?</div>`, async ()=>{
+      try {
+        const r = await api('/api/saas/addons/'+encodeURIComponent(key), { method:'POST', body: JSON.stringify({ enabled:true }) });
+        if (r && r.error === 'payment_required') {
+          toast('Модуль вмикається після оплати — зверніться до підтримки для підключення', 'err');
+          return;
+        }
+        if (r && r.error) { toast(_msErr(r.error), 'err'); return; }
+        toast('Модуль підключено', 'ok'); loadMySub();
+      } catch(e){ toast('Помилка підключення', 'err'); }
+    });
+  } else {
+    try {
+      const r = await api('/api/saas/addons/'+encodeURIComponent(key), { method:'POST', body: JSON.stringify({ enabled:false }) });
+      if (r && r.error) { toast(_msErr(r.error), 'err'); return; }
+      toast('Модуль вимкнено', 'ok'); loadMySub();
+    } catch(e){ toast('Помилка', 'err'); }
+  }
 }
 
 async function mysubChoose(code){
