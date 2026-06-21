@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Бонуси</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .kpi .sub{font-size:11.5px;color:var(--text-secondary);margin-top:3px}
+  .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0)}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.on{background:#E3F6E9;color:#1B7A3D}.pill.off{background:#FBE9E7;color:#B23B2E}
+  .tx{font-size:12.5px;padding:6px;border-bottom:1px solid var(--border,#f3f3f3);display:flex;justify-content:space-between}
+  .tx .plus{color:#1B7A3D;font-weight:700}.tx .minus{color:#B23B2E;font-weight:700}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+</style>
+</head>
+<body>
+<div class="content">
+  <h2 style="margin:0">Бонуси <button class="btn" style="float:right" onclick="loadAll()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span> Оновити</button></h2>
+  <div class="intro">Бонусний гаманець клієнтів: нарахування за дії, списання частиною оплати, ручні коригування та автоматичне сгорання.</div>
+
+  <div class="cards" id="kpis"><div class="kpi"><div class="lbl">Завантаження…</div></div></div>
+
+  <div class="grid2">
+    <div>
+      <!-- Правила нарахування -->
+      <div class="card">
+        <h3>Правила нарахування <button class="btn primary sm" style="float:right" onclick="newRule()">+ Правило</button></h3>
+        <table id="rulesTbl"><thead><tr><th>Назва</th><th>Подія</th><th>Нарахування</th><th>Категорія</th><th></th><th></th></tr></thead><tbody><tr><td colspan="6" class="muted">Завантаження…</td></tr></tbody></table>
+      </div>
+      <!-- Налаштування списання -->
+      <div class="card">
+        <h3>Налаштування списання</h3>
+        <div class="row">
+          <div class="fld"><label>Списання увімкнене</label><select id="s_enabled"><option value="true">Так</option><option value="false">Ні</option></select></div>
+          <div class="fld"><label>Макс. % оплати бонусами</label><input id="s_max" type="number" min="0" max="100"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label>Мін. бонусів для списання</label><input id="s_min" type="number" min="0"></div>
+          <div class="fld"><label>Курс (1 бонус = N грн)</label><input id="s_rate" type="number" min="0" step="0.01"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label>Період сгорання (днів)</label><input id="s_expiry" type="number" min="0"></div>
+          <div class="fld"><label>VIP без сгорання</label><select id="s_vip"><option value="false">Ні</option><option value="true">Так</option></select></div>
+        </div>
+        <button class="btn primary" onclick="saveSettings()">Зберегти налаштування</button>
+        <div class="msg" id="setMsg"></div>
+      </div>
+    </div>
+
+    <div>
+      <!-- Баланс клієнта + коригування -->
+      <div class="card">
+        <h3>Гаманець клієнта</h3>
+        <div class="fld"><label>ID клієнта</label>
+          <div style="display:flex;gap:8px"><input id="cid" type="number" placeholder="напр. 123" style="flex:1"><button class="btn primary" onclick="loadClient()">Знайти</button></div>
+        </div>
+        <div id="walletBox" class="muted">Введіть ID клієнта.</div>
+      </div>
+      <div class="card" id="adjCard" style="display:none">
+        <h3>Ручне коригування</h3>
+        <div class="row">
+          <div class="fld"><label>Сума (+ нарахувати / − списати)</label><input id="adj_amt" type="number" placeholder="напр. 50 або -20"></div>
+          <div class="fld"><label>Коментар</label><input id="adj_desc" type="text" placeholder="Причина"></div>
+        </div>
+        <button class="btn primary" onclick="doAdjust()">Застосувати</button>
+        <div class="msg" id="adjMsg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- модалка правила -->
+<div class="modal-bg" id="ruleBg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center">
+  <div class="modal" style="background:#fff;border-radius:16px;padding:22px;width:480px;max-width:92vw">
+    <h3 id="ruleTitle" style="margin:0 0 14px">Нове правило</h3>
+    <input type="hidden" id="r_id">
+    <div class="fld"><label>Назва</label><input id="r_name" type="text" placeholder="Кешбек за оплату"></div>
+    <div class="row">
+      <div class="fld"><label>Тип</label><select id="r_type"><option value="percent_check">% від чека</option><option value="fixed_action">Фікс. сума</option></select></div>
+      <div class="fld"><label>Подія</label><select id="r_event"><option value="payment">Оплата</option><option value="review">Відгук</option><option value="referral">Реферал</option><option value="birthday">День народження</option><option value="visit_series">Серія візитів</option><option value="welcome">Привітальний</option></select></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Відсоток %</label><input id="r_percent" type="number" min="0" step="0.1"></div>
+      <div class="fld"><label>Фікс. сума</label><input id="r_fixed" type="number" min="0"></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Категорія</label><select id="r_cat"><option value="all">Усі</option><option value="services">Послуги</option><option value="products">Товари</option></select></div>
+      <div class="fld"><label>Мін. чек</label><input id="r_mincheck" type="number" min="0"></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Макс. нарахування</label><input id="r_max" type="number" min="0" placeholder="без ліміту"></div>
+      <div class="fld"><label>Сгорання (днів)</label><input id="r_expiry" type="number" min="0" placeholder="за замовч."></div>
+    </div>
+    <div class="fld"><label>Множники тиру (bronze/silver/gold)</label>
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr">
+        <input id="r_mb" type="number" step="0.1" value="1"><input id="r_ms" type="number" step="0.1" value="1.5"><input id="r_mg" type="number" step="0.1" value="2">
+      </div>
+    </div>
+    <div class="fld"><label>Активне</label><select id="r_active"><option value="true">Так</option><option value="false">Ні</option></select></div>
+    <div class="msg" id="ruleMsg"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeRule()">Скасувати</button>
+      <button class="btn primary" id="ruleSave" onclick="saveRule()">Зберегти</button>
+    </div>
+  </div>
+</div>
+
+<script src="/admin/assets/admin-shell.js" data-title="Бонуси"></script>
+<script>
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+const EV={payment:'Оплата',review:'Відгук',referral:'Реферал',birthday:'ДН',visit_series:'Серія',welcome:'Привітання'};
+const CAT={all:'Усі',services:'Послуги',products:'Товари'};
+
+async function loadAll(){ await Promise.all([loadKpis(),loadRules(),loadSettings()]); }
+
+async function loadKpis(){
+  try{
+    const a=await adminFetch('/api/bonus/analytics');
+    const k=[
+      ['Активне зобов\u0027язання',Number(a.liability||0).toFixed(0),'бонусів на балансах'],
+      ['Нараховано всього',Number(a.accrued||0).toFixed(0),''],
+      ['Списано всього',Number(a.redeemed||0).toFixed(0),''],
+      ['Згоріло',Number(a.expired||0).toFixed(0),''],
+      ['Клієнтів з балансом',Number(a.active_clients||0).toFixed(0),'+'+Number(a.accrued_30||0).toFixed(0)+' за 30 дн'],
+    ];
+    document.getElementById('kpis').innerHTML=k.map(([l,v,s])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`).join('');
+  }catch(e){ document.getElementById('kpis').innerHTML='<div class="kpi"><div class="lbl">Помилка завантаження</div></div>'; }
+}
+
+async function loadRules(){
+  const tb=document.querySelector('#rulesTbl tbody');
+  try{
+    const r=await adminFetch('/api/bonus/rules'); const items=r.items||[];
+    if(!items.length){ tb.innerHTML='<tr><td colspan="6" class="muted">Правил ще немає. Додайте перше.</td></tr>'; return; }
+    tb.innerHTML=items.map(x=>{
+      const val=x.type==='percent_check'?Number(x.percent)+'%':Number(x.fixed_amount)+' б';
+      return `<tr><td>${esc(x.name)} ${x.is_active?'<span class="pill on">on</span>':'<span class="pill off">off</span>'}</td>
+        <td>${EV[x.trigger_event]||x.trigger_event}</td><td>${val}</td><td>${CAT[x.category]||x.category}</td>
+        <td><button class="btn sm" onclick='editRule(${JSON.stringify(x)})'>✎</button></td>
+        <td><button class="btn sm" onclick="delRule(${x.id})">🗑</button></td></tr>`;
+    }).join('');
+  }catch(e){ tb.innerHTML='<tr><td colspan="6" class="muted">Помилка</td></tr>'; }
+}
+
+async function loadSettings(){
+  try{
+    const s=await adminFetch('/api/bonus/settings');
+    document.getElementById('s_enabled').value=String(s.enabled!==false);
+    document.getElementById('s_max').value=s.max_pay_percent;
+    document.getElementById('s_min').value=s.min_redeem_amount;
+    document.getElementById('s_rate').value=s.exchange_rate;
+    document.getElementById('s_expiry').value=s.expiry_days;
+    document.getElementById('s_vip').value=String(!!s.vip_no_expiry);
+  }catch(e){}
+}
+async function saveSettings(){
+  const m=document.getElementById('setMsg'); m.textContent='Збереження…';
+  try{
+    await adminFetch('/api/bonus/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      enabled:document.getElementById('s_enabled').value==='true',
+      max_pay_percent:Number(document.getElementById('s_max').value),
+      min_redeem_amount:Number(document.getElementById('s_min').value),
+      exchange_rate:Number(document.getElementById('s_rate').value),
+      expiry_days:Number(document.getElementById('s_expiry').value),
+      vip_no_expiry:document.getElementById('s_vip').value==='true',
+    })});
+    m.style.color='#1B7A3D'; m.textContent='Збережено ✓';
+  }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }
+}
+
+// ── Правила: модалка ──
+function newRule(){ openRule({id:'',name:'',type:'percent_check',trigger_event:'payment',percent:5,fixed_amount:0,category:'all',min_check_amount:0,max_accrual:'',expiry_days:'',loyalty_multipliers:{bronze:1,silver:1.5,gold:2},is_active:true}); document.getElementById('ruleTitle').textContent='Нове правило'; }
+function editRule(x){ openRule(x); document.getElementById('ruleTitle').textContent='Редагувати правило'; }
+function openRule(x){
+  const lm=x.loyalty_multipliers||{bronze:1,silver:1.5,gold:2};
+  document.getElementById('r_id').value=x.id||'';
+  document.getElementById('r_name').value=x.name||'';
+  document.getElementById('r_type').value=x.type||'percent_check';
+  document.getElementById('r_event').value=x.trigger_event||'payment';
+  document.getElementById('r_percent').value=x.percent||0;
+  document.getElementById('r_fixed').value=x.fixed_amount||0;
+  document.getElementById('r_cat').value=x.category||'all';
+  document.getElementById('r_mincheck').value=x.min_check_amount||0;
+  document.getElementById('r_max').value=x.max_accrual??'';
+  document.getElementById('r_expiry').value=x.expiry_days??'';
+  document.getElementById('r_mb').value=lm.bronze??1; document.getElementById('r_ms').value=lm.silver??1.5; document.getElementById('r_mg').value=lm.gold??2;
+  document.getElementById('r_active').value=String(x.is_active!==false);
+  document.getElementById('ruleMsg').textContent='';
+  document.getElementById('ruleBg').style.display='flex';
+}
+function closeRule(){ document.getElementById('ruleBg').style.display='none'; }
+async function saveRule(){
+  const m=document.getElementById('ruleMsg'); m.textContent='Збереження…';
+  const id=document.getElementById('r_id').value;
+  const body={
+    name:document.getElementById('r_name').value.trim(),
+    type:document.getElementById('r_type').value,
+    trigger_event:document.getElementById('r_event').value,
+    percent:Number(document.getElementById('r_percent').value)||0,
+    fixed_amount:Number(document.getElementById('r_fixed').value)||0,
+    category:document.getElementById('r_cat').value,
+    min_check_amount:Number(document.getElementById('r_mincheck').value)||0,
+    max_accrual:document.getElementById('r_max').value===''?null:Number(document.getElementById('r_max').value),
+    expiry_days:document.getElementById('r_expiry').value===''?null:Number(document.getElementById('r_expiry').value),
+    loyalty_multipliers:{bronze:Number(document.getElementById('r_mb').value)||1,silver:Number(document.getElementById('r_ms').value)||1,gold:Number(document.getElementById('r_mg').value)||1},
+    is_active:document.getElementById('r_active').value==='true',
+  };
+  if(!body.name){ m.style.color='#B23B2E'; m.textContent='Вкажіть назву'; return; }
+  try{
+    if(id) await adminFetch('/api/bonus/rules/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    else await adminFetch('/api/bonus/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    closeRule(); loadRules();
+  }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }
+}
+async function delRule(id){
+  if(!confirm('Видалити правило?')) return;
+  try{ await adminFetch('/api/bonus/rules/'+id,{method:'DELETE'}); loadRules(); }catch(e){ alert('Помилка: '+e.message); }
+}
+
+// ── Гаманець клієнта ──
+let curClient=null;
+async function loadClient(){
+  const cid=Number(document.getElementById('cid').value); const box=document.getElementById('walletBox');
+  if(!cid){ box.textContent='Введіть ID.'; return; }
+  box.textContent='Завантаження…';
+  try{
+    const r=await adminFetch('/api/bonus/balance/'+cid); curClient=cid;
+    const b=r.balance||{}; const h=r.history||[];
+    box.innerHTML=`<div style="font-size:26px;font-weight:700;margin-bottom:4px">${Number(b.balance||0).toFixed(0)} <span style="font-size:14px;color:var(--text-secondary)">бонусів</span></div>
+      <div class="muted">Нараховано ${Number(b.total_accrued||0).toFixed(0)} · Списано ${Number(b.total_redeemed||0).toFixed(0)} · Згоріло ${Number(b.total_expired||0).toFixed(0)}</div>
+      <div style="margin-top:12px;max-height:240px;overflow:auto">${h.length?h.map(t=>{
+        const pos=Number(t.amount)>=0;
+        return `<div class="tx"><span>${esc(t.description||t.type)}<br><span class="muted">${new Date(t.created_at).toLocaleString('uk')}</span></span><span class="${pos?'plus':'minus'}">${pos?'+':''}${Number(t.amount).toFixed(0)}</span></div>`;
+      }).join(''):'<div class="muted">Історія порожня.</div>'}</div>`;
+    document.getElementById('adjCard').style.display='';
+  }catch(e){ box.textContent='Помилка: '+e.message; document.getElementById('adjCard').style.display='none'; }
+}
+async function doAdjust(){
+  const m=document.getElementById('adjMsg'); const amt=Number(document.getElementById('adj_amt').value);
+  if(!curClient||!amt){ m.style.color='#B23B2E'; m.textContent='Вкажіть клієнта і суму'; return; }
+  m.style.color=''; m.textContent='Застосування…';
+  try{
+    await adminFetch('/api/bonus/adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:curClient,amount:amt,description:document.getElementById('adj_desc').value||undefined})});
+    document.getElementById('adj_amt').value=''; document.getElementById('adj_desc').value='';
+    m.style.color='#1B7A3D'; m.textContent='Готово ✓'; loadClient(); loadKpis();
+  }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }
+}
+
+loadAll();
+</script>
+</body>
+</html>

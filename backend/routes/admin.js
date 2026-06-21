@@ -325,6 +325,16 @@ router.patch('/orders/:id/status', async (req, res) => {
     // фоновое уведомление клиенту — не блокирует ответ
     notifyOrderStatus(orderId, status).catch(e => console.error('[notify-bg]', e.message));
 
+    // FIN-01: авто-нарахування бонусів за оплачене замовлення (no-op якщо правило не налаштоване).
+    // Фоном після коміту, у HTTP tenant-контексті (ALS) — accrue сам відкриє свою транзакцію.
+    if (prevStatus === 'new' && status === 'paid' && cur.rows[0].client_id) {
+      require('../lib/bonus').accrue({
+        clientId: cur.rows[0].client_id, checkAmount: cur.rows[0].total, autoRule: true,
+        triggerEvent: 'payment', category: 'products', sourceType: 'order', sourceId: orderId,
+        description: `Замовлення #${orderId}`,
+      }).catch(e => console.error('[bonus-accrue-bg]', e.message));
+    }
+
     res.json({ ok: true, order: r.rows[0], side_effects: { stock_updated: prevStatus === 'new' && status === 'paid' } });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});

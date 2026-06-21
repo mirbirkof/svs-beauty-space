@@ -45,6 +45,7 @@
     ] },
     { group: 'Фінанси', icon: 'account_balance_wallet', items: [
       { icon: 'swap_vert', label: 'Доходи і Витрати', href: '/admin/index.html#finance' },
+      { icon: 'loyalty', label: 'Бонуси', href: '/admin/bonus.html' },
       { icon: 'point_of_sale', label: 'Рахунки і каси', href: '/admin/crm-extra.html' },
       { icon: 'groups', label: 'Контрагенти', href: '/admin/index.html#contractors' },
       { icon: 'insights', label: 'Звіти (P&L, RFM)', href: '/admin/crm-extra.html#reports' },
