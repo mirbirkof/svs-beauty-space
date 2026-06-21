@@ -582,6 +582,18 @@ router.get('/journal', async (req, res) => {
                 'Клієнт'
               ) AS client_name,
               c.phone AS client_phone,
+              -- Побажання клієнта з ОНЛАЙН-ЗАПИСУ (наша таблиця online_bookings, не BeautyPro).
+              -- Тримаємо ОКРЕМО від notes (notes = формула/замітка майстра), щоб в картці
+              -- було чітко видно: де написав клієнт, а де адмін. Звʼязок по клієнту+даті
+              -- (онлайн-бронь завжди привʼязана до конкретного клієнта й дня). Працює і без
+              -- BeautyPro — джерело наша БД.
+              (SELECT ob.note FROM online_bookings ob
+                 WHERE ob.note IS NOT NULL AND btrim(ob.note) <> ''
+                   AND ((a.client_id IS NOT NULL AND ob.client_id = a.client_id)
+                        OR (c.phone IS NOT NULL AND ob.client_phone = c.phone))
+                   AND (ob.date_from AT TIME ZONE 'Europe/Kyiv')::date
+                       = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date
+                 ORDER BY ob.created_at DESC LIMIT 1) AS client_wish,
               -- історія клієнта: попередні візити та неявки (для прапорців «новий» / «⚠ не прийшов»)
               CASE WHEN a.client_id IS NULL THEN NULL ELSE (
                 SELECT COUNT(*)::int FROM appointments av

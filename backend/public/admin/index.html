@@ -6094,9 +6094,13 @@ async function openAppt(id) {
         <span style="color:var(--text-secondary);font-size:12px">Кабінет</span>
         <select id="apptRoom" class="input">${roomOpts}</select>
       </div>
+      ${a.client_wish ? `<div style="background:#eef4ff;border:1px solid #c7d8ff;border-radius:10px;padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:6px;color:#2563eb;font-size:12px;font-weight:600;margin-bottom:4px"><span class="material-icons-round" style="font-size:15px">chat</span> Побажання клієнта · онлайн-запис</div>
+        <div style="font-size:13px;color:#1e3a8a;white-space:pre-wrap">${escapeHtml(a.client_wish)}</div>
+      </div>` : ''}
       <div>
-        <span style="color:var(--text-secondary);font-size:12px">Замітка</span>
-        <textarea id="apptNote" class="input" rows="3" placeholder="Напр.: алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
+        <span style="color:var(--text-secondary);font-size:12px"><span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit_note</span> Замітка майстра / адміна <i style="color:var(--text-secondary);font-weight:400">(формула, деталі)</i></span>
+        <textarea id="apptNote" class="input" rows="3" placeholder="Напр.: формула 8.1 + 6%, алергія на аміак, прийде з дитиною…">${a.notes||''}</textarea>
       </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Фото до / після</span>
