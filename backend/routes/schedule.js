@@ -623,6 +623,14 @@ router.get('/journal', async (req, res) => {
     // ПЕРШОЇ послуги, тягнучи чужу послугу та її тривалість у його колонку (баг
     // «у нігтьового майстра стоїть мелір на 7 годин»). Розбиваємо такий запис на
     // сегменти ПО МАЙСТРАХ: кожен бачить лише свої послуги, свій час і свою суму.
+    // Карта id→імʼя для ВСІХ майстрів (включно з неактивними) — щоб сегмент чужого
+    // майстра показував його справжнє імʼя, а не імʼя майстра-власника запису
+    // (баг «у колонці Вери стоїть запис, а в картці написано Лера»).
+    const mNameById = new Map();
+    try {
+      const allM = await pool.query('SELECT id, name FROM masters');
+      allM.rows.forEach(r => mNameById.set(Number(r.id), r.name));
+    } catch (_) { /* fallback на master_name запису нижче */ }
     const splitByMaster = (a) => {
       const list = Array.isArray(a.services_list) ? a.services_list : [];
       if (list.length < 2) return [a];
@@ -641,6 +649,9 @@ router.get('/journal', async (req, res) => {
         return {
           ...a,
           master_id: mid,
+          // імʼя майстра сегмента (а не власника запису) — інакше картка чужого
+          // сегмента показує не того майстра, в чиїй колонці вона стоїть
+          master_name: mNameById.get(Number(mid)) || a.master_name,
           starts_at: segStart.toISOString(),
           ends_at: segEnd.toISOString(),
           price: price || a.price,
