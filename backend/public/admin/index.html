@@ -2283,6 +2283,17 @@ const API = location.origin;
 const DIKIDI_API = location.origin; // dikidi-роуты смонтированы на /api того же сервиса
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let USER = (() => { try { return JSON.parse(localStorage.getItem('svs_user')||'null'); } catch { return null; } })();
+// Мультитенантність: салон визначається з ?tenant=<slug> у посиланні (після саморeєстрації)
+// і запам'ятовується. Для власника основного салону параметра немає → TENANT_SLUG порожній →
+// жоден заголовок не додається → поведінка ІДЕНТИЧНА попередній (дефолтний тенант).
+let TENANT_SLUG = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get('tenant');
+    if (q) { localStorage.setItem('svs_tenant_slug', q); return q; }
+    return localStorage.getItem('svs_tenant_slug') || '';
+  } catch { return ''; }
+})();
+function tenantHeader() { return TENANT_SLUG ? { 'X-Tenant-Slug': TENANT_SLUG } : {}; }
 // Телефон для відображення: БД зберігає цифри, показуємо у форматі +XXXXXXXXXXX
 function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
 let currentPage = 'dashboard';
@@ -2335,7 +2346,7 @@ function showApp() {
 async function checkToken() {
   let r;
   try {
-    r = await fetch(API + '/api/users/me', { headers: { 'X-Admin-Token': TOKEN } });
+    r = await fetch(API + '/api/users/me', { headers: { 'X-Admin-Token': TOKEN, ...tenantHeader() } });
   } catch {
     // Сеть недоступна / таймаут / сервер просыпается — НЕ разлогиниваем, кабинет остаётся открытым
     return;
@@ -2369,7 +2380,7 @@ function login() {
   (async () => {
     let r, j;
     try {
-      r = await fetch(API + '/api/auth/panel-login', { method:'POST', headers:{'Content-Type':'application/json'},
+      r = await fetch(API + '/api/auth/panel-login', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
         body: JSON.stringify({ identifier, password, remember_me: remember }) });
       j = await r.json();
     } catch { return _loginErr('Сервер недоступний, спробуйте ще раз'); }
@@ -2393,7 +2404,7 @@ function tgLoginRequest() {
   (async () => {
     let r, j;
     try {
-      r = await fetch(API + '/api/auth/tg-login-request', { method:'POST', headers:{'Content-Type':'application/json'},
+      r = await fetch(API + '/api/auth/tg-login-request', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
         body: JSON.stringify({ identifier }) });
       j = await r.json();
     } catch { return _loginErr('Сервер недоступний, спробуйте ще раз'); }
@@ -2420,7 +2431,7 @@ function tgLoginVerify() {
   (async () => {
     let r, j;
     try {
-      r = await fetch(API + '/api/auth/tg-login-verify', { method:'POST', headers:{'Content-Type':'application/json'},
+      r = await fetch(API + '/api/auth/tg-login-verify', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
         body: JSON.stringify({ identifier, code, remember_me: remember }) });
       j = await r.json();
     } catch { errEl.textContent='Сервер недоступний'; errEl.style.display=''; return; }
@@ -2442,7 +2453,7 @@ function loginWithToken() {
   document.getElementById('loginErr').style.display='none';
   checkToken().then(() => { if (document.getElementById('app').style.display==='none') _loginErr('Невірний токен'); });
 }
-function logout() { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); location.reload(); }
+function logout() { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); localStorage.removeItem('svs_tenant_slug'); location.reload(); }
 
 // ── Гейтинг інтерфейсу за роллю ───────────────
 // owner / admin / manager — бачать усе. master — лише свій дашборд + журнал записів.
@@ -2485,13 +2496,13 @@ function applyRoleUI(){
 // ── API helpers ──────────────────────────────
 async function api(path, opts = {}) {
   const r = await fetch(API + path, {
-    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...tenantHeader(), ...(opts.headers || {}) },
   });
   return r.json();
 }
 async function dikidiApi(path, opts = {}) {
   const r = await fetch(DIKIDI_API + path, {
-    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...tenantHeader(), ...(opts.headers || {}) },
   });
   return r.json();
 }
@@ -6309,7 +6320,7 @@ function closeAppt() { document.getElementById('apptModal').style.display = 'non
 
 // ── Фото до/після (через files.js, entity_type=appt_before/appt_after) ──
 async function imgBlobUrl(fileId) {
-  const r = await fetch(API + '/api/files/' + fileId, { headers: { 'X-Admin-Token': TOKEN } });
+  const r = await fetch(API + '/api/files/' + fileId, { headers: { 'X-Admin-Token': TOKEN, ...tenantHeader() } });
   if (!r.ok) return null;
   return URL.createObjectURL(await r.blob());
 }
@@ -6338,7 +6349,7 @@ async function uploadApptPhoto(apptId, kind, input) {
   const msg = document.getElementById('apptMsg');
   if (msg) { msg.textContent = 'Завантаження фото…'; msg.style.color = 'var(--text-secondary)'; }
   try {
-    const r = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN }, body: fd });
+    const r = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN, ...tenantHeader() }, body: fd });
     const j = await r.json();
     if (j.ok || j.id) { if (msg) msg.textContent=''; loadApptPhotos(apptId, kind); }
     else if (msg) { msg.textContent = j.error || 'Помилка фото'; msg.style.color = '#ef4444'; }
@@ -7129,7 +7140,7 @@ async function uploadMasterAvatar(inp){
     fd.append('is_public', 'true');           // публічне → видно клієнтам в <img> без токена
     fd.append('entity_type', 'master_avatar');
     fd.append('entity_id', String(_mcId));
-    const up = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN }, body: fd });
+    const up = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN, ...tenantHeader() }, body: fd });
     const j = await up.json();
     if (!up.ok || !j.ok || !j.id){ if(st) st.textContent='Помилка завантаження'; toast('Помилка завантаження','error'); inp.value=''; return; }
     const url = API + '/api/files/' + j.id;
