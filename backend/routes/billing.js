@@ -187,8 +187,16 @@ router.get('/admin/subscriptions', ADMIN_R, async (req, res) => {
     const ws = where.length ? 'WHERE ' + where.join(' AND ') : '';
     params.push(Math.min(Number(req.query.limit) || 50, 200), Number(req.query.offset) || 0);
     const rows = (await getPool().query(
-      `SELECT s.*, t.name AS tenant_name FROM subscriptions_saas s
-         LEFT JOIN tenants t ON t.id=s.tenant_id ${ws}
+      `SELECT s.*, t.name AS tenant_name,
+              COALESCE(d.outstanding, 0) AS outstanding,
+              COALESCE(d.open_count, 0) AS open_count
+         FROM subscriptions_saas s
+         LEFT JOIN tenants t ON t.id=s.tenant_id
+         LEFT JOIN LATERAL (
+           SELECT SUM(i.total) AS outstanding, COUNT(*) AS open_count
+             FROM invoices_saas i
+            WHERE i.tenant_id=s.tenant_id AND i.status IN ('open','pending','overdue')
+         ) d ON TRUE ${ws}
         ORDER BY s.created_at DESC LIMIT $${i++} OFFSET $${i}`, params)).rows;
     res.json({ rows });
   } catch (e) { fail(res, e); }

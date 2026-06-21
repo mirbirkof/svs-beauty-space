@@ -8120,9 +8120,13 @@ async function loadSaasBilling(){
   let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
   const rows=(r&&r.rows)||[];
   if(!rows.length){ lbox.innerHTML='<div style="opacity:.6;padding:8px">Активних підписок немає.</div>'; return; }
-  lbox.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`
-    <tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':(s.billing_cycle==='monthly'?'місячний':'—')}</td>
-    <td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`;
+  lbox.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Заборгованість</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>{
+    const debt=Number(s.outstanding||0);
+    const debtCell = debt>0
+      ? `<td style="color:#d9534f;font-weight:700;white-space:nowrap">${saasMoney(debt)}${Number(s.open_count)>1?` <span style="font-weight:400;opacity:.7">(${s.open_count})</span>`:''}</td>`
+      : `<td style="color:#0a8f5f">—</td>`;
+    return `<tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':(s.billing_cycle==='monthly'?'місячний':'—')}</td>
+    <td>${saasSubStatus(s.status)}</td>${debtCell}<td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`;}).join('')}</tbody></table>`;
 }
 async function saasPromoModal(){
   let r; try{ r=await api('/api/billing/admin/promo-codes?limit=100'); }catch{ r=null; }
