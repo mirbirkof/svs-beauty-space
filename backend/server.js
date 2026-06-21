@@ -84,4 +84,32 @@ if (process.env.RENDER_EXTERNAL_URL) {
   console.log('[SVS-Shop] keep-alive enabled:', KEEPALIVE_URLS.join(', '));
 }
 
+// ── Billing lifecycle scheduler (SAS-07) ──────────────────────────────
+// Без этого тика вся механика платных салонов мертва: триал не завершается,
+// счета не выставляются, неплательщики не блокируются (runRecurring/processDunning
+// существуют, но их некому вызвать по времени). Гоняем cross-tenant как суперадмин
+// (вне HTTP-контекста тенанта → полный доступ). Раз в 6ч + первый прогон через 2 мин.
+if (process.env.DISABLE_BILLING_CRON !== '1') {
+  const billing = require('./lib/billing');
+  let billingTickRunning = false;
+  const billingTick = async () => {
+    if (billingTickRunning) return; // защита от наложения
+    billingTickRunning = true;
+    try {
+      const rec = await billing.runRecurring(200);
+      const dun = await billing.processDunning(200);
+      if (rec.due || dun.due) {
+        console.log('[billing-cron] recurring:', JSON.stringify(rec), 'dunning:', JSON.stringify(dun));
+      }
+    } catch (e) {
+      console.error('[billing-cron] failed:', e.message);
+    } finally {
+      billingTickRunning = false;
+    }
+  };
+  setTimeout(billingTick, 2 * 60 * 1000).unref();          // первый прогон после прогрева
+  setInterval(billingTick, 6 * 60 * 60 * 1000).unref();    // далее каждые 6 часов
+  console.log('[SVS-Shop] billing scheduler enabled (every 6h)');
+}
+
 module.exports = app;
