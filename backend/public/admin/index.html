@@ -5737,7 +5737,7 @@ function renderJournalDay(container, data) {
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
       const tileFlag = a.client_id ? (Number(a.no_show_count)>0 ? '<span class="jflag warn" title="Є неявки">⚠</span>' : (Number(a.visit_count)===0 ? '<span class="jflag new" title="Новий клієнт">🆕</span>' : '')) : '';
-      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id})">
+      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id},${a.master_id!=null?a.master_id:'null'})">
         ${a.client_wish?'<span class="wish-badge" title="Є повідомлення від клієнта">💬</span>':''}
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         ${tileFlag}
@@ -6044,8 +6044,11 @@ function _payBadge(method) {
   if (method === 'card') return `<span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💳 Безготівка</span>`;
   return '';
 }
-async function openAppt(id) {
-  const a = (journalData?.appointments||[]).find(x => x.id===id);
+async function openAppt(id, masterId) {
+  const _list = (journalData?.appointments||[]);
+  // У мульти-майстерному візиті кілька сегментів мають однаковий id — обираємо саме той сегмент майстра, на якого натиснули
+  let a = (masterId!=null && masterId!=='null') ? _list.find(x => x.id===id && Number(x.master_id)===Number(masterId)) : null;
+  if (!a) a = _list.find(x => x.id===id);
   if (!a) return;
   const rooms = await getRooms();
   const roomOpts = `<option value="">— без кабінету —</option>` +
