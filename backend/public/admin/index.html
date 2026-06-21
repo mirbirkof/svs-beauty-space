@@ -1001,6 +1001,13 @@ select.input { background:var(--card); }
 
     <div class="content">
 
+      <!-- Глобальний банер про неоплачений рахунок (показується лише власнику салону з боргом) -->
+      <div id="billingBanner" style="display:none;margin:0 0 14px;padding:13px 18px;border-radius:12px;background:linear-gradient(135deg,#d9534f,#e07b5a);color:#fff;box-shadow:0 6px 18px rgba(217,83,79,.28);align-items:center;gap:14px;flex-wrap:wrap">
+        <span class="material-icons-round" style="font-size:24px">receipt_long</span>
+        <span id="billingBannerText" style="flex:1;font-weight:600;font-size:14.5px;min-width:200px"></span>
+        <button class="btn btn-sm" style="background:#fff;color:#d9534f;font-weight:700;border:0" onclick="go('mysub')">Сплатити</button>
+      </div>
+
       <!-- ═══ ВБУДОВАНІ МОДУЛІ — єдиний каркас, без переходу на окрему сторінку ═══ -->
       <div class="page" id="page-embed" style="padding:0">
         <iframe id="embedFrame" title="Модуль" style="width:100%;height:calc(100vh - 60px);border:0;display:block;background:#fff"></iframe>
@@ -2359,6 +2366,27 @@ function showApp() {
   document.getElementById('app').style.display='';
   const h = location.hash.replace('#','');
   if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
+  loadBillingAlert();
+}
+
+// Глобальний банер про неоплачений рахунок — лише власнику салону з боргом.
+async function loadBillingAlert() {
+  const bn = document.getElementById('billingBanner');
+  if (!bn) return;
+  if (!USER || USER.role !== 'owner') { bn.style.display = 'none'; return; }
+  try {
+    const a = await api('/api/billing/alert');
+    if (a && a.has_due) {
+      const sum = `${Number(a.total).toLocaleString('uk-UA')} ${a.currency || 'UAH'}`;
+      const over = a.days_overdue > 0 ? ` — прострочено ${a.days_overdue} дн.` : '';
+      const cntTxt = a.count > 1 ? ` (рахунків: ${a.count})` : '';
+      document.getElementById('billingBannerText').textContent =
+        `У вас неоплачений рахунок на ${sum}${cntTxt}${over}. Сплатіть, щоб уникнути призупинення сервісу.`;
+      bn.style.display = 'flex';
+    } else {
+      bn.style.display = 'none';
+    }
+  } catch { bn.style.display = 'none'; }
 }
 
 async function checkToken() {

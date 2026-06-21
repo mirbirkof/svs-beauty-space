@@ -229,6 +229,31 @@ async function listInvoices({ tenantId = null, status = null, from = null, to = 
   return { rows };
 }
 
+// Сводка для баннера в кабинете салона: есть ли неоплаченные счета и насколько просрочены.
+async function dueAlert(tenantId) {
+  if (!tenantId) return { has_due: false };
+  const rows = (await getPool().query(
+    `SELECT id, invoice_number, total, currency, status, due_date, created_at
+       FROM invoices_saas
+      WHERE tenant_id=$1 AND status IN ('open','pending','overdue')
+      ORDER BY COALESCE(due_date, created_at) ASC`, [tenantId])).rows;
+  if (!rows.length) return { has_due: false };
+  const total = rows.reduce((s, r) => s + Number(r.total || 0), 0);
+  const oldest = rows[0];
+  const ref = oldest.due_date || oldest.created_at;
+  const daysOverdue = ref ? Math.floor((Date.now() - new Date(ref).getTime()) / 86400000) : 0;
+  return {
+    has_due: true,
+    count: rows.length,
+    total: Math.round(total * 100) / 100,
+    currency: oldest.currency || 'UAH',
+    invoice_id: oldest.id,
+    invoice_number: oldest.invoice_number,
+    status: oldest.status,
+    days_overdue: daysOverdue > 0 ? daysOverdue : 0,
+  };
+}
+
 async function getInvoice(id, tenantId = null) {
   const inv = (await getPool().query(`SELECT * FROM invoices_saas WHERE id=$1`, [id])).rows[0];
   if (!inv) return null;
@@ -580,7 +605,7 @@ module.exports = {
   // subscription
   getSubscription, createSubscription, changePlan, cancelSubscription, resumeSubscription,
   // invoices
-  generateInvoice, listInvoices, getInvoice, voidInvoice,
+  generateInvoice, listInvoices, getInvoice, voidInvoice, dueAlert,
   // payments
   recordPayment, listPayments, refundPayment,
   createSubscriptionPayLink, payInvoiceViaMono,

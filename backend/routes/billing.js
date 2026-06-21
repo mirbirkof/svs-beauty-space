@@ -55,6 +55,11 @@ router.get('/subscription', TENANT_R, async (req, res) => {
   try { res.json(await billing.getSubscription(getTenantId())); } catch (e) { fail(res, e); }
 });
 
+// Лёгкая сводка для баннера в кабинете: есть ли неоплаченный счёт.
+router.get('/alert', TENANT_R, async (req, res) => {
+  try { res.json(await billing.dueAlert(getTenantId())); } catch (e) { fail(res, e); }
+});
+
 router.post('/subscription', TENANT_W, async (req, res) => {
   try {
     const sub = await billing.createSubscription(getTenantId(), req.body || {}, req.user);
