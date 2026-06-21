@@ -91,15 +91,17 @@ async function churn({ months = 12 } = {}) {
   const pool = getPool();
   const m = Math.min(Math.max(parseInt(months, 10) || 12, 1), 36);
   const news = (await pool.query(
-    `SELECT to_char(date_trunc('month', started_at),'YYYY-MM') ym, COUNT(*)::int n
-       FROM tenant_licenses
-      WHERE started_at >= (date_trunc('month', NOW()) - ($1 || ' months')::interval)
+    `SELECT to_char(date_trunc('month', l.started_at),'YYYY-MM') ym, COUNT(*)::int n
+       FROM tenant_licenses l JOIN tenants t ON t.id = l.tenant_id
+      WHERE t.is_internal = FALSE
+        AND l.started_at >= (date_trunc('month', NOW()) - ($1 || ' months')::interval)
       GROUP BY 1`, [m])).rows;
   const churned = (await pool.query(
-    `SELECT to_char(date_trunc('month', COALESCE(expires_at, updated_at)),'YYYY-MM') ym, COUNT(*)::int n
-       FROM tenant_licenses
-      WHERE status IN ('cancelled','canceled','expired','churned')
-        AND COALESCE(expires_at, updated_at) >= (date_trunc('month', NOW()) - ($1 || ' months')::interval)
+    `SELECT to_char(date_trunc('month', COALESCE(l.expires_at, l.updated_at)),'YYYY-MM') ym, COUNT(*)::int n
+       FROM tenant_licenses l JOIN tenants t ON t.id = l.tenant_id
+      WHERE t.is_internal = FALSE
+        AND l.status IN ('cancelled','canceled','expired','churned')
+        AND COALESCE(l.expires_at, l.updated_at) >= (date_trunc('month', NOW()) - ($1 || ' months')::interval)
       GROUP BY 1`, [m])).rows;
   const newMap = Object.fromEntries(news.map(r => [r.ym, r.n]));
   const chMap = Object.fromEntries(churned.map(r => [r.ym, r.n]));
@@ -111,7 +113,8 @@ async function churn({ months = 12 } = {}) {
     series.push({ month: ym, new: n, churned: c, net: n - c });
   }
   const totalActive = (await pool.query(
-    `SELECT COUNT(*)::int n FROM tenant_licenses WHERE status IN ('active','past_due')`)).rows[0].n;
+    `SELECT COUNT(*)::int n FROM tenant_licenses l JOIN tenants t ON t.id = l.tenant_id
+      WHERE t.is_internal = FALSE AND l.status IN ('active','past_due')`)).rows[0].n;
   const lastChurn = series.length ? series[series.length - 1].churned : 0;
   const churnRate = totalActive ? Math.round((lastChurn / totalActive) * 1000) / 10 : 0;
   return { months: m, series, current_active: totalActive, monthly_churn_rate: churnRate };
