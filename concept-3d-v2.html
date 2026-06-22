@@ -52,6 +52,10 @@
   nav a::after{content:'';position:absolute;left:0;bottom:0;height:1px;width:100%;background:var(--cream);
     transform:scaleX(0);transform-origin:right;transition:transform .5s cubic-bezier(.7,0,.2,1)}
   nav a:hover::after{transform:scaleX(1);transform-origin:left}
+  .hright{display:flex;align-items:center;gap:30px}
+  .langbar{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;max-width:200px}
+  .langbar b{cursor:pointer;font-size:10px;font-weight:600;letter-spacing:.2em;color:var(--muted);transition:color .3s}
+  .langbar b.on,.langbar b:hover{color:var(--gold)}
   #progress{position:fixed;top:0;left:0;height:2px;width:100%;z-index:11;background:transparent}
   #progress i{display:block;height:100%;background:var(--gold);transform-origin:left;transform:scaleX(0)}
 
@@ -149,24 +153,27 @@
 
 <header>
   <div class="logo">SVS</div>
-  <nav>
-    <a href="#manifest">Студія</a>
-    <a href="#services">Послуги</a>
-    <a href="#shop">Магазин</a>
-    <a href="#book">Запис</a>
-  </nav>
+  <div class="hright">
+    <nav>
+      <a href="#manifest" data-i18n="nav_studio">Студія</a>
+      <a href="#services" data-i18n="nav_services">Послуги</a>
+      <a href="#shop" data-i18n="nav_shop">Магазин</a>
+      <a href="#book" data-i18n="nav_book">Запис</a>
+    </nav>
+    <div class="langbar" id="langbar"></div>
+  </div>
 </header>
 
 <main>
   <section id="hero">
     <div class="inner">
-      <div class="idx fade">Суми &middot; Салон краси</div>
+      <div class="idx fade" data-i18n="hero_idx">Суми &middot; Салон краси</div>
       <h1>
-        <span class="line"><span>Колір — це</span></span>
-        <span class="line"><span><em>мова,</em> якою</span></span>
-        <span class="line"><span>говорить світло</span></span>
+        <span class="line"><span data-i18n="hero_l1">Колір — це</span></span>
+        <span class="line"><span data-i18n="hero_l2"><em>мова,</em> якою</span></span>
+        <span class="line"><span data-i18n="hero_l3">говорить світло</span></span>
       </h1>
-      <p class="lead fade" style="margin-top:34px">Авторське фарбування, Airtouch, Brazilian Blond.
+      <p class="lead fade" style="margin-top:34px" data-i18n="hero_lead">Авторське фарбування, Airtouch, Brazilian Blond.
         Кожна робота — як нитка золота: її ведуть рукою, а закінчує світло.</p>
     </div>
   </section>
@@ -181,53 +188,53 @@
 
   <section id="manifest" class="right">
     <div class="inner">
-      <div class="idx fade" style="justify-content:flex-end">01 &middot; Маніфест</div>
+      <div class="idx fade" style="justify-content:flex-end" data-i18n="man_idx">01 &middot; Маніфест</div>
       <h2>
-        <span class="line"><span>Ми не фарбуємо</span></span>
-        <span class="line"><span>волосся. Ми <em>ліпимо</em></span></span>
-        <span class="line"><span>ним світло</span></span>
+        <span class="line"><span data-i18n="man_l1">Ми не фарбуємо</span></span>
+        <span class="line"><span data-i18n="man_l2">волосся. Ми <em>ліпимо</em></span></span>
+        <span class="line"><span data-i18n="man_l3">ним світло</span></span>
       </h2>
-      <p class="lead fade">Кожен відтінок підбирається під шкіру, очі та характер.
+      <p class="lead fade" data-i18n="man_lead">Кожен відтінок підбирається під шкіру, очі та характер.
         Тому два однакових фарбування у нас неможливі — як два однакових почерки.</p>
     </div>
   </section>
 
   <section id="services" class="center">
     <div style="width:100%">
-      <div class="idx fade" style="justify-content:center">02 &middot; Послуги</div>
+      <div class="idx fade" style="justify-content:center" data-i18n="svc_idx">02 &middot; Послуги</div>
       <div class="services">
-        <div class="srow fade"><span class="n">/01</span><span class="t">Складне фарбування</span><span class="d">Airtouch &middot; Shatush &middot; Total</span></div>
-        <div class="srow fade"><span class="n">/02</span><span class="t">Реконструкція</span><span class="d">Brazilian Blond &middot; Біовирівнювання</span></div>
-        <div class="srow fade"><span class="n">/03</span><span class="t">Стрижки та форма</span><span class="d">Жіночі &middot; Чоловічі &middot; Дитячі</span></div>
-        <div class="srow fade"><span class="n">/04</span><span class="t">Домашній догляд</span><span class="d">Підбір майстром</span></div>
+        <div class="srow fade"><span class="n">/01</span><span class="t" data-i18n="svc1_t">Складне фарбування</span><span class="d" data-i18n="svc1_d">Airtouch &middot; Shatush &middot; Total</span></div>
+        <div class="srow fade"><span class="n">/02</span><span class="t" data-i18n="svc2_t">Реконструкція</span><span class="d" data-i18n="svc2_d">Brazilian Blond &middot; Біовирівнювання</span></div>
+        <div class="srow fade"><span class="n">/03</span><span class="t" data-i18n="svc3_t">Стрижки та форма</span><span class="d" data-i18n="svc3_d">Жіночі &middot; Чоловічі &middot; Дитячі</span></div>
+        <div class="srow fade"><span class="n">/04</span><span class="t" data-i18n="svc4_t">Домашній догляд</span><span class="d" data-i18n="svc4_d">Підбір майстром</span></div>
       </div>
     </div>
   </section>
 
   <section id="shop" class="center">
     <div>
-      <div class="idx fade" style="justify-content:center">03 &middot; Магазин</div>
-      <h2 class="fade">Те, чим працюємо ми —<br><em>доступне й вам</em></h2>
+      <div class="idx fade" style="justify-content:center" data-i18n="shop_idx">03 &middot; Магазин</div>
+      <h2 class="fade" data-i18n="shop_h2">Те, чим працюємо ми —<br><em>доступне й вам</em></h2>
       <div class="stats" style="margin-top:60px">
-        <div class="stat fade"><b>4</b><span>Бренди</span></div>
-        <div class="stat fade"><b>120<em>+</em></b><span>Позицій</span></div>
-        <div class="stat fade"><b>24/7</b><span>Онлайн-запис</span></div>
+        <div class="stat fade"><b>4</b><span data-i18n="shop_s1_l">Бренди</span></div>
+        <div class="stat fade"><b>120<em>+</em></b><span data-i18n="shop_s2_l">Позицій</span></div>
+        <div class="stat fade"><b>24/7</b><span data-i18n="shop_s3_l">Онлайн-запис</span></div>
       </div>
-      <a class="btn fade magnetic" href="shop.html" style="margin-top:48px">До магазину<i></i></a>
+      <a class="btn fade magnetic" href="shop.html" style="margin-top:48px"><span data-i18n="shop_btn">До магазину</span><i></i></a>
     </div>
   </section>
 
   <section id="book" class="center">
     <div>
-      <div class="idx fade" style="justify-content:center">04 &middot; Запис</div>
+      <div class="idx fade" style="justify-content:center" data-i18n="book_idx">04 &middot; Запис</div>
       <h2>
-        <span class="line"><span>Ваш колір</span></span>
-        <span class="line"><span><em>вже чекає</em></span></span>
+        <span class="line"><span data-i18n="book_l1">Ваш колір</span></span>
+        <span class="line"><span data-i18n="book_l2"><em>вже чекає</em></span></span>
       </h2>
       <div class="svs-book-channels fade" style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center">
-        <a class="btn magnetic" href="#" data-svs-book>Записатись онлайн<i></i></a>
-        <a class="btn magnetic" href="https://t.me/Svs_beautybot?start=book" target="_blank" rel="noopener">Через Telegram<i></i></a>
-        <a class="btn magnetic" href="https://svs-shop-api.onrender.com/book" target="_blank" rel="noopener">Швидкий запис<i></i></a>
+        <a class="btn magnetic" href="#" data-svs-book><span data-i18n="book_b1">Записатись онлайн</span><i></i></a>
+        <a class="btn magnetic" href="https://t.me/Svs_beautybot?start=book" target="_blank" rel="noopener"><span data-i18n="book_b2">Через Telegram</span><i></i></a>
+        <a class="btn magnetic" href="https://svs-shop-api.onrender.com/book" target="_blank" rel="noopener"><span data-i18n="book_b3">Швидкий запис</span><i></i></a>
       </div>
       <p class="lead fade" style="margin-top:40px;font-size:15px;line-height:2">
         <a href="tel:+380991283375" style="color:inherit;text-decoration:none">+38 (099) 128-33-75</a><br>
@@ -238,11 +245,119 @@
   </section>
 </main>
 
-<div class="scroll-hint" id="hint">Гортайте</div>
-<footer><span>SVS Beauty Space</span><span><a href="tel:+380991283375" style="color:inherit;text-decoration:none">+38 (099) 128-33-75</a> &middot; Суми</span></footer>
+<div class="scroll-hint" id="hint" data-i18n="scroll">Гортайте</div>
+<footer><span>SVS Beauty Space</span><span><a href="tel:+380991283375" style="color:inherit;text-decoration:none">+38 (099) 128-33-75</a> &middot; <span data-i18n="foot_city">Суми</span></span></footer>
 
 <div id="cur"></div><div id="curR"></div>
 
+<script>
+/* ── i18n: 7 мов (UA/RU/EN/PL/IT/DE/ES) ── */
+(function(){
+  const TR = {
+    ua:{_label:'UA', nav_studio:'Студія', nav_services:'Послуги', nav_shop:'Магазин', nav_book:'Запис',
+      hero_idx:'Суми · Салон краси', hero_l1:'Колір — це', hero_l2:'<em>мова,</em> якою', hero_l3:'говорить світло',
+      hero_lead:'Авторське фарбування, Airtouch, Brazilian Blond. Кожна робота — як нитка золота: її ведуть рукою, а закінчує світло.',
+      man_idx:'01 · Маніфест', man_l1:'Ми не фарбуємо', man_l2:'волосся. Ми <em>ліпимо</em>', man_l3:'ним світло',
+      man_lead:'Кожен відтінок підбирається під шкіру, очі та характер. Тому два однакових фарбування у нас неможливі — як два однакових почерки.',
+      svc_idx:'02 · Послуги', svc1_t:'Складне фарбування', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Реконструкція', svc2_d:'Brazilian Blond · Біовирівнювання', svc3_t:'Стрижки та форма', svc3_d:'Жіночі · Чоловічі · Дитячі',
+      svc4_t:'Домашній догляд', svc4_d:'Підбір майстром',
+      shop_idx:'03 · Магазин', shop_h2:'Те, чим працюємо ми —<br><em>доступне й вам</em>', shop_s1_l:'Бренди', shop_s2_l:'Позицій', shop_s3_l:'Онлайн-запис', shop_btn:'До магазину',
+      book_idx:'04 · Запис', book_l1:'Ваш колір', book_l2:'<em>вже чекає</em>', book_b1:'Записатись онлайн', book_b2:'Через Telegram', book_b3:'Швидкий запис',
+      scroll:'Гортайте', foot_city:'Суми'},
+    ru:{_label:'RU', nav_studio:'Студия', nav_services:'Услуги', nav_shop:'Магазин', nav_book:'Запись',
+      hero_idx:'Сумы · Салон красоты', hero_l1:'Цвет — это', hero_l2:'<em>язык,</em> которым', hero_l3:'говорит свет',
+      hero_lead:'Авторское окрашивание, Airtouch, Brazilian Blond. Каждая работа — как нить золота: её ведут рукой, а завершает свет.',
+      man_idx:'01 · Манифест', man_l1:'Мы не красим', man_l2:'волосы. Мы <em>лепим</em>', man_l3:'ими свет',
+      man_lead:'Каждый оттенок подбирается под кожу, глаза и характер. Поэтому два одинаковых окрашивания у нас невозможны — как два одинаковых почерка.',
+      svc_idx:'02 · Услуги', svc1_t:'Сложное окрашивание', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Реконструкция', svc2_d:'Brazilian Blond · Биовыравнивание', svc3_t:'Стрижки и форма', svc3_d:'Женские · Мужские · Детские',
+      svc4_t:'Домашний уход', svc4_d:'Подбор мастером',
+      shop_idx:'03 · Магазин', shop_h2:'То, чем работаем мы —<br><em>доступно и вам</em>', shop_s1_l:'Бренды', shop_s2_l:'Позиций', shop_s3_l:'Онлайн-запись', shop_btn:'В магазин',
+      book_idx:'04 · Запись', book_l1:'Ваш цвет', book_l2:'<em>уже ждёт</em>', book_b1:'Записаться онлайн', book_b2:'Через Telegram', book_b3:'Быстрая запись',
+      scroll:'Листайте', foot_city:'Сумы'},
+    en:{_label:'EN', nav_studio:'Studio', nav_services:'Services', nav_shop:'Shop', nav_book:'Booking',
+      hero_idx:'Sumy · Beauty salon', hero_l1:'Colour is', hero_l2:'the <em>language</em>', hero_l3:'that light speaks',
+      hero_lead:'Signature colouring, Airtouch, Brazilian Blond. Every work is like a thread of gold: led by hand and finished by light.',
+      man_idx:'01 · Manifesto', man_l1:'We don’t colour', man_l2:'hair. We <em>sculpt</em>', man_l3:'light with it',
+      man_lead:'Every shade is matched to your skin, eyes and character. That’s why two identical colourings are impossible here — like two identical handwritings.',
+      svc_idx:'02 · Services', svc1_t:'Complex colouring', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Reconstruction', svc2_d:'Brazilian Blond · Bio-straightening', svc3_t:'Cuts & shape', svc3_d:'Women’s · Men’s · Kids’',
+      svc4_t:'Home care', svc4_d:'Selected by your stylist',
+      shop_idx:'03 · Shop', shop_h2:'What we work with —<br><em>available to you too</em>', shop_s1_l:'Brands', shop_s2_l:'Products', shop_s3_l:'Online booking', shop_btn:'To the shop',
+      book_idx:'04 · Booking', book_l1:'Your colour', book_l2:'<em>is waiting</em>', book_b1:'Book online', book_b2:'Via Telegram', book_b3:'Quick booking',
+      scroll:'Scroll', foot_city:'Sumy'},
+    pl:{_label:'PL', nav_studio:'Studio', nav_services:'Usługi', nav_shop:'Sklep', nav_book:'Rezerwacja',
+      hero_idx:'Sumy · Salon piękności', hero_l1:'Kolor to', hero_l2:'<em>język,</em> którym', hero_l3:'mówi światło',
+      hero_lead:'Autorska koloryzacja, Airtouch, Brazilian Blond. Każda praca jest jak nić złota: prowadzi ją dłoń, a kończy światło.',
+      man_idx:'01 · Manifest', man_l1:'Nie farbujemy', man_l2:'włosów. My <em>rzeźbimy</em>', man_l3:'nimi światło',
+      man_lead:'Każdy odcień dobieramy do skóry, oczu i charakteru. Dlatego dwie identyczne koloryzacje są u nas niemożliwe — jak dwa identyczne charaktery pisma.',
+      svc_idx:'02 · Usługi', svc1_t:'Złożona koloryzacja', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Rekonstrukcja', svc2_d:'Brazilian Blond · Biowyrównanie', svc3_t:'Strzyżenie i forma', svc3_d:'Damskie · Męskie · Dziecięce',
+      svc4_t:'Pielęgnacja domowa', svc4_d:'Dobór przez stylistę',
+      shop_idx:'03 · Sklep', shop_h2:'To, czym pracujemy —<br><em>dostępne i dla Ciebie</em>', shop_s1_l:'Marki', shop_s2_l:'Produktów', shop_s3_l:'Rezerwacja online', shop_btn:'Do sklepu',
+      book_idx:'04 · Rezerwacja', book_l1:'Twój kolor', book_l2:'<em>już czeka</em>', book_b1:'Zarezerwuj online', book_b2:'Przez Telegram', book_b3:'Szybka rezerwacja',
+      scroll:'Przewiń', foot_city:'Sumy'},
+    it:{_label:'IT', nav_studio:'Studio', nav_services:'Servizi', nav_shop:'Shop', nav_book:'Prenota',
+      hero_idx:'Sumy · Salone di bellezza', hero_l1:'Il colore è', hero_l2:'la <em>lingua</em>', hero_l3:'con cui parla la luce',
+      hero_lead:'Colorazione d’autore, Airtouch, Brazilian Blond. Ogni lavoro è come un filo d’oro: guidato dalla mano e completato dalla luce.',
+      man_idx:'01 · Manifesto', man_l1:'Non coloriamo', man_l2:'i capelli. <em>Scolpiamo</em>', man_l3:'con essi la luce',
+      man_lead:'Ogni nuance è scelta in base a pelle, occhi e carattere. Per questo due colorazioni identiche da noi sono impossibili — come due grafie identiche.',
+      svc_idx:'02 · Servizi', svc1_t:'Colorazione complessa', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Ricostruzione', svc2_d:'Brazilian Blond · Lisciatura biologica', svc3_t:'Tagli e forma', svc3_d:'Donna · Uomo · Bambini',
+      svc4_t:'Cura a casa', svc4_d:'Selezione del professionista',
+      shop_idx:'03 · Shop', shop_h2:'Ciò con cui lavoriamo —<br><em>disponibile anche per te</em>', shop_s1_l:'Marchi', shop_s2_l:'Prodotti', shop_s3_l:'Prenotazione online', shop_btn:'Allo shop',
+      book_idx:'04 · Prenota', book_l1:'Il tuo colore', book_l2:'<em>ti aspetta già</em>', book_b1:'Prenota online', book_b2:'Tramite Telegram', book_b3:'Prenotazione rapida',
+      scroll:'Scorri', foot_city:'Sumy'},
+    de:{_label:'DE', nav_studio:'Studio', nav_services:'Leistungen', nav_shop:'Shop', nav_book:'Termin',
+      hero_idx:'Sumy · Beautysalon', hero_l1:'Farbe ist', hero_l2:'die <em>Sprache,</em>', hero_l3:'die das Licht spricht',
+      hero_lead:'Signature-Coloration, Airtouch, Brazilian Blond. Jede Arbeit ist wie ein Goldfaden: von Hand geführt, vom Licht vollendet.',
+      man_idx:'01 · Manifest', man_l1:'Wir färben nicht', man_l2:'das Haar. Wir <em>formen</em>', man_l3:'damit das Licht',
+      man_lead:'Jeder Ton wird auf Haut, Augen und Charakter abgestimmt. Darum sind zwei identische Colorationen bei uns unmöglich — wie zwei identische Handschriften.',
+      svc_idx:'02 · Leistungen', svc1_t:'Komplexe Coloration', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Rekonstruktion', svc2_d:'Brazilian Blond · Bio-Glättung', svc3_t:'Schnitt & Form', svc3_d:'Damen · Herren · Kinder',
+      svc4_t:'Heimpflege', svc4_d:'Auswahl durch den Stylisten',
+      shop_idx:'03 · Shop', shop_h2:'Womit wir arbeiten —<br><em>auch für Sie erhältlich</em>', shop_s1_l:'Marken', shop_s2_l:'Produkte', shop_s3_l:'Online-Termin', shop_btn:'Zum Shop',
+      book_idx:'04 · Termin', book_l1:'Ihre Farbe', book_l2:'<em>wartet schon</em>', book_b1:'Online buchen', book_b2:'Über Telegram', book_b3:'Schnelltermin',
+      scroll:'Scrollen', foot_city:'Sumy'},
+    es:{_label:'ES', nav_studio:'Estudio', nav_services:'Servicios', nav_shop:'Tienda', nav_book:'Reserva',
+      hero_idx:'Sumy · Salón de belleza', hero_l1:'El color es', hero_l2:'el <em>idioma</em>', hero_l3:'con que habla la luz',
+      hero_lead:'Coloración de autor, Airtouch, Brazilian Blond. Cada trabajo es como un hilo de oro: guiado por la mano y terminado por la luz.',
+      man_idx:'01 · Manifiesto', man_l1:'No teñimos', man_l2:'el cabello. <em>Esculpimos</em>', man_l3:'la luz con él',
+      man_lead:'Cada matiz se elige según la piel, los ojos y el carácter. Por eso dos coloraciones idénticas aquí son imposibles — como dos caligrafías idénticas.',
+      svc_idx:'02 · Servicios', svc1_t:'Coloración compleja', svc1_d:'Airtouch · Shatush · Total',
+      svc2_t:'Reconstrucción', svc2_d:'Brazilian Blond · Bio-alisado', svc3_t:'Cortes y forma', svc3_d:'Mujer · Hombre · Niños',
+      svc4_t:'Cuidado en casa', svc4_d:'Selección del estilista',
+      shop_idx:'03 · Tienda', shop_h2:'Aquello con lo que trabajamos —<br><em>también a tu alcance</em>', shop_s1_l:'Marcas', shop_s2_l:'Productos', shop_s3_l:'Reserva online', shop_btn:'A la tienda',
+      book_idx:'04 · Reserva', book_l1:'Tu color', book_l2:'<em>ya te espera</em>', book_b1:'Reservar online', book_b2:'Por Telegram', book_b3:'Reserva rápida',
+      scroll:'Desliza', foot_city:'Sumy'}
+  };
+  function detect(){
+    try{ const s=localStorage.getItem('svs-lang'); if(s&&TR[s]) return s; }catch(e){}
+    const b=(navigator.language||'').toLowerCase();
+    if(b.startsWith('uk')) return 'ua';
+    for(const k of ['ru','pl','it','de','es','en']) if(b.startsWith(k)) return k;
+    return 'ua';
+  }
+  let LANG = detect();
+  function apply(){
+    document.documentElement.lang = LANG==='ua'?'uk':LANG;
+    document.querySelectorAll('[data-i18n]').forEach(el=>{
+      const v = TR[LANG] && TR[LANG][el.dataset.i18n];
+      if(v!=null) el.innerHTML = v;
+    });
+    document.querySelectorAll('#langbar b').forEach(b=>b.classList.toggle('on', b.dataset.l===LANG));
+  }
+  const bar=document.getElementById('langbar');
+  if(bar){
+    bar.innerHTML=Object.keys(TR).map(k=>'<b data-l="'+k+'">'+TR[k]._label+'</b>').join('');
+    bar.querySelectorAll('b').forEach(b=>b.onclick=()=>{
+      LANG=b.dataset.l; try{localStorage.setItem('svs-lang',LANG);}catch(e){} apply();
+    });
+  }
+  apply();
+})();
+</script>
 <script type="importmap">
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
