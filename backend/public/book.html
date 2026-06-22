@@ -76,12 +76,17 @@
   .spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--accent);
     border-radius:50%;animation:r 1s linear infinite;margin:30px auto}
   @keyframes r{to{transform:rotate(360deg)}}
+  .lang{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:210px}
+  .lang b{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--muted);
+    padding:5px 7px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+  .lang b.on{color:#fff;background:var(--accent);border-color:var(--accent)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="logo">SVS <span>Beauty</span></div>
+    <div class="lang" id="lang"></div>
   </header>
   <div class="steps">
     <div class="s" id="st1"></div><div class="s" id="st2"></div>
@@ -95,14 +100,189 @@
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 if (tg) { try { tg.ready(); tg.expand(); } catch(e){} }
 
-const S = { step:1, services:[], masters:[], svc:null, master:null, date:null, slot:null, slotsByDay:{}, token:null, hasMapping:false };
+// ── i18n: 7 мов ────────────────────────────────────
+const I18N_BK = {
+  ua:{lang:'UA', title:'Онлайн-запис · SVS Beauty Space', cur:'грн', dur_h:'г', dur_m:'хв',
+    dow:['Нд','Пн','Вт','Ср','Чт','Пт','Сб'],
+    mon:['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'],
+    s1:'Оберіть послугу', search:'Пошук послуги…', nothing:'Нічого не знайдено', other:'Інші послуги',
+    back_s:'‹ Послуги', s2:'Оберіть майстра', any:'Будь-який вільний майстер', any_sub:'найближчий доступний час',
+    no_master:'Майстер під цю послугу не заданий.<br>Оберіть «Будь-який вільний майстер» — підберемо вручну.',
+    back_m:'‹ Майстри', s3:'Оберіть дату та час', pick_date:'Оберіть дату',
+    no_slots:'На цей день немає вільних годин.<br>Оберіть іншу дату.',
+    sched_un:'Розклад тимчасово недоступний. Натисніть «Запит на запис» — адміністратор підтвердить час і передзвонить вам.',
+    req:'Запит на запис', cont:'Продовжити', back_t:'‹ Час', confirm:'Підтвердження',
+    f_svc:'Послуга', f_mst:'Майстер', f_dt:'Дата і час', f_price:'Вартість',
+    your_name:'Ваше ім\u2019я', name_ph:'Ім\u2019я',
+    confirm_note:'Підтвердження запису відбувається через наш Telegram-бот: ми попросимо поділитися номером телефону для зв\u2019язку.',
+    book:'Записатися', processing:'Обробка…', by_admin:'(час підтвердить адміністратор)',
+    acc_t:'Заявку прийнято', acc_p:'Адміністратор зв\u2019яжеться з вами для підтвердження.',
+    bot_t:'Підтвердьте у боті', bot_p:'Поділіться номером телефону у Telegram-боті, що відкрився, — і запис буде підтверджено.',
+    ok_t:'Запис підтверджено!', ok_p:'Чекаємо вас у салоні. До зустрічі.',
+    att_t:'Потрібна увага', att_p:'Не вдалося завершити автоматично. Адміністратор зв\u2019яжеться з вами.',
+    again:'Новий запис', err:'Помилка: ',
+    load_fail:'Не вдалося завантажити послуги.<br>Спробуйте пізніше або зателефонуйте нам.'},
+  ru:{lang:'RU', title:'Онлайн-запись · SVS Beauty Space', cur:'грн', dur_h:'ч', dur_m:'мин',
+    dow:['Вс','Пн','Вт','Ср','Чт','Пт','Сб'],
+    mon:['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],
+    s1:'Выберите услугу', search:'Поиск услуги…', nothing:'Ничего не найдено', other:'Другие услуги',
+    back_s:'‹ Услуги', s2:'Выберите мастера', any:'Любой свободный мастер', any_sub:'ближайшее доступное время',
+    no_master:'Мастер для этой услуги не задан.<br>Выберите «Любой свободный мастер» — подберём вручную.',
+    back_m:'‹ Мастера', s3:'Выберите дату и время', pick_date:'Выберите дату',
+    no_slots:'На этот день нет свободных часов.<br>Выберите другую дату.',
+    sched_un:'Расписание временно недоступно. Нажмите «Запрос на запись» — администратор подтвердит время и перезвонит вам.',
+    req:'Запрос на запись', cont:'Продолжить', back_t:'‹ Время', confirm:'Подтверждение',
+    f_svc:'Услуга', f_mst:'Мастер', f_dt:'Дата и время', f_price:'Стоимость',
+    your_name:'Ваше имя', name_ph:'Имя',
+    confirm_note:'Подтверждение записи происходит через наш Telegram-бот: мы попросим поделиться номером телефона для связи.',
+    book:'Записаться', processing:'Обработка…', by_admin:'(время подтвердит администратор)',
+    acc_t:'Заявка принята', acc_p:'Администратор свяжется с вами для подтверждения.',
+    bot_t:'Подтвердите в боте', bot_p:'Поделитесь номером телефона в открывшемся Telegram-боте — и запись будет подтверждена.',
+    ok_t:'Запись подтверждена!', ok_p:'Ждём вас в салоне. До встречи.',
+    att_t:'Требуется внимание', att_p:'Не удалось завершить автоматически. Администратор свяжется с вами.',
+    again:'Новая запись', err:'Ошибка: ',
+    load_fail:'Не удалось загрузить услуги.<br>Попробуйте позже или позвоните нам.'},
+  en:{lang:'EN', title:'Online booking · SVS Beauty Space', cur:'UAH', dur_h:'h', dur_m:'min',
+    dow:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+    mon:['January','February','March','April','May','June','July','August','September','October','November','December'],
+    s1:'Choose a service', search:'Search service…', nothing:'Nothing found', other:'Other services',
+    back_s:'‹ Services', s2:'Choose a specialist', any:'Any available specialist', any_sub:'nearest available time',
+    no_master:'No specialist is set for this service.<br>Choose “Any available specialist” — we’ll match one manually.',
+    back_m:'‹ Specialists', s3:'Choose date and time', pick_date:'Choose a date',
+    no_slots:'No free time on this day.<br>Please choose another date.',
+    sched_un:'The schedule is temporarily unavailable. Tap “Booking request” — the administrator will confirm the time and call you back.',
+    req:'Booking request', cont:'Continue', back_t:'‹ Time', confirm:'Confirmation',
+    f_svc:'Service', f_mst:'Specialist', f_dt:'Date & time', f_price:'Price',
+    your_name:'Your name', name_ph:'Name',
+    confirm_note:'Booking is confirmed via our Telegram bot: we’ll ask you to share your phone number for contact.',
+    book:'Book now', processing:'Processing…', by_admin:'(time to be confirmed by administrator)',
+    acc_t:'Request received', acc_p:'The administrator will contact you for confirmation.',
+    bot_t:'Confirm in the bot', bot_p:'Share your phone number in the Telegram bot that opened — and your booking will be confirmed.',
+    ok_t:'Booking confirmed!', ok_p:'We look forward to seeing you at the salon.',
+    att_t:'Attention needed', att_p:'Could not complete automatically. The administrator will contact you.',
+    again:'New booking', err:'Error: ',
+    load_fail:'Could not load services.<br>Please try again later or call us.'},
+  pl:{lang:'PL', title:'Rezerwacja online · SVS Beauty Space', cur:'UAH', dur_h:'godz', dur_m:'min',
+    dow:['Nd','Pn','Wt','Śr','Cz','Pt','So'],
+    mon:['stycznia','lutego','marca','kwietnia','maja','czerwca','lipca','sierpnia','września','października','listopada','grudnia'],
+    s1:'Wybierz usługę', search:'Szukaj usługi…', nothing:'Nic nie znaleziono', other:'Inne usługi',
+    back_s:'‹ Usługi', s2:'Wybierz specjalistę', any:'Dowolny wolny specjalista', any_sub:'najbliższy dostępny termin',
+    no_master:'Brak przypisanego specjalisty do tej usługi.<br>Wybierz „Dowolny wolny specjalista” — dobierzemy ręcznie.',
+    back_m:'‹ Specjaliści', s3:'Wybierz datę i godzinę', pick_date:'Wybierz datę',
+    no_slots:'Brak wolnych godzin w tym dniu.<br>Wybierz inną datę.',
+    sched_un:'Harmonogram chwilowo niedostępny. Kliknij „Prośba o rezerwację” — administrator potwierdzi godzinę i oddzwoni.',
+    req:'Prośba o rezerwację', cont:'Dalej', back_t:'‹ Godzina', confirm:'Potwierdzenie',
+    f_svc:'Usługa', f_mst:'Specjalista', f_dt:'Data i godzina', f_price:'Cena',
+    your_name:'Twoje imię', name_ph:'Imię',
+    confirm_note:'Rezerwację potwierdzamy przez naszego bota Telegram: poprosimy o udostępnienie numeru telefonu do kontaktu.',
+    book:'Zarezerwuj', processing:'Przetwarzanie…', by_admin:'(godzinę potwierdzi administrator)',
+    acc_t:'Zgłoszenie przyjęte', acc_p:'Administrator skontaktuje się w celu potwierdzenia.',
+    bot_t:'Potwierdź w bocie', bot_p:'Udostępnij numer telefonu w otwartym bocie Telegram — rezerwacja zostanie potwierdzona.',
+    ok_t:'Rezerwacja potwierdzona!', ok_p:'Czekamy na Ciebie w salonie. Do zobaczenia.',
+    att_t:'Wymagana uwaga', att_p:'Nie udało się dokończyć automatycznie. Administrator skontaktuje się z Tobą.',
+    again:'Nowa rezerwacja', err:'Błąd: ',
+    load_fail:'Nie udało się załadować usług.<br>Spróbuj później lub zadzwoń do nas.'},
+  it:{lang:'IT', title:'Prenotazione online · SVS Beauty Space', cur:'UAH', dur_h:'h', dur_m:'min',
+    dow:['Dom','Lun','Mar','Mer','Gio','Ven','Sab'],
+    mon:['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'],
+    s1:'Scegli un servizio', search:'Cerca servizio…', nothing:'Nessun risultato', other:'Altri servizi',
+    back_s:'‹ Servizi', s2:'Scegli un professionista', any:'Qualsiasi professionista disponibile', any_sub:'primo orario disponibile',
+    no_master:'Nessun professionista impostato per questo servizio.<br>Scegli «Qualsiasi professionista disponibile» — lo assegneremo manualmente.',
+    back_m:'‹ Professionisti', s3:'Scegli data e ora', pick_date:'Scegli una data',
+    no_slots:'Nessun orario libero in questo giorno.<br>Scegli un\u2019altra data.',
+    sched_un:'L\u2019agenda è temporaneamente non disponibile. Tocca «Richiesta di prenotazione» — l\u2019amministratore confermerà l\u2019orario e ti richiamerà.',
+    req:'Richiesta di prenotazione', cont:'Continua', back_t:'‹ Ora', confirm:'Conferma',
+    f_svc:'Servizio', f_mst:'Professionista', f_dt:'Data e ora', f_price:'Prezzo',
+    your_name:'Il tuo nome', name_ph:'Nome',
+    confirm_note:'La prenotazione si conferma tramite il nostro bot Telegram: ti chiederemo di condividere il numero di telefono per il contatto.',
+    book:'Prenota', processing:'Elaborazione…', by_admin:'(orario da confermare dall\u2019amministratore)',
+    acc_t:'Richiesta ricevuta', acc_p:'L\u2019amministratore ti contatterà per la conferma.',
+    bot_t:'Conferma nel bot', bot_p:'Condividi il numero di telefono nel bot Telegram aperto — la prenotazione sarà confermata.',
+    ok_t:'Prenotazione confermata!', ok_p:'Ti aspettiamo nel salone. A presto.',
+    att_t:'Attenzione richiesta', att_p:'Impossibile completare automaticamente. L\u2019amministratore ti contatterà.',
+    again:'Nuova prenotazione', err:'Errore: ',
+    load_fail:'Impossibile caricare i servizi.<br>Riprova più tardi o chiamaci.'},
+  de:{lang:'DE', title:'Online-Buchung · SVS Beauty Space', cur:'UAH', dur_h:'Std', dur_m:'Min',
+    dow:['So','Mo','Di','Mi','Do','Fr','Sa'],
+    mon:['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'],
+    s1:'Leistung wählen', search:'Leistung suchen…', nothing:'Nichts gefunden', other:'Weitere Leistungen',
+    back_s:'‹ Leistungen', s2:'Fachkraft wählen', any:'Beliebige freie Fachkraft', any_sub:'nächster verfügbarer Termin',
+    no_master:'Für diese Leistung ist keine Fachkraft festgelegt.<br>Wählen Sie „Beliebige freie Fachkraft“ — wir ordnen manuell zu.',
+    back_m:'‹ Fachkräfte', s3:'Datum und Uhrzeit wählen', pick_date:'Datum wählen',
+    no_slots:'An diesem Tag keine freien Zeiten.<br>Bitte wählen Sie ein anderes Datum.',
+    sched_un:'Der Terminplan ist vorübergehend nicht verfügbar. Tippen Sie auf „Buchungsanfrage“ — der Administrator bestätigt die Zeit und ruft Sie zurück.',
+    req:'Buchungsanfrage', cont:'Weiter', back_t:'‹ Zeit', confirm:'Bestätigung',
+    f_svc:'Leistung', f_mst:'Fachkraft', f_dt:'Datum & Uhrzeit', f_price:'Preis',
+    your_name:'Ihr Name', name_ph:'Name',
+    confirm_note:'Die Buchung wird über unseren Telegram-Bot bestätigt: Wir bitten Sie, Ihre Telefonnummer für den Kontakt zu teilen.',
+    book:'Buchen', processing:'Verarbeitung…', by_admin:'(Zeit wird vom Administrator bestätigt)',
+    acc_t:'Anfrage erhalten', acc_p:'Der Administrator wird Sie zur Bestätigung kontaktieren.',
+    bot_t:'Im Bot bestätigen', bot_p:'Teilen Sie Ihre Telefonnummer im geöffneten Telegram-Bot — Ihre Buchung wird bestätigt.',
+    ok_t:'Buchung bestätigt!', ok_p:'Wir freuen uns auf Sie im Salon. Bis bald.',
+    att_t:'Aufmerksamkeit erforderlich', att_p:'Automatischer Abschluss nicht möglich. Der Administrator wird Sie kontaktieren.',
+    again:'Neue Buchung', err:'Fehler: ',
+    load_fail:'Leistungen konnten nicht geladen werden.<br>Bitte später erneut versuchen oder uns anrufen.'},
+  es:{lang:'ES', title:'Reserva online · SVS Beauty Space', cur:'UAH', dur_h:'h', dur_m:'min',
+    dow:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+    mon:['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
+    s1:'Elige un servicio', search:'Buscar servicio…', nothing:'No se encontró nada', other:'Otros servicios',
+    back_s:'‹ Servicios', s2:'Elige un especialista', any:'Cualquier especialista disponible', any_sub:'horario disponible más próximo',
+    no_master:'No hay especialista asignado a este servicio.<br>Elige «Cualquier especialista disponible» — lo asignaremos manualmente.',
+    back_m:'‹ Especialistas', s3:'Elige fecha y hora', pick_date:'Elige una fecha',
+    no_slots:'No hay horas libres este día.<br>Elige otra fecha.',
+    sched_un:'La agenda no está disponible temporalmente. Pulsa «Solicitud de reserva» — el administrador confirmará la hora y te llamará.',
+    req:'Solicitud de reserva', cont:'Continuar', back_t:'‹ Hora', confirm:'Confirmación',
+    f_svc:'Servicio', f_mst:'Especialista', f_dt:'Fecha y hora', f_price:'Precio',
+    your_name:'Tu nombre', name_ph:'Nombre',
+    confirm_note:'La reserva se confirma a través de nuestro bot de Telegram: te pediremos que compartas tu número de teléfono para el contacto.',
+    book:'Reservar', processing:'Procesando…', by_admin:'(hora a confirmar por el administrador)',
+    acc_t:'Solicitud recibida', acc_p:'El administrador se pondrá en contacto para confirmar.',
+    bot_t:'Confirma en el bot', bot_p:'Comparte tu número de teléfono en el bot de Telegram abierto — tu reserva se confirmará.',
+    ok_t:'¡Reserva confirmada!', ok_p:'Te esperamos en el salón. Hasta pronto.',
+    att_t:'Atención requerida', att_p:'No se pudo completar automáticamente. El administrador se pondrá en contacto.',
+    again:'Nueva reserva', err:'Error: ',
+    load_fail:'No se pudieron cargar los servicios.<br>Inténtalo más tarde o llámanos.'}
+};
+let LANG = (function(){
+  try { const s = localStorage.getItem('svs-lang'); if (s && I18N_BK[s]) return s; } catch(e){}
+  const bl = (navigator.language||'').toLowerCase();
+  if (bl.startsWith('uk')) return 'ua';
+  for (const k of ['ru','pl','it','de','es','en']) if (bl.startsWith(k)) return k;
+  return 'ua';
+})();
+function L(k){ return (I18N_BK[LANG] && I18N_BK[LANG][k]) != null ? I18N_BK[LANG][k] : (I18N_BK.ua[k] != null ? I18N_BK.ua[k] : k); }
+function renderLangBar(){
+  const el = document.getElementById('lang'); if(!el) return;
+  el.innerHTML = Object.keys(I18N_BK).map(k =>
+    '<b data-l="'+k+'"'+(k===LANG?' class="on"':'')+'>'+I18N_BK[k].lang+'</b>').join('');
+  el.querySelectorAll('b').forEach(b => b.onclick = () => setLang(b.dataset.l));
+}
+function applyLang(){
+  document.documentElement.lang = LANG==='ua'?'uk':LANG;
+  document.title = L('title');
+  renderLangBar();
+}
+function rerender(){
+  if (S.step===1) renderServices(S._q||'');
+  else if (S.step===2 && S.svc) loadMasters();
+  else if (S.step===3 && S.svc) loadDates();
+  else if (S.step===4 && S.svc) goConfirm();
+}
+function setLang(l){
+  if (!I18N_BK[l] || l===LANG) return;
+  LANG = l;
+  try { localStorage.setItem('svs-lang', l); } catch(e){}
+  applyLang(); rerender();
+}
+
+const S = { step:1, services:[], masters:[], svc:null, master:null, date:null, slot:null, slotsByDay:{}, token:null, hasMapping:false, _q:'' };
 const view = document.getElementById('view');
 const cta = document.getElementById('cta');
 const ctaBtn = document.getElementById('ctaBtn');
-const fmtPrice = p => p ? Math.round(p) + ' грн' : '';
-const fmtDur = d => d ? (d >= 60 ? Math.floor(d/60)+'г '+(d%60?d%60+'хв':'') : d+' хв') : '';
+const fmtPrice = p => p ? Math.round(p) + ' ' + L('cur') : '';
+const fmtDur = d => d ? (d >= 60 ? Math.floor(d/60)+L('dur_h')+' '+(d%60?d%60+L('dur_m'):'') : d+' '+L('dur_m')) : '';
 const pad = n => String(n).padStart(2,'0');
-const DOW = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+const dow = i => L('dow')[i];
 
 function setSteps(){ for(let i=1;i<=4;i++){ document.getElementById('st'+i).className = 's' + (i<=S.step?' on':''); } }
 function showCta(label, fn){ cta.style.display='block'; ctaBtn.textContent=label; ctaBtn.disabled=!fn; ctaBtn.onclick=fn||null; }
@@ -153,17 +333,17 @@ async function loadCatalog(){
         services:(m.services||[]).map(x=>x.id||x) }));
     renderServices('');
   } catch(e){
-    view.innerHTML = '<div class="empty">Не вдалося завантажити послуги.<br>Спробуйте пізніше або зателефонуйте нам.</div>';
+    view.innerHTML = '<div class="empty">'+L('load_fail')+'</div>';
   }
 }
 function renderServices(q){
-  S.step=1; setSteps(); hideCta();
+  S.step=1; S._q=q||''; setSteps(); hideCta();
   const list = S.services.filter(s => !q || (s.name||'').toLowerCase().includes(q.toLowerCase()));
   const byCat = {};
-  list.forEach(s => { const k=s.category||'Інші послуги'; (byCat[k]=byCat[k]||[]).push(s); });
-  let html = '<h2>Оберіть послугу</h2>' +
-    '<input class="search" id="q" placeholder="Пошук послуги…" value="'+(q||'').replace(/"/g,'&quot;')+'">';
-  if (!list.length) html += '<div class="empty">Нічого не знайдено</div>';
+  list.forEach(s => { const k=s.category||L('other'); (byCat[k]=byCat[k]||[]).push(s); });
+  let html = '<h2>'+L('s1')+'</h2>' +
+    '<input class="search" id="q" placeholder="'+L('search')+'" value="'+(q||'').replace(/"/g,'&quot;')+'">';
+  if (!list.length) html += '<div class="empty">'+L('nothing')+'</div>';
   for (const cat of Object.keys(byCat).sort()){
     html += '<div class="cat">'+esc(cat)+'</div>';
     byCat[cat].forEach(s => {
@@ -186,19 +366,18 @@ function renderServices(q){
 // ── Step 2: masters ────────────────────────────────
 function loadMasters(){
   S.step=2; setSteps();
-  let html = '<button class="btn ghost" id="bk">‹ Послуги</button>'+
-    '<h2>Оберіть майстра</h2>';
+  let html = '<button class="btn ghost" id="bk">'+L('back_s')+'</button>'+
+    '<h2>'+L('s2')+'</h2>';
   html += '<div class="item'+(S.master===null?'':'')+'" data-id="__any"><div class="row">'+
-    '<div class="av">★</div><div><div class="nm">Будь-який вільний майстер</div>'+
-    '<div class="meta">найближчий доступний час</div></div></div></div>';
+    '<div class="av">★</div><div><div class="nm">'+L('any')+'</div>'+
+    '<div class="meta">'+L('any_sub')+'</div></div></div></div>';
   // показуємо ЛИШЕ майстрів, що реально надають обрану послугу.
   // Якщо є наш мапінг (master_services) — фільтруємо суворо, без витоку всіх майстрів.
   const strict = m => Array.isArray(m.services) && m.services.includes(S.svc.id);
   const loose  = m => !Array.isArray(m.services) || !m.services.length || m.services.includes(S.svc.id);
   const avail = S.hasMapping ? S.masters.filter(strict) : S.masters.filter(loose);
   if (!avail.length){
-    html += '<div class="empty" style="margin-top:10px">Майстер під цю послугу не заданий.<br>'+
-      'Оберіть «Будь-який вільний майстер» — підберемо вручну.</div>';
+    html += '<div class="empty" style="margin-top:10px">'+L('no_master')+'</div>';
   }
   avail.forEach(m => {
     const init = (m.name||'?').trim().charAt(0).toUpperCase();
@@ -222,15 +401,15 @@ function loadDates(){
   const days = [];
   const base = new Date(); base.setHours(0,0,0,0);
   for (let i=0;i<14;i++){ const d=new Date(base); d.setDate(base.getDate()+i); days.push(d); }
-  let html = '<button class="btn ghost" id="bk">‹ Майстри</button>'+
-    '<h2>Оберіть дату та час</h2><div class="dates">';
+  let html = '<button class="btn ghost" id="bk">'+L('back_m')+'</button>'+
+    '<h2>'+L('s3')+'</h2><div class="dates">';
   days.forEach(d => {
     const key = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
     const sel = S.date===key?' sel':'';
-    html += '<div class="day'+sel+'" data-d="'+key+'"><div class="dow">'+DOW[d.getDay()]+'</div>'+
+    html += '<div class="day'+sel+'" data-d="'+key+'"><div class="dow">'+dow(d.getDay())+'</div>'+
       '<div class="dn">'+d.getDate()+'</div></div>';
   });
-  html += '</div><div id="slotbox"><div class="empty">Оберіть дату</div></div>';
+  html += '</div><div id="slotbox"><div class="empty">'+L('pick_date')+'</div></div>';
   view.innerHTML = html;
   document.getElementById('bk').onclick = loadMasters;
   view.querySelectorAll('.day').forEach(el => el.onclick = () => {
@@ -253,7 +432,7 @@ async function loadSlots(){
     if (prof) q.set('professional', prof);
     const data = await api('/api/booking/slots?'+q.toString());
     const slots = normalizeSlots(data);
-    if (!slots.length){ box.innerHTML = '<div class="empty">На цей день немає вільних годин.<br>Оберіть іншу дату.</div>'; hideCta(); return; }
+    if (!slots.length){ box.innerHTML = '<div class="empty">'+L('no_slots')+'</div>'; hideCta(); return; }
     let h = '<div class="slots">';
     slots.forEach(s => { h += '<div class="slot" data-from="'+s.from+'" data-to="'+s.to+'" data-prof="'+(s.prof||'')+'">'+s.label+'</div>'; });
     h += '</div>';
@@ -262,11 +441,11 @@ async function loadSlots(){
       box.querySelectorAll('.slot').forEach(x=>x.classList.remove('sel'));
       el.classList.add('sel');
       S.slot = { from: el.dataset.from, to: el.dataset.to, prof: el.dataset.prof, label: el.textContent };
-      showCta('Продовжити', goConfirm);
+      showCta(L('cont'), goConfirm);
     });
   } catch(e){
-    box.innerHTML = '<div class="note">Розклад тимчасово недоступний. Натисніть «Запит на запис» — адміністратор підтвердить час і передзвонить вам.</div>';
-    showCta('Запит на запис', goConfirm);
+    box.innerHTML = '<div class="note">'+L('sched_un')+'</div>';
+    showCta(L('req'), goConfirm);
   }
 }
 
@@ -312,33 +491,32 @@ function toLocalISO(d){
 // ── Step 4: confirm ────────────────────────────────
 function goConfirm(){
   S.step=4; setSteps(); hideCta();
-  const masterName = (S.master && S.master!=='__any') ? S.master.name : 'Будь-який вільний майстер';
-  const dt = S.slot ? (formatDate(S.date)+', '+S.slot.label) : (formatDate(S.date)+' (час підтвердить адміністратор)');
+  const masterName = (S.master && S.master!=='__any') ? S.master.name : L('any');
+  const dt = S.slot ? (formatDate(S.date)+', '+S.slot.label) : (formatDate(S.date)+' '+L('by_admin'));
   const tgName = tg && tg.initDataUnsafe && tg.initDataUnsafe.user
     ? [tg.initDataUnsafe.user.first_name, tg.initDataUnsafe.user.last_name].filter(Boolean).join(' ') : '';
   view.innerHTML =
-    '<button class="btn ghost" id="bk">‹ Час</button>'+
-    '<h2>Підтвердження</h2>'+
+    '<button class="btn ghost" id="bk">'+L('back_t')+'</button>'+
+    '<h2>'+L('confirm')+'</h2>'+
     '<div class="summary">'+
-      '<div class="l"><span>Послуга</span><b>'+esc(S.svc.name)+'</b></div>'+
-      '<div class="l"><span>Майстер</span><b>'+esc(masterName)+'</b></div>'+
-      '<div class="l"><span>Дата і час</span><b>'+esc(dt)+'</b></div>'+
-      '<div class="l"><span>Вартість</span><b>'+fmtPrice(S.svc.price)+'</b></div>'+
+      '<div class="l"><span>'+L('f_svc')+'</span><b>'+esc(S.svc.name)+'</b></div>'+
+      '<div class="l"><span>'+L('f_mst')+'</span><b>'+esc(masterName)+'</b></div>'+
+      '<div class="l"><span>'+L('f_dt')+'</span><b>'+esc(dt)+'</b></div>'+
+      '<div class="l"><span>'+L('f_price')+'</span><b>'+fmtPrice(S.svc.price)+'</b></div>'+
     '</div>'+
-    '<div class="field"><label>Ваше ім\u2019я</label><input id="nm" placeholder="Ім\u2019я" value="'+esc(tgName)+'"></div>'+
-    '<div class="note">Підтвердження запису відбувається через наш Telegram-бот: ми попросимо поділитися номером телефону для зв\u2019язку.</div>';
+    '<div class="field"><label>'+L('your_name')+'</label><input id="nm" placeholder="'+L('name_ph')+'" value="'+esc(tgName)+'"></div>'+
+    '<div class="note">'+L('confirm_note')+'</div>';
   document.getElementById('bk').onclick = loadDates;
-  showCta('Записатися', submit);
+  showCta(L('book'), submit);
 }
 function formatDate(key){
   const [y,m,d] = key.split('-').map(Number);
   const dt = new Date(y,m-1,d);
-  const MM = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
-  return d+' '+MM[m-1]+', '+DOW[dt.getDay()];
+  return d+' '+L('mon')[m-1]+', '+dow(dt.getDay());
 }
 
 async function submit(){
-  ctaBtn.disabled = true; ctaBtn.textContent = 'Обробка…';
+  ctaBtn.disabled = true; ctaBtn.textContent = L('processing');
   const name = (document.getElementById('nm')||{}).value || '';
   // если слотов не было (расклад недоступен) — берём начало дня как заявку
   const from = S.slot ? S.slot.from : (S.date+'T10:00:00');
@@ -361,25 +539,25 @@ async function submit(){
     } else if (r.deep_link){
       location.href = r.deep_link; // обычный сайт → переход в бот
     } else {
-      okScreen('Заявку прийнято', 'Адміністратор зв\u2019яжеться з вами для підтвердження.');
+      okScreen(L('acc_t'), L('acc_p'));
     }
   } catch(e){
-    ctaBtn.disabled=false; ctaBtn.textContent='Записатися';
-    alert('Помилка: '+e.message);
+    ctaBtn.disabled=false; ctaBtn.textContent=L('book');
+    alert(L('err')+e.message);
   }
 }
 
 function waitConfirm(){
   hideCta();
   view.innerHTML = '<div class="ok-screen"><div class="spin"></div>'+
-    '<h3>Підтвердьте у боті</h3><p>Поділіться номером телефону у Telegram-боті, що відкрився, — і запис буде підтверджено.</p></div>';
+    '<h3>'+L('bot_t')+'</h3><p>'+L('bot_p')+'</p></div>';
   let tries = 0;
   const iv = setInterval(async () => {
     tries++;
     try {
       const st = await api('/api/booking/status/'+S.token);
-      if (st.status === 'confirmed'){ clearInterval(iv); okScreen('Запис підтверджено!', 'Чекаємо вас у салоні. До зустрічі.'); }
-      else if (st.status === 'error' || st.status === 'failed'){ clearInterval(iv); okScreen('Потрібна увага', 'Не вдалося завершити автоматично. Адміністратор зв\u2019яжеться з вами.', true); }
+      if (st.status === 'confirmed'){ clearInterval(iv); okScreen(L('ok_t'), L('ok_p')); }
+      else if (st.status === 'error' || st.status === 'failed'){ clearInterval(iv); okScreen(L('att_t'), L('att_p'), true); }
     } catch(e){}
     if (tries > 150) clearInterval(iv); // ~5 хв
   }, 2000);
@@ -389,13 +567,14 @@ function okScreen(title, text, warn){
   hideCta();
   view.innerHTML = '<div class="ok-screen"><div class="ic">'+(warn?'\u26A0\uFE0F':'\u2705')+'</div>'+
     '<h3>'+esc(title)+'</h3><p>'+esc(text)+'</p>'+
-    '<button class="btn" id="again">Нова запис</button></div>';
+    '<button class="btn" id="again">'+L('again')+'</button></div>';
   document.getElementById('again').onclick = () => { S.svc=null;S.master=null;S.date=null;S.slot=null;S.token=null; loadCatalog(); };
   if (tg && !warn){ try{ tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); }catch(e){} }
 }
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+applyLang();
 loadCatalog();
 </script>
 </body>
