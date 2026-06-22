@@ -184,8 +184,8 @@ async function drillData(topic) {
         return { day: name, revenue: r ? Math.round(Number(r.total)) : 0, ops: r ? r.ops : 0,
           avg_check: r && r.ops ? Math.round(Number(r.total)/r.ops) : 0 };
       });
-      return { title: 'Виручка по днях тижня', metrics: { period: '90 днів' },
-        rows: wd, rows_label: 'День тижня · виручка · к-сть продажів · середній чек' };
+      return { title: 'Виручка по днях тижня', metrics: { period: 'останні 90 днів (сума за період, ~13 тижнів)' },
+        rows: wd, rows_label: 'День тижня · СУМАРНА виручка за 90 днів · к-сть продажів · середній чек' };
     }
     case 'low_stock': {
       const rows = await q(`SELECT pv.id, p.name AS product_name, pv.volume, COALESCE(pv.stock_qty,0)::int AS stock_qty

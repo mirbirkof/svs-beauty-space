@@ -4286,6 +4286,8 @@ function _drillRows(d){
 }
 function renderDrill(d){
   let h = '';
+  const _per = d.metrics && d.metrics.period ? String(d.metrics.period) : '';
+  if (_per) h += `<div style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--primary,#6c5ce7);background:rgba(108,92,231,.08);border:1px solid rgba(108,92,231,.2);border-radius:20px;padding:4px 12px;margin-bottom:12px"><span class="material-icons-round" style="font-size:14px">calendar_today</span>Період: ${escapeHtml(_per)}</div>`;
   if (d.summary) h += `<div style="font-size:14.5px;line-height:1.55;padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;margin-bottom:14px">${escapeHtml(d.summary)}</div>`;
   const f = d.findings || [];
   if (f.length){
