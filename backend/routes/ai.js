@@ -35,9 +35,11 @@ async function buildSnapshot() {
        WHERE type='in' AND category IN ('sale_service','sale_product')
          AND created_at >= NOW() - INTERVAL '30 days'
        GROUP BY d ORDER BY d`),
-    // выручка по дню недели (90 дней) — для загрузки
+    // выручка по дню недели (90 дней) — для загрузки.
+    // days = сколько было таких дней недели с продажами (чтобы дать СРЕДНЕЕ за день, а не пугающую сумму).
     q(`SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Kiev')::int AS dow,
-              SUM(amount)::numeric AS total, COUNT(*)::int AS ops
+              SUM(amount)::numeric AS total, COUNT(*)::int AS ops,
+              COUNT(DISTINCT (created_at AT TIME ZONE 'Europe/Kiev')::date)::int AS days
        FROM cash_operations
        WHERE type='in' AND category IN ('sale_service','sale_product')
          AND created_at >= NOW() - INTERVAL '90 days'
@@ -77,18 +79,30 @@ async function buildSnapshot() {
        FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'`),
   ]);
 
+  // Среднее за ОДИН такой день недели (не сумма за 90 дней — иначе цифры выглядят дикими и читаются как фейк).
   const wd = WEEKDAYS.map((name, dow) => {
     const row = revByWeekday.find(r => r.dow === dow);
-    return { day: name, revenue: row ? Math.round(Number(row.total)) : 0, ops: row ? row.ops : 0 };
+    const days = row ? (row.days || 0) : 0;
+    const total = row ? Number(row.total) : 0;
+    return {
+      day: name,
+      avg_revenue_per_day: days ? Math.round(total / days) : 0,
+      avg_visits_per_day: days ? Math.round((row.ops / days) * 10) / 10 : 0,
+      days_counted: days,
+    };
   });
   const rev30arr = rev30.map(r => ({ date: r.d, total: Math.round(Number(r.total)) }));
   const totalRev30 = rev30arr.reduce((s, x) => s + x.total, 0);
 
   return {
-    period: 'останні 30 днів',
+    period: 'останні 30 днів (виручка по днях), будні/вихідні — середнє за 90 днів',
     revenue_30d_total: totalRev30,
     revenue_by_day: rev30arr,
-    revenue_by_weekday: wd,
+    // ВАЖЛИВО для LLM: це СЕРЕДНЄ за один такий день тижня (за 90 днів), а НЕ сумарна виручка.
+    weekday_avg_revenue: {
+      note: 'avg_revenue_per_day — середня виручка за ОДИН такий день тижня (грн). НЕ сумувати по днях тижня — це вже середні значення.',
+      days: wd,
+    },
     masters: masters.map(m => ({ name: m.name, revenue: Math.round(Number(m.revenue)), done: m.done, lost: m.lost })),
     churn_clients: churn[0]?.n || 0,
     new_clients_30d: newClients[0]?.n || 0,
@@ -176,16 +190,21 @@ async function drillData(topic) {
     }
     case 'weekday': {
       const rows = await q(`SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Kiev')::int AS dow,
-          SUM(amount)::numeric AS total, COUNT(*)::int AS ops
+          SUM(amount)::numeric AS total, COUNT(*)::int AS ops,
+          COUNT(DISTINCT (created_at AT TIME ZONE 'Europe/Kiev')::date)::int AS days
         FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
           AND created_at >= NOW() - INTERVAL '90 days' GROUP BY dow`);
       const wd = WEEKDAYS.map((name, dow) => {
         const r = rows.find(x => x.dow === dow);
-        return { day: name, revenue: r ? Math.round(Number(r.total)) : 0, ops: r ? r.ops : 0,
-          avg_check: r && r.ops ? Math.round(Number(r.total)/r.ops) : 0 };
+        const days = r ? (r.days || 0) : 0;
+        const total = r ? Number(r.total) : 0;
+        return { day: name,
+          avg_revenue_per_day: days ? Math.round(total/days) : 0,
+          avg_visits_per_day: days ? Math.round((r.ops/days)*10)/10 : 0,
+          avg_check: r && r.ops ? Math.round(total/r.ops) : 0 };
       });
-      return { title: 'Виручка по днях тижня', metrics: { period: 'останні 90 днів (сума за період, ~13 тижнів)' },
-        rows: wd, rows_label: 'День тижня · СУМАРНА виручка за 90 днів · к-сть продажів · середній чек' };
+      return { title: 'Виручка по днях тижня', metrics: { period: 'середнє за 1 такий день тижня (база 90 днів)' },
+        rows: wd, rows_label: 'День тижня · середня виручка за ОДИН такий день · середня к-сть візитів · середній чек' };
     }
     case 'low_stock': {
       const rows = await q(`SELECT pv.id, p.name AS product_name, pv.volume, COALESCE(pv.stock_qty,0)::int AS stock_qty
