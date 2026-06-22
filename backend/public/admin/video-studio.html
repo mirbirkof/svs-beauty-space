@@ -99,6 +99,8 @@ function renderResult(d){
     ops.forEach((o,i)=>{ vid += `<button class="btn sm" onclick="poll('${esc(o.operation)}','vop${i}')">Перевірити кліп ${i+1}</button> <span id="vop${i}" class="muted"></span><br>`; });
   } else if(vs==='paid_key_required'){
     vid = '<div class="note">Сценарій готовий. Для рендеру відео потрібен платний ключ Google AI.</div>';
+  } else if(vs==='failed'){
+    vid = '<div class="note">Сценарій готовий, але відео-рендер не вдалося запустити: '+esc((d.video&&d.video.error)||'спробуйте ще раз')+'. Текст можна використати одразу.</div>';
   }
   $('result').innerHTML = `
     <h3 style="margin:0 0 10px">${esc(d.title||'Промо-ролик')}</h3>
