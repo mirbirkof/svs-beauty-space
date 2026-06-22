@@ -114,6 +114,154 @@ const TRANSLATIONS = {
     contact_directions: 'Get directions',
 
     footer_copy: '© 2026 SVS Beauty Space',
+  },
+
+  pl: {
+    lang_label: 'PL',
+    nav_services: 'Usługi', nav_shop: 'Sklep', nav_results: 'Efekty',
+    nav_about: 'O nas', nav_contact: 'Kontakt', nav_book: 'Rezerwacja',
+
+    hero_line1: 'Piękno,', hero_line2: 'które się czuje',
+    hero_sub: 'Ekskluzywna przestrzeń piękna i estetyki',
+    hero_cta: 'Zarezerwuj', hero_shop: 'Sklep',
+
+    svc_overline: 'Usługi', svc_title: 'Indywidualne piękno w szczegółach',
+
+    rit_color_title: 'Koloryzacja', rit_color_text: 'Blond, balejaż, ombre. Autorska technika Foiled Cashmere.',
+    rit_care_title: 'Regeneracja', rit_care_text: 'Biowyrównanie, botoks, rekonstrukcja. Głęboka regeneracja zdrowia włosów.',
+    rit_cut_title: 'Strzyżenie', rit_cut_text: 'Od klasycznych linii po nowoczesne tekstury.',
+    rit_style_title: 'Fryzury', rit_style_text: 'Stylizacje wieczorowe i ślubne.',
+
+    tr_overline: 'Efekty', tr_title: 'Prawdziwe metamorfozy', tr_before: 'Przed', tr_after: 'Po',
+    stat_years: 'lat doświadczenia', stat_clients: 'zadowolonych klientów',
+
+    about_overline: 'O nas', about_title: 'Nie robimy fryzur. Tworzymy odczucia.',
+    about_text: 'SVS Beauty Space to miejsce, gdzie każdy szczegół jest przemyślany. Od doboru techniki po indywidualną pielęgnację. Ekskluzywne kosmetyki światowych marek. Autorskie metody. Przestrzeń stworzona dla Ciebie.',
+    spec_overline: 'Eksperci', spec_headline: 'Doświadczenie. Wrażliwość. Mistrzostwo.',
+    spec_text: 'Nasz zespół to eksperci, którzy żyją pięknem i tworzą je każdego dnia.',
+
+    book_overline: 'Rezerwacja', book_title: 'Gotowa na zmianę?',
+    book_text: 'Zarezerwuj konsultację — wspólnie dobierzemy idealne rozwiązanie.',
+    book_cta: 'Zarezerwuj online',
+
+    contact_hint: 'Kliknij, aby się skontaktować',
+    contact_hours_title: 'Godziny', contact_hours: 'Pn — Nd: 8:00 — 19:00',
+    contact_address_title: 'Adres',
+    contact_address: '1-ša Naberežna r. Strilka, 50, Sumy',
+    contact_directions: 'Wyznacz trasę',
+
+    footer_copy: '© 2026 SVS Beauty Space',
+  },
+
+  it: {
+    lang_label: 'IT',
+    nav_services: 'Servizi', nav_shop: 'Shop', nav_results: 'Risultati',
+    nav_about: 'Chi siamo', nav_contact: 'Contatti', nav_book: 'Prenota',
+
+    hero_line1: 'Bellezza,', hero_line2: 'che si sente',
+    hero_sub: 'Uno spazio premium di bellezza ed estetica',
+    hero_cta: 'Prenota ora', hero_shop: 'Shop',
+
+    svc_overline: 'Servizi', svc_title: 'Bellezza personalizzata nei dettagli',
+
+    rit_color_title: 'Colorazione', rit_color_text: 'Biondo, balayage, ombré. Tecnica esclusiva Foiled Cashmere.',
+    rit_care_title: 'Ricostruzione', rit_care_text: 'Lisciatura biologica, botox, ricostruzione. Recupero profondo della salute dei capelli.',
+    rit_cut_title: 'Tagli', rit_cut_text: 'Dalle linee classiche alle texture moderne.',
+    rit_style_title: 'Acconciature', rit_style_text: 'Look da sera e da sposa.',
+
+    tr_overline: 'Risultati', tr_title: 'Trasformazioni reali', tr_before: 'Prima', tr_after: 'Dopo',
+    stat_years: 'anni di esperienza', stat_clients: 'clienti soddisfatti',
+
+    about_overline: 'Chi siamo', about_title: 'Non facciamo acconciature. Creiamo emozioni.',
+    about_text: 'SVS Beauty Space è il luogo dove ogni dettaglio è curato. Dalla scelta della tecnica alla cura personalizzata. Cosmetici premium di marchi mondiali. Metodi esclusivi. Uno spazio creato per te.',
+    spec_overline: 'Esperti', spec_headline: 'Esperienza. Sensibilità. Maestria.',
+    spec_text: 'Il nostro team è composto da esperti che vivono la bellezza e la creano ogni giorno.',
+
+    book_overline: 'Prenotazione', book_title: 'Pronta al cambiamento?',
+    book_text: 'Prenota una consulenza — insieme troveremo la soluzione perfetta.',
+    book_cta: 'Prenota online',
+
+    contact_hint: 'Tocca per contattarci',
+    contact_hours_title: 'Orari', contact_hours: 'Lun — Dom: 8:00 — 19:00',
+    contact_address_title: 'Indirizzo',
+    contact_address: '1-ša Naberežna r. Strilka, 50, Sumy',
+    contact_directions: 'Ottieni indicazioni',
+
+    footer_copy: '© 2026 SVS Beauty Space',
+  },
+
+  de: {
+    lang_label: 'DE',
+    nav_services: 'Leistungen', nav_shop: 'Shop', nav_results: 'Ergebnisse',
+    nav_about: 'Über uns', nav_contact: 'Kontakt', nav_book: 'Termin',
+
+    hero_line1: 'Schönheit,', hero_line2: 'die man spürt',
+    hero_sub: 'Ein Premium-Raum für Schönheit und Ästhetik',
+    hero_cta: 'Termin buchen', hero_shop: 'Shop',
+
+    svc_overline: 'Leistungen', svc_title: 'Individuelle Schönheit im Detail',
+
+    rit_color_title: 'Coloration', rit_color_text: 'Blond, Balayage, Ombré. Exklusive Foiled-Cashmere-Technik.',
+    rit_care_title: 'Regeneration', rit_care_text: 'Bio-Glättung, Botox, Rekonstruktion. Tiefe Regeneration gesunder Haare.',
+    rit_cut_title: 'Haarschnitte', rit_cut_text: 'Von klassischen Linien bis zu modernen Texturen.',
+    rit_style_title: 'Frisuren', rit_style_text: 'Abend- und Brautlooks.',
+
+    tr_overline: 'Ergebnisse', tr_title: 'Echte Verwandlungen', tr_before: 'Vorher', tr_after: 'Nachher',
+    stat_years: 'Jahre Erfahrung', stat_clients: 'zufriedene Kunden',
+
+    about_overline: 'Über uns', about_title: 'Wir machen keine Frisuren. Wir schaffen Gefühl.',
+    about_text: 'SVS Beauty Space ist ein Ort, an dem jedes Detail durchdacht ist. Von der Wahl der Technik bis zur individuellen Pflege. Premium-Kosmetik weltweiter Marken. Exklusive Methoden. Ein Raum, der für Sie geschaffen wurde.',
+    spec_overline: 'Experten', spec_headline: 'Erfahrung. Feingefühl. Meisterschaft.',
+    spec_text: 'Unser Team besteht aus Experten, die Schönheit leben und sie jeden Tag erschaffen.',
+
+    book_overline: 'Termin', book_title: 'Bereit für Veränderung?',
+    book_text: 'Vereinbaren Sie eine Beratung — gemeinsam finden wir die perfekte Lösung.',
+    book_cta: 'Online buchen',
+
+    contact_hint: 'Zum Kontaktieren tippen',
+    contact_hours_title: 'Öffnungszeiten', contact_hours: 'Mo — So: 8:00 — 19:00',
+    contact_address_title: 'Adresse',
+    contact_address: '1-ša Naberežna r. Strilka, 50, Sumy',
+    contact_directions: 'Route planen',
+
+    footer_copy: '© 2026 SVS Beauty Space',
+  },
+
+  es: {
+    lang_label: 'ES',
+    nav_services: 'Servicios', nav_shop: 'Tienda', nav_results: 'Resultados',
+    nav_about: 'Nosotros', nav_contact: 'Contacto', nav_book: 'Reservar',
+
+    hero_line1: 'Belleza,', hero_line2: 'que se siente',
+    hero_sub: 'Un espacio premium de belleza y estética',
+    hero_cta: 'Reservar', hero_shop: 'Tienda',
+
+    svc_overline: 'Servicios', svc_title: 'Belleza individual en los detalles',
+
+    rit_color_title: 'Coloración', rit_color_text: 'Rubio, balayage, ombré. Técnica exclusiva Foiled Cashmere.',
+    rit_care_title: 'Restauración', rit_care_text: 'Bio-alisado, botox, reconstrucción. Recuperación profunda de la salud del cabello.',
+    rit_cut_title: 'Cortes', rit_cut_text: 'Desde líneas clásicas hasta texturas modernas.',
+    rit_style_title: 'Peinados', rit_style_text: 'Looks de noche y de novia.',
+
+    tr_overline: 'Resultados', tr_title: 'Transformaciones reales', tr_before: 'Antes', tr_after: 'Después',
+    stat_years: 'años de experiencia', stat_clients: 'clientes satisfechos',
+
+    about_overline: 'Nosotros', about_title: 'No hacemos peinados. Creamos sensaciones.',
+    about_text: 'SVS Beauty Space es un lugar donde cada detalle está pensado. Desde la elección de la técnica hasta el cuidado personalizado. Cosmética premium de marcas mundiales. Métodos exclusivos. Un espacio creado para ti.',
+    spec_overline: 'Expertos', spec_headline: 'Experiencia. Sensibilidad. Maestría.',
+    spec_text: 'Nuestro equipo son expertos que viven la belleza y la crean cada día.',
+
+    book_overline: 'Reserva', book_title: '¿Lista para un cambio?',
+    book_text: 'Reserva una consulta — juntos encontraremos la solución perfecta.',
+    book_cta: 'Reservar online',
+
+    contact_hint: 'Toca para contactar',
+    contact_hours_title: 'Horario', contact_hours: 'Lun — Dom: 8:00 — 19:00',
+    contact_address_title: 'Dirección',
+    contact_address: '1-ša Naberézhna r. Strilka, 50, Sumy',
+    contact_directions: 'Cómo llegar',
+
+    footer_copy: '© 2026 SVS Beauty Space',
   }
 };
 
@@ -127,6 +275,11 @@ const I18N = {
     const bl = (navigator.language || '').toLowerCase();
     if (bl.startsWith('uk')) return 'ua';
     if (bl.startsWith('ru')) return 'ru';
+    if (bl.startsWith('pl')) return 'pl';
+    if (bl.startsWith('it')) return 'it';
+    if (bl.startsWith('de')) return 'de';
+    if (bl.startsWith('es')) return 'es';
+    if (bl.startsWith('en')) return 'en';
     return 'ua';
   },
 

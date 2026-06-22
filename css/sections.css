@@ -100,7 +100,7 @@
 }
 
 .nav__langs--mobile { display: none; }
-.nav__langs--desktop { display: flex; gap: var(--s-2); }
+.nav__langs--desktop { display: flex; gap: var(--s-1); flex-wrap: wrap; max-width: 220px; }
 
 .nav__lang {
   font-size: var(--f-caption);
