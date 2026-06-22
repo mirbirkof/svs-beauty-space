@@ -332,6 +332,14 @@ router.post('/verify-2fa', async (req, res) => {
     const user = userR.rows[0];
     if (!user) return res.status(401).json({ ok: false, error: 'user-not-found' });
 
+    // #28: защита от брутфорса 6-значного кода. Имея валидный pre_auth_token,
+    // атакующий мог перебирать код (1M комбинаций). Лимитируем неудачи на аккаунт.
+    const codeFailures = await countRecentFailures(pool, String(user.id), 'verify_2fa', 15);
+    if (codeFailures >= 8) {
+      await recordAttempt(pool, { identifier: String(user.id), kind: 'verify_2fa', success: false, ip, ua, meta: { reason: 'too-many-2fa-attempts' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    }
+
     const codeHash = sha256(code);
     const r = await pool.query(
       `SELECT * FROM two_factor_codes
