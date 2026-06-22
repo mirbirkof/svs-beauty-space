@@ -253,6 +253,24 @@ router.post('/telegram', async (req, res) => {
         }
       }
 
+      // чёрный список (#30): забаненный по телефону клиент не должен записаться.
+      // Сравниваем по нормализованным цифрам — в blacklist встречаются и '+380...' и '380...'.
+      try {
+        const bl = await getPool().query(
+          `SELECT 1 FROM blacklist
+            WHERE regexp_replace(client_phone, '\\D', '', 'g') = $1 LIMIT 1`,
+          [phoneDigits]
+        );
+        if (bl.rowCount) {
+          await db.update(row.token, { status: 'error', error: 'blacklisted' });
+          return tg('sendMessage', {
+            chat_id: msg.chat.id,
+            text: '😔 На жаль, онлайн-запис для цього номера недоступний. Будь ласка, звʼяжіться з адміністратором салону.',
+            reply_markup: { remove_keyboard: true },
+          });
+        }
+      } catch (blErr) { console.error('[booking/blacklist]', blErr.message); }
+
       let bookingId = null;
       try {
         // слот мог занять кто-то другой пока клиент подтверждал — проверяем пересечение
