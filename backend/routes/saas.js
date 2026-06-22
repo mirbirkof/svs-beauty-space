@@ -15,11 +15,20 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
-const { requirePerm, logAction } = require('../lib/rbac');
+const { requirePerm, requirePlatform, logAction } = require('../lib/rbac');
 const { isPlatformTenant } = require('../lib/tenant');
 
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
+
+// Операторські мутації: тарифи/фіч-флаги платформи + пряме призначення ліцензії.
+// Без цього власник салону (роль owner з правами "*") міг би:
+//  • POST /plans, /flags — змінити глобальні тарифи/флаги платформи;
+//  • PUT /license — самостійно видати собі будь-який план + overrides
+//    (топ-тариф і всі платні модулі) безкоштовно, обійшовши оплату.
+// Авто-активація після оплати йде через lib/billing.js напряму (не цей роут),
+// тому страж її не ламає. Салон підвищує план через платіж, а не PUT /license.
+const platformOnly = requirePlatform();
 
 router.use((req, res, next) => {
   const perm = req.method === 'GET' ? 'saas.read' : 'saas.write';
@@ -62,7 +71,7 @@ router.get('/plans', async (req, res) => {
   catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/plans', async (req, res) => {
+router.post('/plans', platformOnly, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.code || !b.name) return res.status(400).json({ error: 'code_and_name_required' });
@@ -87,7 +96,7 @@ router.get('/flags', async (req, res) => {
   catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/flags', async (req, res) => {
+router.post('/flags', platformOnly, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.key) return res.status(400).json({ error: 'key_required' });
@@ -111,7 +120,7 @@ router.get('/license', async (req, res) => {
 });
 
 // PUT /api/saas/license — назначить/изменить план и overrides текущему арендатору
-router.put('/license', async (req, res) => {
+router.put('/license', platformOnly, async (req, res) => {
   try {
     const b = req.body || {};
     const row = (await q(
