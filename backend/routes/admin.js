@@ -30,6 +30,7 @@ const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { normalizePhoneDb } = require('../lib/phone');
 
 // ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
 router.use(requirePerm('admin.*'));
@@ -457,6 +458,7 @@ router.patch('/clients/:id', async (req, res) => {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
         let v = req.body[f];
         if (f === 'birthday' && (v === '' || v == null)) v = null;
+        if (f === 'phone') v = normalizePhoneDb(v); // канон 380... — без второго формата (аудит #31)
         if (f === 'prepayment_required') v = (v === true || v === 'true' || v === 1); // нормалізуємо в boolean
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
