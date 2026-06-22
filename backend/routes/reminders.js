@@ -94,14 +94,19 @@ async function scheduleReminders() {
 async function sendPending() {
   const pool = getPool();
 
-  // Запись отменили после планирования напоминания → не слать
+  // Запись отменили/перенесли после планирования напоминания → не слать.
+  // Напоминания живут в Notification Hub (таблица notifications, status='queued'),
+  // дедуп-ключ = appt:{id}:remind_24h|remind_2h. Гасим только ещё не отправленные
+  // напоминания о визите (НЕ feedback) для записей, переставших быть активными.
+  // appointments.id = SERIAL → парсим из dedup_key через split_part(...,':',2)::int.
   await pool.query(`
-    UPDATE scheduled_notifications sn SET status = 'cancelled'
-    WHERE sn.status = 'pending'
-      AND sn.event IN ('remind_24h', 'remind_2h')
+    UPDATE notifications n SET status = 'cancelled', last_error = 'visit-cancelled', updated_at = NOW()
+    WHERE n.status = 'queued'
+      AND n.source = 'reminders'
+      AND n.dedup_key ~ '^appt:[0-9]+:remind_'
       AND EXISTS (
         SELECT 1 FROM appointments a
-        WHERE a.id::text = sn.appointment_id
+        WHERE a.id = split_part(n.dedup_key, ':', 2)::int
           AND a.status NOT IN ('confirmed', 'pending', 'booked', 'done')
       )
   `);
