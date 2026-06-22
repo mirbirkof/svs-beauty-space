@@ -3163,18 +3163,20 @@ function _catNode(n){
   const caret = has
     ? '<span class="material-icons-round" onclick="catTgl('+n.id+',event)" style="cursor:pointer;font-size:18px;vertical-align:-4px;transition:.15s;transform:rotate('+(open?90:0)+'deg)">chevron_right</span>'
     : '<span style="display:inline-block;width:18px"></span>';
-  let html = '<div class="catrow" style="display:flex;align-items:center;gap:6px;padding:7px 8px;padding-left:'+pad+'px;border-bottom:1px solid #f0f0f0">'
+  let html = '<div class="catrow" onclick="catRowClick('+n.id+','+(has?1:0)+',event)" title="'+(has?'Розгорнути / згорнути':'Редагувати категорію')+'" style="display:flex;align-items:center;gap:6px;padding:7px 8px;padding-left:'+pad+'px;border-bottom:1px solid #f0f0f0;cursor:pointer">'
     + caret
     + (n.icon?'<span style="font-size:15px">'+escapeHtml(n.icon)+'</span>':'<span class="material-icons-round" style="font-size:16px;opacity:.4">folder</span>')
     + '<span style="font-weight:'+(n.depth?500:600)+'">'+escapeHtml(n.name)+'</span>'+badge+cnt
     + '<span style="margin-left:auto;display:flex;gap:2px">'
-    +   '<span class="material-icons-round catact" title="Підкатегорія" onclick="catEdit(null,'+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">add</span>'
-    +   '<span class="material-icons-round catact" title="Редагувати" onclick="catEdit('+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">edit</span>'
-    +   '<span class="material-icons-round catact" title="Видалити" onclick="catDel('+n.id+",'"+escapeHtml(n.name).replace(/'/g,"\\'")+"')\" style=\"cursor:pointer;font-size:17px;opacity:.5;padding:3px\">delete</span>"
+    +   '<span class="material-icons-round catact" title="Підкатегорія" onclick="event.stopPropagation();catEdit(null,'+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">add</span>'
+    +   '<span class="material-icons-round catact" title="Редагувати" onclick="event.stopPropagation();catEdit('+n.id+')" style="cursor:pointer;font-size:17px;opacity:.5;padding:3px">edit</span>'
+    +   '<span class="material-icons-round catact" title="Видалити" onclick="event.stopPropagation();catDel('+n.id+",'"+escapeHtml(n.name).replace(/'/g,"\\'")+"')\" style=\"cursor:pointer;font-size:17px;opacity:.5;padding:3px\">delete</span>"
     + '</span></div>';
   if(has && open) html += '<div>'+n.children.map(c=>_catNode(c)).join('')+'</div>';
   return html;
 }
+// Клік по рядку категорії: з підкатегоріями → розгорнути/згорнути, без них → редагувати.
+function catRowClick(id, has, e){ if(e) e.stopPropagation(); if(has) catTgl(id); else catEdit(id); }
 function catTgl(id,e){ if(e) e.stopPropagation(); if(_catOpen.has(id)) _catOpen.delete(id); else _catOpen.add(id); loadSvcCats(); }
 function catEdit(id, parentId){
   const c = id ? _catFlat.find(x=>x.id===id) : null;
