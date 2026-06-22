@@ -156,11 +156,17 @@ async function produce(brief, { scenes = 3, aspect = '9:16', lang = 'uk', brandV
   const out = { title: board.title, scenes: board.scenes, caption: board.caption, hashtags: board.hashtags, video: { status: 'storyboard_only' } };
   if (!render) return out;
   if (!videoKey()) { out.video = { status: 'paid_key_required' }; return out; }
-  // Сцены независимы → стартуем все клипы Veo параллельно, не ждём каждый по очереди.
-  const started = await Promise.all(board.scenes.map((sc) => startClip(sc.prompt, { aspect, durationSec: sc.durationSec })));
+  // Сцены независимы → стартуем все клипы Veo параллельно. Падение одной сцены
+  // НЕ должно рушить весь пакет (иначе теряем уже стартовавшие клипы), поэтому
+  // throw каждой ловим в её же error — частичный успех лучше общего 500.
+  const started = await Promise.all(board.scenes.map((sc) =>
+    startClip(sc.prompt, { aspect, durationSec: sc.durationSec }).catch((e) => ({ error: e.message }))));
   if (started.some((s) => s.error === 'paid_key_required')) { out.video = { status: 'paid_key_required' }; return out; }
   const ops = started.map((s, i) => ({ prompt: board.scenes[i].prompt, operation: s.operation || null, error: s.error || null }));
-  out.video = { status: 'rendering', operations: ops, hint: 'опитуй GET /api/ai/video/clip?operation=... поки done=true' };
+  const anyStarted = ops.some((o) => o.operation);
+  out.video = anyStarted
+    ? { status: 'rendering', operations: ops, hint: 'опитуй GET /api/ai/video/clip?operation=... поки done=true' }
+    : { status: 'failed', operations: ops, error: 'жодну сцену не вдалося запустити' };
   return out;
 }
 
