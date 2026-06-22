@@ -22,7 +22,8 @@ const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
 const MAX_SIZE = 15 * 1024 * 1024; // 15MB
 
 const ALLOWED_MIME = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  // image/svg+xml исключён: SVG может содержать <script> → stored XSS при отдаче inline
   'application/pdf', 'text/csv', 'text/plain',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -32,7 +33,7 @@ const ALLOWED_MIME = new Set([
 
 const EXT_BY_MIME = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
-  'image/gif': '.gif', 'image/svg+xml': '.svg', 'application/pdf': '.pdf',
+  'image/gif': '.gif', 'application/pdf': '.pdf',
   'text/csv': '.csv', 'text/plain': '.txt',
 };
 

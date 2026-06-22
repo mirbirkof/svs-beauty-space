@@ -51,7 +51,10 @@ function requirePerm(perm) {
     try {
       const auth = req.headers.authorization || '';
       const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-      const token = bearer || req.headers['x-admin-token'] || req.query.token;
+      // query-токен разрешён ТОЛЬКО для GET (скачивание CSV через href, заголовки не выставить).
+      // На мутациях (POST/PATCH/DELETE) токен из URL запрещён: вектор CSRF + утечка в логи/referer.
+      const queryToken = req.method === 'GET' ? req.query.token : undefined;
+      const token = bearer || req.headers['x-admin-token'] || queryToken;
       const user = await resolveUserByToken(token);
       if (!user) return res.status(401).json({ error: 'unauthorized' });
       if (perm && !hasPermission(user.permissions, perm)) {
