@@ -323,9 +323,46 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
         );
       }
     }
-    await client.query(`UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [id]);
+    // оплаченный заказ → это ВОЗВРАТ: деньги уже получены, нужно зеркально вернуть
+    // (иначе касса завышена на сумму отменённого заказа, а у клиента остаются бонусы
+    // за товар, которого у него нет). Зеркало admin.js paid→refunded.
+    if (stockTaken) {
+      // отзываем РОВНО столько бонусов, сколько реально начислили при оплате
+      // (Mono-оплата бонусы не начисляет → вычитать слепые 3% нельзя — снимем чужие баллы).
+      const accr = await client.query(
+        `SELECT COALESCE(SUM(delta),0)::int AS pts FROM loyalty_ledger
+          WHERE ref_id = $1 AND reason = 'order-paid'`, [String(id)]);
+      const pts = accr.rows[0].pts;
+      if (order.client_id && pts > 0) {
+        await client.query(
+          `UPDATE clients SET
+             loyalty_points = GREATEST(0, COALESCE(loyalty_points,0) - $2),
+             total_spent    = GREATEST(0, COALESCE(total_spent,0) - $3)
+           WHERE id = $1`,
+          [order.client_id, pts, order.total]
+        );
+        await client.query(
+          `INSERT INTO loyalty_ledger (client_id, delta, reason, ref_id)
+           VALUES ($1, $2, 'order-cancel', $3)`,
+          [order.client_id, -pts, String(id)]
+        );
+      }
+      // возврат денег: компенсирующий расход в открытую смену (если приход шёл в кассу)
+      try {
+        const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+        if (sh.rows[0]) {
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, description)
+             VALUES ($1,'out','refund',$2,'card','order',$3,$4)`,
+            [sh.rows[0].id, order.total, id, `Скасування оплаченого замовлення #${id}`]
+          );
+        }
+      } catch (e) { console.warn('[orders:cancel:refund]', e.message); }
+    }
+    const finalStatus = stockTaken ? 'refunded' : 'cancelled';
+    await client.query(`UPDATE orders SET status = $2, updated_at = NOW() WHERE id = $1`, [id, finalStatus]);
     await client.query('COMMIT');
-    res.json({ ok: true, status: 'cancelled' });
+    res.json({ ok: true, status: finalStatus });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[orders:cancel]', e);
