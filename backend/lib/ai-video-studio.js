@@ -140,6 +140,26 @@ async function pollClip(operation) {
   return { done: true, raw: json.response || null };
 }
 
+/* ── 4. Оркестратор: бриф → готовый пакет ───────────────────────
+   Всегда отдаёт бесплатную часть (сценарий+подпись+хештеги). Если есть платный
+   ключ и render=true — дополнительно стартует Veo-клипы по сценам и возвращает
+   операции для поллинга. Без ключа video.status='paid_key_required' — но текст
+   уже на руках, ценность есть сразу. */
+async function produce(brief, { scenes = 3, aspect = '9:16', lang = 'uk', brandVoice = '', render = false } = {}) {
+  const board = await storyboard(brief, { scenes, aspect, lang, brandVoice });
+  const out = { title: board.title, scenes: board.scenes, caption: board.caption, hashtags: board.hashtags, video: { status: 'storyboard_only' } };
+  if (!render) return out;
+  if (!videoKey()) { out.video = { status: 'paid_key_required', note: readiness().note }; return out; }
+  const ops = [];
+  for (const sc of board.scenes) {
+    const started = await startClip(sc.prompt, { aspect, durationSec: sc.durationSec });
+    if (started.error === 'paid_key_required') { out.video = { status: 'paid_key_required' }; return out; }
+    ops.push({ prompt: sc.prompt, operation: started.operation || null, error: started.error || null });
+  }
+  out.video = { status: 'rendering', operations: ops, hint: 'опитуй GET /api/ai/video/clip?operation=... поки done=true' };
+  return out;
+}
+
 /** Сводка возможностей — что реально доступно прямо сейчас. */
 function readiness() {
   const paid = !!process.env.GEMINI_VIDEO_KEY;
@@ -155,4 +175,4 @@ function readiness() {
   };
 }
 
-module.exports = { storyboard, generateFrame, startClip, pollClip, readiness, videoKey };
+module.exports = { storyboard, produce, generateFrame, startClip, pollClip, readiness, videoKey };

@@ -32,6 +32,19 @@ router.post('/storyboard', canRead, async (req, res) => {
   } catch (e) { fail(res, e, 'storyboard'); }
 });
 
+/** Оркестратор: бриф → сценарий+подпись+хештеги (бесплатно) + опц. рендер видео.
+ *  render=true стартует Veo → нужен marketing.write (тратит платную квоту). */
+router.post('/produce', async (req, res) => {
+  const wantsRender = !!(req.body && req.body.render);
+  const guard = wantsRender ? canWrite : canRead;
+  guard(req, res, async () => {
+    try {
+      const { brief, scenes, aspect, lang, brandVoice, render } = req.body || {};
+      res.json(await studio.produce(brief, { scenes, aspect, lang, brandVoice, render }));
+    } catch (e) { fail(res, e, 'produce'); }
+  });
+});
+
 /** Ключевой кадр (платно: Nano Banana). 402 если нет платного ключа. */
 router.post('/frame', canWrite, async (req, res) => {
   try {
