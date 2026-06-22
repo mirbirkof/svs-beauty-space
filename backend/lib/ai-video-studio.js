@@ -111,11 +111,14 @@ async function startClip(prompt, { aspect = '9:16', durationSec = 6, image = nul
   if (!key) return { error: 'paid_key_required', reason: 'no GEMINI_VIDEO_KEY/GEMINI_API_KEY' };
   if (!prompt || !String(prompt).trim()) throw new Error('prompt required');
   const instance = { prompt: String(prompt).slice(0, 800) };
-  if (image && image.base64) instance.image = { bytesBase64Encoded: image.base64, mimeType: image.mime || 'image/png' };
+  // image-to-video: Gemini API ждёт inlineData {mimeType,data}, НЕ bytesBase64Encoded (то формат Vertex).
+  if (image && image.base64) instance.image = { inlineData: { mimeType: image.mime || 'image/png', data: image.base64 } };
   const path = `/v1beta/models/${VIDEO_MODEL}:predictLongRunning?key=${key}`;
+  // Только задокументированные параметры Gemini API: aspectRatio + durationSeconds.
+  // personGeneration тут НЕ поддерживается (это Vertex) → лишний параметр = 400.
   const { status, json } = await _req('POST', path, {
     instances: [instance],
-    parameters: { aspectRatio: aspect, durationSeconds: Math.min(8, Math.max(4, durationSec)), personGeneration: 'allow_adult' },
+    parameters: { aspectRatio: aspect, durationSeconds: String(Math.min(8, Math.max(4, durationSec))) },
   }, 60000);
   if (_isQuota(status, json)) return { error: 'paid_key_required', reason: (json.error && json.error.message) || 'quota' };
   if (json && json.name) return { operation: json.name };
