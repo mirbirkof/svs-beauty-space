@@ -294,7 +294,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: safeMessage(err, 'internal') });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[shop-api] listening on http://0.0.0.0:${PORT}`);
   console.log(`[shop-api] DB: ${process.env.DATABASE_URL ? 'connected' : 'MISSING'}`);
   // Запуск cron напоминаний
@@ -310,6 +310,38 @@ app.listen(PORT, '0.0.0.0', () => {
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
   }
 });
+
+// ── Graceful shutdown (audit #32) ──────────────────────────────────────────
+// Render шлёт SIGTERM при деплое и даёт ~30с до SIGKILL. Без дренажа активные
+// транзакции кассы/оплат обрывались на середине. Порядок: перестать принимать
+// новые соединения → дать текущим запросам завершиться → закрыть пул БД → выход.
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shop-api] ${signal} received → graceful shutdown`);
+  // принудительный выход-страховка, если дренаж завис (раньше SIGKILL от Render)
+  const hardKill = setTimeout(() => {
+    console.error('[shop-api] drain timeout → forced exit');
+    process.exit(1);
+  }, 25000);
+  hardKill.unref();
+  server.close(async () => {
+    try {
+      const { getPool } = require('./db-pg');
+      const pool = getPool();
+      if (pool && typeof pool.end === 'function') await pool.end(); // ждёт активные запросы
+      console.log('[shop-api] db pool closed, exit 0');
+    } catch (e) {
+      console.error('[shop-api] shutdown cleanup error:', e.message);
+    } finally {
+      clearTimeout(hardKill);
+      process.exit(0);
+    }
+  });
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // ── Авто-миграции при старте: БД, в которую смотрит ЭТОТ процесс, всегда догоняет код ──
 // Причина: 12.06 verify падал 42P10 — на Render-базе не было clients_tenant_phone_key
