@@ -2413,6 +2413,7 @@ function showApp() {
   const h = location.hash.replace('#','');
   if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
   loadBillingAlert();
+  try { startOnlineEventsPoll(); } catch (_) {}
 }
 
 // Глобальний банер про неоплачений рахунок — лише власнику салону з боргом.
@@ -2642,6 +2643,140 @@ function toast(msg, type = 'ok') {
   t.style.background = type === 'error' ? '#d9534f' : '#0a8f5f';
   t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Live-журнал: дзвіночок «дзинь» + спливаюче вікно на онлайн-запис/скасування
+// ─────────────────────────────────────────────────────────────────────────
+let _audioCtx = null;
+// Браузер дозволяє звук лише ПІСЛЯ дії користувача — розблоковуємо контекст
+// на першому ж кліку/натисканні (один раз), далі дзвіночок працює сам.
+function _unlockAudio() {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (_) {}
+}
+window.addEventListener('pointerdown', _unlockAudio, { once: true });
+window.addEventListener('keydown', _unlockAudio, { once: true });
+
+// Тихий «дзинь» — синтезуємо дзвіночок (без зовнішніх файлів). Два тони з
+// швидким згасанням → мʼякий приємний дзвін, не різкий біп. Гучність низька.
+function playBell() {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') { _audioCtx.resume(); }
+    const ctx = _audioCtx, now = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.value = 0.18; // тихо
+    master.connect(ctx.destination);
+    [ [1318.5, 0], [1975.5, 0.04] ].forEach(([freq, delay]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      const t0 = now + delay;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(1, t0 + 0.012); // швидка атака
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1); // довге згасання
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + 1.2);
+    });
+  } catch (_) { /* без звуку — не критично */ }
+}
+
+// Спливаюче вікно (правий верх) про онлайн-запис або скасування. Тримається 7с,
+// клік по ньому → перехід у журнал на дату події. Кілька подій складаються стопкою.
+function showBookingPopup(ev) {
+  let wrap = document.getElementById('bkPopWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'bkPopWrap';
+    wrap.style.cssText = 'position:fixed;top:16px;right:16px;z-index:100001;display:flex;flex-direction:column;gap:10px;max-width:340px;pointer-events:none';
+    document.body.appendChild(wrap);
+  }
+  const cancelled = ev.event_type === 'cancelled';
+  const when = ev.date_from ? new Date(ev.date_from).toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+  const chMap = { bot:'Telegram', site_salon:'сайт салону', site_shop:'сайт магазину' };
+  const chan = chMap[ev.channel] || 'онлайн';
+  const card = document.createElement('div');
+  card.style.cssText = `pointer-events:auto;cursor:pointer;background:#fff;border-left:5px solid ${cancelled?'#d9534f':'#0a8f5f'};border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:13px 15px;animation:bkPopIn .22s ease-out;font-size:13px;color:#1f2433`;
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:${cancelled?'#c0392b':'#0a8f5f'};margin-bottom:4px">
+      <span class="material-icons-round" style="font-size:20px">${cancelled?'event_busy':'event_available'}</span>
+      ${cancelled ? 'Скасування онлайн-запису' : 'Новий онлайн-запис'}
+    </div>
+    <div style="font-weight:600">${escapeHtml(ev.client_name || ev.client_phone || 'Клієнт')}</div>
+    <div style="color:#5b6172;margin-top:2px">${escapeHtml(ev.service_name || 'Послуга')}${ev.master_name ? ' · ' + escapeHtml(ev.master_name) : ''}</div>
+    <div style="color:#5b6172;margin-top:2px">${when}${when?' · ':''}<span style="color:#8a90a0">${chan}</span></div>`;
+  const goDate = ev.date_from ? new Date(ev.date_from) : null;
+  card.onclick = () => {
+    try {
+      if (goDate) { const di = document.getElementById('journalDate'); if (di) di.value = _ymd(goDate); }
+      go('journal');
+    } catch (_) {}
+    card.remove();
+  };
+  wrap.appendChild(card);
+  setTimeout(() => { card.style.transition = 'opacity .4s'; card.style.opacity = '0'; setTimeout(() => card.remove(), 400); }, 7000);
+}
+
+// Стан пулінгу онлайн-подій
+let _oeSince = null;          // ISO час останньої перевірки (курсор скасувань)
+let _oeMaxId = null;          // max id онлайн-записів (курсор нових)
+let _oeSeen = new Set();      // вже показані події (дедуп, щоб не дзвеніти двічі)
+let _oeTimer = null;
+
+function _journalBusy() {
+  // Не оновлюємо журнал авто-, якщо адмін щось робить (відкрита будь-яка модалка)
+  // або вкладка прихована — щоб не збити введення/скрол.
+  if (document.hidden) return true;
+  const am = document.getElementById('apptModal');
+  if (am && am.style.display && am.style.display !== 'none') return true;
+  return [...document.querySelectorAll('.modal-overlay')].some(m => {
+    const s = getComputedStyle(m); return s.display !== 'none' && s.visibility !== 'hidden';
+  });
+}
+
+async function pollOnlineEvents() {
+  try {
+    const params = [];
+    if (_oeSince) params.push('since=' + encodeURIComponent(_oeSince));
+    if (_oeMaxId != null) params.push('since_id=' + _oeMaxId);
+    const qs = params.length ? ('?' + params.join('&')) : '';
+    const r = await api('/api/schedule/online-events' + qs);
+    if (r && r.server_now) _oeSince = r.server_now;          // курсор скасувань → вперед
+    if (r && r.max_id != null) _oeMaxId = r.max_id;          // курсор нових записів → вперед
+    let gotEvent = false;
+    (r && Array.isArray(r.events) ? r.events : []).forEach(ev => {
+      const key = ev.event_type + ':' + ev.id;
+      if (_oeSeen.has(key)) return;
+      _oeSeen.add(key);
+      gotEvent = true;
+      playBell();
+      showBookingPopup(ev);
+    });
+    if (_oeSeen.size > 400) _oeSeen = new Set([..._oeSeen].slice(-200));
+    // Журнал тримаємо свіжим (щоб не записати на зайнятий час): оновлюємо на
+    // кожному тіку, поки адмін не зайнятий (модалка закрита, вкладка активна).
+    // gotEvent тут лише для ясності — рішення приймає _journalBusy().
+    if (currentPage === 'journal' && !_journalBusy()) {
+      if (typeof loadJournal === 'function') loadJournal(true); // тихо, без мигання
+    }
+    void gotEvent;
+  } catch (_) { /* мережа моргнула — наступний тік спробує знову */ }
+}
+
+if (!document.getElementById('bkPopKf')) {
+  const st = document.createElement('style'); st.id = 'bkPopKf';
+  st.textContent = '@keyframes bkPopIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}';
+  document.head.appendChild(st);
+}
+
+function startOnlineEventsPoll() {
+  if (_oeTimer) return; // уже запущено
+  _oeSince = new Date().toISOString();
+  _oeMaxId = null; // перший виклик поверне поточний max(id) → історія не дзвенить
+  pollOnlineEvents();
+  _oeTimer = setInterval(pollOnlineEvents, 15000); // раз на 15 сек
 }
 
 // ── Стилізоване підтвердження (заміна нативного confirm) — по центру, світле ──
@@ -5929,13 +6064,15 @@ async function puAutoRun(){
   if(r&&r.ok){ toast('Кандидатів: '+r.candidates+', створено заказів: '+r.orders_created); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 
-async function loadJournal() {
+async function loadJournal(silent) {
   const container = document.getElementById('journalContent');
   updateDateLabel();
   renderMiniCal();
   loadCashGauge();
   const date = document.getElementById('journalDate').value || _ymd(new Date());
-  container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
+  // silent=true — фонове авто-оновлення (кожні 15с): НЕ показуємо плейсхолдер
+  // «Завантаження…», щоб журнал не мигав. Контент тихо перемалюється даними.
+  if (!silent) container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   try {
     if (journalMode === 'week') return renderJournalWeek(container, date);
     const data = await api('/api/schedule/journal?date=' + date);

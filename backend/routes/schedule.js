@@ -703,6 +703,63 @@ router.get('/journal', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── GET /api/schedule/online-events?since=<ISO> ────────────────────────────
+// Легкий пулінг для журналу: повертає НОВІ онлайн-записи та онлайн-скасування,
+// що зʼявилися ПІСЛЯ переданого часу `since`. Адмінка опитує раз на ~15с і дзвонить
+// дзвіночком + показує спливаюче вікно. Тільки канали клієнта (bot/site_*),
+// admin-записи ігноруємо (їх адмін робить сам — не треба сповіщати). RLS тенанта
+// застосовується автоматично через app.tenant_id (бачимо лише свій салон).
+router.get('/online-events', async (req, res) => {
+  try {
+    const pool = getPool();
+
+    // Курсор «нових записів» — по id (SERIAL завжди зростає). Надійніше за час:
+    // booking-bridge синкає брони з BeautyPro зі СТАРИМ created_at (час створення
+    // у BP, не момент синку), тож детект по часу пропускав би їх. id-курсор ловить
+    // будь-який новий рядок незалежно від created_at.
+    const sinceId = parseInt(req.query.since_id, 10);
+    // Курсор «скасувань» — по часу (скасування = UPDATE, id не змінюється).
+    let since = req.query.since;
+    if (!since || isNaN(Date.parse(since))) since = new Date().toISOString();
+    const floorMs = Date.now() - 6 * 3600 * 1000; // не глибше 6 год (без лавини дзвонів)
+    const effSince = new Date(Math.max(Date.parse(since), floorMs)).toISOString();
+
+    // Перший виклик (курсор ще не відомий) — повертаємо лише поточний max(id),
+    // без подій. Інакше при відкритті вкладки задзвонило б на всі минулі записи.
+    if (!Number.isFinite(sinceId)) {
+      const mx = await pool.query(`SELECT COALESCE(MAX(id),0)::int AS max_id FROM online_bookings`);
+      return res.json({ server_now: new Date().toISOString(), max_id: mx.rows[0].max_id, events: [] });
+    }
+
+    const r = await pool.query(
+      `SELECT id, client_name, client_phone, service_name, master_name,
+              date_from, channel, status, created_at, updated_at, 'new' AS event_type
+         FROM online_bookings
+        WHERE id > $1
+          AND COALESCE(channel,'') IN ('bot','site_salon','site_shop')
+          AND COALESCE(status,'') NOT IN ('cancelled')
+      UNION ALL
+       SELECT id, client_name, client_phone, service_name, master_name,
+              date_from, channel, status, created_at, updated_at, 'cancelled' AS event_type
+         FROM online_bookings
+        WHERE status = 'cancelled'
+          AND COALESCE(channel,'') IN ('bot','site_salon','site_shop')
+          AND updated_at > $2::timestamptz
+          AND updated_at > created_at + INTERVAL '2 seconds'
+        ORDER BY id ASC
+        LIMIT 30`,
+      [sinceId, effSince]
+    );
+
+    const maxId = r.rows.reduce((mx, e) => (e.event_type === 'new' && e.id > mx ? e.id : mx), sinceId);
+    res.json({ server_now: new Date().toISOString(), max_id: maxId, events: r.rows });
+  } catch (e) {
+    console.error('[online-events]', e.message);
+    // Не валимо пулінг 500-кою — віддаємо порожньо, фронт просто чекає далі.
+    res.json({ server_now: new Date().toISOString(), events: [], error: 'soft' });
+  }
+});
+
 // ── GET /api/schedule/appointments/:id/details — деталі візиту: послуги + товари/розхідники ──
 // Повертає реальні товари (salon_product_sales) того ж клієнта того ж дня (київський),
 // щоб у картці запису було видно «що продано/витрачено», а не лише послугу.
