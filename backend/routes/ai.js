@@ -46,7 +46,7 @@ async function buildSnapshot() {
     q(`SELECT m.name,
               COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue,
               COUNT(*) FILTER (WHERE a.status='done')::int AS done,
-              COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow'))::int AS lost
+              COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow') AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS lost
        FROM masters m LEFT JOIN appointments a
          ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '30 days'
        WHERE m.active=true AND COALESCE(m.provides_services,true)=true
@@ -72,8 +72,8 @@ async function buildSnapshot() {
          AND created_at <  date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') - INTERVAL '1 month' + (NOW() - date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev'))`),
     // отмены за 30 дней
     q(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done,
-              COUNT(*) FILTER (WHERE status='cancelled')::int AS cancelled,
-              COUNT(*) FILTER (WHERE status='noshow')::int AS noshow
+              COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS cancelled,
+              COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS noshow
        FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'`),
   ]);
 
@@ -158,8 +158,8 @@ async function drillData(topic) {
     case 'masters': {
       const rows = await q(`SELECT m.name,
           COUNT(*) FILTER (WHERE a.status='done')::int AS done,
-          COUNT(*) FILTER (WHERE a.status='cancelled')::int AS cancelled,
-          COUNT(*) FILTER (WHERE a.status='noshow')::int AS noshow,
+          COUNT(*) FILTER (WHERE a.status='cancelled' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS cancelled,
+          COUNT(*) FILTER (WHERE a.status='noshow' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS noshow,
           COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue
         FROM masters m LEFT JOIN appointments a
           ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '90 days'

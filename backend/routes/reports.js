@@ -111,8 +111,8 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
          SELECT master_id,
                 COUNT(*)::int                    AS total_appts,
                 COUNT(*) FILTER (WHERE status='done')::int      AS done_appts,
-                COUNT(*) FILTER (WHERE status='cancelled')::int AS canceled_appts,
-                COUNT(*) FILTER (WHERE status='noshow')::int    AS no_show_appts,
+                COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS canceled_appts,
+                COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients,
                 COALESCE(SUM(COALESCE(real_amount, price)) FILTER (WHERE status='done'),0)::numeric AS revenue
            FROM appointments

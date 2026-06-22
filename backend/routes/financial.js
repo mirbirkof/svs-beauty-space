@@ -58,8 +58,8 @@ async function snapshot(from, to) {
     q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*) FILTER (WHERE status='done')::int done,
               COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int uniq,
-              COUNT(*) FILTER (WHERE status='cancelled')::int cancelled,
-              COUNT(*) FILTER (WHERE status='noshow')::int noshow
+              COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') <> 'bp_deleted')::int cancelled,
+              COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') <> 'bp_deleted')::int noshow
          FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*)::int c FROM clients WHERE created_at BETWEEN $1 AND $2`, [from, to]),
   ]);
