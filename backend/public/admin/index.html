@@ -4170,6 +4170,29 @@ function _salesKpi(label, val){
 }
 
 // ═══ AI-аналітик ══════════════════════════════
+// Зіставлення інсайту з темою глибокого розбору (drill) за ключовими словами.
+function mapInsightTopic(text) {
+  const t = (text || '').toLowerCase();
+  const has = (...ws) => ws.some(w => t.includes(w));
+  // порядок важливий: спершу специфічні теми
+  if (has('відтік', 'відток', 'не поверт', 'давно не', 'втрач')) return 'churn';
+  if (has('скасув', 'відмін', 'неявк', 'розподіл навантаж', 'навантаж між', 'між майстр', 'майстр')) return 'masters';
+  if (has('буд', 'день тижня', 'дні тижня', 'вихідн', 'субот', 'неділ', 'понеділок', 'вівторок', 'середа', 'четвер', 'пʼятниц', 'пятниц')) return 'weekday';
+  if (has('товар', 'залишк', 'склад', 'запас', 'на виході', 'закінч')) return 'low_stock';
+  if (has('нові клієнт', 'новий клієнт', 'нових клієнт', 'притік', 'залученн')) return 'new_clients';
+  if (has('місяц', 'динамік', 'порівнянн', 'минул', 'тенденц')) return 'month_vs_prev';
+  return null;
+}
+// Клік по інсайту → відкрити розбір потрібної теми; якщо тему не розпізнано — спитати AI.
+function openInsightDrill(el) {
+  const topic = el && el.dataset ? el.dataset.topic : '';
+  if (topic) { try { return openDrill(topic); } catch (e) {} }
+  const q = el && el.dataset ? el.dataset.q : '';
+  if (q) {
+    const inp = document.getElementById('aiQuestion');
+    if (inp) { inp.value = q; try { askAi(); } catch (e) {} inp.scrollIntoView({ behavior:'smooth', block:'center' }); }
+  }
+}
 const AI_ICONS = { good:'check_circle', warning:'warning', critical:'error' };
 const AI_COLORS = { good:'#16a34a', warning:'#d97706', critical:'#dc2626' };
 let _aiLoading = false;
@@ -4188,9 +4211,13 @@ async function loadAiInsights(fresh) {
       html += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">';
       for (const i of ins) {
         const col = AI_COLORS[i.type] || '#64748b', ic = AI_ICONS[i.type] || 'info';
-        html += `<div style="display:flex;gap:10px;padding:10px 12px;border-left:3px solid ${col};background:var(--bg-soft,#f8f9fb);border-radius:6px">
+        const topic = mapInsightTopic((i.title||'') + ' ' + (i.detail||''));
+        const q = escapeHtml(i.title||'');
+        html += `<div class="ai-insight" data-topic="${topic||''}" data-q="${q}" onclick="openInsightDrill(this)"
+          style="display:flex;gap:10px;padding:10px 12px;border-left:3px solid ${col};background:var(--bg-soft,#f8f9fb);border-radius:6px;cursor:pointer">
           <span class="material-icons-round" style="color:${col};font-size:20px;flex-shrink:0">${ic}</span>
-          <div><div style="font-weight:600;font-size:14px">${escapeHtml(i.title||'')}</div><div style="font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${escapeHtml(i.detail||'')}</div></div>
+          <div style="flex:1"><div style="font-weight:600;font-size:14px">${escapeHtml(i.title||'')}</div><div style="font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4">${escapeHtml(i.detail||'')}</div></div>
+          <span class="material-icons-round ai-insight-arrow" style="color:${col};font-size:18px;flex-shrink:0;align-self:center;opacity:.65">chevron_right</span>
         </div>`;
       }
       html += '</div>';
