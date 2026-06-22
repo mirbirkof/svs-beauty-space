@@ -56,7 +56,11 @@ async function snapshot(from, to) {
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric sum FROM cash_operations WHERE type='out' AND created_at BETWEEN $1 AND $2 GROUP BY category ORDER BY sum DESC`, [from, to]),
     q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COUNT(*) FILTER (WHERE status='done')::int done, COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int uniq FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
+    q(`SELECT COUNT(*) FILTER (WHERE status='done')::int done,
+              COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int uniq,
+              COUNT(*) FILTER (WHERE status='cancelled')::int cancelled,
+              COUNT(*) FILTER (WHERE status='noshow')::int noshow
+         FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*)::int c FROM clients WHERE created_at BETWEEN $1 AND $2`, [from, to]),
   ]);
   const revServices = Number(svc[0]?.s || 0);
@@ -78,6 +82,8 @@ async function snapshot(from, to) {
       done_appts: Number(appts[0]?.done || 0),
       unique_clients: Number(appts[0]?.uniq || 0),
       new_clients: Number(newCli[0]?.c || 0),
+      cancelled_appts: Number(appts[0]?.cancelled || 0),
+      noshow_appts: Number(appts[0]?.noshow || 0),
     },
   };
 }
@@ -134,6 +140,7 @@ async function buildDigest(opts = {}) {
   lines.push(`   • послуги ${s.revenue.services.toLocaleString('uk-UA')} ₴ · товари ${s.revenue.products.toLocaleString('uk-UA')} ₴`);
   lines.push(`🧾 Чеків: <b>${s.metrics.transaction_count}</b> · середній ${s.metrics.avg_check.toLocaleString('uk-UA')} ₴`);
   lines.push(`👥 Клієнтів: ${s.metrics.unique_clients} (нових ${s.metrics.new_clients})`);
+  lines.push(`❌ Скасувань: <b>${s.metrics.cancelled_appts}</b>${s.metrics.noshow_appts ? ` · неявок: ${s.metrics.noshow_appts}` : ''}`);
   if (opts.include_expenses !== false && s.expenses.total > 0) {
     lines.push('');
     lines.push(`💸 Витрати: <b>${s.expenses.total.toLocaleString('uk-UA')} ₴</b>`);
@@ -196,10 +203,12 @@ router.post('/digest/send-now', requirePerm('reports.finance'), async (req, res)
 let cronRef = null;
 async function digestTick() {
   try {
-    const st = (await pool.query(`SELECT * FROM financial_digest_settings WHERE id=1`)).rows[0];
+    const st = (await pool.query(`SELECT *, to_char(last_sent_date,'YYYY-MM-DD') AS last_sent_str FROM financial_digest_settings WHERE id=1`)).rows[0];
     if (!st || !st.is_active) return;
     const today = kyivDate();
-    if (st.last_sent_date && kyivDate(new Date(st.last_sent_date)) === today) return; // вже слали
+    // last_sent_str — чистая строка YYYY-MM-DD из БД (без TZ-сдвига; раньше повторная
+    // конвертация DATE→Date→kyivDate сдвигала день вперёд и бот пропускал сутки).
+    if (st.last_sent_str && st.last_sent_str === today) return; // вже слали сьогодні
     if (st.skip_weekends) {
       const dow = new Date(today + 'T12:00:00').getDay();
       if (dow === 0 || dow === 6) return;
