@@ -43,12 +43,12 @@ function run(bin, args, timeoutMs = 120000) {
   });
 }
 
-/** Длительность видео в секундах (ffprobe). 0 если не видео. */
+/** Длительность видео в секундах. 0 если не видео.
+ *  Только парс заголовка: `ffmpeg -i file` без выхода печатает Duration/Video мгновенно
+ *  и завершается кодом 1 — это штатно, НЕ декодируем весь поток (важно на слабом CPU Render). */
 async function probeDuration(file) {
-  // ffprobe идёт рядом с ffmpeg-static? нет — у пакета только ffmpeg. Берём ffmpeg -i разбором,
-  // но надёжнее ffprobe из системы, если есть. Здесь — лёгкий парс через ffmpeg null-вывод.
   return new Promise((resolve) => {
-    const p = spawn(ffmpegPath, ['-i', file, '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(ffmpegPath, ['-i', file], { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     p.stderr.on('data', (d) => (err += d));
     p.on('error', () => resolve(0));
@@ -82,11 +82,16 @@ async function normalizeClip(src, dst, { w, h, dur, captionFile, hasTitle }) {
     );
   }
   const args = [
-    '-y', '-i', src,
+    '-y',
+    // ВАЖНО для Render (512MB): в контейнере ffmpeg видит ВСЕ ядра хоста и x264 плодит
+    // буферы кадров на поток → OOM-килл всего процесса. Жёстко ограничиваем потоки.
+    '-threads', '1', '-filter_threads', '1',
+    '-i', src,
     '-t', String(dur),
     '-vf', vf.join(','),
     '-r', '30',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-threads', '1', '-x264-params', 'threads=1:lookahead-threads=1',
+    '-preset', 'veryfast', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-ar', '44100', '-ac', '2',
     // если в клипе нет звука — добавим тишину, иначе concat звука рассыпется
     '-af', 'apad', '-shortest',
@@ -145,8 +150,9 @@ async function montage(clips, scenes = [], opts = {}) {
     await fsp.writeFile(listFile, normalized.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
     const outFile = path.join(dir, 'promo.mp4');
     await run(ffmpegPath, [
-      '-y', '-f', 'concat', '-safe', '0', '-i', listFile,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-y', '-threads', '1', '-f', 'concat', '-safe', '0', '-i', listFile,
+      '-c:v', 'libx264', '-threads', '1', '-x264-params', 'threads=1:lookahead-threads=1',
+      '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-ar', '44100', '-movflags', '+faststart',
       outFile,
     ]);
