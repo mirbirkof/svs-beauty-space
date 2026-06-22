@@ -6,6 +6,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { recordCashIn } = require('../lib/cash-ledger');
 
 const router = express.Router();
 const pool = getPool();
@@ -56,6 +57,8 @@ router.post('/', async (req, res) => {
     }
     const gc = ins.rows[0];
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'issue',$2,$2,$3,'випуск')`, [gc.id, amt, req.user?.display_name || null]);
+    // деньги в кассу/ДДС: продажа сертификата (аудит 22.06 #12). Идемпотентно по ext_ref.
+    await recordCashIn({ category: 'sale_certificate', amount: amt, method: req.body?.method || 'cash', ref_type: 'gift_certificate', ref_id: gc.id, description: `Продаж сертифіката ${code}`, ext_ref: `gc:issue:${gc.id}` }).catch(e => console.error('cash-ledger gc:', e.message));
     logAction({ user: req.user, action: 'gc.issue', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip, meta: { code, amount: amt } }).catch(() => {});
     res.json({ ok: true, certificate: gc });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

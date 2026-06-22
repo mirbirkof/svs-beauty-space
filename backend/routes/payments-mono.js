@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const mono = require('../lib/mono');
+const { recordCashIn } = require('../lib/cash-ledger');
 const { getSetting } = require('../lib/settings');
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
@@ -87,6 +88,17 @@ async function applyInvoiceStatus(data) {
     );
     if (upd.rowCount) {
       const b = upd.rows[0];
+      // деньги в кассу (идемпотентно по ext_ref) — иначе онлайн-оплата визита невидима для P&L/ДДС.
+      // ВАЖНО: если визит привязан к BeautyPro (bp_appointment_id), closeAppointmentAsPaid создаст
+      // продажу в BP, а наш BP-синк импортирует её как bp_sale sale_service. Чтобы НЕ задвоить выручку,
+      // пишем sale_service сами ТОЛЬКО когда привязки к BP нет (иначе деньги учтёт синк).
+      if (!b.bp_appointment_id) {
+        try {
+          await recordCashIn({ category: 'sale_service', amount: paid, method: 'mono',
+            ref_type: 'online_booking', ref_id: b.id, description: b.service_name || 'Послуга (онлайн)',
+            ext_ref: `mono:visit:${invoiceId}` });
+        } catch (e) { console.error('[mono:visit:cash]', e.message); }
+      }
       // телефон в уведомлении = телефон владельца кабинета (clients.phone), не телефон из карточки BP
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
       // провести в BeautyPro: чеки на счёт TG-бот + зелёная запись (fire-and-forget)
@@ -119,6 +131,12 @@ async function applyInvoiceStatus(data) {
     );
     if (upd.rowCount) {
       const b = upd.rows[0];
+      // предоплата в кассу (категория 'prepayment' — это ДДС-приход, в выручку попадёт при закрытии визита)
+      try {
+        await recordCashIn({ category: 'prepayment', amount: paid, method: 'mono',
+          ref_type: 'online_booking', ref_id: b.id, description: `Передоплата: ${b.service_name || 'запис'}`,
+          ext_ref: `mono:prepay:${invoiceId}` });
+      } catch (e) { console.error('[mono:prepay:cash]', e.message); }
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
       const when = b.date_from ? new Date(b.date_from).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
       // клиенту — через booking-бот (он точно с ним общался)

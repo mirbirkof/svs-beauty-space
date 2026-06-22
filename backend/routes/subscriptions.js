@@ -6,6 +6,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { recordCashIn } = require('../lib/cash-ledger');
 
 const router = express.Router();
 const pool = getPool();
@@ -217,6 +218,8 @@ router.post('/', async (req, res) => {
     const sub = ins.rows[0];
     // primary користувач
     await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [sub.id, +b.client_id]);
+    // деньги в кассу/ДДС: продажа абонемента (аудит 22.06 #12). Идемпотентно по ext_ref.
+    await recordCashIn({ category: 'sale_subscription', amount: plan.price, method: b.method || 'cash', ref_type: 'subscription', ref_id: sub.id, description: `Продаж абонемента ${number} (${plan.name})`, ext_ref: `sub:sell:${sub.id}` }).catch(e => console.error('cash-ledger sub:', e.message));
     logAction({ user: req.user, action: 'subscription.sell', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { number, plan: plan.name, price: plan.price } }).catch(() => {});
     res.json({ ok: true, subscription: sub, plan });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
