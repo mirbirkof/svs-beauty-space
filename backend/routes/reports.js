@@ -4,6 +4,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
+const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 
 const router = express.Router();
 const pool = getPool();
@@ -223,21 +224,16 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
 // GET /api/reports/churn?days=90
 router.get('/churn', requirePerm('reports.read'), async (req, res) => {
   try {
-    const days = Math.max(Number(req.query.days) || 90, 30);
+    // Единое cadence-aware определение (lib/churn.js) — те же клиенты, что в дашборде и у AI.
     const r = await pool.query(
-      `SELECT c.id, c.name, c.phone,
-              MAX(a.starts_at) AS last_visit,
-              COUNT(a.id)     AS total_visits,
-              EXTRACT(EPOCH FROM (NOW()-MAX(a.starts_at)))/86400 AS days_since
-         FROM clients c
-         JOIN appointments a ON a.client_id=c.id AND a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()
-        GROUP BY c.id, c.name, c.phone
-        HAVING MAX(a.starts_at) < NOW() - make_interval(days => $1)
-           AND COUNT(a.id) >= 2
-        ORDER BY MAX(a.starts_at) ASC
-        LIMIT 500`, [days]
+      `${CHURNED_CTE}
+       SELECT id, name, phone, last_visit, visits AS total_visits,
+              (NOW()::date - last_visit::date) AS days_since
+         FROM churned
+        ORDER BY last_visit ASC
+        LIMIT 500`
     );
-    res.json({ threshold_days: days, items: r.rows, count: r.rows.length });
+    res.json({ definition: 'cadence-aware', items: r.rows, count: r.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -294,13 +290,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
     const [lowStock, openShifts, churnCnt, activeMasters, topMaster] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active = true AND COALESCE(stock_qty,0) <= 5`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
-      pool.query(`SELECT COUNT(*)::int AS n FROM (
-         SELECT c.id FROM clients c
-         JOIN appointments a ON a.client_id=c.id
-         WHERE a.status NOT IN ('cancelled','noshow')
-         GROUP BY c.id
-         HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
-       ) t`).catch(()=>({rows:[{n:0}]})),
+      pool.query(CHURN_COUNT_SQL).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT COUNT(*)::int AS n FROM masters WHERE active=true`).catch(()=>({rows:[{n:0}]})),
       pool.query(`SELECT m.name, SUM(co.amount)::numeric AS rev
          FROM cash_operations co JOIN masters m ON m.id=co.master_id
@@ -888,12 +878,8 @@ router.get('/overview', requirePerm(), async (req, res) => {
       // виконано записів за місяць (для середнього чека і KPI) = реально проведені візити (не лише 'done')
       pool.query(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done
                   FROM appointments WHERE starts_at >= $1`, [monFrom]).catch(()=>({rows:[{done:0}]})),
-      // відтік: клієнти з ≥2 візитами, останній >90 днів тому
-      pool.query(`SELECT COUNT(*)::int AS n FROM (
-                    SELECT c.id FROM clients c JOIN appointments a ON a.client_id=c.id
-                    WHERE a.status NOT IN ('cancelled','noshow')
-                    GROUP BY c.id HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
-                  ) t`).catch(()=>({rows:[{n:0}]})),
+      // відтік: єдине визначення (cadence-aware) з lib/churn.js — синхронно з дашбордом і AI
+      pool.query(CHURN_COUNT_SQL).catch(()=>({rows:[{n:0}]})),
       // позицій на виході (≤ поріг)
       pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active = true AND COALESCE(stock_qty,0) <= 5`).catch(()=>({rows:[{n:0}]})),
     ]);

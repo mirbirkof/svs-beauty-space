@@ -8,6 +8,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const llm = require('../lib/llm');
+const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 
 const router = express.Router();
 const pool = getPool();
@@ -61,13 +62,7 @@ async function buildSnapshot() {
        GROUP BY m.id, m.name ORDER BY revenue DESC`),
     // отток (lapsed): ≥2 визита И не приходил дольше, чем 2× его обычного интервала визитов (но не менее 90 дней).
     // Учёт ритма: клиент на цикле "раз в 2 мес" не считается оттоком на 95-й день — только когда реально выпал из ритма.
-    q(`WITH base AS (
-         SELECT c.id, MAX(a.starts_at) AS last_v, MIN(a.starts_at) AS first_v, COUNT(a.id) AS vis
-         FROM clients c JOIN appointments a ON a.client_id=c.id
-         WHERE a.status NOT IN ('cancelled','noshow')
-         GROUP BY c.id HAVING COUNT(a.id) >= 2)
-       SELECT COUNT(*)::int AS n FROM base
-       WHERE (NOW()::date - last_v::date) > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (last_v-first_v))/86400) / (vis-1))`),
+    q(CHURN_COUNT_SQL),
     // позиции на выходе
     q(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active=true AND COALESCE(stock_qty,0) <= 5`),
     // новые клиенты за 30 дней = те, у кого ПЕРВЫЙ визит в последние 30 дней.
@@ -148,16 +143,7 @@ async function drillData(topic) {
     case 'churn': {
       // База відтоку (cadence-aware): ≥2 візити І не повертався довше за 2× свого звичного інтервалу
       // (але не менше 90 днів). Клієнт на циклі "раз на 2 міс" не вважається відтоком на 95-й день.
-      const base = `WITH churned AS (
-          SELECT c.id, c.name, c.phone, COALESCE(c.total_spent,0)::numeric AS spent,
-                 MAX(a.starts_at) AS last_visit,
-                 COUNT(a.id)::int AS visits
-          FROM clients c JOIN appointments a ON a.client_id=c.id
-          WHERE a.status NOT IN ('cancelled','noshow')
-          GROUP BY c.id
-          HAVING COUNT(a.id) >= 2
-             AND (NOW()::date - MAX(a.starts_at)::date)
-                 > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (MAX(a.starts_at)-MIN(a.starts_at)))/86400) / (COUNT(a.id)-1)))`;
+      const base = CHURNED_CTE;
       const [rows, byMaster, byService, agg] = await Promise.all([
         q(`${base}
            SELECT ch.id, ch.name, ch.phone, ch.spent, ch.visits,
