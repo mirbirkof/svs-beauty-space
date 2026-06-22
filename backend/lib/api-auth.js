@@ -9,6 +9,7 @@
    ═══════════════════════════════════════════════════════ */
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
+const { runAs } = require('./tenant');
 
 function generateKey() {
   const raw = 'svs_live_' + crypto.randomBytes(24).toString('hex');
@@ -47,8 +48,12 @@ function apiKeyAuth(requiredScope = 'read') {
     try {
       const raw = req.get('x-api-key') || (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
       if (!raw) return res.status(401).json({ error: 'api_key_required' });
-      const rows = await getPool().query(
-        `SELECT * FROM api_keys WHERE key_hash=$1 AND active=true LIMIT 1`, [hashKey(raw)]);
+      // Пошук ключа — БЕЗ тенант-контексту (runAs(null)): на цьому кроці ми ще не
+      // знаємо салон, а tenantMiddleware вже поставив DEFAULT-тенанта Боса. Без цього
+      // ключ чужого салону не знайшовся б (RLS відфільтрував би його), і запит мовчки
+      // йшов би в салон Боса. null-контекст → db-pg обходить RLS лише для autentifікації.
+      const rows = await runAs(null, () => getPool().query(
+        `SELECT * FROM api_keys WHERE key_hash=$1 AND active=true LIMIT 1`, [hashKey(raw)]));
       const key = rows.rows[0];
       if (!key) return res.status(401).json({ error: 'invalid_api_key' });
       if (key.expires_at && new Date(key.expires_at) < new Date())
@@ -63,9 +68,15 @@ function apiKeyAuth(requiredScope = 'read') {
       if (!rl.allowed) return res.status(429).json({ error: 'rate_limit_exceeded', retry_after: rl.reset });
 
       req.apiKey = key;
-      // best-effort учёт использования
-      getPool().query(`UPDATE api_keys SET request_count=request_count+1, last_used_at=now() WHERE id=$1`, [key.id]).catch(() => {});
-      next();
+      req.tenant_id = key.tenant_id;
+      // Контекст тенанта КЛЮЧА на весь downstream: усі /api/v1/* читають/пишуть
+      // салон власника ключа, а не DEFAULT Боса (audit #15). runAs ставить
+      // app.tenant_id для RLS у db-pg. Для ключів Боса tenant_id = DEFAULT → без змін.
+      runAs(key.tenant_id, () => {
+        // best-effort облік використання (у контексті тенанта ключа)
+        getPool().query(`UPDATE api_keys SET request_count=request_count+1, last_used_at=now() WHERE id=$1`, [key.id]).catch(() => {});
+        next();
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   };
 }
