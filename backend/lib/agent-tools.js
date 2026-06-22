@@ -6,6 +6,7 @@
    Импорт в роут и в seed каталога ai_agent_tools. */
 const { getPool } = require('../db-pg');
 const llm = require('./llm');
+const { findOverlap } = require('./booking-guard');
 
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -155,11 +156,22 @@ const TOOLS = {
     async impl(args) {
       const cid = parseInt(args.client_id, 10), sid = parseInt(args.service_id, 10);
       if (!cid || !sid || !args.starts_at) return { error: 'client_id, service_id, starts_at обовʼязкові' };
-      const price = await q(`SELECT price FROM services WHERE id=$1`, [sid]).then(r => r[0]?.price).catch(() => null);
+      const startDate = new Date(args.starts_at);
+      if (isNaN(startDate)) return { error: 'starts_at: невірний формат дати' };
+      const sv = await q(`SELECT price, duration_min FROM services WHERE id=$1`, [sid]).then(r => r[0]).catch(() => null);
+      if (!sv) return { error: 'послугу не знайдено' };
+      const dur = Number(sv.duration_min) || 30;
+      const endDate = new Date(startDate.getTime() + dur * 60000);
+      const mid = args.master_id ? parseInt(args.master_id, 10) : null;
+      // защита от двойного бронирования (ends_at обязателен — колонка NOT NULL)
+      if (mid) {
+        const conflict = await findOverlap({ masterId: mid, startsAt: startDate, endsAt: endDate });
+        if (conflict) return { error: 'slot-busy', message: 'У майстра вже є запис на цей час' };
+      }
       const r = await q(
-        `INSERT INTO appointments (client_id, service_id, master_id, starts_at, status, price)
-         VALUES ($1,$2,$3,$4,'booked',$5) RETURNING id`,
-        [cid, sid, args.master_id ? parseInt(args.master_id, 10) : null, args.starts_at, price]).catch(e => ({ error: e.message }));
+        `INSERT INTO appointments (client_id, service_id, master_id, starts_at, ends_at, status, price)
+         VALUES ($1,$2,$3,$4,$5,'booked',$6) RETURNING id`,
+        [cid, sid, mid, startDate.toISOString(), endDate.toISOString(), sv.price]).catch(e => ({ error: e.message }));
       if (Array.isArray(r) && r[0]) return { ok: true, appointment_id: r[0].id };
       return { error: (r && r.error) || 'не вдалось створити запис' };
     },

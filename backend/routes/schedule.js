@@ -6,6 +6,7 @@ const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid } = require('../lib/schedule-month');
+const { findOverlap } = require('../lib/booking-guard');
 const router = express.Router();
 
 // GET = schedule.read, мутации = schedule.write
@@ -831,7 +832,7 @@ router.patch('/appointments/:id', async (req, res) => {
     let curRow = null;
     if (starts_at !== undefined || duration_min !== undefined || master_id !== undefined || service_id !== undefined) {
       const cur = await pool.query(
-        `SELECT starts_at, EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur, master_id
+        `SELECT starts_at, ends_at, EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur, master_id
            FROM appointments WHERE id=$1`,
         [req.params.id]
       );
@@ -881,6 +882,18 @@ router.patch('/appointments/:id', async (req, res) => {
 
     // Планова сума запису при зміні послуги (фактичні оплати в продажах не чіпаємо)
     const newPrice = svcRow ? Number(svcRow.price) : null;
+
+    // защита от двойного бронирования при переносе времени/смене мастера
+    if (newStart || newEnd || master_id != null) {
+      const effMaster = master_id != null ? Number(master_id) : curRow.master_id;
+      const effStart = newStart || curRow.starts_at;
+      const effEnd = newEnd || curRow.ends_at;
+      const conflict = await findOverlap({ masterId: effMaster, startsAt: effStart, endsAt: effEnd, excludeId: Number(req.params.id) });
+      if (conflict) {
+        return res.status(409).json({ error: 'slot-busy', conflict_id: conflict.id,
+          message: 'У майстра вже є запис на цей час' });
+      }
+    }
 
     // Ручний перенос (час/майстер/тривалість/послуга) → позначаємо manual_override,
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
@@ -932,6 +945,13 @@ router.post('/appointments', async (req, res) => {
     const startDate = new Date(starts_at);
     if (isNaN(startDate)) return res.status(400).json({ error: 'bad-starts_at' });
     const endDate = ends_at ? new Date(ends_at) : new Date(startDate.getTime() + dur * 60000);
+
+    // защита от двойного бронирования: слот мастера не должен пересекаться
+    const conflict = await findOverlap({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });
+    if (conflict) {
+      return res.status(409).json({ error: 'slot-busy', conflict_id: conflict.id,
+        message: 'У майстра вже є запис на цей час' });
+    }
 
     // клієнт: за id, або за телефоном (знайти/створити), або тільки імʼя
     let cid = client_id ? Number(client_id) : null;
