@@ -28,6 +28,12 @@ function genToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+// В БД храним ТОЛЬКО sha256 токена. Утечка дампа sessions не даёт рабочих токенов
+// (raw token есть лишь у клиента). Совпадает с подходом user_tokens в lib/rbac.js.
+function hashToken(t) {
+  return crypto.createHash('sha256').update(String(t)).digest('hex');
+}
+
 // middleware: достаёт клиента из Bearer токена
 function authClient({ optional = false } = {}) {
   return async (req, res, next) => {
@@ -39,11 +45,13 @@ function authClient({ optional = false } = {}) {
         return res.status(401).json({ error: 'no-token' });
       }
       const pool = getPool();
+      // dual-lookup: $1 = sha256 (новые/мигрированные), $2 = legacy plaintext (до миграции 137).
+      // Порядок деплоя кода и миграции не важен — старые сессии не рвутся.
       const r = await pool.query(
         `SELECT s.id AS sid, s.expires_at, c.*
          FROM sessions s JOIN clients c ON c.id = s.client_id
-         WHERE s.token = $1`,
-        [token]
+         WHERE s.token = $1 OR s.token = $2`,
+        [hashToken(token), token]
       );
       if (r.rowCount === 0 || new Date(r.rows[0].expires_at) < new Date()) {
         if (optional) return next();
@@ -191,7 +199,7 @@ router.post('/verify', async (req, res) => {
     await pool.query(
       `INSERT INTO sessions (client_id, token, expires_at, user_agent, ip)
        VALUES ($1,$2,$3,$4,$5)`,
-      [client.id, token, expiresAt, req.headers['user-agent'] || '', req.ip]
+      [client.id, hashToken(token), expiresAt, req.headers['user-agent'] || '', req.ip]
     );
 
     res.json({ ok: true, token, expires_at: expiresAt, client });
@@ -232,7 +240,7 @@ router.post('/logout', authClient(), async (req, res) => {
   try {
     const pool = getPool();
     const token = (req.headers.authorization || '').slice(7);
-    await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);
+    await pool.query(`DELETE FROM sessions WHERE token = $1 OR token = $2`, [hashToken(token), token]);
     res.json({ ok: true });
   } catch (e) {
     console.error('[auth:logout]', e);
