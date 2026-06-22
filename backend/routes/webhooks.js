@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { assertPublicHttpUrl } = require('../lib/ssrf-guard');
 
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -33,9 +34,12 @@ async function deliver(wh, eventType, payload, attempt = 1) {
   }
   let statusCode = null, ok = false, error = null;
   try {
+    // SSRF-guard (#18): резолвим хост в момент доставки — блок приватных/loopback/
+    // cloud-metadata адресов и обход DNS-rebinding (резолв при создании недостаточен).
+    await assertPublicHttpUrl(wh.url);
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 10000);
-    const resp = await fetch(wh.url, { method: 'POST', headers, body, signal: ctrl.signal });
+    const resp = await fetch(wh.url, { method: 'POST', headers, body, signal: ctrl.signal, redirect: 'error' });
     clearTimeout(t);
     statusCode = resp.status;
     ok = resp.status >= 200 && resp.status < 300;
@@ -115,6 +119,7 @@ router.post('/', async (req, res) => {
   try {
     const { url, description, events, secret, active } = req.body || {};
     if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'valid_url_required' });
+    try { await assertPublicHttpUrl(url); } catch (e) { return res.status(400).json({ error: 'url_not_allowed', reason: e.message }); }
     const ev = Array.isArray(events) && events.length ? events.map(String) : ['*'];
     const row = (await q(
       `INSERT INTO webhooks (url, description, events, secret, active)
@@ -128,6 +133,9 @@ router.post('/', async (req, res) => {
 // PATCH /api/webhooks/:id — обновить
 router.patch('/:id', async (req, res) => {
   try {
+    if (req.body.url !== undefined) {
+      try { await assertPublicHttpUrl(req.body.url); } catch (e) { return res.status(400).json({ error: 'url_not_allowed', reason: e.message }); }
+    }
     const allowed = ['url', 'description', 'events', 'secret', 'active'];
     const sets = [], params = [];
     for (const k of allowed) {
