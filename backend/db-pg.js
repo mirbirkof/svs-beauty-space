@@ -69,6 +69,10 @@ function getPool() {
 const APP_DB_ROLE = (process.env.DB_APP_ROLE || 'app_tenant').replace(/[^a-zA-Z0-9_]/g, '');
 // null = ещё не проверяли, true/false = доступна ли роль текущему пользователю.
 let appRoleAvailable = null;
+// BYPASSRLS-атрибут самого пользователя подключения. Если true И app-роль недоступна —
+// RLS не сработает совсем (#16): тогда при наличии тенанта запрос отклоняем (fail-closed),
+// а не отдаём данные без изоляции. Аварийный обход: DB_ALLOW_UNSAFE_ISOLATION=1.
+let connUserBypassesRls = null;
 let appRoleProbe = null;
 
 // Один раз проверяем: существует ли роль app_tenant и можем ли мы в неё переключиться.
@@ -79,14 +83,20 @@ function startAppRoleProbe() {
   appRoleProbe = (async () => {
     try {
       const r = await rawPoolQuery(
-        "SELECT pg_has_role(current_user, $1, 'USAGE') AS ok FROM pg_roles WHERE rolname = $1",
+        `SELECT pg_has_role(current_user, $1, 'USAGE') AS ok,
+                (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass`,
         [APP_DB_ROLE]
       );
       appRoleAvailable = !!(r.rows[0] && r.rows[0].ok);
-      console.log(`[pg] app-role isolation: ${appRoleAvailable ? 'ON (' + APP_DB_ROLE + ')' : 'OFF (role unavailable, RLS-only)'}`);
+      connUserBypassesRls = !!(r.rows[0] && r.rows[0].bypass);
+      const mode = appRoleAvailable ? 'ON (' + APP_DB_ROLE + ')'
+        : (connUserBypassesRls ? 'FAIL-CLOSED (role unavailable + BYPASSRLS user → tenant queries rejected)'
+                               : 'RLS-only (non-bypass user)');
+      console.log(`[pg] app-role isolation: ${mode}`);
     } catch (e) {
       appRoleAvailable = false;
-      console.warn('[pg] app-role probe failed, RLS-only:', e.message);
+      connUserBypassesRls = true; // неизвестно → считаем опасным, fail-closed
+      console.warn('[pg] app-role probe failed → fail-closed for tenant queries:', e.message);
     }
   })();
   return appRoleProbe;
@@ -103,6 +113,10 @@ async function applyTenantOnClient(client, tid) {
   if (appRoleAvailable === null && appRoleProbe) { try { await appRoleProbe; } catch (_) {} }
   if (appRoleAvailable) {
     await client.query('SET LOCAL ROLE ' + APP_DB_ROLE);
+  } else if (connUserBypassesRls && process.env.DB_ALLOW_UNSAFE_ISOLATION !== '1') {
+    // #16 fail-closed: app-роль недоступна, а пользователь подключения обходит RLS →
+    // изоляция тенанта невозможна. Лучше отказать, чем отдать данные соседнего салона.
+    throw new Error('tenant isolation unavailable: app role missing on BYPASSRLS connection');
   }
   await client.query("SELECT set_config('app.tenant_id', $1, true)", [tid]);
 }
