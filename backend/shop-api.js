@@ -143,6 +143,9 @@ app.get('/api/shop/readiness', (req, res) => {
       sms_provider: ready(!!process.env.SMS_PROVIDER),
       telegram_bot: ready(!!(process.env.TELEGRAM_NOTIFY_TOKEN || process.env.TELEGRAM_BOT_TOKEN)),
       beautypro_crm: ready(!!(process.env.BEAUTYPRO_ID_KEY && process.env.BEAUTYPRO_SECRET_KEY)),
+      // Критичні секрети безпеки — лише булевий статус, значення ніколи не віддаються
+      jwt_secret: ready(!!(process.env.JWT_SECRET && process.env.JWT_SECRET.length >= 32)),
+      integration_encryption: ready(!!(process.env.INTEGRATION_ENC_KEY || process.env.JWT_SECRET)),
     },
     code_status: {
       catalog: 'ready',
