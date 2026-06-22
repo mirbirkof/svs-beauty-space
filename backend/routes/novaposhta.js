@@ -54,7 +54,7 @@ function call(modelName, calledMethod, methodProperties = {}) {
 
 const { requirePerm } = require('../lib/rbac');
 
-router.get('/cities', async (req, res) => {
+router.get('/cities', requirePerm(), async (req, res) => {
   try {
     const q = req.query.q || '';
     if (!q) return res.status(400).json({ error: 'q-required' });
@@ -68,7 +68,7 @@ router.get('/cities', async (req, res) => {
   }
 });
 
-router.get('/branches', async (req, res) => {
+router.get('/branches', requirePerm(), async (req, res) => {
   try {
     const city_ref = req.query.city_ref;
     if (!city_ref) return res.status(400).json({ error: 'city_ref-required' });
@@ -84,7 +84,7 @@ router.get('/branches', async (req, res) => {
   }
 });
 
-router.post('/calculate', async (req, res) => {
+router.post('/calculate', requirePerm(), async (req, res) => {
   try {
     const { city_sender, city_recipient, weight = 1, cost = 100 } = req.body || {};
     if (!city_sender || !city_recipient) return res.status(400).json({ error: 'cities-required' });
@@ -203,7 +203,7 @@ router.post('/ttn', requirePerm('novaposhta.write'), async (req, res) => {
   }
 });
 
-router.get('/track/:ttn', async (req, res) => {
+router.get('/track/:ttn', requirePerm(), async (req, res) => {
   try {
     const data = await call('TrackingDocument', 'getStatusDocuments', {
       Documents: [{ DocumentNumber: req.params.ttn, Phone: '' }],
