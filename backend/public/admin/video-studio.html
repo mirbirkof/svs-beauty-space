@@ -113,7 +113,8 @@ async function poll(op,elId){
   $(elId).textContent='перевіряю…';
   try{
     const r = await adminFetch('/api/ai/video/clip?operation='+encodeURIComponent(op));
-    if(r.done && r.videoUri) $(elId).innerHTML = '<a href="'+esc(r.videoUri)+'" target="_blank">готово — відкрити відео ↗</a>';
+    if(r.done && r.videoUri && /^https?:\/\//i.test(r.videoUri)) $(elId).innerHTML = '<a href="'+esc(r.videoUri)+'" target="_blank" rel="noopener noreferrer">готово — відкрити відео ↗</a>';
+    else if(r.done && r.videoUri) $(elId).textContent='готово (посилання недоступне)';
     else if(r.done) $(elId).textContent='готово';
     else if(r.error) $(elId).textContent='помилка: '+r.error;
     else $(elId).textContent='ще рендериться…';

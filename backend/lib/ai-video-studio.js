@@ -130,6 +130,9 @@ async function pollClip(operation) {
   const key = videoKey();
   if (!key) return { error: 'paid_key_required' };
   if (!operation) throw new Error('operation required');
+  // operation приходит с клиента → пускаем в URL только строгий формат имени
+  // операции Veo, иначе можно дёрнуть произвольный путь Google API (path-injection).
+  if (!/^models\/[\w.-]+\/operations\/[\w-]+$/.test(operation)) throw new Error('invalid operation');
   const { status, json } = await _req('GET', `/v1beta/${operation}?key=${key}`, null, 30000);
   if (_isQuota(status, json)) return { error: 'paid_key_required' };
   if (!json.done) return { done: false };
@@ -152,13 +155,11 @@ async function produce(brief, { scenes = 3, aspect = '9:16', lang = 'uk', brandV
   const board = await storyboard(brief, { scenes, aspect, lang, brandVoice });
   const out = { title: board.title, scenes: board.scenes, caption: board.caption, hashtags: board.hashtags, video: { status: 'storyboard_only' } };
   if (!render) return out;
-  if (!videoKey()) { out.video = { status: 'paid_key_required', note: readiness().note }; return out; }
-  const ops = [];
-  for (const sc of board.scenes) {
-    const started = await startClip(sc.prompt, { aspect, durationSec: sc.durationSec });
-    if (started.error === 'paid_key_required') { out.video = { status: 'paid_key_required' }; return out; }
-    ops.push({ prompt: sc.prompt, operation: started.operation || null, error: started.error || null });
-  }
+  if (!videoKey()) { out.video = { status: 'paid_key_required' }; return out; }
+  // Сцены независимы → стартуем все клипы Veo параллельно, не ждём каждый по очереди.
+  const started = await Promise.all(board.scenes.map((sc) => startClip(sc.prompt, { aspect, durationSec: sc.durationSec })));
+  if (started.some((s) => s.error === 'paid_key_required')) { out.video = { status: 'paid_key_required' }; return out; }
+  const ops = started.map((s, i) => ({ prompt: board.scenes[i].prompt, operation: s.operation || null, error: s.error || null }));
   out.video = { status: 'rendering', operations: ops, hint: 'опитуй GET /api/ai/video/clip?operation=... поки done=true' };
   return out;
 }
