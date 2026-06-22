@@ -61,6 +61,26 @@
       <div id="result"><div class="muted">Заповніть бриф ліворуч і натисніть «Згенерувати». Сценарій, підпис і хештеги генеруються безкоштовно.</div></div>
     </div>
   </div>
+
+  <!-- ═══ Монтаж із СВОЇХ відео (безкоштовно, локальний рендер) ═══ -->
+  <div class="card" id="montageCard">
+    <h3>Змонтувати з моїх відео</h3>
+    <div class="intro" style="margin:0 0 12px">Завантажте свої кліпи (зняті на телефон, будь-який формат) — зведемо в один ролик єдиного формату з титрами. Без платного ключа, рендер на сервері.</div>
+    <div class="row" style="grid-template-columns:1fr 1fr">
+      <div class="fld"><label>Орієнтація</label>
+        <select id="mAspect"><option value="9:16" selected>Вертикальне 9:16 (Reels/Stories)</option><option value="16:9">Горизонтальне 16:9</option><option value="1:1">Квадрат 1:1</option></select></div>
+      <div class="fld" style="display:flex;align-items:flex-end">
+        <label class="btn" style="cursor:pointer;width:100%;text-align:center">
+          + Додати відео
+          <input id="mFiles" type="file" accept="video/*" multiple style="display:none" onchange="addClips(event)">
+        </label></div>
+    </div>
+    <div id="mList"></div>
+    <div class="msg muted" id="mHint" style="margin-top:6px"></div>
+    <button class="btn" id="mGo" onclick="doMontage()" style="display:none;margin-top:8px">Змонтувати ролик</button>
+    <div class="msg" id="mMsg"></div>
+    <div id="mResult" style="margin-top:12px"></div>
+  </div>
 </main>
 
 <script src="/admin/assets/admin-shell.js" data-title="AI Відеостудія"></script>
@@ -85,6 +105,7 @@ function copyCap(){
 }
 
 function renderResult(d){
+  window._lastScenes = d.scenes||[];   // для підстановки титрів у монтаж
   const scenes = (d.scenes||[]).map((s,i)=>`<div class="scene">
     <div class="n">Сцена ${i+1} · ${s.durationSec||6}с</div>
     <div class="p">${esc(s.prompt)}</div>
@@ -136,6 +157,82 @@ async function produce(){
 }
 
 loadStatus();
+
+// ═══ Монтаж із своїх відео ═══
+const MAX_CLIPS = 8, MAX_MB = 80;
+let mClips = [];   // {file, caption, dur}
+
+function renderClips(){
+  const box = $('mList');
+  if(!mClips.length){ box.innerHTML=''; $('mGo').style.display='none'; $('mHint').textContent=''; return; }
+  box.innerHTML = mClips.map((c,i)=>`
+    <div class="scene" style="display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center">
+      <div style="font-weight:700;color:var(--text-secondary)">${i+1}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:4px">${esc(c.file.name)} <span class="muted">· ${(c.file.size/1048576).toFixed(1)} МБ</span></div>
+        <input class="cap-in" placeholder="Титр на цю сцену (необовʼязково)" value="${esc(c.caption)}" oninput="mClips[${i}].caption=this.value" style="width:100%;padding:6px 9px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:12.5px">
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="btn sm" onclick="moveClip(${i},-1)" ${i===0?'disabled':''} title="вгору">↑</button>
+        <button class="btn sm" onclick="moveClip(${i},1)" ${i===mClips.length-1?'disabled':''} title="вниз">↓</button>
+        <button class="btn sm" onclick="rmClip(${i})" title="видалити">✕</button>
+      </div>
+    </div>`).join('');
+  $('mGo').style.display='';
+  const hasSb = Array.isArray(window._lastScenes) && window._lastScenes.length;
+  $('mHint').innerHTML = `${mClips.length} кліп(ів). Порядок — стрілками. Макс ${MAX_CLIPS}, до ${MAX_MB} МБ кожен.`
+    + (hasSb ? ` · <a href="#" onclick="fillCaptionsFromStoryboard(window._lastScenes);return false">підставити титри зі сценарію ліворуч</a>` : '');
+}
+function addClips(ev){
+  const files = Array.from(ev.target.files||[]);
+  for(const f of files){
+    if(mClips.length>=MAX_CLIPS){ $('mMsg').textContent='Досягнуто ліміту '+MAX_CLIPS+' кліпів'; break; }
+    if(f.size > MAX_MB*1048576){ $('mMsg').textContent='Файл «'+f.name+'» більший за '+MAX_MB+' МБ'; continue; }
+    mClips.push({ file:f, caption:'' });
+  }
+  ev.target.value='';
+  renderClips();
+}
+function rmClip(i){ mClips.splice(i,1); renderClips(); }
+function moveClip(i,d){ const j=i+d; if(j<0||j>=mClips.length) return; [mClips[i],mClips[j]]=[mClips[j],mClips[i]]; renderClips(); }
+
+async function doMontage(){
+  if(!mClips.length){ $('mMsg').textContent='Додайте хоча б одне відео'; return; }
+  $('mGo').disabled=true; $('mMsg').textContent='Монтую ролик… це може зайняти 1–2 хв (рендер на сервері)';
+  $('mResult').innerHTML='';
+  try{
+    const fd = new FormData();
+    fd.append('aspect', $('mAspect').value);
+    fd.append('scenes', JSON.stringify(mClips.map(c=>({ caption:(c.caption||'').slice(0,120) }))));
+    for(const c of mClips) fd.append('clips', c.file, c.file.name);
+    const resp = await fetch('/api/ai/video/montage', {
+      method:'POST',
+      headers:{ 'X-Admin-Token': (window.adminToken?adminToken():'') },
+      body: fd,
+    });
+    if(!resp.ok){
+      let msg='Помилка '+resp.status;
+      try{ const j=await resp.json(); if(j.error) msg=j.error; }catch{}
+      throw new Error(msg);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const dur = resp.headers.get('X-Montage-Duration')||'';
+    $('mResult').innerHTML = `
+      <div class="ok">Готово ✓ ${dur?('тривалість ~'+dur+'с'):''}</div>
+      <video src="${url}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
+      <div style="margin-top:8px"><a class="btn" href="${url}" download="svs-promo.mp4">Завантажити MP4</a></div>`;
+    $('mMsg').textContent='';
+  }catch(e){ $('mMsg').textContent='Помилка: '+e.message; }
+  finally{ $('mGo').disabled=false; }
+}
+
+// Якщо ліворуч згенерували розкадровку — підказати: можна підставити її титри.
+function fillCaptionsFromStoryboard(scenes){
+  if(!mClips.length || !Array.isArray(scenes)) return;
+  scenes.forEach((s,i)=>{ if(mClips[i] && !mClips[i].caption) mClips[i].caption = (s.narration||'').slice(0,120); });
+  renderClips();
+}
 </script>
 </body>
 </html>
