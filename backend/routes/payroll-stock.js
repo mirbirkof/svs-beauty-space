@@ -216,7 +216,12 @@ router.get('/payroll/records', async (req, res) => {
 });
 
 // PATCH /api/payroll/records/:id — изменить статус (approve/paid)
+// Транзакционно + идемпотентно (аудит 22.06 #14): выплата ЗП блокирует строку FOR UPDATE
+// (защита от гонки двух одновременных запросов) и пишет расход в кассу ТОЛЬКО при первом
+// переходе в 'paid'. Повторный PATCH / paid→draft→paid не задвоит расход: ключевой guard —
+// уже существующая salary-операция по этому расчёту (ref_type='payroll').
 router.patch('/payroll/records/:id', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { status, bonus, deduction, notes } = req.body || {};
     const sets = [];
@@ -226,40 +231,52 @@ router.patch('/payroll/records/:id', async (req, res) => {
     if (typeof deduction === 'number') { args.push(deduction); sets.push(`deduction=$${args.length}`); }
     if (notes !== undefined) { args.push(notes); sets.push(`notes=$${args.length}`); }
     if (!sets.length) return res.json({ ok: true, noop: true });
-    args.push(req.params.id);
-    await pool.query(`UPDATE payroll_records SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
 
-    // авто-расход в открытую кассовую смену + запись в историю выплат при выплате ЗП
+    await client.query('BEGIN'); await applyTenant(client);
+    // блокируем строку расчёта — сериализуем конкурентные выплаты
+    const lock = await client.query(`SELECT id, master_id, master_name, total, period_start, period_end, status FROM payroll_records WHERE id=$1 FOR UPDATE`, [req.params.id]);
+    if (!lock.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
+    const prevStatus = lock.rows[0].status;
+
+    args.push(req.params.id);
+    await client.query(`UPDATE payroll_records SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
+
+    // авто-расход в кассу + история выплат — только при ПЕРВОМ переходе в 'paid'
     if (status === 'paid') {
-      try {
-        const rec = await pool.query(`SELECT id, master_id, master_name, total, period_start, period_end FROM payroll_records WHERE id=$1`, [req.params.id]);
-        const r0 = rec.rows[0];
-        if (r0 && +r0.total > 0) {
-          const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+      const r0 = lock.rows[0];
+      if (+r0.total > 0) {
+        // главный guard идемпотентности: расход по этому расчёту уже проведён?
+        const already = await client.query(`SELECT 1 FROM cash_operations WHERE ref_type='payroll' AND ref_id=$1 AND type='out' LIMIT 1`, [r0.id]);
+        if (!already.rowCount) {
+          const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
           if (sh.rows[0]) {
-            await pool.query(
+            await client.query(
               `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
                VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
               [sh.rows[0].id, r0.total, r0.id, r0.master_id, `ЗП ${r0.master_name||'#'+r0.master_id}`]
             );
           }
           // история выплат (идемпотентно: одна выплата на расчёт)
-          const exists = await pool.query(`SELECT 1 FROM payroll_payments WHERE record_id=$1 LIMIT 1`, [r0.id]);
+          const exists = await client.query(`SELECT 1 FROM payroll_payments WHERE record_id=$1 LIMIT 1`, [r0.id]);
           if (!exists.rowCount) {
-            await pool.query(
+            await client.query(
               `INSERT INTO payroll_payments (master_id, master_name, record_id, amount, method, period_start, period_end, created_by, created_by_name)
                VALUES ($1,$2,$3,$4,'cash',$5,$6,$7,$8)`,
               [r0.master_id, r0.master_name, r0.id, r0.total, r0.period_start, r0.period_end, req.user?.id || null, req.user?.display_name || null]
             );
           }
         }
-      } catch (e) { console.warn('[payroll-cashbox]', e.message); }
+      }
     }
+    await client.query('COMMIT');
 
     logAction({ user: req.user, action: status === 'paid' ? 'payroll.paid' : (status === 'approved' ? 'payroll.approved' : 'payroll.updated'),
-                entity: 'payroll_records', entity_id: req.params.id, ip: req.ip, meta: { status, bonus, deduction } });
+                entity: 'payroll_records', entity_id: req.params.id, ip: req.ip, meta: { status, prev: prevStatus, bonus, deduction } });
     res.json({ ok: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
 });
 
 /* ═══════════════ BONUSES / PENALTIES / ADVANCES ═══════════════ */
