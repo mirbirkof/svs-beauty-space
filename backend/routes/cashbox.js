@@ -290,30 +290,48 @@ router.post('/shifts/:id/close', async (req, res) => {
 
 // POST /api/cashbox/operations — добавить операцию (приход/расход)
 router.post('/operations', async (req, res) => {
+  // Транзакція з блокуванням рядка зміни (FOR UPDATE) — закриває TOCTOU: раніше
+  // перевірка статусу зміни і вставка операції були ДВА окремих запити, між якими
+  // зміну могли закрити (close() теж бере FOR UPDATE) → операція падала в уже
+  // закриту зміну, ламаючи Z-звіт і зведення каси. Тепер вони серіалізуються.
+  const client = await pool.connect();
   try {
     const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description } = req.body || {};
     if (!type || !category || !amount) return res.status(400).json({ error: 'type, category, amount required' });
     if (!['in', 'out'].includes(type)) return res.status(400).json({ error: 'bad type' });
     if (Number(amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
 
-    let sid = shift_id;
-    if (!sid) {
-      const open = await getOpenShift(null);
-      if (!open) return res.status(400).json({ error: 'no-open-shift' });
-      sid = open.id;
+    await client.query('BEGIN'); await applyTenant(client);
+
+    // Блокуємо рядок зміни на час операції. Якщо shift_id не передали — беремо
+    // поточну відкриту зміну і одразу її локимо (FOR UPDATE у тому ж SELECT).
+    let shiftRow;
+    if (!shift_id) {
+      const open = await client.query(
+        `SELECT id, status FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`
+      );
+      shiftRow = open.rows[0];
+      if (!shiftRow) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'no-open-shift' }); }
     } else {
-      const chk = await pool.query(`SELECT status FROM cash_shifts WHERE id=$1`, [sid]);
-      if (!chk.rows[0]) return res.status(404).json({ error: 'shift-not-found' });
-      if (chk.rows[0].status !== 'open') return res.status(400).json({ error: 'shift-closed' });
+      const chk = await client.query(`SELECT id, status FROM cash_shifts WHERE id=$1 FOR UPDATE`, [shift_id]);
+      shiftRow = chk.rows[0];
+      if (!shiftRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'shift-not-found' }); }
+      if (shiftRow.status !== 'open') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'shift-closed' }); }
     }
 
-    const r = await pool.query(
+    const r = await client.query(
       `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [sid, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null]
+      [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null]
     );
+    await client.query('COMMIT');
     res.json({ ok: true, operation: r.rows[0] });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally {
+    client.release();
+  }
 });
 
 // GET /api/cashbox/operations?shift_id=N — операции по смене
