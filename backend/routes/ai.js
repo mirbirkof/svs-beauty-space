@@ -339,6 +339,167 @@ router.post('/drill', requirePerm('reports.finance'), async (req, res) => {
   }
 });
 
+/* ── План роботи адміністратора (день/тиждень) ──────────────────
+   Будуємо РЕАЛЬНИЙ операційний контекст салону (записи, непідтверджені,
+   дні народження, відтік, залишки, відгуки, лист очікування) і даємо LLM
+   скласти конкретний чек-лист. Жодних вигадок — лише факти з БД. */
+async function buildPlanContext(scope) {
+  const q = (sql, params=[]) => pool.query(sql, params).then(r=>r.rows).catch(()=>[]);
+  const today = `(NOW() AT TIME ZONE 'Europe/Kiev')::date`;
+  const apptDate = `(a.starts_at AT TIME ZONE 'Europe/Kiev')::date`;
+
+  // Спільне для обох режимів
+  const [churn, lowStock, reviews, waitlist, openShifts] = await Promise.all([
+    q(`SELECT c.name, COALESCE(c.total_spent,0)::int AS spent FROM clients c JOIN appointments a ON a.client_id=c.id
+       WHERE a.status NOT IN ('cancelled','noshow') GROUP BY c.id, c.name, c.total_spent
+       HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
+       ORDER BY spent DESC NULLS LAST LIMIT 8`),
+    q(`SELECT p.name AS product, pv.volume, COALESCE(pv.stock_qty,0)::int AS stock
+       FROM product_variants pv JOIN products p ON p.id=pv.product_id
+       WHERE pv.active=true AND COALESCE(pv.stock_qty,0) <= 5 ORDER BY pv.stock_qty ASC LIMIT 8`),
+    q(`SELECT COUNT(*) FILTER (WHERE status='pending')::int AS pending,
+              COUNT(*) FILTER (WHERE rating<=3 AND created_at >= NOW()-INTERVAL '7 days')::int AS low_recent FROM reviews`),
+    q(`SELECT COUNT(*)::int AS n FROM waitlist WHERE status IN ('pending','offered')`),
+    q(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`),
+  ]);
+  const common = {
+    churn_clients: churn.map(c => c.name).filter(Boolean),
+    churn_count: churn.length,
+    low_stock: lowStock.map(s => ({ product: s.product, volume: s.volume, stock: s.stock })),
+    reviews_pending: reviews[0]?.pending || 0,
+    reviews_low_recent: reviews[0]?.low_recent || 0,
+    waitlist_active: waitlist[0]?.n || 0,
+    open_cash_shifts: openShifts[0]?.n || 0,
+  };
+
+  if (scope === 'week') {
+    // дати наступних 7 днів (MM-DD) для днів народження через межу місяця
+    const days = [];
+    const base = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base); d.setDate(base.getDate() + i);
+      const mmdd = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Kiev', month:'2-digit', day:'2-digit' }).format(d).replace('/', '-');
+      days.push(mmdd);
+    }
+    const [byDay, bdays] = await Promise.all([
+      q(`SELECT ${apptDate} AS d, COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE a.status='booked')::int AS unconfirmed
+         FROM appointments a
+         WHERE ${apptDate} BETWEEN ${today} AND ${today} + 6
+         GROUP BY d ORDER BY d`),
+      q(`SELECT name, to_char(birthday,'DD.MM') AS bd FROM clients
+         WHERE birthday IS NOT NULL AND to_char(birthday,'MM-DD') = ANY($1) ORDER BY to_char(birthday,'MM-DD') LIMIT 20`, [days]),
+    ]);
+    return { scope, range: `${days[0]} … +7 днів`,
+      appointments_by_day: byDay.map(r => ({ date: r.d, total: r.total, unconfirmed: r.unconfirmed })),
+      birthdays_week: bdays.map(b => ({ name: b.name, date: b.bd })),
+      ...common };
+  }
+
+  // scope === 'day'
+  const [agg, byMaster, tomorrow, bdays] = await Promise.all([
+    q(`SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE status='done')::int AS done,
+              COUNT(*) FILTER (WHERE status='booked')::int AS unconfirmed,
+              COUNT(*) FILTER (WHERE status IN ('booked','confirmed') AND starts_at > NOW())::int AS upcoming
+       FROM appointments a WHERE ${apptDate} = ${today}`),
+    q(`SELECT m.name,
+              COUNT(*)::int AS cnt,
+              to_char(MIN(a.starts_at) AT TIME ZONE 'Europe/Kiev','HH24:MI') AS first_at,
+              to_char(MAX(a.starts_at) AT TIME ZONE 'Europe/Kiev','HH24:MI') AS last_at
+       FROM appointments a JOIN masters m ON m.id=a.master_id
+       WHERE ${apptDate} = ${today} AND a.status IN ('booked','confirmed','done')
+       GROUP BY m.name ORDER BY first_at`),
+    q(`SELECT COUNT(*)::int AS total FROM appointments a WHERE ${apptDate} = ${today} + 1`),
+    q(`SELECT name, phone FROM clients
+       WHERE birthday IS NOT NULL AND to_char(birthday,'MM-DD') = to_char((NOW() AT TIME ZONE 'Europe/Kiev'),'MM-DD') LIMIT 20`),
+  ]);
+  const a0 = agg[0] || {};
+  return { scope, date: new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev'}).format(new Date()),
+    appointments_today: { total: a0.total||0, done: a0.done||0, upcoming: a0.upcoming||0, unconfirmed: a0.unconfirmed||0 },
+    schedule_by_master: byMaster.map(m => ({ master: m.name, count: m.cnt, from: m.first_at, to: m.last_at })),
+    appointments_tomorrow: tomorrow[0]?.total || 0,
+    birthdays_today: bdays.map(b => ({ name: b.name, phone: b.phone })),
+    ...common };
+}
+
+const PLAN_SYSTEM = `Ти — досвідчений керівник салону краси, який складає робочий план для адміністратора (рецепції).
+Пиши українською, конкретно і practично. Кожне завдання — реальна дія адміністратора, прив'язана до наданих даних.
+Жодних вигадок: якщо якихось даних нема — не вигадуй завдання на порожньому місці.`;
+
+function dayPlanPrompt(name, ctx) {
+  return `Склади ПЛАН НА ДЕНЬ для адміністратора салону${name ? ' (звертайся: '+name+')' : ''}.
+РЕАЛЬНІ дані на сьогодні (${ctx.date}):
+${JSON.stringify(ctx, null, 1)}
+
+Поверни СУВОРО валідний JSON (без markdown):
+{
+  "greeting": "1 коротке речення-привітання й головний акцент дня",
+  "blocks": [
+    {"period":"Ранок (відкриття)","tasks":[{"task":"конкретна дія","why":"навіщо/на основі чого","priority":"high|normal"}]},
+    {"period":"Протягом дня","tasks":[...]},
+    {"period":"Вечір (закриття)","tasks":[...]}
+  ]
+}
+Враховуй: непідтверджені записи (обдзвонити), дні народження (привітати), відтік (запросити повернутись), залишки товарів (замовити), відгуки що чекають відповіді, лист очікування, незакриті касові зміни, підготовку до завтрашніх записів. 2-4 завдання в кожному блоці. Якщо чогось нема — пропусти, не вигадуй.`;
+}
+
+function weekPlanPrompt(name, ctx) {
+  return `Склади ПЛАН НА ТИЖДЕНЬ для адміністратора салону${name ? ' (звертайся: '+name+')' : ''}.
+РЕАЛЬНІ дані на тиждень:
+${JSON.stringify(ctx, null, 1)}
+
+Поверни СУВОРО валідний JSON (без markdown):
+{
+  "greeting": "1 речення: стратегічний акцент тижня",
+  "days": [{"day":"Понеділок","focus":"тема дня","tasks":["конкретна дія 1","дія 2"]}],
+  "weekly_goals": ["ціль тижня 1","ціль 2"]
+}
+Розподіли роботу логічно: обдзвін непідтверджених перед завантаженими днями, привітання з ДН у відповідні дати, повернення відтоку і відповіді на відгуки — у спокійніші дні, замовлення товарів на початку тижня. 1-3 завдання на день, 2-4 weekly_goals. Спирайся на реальні цифри.`;
+}
+
+// GET /api/ai/admins — список активних адміністраторів (для вибору "кому план")
+router.get('/admins', requirePerm('clients.read'), async (req, res) => {
+  try {
+    const rows = await pool.query(
+      `SELECT u.id, u.display_name, r.code AS role FROM users u JOIN roles r ON r.id=u.role_id
+       WHERE u.is_active=true AND r.code IN ('owner','admin','manager','reception')
+       ORDER BY r.level DESC, u.display_name`
+    ).then(r=>r.rows).catch(()=>[]);
+    res.json({ admins: rows });
+  } catch (e) { res.status(500).json({ error: 'internal' }); }
+});
+
+// GET /api/ai/work-plan?scope=day|week&admin=Ім'я — план роботи адміністратора.
+let _planCache = {};
+const PLAN_CACHE_MS = 20 * 60 * 1000;
+router.get('/work-plan', requirePerm('clients.read'), async (req, res) => {
+  try {
+    const scope = req.query.scope === 'week' ? 'week' : 'day';
+    const name = String(req.query.admin || '').trim().slice(0, 60);
+    const fresh = req.query.fresh === '1';
+    const ckey = scope + '|' + name;
+    const c = _planCache[ckey];
+    if (!fresh && c && (Date.now() - c.at) < PLAN_CACHE_MS) return res.json({ ...c.data, cached: true });
+
+    const ctx = await buildPlanContext(scope);
+    let ai = null;
+    if (llm.available()) {
+      const prompt = scope === 'week' ? weekPlanPrompt(name, ctx) : dayPlanPrompt(name, ctx);
+      try { ai = await llm.askJSON(prompt, { system: PLAN_SYSTEM, maxTokens: 1900 }); }
+      catch (e) { console.error('[ai:work-plan] llm fail', e.message); }
+    }
+    const payload = { scope, admin: name || null, context: ctx, generated_at: new Date().toISOString(),
+      ...(ai || { greeting: 'AI тимчасово недоступний — нижче лише операційні цифри.', blocks: [], days: [], weekly_goals: [] }),
+      ai_ok: !!ai, cached: false };
+    if (ai) _planCache[ckey] = { at: Date.now(), data: payload };
+    res.json(payload);
+  } catch (e) {
+    console.error('[ai:work-plan]', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 // POST /api/ai/ask { question }
 router.post('/ask', requirePerm('reports.finance'), async (req, res) => {
   try {

@@ -1049,6 +1049,24 @@ select.input { background:var(--card); }
           </div>
         </div>
 
+        <!-- ═══ AI: План роботи адміністратора ═══ -->
+        <div class="card" id="planCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px">
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">assignment_turned_in</span> План роботи адміністратора <button type="button" class="info-i" data-t="<b>План роботи.</b> AI складає конкретний чек-лист для адміністратора на основі реальних даних салону: непідтверджені записи, дні народження клієнтів, відтік, залишки товарів, відгуки без відповіді, лист очікування. Оберіть «День» або «Тиждень» і, за бажанням, конкретного адміністратора." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+              <select id="planAdmin" class="input btn-sm" style="max-width:160px" onchange="loadWorkPlan()"><option value="">Усі адміни</option></select>
+              <div style="display:inline-flex;border:1px solid var(--border,#ddd);border-radius:8px;overflow:hidden">
+                <button class="btn btn-sm plan-scope active" data-scope="day" onclick="setPlanScope('day')" style="border:none;border-radius:0">День</button>
+                <button class="btn btn-sm plan-scope" data-scope="week" onclick="setPlanScope('week')" style="border:none;border-radius:0">Тиждень</button>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="loadWorkPlan(true)" title="Перерахувати"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">refresh</span></button>
+            </div>
+          </div>
+          <div class="card-body" id="planBody">
+            <div class="empty"><span class="material-icons-round">assignment</span>Завантаження плану...</div>
+          </div>
+        </div>
+
         <!-- ═══ AI-прогноз ═══ -->
         <div class="card" id="fcCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
@@ -3940,6 +3958,8 @@ async function loadDashboard() {
   // AI-аналітик (тільки для фінансового доступу)
   if (fin) { try { document.getElementById('aiCard').style.display=''; loadAiInsights(false); } catch {} }
   else { try { document.getElementById('aiCard').style.display='none'; } catch {} }
+  // План роботи адміністратора — доступний усім адмінам/рецепції (не майстру)
+  try { document.getElementById('planCard').style.display=''; setPlanScope('day'); } catch {}
   // AI-прогноз (теж фінансовий доступ)
   if (fin) { try { document.getElementById('fcCard').style.display=''; loadForecast(); } catch {} }
   else { try { document.getElementById('fcCard').style.display='none'; } catch {} }
@@ -4281,6 +4301,104 @@ async function openDrill(topic, fresh){
     body.innerHTML = '<div class="empty" style="padding:30px">Не вдалося завантажити розбір. Спробуйте ще раз.</div>';
   }
   _drillLoading = false;
+}
+
+// ═══ AI: План роботи адміністратора ════════════
+let _planScope = 'day', _planLoading = false, _planAdminsLoaded = false;
+function setPlanScope(s){
+  _planScope = s;
+  document.querySelectorAll('.plan-scope').forEach(b=>{
+    const on = b.getAttribute('data-scope')===s;
+    b.classList.toggle('active', on);
+    b.style.background = on ? 'var(--primary,#6c5ce7)' : 'transparent';
+    b.style.color = on ? '#fff' : 'var(--text,#333)';
+  });
+  loadWorkPlan();
+}
+async function loadPlanAdmins(){
+  if (_planAdminsLoaded) return;
+  try {
+    const d = await api('/api/ai/admins');
+    const sel = document.getElementById('planAdmin');
+    if (sel && d.admins && d.admins.length){
+      for (const a of d.admins) sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(a.display_name)}">${escapeHtml(a.display_name)}</option>`);
+    }
+    _planAdminsLoaded = true;
+  } catch {}
+}
+function _planTaskRow(t){
+  const prio = (typeof t==='object' && t.priority==='high');
+  const txt = typeof t==='string' ? t : (t.task||'');
+  const why = typeof t==='object' ? (t.why||'') : '';
+  return `<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--bg-soft,#f4f4f7)">
+    <span class="material-icons-round" style="font-size:18px;color:${prio?'#dc2626':'var(--primary,#6c5ce7)'};flex-shrink:0;margin-top:1px">${prio?'priority_high':'check_box_outline_blank'}</span>
+    <div style="font-size:13.5px;line-height:1.45"><b>${escapeHtml(txt)}</b>${why?` <span style="color:var(--text-secondary)">— ${escapeHtml(why)}</span>`:''}</div></div>`;
+}
+function renderWorkPlan(d){
+  let h = '';
+  if (d.greeting) h += `<div style="font-size:14.5px;line-height:1.5;padding:11px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;margin-bottom:14px;font-weight:500">${escapeHtml(d.greeting)}</div>`;
+  if (d.scope==='week'){
+    const days = d.days||[];
+    for (const day of days){
+      const tasks = (day.tasks||[]).map(_planTaskRow).join('');
+      h += `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+          <span style="font-weight:700;font-size:14px">${escapeHtml(day.day||'')}</span>
+          ${day.focus?`<span style="font-size:12.5px;color:var(--primary,#6c5ce7)">${escapeHtml(day.focus)}</span>`:''}</div>
+        ${tasks||'<div style="font-size:12.5px;color:var(--text-secondary)">—</div>'}</div>`;
+    }
+    const goals = d.weekly_goals||[];
+    if (goals.length){
+      h += '<div style="font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary);margin:8px 0 6px">Цілі тижня</div><ul style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.6">';
+      for (const g of goals) h += `<li>${escapeHtml(g)}</li>`;
+      h += '</ul>';
+    }
+  } else {
+    const blocks = d.blocks||[];
+    for (const b of blocks){
+      const tasks = (b.tasks||[]).map(_planTaskRow).join('');
+      if (!tasks) continue;
+      h += `<div style="margin-bottom:14px">
+        <div style="font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary);margin-bottom:4px">${escapeHtml(b.period||'')}</div>
+        ${tasks}</div>`;
+    }
+  }
+  if (!d.ai_ok && !h) h = '';
+  // Операційні факти-підказки (реальні цифри) знизу
+  const ctx = d.context||{};
+  const chips = [];
+  if (d.scope==='day'){
+    if (ctx.appointments_today) chips.push(`Записів сьогодні: ${ctx.appointments_today.total} (непідтв. ${ctx.appointments_today.unconfirmed})`);
+    if (ctx.birthdays_today && ctx.birthdays_today.length) chips.push(`ДН сьогодні: ${ctx.birthdays_today.length}`);
+    if (ctx.appointments_tomorrow) chips.push(`Завтра записів: ${ctx.appointments_tomorrow}`);
+  } else {
+    if (ctx.birthdays_week && ctx.birthdays_week.length) chips.push(`ДН цього тижня: ${ctx.birthdays_week.length}`);
+  }
+  if (ctx.churn_count) chips.push(`Відтік: ${ctx.churn_count}`);
+  if (ctx.low_stock && ctx.low_stock.length) chips.push(`Товари на виході: ${ctx.low_stock.length}`);
+  if (ctx.reviews_pending) chips.push(`Відгуки чекають: ${ctx.reviews_pending}`);
+  if (ctx.waitlist_active) chips.push(`Лист очікування: ${ctx.waitlist_active}`);
+  if (ctx.open_cash_shifts) chips.push(`Відкриті зміни: ${ctx.open_cash_shifts}`);
+  if (chips.length) h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#eee);display:flex;gap:6px;flex-wrap:wrap">'+chips.map(c=>`<span style="font-size:12px;background:var(--bg-soft,#f4f4f7);padding:3px 10px;border-radius:999px;color:var(--text-secondary)">${escapeHtml(c)}</span>`).join('')+'</div>';
+  if (!d.ai_ok) h = '<div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px">AI тимчасово недоступний — показано лише операційні цифри.</div>' + h;
+  return h || '<div class="empty">Поки немає завдань — усе під контролем.</div>';
+}
+async function loadWorkPlan(fresh){
+  if (_planLoading) return;
+  _planLoading = true;
+  loadPlanAdmins();
+  const body = document.getElementById('planBody');
+  const admin = document.getElementById('planAdmin')?.value || '';
+  body.innerHTML = '<div class="empty"><span class="material-icons-round">assignment</span>Складаю план...</div>';
+  try {
+    const qs = `?scope=${_planScope}` + (admin?`&admin=${encodeURIComponent(admin)}`:'') + (fresh?'&fresh=1':'');
+    const d = await api('/api/ai/work-plan' + qs);
+    if (d.error){ body.innerHTML = '<div class="empty">Не вдалося побудувати план.</div>'; _planLoading=false; return; }
+    body.innerHTML = renderWorkPlan(d);
+  } catch(e){
+    body.innerHTML = '<div class="empty">Не вдалося завантажити план.</div>';
+  }
+  _planLoading = false;
 }
 
 // ═══ AI-прогноз ════════════════════════════════
