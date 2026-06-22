@@ -33,6 +33,36 @@ router.get('/readiness', canRead, (req, res) => {
   try { res.json(studio.readiness()); } catch (e) { fail(res, e, 'readiness'); }
 });
 
+/** Диагностика ffmpeg на хосте: есть ли бинарь, исполняем ли, версия.
+ *  Нужно чтобы понять почему montage падает на Render (502/OOM vs нет бинаря). */
+router.get('/montage-diag', canRead, (req, res) => {
+  const fs = require('fs');
+  const { spawnSync } = require('child_process');
+  let ffmpegPath = null, ffmpegErr = null;
+  try { ffmpegPath = require('ffmpeg-static'); } catch (e) { ffmpegErr = e.message; }
+  const out = {
+    ffmpegPath,
+    ffmpegRequireErr: ffmpegErr,
+    exists: ffmpegPath ? fs.existsSync(ffmpegPath) : false,
+    fontExists: fs.existsSync(montager.FONT || ''),
+    node: process.version,
+    rssMB: Math.round(process.memoryUsage().rss / 1048576),
+    limits: { MAX_CLIPS: montager.MAX_CLIPS, MAX_SEC_CLIP: montager.MAX_SECONDS_PER_CLIP, MAX_TOTAL: montager.MAX_TOTAL_SECONDS },
+  };
+  if (out.exists) {
+    try {
+      const st = fs.statSync(ffmpegPath);
+      out.mode = (st.mode & 0o777).toString(8);
+      out.sizeMB = +(st.size / 1048576).toFixed(1);
+      const r = spawnSync(ffmpegPath, ['-version'], { encoding: 'utf8', timeout: 10000 });
+      out.version = r.stdout ? r.stdout.split('\n')[0] : null;
+      out.spawnErr = r.error ? r.error.message : (r.stderr ? r.stderr.slice(0, 200) : null);
+      out.spawnStatus = r.status;
+    } catch (e) { out.statErr = e.message; }
+  }
+  res.json(out);
+});
+
 /** Раскадровка из брифа — бесплатно (текстовый LLM). */
 router.post('/storyboard', canRead, async (req, res) => {
   try {

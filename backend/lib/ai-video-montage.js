@@ -159,4 +159,4 @@ async function montage(clips, scenes = [], opts = {}) {
   }
 }
 
-module.exports = { montage, MAX_CLIPS, MAX_SECONDS_PER_CLIP, MAX_TOTAL_SECONDS };
+module.exports = { montage, MAX_CLIPS, MAX_SECONDS_PER_CLIP, MAX_TOTAL_SECONDS, FONT };
