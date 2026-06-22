@@ -1029,6 +1029,17 @@ select.input { background:var(--card); }
           <div class="card-body" id="aiBody">
             <div class="empty"><span class="material-icons-round">auto_awesome</span>Завантаження аналізу...</div>
           </div>
+          <div class="card-body" style="border-top:1px solid var(--border,#eee);padding-top:12px">
+            <div style="font-size:12px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Детальний розбір — натисніть тему</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-outline btn-sm" onclick="openDrill('churn')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">person_remove</span> Відтік клієнтів</button>
+              <button class="btn btn-outline btn-sm" onclick="openDrill('masters')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">groups</span> Майстри й відміни</button>
+              <button class="btn btn-outline btn-sm" onclick="openDrill('weekday')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">calendar_view_week</span> Дні тижня</button>
+              <button class="btn btn-outline btn-sm" onclick="openDrill('month_vs_prev')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">trending_up</span> Динаміка</button>
+              <button class="btn btn-outline btn-sm" onclick="openDrill('new_clients')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">person_add</span> Нові клієнти</button>
+              <button class="btn btn-outline btn-sm" onclick="openDrill('low_stock')"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">inventory_2</span> Товари на виході</button>
+            </div>
+          </div>
           <div class="card-body" style="border-top:1px solid var(--border,#eee);padding-top:14px">
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <input id="aiQuestion" class="input" placeholder="Запитайте про ваш салон: напр. «Який день тижня найслабший?»" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')askAi()">
@@ -2225,6 +2236,20 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Глибокий AI-розбір теми (drill-down) -->
+  <div id="drillModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeDrill()">
+    <div class="modal" style="max-width:880px;width:94vw;max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h3 id="drillTitle" style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">auto_awesome</span> Розбір</h3>
+        <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
+          <button class="btn btn-outline btn-sm" id="drillRefresh" onclick="openDrill(_drillTopic,true)" title="Перерахувати"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">refresh</span></button>
+          <button class="modal-close" onclick="closeDrill()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="drillBody" style="overflow:auto"></div>
+    </div>
+  </div>
+
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
     <div class="modal" style="max-width:1080px;width:97vw;max-height:94vh;display:flex;flex-direction:column">
       <div class="modal-header">
@@ -2628,11 +2653,11 @@ function kpiInfo(ev, el){ const t = el.getAttribute('data-info'); if (t) showInf
 function kpiNav(ev, el){
   const n = el.getAttribute('data-nav');
   if (!n) return;
-  if (n === 'react'){ // «Відтік клієнтів» → блок «Повернути клієнтів» одразу під цифрами
-    const rc = document.getElementById('reactCard');
-    if (rc){ rc.scrollIntoView({ behavior:'smooth', block:'start' });
-      rc.style.transition='box-shadow .3s'; rc.style.boxShadow='0 0 0 3px var(--primary,#6c5ce7)';
-      setTimeout(()=>{ rc.style.boxShadow=''; }, 1600); }
+  if (n === 'react'){ // «Відтік клієнтів» → повний AI-розбір: список, причини, план дій
+    try { openDrill('churn'); } catch {
+      const rc = document.getElementById('reactCard');
+      if (rc){ rc.scrollIntoView({ behavior:'smooth', block:'start' }); }
+    }
     return;
   }
   try { go(n); } catch {}
@@ -4181,6 +4206,81 @@ async function askAi() {
   } catch (e) {
     ans.innerHTML = '<div style="color:#dc2626;font-size:13px">Не вдалося отримати відповідь. Спробуйте ще раз.</div>';
   }
+}
+
+// ═══ AI глибокий розбір теми (drill-down) ══════
+let _drillTopic = null, _drillLoading = false;
+function closeDrill(){ const m=document.getElementById('drillModal'); if(m) m.style.display='none'; }
+function _drillRows(d){
+  const rows = d.rows || [];
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const labels = {
+    name:'Клієнт', phone:'Телефон', spent:'Витрачено', visits:'Візитів', days_since:'Днів тому',
+    last_service:'Остання послуга', last_master:'Майстер', done:'Виконано', cancelled:'Скасовано',
+    noshow:'Неявки', revenue:'Виручка', cancel_rate:'% відмін', day:'День', ops:'Продажів',
+    avg_check:'Сер. чек', product_name:'Товар', volume:'Обʼєм', stock_qty:'Залишок',
+    category:'Категорія', this_month:'Цей місяць', prev_month:'Минулий', delta_pct:'Зміна %', week:'Тиждень', n:'К-сть',
+  };
+  const money = new Set(['spent','revenue','this_month','prev_month','avg_check']);
+  const th = cols.map(c=>`<th style="text-align:left;padding:6px 8px;font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;border-bottom:1px solid var(--border,#eee)">${labels[c]||c}</th>`).join('');
+  const tr = rows.map(r=>'<tr>'+cols.map(c=>{
+    let v = r[c];
+    if (v==null) v='—';
+    else if (money.has(c)) v = _money2(v);
+    else if (c==='cancel_rate'||c==='delta_pct') v = (v>0&&c==='delta_pct'?'+':'')+v+'%';
+    return `<td style="padding:6px 8px;font-size:12.5px;border-bottom:1px solid var(--bg-soft,#f4f4f7)">${escapeHtml(String(v))}</td>`;
+  }).join('')+'</tr>').join('');
+  return `<div style="font-weight:600;font-size:13px;margin:18px 0 6px">${escapeHtml(d.rows_label||'Дані')}</div>
+    <div style="overflow:auto;border:1px solid var(--border,#eee);border-radius:8px"><table style="width:100%;border-collapse:collapse"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table></div>`;
+}
+function renderDrill(d){
+  let h = '';
+  if (d.summary) h += `<div style="font-size:14.5px;line-height:1.55;padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;margin-bottom:14px">${escapeHtml(d.summary)}</div>`;
+  const f = d.findings || [];
+  if (f.length){
+    h += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">';
+    for (const x of f) h += `<div style="display:flex;gap:10px;align-items:baseline">
+      <span style="min-width:8px;height:8px;width:8px;border-radius:50%;background:var(--primary,#6c5ce7);margin-top:6px"></span>
+      <div style="font-size:13.5px;line-height:1.45"><b>${escapeHtml(x.label||'')}${x.value?': ':''}</b>${x.value?`<span style="color:var(--primary,#6c5ce7);font-weight:600">${escapeHtml(String(x.value))}</span>`:''}${x.note?` <span style="color:var(--text-secondary)">— ${escapeHtml(x.note)}</span>`:''}</div></div>`;
+    h += '</div>';
+  }
+  const rc = d.root_causes || [];
+  if (rc.length){
+    h += '<div style="font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary);margin-bottom:6px">Ймовірні причини</div><ul style="margin:0 0 16px;padding-left:20px;font-size:13.5px;line-height:1.6">';
+    for (const c of rc) h += `<li>${escapeHtml(c)}</li>`;
+    h += '</ul>';
+  }
+  const ap = d.action_plan || [];
+  if (ap.length){
+    h += '<div style="font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-secondary);margin-bottom:8px">План дій</div><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">';
+    ap.forEach((s,i)=>{ h += `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border,#eee);border-radius:9px">
+      <div style="min-width:24px;height:24px;border-radius:50%;background:var(--primary,#6c5ce7);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</div>
+      <div style="font-size:13.5px;line-height:1.5"><b>${escapeHtml(s.step||'')}</b>${s.detail?`<div style="color:var(--text-secondary);margin-top:2px">${escapeHtml(s.detail)}</div>`:''}${s.expected?`<div style="color:#16a34a;margin-top:3px">↗ ${escapeHtml(s.expected)}</div>`:''}</div></div>`; });
+    h += '</div>';
+  }
+  if (d.kpi_to_watch) h += `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:6px">📊 Відстежуйте: <b>${escapeHtml(d.kpi_to_watch)}</b></div>`;
+  if (!d.ai_ok) h += '<div style="font-size:12px;color:var(--text-secondary);margin-top:10px">AI-коментар тимчасово недоступний — показано лише реальні цифри.</div>';
+  h += _drillRows(d);
+  return h;
+}
+async function openDrill(topic, fresh){
+  if (_drillLoading) return;
+  _drillTopic = topic; _drillLoading = true;
+  const m = document.getElementById('drillModal');
+  const body = document.getElementById('drillBody');
+  const titleEl = document.getElementById('drillTitle');
+  m.style.display = 'flex';
+  body.innerHTML = '<div class="empty" style="padding:30px"><span class="material-icons-round">auto_awesome</span>Аналізую реальні дані...</div>';
+  try {
+    const d = await api('/api/ai/drill' + (fresh?'?fresh=1':''), { method:'POST', body: JSON.stringify({ topic }) });
+    if (d.error){ body.innerHTML = '<div class="empty" style="padding:30px">Не вдалося побудувати розбір ('+escapeHtml(d.error)+').</div>'; _drillLoading=false; return; }
+    titleEl.innerHTML = '<span class="material-icons-round" style="color:var(--primary,#6c5ce7)">auto_awesome</span> '+escapeHtml(d.title||'Розбір');
+    body.innerHTML = renderDrill(d);
+  } catch(e){
+    body.innerHTML = '<div class="empty" style="padding:30px">Не вдалося завантажити розбір. Спробуйте ще раз.</div>';
+  }
+  _drillLoading = false;
 }
 
 // ═══ AI-прогноз ════════════════════════════════
