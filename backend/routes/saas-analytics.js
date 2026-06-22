@@ -8,10 +8,12 @@
    Guard: saas.read (superadmin SaaS control plane). */
 const express = require('express');
 const router = express.Router();
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, requirePlatform } = require('../lib/rbac');
 const sa = require('../lib/saas-analytics');
 
-router.use(requirePerm('saas.read'));
+// Кросс-тенантні дані control-plane → лише оператор платформи.
+// requirePlatform блокує власників салонів (роль owner з правами "*").
+router.use(requirePerm('saas.read'), requirePlatform());
 const wrap = fn => async (req, res) => {
   try { res.json(await fn(req)); }
   catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }

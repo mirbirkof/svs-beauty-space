@@ -25,9 +25,18 @@
      POST /my/tickets/:id/reply           ответ клиента */
 const express = require('express');
 const router = express.Router();
-const { requirePerm, logAction } = require('../lib/rbac');
+const { requirePerm, requirePlatform, logAction } = require('../lib/rbac');
 const { getTenantId } = require('../lib/tenant');
 const tm = require('../lib/tenant-mgmt');
+
+// Захист control-plane: усі суперадмін-маршрути (крім салонних /my/*) доступні
+// лише оператору платформи. Без цього власник салону (роль owner з правами "*")
+// проходив би requirePerm('saas.*') і бачив кросс-тенантні дані всіх салонів.
+const platformGuard = requirePlatform();
+router.use((req, res, next) => {
+  if (req.path.startsWith('/my/') || req.path === '/my') return next();
+  return platformGuard(req, res, next);
+});
 
 const fail = (res, e) => {
   console.error('[tenant-mgmt]', e);

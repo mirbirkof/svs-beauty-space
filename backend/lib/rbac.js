@@ -66,6 +66,26 @@ function requirePerm(perm) {
   };
 }
 
+// Middleware: доступ ТОЛЬКО из контекста платформенного тенанта (оператор SaaS).
+// Защита от эскалации: владелец салона получает роль owner с правами ["*"],
+// поэтому requirePerm('saas.read') его НЕ остановит. Эти эндпоинты отдают
+// кросс-тенантные данные (MRR/churn/список салонов/тикеты/white-label), их
+// можно открывать только когда запрос идёт под платформенным тенантом
+// (DEFAULT_TENANT / is_platform), а не под конкретным салоном.
+function requirePlatform() {
+  return function (req, res, next) {
+    try {
+      const { isPlatformTenant } = require('./tenant');
+      if (!isPlatformTenant()) {
+        return res.status(403).json({ error: 'platform_only' });
+      }
+      next();
+    } catch (e) {
+      return res.status(403).json({ error: 'platform_only' });
+    }
+  };
+}
+
 async function logAction({ user, action, entity, entity_id, ip, meta }) {
   try {
     await getPool().query(
@@ -85,4 +105,4 @@ async function logAction({ user, action, entity, entity_id, ip, meta }) {
   } catch (_) { /* шина опциональна */ }
 }
 
-module.exports = { requirePerm, resolveUserByToken, hasPermission, logAction, sha256 };
+module.exports = { requirePerm, requirePlatform, resolveUserByToken, hasPermission, logAction, sha256 };
