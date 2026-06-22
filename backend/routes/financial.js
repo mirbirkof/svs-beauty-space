@@ -56,12 +56,18 @@ async function snapshot(from, to) {
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric sum FROM cash_operations WHERE type='out' AND created_at BETWEEN $1 AND $2 GROUP BY category ORDER BY sum DESC`, [from, to]),
     q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COUNT(*) FILTER (WHERE status='done')::int done,
-              COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int uniq,
+    q(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int done,
+              COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int uniq,
               COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') <> 'bp_deleted')::int cancelled,
               COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') <> 'bp_deleted')::int noshow
          FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COUNT(*)::int c FROM clients WHERE created_at BETWEEN $1 AND $2`, [from, to]),
+    // "Нові клієнти" = ПЕРШИЙ реальний візит у періоді, а НЕ дата імпорту в clients.created_at
+    // (вся база завантажена одним днем → created_at у всіх = дата імпорту, KPI був би завищений).
+    q(`SELECT COUNT(*)::int c FROM (
+         SELECT client_id, MIN(starts_at) AS fv FROM appointments
+          WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL
+          GROUP BY client_id
+       ) t WHERE fv BETWEEN $1 AND $2`, [from, to]),
   ]);
   const revServices = Number(svc[0]?.s || 0);
   const revProducts = Number(prodSalon[0]?.s || 0) + Number(orders[0]?.s || 0);

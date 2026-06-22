@@ -30,15 +30,15 @@ async function masterMetrics() {
     ),
     per_master AS (
       SELECT master_id,
-             COUNT(*) FILTER (WHERE status='done')::int AS done,
+             COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
              COUNT(*) FILTER (WHERE status IN ('cancelled','noshow'))::int AS lost,
-             COUNT(DISTINCT client_id) FILTER (WHERE status='done')::int AS uniq_clients
+             COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS uniq_clients
         FROM m_appts GROUP BY master_id
     ),
     returners AS (
       SELECT master_id, COUNT(*)::int AS returning_clients FROM (
         SELECT master_id, client_id
-          FROM m_appts WHERE status='done' AND client_id IS NOT NULL
+          FROM m_appts WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND client_id IS NOT NULL
          GROUP BY master_id, client_id HAVING COUNT(*) >= 2
       ) t GROUP BY master_id
     ),
@@ -150,7 +150,7 @@ router.get('/at-risk', requirePerm('reports.read'), async (req, res) => {
                COUNT(a.id)::int AS visits,
                MIN(a.starts_at) AS first_v, MAX(a.starts_at) AS last_v
           FROM clients c JOIN appointments a ON a.client_id=c.id
-         WHERE a.status='done'
+         WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()
          GROUP BY c.id, c.name, c.phone, c.total_spent
         HAVING COUNT(a.id) >= 3
       )

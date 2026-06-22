@@ -197,8 +197,8 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
           GROUP BY hr ORDER BY hr`).then(r => r.rows).catch(() => []),
       pool.query(
         `SELECT m.name,
-                COUNT(*) FILTER (WHERE a.status='done')::int AS done,
-                COUNT(DISTINCT to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD')) FILTER (WHERE a.status='done')::int AS work_days
+                COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
+                COUNT(DISTINCT to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD')) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS work_days
            FROM masters m LEFT JOIN appointments a
              ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '90 days'
           WHERE m.active=true AND COALESCE(m.provides_services,true)=true
@@ -242,7 +242,7 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
               COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)::numeric AS revenue
          FROM appointments a
          LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.status='done' AND a.starts_at >= NOW() - INTERVAL '60 days'
+        WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
         GROUP BY service ORDER BY cnt DESC LIMIT 15`
     ).then(r => r.rows).catch(() => []);
     const scale = horizon / 60;
@@ -296,7 +296,7 @@ router.post('/what-if', requirePerm('reports.finance'), async (req, res) => {
            SELECT a.master_id, to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
                   SUM(COALESCE(a.real_amount,a.price)) daily
              FROM appointments a
-            WHERE a.status='done' AND a.starts_at >= NOW() - INTERVAL '60 days'
+            WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
             GROUP BY a.master_id, d) t`
       ).then(r => Number(r.rows[0]?.avg_daily || 0)).catch(() => 0);
       const fill = master_fill_pct != null ? Number(master_fill_pct) / 100 : 0.5;

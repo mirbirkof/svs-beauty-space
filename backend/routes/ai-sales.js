@@ -31,7 +31,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
         WITH visits AS (
           SELECT client_id, starts_at::date d, COUNT(*) svc, SUM(COALESCE(real_amount,price)) tot
             FROM appointments
-           WHERE status='done' AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
+           WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
            GROUP BY client_id, starts_at::date
         )
         SELECT COUNT(*)::int visits,
@@ -44,7 +44,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
         WITH visits AS (
           SELECT master_id, client_id, starts_at::date d, SUM(COALESCE(real_amount,price)) tot, COUNT(*) svc
             FROM appointments
-           WHERE status='done' AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
+           WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND price>0 AND starts_at >= NOW() - ($1 || ' days')::interval
            GROUP BY master_id, client_id, starts_at::date
         )
         SELECT m.name,
@@ -59,7 +59,8 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
           SELECT a.service_id s1, b.service_id s2, (a.price + b.price) val
             FROM appointments a
             JOIN appointments b ON a.client_id=b.client_id AND a.starts_at::date=b.starts_at::date AND a.service_id < b.service_id
-           WHERE a.status='done' AND b.status='done' AND a.price>0 AND b.price>0
+           WHERE a.status NOT IN ('cancelled','noshow') AND b.status NOT IN ('cancelled','noshow')
+             AND a.starts_at <= NOW() AND b.starts_at <= NOW() AND a.price>0 AND b.price>0
              AND a.starts_at >= NOW() - ($1 || ' days')::interval
         )
         SELECT sa.name n1, sb.name n2, COUNT(*)::int cnt, ROUND(SUM(val))::int revenue
@@ -120,7 +121,7 @@ router.get('/recommend/:client_id', requirePerm('reports.read'), async (req, res
     const mine = await pool.query(
       `SELECT DISTINCT a.service_id, s.category, s.price
          FROM appointments a JOIN services s ON s.id=a.service_id
-        WHERE a.client_id=$1 AND a.status='done' AND a.service_id IS NOT NULL`, [cid]
+        WHERE a.client_id=$1 AND a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.service_id IS NOT NULL`, [cid]
     ).then(r => r.rows).catch(() => []);
     const myIds = mine.map(m => m.service_id);
     const myCats = [...new Set(mine.map(m => m.category).filter(Boolean))];
@@ -134,7 +135,7 @@ router.get('/recommend/:client_id', requirePerm('reports.read'), async (req, res
          WHERE s.active=true AND s.category = ANY($1)
            ${myIds.length ? 'AND s.id <> ALL($2)' : ''}
            AND s.price > COALESCE((
-             SELECT AVG(price) FROM appointments WHERE client_id=$3 AND status='done' AND service_id IS NOT NULL
+             SELECT AVG(price) FROM appointments WHERE client_id=$3 AND status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND service_id IS NOT NULL
            ), 0)
          ORDER BY s.price DESC LIMIT 3`,
         myIds.length ? [myCats, myIds, cid] : [myCats, cid]).then(r => r.rows).catch(() => []);
@@ -146,7 +147,7 @@ router.get('/recommend/:client_id', requirePerm('reports.read'), async (req, res
       crossSell = await pool.query(`
         WITH cs AS (
           SELECT DISTINCT client_id, service_id FROM appointments
-           WHERE status='done' AND service_id IS NOT NULL AND client_id IS NOT NULL
+           WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND service_id IS NOT NULL AND client_id IS NOT NULL
         )
         SELECT b.service_id, s.name, s.price, COUNT(DISTINCT a.client_id)::int score
           FROM cs a JOIN cs b ON a.client_id=b.client_id

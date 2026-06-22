@@ -40,9 +40,15 @@ router.get('/dashboard', async (req, res) => {
     const prevFrom = new Date(new Date(from) - days * 864e5).toISOString().slice(0, 10);
     const prevTo = from;
 
-    const newClients = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [from, to]))[0].n;
-    const prevNew = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [prevFrom, prevTo]))[0].n;
-    const revenue = (await q(`SELECT COALESCE(SUM(COALESCE(real_amount,price)),0)::numeric s FROM appointments WHERE status='done' AND starts_at::date BETWEEN $1 AND $2`, [from, to]))[0].s;
+    // "Новий клієнт" = ПЕРШИЙ реальний візит у періоді (не clients.created_at = дата імпорту бази).
+    const FIRST_VISIT = `SELECT client_id, MIN(starts_at)::date fv FROM appointments
+                           WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL GROUP BY client_id`;
+    const newClients = (await q(`SELECT COUNT(*)::int n FROM (${FIRST_VISIT}) t WHERE fv BETWEEN $1 AND $2`, [from, to]))[0].n;
+    const prevNew = (await q(`SELECT COUNT(*)::int n FROM (${FIRST_VISIT}) t WHERE fv BETWEEN $1 AND $2`, [prevFrom, prevTo]))[0].n;
+    // Виручка — з КАСИ (BeautyPro лишає візити 'confirmed', тому appointments.price WHERE done недораховує).
+    const revenue = (await q(`SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations
+                                WHERE type='in' AND category IN ('sale_service','sale_product')
+                                  AND created_at::date BETWEEN $1 AND $2`, [from, to]))[0].s;
     const ltv = (await q(`SELECT COALESCE(AVG(total_spent),0)::numeric s FROM clients WHERE total_spent > 0`))[0].s;
     const spend = await marketingSpend(from, to);
     const cac = newClients ? +(spend.total / newClients).toFixed(0) : 0;
@@ -50,8 +56,9 @@ router.get('/dashboard', async (req, res) => {
 
     // канали привернення нових клієнтів
     const channels = await q(
-      `SELECT COALESCE(source,'unknown') channel, COUNT(*)::int clients
-         FROM clients WHERE created_at::date BETWEEN $1 AND $2 GROUP BY source ORDER BY clients DESC LIMIT 5`, [from, to]);
+      `SELECT COALESCE(c.source,'unknown') channel, COUNT(*)::int clients
+         FROM clients c JOIN (${FIRST_VISIT}) f ON f.client_id=c.id
+        WHERE f.fv BETWEEN $1 AND $2 GROUP BY c.source ORDER BY clients DESC LIMIT 5`, [from, to]);
     // активні кампанії
     const activeCamp = (await q(`SELECT COUNT(*)::int n FROM campaigns WHERE status IN ('scheduled','running','active')`))[0].n;
     // найближчі активності календаря
@@ -83,16 +90,12 @@ router.get('/funnel', async (req, res) => {
   try {
     const { from, to } = period(req);
     const clicks = (await q(`SELECT COALESCE(SUM(total_clicks),0)::int c FROM referral_codes`))[0].c;
-    const leads = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [from, to]))[0].n;
-    const firstVisit = (await q(
-      `SELECT COUNT(DISTINCT a.client_id)::int n FROM appointments a
-         JOIN clients c ON c.id=a.client_id
-        WHERE a.status='done' AND c.created_at::date BETWEEN $1 AND $2`, [from, to]))[0].n;
-    const repeat = (await q(
-      `SELECT COUNT(*)::int n FROM (
-         SELECT a.client_id FROM appointments a JOIN clients c ON c.id=a.client_id
-          WHERE a.status='done' AND c.created_at::date BETWEEN $1 AND $2
-          GROUP BY a.client_id HAVING COUNT(*) >= 2) t`, [from, to]))[0].n;
+    // Лід / перший візит / повторний — усе за датою ПЕРШОГО реального візиту (не created_at = дата імпорту).
+    const FV = `SELECT client_id, MIN(starts_at)::date fv, COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow'))::int cnt
+                  FROM appointments WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL GROUP BY client_id`;
+    const leads = (await q(`SELECT COUNT(*)::int n FROM (${FV}) t WHERE fv BETWEEN $1 AND $2`, [from, to]))[0].n;
+    const firstVisit = (await q(`SELECT COUNT(*)::int n FROM (${FV}) t WHERE fv BETWEEN $1 AND $2 AND cnt >= 1`, [from, to]))[0].n;
+    const repeat = (await q(`SELECT COUNT(*)::int n FROM (${FV}) t WHERE fv BETWEEN $1 AND $2 AND cnt >= 2`, [from, to]))[0].n;
     const stages = [
       { stage: 'clicks', label: 'Кліки по посиланнях', value: clicks },
       { stage: 'leads', label: 'Нові клієнти', value: leads },
@@ -117,7 +120,11 @@ router.get('/channels', async (req, res) => {
               COUNT(DISTINCT c.id)::int clients,
               COALESCE(SUM(c.total_spent),0)::numeric revenue,
               COALESCE(AVG(NULLIF(c.total_spent,0)),0)::numeric ltv
-         FROM clients c WHERE c.created_at::date BETWEEN $1 AND $2
+         FROM clients c
+         JOIN (SELECT client_id, MIN(starts_at)::date fv FROM appointments
+                WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL GROUP BY client_id) f
+           ON f.client_id=c.id
+        WHERE f.fv BETWEEN $1 AND $2
         GROUP BY c.source ORDER BY clients DESC`, [from, to]);
     // витрати по каналах за період
     const spend = await q(
@@ -147,10 +154,10 @@ router.get('/cohorts', async (req, res) => {
     const rows = await q(
       `WITH firsts AS (
          SELECT client_id, date_trunc('month', MIN(starts_at))::date AS cohort
-           FROM appointments WHERE status='done' GROUP BY client_id),
+           FROM appointments WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() GROUP BY client_id),
        visits AS (
          SELECT a.client_id, date_trunc('month', a.starts_at)::date AS vm
-           FROM appointments a WHERE a.status='done')
+           FROM appointments a WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())
        SELECT f.cohort,
               COUNT(DISTINCT f.client_id)::int size,
               v.vm,
@@ -312,8 +319,14 @@ router.get('/goals', async (req, res) => {
     const goals = await q(`SELECT * FROM marketing_goals WHERE period_month=$1 ORDER BY metric`, [mon]);
     // факт по метриках
     const monStart = mon, monEnd = new Date(new Date(mon).getFullYear(), new Date(mon).getMonth() + 1, 0).toISOString().slice(0, 10);
-    const newC = (await q(`SELECT COUNT(*)::int n FROM clients WHERE created_at::date BETWEEN $1 AND $2`, [monStart, monEnd]))[0].n;
-    const rev = (await q(`SELECT COALESCE(SUM(price),0)::numeric s FROM appointments WHERE status='done' AND starts_at::date BETWEEN $1 AND $2`, [monStart, monEnd]))[0].s;
+    // факт: нові — за першим візитом, виручка — з каси (а не appointments.price WHERE done)
+    const newC = (await q(`SELECT COUNT(*)::int n FROM (
+                             SELECT client_id, MIN(starts_at)::date fv FROM appointments
+                              WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL GROUP BY client_id
+                           ) t WHERE fv BETWEEN $1 AND $2`, [monStart, monEnd]))[0].n;
+    const rev = (await q(`SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations
+                            WHERE type='in' AND category IN ('sale_service','sale_product')
+                              AND created_at::date BETWEEN $1 AND $2`, [monStart, monEnd]))[0].s;
     const fact = { new_clients: newC, revenue: Math.round(Number(rev)) };
     res.json({ month: mon.slice(0, 7), goals: goals.map(g => ({ ...g, actual: fact[g.metric] ?? null })) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

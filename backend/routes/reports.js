@@ -107,16 +107,25 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
     const { from, to } = parsePeriod(req.query);
 
     const r = await pool.query(
+      // Виручку беремо з КАСИ (cash_operations), а НЕ з appointments.price WHERE done —
+      // BeautyPro лишає візити у статусі 'confirmed', тому 'done'-сума недораховує виручку вдвічі.
+      // done_appts (для середнього чека і % відмін) = реально проведені візити: не скасовані/неявки і вже в минулому.
       `WITH appts AS (
          SELECT master_id,
                 COUNT(*)::int                    AS total_appts,
-                COUNT(*) FILTER (WHERE status='done')::int      AS done_appts,
+                COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
                 COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS canceled_appts,
                 COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int    AS no_show_appts,
-                COUNT(DISTINCT client_id)::int   AS unique_clients,
-                COALESCE(SUM(COALESCE(real_amount, price)) FILTER (WHERE status='done'),0)::numeric AS revenue
+                COUNT(DISTINCT client_id)::int   AS unique_clients
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2
+          GROUP BY master_id
+       ),
+       cash AS (
+         SELECT master_id, COALESCE(SUM(amount),0)::numeric AS revenue
+           FROM cash_operations
+          WHERE type='in' AND category IN ('sale_service','sale_product')
+            AND created_at BETWEEN $1 AND $2 AND master_id IS NOT NULL
           GROUP BY master_id
        ),
        payroll AS (
@@ -128,19 +137,20 @@ router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
        )
        SELECT m.id, m.name,
               a.total_appts, a.done_appts, a.canceled_appts, a.no_show_appts,
-              a.unique_clients, a.revenue,
+              a.unique_clients, COALESCE(ca.revenue,0)::numeric AS revenue,
               p.payroll_sum,
               CASE WHEN a.done_appts > 0
-                   THEN ROUND(a.revenue / a.done_appts, 2)
+                   THEN ROUND(COALESCE(ca.revenue,0) / a.done_appts, 2)
                    ELSE 0 END AS avg_ticket,
               CASE WHEN a.total_appts > 0
                    THEN ROUND(a.canceled_appts::numeric / a.total_appts * 100, 1)
                    ELSE 0 END AS cancel_rate_pct
          FROM masters m
          LEFT JOIN appts a   ON a.master_id = m.id
+         LEFT JOIN cash ca   ON ca.master_id = m.id
          LEFT JOIN payroll p ON p.master_id = m.id
-         WHERE a.total_appts > 0 OR p.payroll_sum > 0
-         ORDER BY a.revenue DESC NULLS LAST`,
+         WHERE a.total_appts > 0 OR p.payroll_sum > 0 OR ca.revenue > 0
+         ORDER BY revenue DESC NULLS LAST`,
       [from, to]
     );
 
@@ -157,11 +167,11 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
       `WITH base AS (
          SELECT c.id, c.name, c.phone,
                 COALESCE(MAX(o.created_at) FILTER (WHERE o.status='paid'),
-                         MAX(a.starts_at)  FILTER (WHERE a.status='done')) AS last_activity,
+                         MAX(a.starts_at)  FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())) AS last_activity,
                 COUNT(DISTINCT o.id) FILTER (WHERE o.status='paid')
-                + COUNT(DISTINCT a.id) FILTER (WHERE a.status='done')  AS frequency,
+                + COUNT(DISTINCT a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())  AS frequency,
                 COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
-                + COALESCE(SUM(COALESCE(a.real_amount, a.price)) FILTER (WHERE a.status='done'),0) AS monetary
+                + COALESCE(SUM(COALESCE(a.real_amount, a.price)) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()),0) AS monetary
            FROM clients c
            LEFT JOIN orders o       ON o.client_id = c.id
            LEFT JOIN appointments a ON a.client_id = c.id
@@ -220,7 +230,7 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
               COUNT(a.id)     AS total_visits,
               EXTRACT(EPOCH FROM (NOW()-MAX(a.starts_at)))/86400 AS days_since
          FROM clients c
-         JOIN appointments a ON a.client_id=c.id AND a.status='done'
+         JOIN appointments a ON a.client_id=c.id AND a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()
         GROUP BY c.id, c.name, c.phone
         HAVING MAX(a.starts_at) < NOW() - make_interval(days => $1)
            AND COUNT(a.id) >= 2
@@ -795,12 +805,16 @@ router.get('/overview', requirePerm(), async (req, res) => {
       const mid = Number(req.user.master_id);
       const [todayA, monthA, nextA] = await Promise.all([
         pool.query(`SELECT COUNT(*)::int AS total,
-                           COUNT(*) FILTER (WHERE status='done')::int AS done,
-                           COUNT(*) FILTER (WHERE status IN ('booked','confirmed'))::int AS upcoming
+                           COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
+                           COUNT(*) FILTER (WHERE status IN ('booked','confirmed') AND starts_at > NOW())::int AS upcoming
                     FROM appointments WHERE master_id=$1 AND starts_at BETWEEN $2 AND $3`, [mid, dayFrom, dayTo]),
-        pool.query(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done,
-                           COALESCE(SUM(price) FILTER (WHERE status='done'),0)::numeric AS revenue
-                    FROM appointments WHERE master_id=$1 AND starts_at >= $2`, [mid, monFrom]),
+        // Виручку майстра беремо з КАСИ (BeautyPro лишає візити 'confirmed' → appointments.price WHERE done недораховує вдвічі)
+        pool.query(`SELECT
+                      (SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int
+                         FROM appointments WHERE master_id=$1 AND starts_at >= $2) AS done,
+                      (SELECT COALESCE(SUM(amount),0)::numeric
+                         FROM cash_operations WHERE master_id=$1 AND type='in'
+                           AND category IN ('sale_service','sale_product') AND created_at >= $2) AS revenue`, [mid, monFrom]),
         pool.query(`SELECT a.starts_at, COALESCE(s.name,'Послуга') AS service_name,
                            COALESCE(NULLIF(c.name,''),'Клієнт') AS client_name
                     FROM appointments a LEFT JOIN services s ON s.id=a.service_id
@@ -836,8 +850,8 @@ router.get('/overview', requirePerm(), async (req, res) => {
       pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
       // записи сегодня по статусам
       pool.query(`SELECT COUNT(*)::int AS total,
-                         COUNT(*) FILTER (WHERE status='done')::int AS done,
-                         COUNT(*) FILTER (WHERE status IN ('booked','confirmed'))::int AS upcoming
+                         COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
+                         COUNT(*) FILTER (WHERE status IN ('booked','confirmed') AND starts_at > NOW())::int AS upcoming
                   FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
       // новые клиенты за месяц — рахуємо за датою ПЕРШОГО візиту, а не clients.created_at
       // (вся база імпортована одним днем, тож created_at у всіх = дата імпорту → KPI був завищений у десятки разів)
@@ -871,8 +885,8 @@ router.get('/overview', requirePerm(), async (req, res) => {
       pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS total
                   FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
                     AND created_at BETWEEN $1 AND $2`, [yFrom, yTo]).catch(()=>({rows:[{total:0}]})),
-      // виконано записів за місяць (для середнього чека і KPI)
-      pool.query(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done
+      // виконано записів за місяць (для середнього чека і KPI) = реально проведені візити (не лише 'done')
+      pool.query(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done
                   FROM appointments WHERE starts_at >= $1`, [monFrom]).catch(()=>({rows:[{done:0}]})),
       // відтік: клієнти з ≥2 візитами, останній >90 днів тому
       pool.query(`SELECT COUNT(*)::int AS n FROM (

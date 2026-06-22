@@ -53,7 +53,7 @@ async function buildSnapshot() {
                         WHERE co.master_id=m.id AND co.type='in'
                           AND co.category IN ('sale_service','sale_product')
                           AND co.created_at >= NOW() - INTERVAL '30 days'),0)::numeric AS revenue,
-              COUNT(a.id) FILTER (WHERE a.status='done')::int AS done,
+              COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
               COUNT(a.id) FILTER (WHERE a.status IN ('cancelled','noshow') AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS lost
        FROM masters m LEFT JOIN appointments a
          ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '30 days'
@@ -86,7 +86,7 @@ async function buildSnapshot() {
          AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') - INTERVAL '1 month'
          AND created_at <  date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') - INTERVAL '1 month' + (NOW() - date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev'))`),
     // отмены за 30 дней
-    q(`SELECT COUNT(*) FILTER (WHERE status='done')::int AS done,
+    q(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
               COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS cancelled,
               COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS noshow
        FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'`),
@@ -151,7 +151,7 @@ async function drillData(topic) {
       const base = `WITH churned AS (
           SELECT c.id, c.name, c.phone, COALESCE(c.total_spent,0)::numeric AS spent,
                  MAX(a.starts_at) AS last_visit,
-                 COUNT(a.id) FILTER (WHERE a.status='done')::int AS visits
+                 COUNT(a.id)::int AS visits
           FROM clients c JOIN appointments a ON a.client_id=c.id
           WHERE a.status NOT IN ('cancelled','noshow')
           GROUP BY c.id
@@ -163,20 +163,20 @@ async function drillData(topic) {
            SELECT ch.id, ch.name, ch.phone, ch.spent, ch.visits,
                   (NOW()::date - ch.last_visit::date) AS days_since,
                   (SELECT s.name FROM appointments a2 JOIN services s ON s.id=a2.service_id
-                     WHERE a2.client_id=ch.id AND a2.status='done' ORDER BY a2.starts_at DESC LIMIT 1) AS last_service,
+                     WHERE a2.client_id=ch.id AND a2.status NOT IN ('cancelled','noshow') ORDER BY a2.starts_at DESC LIMIT 1) AS last_service,
                   (SELECT m.name FROM appointments a3 JOIN masters m ON m.id=a3.master_id
-                     WHERE a3.client_id=ch.id AND a3.status='done' ORDER BY a3.starts_at DESC LIMIT 1) AS last_master
+                     WHERE a3.client_id=ch.id AND a3.status NOT IN ('cancelled','noshow') ORDER BY a3.starts_at DESC LIMIT 1) AS last_master
            FROM churned ch ORDER BY ch.spent DESC NULLS LAST, ch.last_visit ASC LIMIT 40`),
         q(`${base}
            SELECT m.name, COUNT(*)::int AS lost_clients
            FROM churned ch
-           JOIN LATERAL (SELECT a.master_id FROM appointments a WHERE a.client_id=ch.id AND a.status='done' ORDER BY a.starts_at DESC LIMIT 1) lm ON true
+           JOIN LATERAL (SELECT a.master_id FROM appointments a WHERE a.client_id=ch.id AND a.status NOT IN ('cancelled','noshow') ORDER BY a.starts_at DESC LIMIT 1) lm ON true
            JOIN masters m ON m.id=lm.master_id
            GROUP BY m.name ORDER BY lost_clients DESC LIMIT 8`),
         q(`${base}
            SELECT s.name, COUNT(*)::int AS lost_clients
            FROM churned ch
-           JOIN LATERAL (SELECT a.service_id FROM appointments a WHERE a.client_id=ch.id AND a.status='done' ORDER BY a.starts_at DESC LIMIT 1) ls ON true
+           JOIN LATERAL (SELECT a.service_id FROM appointments a WHERE a.client_id=ch.id AND a.status NOT IN ('cancelled','noshow') ORDER BY a.starts_at DESC LIMIT 1) ls ON true
            JOIN services s ON s.id=ls.service_id
            GROUP BY s.name ORDER BY lost_clients DESC LIMIT 8`),
         q(`${base} SELECT COUNT(*)::int AS n, COALESCE(SUM(ch.spent),0)::numeric AS potential,
@@ -198,7 +198,7 @@ async function drillData(topic) {
     }
     case 'masters': {
       const rows = await q(`SELECT m.name,
-          COUNT(a.id) FILTER (WHERE a.status='done')::int AS done,
+          COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
           COUNT(a.id) FILTER (WHERE a.status='cancelled' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS cancelled,
           COUNT(a.id) FILTER (WHERE a.status='noshow' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS noshow,
           COALESCE((SELECT SUM(co.amount) FROM cash_operations co
@@ -256,14 +256,26 @@ async function drillData(topic) {
         rows_label: 'Категорія · цей місяць · минулий (та сама частина) · зміна %' };
     }
     case 'new_clients': {
-      const rows = await q(`SELECT to_char(date_trunc('week', created_at AT TIME ZONE 'Europe/Kiev'),'YYYY-MM-DD') AS week,
-          COUNT(*)::int AS n FROM clients
-        WHERE created_at >= NOW() - INTERVAL '84 days' GROUP BY week ORDER BY week`);
-      const repeat = await q(`SELECT COUNT(*)::int AS n FROM (
-          SELECT c.id FROM clients c JOIN appointments a ON a.client_id=c.id AND a.status='done'
-          WHERE c.created_at >= NOW() - INTERVAL '90 days' GROUP BY c.id HAVING COUNT(a.id) >= 2) t`);
-      return { title: 'Притік нових клієнтів', metrics: { repeat_within_90d: repeat[0]?.n || 0 },
-        rows, rows_label: 'Нові клієнти по тижнях (останні 12 тижнів)' };
+      // "Новий клієнт" = тиждень ПЕРШОГО реального візиту (не дата імпорту в clients).
+      const rows = await q(`WITH first_visit AS (
+          SELECT client_id, MIN(starts_at) AS first_at
+          FROM appointments WHERE status NOT IN ('cancelled','noshow')
+          GROUP BY client_id)
+        SELECT to_char(date_trunc('week', first_at AT TIME ZONE 'Europe/Kiev'),'YYYY-MM-DD') AS week,
+               COUNT(*)::int AS n
+        FROM first_visit WHERE first_at >= NOW() - INTERVAL '84 days'
+        GROUP BY week ORDER BY week`);
+      // Повторюваність: серед тих, чий перший візит у межах 90 днів, скільки мають ≥2 реальні візити.
+      const repeat = await q(`WITH v AS (
+          SELECT client_id, MIN(starts_at) AS first_at, COUNT(*)::int AS cnt
+          FROM appointments WHERE status NOT IN ('cancelled','noshow')
+          GROUP BY client_id)
+        SELECT COUNT(*)::int AS n FROM v
+        WHERE first_at >= NOW() - INTERVAL '90 days' AND cnt >= 2`);
+      return { title: 'Притік нових клієнтів',
+        metrics: { definition: '«Новий» = тиждень першого реального візиту, не дата завантаження в базу.',
+                   repeat_within_90d: repeat[0]?.n || 0 },
+        rows, rows_label: 'Нові клієнти по тижнях за першим візитом (останні 12 тижнів)' };
     }
     default:
       return null;
@@ -457,7 +469,7 @@ async function buildPlanContext(scope) {
   // scope === 'day'
   const [agg, byMaster, tomorrow, bdays] = await Promise.all([
     q(`SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE status='done')::int AS done,
+              COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
               COUNT(*) FILTER (WHERE status='booked')::int AS unconfirmed,
               COUNT(*) FILTER (WHERE status IN ('booked','confirmed') AND starts_at > NOW())::int AS upcoming
        FROM appointments a WHERE ${apptDate} = ${today}`),

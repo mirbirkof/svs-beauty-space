@@ -82,7 +82,7 @@ router.get('/stats/overview', requirePerm('reports.read'), async (req, res) => {
       `SELECT b.id, b.code, b.name,
               (SELECT COUNT(*) FROM orders o WHERE o.branch_id=b.id AND o.status='paid' AND o.created_at >= NOW()-INTERVAL '30 days')::int AS orders_30d,
               (SELECT COALESCE(SUM(total),0) FROM orders o WHERE o.branch_id=b.id AND o.status='paid' AND o.created_at >= NOW()-INTERVAL '30 days')::numeric AS revenue_30d,
-              (SELECT COUNT(*) FROM appointments a WHERE a.branch_id=b.id AND a.status='done' AND a.starts_at >= NOW()-INTERVAL '30 days')::int AS appts_30d,
+              (SELECT COUNT(*) FROM appointments a WHERE a.branch_id=b.id AND a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.starts_at >= NOW()-INTERVAL '30 days')::int AS appts_30d,
               (SELECT COUNT(*) FROM master_branches mb WHERE mb.branch_id=b.id)::int AS masters
          FROM branches b WHERE b.is_active=TRUE ORDER BY b.id`
     );

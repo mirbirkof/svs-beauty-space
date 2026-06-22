@@ -24,7 +24,7 @@ const COOC = `
 WITH cs AS (
   SELECT DISTINCT client_id, service_id
     FROM appointments
-   WHERE status='done' AND service_id IS NOT NULL AND client_id IS NOT NULL
+   WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND service_id IS NOT NULL AND client_id IS NOT NULL
 )`;
 
 // ── GET /cross-sell?service_id=N ───────────────────────────
@@ -64,10 +64,10 @@ router.get('/client/:id', requirePerm('reports.read'), async (req, res) => {
     const cid = parseInt(req.params.id, 10);
     if (!cid) return res.status(400).json({ error: 'bad_id' });
     const [myServices, recs, favMaster, profile] = await Promise.all([
-      pool.query(`SELECT DISTINCT service_id FROM appointments WHERE client_id=$1 AND status='done' AND service_id IS NOT NULL`, [cid]).then(r => r.rows.map(x => x.service_id)).catch(() => []),
+      pool.query(`SELECT DISTINCT service_id FROM appointments WHERE client_id=$1 AND status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND service_id IS NOT NULL`, [cid]).then(r => r.rows.map(x => x.service_id)).catch(() => []),
       // item-based CF: послуги, які беруть клієнти зі схожим набором, але клієнт ще не брав
       pool.query(`${COOC},
-        my AS (SELECT DISTINCT service_id FROM appointments WHERE client_id=$1 AND status='done' AND service_id IS NOT NULL)
+        my AS (SELECT DISTINCT service_id FROM appointments WHERE client_id=$1 AND status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND service_id IS NOT NULL)
         SELECT b.service_id, s.name, s.price, COUNT(DISTINCT a.client_id)::int AS score
           FROM cs a
           JOIN cs b ON a.client_id=b.client_id
@@ -79,10 +79,10 @@ router.get('/client/:id', requirePerm('reports.read'), async (req, res) => {
          ORDER BY score DESC LIMIT 5`, [cid]).then(r => r.rows).catch(() => []),
       pool.query(`SELECT m.name, COUNT(*)::int AS visits
                     FROM appointments a JOIN masters m ON m.id=a.master_id
-                   WHERE a.client_id=$1 AND a.status='done'
+                   WHERE a.client_id=$1 AND a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()
                    GROUP BY m.name ORDER BY visits DESC LIMIT 1`, [cid]).then(r => r.rows[0] || null).catch(() => null),
       pool.query(`SELECT name, total_spent, last_visit_at,
-                         (SELECT COUNT(*) FROM appointments WHERE client_id=$1 AND status='done')::int AS done_visits
+                         (SELECT COUNT(*) FROM appointments WHERE client_id=$1 AND status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_visits
                     FROM clients WHERE id=$1`, [cid]).then(r => r.rows[0] || null).catch(() => null),
     ]);
     const recommendations = recs.map(r => ({
@@ -97,7 +97,7 @@ router.get('/client/:id', requirePerm('reports.read'), async (req, res) => {
     if (recommendations.length < 3) {
       fallback = await pool.query(`SELECT a.service_id, s.name, s.price, COUNT(*)::int AS cnt
           FROM appointments a LEFT JOIN services s ON s.id=a.service_id
-         WHERE a.status='done' AND a.service_id IS NOT NULL
+         WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.service_id IS NOT NULL
            ${myServices.length ? 'AND a.service_id <> ALL($1)' : ''}
          GROUP BY a.service_id, s.name, s.price ORDER BY cnt DESC LIMIT ${5 - recommendations.length}`,
         myServices.length ? [myServices] : []).then(r => r.rows.map(x => ({
@@ -136,10 +136,10 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
                 c.total_visits::int AS visits,
                 (CURRENT_DATE - GREATEST(c.last_visit_at::date, COALESCE(lv.live_last, c.last_visit_at::date)))::int AS days_since,
                 (SELECT m.name FROM appointments a2 JOIN masters m ON m.id=a2.master_id
-                  WHERE a2.client_id=c.id AND a2.status='done' ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
+                  WHERE a2.client_id=c.id AND a2.status NOT IN ('cancelled','noshow') AND a2.starts_at <= NOW() ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
                 (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
                    FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
-                  WHERE a3.client_id=c.id AND a3.status='done' ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
+                  WHERE a3.client_id=c.id AND a3.status NOT IN ('cancelled','noshow') AND a3.starts_at <= NOW() ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
            FROM clients c
            LEFT JOIN LATERAL (
              SELECT MAX(a.starts_at)::date AS live_last
