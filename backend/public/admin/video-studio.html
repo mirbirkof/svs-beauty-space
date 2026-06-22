@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — AI Відеостудія</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input,.fld select,.fld textarea{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .fld textarea{min-height:64px;resize:vertical}
+  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1.1fr;gap:16px}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:12.5px;margin-top:8px;min-height:16px}
+  .note{background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#7A5C00;margin-bottom:14px}
+  .ok{background:#E3F6E9;border:1px solid #A8E0BC;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#1B7A3D;margin-bottom:14px}
+  .scene{border:1px solid var(--border,#eee);border-radius:11px;padding:12px;margin-bottom:10px;background:var(--card,#fff)}
+  .scene .n{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;margin-bottom:6px}
+  .scene .p{font-size:13px;margin-bottom:6px}
+  .scene .nar{font-size:13px;color:#2A5C9A}
+  .tags{margin-top:8px}
+  .tag{display:inline-block;background:#E7F0FB;color:#2A5C9A;border-radius:999px;padding:2px 10px;font-size:12px;margin:0 6px 6px 0}
+  .cap{white-space:pre-wrap;font-size:13.5px;line-height:1.5;border:1px dashed var(--border,#ddd);border-radius:10px;padding:10px;background:#fafafa}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  @media(max-width:1000px){.grid2{grid-template-columns:1fr}.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="content">
+  <h1>AI Відеостудія</h1>
+  <div class="intro">Генерація промо-роликів для Instagram Reels без жодного Mac. Опишіть ідею — AI створить сценарій, озвучку, підпис і хештеги. Відео-рендер вмикається після підключення платного ключа Google.</div>
+
+  <div id="status"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Нове промо</h3>
+      <div class="fld"><label>Що рекламуємо (бриф)</label>
+        <textarea id="brief" placeholder="Напр.: Акція -30% на манікюр гель-лак цього тижня"></textarea></div>
+      <div class="row">
+        <div class="fld"><label>Сцен</label>
+          <select id="scenes"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+        <div class="fld"><label>Орієнтація</label>
+          <select id="aspect"><option value="9:16" selected>Вертикальне 9:16</option><option value="16:9">Горизонтальне 16:9</option></select></div>
+        <div class="fld"><label>Мова</label>
+          <select id="lang"><option value="uk" selected>Українська</option><option value="ru">Російська</option><option value="en">English</option></select></div>
+      </div>
+      <div class="fld"><label><input type="checkbox" id="render" style="width:auto;vertical-align:middle"> Одразу рендерити відео (потрібен платний ключ)</label></div>
+      <button class="btn" id="goBtn" onclick="produce()">Згенерувати</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Результат</h3>
+      <div id="result"><div class="muted">Заповніть бриф ліворуч і натисніть «Згенерувати». Сценарій, підпис і хештеги генеруються безкоштовно.</div></div>
+    </div>
+  </div>
+</main>
+
+<script src="/admin/assets/admin-shell.js" data-title="AI Відеостудія"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadStatus(){
+  try{
+    const r = await adminFetch('/api/ai/video/readiness');
+    if(r.paid_key_configured){
+      $('status').innerHTML = '<div class="ok">Платний ключ підключено — доступний повний рендер відео (Veo) + кадри.</div>';
+    }else{
+      $('status').innerHTML = '<div class="note">Зараз безкоштовно працює сценарій + підпис + хештеги. Щоб генерувати саме відео — підключіть платний ключ Google AI (змінна GEMINI_VIDEO_KEY). Усе інше вже готове.</div>';
+    }
+  }catch(e){ $('status').innerHTML = '<div class="note">Не вдалося перевірити статус студії: '+esc(e.message)+'</div>'; }
+}
+
+function copyCap(){
+  const t = $('capText') ? $('capText').dataset.full : '';
+  navigator.clipboard.writeText(t).then(()=>{ $('copyMsg').textContent='Скопійовано ✓'; setTimeout(()=>$('copyMsg').textContent='',1500); });
+}
+
+function renderResult(d){
+  const scenes = (d.scenes||[]).map((s,i)=>`<div class="scene">
+    <div class="n">Сцена ${i+1} · ${s.durationSec||6}с</div>
+    <div class="p">${esc(s.prompt)}</div>
+    <div class="nar">🔊 ${esc(s.narration)}</div></div>`).join('');
+  const tags = (d.hashtags||[]).map(h=>`<span class="tag">${esc(h)}</span>`).join('');
+  const capFull = d.caption||'';
+  let vid = '';
+  const vs = d.video && d.video.status;
+  if(vs==='rendering'){
+    const ops = (d.video.operations||[]).filter(o=>o.operation);
+    vid = `<div class="ok">Відео рендериться (${ops.length} кліп(ів)). Це займає 1–3 хв на сцену.</div>`;
+    ops.forEach((o,i)=>{ vid += `<button class="btn sm" onclick="poll('${esc(o.operation)}','vop${i}')">Перевірити кліп ${i+1}</button> <span id="vop${i}" class="muted"></span><br>`; });
+  } else if(vs==='paid_key_required'){
+    vid = '<div class="note">Сценарій готовий. Для рендеру відео потрібен платний ключ Google AI.</div>';
+  }
+  $('result').innerHTML = `
+    <h3 style="margin:0 0 10px">${esc(d.title||'Промо-ролик')}</h3>
+    ${scenes}
+    <div class="fld" style="margin-top:12px"><label>Підпис до посту <a class="muted" href="#" onclick="copyCap();return false">копіювати</a> <span id="copyMsg" class="muted"></span></label>
+      <div class="cap" id="capText" data-full="${esc(capFull)}">${esc(capFull)}</div></div>
+    <div class="tags">${tags}</div>
+    ${vid}`;
+}
+
+async function poll(op,elId){
+  $(elId).textContent='перевіряю…';
+  try{
+    const r = await adminFetch('/api/ai/video/clip?operation='+encodeURIComponent(op));
+    if(r.done && r.videoUri) $(elId).innerHTML = '<a href="'+esc(r.videoUri)+'" target="_blank">готово — відкрити відео ↗</a>';
+    else if(r.done) $(elId).textContent='готово';
+    else if(r.error) $(elId).textContent='помилка: '+r.error;
+    else $(elId).textContent='ще рендериться…';
+  }catch(e){ $(elId).textContent='помилка: '+e.message; }
+}
+
+async function produce(){
+  const brief = $('brief').value.trim();
+  if(!brief){ $('msg').textContent='Введіть бриф'; return; }
+  $('goBtn').disabled=true; $('msg').textContent='Генерую сценарій…';
+  try{
+    const body = { brief, scenes:parseInt($('scenes').value,10), aspect:$('aspect').value, lang:$('lang').value, render:$('render').checked };
+    const d = await adminFetch('/api/ai/video/produce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    renderResult(d); $('msg').textContent='Готово ✓';
+  }catch(e){ $('msg').textContent='Помилка: '+e.message; }
+  finally{ $('goBtn').disabled=false; }
+}
+
+loadStatus();
+</script>
+</body>
+</html>

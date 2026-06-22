@@ -37,6 +37,7 @@
       { icon: 'bolt', label: 'Авто-тригери', href: '/admin/crm-marketing.html#triggers' },
       { icon: 'ads_click', label: 'Реклама Meta', href: '/admin/meta-ads.html' },
       { icon: 'travel_explore', label: 'Реклама Google', href: '/admin/google-ads.html' },
+      { icon: 'movie_filter', label: 'AI Відеостудія', href: '/admin/video-studio.html' },
       { icon: 'history', label: 'Нагадування (записи)', href: '/admin/index.html#reminders' },
     ] },
     { icon: 'payments', label: 'Зарплата', href: '/admin/index.html#payroll' },
