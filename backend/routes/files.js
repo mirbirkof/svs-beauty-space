@@ -154,10 +154,15 @@ function sendFile(res, f) {
   if (!abs.startsWith(UPLOAD_ROOT) || !fs.existsSync(abs)) {
     return res.status(410).json({ error: 'file-gone' });
   }
-  const isImage = f.mime_type.startsWith('image/');
-  const disposition = isImage ? 'inline' : 'attachment';
+  // SVG может содержать <script> → stored XSS при inline-отдаче (legacy-файлы в базе).
+  // Растровые картинки отдаём inline, всё остальное (вкл. svg) — только attachment.
+  const isRasterImage = f.mime_type.startsWith('image/') && f.mime_type !== 'image/svg+xml';
+  const disposition = isRasterImage ? 'inline' : 'attachment';
   res.setHeader('Content-Type', f.mime_type);
   res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(f.file_name)}"`);
+  // защита от MIME-sniffing и выполнения скриптов в отданном файле
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Cache-Control', f.is_public ? 'public, max-age=86400' : 'private, no-cache');
   fs.createReadStream(abs).pipe(res);
 }
