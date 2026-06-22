@@ -46,7 +46,7 @@ const {
 } = require('../lib/auth-core');
 
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const pool = getPool();
 
 // ── helpers ─────────────────────────────────────────────
@@ -524,7 +524,7 @@ router.post('/reset-password', async (req, res) => {
 
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN'); await applyTenant(client);
       await client.query(`UPDATE users SET password_hash=$1, password_changed_at=NOW(), failed_login_attempts=0, locked_until=NULL WHERE id=$2`, [newHash, row.user_id]);
       await client.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [row.user_id, newHash]);
       await client.query(`UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1`, [row.id]);
@@ -571,7 +571,7 @@ router.post('/change-password', authRequired, async (req, res) => {
     const newHash = await hashPassword(new_password);
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN'); await applyTenant(client);
       await client.query(`UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE id=$2`, [newHash, req.user.id]);
       await client.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [req.user.id, newHash]);
       // keep current session, revoke others

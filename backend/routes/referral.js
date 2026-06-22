@@ -6,7 +6,7 @@
    Доступ: GET = reports.read, мутації = reports.finance. track-click/attribute — reports.read (виклик з фронту запису). */
 const express = require('express');
 const crypto = require('crypto');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
@@ -189,7 +189,7 @@ async function rewardReferral(referralId) {
   const st = await getSettings();
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const r = (await client.query(`SELECT * FROM referrals WHERE id=$1 FOR UPDATE`, [referralId])).rows[0];
     if (!r || !r.referee_id) { await client.query('ROLLBACK'); return { skip: 'no_referral' }; }
     if (['rewarded', 'rejected'].includes(r.status)) { await client.query('ROLLBACK'); return { skip: r.status }; }

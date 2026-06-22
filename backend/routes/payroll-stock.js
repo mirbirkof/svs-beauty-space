@@ -1,7 +1,7 @@
 /* Payroll + Stock operations: схемы ЗП мастеров, начисления, поставки, списания материалов
    Подключается в dikidi-server.js */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
 const router = express.Router();
@@ -582,7 +582,7 @@ router.delete('/suppliers/:id', async (req, res) => {
 router.post('/stock/receipts', async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const { supplier_id, invoice_no, items, notes } = req.body || {};
     if (!Array.isArray(items) || !items.length) {
       await client.query('ROLLBACK');
@@ -651,7 +651,7 @@ router.get('/stock/receipts/:id', async (req, res) => {
 router.post('/stock/consumption', async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const { appointment_id, master_id, product_id, product_name, qty, unit_cost } = req.body || {};
     if (!qty || qty <= 0) {
       await client.query('ROLLBACK');

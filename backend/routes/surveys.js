@@ -6,7 +6,7 @@
    Публічні ендпоінти /public/* — без авторизації (заповнює клієнт). */
 const express = require('express');
 const crypto = require('crypto');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 let emit = async () => {}; try { ({ emit } = require('../lib/event-bus')); } catch { /* optional */ }
 
@@ -413,7 +413,7 @@ router.post('/public/:token/submit', async (req, res) => {
     const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
     if (!answers.length) { client.release(); return res.status(400).json({ error: 'answers required' }); }
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     // зчитуємо ескалаційний поріг опитування
     const s = (await client.query(`SELECT escalation_config FROM surveys WHERE id=$1`, [r.survey_id])).rows[0] || {};
     const esc = s.escalation_config || {};

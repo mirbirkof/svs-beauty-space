@@ -6,7 +6,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const STATUSES = ['draft','pending_approval','approved','rejected','ordered','in_transit','partially_received','received','closed','cancelled'];
@@ -84,7 +84,7 @@ router.get('/orders/:id', requirePerm('stock.read'), async (req, res) => {
 router.post('/orders', requirePerm('stock.write'), async (req, res) => {
   const client = await getPool().connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const { supplier_id, items, expected_delivery, notes, discount_amount = 0, auto_generated = false } = req.body || {};
     if (!Array.isArray(items) || !items.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'items-required' }); }
     const po_number = await genPoNumber(client);
@@ -123,7 +123,7 @@ router.patch('/orders/:id', requirePerm('stock.write'), async (req, res) => {
     if (!sets.length) return res.json({ ok: true });
     args.push(req.params.id);
     await getPool().query(`UPDATE purchase_orders SET ${sets.join(',')}, updated_at=NOW() WHERE id=$${args.length}`, args);
-    if (discount_amount !== undefined) { const c = await getPool().connect(); try { await recomputeTotal(c, req.params.id); } finally { c.release(); } }
+    if (discount_amount !== undefined) { const c = await getPool().connect(); try { await c.query('BEGIN'); await applyTenant(c); await recomputeTotal(c, req.params.id); await c.query('COMMIT'); } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); } }
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -185,7 +185,7 @@ router.post('/orders/:id/send', requirePerm('stock.write'), async (req, res) => 
 router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) => {
   const client = await getPool().connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const poId = req.params.id;
     const po = await client.query(`SELECT * FROM purchase_orders WHERE id=$1`, [poId]);
     if (!po.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
@@ -388,7 +388,7 @@ async function runAutoPurchase() {
   for (const [sid, rows] of Object.entries(bySupplier)) {
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN'); await applyTenant(client);
       const po_number = await genPoNumber(client);
       const po = await client.query(
         `INSERT INTO purchase_orders(po_number, supplier_id, status, notes, auto_generated)

@@ -3,7 +3,7 @@
    невідповідності+CAPA (можуть породити задачу MGT-01), таємний покупець, KPI якості
    по майстрах. Прагматика під один салон. Доступ: GET=qc.read, мутації=qc.write. */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 let emit = async () => {}; try { ({ emit } = require('../lib/event-bus')); } catch { /* optional */ }
 
@@ -129,7 +129,7 @@ router.post('/checklists', async (req, res) => {
     const b = req.body || {};
     if (!b.title) { client.release(); return res.status(400).json({ error: 'title required' }); }
     const type = CHECKLIST_TYPES.includes(b.checklist_type) ? b.checklist_type : 'general';
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const cl = (await client.query(
       `INSERT INTO qc_checklists (branch_id,title,description,checklist_type,applicable_role,applicable_service_id,pass_threshold,active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,true)) RETURNING *`,
@@ -270,7 +270,7 @@ router.post('/checks/:id(\\d+)/results', async (req, res) => {
     if (!results.length) { client.release(); return res.status(400).json({ error: 'results required' }); }
     const chk = (await client.query(`SELECT id,tenant_id FROM qc_checks WHERE id=$1 AND tenant_id=current_tenant_id()`, [req.params.id])).rows[0];
     if (!chk) { client.release(); return res.status(404).json({ error: 'not found' }); }
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     for (const r of results) {
       const itemId = num(r.item_id); if (!itemId) continue;
       const it = (await client.query(`SELECT evaluation_type FROM qc_checklist_items WHERE id=$1 AND checklist_id=(SELECT checklist_id FROM qc_checks WHERE id=$2)`, [itemId, chk.id])).rows[0];

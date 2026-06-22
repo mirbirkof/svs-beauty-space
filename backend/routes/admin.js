@@ -27,7 +27,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
 const { requirePerm, logAction } = require('../lib/rbac');
 
@@ -157,7 +157,7 @@ router.post('/variants/:id/stock', async (req, res) => {
     const { qty, note } = req.body || {};
     const delta = parseInt(qty, 10);
     if (!delta) return res.status(400).json({ error: 'qty-required' });
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const r = await client.query(
       `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2 RETURNING *`,
       [delta, req.params.id]
@@ -228,7 +228,7 @@ router.patch('/orders/:id/status', async (req, res) => {
     if (!ORDER_STATUSES.includes(status)) return res.status(400).json({ error: 'bad-status' });
     const orderId = parseInt(req.params.id, 10);
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
 
     // текущий статус
     const cur = await client.query(`SELECT status, client_id, total FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);

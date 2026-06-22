@@ -1,7 +1,7 @@
 /* Users + tokens management. Только owner/admin */
 const express = require('express');
 const crypto = require('crypto');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, sha256, logAction } = require('../lib/rbac');
 const { hashPassword, checkPasswordComplexity, normalizePhone } = require('../lib/auth-core');
 
@@ -40,7 +40,7 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
       password_hash = await hashPassword(password);
     }
 
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
 
     // якщо роль майстер і просять — створюємо запис у masters і лінкуємо
     if (!master_id && (create_master || role.rows[0].code === 'master')) {

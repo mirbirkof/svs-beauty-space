@@ -2,7 +2,7 @@
    Recency = днів з останнього візиту, Frequency = done-записи, Monetary = total_spent.
    Оцінки 1..5 — квінтилі (NTILE) серед активних клієнтів (frequency>=1).
    Матеріалізує у rfm_scores; повертає матрицю 5×5 і розподіл по макросегментах. */
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 
 // Пріоритетний маппінг R/F у макросегмент (галузевий стандарт, спрощений до 10).
 const SEGMENT_CASE = `
@@ -37,7 +37,7 @@ async function refresh() {
   const pool = getPool();
   const c = await pool.connect();
   try {
-    await c.query('BEGIN');
+    await c.query('BEGIN'); await applyTenant(c);
     await c.query('DELETE FROM rfm_scores');
     const r = await c.query(`
       WITH base AS (
