@@ -44,25 +44,38 @@ async function buildSnapshot() {
        WHERE type='in' AND category IN ('sale_service','sale_product')
          AND created_at >= NOW() - INTERVAL '90 days'
        GROUP BY dow ORDER BY dow`),
-    // KPI мастеров за 30 дней
+    // KPI мастеров за 30 дней.
+    // ВАЖНО: выручку берём из КАССЫ (cash_operations.master_id), а НЕ из appointments.price WHERE done —
+    // BeautyPro оставляет визиты в статусе 'confirmed', поэтому 'done'-сумма недосчитывает выручку вдвое.
+    // done/lost (для % отмен) считаем по appointments — это про кол-во визитов, там это корректно.
     q(`SELECT m.name,
-              COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue,
-              COUNT(*) FILTER (WHERE a.status='done')::int AS done,
-              COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow') AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS lost
+              COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+                        WHERE co.master_id=m.id AND co.type='in'
+                          AND co.category IN ('sale_service','sale_product')
+                          AND co.created_at >= NOW() - INTERVAL '30 days'),0)::numeric AS revenue,
+              COUNT(a.id) FILTER (WHERE a.status='done')::int AS done,
+              COUNT(a.id) FILTER (WHERE a.status IN ('cancelled','noshow') AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS lost
        FROM masters m LEFT JOIN appointments a
          ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '30 days'
        WHERE m.active=true AND COALESCE(m.provides_services,true)=true
        GROUP BY m.id, m.name ORDER BY revenue DESC`),
-    // отток: ≥2 визита, последний >90 дней
-    q(`SELECT COUNT(*)::int AS n FROM (
-         SELECT c.id FROM clients c JOIN appointments a ON a.client_id=c.id
+    // отток (lapsed): ≥2 визита И не приходил дольше, чем 2× его обычного интервала визитов (но не менее 90 дней).
+    // Учёт ритма: клиент на цикле "раз в 2 мес" не считается оттоком на 95-й день — только когда реально выпал из ритма.
+    q(`WITH base AS (
+         SELECT c.id, MAX(a.starts_at) AS last_v, MIN(a.starts_at) AS first_v, COUNT(a.id) AS vis
+         FROM clients c JOIN appointments a ON a.client_id=c.id
          WHERE a.status NOT IN ('cancelled','noshow')
-         GROUP BY c.id HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
-       ) t`),
+         GROUP BY c.id HAVING COUNT(a.id) >= 2)
+       SELECT COUNT(*)::int AS n FROM base
+       WHERE (NOW()::date - last_v::date) > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (last_v-first_v))/86400) / (vis-1))`),
     // позиции на выходе
     q(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active=true AND COALESCE(stock_qty,0) <= 5`),
-    // новые клиенты за 30 дней
-    q(`SELECT COUNT(*)::int AS n FROM clients WHERE created_at >= NOW() - INTERVAL '30 days'`),
+    // новые клиенты за 30 дней = те, у кого ПЕРВЫЙ визит в последние 30 дней.
+    // НЕ по clients.created_at — там у 5000+ записей дата массового импорта из Букона (13.06), не реальная регистрация.
+    q(`SELECT COUNT(*)::int AS n FROM (
+         SELECT client_id FROM appointments WHERE status NOT IN ('cancelled','noshow')
+         GROUP BY client_id HAVING MIN(starts_at) >= NOW() - INTERVAL '30 days'
+       ) t`),
     // продажи текущий мес
     q(`SELECT COALESCE(SUM(amount),0)::numeric AS total, COUNT(*)::int AS cnt
        FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
@@ -95,10 +108,20 @@ async function buildSnapshot() {
   const totalRev30 = rev30arr.reduce((s, x) => s + x.total, 0);
 
   return {
-    period: 'останні 30 днів (виручка по днях), будні/вихідні — середнє за 90 днів',
+    // У КОЖНОЇ метрики свій період — НЕ переноси один період на всі цифри.
+    metrics_periods: {
+      revenue_30d_total: 'останні 30 днів',
+      revenue_by_day: 'останні 30 днів (по датах)',
+      weekday_avg_revenue: 'середнє за 1 день тижня, база 90 днів',
+      masters: 'останні 30 днів',
+      churn_clients: 'клієнти, що НЕ поверталися довше за 2× свого звичного інтервалу (мін. 90 днів). Це НЕ "за 30 днів" — вони зникли місяці тому',
+      new_clients_30d: 'клієнти, чий ПЕРШИЙ візит був за останні 30 днів',
+      month_vs_prev: 'цей місяць проти тієї самої частини минулого',
+      appointments_30d: 'останні 30 днів',
+    },
+    period: 'різні метрики — різні періоди, див. metrics_periods',
     revenue_30d_total: totalRev30,
     revenue_by_day: rev30arr,
-    // ВАЖЛИВО для LLM: це СЕРЕДНЄ за один такий день тижня (за 90 днів), а НЕ сумарна виручка.
     weekday_avg_revenue: {
       note: 'avg_revenue_per_day — середня виручка за ОДИН такий день тижня (грн). НЕ сумувати по днях тижня — це вже середні значення.',
       days: wd,
@@ -123,7 +146,8 @@ async function drillData(topic) {
   const q = (sql, params=[]) => pool.query(sql, params).then(r=>r.rows).catch(()=>[]);
   switch (topic) {
     case 'churn': {
-      // База відтоку: ≥2 візити, останній >90 днів тому. Рахуємо в CTE один раз.
+      // База відтоку (cadence-aware): ≥2 візити І не повертався довше за 2× свого звичного інтервалу
+      // (але не менше 90 днів). Клієнт на циклі "раз на 2 міс" не вважається відтоком на 95-й день.
       const base = `WITH churned AS (
           SELECT c.id, c.name, c.phone, COALESCE(c.total_spent,0)::numeric AS spent,
                  MAX(a.starts_at) AS last_visit,
@@ -131,7 +155,9 @@ async function drillData(topic) {
           FROM clients c JOIN appointments a ON a.client_id=c.id
           WHERE a.status NOT IN ('cancelled','noshow')
           GROUP BY c.id
-          HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2)`;
+          HAVING COUNT(a.id) >= 2
+             AND (NOW()::date - MAX(a.starts_at)::date)
+                 > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (MAX(a.starts_at)-MIN(a.starts_at)))/86400) / (COUNT(a.id)-1)))`;
       const [rows, byMaster, byService, agg] = await Promise.all([
         q(`${base}
            SELECT ch.id, ch.name, ch.phone, ch.spent, ch.visits,
@@ -159,6 +185,7 @@ async function drillData(topic) {
       return {
         title: 'Відтік клієнтів',
         metrics: {
+          definition: 'Клієнт у відтоку = мав ≥2 візити і не повертався довше за 2× свого звичного інтервалу (мін. 90 днів). Це накопичений відтік за всю історію, НЕ "за 30 днів".',
           churned_total: agg[0]?.n || 0,
           lost_revenue_potential: Math.round(Number(agg[0]?.potential || 0)),
           avg_days_since_visit: agg[0]?.avg_days || 0,
@@ -171,10 +198,13 @@ async function drillData(topic) {
     }
     case 'masters': {
       const rows = await q(`SELECT m.name,
-          COUNT(*) FILTER (WHERE a.status='done')::int AS done,
-          COUNT(*) FILTER (WHERE a.status='cancelled' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS cancelled,
-          COUNT(*) FILTER (WHERE a.status='noshow' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS noshow,
-          COALESCE(SUM(a.price) FILTER (WHERE a.status='done'),0)::numeric AS revenue
+          COUNT(a.id) FILTER (WHERE a.status='done')::int AS done,
+          COUNT(a.id) FILTER (WHERE a.status='cancelled' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS cancelled,
+          COUNT(a.id) FILTER (WHERE a.status='noshow' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS noshow,
+          COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+                    WHERE co.master_id=m.id AND co.type='in'
+                      AND co.category IN ('sale_service','sale_product')
+                      AND co.created_at >= NOW() - INTERVAL '90 days'),0)::numeric AS revenue
         FROM masters m LEFT JOIN appointments a
           ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '90 days'
         WHERE m.active=true AND COALESCE(m.provides_services,true)=true
@@ -378,7 +408,9 @@ async function buildPlanContext(scope) {
   const [churn, lowStock, reviews, waitlist, openShifts] = await Promise.all([
     q(`SELECT c.name, COALESCE(c.total_spent,0)::int AS spent FROM clients c JOIN appointments a ON a.client_id=c.id
        WHERE a.status NOT IN ('cancelled','noshow') GROUP BY c.id, c.name, c.total_spent
-       HAVING MAX(a.starts_at) < NOW() - INTERVAL '90 days' AND COUNT(a.id) >= 2
+       HAVING COUNT(a.id) >= 2
+          AND (NOW()::date - MAX(a.starts_at)::date)
+              > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (MAX(a.starts_at)-MIN(a.starts_at)))/86400) / (COUNT(a.id)-1))
        ORDER BY spent DESC NULLS LAST LIMIT 8`),
     q(`SELECT p.name AS product, pv.volume, COALESCE(pv.stock_qty,0)::int AS stock
        FROM product_variants pv JOIN products p ON p.id=pv.product_id
