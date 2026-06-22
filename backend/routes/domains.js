@@ -20,12 +20,19 @@
      GET    /admin/health-report */
 const express = require('express');
 const router = express.Router();
-const { requirePerm, logAction } = require('../lib/rbac');
+const { requirePerm, requirePlatform, logAction } = require('../lib/rbac');
 const { getTenantId } = require('../lib/tenant');
 const dom = require('../lib/domains');
 
 const R = requirePerm('saas.read');
 const W = requirePerm('saas.write');
+
+// Усі /admin/* — кросс-тенантні операції оператора платформи (список доменів
+// УСІХ салонів, force-verify/renew SSL будь-якого домену, health-report).
+// Без цього власник салону (роль owner з правами "*") пройшов би saas.read/write
+// і бачив/керував доменами чужих салонів. Салонні маршрути (нижче) лишаються
+// під current_tenant_id + RLS.
+router.use('/admin', requirePlatform());
 
 const fail = (res, e) => {
   console.error('[domains]', e);
