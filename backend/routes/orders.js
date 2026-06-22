@@ -135,10 +135,11 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       }
       const pr = claim.rows[0];
       discount = pr.type === 'percent'
-        ? Math.round(total * Number(pr.value)) / 100
+        ? Math.round(total * Math.min(Number(pr.value), 100)) / 100
         : Math.min(Number(pr.value), total);
-      discount = Math.round(discount * 100) / 100;
-      total = Math.round((total - discount) * 100) / 100;
+      // защита от отрицательного итога: скидка не больше суммы заказа
+      discount = Math.min(Math.round(discount * 100) / 100, total);
+      total = Math.max(0, Math.round((total - discount) * 100) / 100);
       appliedPromo = pr.code;
     }
 

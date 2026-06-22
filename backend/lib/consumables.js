@@ -1,6 +1,6 @@
 /* Списание расходников со склада при выполнении услуги (SAL-08).
    Идемпотентно: appointments.stock_written_off защищает от двойного списания. */
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const pool = getPool();
 
 /**
@@ -12,6 +12,7 @@ async function writeOffForAppointment(apptId) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await applyTenant(client); // изоляция тенанта в ручной транзакции
     // блокируем запись, читаем услугу и флаг
     const a = await client.query(
       `SELECT id, service_id, stock_written_off FROM appointments WHERE id=$1 FOR UPDATE`,
@@ -31,7 +32,7 @@ async function writeOffForAppointment(apptId) {
       const qty = Math.ceil(Number(c.qty_per_use)); // склад в штуках — округляем вверх
       if (qty <= 0) continue;
       await client.query(
-        `UPDATE product_variants SET stock_qty = stock_qty - $1 WHERE id=$2`,
+        `UPDATE product_variants SET stock_qty = GREATEST(stock_qty - $1, 0) WHERE id=$2`,
         [qty, c.variant_id]
       );
       await client.query(

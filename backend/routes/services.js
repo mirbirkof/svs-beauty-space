@@ -151,6 +151,8 @@ router.post('/', WRITE, async (req, res) => {
     const price = b.price != null ? b.price : b.base_price;
     const duration = b.duration_min != null ? b.duration_min : b.base_duration;
     if (price == null || duration == null) return res.status(400).json({ error: 'price and duration required' });
+    if (!Number.isFinite(Number(price)) || Number(price) < 0) return res.status(400).json({ error: 'price-must-be-non-negative' });
+    if (!Number.isFinite(Number(duration)) || Number(duration) <= 0) return res.status(400).json({ error: 'duration-must-be-positive' });
     const slug = await uniqueSlug(b.slug || b.name);
     const photoUrls = JSON.stringify(Array.isArray(b.photo_urls) ? b.photo_urls : []);
     const status = b.status || 'active';

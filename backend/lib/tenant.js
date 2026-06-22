@@ -56,8 +56,9 @@ function invalidateTenant({ slug, id } = {}) {
 
 function tenantMiddleware() {
   return async function (req, res, next) {
+    let slug = null;
     try {
-      let slug = req.headers['x-tenant-slug'] || null;
+      slug = req.headers['x-tenant-slug'] || null;
       if (!slug && process.env.TENANT_BASE_DOMAIN) {
         // сабдомен: {slug}.TENANT_BASE_DOMAIN → slug. Включается ТОЛЬКО на нашем
         // SaaS-домене (SAS-09). Иначе хосты платформ (svs-shop-api.onrender.com)
@@ -92,7 +93,12 @@ function tenantMiddleware() {
       }
       tenantContext.run({ tenantId: req.tenant_id, isPlatform: req.is_platform }, next);
     } catch (e) {
-      // не валим запрос из-за сбоя резолва — фолбэк на дефолтный тенант
+      // FAIL-CLOSED: если резолв slug упал (был передан slug, но сбой БД) — НЕ
+      // подставляем дефолтный тенант (это дало бы чужому салону контекст оператора
+      // платформы). Возвращаем 503. Без slug (прямой доступ оператора Босса) —
+      // дефолтный тенант как раньше: тут резолва нет, сбой невозможен.
+      console.error('[tenant] resolve failed:', e.message);
+      if (slug) return res.status(503).json({ error: 'tenant-resolve-failed' });
       req.tenant_id = DEFAULT_TENANT_ID;
       req.is_platform = true;
       tenantContext.run({ tenantId: DEFAULT_TENANT_ID, isPlatform: true }, next);

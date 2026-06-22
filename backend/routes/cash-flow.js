@@ -4,7 +4,7 @@
    Прагматично для 1 салону: реєстр потоків = cash_operations (не дублюємо).
    Доступ: reports.finance. */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
@@ -83,9 +83,11 @@ router.post('/transfers', async (req, res) => {
     if (!b.from_account_id || !b.to_account_id || !amt || amt <= 0) return res.status(400).json({ error: 'from_account_id, to_account_id, amount required' });
     if (+b.from_account_id === +b.to_account_id) return res.status(400).json({ error: 'same account' });
     await client.query('BEGIN');
+    await applyTenant(client); // изоляция тенанта в ручной транзакции
     const from = (await client.query(`SELECT * FROM bank_accounts WHERE id=$1 FOR UPDATE`, [+b.from_account_id])).rows[0];
     const toAcc = (await client.query(`SELECT * FROM bank_accounts WHERE id=$1 FOR UPDATE`, [+b.to_account_id])).rows[0];
     if (!from || !toAcc) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'account not found' }); }
+    if (Number(from.current_balance) < amt) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'insufficient-balance', balance: Number(from.current_balance) }); }
     await client.query(`UPDATE bank_accounts SET current_balance=current_balance-$1, updated_at=NOW() WHERE id=$2`, [amt, from.id]);
     await client.query(`UPDATE bank_accounts SET current_balance=current_balance+$1, updated_at=NOW() WHERE id=$2`, [amt, toAcc.id]);
     const t = (await client.query(`INSERT INTO account_transfers (from_account_id,to_account_id,amount,description,created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
@@ -140,6 +142,7 @@ router.post('/calendar/:id/mark-paid', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await applyTenant(client); // изоляция тенанта в ручной транзакции
     const p = (await client.query(`SELECT * FROM payment_calendar WHERE id=$1 FOR UPDATE`, [+req.params.id])).rows[0];
     if (!p) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
     if (p.status === 'paid') { await client.query('ROLLBACK'); return res.json({ ok: true, payment: p }); }

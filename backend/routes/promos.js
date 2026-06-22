@@ -86,6 +86,9 @@ router.post('/admin/create', requirePerm('promo.write'), async (req, res) => {
     const { code, type, value, min_total, max_uses, valid_until } = req.body || {};
     if (!code || !type || value == null) return res.status(400).json({ error: 'code-type-value-required' });
     if (!['percent','fixed'].includes(type)) return res.status(400).json({ error: 'bad-type' });
+    const numValue = Number(value);
+    if (!Number.isFinite(numValue) || numValue <= 0) return res.status(400).json({ error: 'value-must-be-positive' });
+    if (type === 'percent' && numValue > 100) return res.status(400).json({ error: 'percent-max-100' });
     const pool = getPool();
     const r = await pool.query(
       `INSERT INTO promos (code, type, value, min_total, max_uses, valid_until, active)
