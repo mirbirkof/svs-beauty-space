@@ -161,13 +161,15 @@ router.post('/calendar/:id/mark-paid', async (req, res) => {
         [p.account_id, p.type, p.category, p.amount, p.counterparty_name, p.description, nd, p.recurrence_rule, p.created_by]);
     }
     await client.query('COMMIT');
+    logAction({ user: req.user, action: 'cashflow.mark_paid', entity: 'payment_calendar', entity_id: p.id, ip: req.ip, meta: { amount: p.amount, type: p.type, account_id: p.account_id } }).catch(() => {});
     res.json({ ok: true });
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
 router.delete('/calendar/:id', async (req, res) => {
   try {
-    await pool.query(`DELETE FROM payment_calendar WHERE id=$1`, [+req.params.id]);
+    const r = await pool.query(`DELETE FROM payment_calendar WHERE id=$1 RETURNING amount, type`, [+req.params.id]);
+    logAction({ user: req.user, action: 'cashflow.calendar_delete', entity: 'payment_calendar', entity_id: +req.params.id, ip: req.ip, meta: r.rows[0] || {} }).catch(() => {});
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
