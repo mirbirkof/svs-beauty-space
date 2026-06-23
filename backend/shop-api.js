@@ -308,6 +308,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     try { require('./lib/monitor-checker').start(60000); } catch (e) { console.error('[monitor] start failed:', e.message); }
     // страховка вебхуков Mono: поллинг pending-инвойсов
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
+    // INF: суточный offsite-бэкап БД (выгрузка в S3/Spaces, если заданы BACKUP_S3_*)
+    try { require('./lib/backup-core').startCron(); } catch (e) { console.error('[backup] cron start failed:', e.message); }
   }
 });
 
