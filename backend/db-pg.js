@@ -20,8 +20,20 @@ function getPool() {
     ssl: url.includes('neon.tech') || url.includes('supabase')
       ? { rejectUnauthorized: false }
       : false,
-    max: 10,
+    max: Number(process.env.PG_POOL_MAX || 10),
     idleTimeoutMillis: 30000,
+    // Аудит #36: каждый tenant-запрос берёт отдельное соединение из пула (max).
+    // Параллельные запросы (дашборд с 10-15 виджетами) могут исчерпать пул.
+    // Полный фикс — connection-per-request (Этап 3, нужен нагрузочный тест).
+    // Здесь — защита от худшего сценария каскадного отказа:
+    //   • connectionTimeoutMillis — запрос НЕ виснет вечно в ожидании соединения,
+    //     а быстро падает (освобождая event-loop), если пул занят;
+    //   • statement_timeout — зависший на стороне БД запрос убивается сервером и
+    //     ОСВОБОЖДАЕТ соединение, иначе он держал бы слот пула бесконечно;
+    //   • query_timeout — клиентский страховочный таймаут.
+    connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS || 10000),
+    statement_timeout: Number(process.env.PG_STMT_TIMEOUT_MS || 60000),
+    query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 65000),
   });
   pool.on('error', (err) => console.error('[pg pool error]', err.message));
 
