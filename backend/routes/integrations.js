@@ -51,9 +51,9 @@ function buildCatalog() {
         configured: has('TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN'), needs: ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_FROM'],
         how: 'Створити акаунт Twilio, узяти SID/Token/номер відправника.' },
       { key: 'email', name: 'Email-розсилки (Resend)', icon: 'mail',
-        desc: 'Транзакційні листи та email-кампанії.',
-        configured: has('RESEND_API_KEY'), needs: ['RESEND_API_KEY'],
-        how: 'Зареєструватись у Resend, підтвердити домен, ключ → RESEND_API_KEY.' },
+        desc: 'Транзакційні листи, підтвердження пошти та email-кампанії.',
+        configured: has('RESEND_API_KEY') && has('EMAIL_FROM'), needs: ['RESEND_API_KEY', 'EMAIL_FROM'],
+        how: 'Зареєструватись у Resend, підтвердити домен, ключ → RESEND_API_KEY, відправник → EMAIL_FROM (напр. "SVS Beauty <noreply@ваш-домен>").' },
     ]},
     { category: 'Логістика', items: [
       { key: 'novaposhta', name: 'Нова Пошта', icon: 'local_shipping',

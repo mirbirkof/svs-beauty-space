@@ -995,6 +995,11 @@ select.input { background:var(--card); }
       </div>
       <div class="topbar-right">
         <span id="userBadge" style="display:none;font-size:13px;color:var(--text-muted,#888);font-weight:600"></span>
+        <button id="emailVerifyChip" onclick="sendEmailVerify(this)" title="Підтвердіть свою пошту, щоб відновлювати доступ і отримувати службові листи"
+          style="display:none;align-items:center;gap:5px;border:1px solid #f0c36d;background:#fff8e6;color:#8a6d1a;font-size:12px;font-weight:600;border-radius:14px;padding:3px 10px;cursor:pointer">
+          <span class="material-icons-round" style="font-size:15px">mark_email_unread</span>
+          <span class="evc-text">Підтвердити пошту</span>
+        </button>
         <button class="topbar-btn" onclick="window.open('/admin/export.html')">
           <span class="material-icons-round" style="font-size:16px">download</span> Експорт
         </button>
@@ -2558,6 +2563,38 @@ function loginWithToken() {
 }
 function logout() { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); localStorage.removeItem('svs_tenant_slug'); location.reload(); }
 
+// Індикатор підтвердження пошти у шапці: показуємо лише якщо в акаунта є email і він ще не підтверджений.
+function refreshEmailVerifyChip() {
+  try {
+    const chip = document.getElementById('emailVerifyChip');
+    if (!chip || !USER) return;
+    const need = USER.email && !USER.email_verified;
+    chip.style.display = need ? 'inline-flex' : 'none';
+  } catch (_) {}
+}
+async function sendEmailVerify(btn) {
+  const txt = btn.querySelector('.evc-text');
+  const old = txt ? txt.textContent : '';
+  if (txt) txt.textContent = 'Надсилаю…';
+  btn.disabled = true;
+  try {
+    const r = await api('/api/auth/send-email-verification', { method: 'POST' });
+    if (r && r.already) { toast('Пошту вже підтверджено'); btn.style.display = 'none'; return; }
+    if (r && r.ok) {
+      if (r.channel_ready) toast('Лист підтвердження надіслано на ' + (r.email || 'вашу пошту'));
+      else toast('Лист у черзі. Підключіть Resend у розділі «Інтеграції» — і він піде автоматично.');
+      if (txt) txt.textContent = 'Лист надіслано';
+      setTimeout(() => { if (txt) txt.textContent = old; btn.disabled = false; }, 4000);
+      return;
+    }
+    toast((r && r.error === 'no-email-on-account') ? 'У акаунта немає пошти' : 'Не вдалося надіслати лист');
+    if (txt) txt.textContent = old; btn.disabled = false;
+  } catch (e) {
+    toast('Помилка надсилання листа');
+    if (txt) txt.textContent = old; btn.disabled = false;
+  }
+}
+
 // ── Гейтинг інтерфейсу за роллю ───────────────
 // owner / admin / manager — бачать усе. master — лише свій дашборд + журнал записів.
 function isMasterRole(){ return !!USER && USER.role === 'master'; }
@@ -2573,6 +2610,7 @@ function applyRoleUI(){
       lbl.style.display = '';
     }
   } catch {}
+  refreshEmailVerifyChip();
 
   const master = isMasterRole();
   // Майстру лишаємо тільки дашборд і журнал — решта пунктів та груп ховаємо

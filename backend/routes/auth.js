@@ -607,6 +607,73 @@ router.post('/change-password', authRequired, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────
+// POST /api/auth/send-email-verification  (authRequired)
+// Генерирует токен и ставит письмо со ссылкой в очередь Hub.
+// Если Email-канал (Resend) ещё не подключён в Інтеграціях —
+// письмо остаётся в очереди и уйдёт автоматически, как только
+// добавят ключ (без редеплоя). channel_ready показывает статус.
+// ─────────────────────────────────────────────────────────
+router.post('/send-email-verification', authRequired, async (req, res) => {
+  try {
+    const u = req.user;
+    if (!u.email) return res.status(400).json({ ok: false, error: 'no-email-on-account' });
+    if (u.email_verified) return res.json({ ok: true, already: true });
+
+    const token = generateResetToken();
+    const identifier = `email-verify:${u.id}`;
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 год
+    await pool.query(`DELETE FROM verification WHERE identifier = $1`, [identifier]);
+    await pool.query(
+      `INSERT INTO verification (id, identifier, value, "expiresAt", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())`,
+      [identifier, sha256(token), expiresAt]);
+
+    const base = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api.onrender.com';
+    const link = `${base}/api/auth/verify-email?uid=${u.id}&token=${encodeURIComponent(token)}`;
+    const html = `<b>Підтвердження пошти SVS CRM</b><br><br>Натисніть, щоб підтвердити адресу <b>${u.email}</b>:<br><a href="${link}">${link}</a><br><br>Посилання дійсне 24 години. Якщо це були не ви — проігноруйте лист.`;
+
+    let channelReady = false;
+    try { channelReady = require('../lib/channels/email-resend').isConfigured(); } catch (_) {}
+    try {
+      const hub = require('../lib/notification-hub');
+      await hub.enqueue({ recipient: u.email, channel: 'email', category: 'transactional',
+        priority: 'high', subject: 'Підтвердження пошти — SVS CRM', body: html, source: 'email-verify' });
+      if (channelReady) hub.processQueue(5).catch(() => {});
+    } catch (_) {}
+
+    res.json({ ok: true, queued: true, channel_ready: channelReady, email: u.email });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'verify-send-failed', ...(process.env.NODE_ENV !== 'production' && { detail: e.message }) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────
+// GET /api/auth/verify-email?uid=&token=
+// Переход по ссылке из письма → email_verified = true.
+// ─────────────────────────────────────────────────────────
+router.get('/verify-email', async (req, res) => {
+  const page = (ok, msg) => `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=1280"><title>Підтвердження пошти</title></head><body style="font-family:system-ui,Segoe UI,Roboto;background:#f5f6fb;display:grid;place-items:center;min-height:100vh;margin:0"><div style="background:#fff;border-radius:16px;padding:32px 40px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;max-width:440px"><div style="font-size:48px">${ok ? '✅' : '⚠️'}</div><h2 style="margin:12px 0;color:#222">${msg}</h2><a href="/admin/" style="color:#5B5FC7;text-decoration:none;font-weight:600">Перейти в кабінет →</a></div></body></html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  try {
+    const uid = parseInt(req.query.uid, 10);
+    const token = String(req.query.token || '');
+    if (!uid || !token) return res.status(400).send(page(false, 'Невірне посилання'));
+    const identifier = `email-verify:${uid}`;
+    const row = (await pool.query(`SELECT value, "expiresAt" FROM verification WHERE identifier = $1`, [identifier])).rows[0];
+    if (!row || row.value !== sha256(token)) return res.status(400).send(page(false, 'Посилання недійсне або вже використане'));
+    if (new Date(row.expiresAt) < new Date()) {
+      await pool.query(`DELETE FROM verification WHERE identifier = $1`, [identifier]);
+      return res.status(400).send(page(false, 'Термін дії посилання вичерпано (24 год)'));
+    }
+    await pool.query(`UPDATE users SET email_verified = true WHERE id = $1`, [uid]);
+    await pool.query(`DELETE FROM verification WHERE identifier = $1`, [identifier]);
+    res.send(page(true, 'Пошту підтверджено'));
+  } catch (e) {
+    res.status(500).send(page(false, 'Помилка підтвердження'));
+  }
+});
+
+// ─────────────────────────────────────────────────────────
 // GET /api/auth/me
 // ─────────────────────────────────────────────────────────
 router.get('/me', authRequired, async (req, res) => {
