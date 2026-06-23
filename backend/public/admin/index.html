@@ -1370,6 +1370,8 @@ select.input { background:var(--card); }
           <select id="clientTagFilter" class="input" style="width:auto" onchange="loadClients()"><option value="">Усі теги</option></select>
           <button class="btn btn-outline btn-sm" onclick="openTagManager()" title="Керувати тегами"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">sell</span> Теги</button>
           <button class="btn btn-outline btn-sm" onclick="openClientDuplicates()" title="Знайти й об'єднати дублі клієнтів"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">join_inner</span> Дублі</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('clientsImportFile').click()" title="Імпорт клієнтів з CSV (Excel)"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">upload_file</span> Імпорт CSV</button>
+          <input type="file" id="clientsImportFile" accept=".csv,text/csv" style="display:none" onchange="importClientsCsv(this)">
           <span id="clientsCount" style="font-size:13px;color:var(--text-secondary);white-space:nowrap"></span>
         </div>
         <div class="card">
@@ -7086,6 +7088,31 @@ async function mergeDupGroup(gi, ids) {
     } catch (e) { toast(`#${dupId}: помилка мережі`, 'error'); }
   }
   if (ok) { toast(`Об'єднано: ${ok}`); openClientDuplicates(); if (currentPage === 'clients') loadClients(); }
+}
+
+async function importClientsCsv(input) {
+  const file = input.files && input.files[0];
+  input.value = ''; // дозволити повторний вибір того ж файлу
+  if (!file) return;
+  if (file.size > 1024 * 1024) { toast('Файл більший за 1MB. Розбийте на частини (~5000 рядків).'); return; }
+  let text;
+  try { text = await file.text(); } catch (_) { toast('Не вдалося прочитати файл'); return; }
+  if (!text.trim()) { toast('Файл порожній'); return; }
+  toast('Імпортую…');
+  try {
+    const r = await api('/api/import/clients', { method: 'POST', body: JSON.stringify({ csv: text }) });
+    if (r && r.ok) {
+      let msg = `Готово: додано ${r.imported}, оновлено ${r.updated}`;
+      if (r.skipped) msg += `, пропущено ${r.skipped}`;
+      if (r.errors && r.errors.length) msg += `, помилок ${r.errors.length}`;
+      toast(msg);
+      if (currentPage === 'clients') loadClients();
+    } else {
+      toast('Помилка імпорту: ' + ((r && (r.hint || r.error)) || 'невідома'));
+    }
+  } catch (e) {
+    toast('Помилка імпорту: ' + (e.message || e));
+  }
 }
 
 async function loadClients() {
