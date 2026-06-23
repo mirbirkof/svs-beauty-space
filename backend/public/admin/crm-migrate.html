@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>SVS CRM — Міграція з іншої CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+:root{--p:var(--primary);--muted:var(--text-secondary);--bd:var(--border);--ok:var(--success);--warn:var(--warning);--dng:var(--danger)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+main{padding:24px;max-width:1100px;margin:0 auto}
+h1{font-size:20px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+.sub{color:var(--muted);margin-bottom:20px;font-size:13px;line-height:1.5}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px}
+.step-h{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.step-n{background:var(--p);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.srcs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.src{border:1.5px solid var(--bd);border-radius:10px;padding:12px;cursor:pointer;transition:.15s}
+.src:hover{border-color:var(--p)}
+.src.sel{border-color:var(--p);background:rgba(91,95,199,.06)}
+.src b{display:block;font-size:13px;margin-bottom:3px}
+.src small{color:var(--muted);font-size:11px;line-height:1.4;display:block}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+select,.btn{font-family:inherit;font-size:13px}
+select{padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--text)}
+.drop{border:2px dashed var(--bd);border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:.15s;color:var(--muted)}
+.drop:hover,.drop.over{border-color:var(--p);background:rgba(91,95,199,.04);color:var(--text)}
+.drop .material-icons-round{font-size:40px;color:var(--p)}
+.btn{border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:600}
+.btn-p{background:var(--p);color:#fff}
+.btn-p:disabled{opacity:.5;cursor:not-allowed}
+.btn-o{background:transparent;border:1px solid var(--bd);color:var(--text)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{font-size:11px;padding:3px 9px;border-radius:12px;font-weight:600}
+.chip.ok{background:rgba(34,197,94,.12);color:#15803d}
+.chip.ign{background:#f1f1f4;color:#888}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--bd)}
+th{background:#fafafb;font-weight:600;color:var(--muted)}
+.muted{color:var(--muted)}
+.hidden{display:none}
+.note{font-size:12px;padding:10px 12px;border-radius:8px;margin-top:10px}
+.note.warn{background:rgba(245,158,11,.1);color:#92660a}
+.note.ok{background:rgba(34,197,94,.1);color:#15803d}
+.stat{display:inline-block;padding:6px 12px;border-radius:8px;background:#fafafb;border:1px solid var(--bd);margin:4px 6px 0 0;font-size:13px}
+.stat b{font-size:16px}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-3px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="material-icons-round" style="color:var(--p)">swap_horiz</span> Міграція з іншої CRM</h1>
+  <div class="sub">Перенесіть клієнтів, послуги та майстрів з будь-якої CRM за кілька кліків.
+    Експортуйте дані у CSV (у вашій старій CRM: «Експорт» → CSV/Excel → зберегти як CSV) і завантажте файл нижче.
+    Система сама визначить що це і покаже превʼю <b>до</b> перенесення.</div>
+
+  <!-- КРОК 1 -->
+  <div class="card">
+    <div class="step-h"><span class="step-n">1</span> Звідки переносимо</div>
+    <div class="srcs" id="srcs"></div>
+    <div class="row" style="margin-top:14px">
+      <label class="muted">Тип даних:</label>
+      <select id="entity">
+        <option value="">Визначити автоматично</option>
+        <option value="clients">Клієнти</option>
+        <option value="services">Послуги</option>
+        <option value="masters">Майстри</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- КРОК 2 -->
+  <div class="card">
+    <div class="step-h"><span class="step-n">2</span> Завантажте файл CSV</div>
+    <div class="drop" id="drop">
+      <span class="material-icons-round">cloud_upload</span>
+      <div style="margin-top:6px"><b>Перетягніть CSV сюди</b> або натисніть, щоб обрати файл</div>
+      <small id="fname" class="muted"></small>
+    </div>
+    <input type="file" id="file" accept=".csv,text/csv" class="hidden">
+  </div>
+
+  <!-- КРОК 3: аналіз -->
+  <div class="card hidden" id="analyzeCard">
+    <div class="step-h"><span class="step-n">3</span> Перевірте що знайшли</div>
+    <div id="analyzeBody"></div>
+  </div>
+
+  <!-- КРОК 4: результат -->
+  <div class="card hidden" id="resultCard">
+    <div class="step-h"><span class="step-n">4</span> Результат перенесення</div>
+    <div id="resultBody"></div>
+  </div>
+</main>
+
+<script>
+const API = location.origin;
+let TOKEN = localStorage.getItem('svs_admin_token') || '';
+let CSV_TEXT = '', SELECTED_SRC = 'generic';
+
+async function api(path, opts={}){
+  const h = opts.headers || {}; h['Content-Type']='application/json';
+  if(TOKEN){ h['Authorization']='Bearer '+TOKEN; h['X-Admin-Token']=TOKEN; }
+  const r = await fetch(API+path, {...opts, headers:h});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.hint || j.error || ('HTTP '+r.status));
+  return j;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// КРОК 1 — джерела
+async function loadPresets(){
+  try{
+    const j = await api('/api/migrate/presets');
+    const box = document.getElementById('srcs');
+    box.innerHTML = j.sources.map(s=>`
+      <div class="src ${s.id==='generic'?'sel':''}" data-id="${s.id}" onclick="pickSrc('${s.id}',this)">
+        <b>${esc(s.label)}</b><small>${esc(s.hint)}</small>
+      </div>`).join('');
+  }catch(e){ document.getElementById('srcs').innerHTML='<div class="note warn">Не вдалось завантажити список ('+esc(e.message)+'). Перенос усе одно працює — просто завантажте файл.</div>'; }
+}
+function pickSrc(id,el){ SELECTED_SRC=id; document.querySelectorAll('.src').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); }
+
+// КРОК 2 — файл
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.onclick=()=>fileInput.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);};
+fileInput.onchange=()=>{ if(fileInput.files[0]) readFile(fileInput.files[0]); };
+function readFile(f){
+  if(f.size>5*1024*1024){ alert('Файл завеликий (>5MB). Розбийте на частини.'); return; }
+  document.getElementById('fname').textContent='📄 '+f.name+' ('+Math.round(f.size/1024)+' KB)';
+  const rd=new FileReader();
+  rd.onload=()=>{ CSV_TEXT=rd.result; analyze(); };
+  rd.readAsText(f,'utf-8');
+}
+
+// КРОК 3 — аналіз
+async function analyze(){
+  const card=document.getElementById('analyzeCard'), body=document.getElementById('analyzeBody');
+  card.classList.remove('hidden'); document.getElementById('resultCard').classList.add('hidden');
+  body.innerHTML='<span class="spin" style="border-color:var(--p);border-top-color:transparent"></span> Аналізую файл…';
+  card.scrollIntoView({behavior:'smooth'});
+  try{
+    const ent=document.getElementById('entity').value;
+    const j=await api('/api/migrate/analyze',{method:'POST',body:JSON.stringify({csv:CSV_TEXT,entity:ent||undefined})});
+    renderAnalyze(j);
+  }catch(e){
+    body.innerHTML='<div class="note warn">Не вдалось розібрати файл: '+esc(e.message)+'<br>Переконайтесь що це CSV і перший рядок — назви стовпців. Або оберіть тип даних вручну.</div>';
+  }
+}
+function renderAnalyze(j){
+  const body=document.getElementById('analyzeBody');
+  const cols=j.recognized.map(r=>`<span class="chip ok">${esc(r.column)} → ${esc(r.field)}</span>`).join('');
+  const ign=(j.ignored||[]).map(c=>`<span class="chip ign">${esc(c)}</span>`).join('');
+  const fields=j.recognized.map(r=>r.field);
+  let tbl='<table><tr>'+fields.map(f=>`<th>${esc(f)}</th>`).join('')+'</tr>';
+  tbl+=j.preview.map(row=>'<tr>'+fields.map(f=>`<td>${esc(row[f]||'')}</td>`).join('')+'</tr>').join('');
+  tbl+='</table>';
+  body.innerHTML=`
+    <div class="row" style="margin-bottom:8px"><b style="font-size:15px">${esc(j.entity_label)}</b>
+      <span class="muted">· знайдено рядків: <b>${j.total_rows}</b></span></div>
+    <div class="muted" style="font-size:12px">Розпізнані стовпці:</div><div class="chips">${cols||'<span class="muted">—</span>'}</div>
+    ${ign?`<div class="muted" style="font-size:12px">Проігноровані (не переносяться):</div><div class="chips">${ign}</div>`:''}
+    <div class="muted" style="font-size:12px;margin-top:6px">Превʼю перших рядків:</div>${tbl}
+    ${j.warn?`<div class="note warn">⚠ ${esc(j.warn)}</div>`:''}
+    <div style="margin-top:16px">
+      <button class="btn btn-p" id="commitBtn" ${j.ready?'':'disabled'} onclick="commit()">
+        Перенести ${j.total_rows} ${j.entity_label.toLowerCase()}
+      </button>
+      <button class="btn btn-o" onclick="document.getElementById('analyzeCard').classList.add('hidden')">Скасувати</button>
+    </div>`;
+  body.dataset.entity=j.entity;
+}
+
+// КРОК 4 — перенесення
+async function commit(){
+  const btn=document.getElementById('commitBtn');
+  const ent=document.getElementById('analyzeBody').dataset.entity;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Переношу…';
+  try{
+    const j=await api('/api/migrate/commit',{method:'POST',body:JSON.stringify({csv:CSV_TEXT,entity:ent})});
+    const card=document.getElementById('resultCard'), body=document.getElementById('resultBody');
+    card.classList.remove('hidden');
+    let errs='';
+    if(j.errors&&j.errors.length) errs=`<div class="note warn" style="margin-top:10px">Рядків з помилками: ${j.errors.length}. Перші: `+j.errors.slice(0,5).map(e=>'#'+e.line).join(', ')+'</div>';
+    body.innerHTML=`
+      <div class="note ok">Готово! Дані перенесено у вашу CRM.</div>
+      <div style="margin-top:8px">
+        <span class="stat"><b>${j.imported}</b><br>додано</span>
+        <span class="stat"><b>${j.updated}</b><br>оновлено</span>
+        <span class="stat"><b>${j.skipped}</b><br>пропущено</span>
+        <span class="stat"><b>${j.errors?j.errors.length:0}</b><br>помилок</span>
+      </div>${errs}
+      <div class="muted" style="font-size:12px;margin-top:12px">Можна завантажити наступний файл (інший тип даних) — повторіть кроки 2–4.</div>`;
+    card.scrollIntoView({behavior:'smooth'});
+    btn.innerHTML='Перенесено ✓';
+  }catch(e){
+    btn.disabled=false; btn.textContent='Спробувати ще раз';
+    alert('Помилка перенесення: '+e.message);
+  }
+}
+
+loadPresets();
+</script>
+</body>
+</html>
