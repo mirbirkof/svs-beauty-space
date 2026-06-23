@@ -52,14 +52,21 @@ router.get('/orders.csv', async (req, res) => {
 router.get('/clients.csv', async (req, res) => {
   const pool = getPool();
   const r = await pool.query(`
-    SELECT c.id, c.phone, c.name, c.email, c.loyalty_points, c.total_spent, c.created_at,
+    SELECT c.id, c.phone, c.name, c.email,
+           to_char(c.birthday, 'DD.MM.YYYY') AS birthday, c.source, c.notes,
+           c.loyalty_points, c.total_spent, c.created_at,
            (SELECT COUNT(*) FROM orders WHERE client_id = c.id) AS orders_count
-    FROM clients c ORDER BY c.id DESC LIMIT 10000`);
+    FROM clients c WHERE c.deleted_at IS NULL ORDER BY c.id DESC LIMIT 10000`);
+  // Заголовки збігаються із синонімами імпорту (routes/import.js) —
+  // цей файл можна без втрат завантажити в інший салон.
   const csv = toCsv(r.rows, [
     { key: 'id', label: 'ID' },
     { key: 'phone', label: 'Телефон' },
-    { key: 'name', label: 'Імʼя' },
+    { key: 'name', label: "Ім'я" },
     { key: 'email', label: 'Email' },
+    { key: 'birthday', label: 'День народження' },
+    { key: 'source', label: 'Джерело' },
+    { key: 'notes', label: 'Нотатки' },
     { key: 'orders_count', label: 'Замовлень' },
     { key: 'total_spent', label: 'Витрачено' },
     { key: 'loyalty_points', label: 'Бонуси' },
