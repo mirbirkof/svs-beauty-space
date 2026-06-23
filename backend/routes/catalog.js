@@ -56,18 +56,48 @@ router.get('/categories', async (req, res) => {
 
 router.get('/products', async (req, res) => {
   try {
-    const { brand, category, search } = req.query;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
+    // search = старий параметр, q = новий (підтримуємо обидва). Описание теж шукаємо.
+    const { brand, category } = req.query;
+    const search = req.query.q || req.query.search;
+    // Пагінація: дефолт limit 50, max 100. ?page= (з 1) має пріоритет над ?offset=.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const page = req.query.page != null ? Math.max(parseInt(req.query.page, 10) || 1, 1) : null;
+    const offset = page != null ? (page - 1) * limit : Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    // Діапазон ціни (по price_from агрегату): скінченні невідʼємні числа.
+    const priceMin = Number.isFinite(parseFloat(req.query.price_min)) && parseFloat(req.query.price_min) >= 0
+      ? parseFloat(req.query.price_min) : null;
+    const priceMax = Number.isFinite(parseFloat(req.query.price_max)) && parseFloat(req.query.price_max) >= 0
+      ? parseFloat(req.query.price_max) : null;
 
     const conds = ['p.active = TRUE'];
     const params = [];
     if (brand) { params.push(brand); conds.push(`p.brand_id = $${params.length}`); }
     if (category) { params.push(category); conds.push(`p.category_id = $${params.length}`); }
     if (search) {
-      params.push('%' + search.toLowerCase() + '%');
-      conds.push(`LOWER(p.name) LIKE $${params.length}`);
+      params.push('%' + String(search).toLowerCase() + '%');
+      const p = '$' + params.length;
+      conds.push(`(LOWER(p.name) LIKE ${p} OR LOWER(COALESCE(p.description,'')) LIKE ${p})`);
     }
+    // фільтр по ціні — на наявних активних варіантах товару
+    if (priceMin != null) {
+      params.push(priceMin);
+      conds.push(`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.active=TRUE AND pv.price >= $${params.length})`);
+    }
+    if (priceMax != null) {
+      params.push(priceMax);
+      conds.push(`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.active=TRUE AND pv.price <= $${params.length})`);
+    }
+
+    // Сортування — лише з білого списку (захист від інʼєкції в ORDER BY).
+    const sortMap = {
+      price_asc: 'price_from ASC NULLS LAST, p.name',
+      price_desc: 'price_from DESC NULLS LAST, p.name',
+      name: 'p.name ASC',
+      popular: 'variants_count DESC, p.name',
+    };
+    const orderBy = sortMap[req.query.sort] || 'p.name';
+
     params.push(limit); const lp = params.length;
     params.push(offset); const op = params.length;
 
@@ -80,7 +110,7 @@ router.get('/products', async (req, res) => {
       LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = TRUE
       WHERE ${conds.join(' AND ')}
       GROUP BY p.id
-      ORDER BY p.name
+      ORDER BY ${orderBy}
       LIMIT $${lp} OFFSET $${op}
     `;
     const r = await pg.query(sql, params);
@@ -88,8 +118,16 @@ router.get('/products', async (req, res) => {
     // total count
     const countSql = `SELECT COUNT(*)::int AS total FROM products p WHERE ${conds.join(' AND ')}`;
     const cr = await pg.query(countSql, params.slice(0, params.length - 2));
+    const total = cr.rows[0].total;
 
-    res.json({ items: r.rows, total: cr.rows[0].total, limit, offset });
+    res.json({
+      items: r.rows,
+      total,
+      limit,
+      offset,
+      ...(page != null ? { page, pages: Math.ceil(total / limit) || 1 } : {}),
+      has_more: offset + r.rows.length < total,
+    });
   } catch (e) {
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
