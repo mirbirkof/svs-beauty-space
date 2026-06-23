@@ -108,8 +108,15 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
   font-size:12px; font-weight:600; padding:6px 0; border-radius:8px; cursor:pointer; transition:all .15s; }
 .sidebar-lang button:hover { background:rgba(255,255,255,.08); color:#fff; }
 .sidebar-lang button.active { background:var(--sidebar-active); color:#fff; border-color:var(--sidebar-active); }
+.sidebar-lang select { flex:1; width:100%; appearance:none; -webkit-appearance:none;
+  border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:var(--sidebar-text);
+  font-size:12px; font-weight:600; padding:7px 28px 7px 10px; border-radius:8px; cursor:pointer; transition:all .15s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23ffffff' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 10px center; }
+.sidebar-lang select:hover { background-color:rgba(255,255,255,.08); color:#fff; }
+.sidebar-lang option { background:#1a1d2b; color:#e6e8ef; }
 .sb-collapsed .sidebar-lang { flex-direction:column; }
-.sb-collapsed .sidebar-lang button { font-size:11px; padding:5px 0; }
+.sb-collapsed .sidebar-lang select { font-size:11px; padding:5px 22px 5px 6px; }
 
 /* COLLAPSE (icon-rail) — десктоп */
 /* Плаваюча кнопка шторки: зафіксована, завжди на одному місці, не зникає при прокрутці (заметка #29) */
@@ -981,9 +988,18 @@ select.input { background:var(--card); }
     </nav>
     <div class="sidebar-footer">
       <div class="sidebar-lang" id="langSwitch" title="Мова інтерфейсу">
-        <button type="button" data-lang="uk" onclick="setLang('uk')">UA</button>
-        <button type="button" data-lang="ru" onclick="setLang('ru')">RU</button>
-        <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+        <select id="langSelect" onchange="setLang(this.value)" aria-label="Мова інтерфейсу">
+          <option value="uk">🇺🇦 Українська</option>
+          <option value="ru">🇷🇺 Русский</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="pl">🇵🇱 Polski</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="it">🇮🇹 Italiano</option>
+          <option value="ro">🇷🇴 Română</option>
+          <option value="tr">🇹🇷 Türkçe</option>
+        </select>
       </div>
       <button onclick="logout()">
         <span class="material-icons-round" style="font-size:18px">logout</span> <span data-i18n-src="Вийти">Вийти</span>
@@ -2990,6 +3006,111 @@ const I18N_DICT = {
     'Моя підписка':'My subscription','Панель SaaS':'SaaS panel',
     'Вийти':'Log out','Експорт':'Export','Підтвердити пошту':'Verify email',
     'Подарункові сертифікати':'Gift certificates','Нагадування клієнтам':'Client reminders','Акції':'Promos','План місяця та аналітика':'Monthly plan & analytics'
+  },
+  pl: {
+    'Робота салону':'Praca salonu','Клієнти':'Klienci','Продажі':'Sprzedaż','Гроші':'Finanse','Маркетинг':'Marketing','Команда':'Zespół','Склад':'Magazyn','Налаштування':'Ustawienia','Система':'System','Підписка':'Subskrypcja','SaaS / Платформа':'SaaS / Platforma',
+    'Дашборд':'Pulpit','Журнал записів':'Rejestr wizyt','Воронка візитів':'Lejek wizyt','Зміни / Табель':'Zmiany / Grafik','Послуги':'Usługi','Категорії послуг':'Kategorie usług',
+    'Усі клієнти':'Wszyscy klienci','Лист очікування':'Lista oczekujących','Повторні візити':'Powtórne wizyty','Чорний список':'Czarna lista',
+    'Замовлення':'Zamówienia','Каса магазину':'Kasa sklepu','Сертифікати':'Certyfikaty','Абонементи':'Karnety','Вітрина (сайт)':'Witryna (strona)',
+    'Доходи і Витрати':'Przychody i wydatki','Фінансовий центр':'Centrum finansowe','Грошовий потік':'Przepływ gotówki','Бюджети':'Budżety','Контрагенти':'Kontrahenci','Звіти (P&L, RFM)':'Raporty (P&L, RFM)','Конструктор звітів':'Kreator raportów','Експорт CSV':'Eksport CSV',
+    'Центр повідомлень':'Centrum powiadomień','Сегменти':'Segmenty','Кампанії / Розсилки':'Kampanie / Wysyłki','Авто-тригери':'Auto-wyzwalacze','AI Відеостудія':'Studio wideo AI','Нагадування (записи)':'Przypomnienia (wizyty)','Акції / Промокоди':'Promocje / Kody','Відгуки':'Opinie','Dikidi (онлайн-запис)':'Dikidi (rezerwacja)',
+    'Майстри / Співробітники':'Pracownicy / Mistrzowie','Зарплата':'Wynagrodzenia','План місяця':'Plan miesiąca','Графіки роботи':'Grafiki pracy',
+    'Товари':'Towary','Залишки на складі':'Stany magazynowe','Закупівлі':'Zakupy','Інвентаризація':'Inwentaryzacja','Розхідники':'Materiały zużywalne',
+    'Профіль':'Profil','Онлайн-запис':'Rezerwacja online','Передплата':'Przedpłata','Конфіденційність':'Prywatność','Бізнес-налаштування':'Ustawienia biznesu','Кабінети / ресурси':'Gabinety / zasoby','Доступ до проєкту':'Dostęp do projektu','Міграція з іншої CRM':'Migracja z innego CRM',
+    'Системний статус':'Status systemu','Управління магазинами':'Zarządzanie sklepami','Інтеграції':'Integracje','BeautyPro синхро':'Synchronizacja BeautyPro','Аудит':'Audyt',
+    'Моя підписка':'Moja subskrypcja','Панель SaaS':'Panel SaaS',
+    'Вийти':'Wyloguj','Експорт':'Eksport','Підтвердити пошту':'Potwierdź e-mail',
+    'Подарункові сертифікати':'Bony podarunkowe','Нагадування клієнтам':'Przypomnienia dla klientów','Акції':'Promocje','План місяця та аналітика':'Plan miesiąca i analityka'
+  },
+  de: {
+    'Робота салону':'Salonbetrieb','Клієнти':'Kunden','Продажі':'Verkauf','Гроші':'Finanzen','Маркетинг':'Marketing','Команда':'Team','Склад':'Lager','Налаштування':'Einstellungen','Система':'System','Підписка':'Abonnement','SaaS / Платформа':'SaaS / Plattform',
+    'Дашборд':'Dashboard','Журнал записів':'Terminbuch','Воронка візитів':'Besuchs-Funnel','Зміни / Табель':'Schichten / Dienstplan','Послуги':'Leistungen','Категорії послуг':'Leistungskategorien',
+    'Усі клієнти':'Alle Kunden','Лист очікування':'Warteliste','Повторні візити':'Wiederholungsbesuche','Чорний список':'Sperrliste',
+    'Замовлення':'Bestellungen','Каса магазину':'Ladenkasse','Сертифікати':'Gutscheine','Абонементи':'Abos','Вітрина (сайт)':'Schaufenster (Website)',
+    'Доходи і Витрати':'Einnahmen & Ausgaben','Фінансовий центр':'Finanzzentrum','Грошовий потік':'Cashflow','Бюджети':'Budgets','Контрагенти':'Geschäftspartner','Звіти (P&L, RFM)':'Berichte (P&L, RFM)','Конструктор звітів':'Berichts-Generator','Експорт CSV':'CSV-Export',
+    'Центр повідомлень':'Benachrichtigungszentrum','Сегменти':'Segmente','Кампанії / Розсилки':'Kampagnen / Mailings','Авто-тригери':'Auto-Trigger','AI Відеостудія':'KI-Videostudio','Нагадування (записи)':'Erinnerungen (Termine)','Акції / Промокоди':'Aktionen / Gutscheincodes','Відгуки':'Bewertungen','Dikidi (онлайн-запис)':'Dikidi (Buchung)',
+    'Майстри / Співробітники':'Mitarbeiter / Stylisten','Зарплата':'Gehalt','План місяця':'Monatsplan','Графіки роботи':'Arbeitspläne',
+    'Товари':'Produkte','Залишки на складі':'Lagerbestände','Закупівлі':'Einkauf','Інвентаризація':'Inventur','Розхідники':'Verbrauchsmaterial',
+    'Профіль':'Profil','Онлайн-запис':'Online-Buchung','Передплата':'Anzahlung','Конфіденційність':'Datenschutz','Бізнес-налаштування':'Geschäftseinstellungen','Кабінети / ресурси':'Räume / Ressourcen','Доступ до проєкту':'Projektzugriff','Міграція з іншої CRM':'Migration aus anderem CRM',
+    'Системний статус':'Systemstatus','Управління магазинами':'Filialverwaltung','Інтеграції':'Integrationen','BeautyPro синхро':'BeautyPro-Sync','Аудит':'Audit',
+    'Моя підписка':'Mein Abonnement','Панель SaaS':'SaaS-Panel',
+    'Вийти':'Abmelden','Експорт':'Export','Підтвердити пошту':'E-Mail bestätigen',
+    'Подарункові сертифікати':'Geschenkgutscheine','Нагадування клієнтам':'Kundenerinnerungen','Акції':'Aktionen','План місяця та аналітика':'Monatsplan & Analyse'
+  },
+  es: {
+    'Робота салону':'Operación del salón','Клієнти':'Clientes','Продажі':'Ventas','Гроші':'Finanzas','Маркетинг':'Marketing','Команда':'Equipo','Склад':'Almacén','Налаштування':'Ajustes','Система':'Sistema','Підписка':'Suscripción','SaaS / Платформа':'SaaS / Plataforma',
+    'Дашборд':'Panel','Журнал записів':'Agenda de citas','Воронка візитів':'Embudo de visitas','Зміни / Табель':'Turnos / Horario','Послуги':'Servicios','Категорії послуг':'Categorías de servicios',
+    'Усі клієнти':'Todos los clientes','Лист очікування':'Lista de espera','Повторні візити':'Visitas repetidas','Чорний список':'Lista negra',
+    'Замовлення':'Pedidos','Каса магазину':'Caja de la tienda','Сертифікати':'Certificados','Абонементи':'Bonos','Вітрина (сайт)':'Escaparate (sitio)',
+    'Доходи і Витрати':'Ingresos y Gastos','Фінансовий центр':'Centro financiero','Грошовий потік':'Flujo de caja','Бюджети':'Presupuestos','Контрагенти':'Contrapartes','Звіти (P&L, RFM)':'Informes (P&L, RFM)','Конструктор звітів':'Generador de informes','Експорт CSV':'Exportar CSV',
+    'Центр повідомлень':'Centro de notificaciones','Сегменти':'Segmentos','Кампанії / Розсилки':'Campañas / Envíos','Авто-тригери':'Auto-disparadores','AI Відеостудія':'Estudio de vídeo IA','Нагадування (записи)':'Recordatorios (citas)','Акції / Промокоди':'Promos / Cupones','Відгуки':'Reseñas','Dikidi (онлайн-запис)':'Dikidi (reserva)',
+    'Майстри / Співробітники':'Personal / Estilistas','Зарплата':'Nómina','План місяця':'Plan del mes','Графіки роботи':'Horarios de trabajo',
+    'Товари':'Productos','Залишки на складі':'Existencias','Закупівлі':'Compras','Інвентаризація':'Inventario','Розхідники':'Consumibles',
+    'Профіль':'Perfil','Онлайн-запис':'Reserva online','Передплата':'Anticipo','Конфіденційність':'Privacidad','Бізнес-налаштування':'Ajustes del negocio','Кабінети / ресурси':'Salas / recursos','Доступ до проєкту':'Acceso al proyecto','Міграція з іншої CRM':'Migración desde otro CRM',
+    'Системний статус':'Estado del sistema','Управління магазинами':'Gestión de tiendas','Інтеграції':'Integraciones','BeautyPro синхро':'Sincronización BeautyPro','Аудит':'Auditoría',
+    'Моя підписка':'Mi suscripción','Панель SaaS':'Panel SaaS',
+    'Вийти':'Cerrar sesión','Експорт':'Exportar','Підтвердити пошту':'Verificar correo',
+    'Подарункові сертифікати':'Tarjetas regalo','Нагадування клієнтам':'Recordatorios a clientes','Акції':'Promociones','План місяця та аналітика':'Plan del mes y analítica'
+  },
+  fr: {
+    'Робота салону':'Activité du salon','Клієнти':'Clients','Продажі':'Ventes','Гроші':'Finances','Маркетинг':'Marketing','Команда':'Équipe','Склад':'Stock','Налаштування':'Paramètres','Система':'Système','Підписка':'Abonnement','SaaS / Платформа':'SaaS / Plateforme',
+    'Дашборд':'Tableau de bord','Журнал записів':'Agenda des RDV','Воронка візитів':'Tunnel de visites','Зміни / Табель':'Quarts / Planning','Послуги':'Prestations','Категорії послуг':'Catégories de prestations',
+    'Усі клієнти':'Tous les clients','Лист очікування':"Liste d'attente",'Повторні візити':'Visites répétées','Чорний список':'Liste noire',
+    'Замовлення':'Commandes','Каса магазину':'Caisse boutique','Сертифікати':'Certificats','Абонементи':'Abonnements','Вітрина (сайт)':'Vitrine (site)',
+    'Доходи і Витрати':'Revenus et Dépenses','Фінансовий центр':'Centre financier','Грошовий потік':'Flux de trésorerie','Бюджети':'Budgets','Контрагенти':'Contreparties','Звіти (P&L, RFM)':'Rapports (P&L, RFM)','Конструктор звітів':'Générateur de rapports','Експорт CSV':'Export CSV',
+    'Центр повідомлень':'Centre de notifications','Сегменти':'Segments','Кампанії / Розсилки':'Campagnes / Envois','Авто-тригери':'Déclencheurs auto','AI Відеостудія':'Studio vidéo IA','Нагадування (записи)':'Rappels (RDV)','Акції / Промокоди':'Promos / Codes','Відгуки':'Avis','Dikidi (онлайн-запис)':'Dikidi (réservation)',
+    'Майстри / Співробітники':'Personnel / Stylistes','Зарплата':'Salaire','План місяця':'Plan du mois','Графіки роботи':'Plannings de travail',
+    'Товари':'Produits','Залишки на складі':'Stocks','Закупівлі':'Achats','Інвентаризація':'Inventaire','Розхідники':'Consommables',
+    'Профіль':'Profil','Онлайн-запис':'Réservation en ligne','Передплата':'Acompte','Конфіденційність':'Confidentialité','Бізнес-налаштування':'Paramètres entreprise','Кабінети / ресурси':'Salles / ressources','Доступ до проєкту':'Accès au projet','Міграція з іншої CRM':'Migration depuis un autre CRM',
+    'Системний статус':'État du système','Управління магазинами':'Gestion des boutiques','Інтеграції':'Intégrations','BeautyPro синхро':'Sync BeautyPro','Аудит':'Audit',
+    'Моя підписка':'Mon abonnement','Панель SaaS':'Panneau SaaS',
+    'Вийти':'Déconnexion','Експорт':'Export','Підтвердити пошту':"Vérifier l'e-mail",
+    'Подарункові сертифікати':'Cartes cadeaux','Нагадування клієнтам':'Rappels clients','Акції':'Promotions','План місяця та аналітика':'Plan du mois et analyse'
+  },
+  it: {
+    'Робота салону':'Operatività salone','Клієнти':'Clienti','Продажі':'Vendite','Гроші':'Finanze','Маркетинг':'Marketing','Команда':'Team','Склад':'Magazzino','Налаштування':'Impostazioni','Система':'Sistema','Підписка':'Abbonamento','SaaS / Платформа':'SaaS / Piattaforma',
+    'Дашборд':'Dashboard','Журнал записів':'Agenda appuntamenti','Воронка візитів':'Funnel visite','Зміни / Табель':'Turni / Orari','Послуги':'Servizi','Категорії послуг':'Categorie servizi',
+    'Усі клієнти':'Tutti i clienti','Лист очікування':"Lista d'attesa",'Повторні візити':'Visite ripetute','Чорний список':'Lista nera',
+    'Замовлення':'Ordini','Каса магазину':'Cassa negozio','Сертифікати':'Certificati','Абонементи':'Abbonamenti','Вітрина (сайт)':'Vetrina (sito)',
+    'Доходи і Витрати':'Entrate e Uscite','Фінансовий центр':'Centro finanziario','Грошовий потік':'Flusso di cassa','Бюджети':'Budget','Контрагенти':'Controparti','Звіти (P&L, RFM)':'Report (P&L, RFM)','Конструктор звітів':'Generatore di report','Експорт CSV':'Esporta CSV',
+    'Центр повідомлень':'Centro notifiche','Сегменти':'Segmenti','Кампанії / Розсилки':'Campagne / Invii','Авто-тригери':'Auto-trigger','AI Відеостудія':'Studio video IA','Нагадування (записи)':'Promemoria (appuntamenti)','Акції / Промокоди':'Promo / Coupon','Відгуки':'Recensioni','Dikidi (онлайн-запис)':'Dikidi (prenotazione)',
+    'Майстри / Співробітники':'Staff / Stilisti','Зарплата':'Stipendio','План місяця':'Piano del mese','Графіки роботи':'Orari di lavoro',
+    'Товари':'Prodotti','Залишки на складі':'Giacenze','Закупівлі':'Acquisti','Інвентаризація':'Inventario','Розхідники':'Materiali di consumo',
+    'Профіль':'Profilo','Онлайн-запис':'Prenotazione online','Передплата':'Acconto','Конфіденційність':'Privacy','Бізнес-налаштування':'Impostazioni aziendali','Кабінети / ресурси':'Sale / risorse','Доступ до проєкту':'Accesso al progetto','Міграція з іншої CRM':'Migrazione da altro CRM',
+    'Системний статус':'Stato sistema','Управління магазинами':'Gestione negozi','Інтеграції':'Integrazioni','BeautyPro синхро':'Sincronizzazione BeautyPro','Аудит':'Audit',
+    'Моя підписка':'Il mio abbonamento','Панель SaaS':'Pannello SaaS',
+    'Вийти':'Esci','Експорт':'Esporta','Підтвердити пошту':'Verifica email',
+    'Подарункові сертифікати':'Buoni regalo','Нагадування клієнтам':'Promemoria clienti','Акції':'Promozioni','План місяця та аналітика':'Piano del mese e analisi'
+  },
+  ro: {
+    'Робота салону':'Activitatea salonului','Клієнти':'Clienți','Продажі':'Vânzări','Гроші':'Finanțe','Маркетинг':'Marketing','Команда':'Echipă','Склад':'Depozit','Налаштування':'Setări','Система':'Sistem','Підписка':'Abonament','SaaS / Платформа':'SaaS / Platformă',
+    'Дашборд':'Tablou de bord','Журнал записів':'Agenda programărilor','Воронка візитів':'Pâlnie de vizite','Зміни / Табель':'Ture / Pontaj','Послуги':'Servicii','Категорії послуг':'Categorii de servicii',
+    'Усі клієнти':'Toți clienții','Лист очікування':'Listă de așteptare','Повторні візити':'Vizite repetate','Чорний список':'Listă neagră',
+    'Замовлення':'Comenzi','Каса магазину':'Casa magazinului','Сертифікати':'Certificate','Абонементи':'Abonamente','Вітрина (сайт)':'Vitrină (site)',
+    'Доходи і Витрати':'Venituri și Cheltuieli','Фінансовий центр':'Centru financiar','Грошовий потік':'Flux de numerar','Бюджети':'Bugete','Контрагенти':'Parteneri','Звіти (P&L, RFM)':'Rapoarte (P&L, RFM)','Конструктор звітів':'Generator de rapoarte','Експорт CSV':'Export CSV',
+    'Центр повідомлень':'Centru de notificări','Сегменти':'Segmente','Кампанії / Розсилки':'Campanii / Trimiteri','Авто-тригери':'Declanșatoare auto','AI Відеостудія':'Studio video AI','Нагадування (записи)':'Memento-uri (programări)','Акції / Промокоди':'Promoții / Coduri','Відгуки':'Recenzii','Dikidi (онлайн-запис)':'Dikidi (rezervare)',
+    'Майстри / Співробітники':'Personal / Stiliști','Зарплата':'Salariu','План місяця':'Planul lunii','Графіки роботи':'Programe de lucru',
+    'Товари':'Produse','Залишки на складі':'Stocuri','Закупівлі':'Achiziții','Інвентаризація':'Inventar','Розхідники':'Consumabile',
+    'Профіль':'Profil','Онлайн-запис':'Rezervare online','Передплата':'Avans','Конфіденційність':'Confidențialitate','Бізнес-налаштування':'Setări de business','Кабінети / ресурси':'Cabinete / resurse','Доступ до проєкту':'Acces la proiect','Міграція з іншої CRM':'Migrare din alt CRM',
+    'Системний статус':'Stare sistem','Управління магазинами':'Gestionarea magazinelor','Інтеграції':'Integrări','BeautyPro синхро':'Sincronizare BeautyPro','Аудит':'Audit',
+    'Моя підписка':'Abonamentul meu','Панель SaaS':'Panou SaaS',
+    'Вийти':'Deconectare','Експорт':'Export','Підтвердити пошту':'Confirmă e-mailul',
+    'Подарункові сертифікати':'Carduri cadou','Нагадування клієнтам':'Memento-uri clienți','Акції':'Promoții','План місяця та аналітика':'Planul lunii și analiză'
+  },
+  tr: {
+    'Робота салону':'Salon işletmesi','Клієнти':'Müşteriler','Продажі':'Satışlar','Гроші':'Finans','Маркетинг':'Pazarlama','Команда':'Ekip','Склад':'Depo','Налаштування':'Ayarlar','Система':'Sistem','Підписка':'Abonelik','SaaS / Платформа':'SaaS / Platform',
+    'Дашборд':'Gösterge paneli','Журнал записів':'Randevu defteri','Воронка візитів':'Ziyaret hunisi','Зміни / Табель':'Vardiyalar / Çizelge','Послуги':'Hizmetler','Категорії послуг':'Hizmet kategorileri',
+    'Усі клієнти':'Tüm müşteriler','Лист очікування':'Bekleme listesi','Повторні візити':'Tekrar ziyaretler','Чорний список':'Kara liste',
+    'Замовлення':'Siparişler','Каса магазину':'Mağaza kasası','Сертифікати':'Sertifikalar','Абонементи':'Üyelikler','Вітрина (сайт)':'Vitrin (site)',
+    'Доходи і Витрати':'Gelir ve Gider','Фінансовий центр':'Finans merkezi','Грошовий потік':'Nakit akışı','Бюджети':'Bütçeler','Контрагенти':'Cari hesaplar','Звіти (P&L, RFM)':'Raporlar (P&L, RFM)','Конструктор звітів':'Rapor oluşturucu','Експорт CSV':'CSV dışa aktar',
+    'Центр повідомлень':'Bildirim merkezi','Сегменти':'Segmentler','Кампанії / Розсилки':'Kampanyalar / Gönderiler','Авто-тригери':'Otomatik tetikleyiciler','AI Відеостудія':'AI Video stüdyosu','Нагадування (записи)':'Hatırlatmalar (randevular)','Акції / Промокоди':'Promosyonlar / Kodlar','Відгуки':'Yorumlar','Dikidi (онлайн-запис)':'Dikidi (rezervasyon)',
+    'Майстри / Співробітники':'Personel / Stilistler','Зарплата':'Maaş','План місяця':'Aylık plan','Графіки роботи':'Çalışma programları',
+    'Товари':'Ürünler','Залишки на складі':'Stok durumu','Закупівлі':'Satın alma','Інвентаризація':'Envanter','Розхідники':'Sarf malzemeleri',
+    'Профіль':'Profil','Онлайн-запис':'Online rezervasyon','Передплата':'Ön ödeme','Конфіденційність':'Gizlilik','Бізнес-налаштування':'İşletme ayarları','Кабінети / ресурси':'Odalar / kaynaklar','Доступ до проєкту':'Proje erişimi','Міграція з іншої CRM':"Başka CRM'den geçiş",
+    'Системний статус':'Sistem durumu','Управління магазинами':'Mağaza yönetimi','Інтеграції':'Entegrasyonlar','BeautyPro синхро':'BeautyPro senkron','Аудит':'Denetim',
+    'Моя підписка':'Aboneliğim','Панель SaaS':'SaaS paneli',
+    'Вийти':'Çıkış','Експорт':'Dışa aktar','Підтвердити пошту':'E-postayı doğrula',
+    'Подарункові сертифікати':'Hediye kartları','Нагадування клієнтам':'Müşteri hatırlatmaları','Акції':'Promosyonlar','План місяця та аналітика':'Aylık plan ve analiz'
   }
 };
 function tr(s){ var l=window._lang||'uk'; if(l==='uk'||!s) return s; var d=I18N_DICT[l]; return (d&&d[s])||s; }
@@ -3006,7 +3127,7 @@ function _tagMenuI18n(){
   });
 }
 function setLang(lang){
-  if(['uk','ru','en'].indexOf(lang)<0) lang='uk';
+  if(['uk','ru','en','pl','de','es','fr','it','ro','tr'].indexOf(lang)<0) lang='uk';
   window._lang=lang;
   try{ localStorage.setItem('crm_lang',lang); }catch(e){}
   document.documentElement.lang = lang;
@@ -3015,7 +3136,7 @@ function setLang(lang){
   });
   var pt=document.getElementById('pageTitle');
   if(pt && typeof currentPage!=='undefined' && currentPage) pt.textContent = tr(pageTitles[currentPage]||currentPage);
-  document.querySelectorAll('#langSwitch button').forEach(function(b){ b.classList.toggle('active', b.dataset.lang===lang); });
+  var sel=document.getElementById('langSelect'); if(sel) sel.value=lang;
 }
 function initI18n(){
   _tagMenuI18n();
