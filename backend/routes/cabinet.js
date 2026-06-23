@@ -17,6 +17,8 @@ const router = express.Router();
 router.get('/visits', authClient(), async (req, res) => {
   try {
     const pool = getPool();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
     const r = await pool.query(
       `SELECT a.id, a.starts_at, a.ends_at, a.price, a.status,
               s.name AS service, m.name AS master
@@ -25,8 +27,8 @@ router.get('/visits', authClient(), async (req, res) => {
        LEFT JOIN masters m ON m.id = a.master_id
        WHERE a.client_id = $1
        ORDER BY a.starts_at DESC
-       LIMIT 100`,
-      [req.client.id]
+       LIMIT $2 OFFSET $3`,
+      [req.client.id, limit, offset]
     );
     const now = Date.now();
     const upcoming = [], past = [];
@@ -45,6 +47,8 @@ router.get('/visits', authClient(), async (req, res) => {
 router.get('/orders', authClient(), async (req, res) => {
   try {
     const pool = getPool();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
     const r = await pool.query(
       `SELECT o.id, o.total, o.status, o.created_at, o.delivery_type,
               COALESCE(json_agg(json_build_object(
@@ -58,8 +62,8 @@ router.get('/orders', authClient(), async (req, res) => {
        WHERE o.client_id = $1
        GROUP BY o.id
        ORDER BY o.created_at DESC
-       LIMIT 50`,
-      [req.client.id]
+       LIMIT $2 OFFSET $3`,
+      [req.client.id, limit, offset]
     );
     res.json({ ok: true, orders: r.rows });
   } catch (e) {

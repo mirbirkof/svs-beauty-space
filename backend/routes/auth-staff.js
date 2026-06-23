@@ -150,6 +150,19 @@ router.post('/link', adminOnly, async (req, res) => {
 
     const pool = getPool();
 
+    // Защита от угона: этот telegram_id уже привязан к ДРУГОМУ телефону?
+    // Иначе OTP-вход по этому chat_id зашёл бы в чужой аккаунт.
+    const owner = await pool.query(
+      `SELECT id, phone FROM users WHERE telegram_id = $1 AND phone <> $2 LIMIT 1`,
+      [telegram_id, phone]
+    );
+    if (owner.rowCount) {
+      return res.status(409).json({
+        error: 'telegram-id-taken',
+        message: 'Цей Telegram вже прив\'язаний до іншого співробітника'
+      });
+    }
+
     // Сначала пытаемся обновить существующего
     let r = await pool.query(
       `UPDATE users SET telegram_id = $1, updated_at = NOW()

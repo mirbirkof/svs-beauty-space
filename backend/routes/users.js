@@ -28,8 +28,12 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
     let { phone, email, display_name, role_code, master_id, branch_id,
           username, password, specialty, commission_pct, create_master } = req.body || {};
     if (!display_name || !role_code) return res.status(400).json({ error: 'display_name, role_code required' });
-    const role = await client.query(`SELECT id, code FROM roles WHERE code=$1`, [role_code]);
+    const role = await client.query(`SELECT id, code, level FROM roles WHERE code=$1`, [role_code]);
     if (!role.rows[0]) return res.status(400).json({ error: 'bad-role' });
+    // защита от эскалации: нельзя создать сотрудника с ролью выше собственной
+    if ((role.rows[0].level || 0) > (req.user.role_level || 0)) {
+      return res.status(403).json({ error: 'role-too-high', message: 'Нельзя назначить роль выше своей' });
+    }
     phone = phone ? normalizePhone(phone) : null;
 
     // пароль (необов'язковий) — якщо заданий, перевіряємо складність і хешуємо
@@ -126,9 +130,21 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
     const { display_name, role_code, is_active, branch_id, master_id } = req.body || {};
     let roleId = null;
     if (role_code) {
-      const r = await pool.query(`SELECT id FROM roles WHERE code=$1`, [role_code]);
+      const r = await pool.query(`SELECT id, level FROM roles WHERE code=$1`, [role_code]);
       if (!r.rows[0]) return res.status(400).json({ error: 'bad-role' });
+      // защита от эскалации: нельзя выдать роль выше собственной
+      if ((r.rows[0].level || 0) > (req.user.role_level || 0)) {
+        return res.status(403).json({ error: 'role-too-high', message: 'Нельзя назначить роль выше своей' });
+      }
       roleId = r.rows[0].id;
+    }
+    // нельзя редактировать пользователя с ролью выше своей (эскалация через смену чужого owner)
+    {
+      const tgt = await pool.query(
+        `SELECT r.level FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=$1`, [id]);
+      if (tgt.rows[0] && (tgt.rows[0].level || 0) > (req.user.role_level || 0)) {
+        return res.status(403).json({ error: 'target-too-high', message: 'Нельзя редактировать пользователя с ролью выше своей' });
+      }
     }
     const r = await pool.query(
       `UPDATE users SET

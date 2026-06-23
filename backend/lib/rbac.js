@@ -24,13 +24,13 @@ async function resolveUserByToken(token) {
   if (!token) return null;
   // 1) legacy ADMIN_TOKEN → виртуальный owner
   if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) {
-    return { id: 0, display_name: 'legacy-admin', role: 'owner', permissions: ['*'], branch_id: null };
+    return { id: 0, display_name: 'legacy-admin', role: 'owner', role_level: 999, permissions: ['*'], branch_id: null };
   }
   // 2) user_tokens
   const hash = sha256(token);
   const r = await getPool().query(
     `SELECT u.id, u.display_name, u.branch_id, u.master_id, u.is_active,
-            r.code AS role, r.permissions
+            r.code AS role, r.permissions, r.level AS role_level
        FROM user_tokens t
        JOIN users u ON u.id = t.user_id
        JOIN roles r ON r.id = u.role_id

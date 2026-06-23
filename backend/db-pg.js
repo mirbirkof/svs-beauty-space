@@ -20,7 +20,7 @@ function getPool() {
     ssl: url.includes('neon.tech') || url.includes('supabase')
       ? { rejectUnauthorized: false }
       : false,
-    max: Number(process.env.PG_POOL_MAX || 10),
+    max: Number(process.env.PG_POOL_MAX || 25),
     idleTimeoutMillis: 30000,
     // Аудит #36: каждый tenant-запрос берёт отдельное соединение из пула (max).
     // Параллельные запросы (дашборд с 10-15 виджетами) могут исчерпать пул.
