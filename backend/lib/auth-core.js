@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 const ACCESS_TTL_SEC = 15 * 60;                 // 15 минут
 const REFRESH_TTL_DAYS_DEFAULT = 14;            // обычная сессия
 const REFRESH_TTL_DAYS_REMEMBER = 30;           // "Запам'ятати мене"
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = Number(process.env.PASSWORD_MIN_LENGTH || 8);
 const PASSWORD_HISTORY_DEPTH = 5;               // не повторять последние 5
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -46,7 +46,12 @@ async function verifyPassword(plain, hash) {
 function checkPasswordComplexity(pwd) {
   const s = String(pwd || '');
   const errors = [];
+  // Аудит #28: раньше проверялась только длина (мин 6) без требований к составу.
+  // Минимум 8 символов + хотя бы одна буква и одна цифра. Влияет только на новые
+  // пароли (reset/change), существующие хеши не трогаем.
   if (s.length < PASSWORD_MIN_LENGTH) errors.push(`min-length-${PASSWORD_MIN_LENGTH}`);
+  if (!/[A-Za-zА-Яа-яЇїІіЄєҐґ]/.test(s)) errors.push('need-letter');
+  if (!/[0-9]/.test(s)) errors.push('need-digit');
   return { ok: errors.length === 0, errors };
 }
 
