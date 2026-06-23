@@ -8,19 +8,14 @@
 require('dotenv').config({ path: __dirname + '/../.env' });
 const path = require('path');
 const { Pool } = require('pg');
-const { runBackup } = require('../lib/backup-core');
+const { runBackup, BACKUP_TABLES } = require('../lib/backup-core');
 
 const BACKUP_DIR = path.resolve(__dirname, '../../backups');
 const KEEP = 14;
 
-const TABLES = [
-  'brands', 'category_groups', 'categories',
-  'products', 'product_variants', 'stock_movements',
-  'clients', 'sessions', 'sms_codes',
-  'orders', 'order_items',
-  'promos', 'promo_redemptions',
-  'loyalty_movements',
-];
+// Единый источник правды — список таблиц в backup-core (сверен со схемой прода).
+// Раньше здесь дублировался свой список с устаревшими именами → loyalty/promo не бэкапились.
+const TABLES = BACKUP_TABLES;
 
 (async () => {
   const url = process.env.DATABASE_URL || process.env.DATABASE_URL_APP;

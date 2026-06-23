@@ -58,7 +58,21 @@ async function runBackup({ queryFn, tables, label = 'snapshot', localDir, keep =
   const dir = localDir || path.resolve(__dirname, '../../backups');
   fs.mkdirSync(dir, { recursive: true });
 
-  const { buffer, meta } = await createSnapshot(queryFn, tables);
+  // Пре-фильтр: оставляем только реально существующие таблицы. Защита от дрейфа схемы —
+  // чтобы переименованная/удалённая таблица не превращалась в молчаливый {error} внутри снимка.
+  let useTables = tables;
+  let skipped = [];
+  try {
+    const ex = await queryFn(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema='public' AND table_name = ANY($1)`, [tables]);
+    const exist = new Set(ex.rows.map(r => r.table_name));
+    useTables = tables.filter(t => exist.has(t));
+    skipped = tables.filter(t => !exist.has(t));
+    if (skipped.length) console.warn('[backup] таблицы отсутствуют в схеме, пропущены:', skipped.join(', '));
+  } catch (_) { /* если introspection недоступна — снимаем как есть */ }
+
+  const { buffer, meta } = await createSnapshot(queryFn, useTables);
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
   const filename = `${label}-${ts}.json.gz`;
   const localPath = path.join(dir, filename);
@@ -91,17 +105,22 @@ async function runBackup({ queryFn, tables, label = 'snapshot', localDir, keep =
     checksum: meta.checksum,
     artifact_path: artifactPath,
     uploaded,
+    skipped_tables: skipped,
   };
 }
 
-// Таблицы для снимка (синхронно со scripts/db-backup.js).
+// Таблицы для снимка. ВАЖНО: имена сверены со схемой прода (information_schema).
+// Раньше список содержал несуществующие category_groups/promo_redemptions/loyalty_movements —
+// бэкап молча писал {error} и НЕ сохранял баллы лояльности. Исправлено на реальные имена.
+// runBackup дополнительно пре-фильтрует список по факту существования (защита от дрейфа схемы).
 const BACKUP_TABLES = [
-  'brands', 'category_groups', 'categories',
+  'brands', 'categories', 'service_categories',
   'products', 'product_variants', 'stock_movements',
-  'clients', 'sessions', 'sms_codes',
-  'orders', 'order_items',
-  'promos', 'promo_redemptions',
-  'loyalty_movements',
+  'clients', 'client_loyalty', 'loyalty_ledger', 'loyalty_tiers',
+  'sessions', 'sms_codes',
+  'orders', 'order_items', 'payments',
+  'appointments',
+  'promos', 'promotions', 'promo_codes_saas',
 ];
 
 /**
@@ -157,4 +176,63 @@ function startCron({ hourUTC = 3, intervalMs = 30 * 60 * 1000 } = {}) {
   return timer;
 }
 
-module.exports = { createSnapshot, runBackup, startCron, BACKUP_TABLES, s3Configured: s3.isConfigured };
+/**
+ * Загружает gzip-снимок: либо из локального файла, либо из S3 по ключу.
+ * @param {{localPath?:string, s3Key?:string}} src
+ * @returns {Promise<Buffer>} распакованный JSON-буфер снимка
+ */
+async function loadSnapshot(src = {}) {
+  let gz;
+  if (src.localPath) {
+    gz = fs.readFileSync(src.localPath);
+  } else if (src.s3Key) {
+    gz = await s3.getObject(src.s3Key);
+  } else {
+    throw new Error('loadSnapshot: нужен localPath или s3Key');
+  }
+  return zlib.gunzipSync(gz);
+}
+
+/**
+ * Проверяет восстановимость снимка БЕЗ записи в БД (dry-run).
+ * Распаковывает, парсит JSON, считает строки по таблицам, ловит битые таблицы.
+ * Это закрывает дыру «бэкап есть, но никто не знает восстановим ли он».
+ * @param {{localPath?:string, s3Key?:string, buffer?:Buffer}} src
+ */
+async function validateSnapshot(src = {}) {
+  const raw = src.buffer || await loadSnapshot(src);
+  let snap;
+  try { snap = JSON.parse(raw.toString()); }
+  catch (e) { return { ok: false, error: 'parse-failed: ' + e.message }; }
+
+  const tables = snap.tables || {};
+  const counts = {};
+  const broken = [];
+  const empty = [];
+  let total = 0;
+  for (const [t, rows] of Object.entries(tables)) {
+    if (Array.isArray(rows)) {
+      counts[t] = rows.length;
+      total += rows.length;
+      if (rows.length === 0) empty.push(t);
+    } else {
+      counts[t] = -1;
+      broken.push(t);
+    }
+  }
+  return {
+    ok: broken.length === 0 && total > 0,
+    created_at: snap.meta?.created_at || null,
+    version: snap.meta?.version || null,
+    total_rows: total,
+    table_count: Object.keys(counts).length,
+    tables: counts,
+    broken,
+    empty,
+  };
+}
+
+module.exports = {
+  createSnapshot, runBackup, startCron, BACKUP_TABLES,
+  loadSnapshot, validateSnapshot, s3Configured: s3.isConfigured,
+};

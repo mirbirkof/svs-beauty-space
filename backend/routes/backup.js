@@ -19,7 +19,9 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
-const { runBackup, s3Configured } = require('../lib/backup-core');
+const { runBackup, s3Configured, validateSnapshot } = require('../lib/backup-core');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const pool = getPool();
 
@@ -118,6 +120,31 @@ router.post('/retention/apply', MANAGE, async (req, res) => {
 
 // ── Restore workflow ─────────────────────────────────
 const RESTORE_FLOW = { requested:'approved', approved:'restoring', restoring:'restored', restored:'verified' };
+
+// ── GET /api/backup/restore/verify — проверка ВОССТАНОВИМОСТИ последнего снимка ──
+// Dry-run: распаковывает свежий gzip-снимок, считает строки по таблицам, ловит битые.
+// Закрывает дыру «бэкап делается, но никто не знает, восстановится ли он».
+// Без записи в БД — безопасно вызывать в любой момент.
+router.get('/restore/verify', READ, async (req, res) => {
+  try {
+    const dir = path.resolve(__dirname, '../../backups');
+    let files = [];
+    try {
+      files = fs.readdirSync(dir)
+        .filter(f => f.endsWith('.json.gz'))
+        .map(f => ({ f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+    } catch (_) {}
+    if (!files.length) {
+      return res.json({ ok: false, reason: 'no-local-snapshot',
+        hint: 'Запусти POST /api/backup/run, затем повтори проверку.' });
+    }
+    const latest = path.join(dir, files[0].f);
+    const report = await validateSnapshot({ localPath: latest });
+    await logAction({ user: req.user, action: 'backup.restore.verify', ip: req.ip });
+    res.json({ snapshot_file: files[0].f, ...report });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 router.get('/restore', READ, async (req, res) => {
   try {

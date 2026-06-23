@@ -122,4 +122,78 @@ function uploadObject(objectKey, body, contentType = 'application/octet-stream')
   });
 }
 
-module.exports = { isConfigured, uploadObject, _cfg: cfg };
+/**
+ * Скачивает объект из S3-совместимого хранилища (SigV4 GET).
+ * Нужен для проверки восстановимости бэкапа (download → распаковать → проверить).
+ * @param {string} objectKey ключ без префикса (префикс добавляется автоматически)
+ * @returns {Promise<Buffer>} тело объекта
+ */
+function getObject(objectKey) {
+  return new Promise((resolve, reject) => {
+    if (!isConfigured()) return reject(new Error('s3-not-configured'));
+    const c = cfg();
+    const fullKey = (c.prefix + objectKey).replace(/^\/+/, '');
+    const base = new URL(c.endpoint);
+    const host = base.host;
+    const canonicalUri = '/' + enc(c.bucket, true) + '/' + enc(fullKey, true);
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const payloadHash = sha256hex(Buffer.alloc(0)); // пустое тело у GET
+
+    const canonicalHeaders =
+      `host:${host}\n` +
+      `x-amz-content-sha256:${payloadHash}\n` +
+      `x-amz-date:${amzDate}\n`;
+    const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+
+    const canonicalRequest = [
+      'GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash,
+    ].join('\n');
+
+    const scope = `${dateStamp}/${c.region}/s3/aws4_request`;
+    const stringToSign = [
+      'AWS4-HMAC-SHA256', amzDate, scope, sha256hex(canonicalRequest),
+    ].join('\n');
+
+    const kDate = hmac('AWS4' + c.secret, dateStamp);
+    const kRegion = hmac(kDate, c.region);
+    const kService = hmac(kRegion, 's3');
+    const kSigning = hmac(kService, 'aws4_request');
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+    const authorization =
+      `AWS4-HMAC-SHA256 Credential=${c.key}/${scope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const req = https.request({
+      method: 'GET',
+      host: base.hostname,
+      port: base.port || 443,
+      path: canonicalUri,
+      headers: {
+        'Host': host,
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+        'Authorization': authorization,
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (d) => chunks.push(d));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks);
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(body);
+        } else {
+          reject(new Error(`s3-get-failed ${res.statusCode}: ${body.toString().slice(0, 300)}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => req.destroy(new Error('s3-get-timeout')));
+    req.end();
+  });
+}
+
+module.exports = { isConfigured, uploadObject, getObject, _cfg: cfg };
