@@ -113,8 +113,15 @@ router.post('/:id/members', requirePerm('promo.write'), async (req, res) => {
     const ids = Array.isArray(req.body?.client_ids) ? req.body.client_ids : [];
     if (!ids.length) return res.status(400).json({ error: 'client_ids-required' });
     const pool = getPool();
-    for (const cid of ids) await pool.query(`INSERT INTO segment_members(segment_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [req.params.id, cid]);
-    res.json({ ok: true, added: ids.length });
+    // пакетная вставка одним запросом (было N+1: по запросу на каждого клиента)
+    const cleanIds = ids.map(Number).filter(Number.isInteger);
+    await pool.query(
+      `INSERT INTO segment_members(segment_id, client_id)
+       SELECT $1, x FROM unnest($2::int[]) AS x
+       ON CONFLICT DO NOTHING`,
+      [req.params.id, cleanIds]
+    );
+    res.json({ ok: true, added: cleanIds.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
