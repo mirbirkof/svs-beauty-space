@@ -31,6 +31,7 @@ const { getPool, applyTenant } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
+const { findDuplicateClients, mergeClients } = require('../lib/client-merge');
 
 // ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
 router.use(requirePerm('admin.*'));
@@ -361,6 +362,17 @@ router.patch('/orders/:id/status', async (req, res) => {
 //   КЛИЕНТЫ
 // ═══════════════════════════════════════════════════════
 
+// ── GET /api/admin/clients/duplicates — кандидаты на слияние (дубли) ──
+// ВАЖНО: объявлено ДО '/clients/:id', иначе :id перехватит 'duplicates'.
+router.get('/clients/duplicates', async (req, res) => {
+  try {
+    const pool = getPool();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const groups = await findDuplicateClients(pool, { limit });
+    res.json({ ok: true, groups, count: groups.length });
+  } catch (e) { console.error('[admin:client:duplicates]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 router.get('/clients', async (req, res) => {
   try {
     const pool = getPool();
@@ -527,6 +539,32 @@ router.post('/clients/:id/restore', async (req, res) => {
     logAction({ user: req.user, action: 'client.restore', entity: 'client', entity_id: id, ip: req.ip });
     res.json({ ok: true, restored: id });
   } catch (e) { console.error('[admin:client:restore]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── POST /api/admin/clients/:id/merge — слить дубль в этого клиента ──
+// body: { duplicate_id }. :id — основной (остаётся), duplicate_id — архивируется.
+// Вся история (записи, заказы, баллы, абонементы) переносится на основного.
+router.post('/clients/:id/merge', async (req, res) => {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    const primaryId = parseInt(req.params.id, 10);
+    const dupId = parseInt(req.body && req.body.duplicate_id, 10);
+    if (!primaryId || !dupId) return res.status(400).json({ error: 'bad-request', message: 'нужны id и duplicate_id' });
+    if (primaryId === dupId) return res.status(400).json({ error: 'same-client' });
+    await client.query('BEGIN'); await applyTenant(client);
+    const result = await mergeClients(client, primaryId, dupId);
+    await client.query('COMMIT');
+    logAction({ user: req.user, action: 'client.merge', entity: 'client', entity_id: primaryId,
+      ip: req.ip, meta: { duplicate_id: dupId, moved: result.moved, points_added: result.points_added } });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    const code = ['same-client','bad-ids'].includes(e.message) ? 400
+               : e.message === 'not-found' ? 404 : 500;
+    if (code === 500) console.error('[admin:client:merge]', e);
+    res.status(code).json({ error: e.message || 'internal' });
+  } finally { client.release(); }
 });
 
 // ── GET /api/admin/clients/:id/history — история изменений карточки (CRM-03) ──

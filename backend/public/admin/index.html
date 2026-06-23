@@ -1369,6 +1369,7 @@ select.input { background:var(--card); }
           <input id="clientSearch" placeholder="Пошук за телефоном або імʼям..." class="input" style="flex:1;min-width:180px" oninput="debounce(loadClients,400)">
           <select id="clientTagFilter" class="input" style="width:auto" onchange="loadClients()"><option value="">Усі теги</option></select>
           <button class="btn btn-outline btn-sm" onclick="openTagManager()" title="Керувати тегами"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">sell</span> Теги</button>
+          <button class="btn btn-outline btn-sm" onclick="openClientDuplicates()" title="Знайти й об'єднати дублі клієнтів"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">join_inner</span> Дублі</button>
           <span id="clientsCount" style="font-size:13px;color:var(--text-secondary);white-space:nowrap"></span>
         </div>
         <div class="card">
@@ -7043,6 +7044,50 @@ function _clientsQS(offset){
   if (tag) s += '&tag_id=' + tag;
   return s;
 }
+// ── Дублі клієнтів: пошук + об'єднання ──
+async function openClientDuplicates() {
+  showModal('Дублі клієнтів', '<div style="color:var(--text-secondary);font-size:13px">Шукаю дублі…</div>');
+  let r;
+  try { r = await api('/api/admin/clients/duplicates'); }
+  catch (e) { toast('Помилка пошуку дублів', 'error'); return; }
+  const groups = (r && r.groups) || [];
+  const body = document.getElementById('genModal')?.querySelector('.modal-body');
+  if (!body) return;
+  if (!groups.length) { body.innerHTML = '<div style="padding:6px 0;color:var(--text-secondary)">Дублів не знайдено — база чиста. Перевірка йде за телефоном і e-mail.</div>'; return; }
+  body.innerHTML = groups.map((g, gi) => {
+    const reason = g.reason === 'phone' ? 'однаковий телефон' : 'однаковий e-mail';
+    const rows = g.members.map((m, mi) => `
+      <label style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--border,#eee);cursor:pointer">
+        <input type="radio" name="dup-primary-${gi}" value="${m.id}" ${mi === 0 ? 'checked' : ''}>
+        <span style="flex:1">
+          <b>${escapeHtml(m.name || '(без імені)')}</b> <span style="color:var(--text-secondary)">#${m.id}</span><br>
+          <span style="font-size:12px;color:var(--text-secondary)">${escapeHtml(m.phone || '—')} · ${escapeHtml(m.email || '—')} · витрачено ${Math.round(m.total_spent || 0)} · бонуси ${m.loyalty_points || 0}</span>
+        </span>
+      </label>`).join('');
+    return `<div style="border:1px solid var(--border,#eee);border-radius:8px;padding:8px 10px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Група (${reason}) — оберіть, кого ЗАЛИШИТИ:</div>
+      ${rows}
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="mergeDupGroup(${gi}, [${g.members.map(m => m.id).join(',')}])">Об'єднати групу</button>
+    </div>`;
+  }).join('');
+}
+async function mergeDupGroup(gi, ids) {
+  const sel = document.querySelector(`input[name="dup-primary-${gi}"]:checked`);
+  if (!sel) { toast('Оберіть основного клієнта', 'error'); return; }
+  const primary = parseInt(sel.value, 10);
+  const dups = ids.filter(id => id !== primary);
+  if (!dups.length) { toast('Немає кого об\'єднувати', 'error'); return; }
+  if (!confirm(`Об'єднати ${dups.length} дубль(ів) у клієнта #${primary}? Уся історія перейде до нього, дублі підуть в архів.`)) return;
+  let ok = 0;
+  for (const dupId of dups) {
+    try {
+      const res = await api(`/api/admin/clients/${primary}/merge`, { method: 'POST', body: JSON.stringify({ duplicate_id: dupId }) });
+      if (res && res.ok) ok++; else toast(`#${dupId}: ${(res && res.error) || 'помилка'}`, 'error');
+    } catch (e) { toast(`#${dupId}: помилка мережі`, 'error'); }
+  }
+  if (ok) { toast(`Об'єднано: ${ok}`); openClientDuplicates(); if (currentPage === 'clients') loadClients(); }
+}
+
 async function loadClients() {
   await _ensureClientTagFilter();
   const r = await api('/api/admin/clients' + _clientsQS(0));
