@@ -59,6 +59,11 @@ app.use(cors({
   credentials: true,
 }));
 
+// Майстер міграції приймає Excel .xlsx у base64 → тіло може бути важким.
+// Ставимо ДО глобального 1mb-парсера: після розбору express виставляє
+// прапор _body і глобальний парсер нижче цей запит пропустить.
+app.use('/api/migrate', express.json({ limit: '12mb' }));
+
 // rawBody нужен для верификации X-Sign вебхука Mono (подпись считается от байтов как есть)
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
@@ -192,7 +197,7 @@ app.use('/api/notify', notifyRoutes);
 app.use('/api/promo', promoRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/import', require('./routes/import'));
-app.use('/api/migrate', express.json({ limit: '12mb' }), require('./routes/migrate'));
+app.use('/api/migrate', require('./routes/migrate'));
 app.use('/api', waitlistRoutes);
 app.use('/api', dikidiRoutes);
 app.use('/api', payrollRoutes);
