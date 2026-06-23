@@ -6,7 +6,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const hub = require('../lib/notification-hub');
 
@@ -138,6 +138,42 @@ router.post('/templates', requirePerm('notify.write'), async (req, res) => {
     res.json({ ok: true, template: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
+// PATCH /api/notifications/templates/:id — частичное обновление шаблона по id.
+// Дополняет POST (upsert по key+channel+lang): позволяет править один шаблон,
+// в т.ч. переключать active/category/subject/body, не пересылая весь натуральный ключ.
+// Системные шаблоны (is_system) можно только включать/выключать (active), но не править текст/ключ.
+router.patch('/templates/:id', requirePerm('notify.write'), async (req, res) => {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    await applyTenant(client); // tenant-scoping через RLS (app.tenant_id)
+    const cur = (await client.query(`SELECT * FROM notification_templates WHERE id=$1`, [req.params.id])).rows[0];
+    if (!cur) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    const b = req.body || {};
+    // для системных разрешаем менять только active
+    const editable = cur.is_system
+      ? ['active']
+      : ['key', 'channel', 'lang', 'category', 'subject', 'body', 'variables', 'active'];
+    const sets = [], args = [];
+    for (const k of editable) {
+      if (!(k in b)) continue;
+      args.push(k === 'variables' ? JSON.stringify(b[k] || []) : b[k]);
+      sets.push(`${k} = $${args.length}`);
+    }
+    if (!sets.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'nothing-to-update' }); }
+    args.push(req.params.id);
+    const r = await client.query(
+      `UPDATE notification_templates
+         SET ${sets.join(', ')}, version=version+1, updated_at=NOW()
+       WHERE id=$${args.length} RETURNING *`, args);
+    await client.query('COMMIT');
+    res.json({ ok: true, template: r.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
+});
+
 router.delete('/templates/:id', requirePerm('notify.write'), async (req, res) => {
   try {
     const pool = getPool();
