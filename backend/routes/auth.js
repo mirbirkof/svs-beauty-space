@@ -46,6 +46,7 @@ const {
 } = require('../lib/auth-core');
 
 const router = express.Router();
+const { t, validateBody } = require('../lib/validate');
 const { getPool, applyTenant } = require('../db-pg');
 const pool = getPool();
 
@@ -213,7 +214,11 @@ async function authRequired(req, res, next) {
 // body: { identifier, password, remember_me? }
 // returns: { ok, requires_2fa?, pre_auth_token?, token?, refresh?, user? }
 // ─────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', validateBody({
+  identifier: t.string({ min: 1, max: 200, required: true }),
+  password: t.string({ min: 1, max: 200, required: true }),
+  remember_me: t.bool({ required: false }),
+}), async (req, res) => {
   const { identifier, password, remember_me } = req.body || {};
   const ip = clientIp(req);
   const ua = req.headers['user-agent'] || '';
@@ -455,7 +460,9 @@ router.post('/logout-all', authRequired, async (req, res) => {
 // body: { identifier } — email/phone/username
 // always returns { ok:true } to avoid existence leak
 // ─────────────────────────────────────────────────────────
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', validateBody({
+  identifier: t.string({ min: 1, max: 200, required: true }),
+}), async (req, res) => {
   const { identifier } = req.body || {};
   const ip = clientIp(req);
   const ua = req.headers['user-agent'] || '';
@@ -499,7 +506,10 @@ router.post('/forgot-password', async (req, res) => {
 // POST /api/auth/reset-password
 // body: { token, new_password }
 // ─────────────────────────────────────────────────────────
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', validateBody({
+  token: t.string({ min: 1, max: 500, required: true }),
+  new_password: t.string({ min: 1, max: 200, required: true }),
+}), async (req, res) => {
   const { token, new_password } = req.body || {};
   if (!token || !new_password) return res.status(400).json({ ok: false, error: 'token-and-new-password-required' });
 

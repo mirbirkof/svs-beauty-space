@@ -14,6 +14,7 @@ const router = express.Router();
 const bp = require('../beautyproClient');
 const { getPool } = require('../db-pg');
 const bookingBot = require('../lib/booking-bot');
+const { t, validateBody } = require('../lib/validate');
 
 const db = {
   async insert(token, row) {
@@ -79,7 +80,14 @@ function tg(method, body) {
 // In-memory schema — no init needed
 
 // === POST /init =========================================
-router.post('/init', async (req, res) => {
+router.post('/init', validateBody({
+  service_id: t.string({ min: 1, max: 64, required: true }),
+  employee_id: t.string({ min: 1, max: 64, required: true }),
+  date_from: t.string({ min: 1, max: 40, required: true }),
+  date_to: t.string({ min: 1, max: 40, required: true }),
+  client_name: t.string({ min: 1, max: 200, required: false }),
+  channel: t.string({ min: 1, max: 40, required: false }),
+}), async (req, res) => {
   try {
     const { service_id, employee_id, date_from, date_to, client_name, channel } = req.body;
     if (!service_id || !employee_id || !date_from || !date_to) {

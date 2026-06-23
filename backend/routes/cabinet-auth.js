@@ -11,6 +11,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
+const { t, validateBody } = require('../lib/validate');
 
 const router = express.Router();
 const DEV_CODE = '0000';
@@ -76,7 +77,9 @@ function authClient({ optional = false } = {}) {
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Svs_beautybot';
 const MAX_VERIFY_ATTEMPTS = 5;
 
-router.post('/request-code', async (req, res) => {
+router.post('/request-code', validateBody({
+  phone: t.phone({ required: true }),
+}), async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     if (phone.length < 9) return res.status(400).json({ error: 'bad-phone' });
@@ -148,7 +151,10 @@ router.post('/request-code', async (req, res) => {
 });
 
 // ── проверка кода → сессия ──────────────────────────────
-router.post('/verify', async (req, res) => {
+router.post('/verify', validateBody({
+  phone: t.phone({ required: true }),
+  code: t.string({ min: 4, max: 8, required: true }),
+}), async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     const code = String(req.body?.code || '').trim();
