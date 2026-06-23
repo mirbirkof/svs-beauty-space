@@ -5,6 +5,7 @@ const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
+const { cacheReport } = require('../lib/report-cache');
 
 const router = express.Router();
 const pool = getPool();
@@ -38,7 +39,7 @@ function parsePeriod(q) {
 
 // ── P&L (Profit & Loss) ─────────────────────────────────
 // GET /api/reports/pnl?from=&to=
-router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
+router.get('/pnl', requirePerm('reports.finance'), cacheReport(), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
 
@@ -103,7 +104,7 @@ router.get('/pnl', requirePerm('reports.finance'), async (req, res) => {
 
 // ── KPI мастеров ────────────────────────────────────────
 // GET /api/reports/masters?from=&to=
-router.get('/masters', requirePerm('reports.finance'), async (req, res) => {
+router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
 
@@ -241,7 +242,7 @@ router.get('/churn', requirePerm('reports.read'), async (req, res) => {
 // GET /api/reports/dashboard
 // Дашборд видит любой с reports.read (домашняя страница админа).
 // Месячную выручку и общую фин.статистику отдаём ТОЛЬКО при reports.finance.
-router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
+router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req, res) => {
   try {
     const canFinance = hasPermission(req.user.permissions, 'reports.finance');
 
@@ -328,7 +329,7 @@ router.get('/dashboard', requirePerm('reports.read'), async (req, res) => {
 
 // ── Дневная динамика выручки (для графика) ──────────────
 // GET /api/reports/revenue-series?from=&to=
-router.get('/revenue-series', requirePerm('reports.finance'), async (req, res) => {
+router.get('/revenue-series', requirePerm('reports.finance'), cacheReport(), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
     const r = await pool.query(
@@ -532,7 +533,7 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
 
 // ── Продажи товаров: по бренду / складу (филиалу) / периоду ─
 // GET /api/reports/product-sales?from=&to=&brand=&branch=
-router.get('/product-sales', requirePerm('reports.read'), async (req, res) => {
+router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
     const brand  = req.query.brand  ? String(req.query.brand)  : null;
@@ -631,7 +632,7 @@ router.get('/product-sales', requirePerm('reports.read'), async (req, res) => {
 // ── Загрузка салона (utilization) ───────────────────────
 // GET /api/reports/utilization?from=&to=
 // Занятое время = сумма длительностей записей; доступное — из графика мастера.
-router.get('/utilization', requirePerm('reports.read'), async (req, res) => {
+router.get('/utilization', requirePerm('reports.read'), cacheReport(), async (req, res) => {
   try {
     const { from, to } = parsePeriod(req.query);
     const fromD = new Date(from), toD = new Date(to);
@@ -780,7 +781,7 @@ router.post('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
 // GET /api/reports/overview
 // Салон-центричные метрики: касса сегодня/месяц из cash_operations,
 // записи сегодня, новые клиенты, топ-мастера месяца. Деньги — при reports.finance.
-router.get('/overview', requirePerm(), async (req, res) => {
+router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
   try {
     // Границы суток и месяца по Киеву
     const now = new Date();
@@ -913,7 +914,7 @@ router.get('/overview', requirePerm(), async (req, res) => {
 
 // GET /api/reports/top-masters?from=&to= — топ майстрів за виручкою за довільний період.
 // Джерело правди — каса (cash_operations), як і в /overview. Без from/to → поточний місяць.
-router.get('/top-masters', requirePerm('reports.finance'), async (req, res) => {
+router.get('/top-masters', requirePerm('reports.finance'), cacheReport(), async (req, res) => {
   try {
     let from, to;
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
