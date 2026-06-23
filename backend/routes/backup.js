@@ -17,9 +17,9 @@
  * GET  /api/backup/export            — GDPR-экспорт данных тенанта (JSON)
  */
 const express = require('express');
-const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { runBackup, s3Configured } = require('../lib/backup-core');
 const router = express.Router();
 const pool = getPool();
 
@@ -83,19 +83,21 @@ router.post('/run', MANAGE, async (req, res) => {
   const runId = run.rows[0].id;
   try {
     const tables = await existingTables(TENANT_TABLES);
-    let totalRows = 0; const hash = crypto.createHash('sha256');
-    for (const t of tables) {
-      const c = await pool.query(`SELECT COUNT(*)::bigint AS n FROM ${t}`);
-      const n = Number(c.rows[0].n); totalRows += n;
-      hash.update(`${t}:${n};`);
-    }
-    const sizeEstimate = totalRows * 512; // грубая оценка
+    // Реальный gzip-снимок данных + выгрузка во внешнее хранилище (если настроено).
+    // pool.query здесь tenant-scoped (RLS) → снимок только данных текущего салона.
+    const out = await runBackup({
+      queryFn: (text, params) => pool.query(text, params),
+      tables, label: 'tenant', uploadToS3: true,
+    });
     const r = await pool.query(
       `UPDATE backup_runs SET status='success', size_bytes=$1, tables_count=$2, rows_count=$3,
-         checksum=$4, finished_at=NOW() WHERE id=$5 RETURNING *`,
-      [sizeEstimate, tables.length, totalRows, hash.digest('hex').slice(0,32), runId]);
-    await logAction({ user: req.user, action: 'backup.run', entity: 'backup_runs', entity_id: runId, ip: req.ip });
-    res.status(201).json(r.rows[0]);
+         checksum=$4, artifact_path=$5, finished_at=NOW() WHERE id=$6 RETURNING *`,
+      [out.size_bytes, out.tables, out.rows, out.checksum, out.artifact_path, runId]);
+    await logAction({ user: req.user, action: 'backup.run', entity: 'backup_runs', entity_id: runId, ip: req.ip,
+      meta: { uploaded: out.uploaded, artifact: out.artifact_path } });
+    res.status(201).json({ ...r.rows[0],
+      offsite: out.uploaded,
+      warning: out.uploaded ? undefined : 'снимок только локальный (эфемерный диск Render); задайте BACKUP_S3_* для внешнего хранилища' });
   } catch (e) {
     await pool.query(`UPDATE backup_runs SET status='failed', error=$1, finished_at=NOW() WHERE id=$2`,
       [String(e.message).slice(0,300), runId]);
