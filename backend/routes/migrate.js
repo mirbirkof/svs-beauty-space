@@ -17,6 +17,7 @@ const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
 const M = require('../lib/migration-presets');
+const XLSX = require('../lib/xlsx-lite');
 
 router.use(requirePerm('clients.write'));
 
@@ -33,10 +34,28 @@ router.get('/presets', (req, res) => {
   });
 });
 
-// Превратить CSV-текст в { headerRow, dataRows } или бросить понятную ошибку
-function parseOrThrow(csv) {
+// Превратить тело запроса (CSV-текст или xlsx в base64) в { headerRow, dataRows }
+// или бросить понятную ошибку. Excel .xlsx розпізнається автоматично — клієнту
+// не треба «Зберегти як CSV».
+function parseRows(body) {
+  // 1) Excel .xlsx у base64 (поле xlsx_base64) або data-URL
+  const b64 = body && (body.xlsx_base64 || body.xlsx);
+  if (b64 && typeof b64 === 'string') {
+    const clean = b64.replace(/^data:[^,]*,/, ''); // зрізати data:...;base64,
+    let buf;
+    try { buf = Buffer.from(clean, 'base64'); }
+    catch { const e = new Error('Не вдалось декодувати файл Excel.'); e.code = 'bad-xlsx'; throw e; }
+    if (!XLSX.isXlsx(buf)) { const e = new Error('Файл не схожий на .xlsx. Підійде також CSV.'); e.code = 'bad-xlsx'; throw e; }
+    let rows;
+    try { rows = XLSX.parseXlsx(buf); }
+    catch (err) { const e = new Error('Не вдалось прочитати книгу Excel: ' + err.message); e.code = 'bad-xlsx'; throw e; }
+    if (rows.length < 2) { const e = new Error('У файлі Excel потрібен заголовок і хоча б один рядок даних.'); e.code = 'empty'; throw e; }
+    return { headerRow: rows[0], dataRows: rows.slice(1) };
+  }
+  // 2) CSV-текст (поле csv або text)
+  const csv = body && (body.csv != null ? body.csv : body.text);
   if (!csv || typeof csv !== 'string') {
-    const err = new Error('Передайте { csv: "<текст>" }. Ліміт тіла ~5MB.'); err.code = 'no-csv'; throw err;
+    const err = new Error('Передайте { csv: "<текст>" } або { xlsx_base64: "<...>" }. Ліміт тіла ~12MB.'); err.code = 'no-csv'; throw err;
   }
   const rows = M.parseCsv(csv);
   if (rows.length < 2) { const err = new Error('Потрібен заголовок і хоча б один рядок даних.'); err.code = 'empty'; throw err; }
@@ -46,7 +65,7 @@ function parseOrThrow(csv) {
 // ── Аналіз: що це і як ляже, без запису ──
 router.post('/analyze', (req, res) => {
   try {
-    const { headerRow, dataRows } = parseOrThrow(req.body && (req.body.csv != null ? req.body.csv : req.body.text));
+    const { headerRow, dataRows } = parseRows(req.body);
     const entity = (req.body && req.body.entity) || M.detectEntity(headerRow);
     if (!entity || !M.ENTITIES[entity]) {
       return res.status(422).json({ ok: false, error: 'unknown-entity',
@@ -73,7 +92,7 @@ router.post('/analyze', (req, res) => {
       warn: hasKey ? null : `Не знайдено ключову колонку (${M.ENTITIES[entity].key.join(' або ')}). Перенос неможливий без неї.`,
     });
   } catch (e) {
-    res.status(e.code === 'no-csv' || e.code === 'empty' ? 400 : 500).json({ ok: false, error: e.code || 'analyze-failed', hint: e.message });
+    res.status(['no-csv','empty','bad-xlsx'].includes(e.code) ? 400 : 500).json({ ok: false, error: e.code || 'analyze-failed', hint: e.message });
   }
 });
 
@@ -174,7 +193,7 @@ const IMPORTERS = { clients: importClients, services: importServices, masters: i
 // ── Застосувати перенос ──
 router.post('/commit', async (req, res) => {
   try {
-    const { headerRow, dataRows } = parseOrThrow(req.body && (req.body.csv != null ? req.body.csv : req.body.text));
+    const { headerRow, dataRows } = parseRows(req.body);
     const entity = (req.body && req.body.entity) || M.detectEntity(headerRow);
     if (!entity || !IMPORTERS[entity]) return res.status(422).json({ ok: false, error: 'unknown-entity' });
     const colMap = M.buildColMap(entity, headerRow);
@@ -188,7 +207,7 @@ router.post('/commit', async (req, res) => {
       meta: { total: rep.total, imported: rep.imported, updated: rep.updated, skipped: rep.skipped, errors: rep.errors.length } }).catch(() => {});
     res.json({ ok: true, entity, ...rep, errors: rep.errors.slice(0, 50) });
   } catch (e) {
-    res.status(e.code === 'no-csv' || e.code === 'empty' ? 400 : 500).json({ ok: false, error: e.code || 'commit-failed', hint: e.message });
+    res.status(['no-csv','empty','bad-xlsx'].includes(e.code) ? 400 : 500).json({ ok: false, error: e.code || 'commit-failed', hint: e.message });
   }
 });
 

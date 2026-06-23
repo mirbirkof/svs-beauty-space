@@ -192,7 +192,7 @@ app.use('/api/notify', notifyRoutes);
 app.use('/api/promo', promoRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/import', require('./routes/import'));
-app.use('/api/migrate', require('./routes/migrate'));
+app.use('/api/migrate', express.json({ limit: '12mb' }), require('./routes/migrate'));
 app.use('/api', waitlistRoutes);
 app.use('/api', dikidiRoutes);
 app.use('/api', payrollRoutes);

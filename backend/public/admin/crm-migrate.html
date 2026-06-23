@@ -55,7 +55,7 @@ th{background:#fafafb;font-weight:600;color:var(--muted)}
 <main>
   <h1><span class="material-icons-round" style="color:var(--p)">swap_horiz</span> Міграція з іншої CRM</h1>
   <div class="sub">Перенесіть клієнтів, послуги та майстрів з будь-якої CRM за кілька кліків.
-    Експортуйте дані у CSV (у вашій старій CRM: «Експорт» → CSV/Excel → зберегти як CSV) і завантажте файл нижче.
+    Експортуйте дані з вашої старої CRM («Експорт» → CSV або Excel) і завантажте файл нижче — приймаємо <b>CSV</b> та <b>Excel .xlsx</b> напряму.
     Система сама визначить що це і покаже превʼю <b>до</b> перенесення.</div>
 
   <!-- КРОК 1 -->
@@ -75,13 +75,13 @@ th{background:#fafafb;font-weight:600;color:var(--muted)}
 
   <!-- КРОК 2 -->
   <div class="card">
-    <div class="step-h"><span class="step-n">2</span> Завантажте файл CSV</div>
+    <div class="step-h"><span class="step-n">2</span> Завантажте файл CSV або Excel</div>
     <div class="drop" id="drop">
       <span class="material-icons-round">cloud_upload</span>
-      <div style="margin-top:6px"><b>Перетягніть CSV сюди</b> або натисніть, щоб обрати файл</div>
+      <div style="margin-top:6px"><b>Перетягніть CSV або .xlsx сюди</b> або натисніть, щоб обрати файл</div>
       <small id="fname" class="muted"></small>
     </div>
-    <input type="file" id="file" accept=".csv,text/csv" class="hidden">
+    <input type="file" id="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden">
   </div>
 
   <!-- КРОК 3: аналіз -->
@@ -100,7 +100,7 @@ th{background:#fafafb;font-weight:600;color:var(--muted)}
 <script>
 const API = location.origin;
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
-let CSV_TEXT = '', SELECTED_SRC = 'generic';
+let CSV_TEXT = '', SELECTED_SRC = 'generic', FILE_PAYLOAD = null;
 
 async function api(path, opts={}){
   const h = opts.headers || {}; h['Content-Type']='application/json';
@@ -133,11 +133,18 @@ drop.ondragleave=()=>drop.classList.remove('over');
 drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);};
 fileInput.onchange=()=>{ if(fileInput.files[0]) readFile(fileInput.files[0]); };
 function readFile(f){
-  if(f.size>5*1024*1024){ alert('Файл завеликий (>5MB). Розбийте на частини.'); return; }
+  if(f.size>8*1024*1024){ alert('Файл завеликий (>8MB). Розбийте на частини.'); return; }
   document.getElementById('fname').textContent='📄 '+f.name+' ('+Math.round(f.size/1024)+' KB)';
+  const isXlsx=/\.xlsx$/i.test(f.name)||/spreadsheetml/.test(f.type);
   const rd=new FileReader();
-  rd.onload=()=>{ CSV_TEXT=rd.result; analyze(); };
-  rd.readAsText(f,'utf-8');
+  if(isXlsx){
+    // Excel читаємо як base64 — бінарний формат, текстом не вийде
+    rd.onload=()=>{ const b64=String(rd.result).replace(/^data:[^,]*,/,''); CSV_TEXT=''; FILE_PAYLOAD={xlsx_base64:b64}; analyze(); };
+    rd.readAsDataURL(f);
+  }else{
+    rd.onload=()=>{ CSV_TEXT=rd.result; FILE_PAYLOAD={csv:rd.result}; analyze(); };
+    rd.readAsText(f,'utf-8');
+  }
 }
 
 // КРОК 3 — аналіз
@@ -148,7 +155,7 @@ async function analyze(){
   card.scrollIntoView({behavior:'smooth'});
   try{
     const ent=document.getElementById('entity').value;
-    const j=await api('/api/migrate/analyze',{method:'POST',body:JSON.stringify({csv:CSV_TEXT,entity:ent||undefined})});
+    const j=await api('/api/migrate/analyze',{method:'POST',body:JSON.stringify({...(FILE_PAYLOAD||{csv:CSV_TEXT}),entity:ent||undefined})});
     renderAnalyze(j);
   }catch(e){
     body.innerHTML='<div class="note warn">Не вдалось розібрати файл: '+esc(e.message)+'<br>Переконайтесь що це CSV і перший рядок — назви стовпців. Або оберіть тип даних вручну.</div>';
@@ -184,7 +191,7 @@ async function commit(){
   const ent=document.getElementById('analyzeBody').dataset.entity;
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Переношу…';
   try{
-    const j=await api('/api/migrate/commit',{method:'POST',body:JSON.stringify({csv:CSV_TEXT,entity:ent})});
+    const j=await api('/api/migrate/commit',{method:'POST',body:JSON.stringify({...(FILE_PAYLOAD||{csv:CSV_TEXT}),entity:ent})});
     const card=document.getElementById('resultCard'), body=document.getElementById('resultBody');
     card.classList.remove('hidden');
     let errs='';
