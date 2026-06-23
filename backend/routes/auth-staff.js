@@ -127,11 +127,15 @@ async function throttle(pool, key) {
   return r.rows[0].attempts;
 }
 
-// Admin-only: legacy ADMIN_TOKEN check
+// Admin-only: legacy ADMIN_TOKEN check (timing-safe, аудит #3)
 function adminOnly(req, res, next) {
-  if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ error: 'unauthorized' });
+  const got = req.headers['x-admin-token'];
+  const want = process.env.ADMIN_TOKEN;
+  let ok = false;
+  if (typeof got === 'string' && typeof want === 'string' && got.length === want.length) {
+    try { ok = require('crypto').timingSafeEqual(Buffer.from(got), Buffer.from(want)); } catch { ok = false; }
   }
+  if (!ok) return res.status(401).json({ error: 'unauthorized' });
   next();
 }
 

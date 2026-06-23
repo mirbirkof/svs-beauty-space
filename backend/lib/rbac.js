@@ -6,6 +6,32 @@ const { getPool } = require('../db-pg');
 
 function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
+// Аудит #3: безопасное сравнение ADMIN_TOKEN (constant-time, против timing-атак).
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  try { return crypto.timingSafeEqual(ba, bb); } catch { return false; }
+}
+
+// Bootstrap-режим: при ADMIN_TOKEN_BOOTSTRAP_ONLY=1 мастер-токен работает ТОЛЬКО
+// пока в системе нет ни одного активного owner-пользователя (первичная настройка).
+// Как только реальный владелец заведён — legacy-токен автоматически отключается,
+// закрывая постоянную owner-дыру в env. По умолчанию (флаг не задан) — старое
+// поведение, ничего не ломается.
+let _ownerExistsCache = { at: 0, val: null };
+async function ownerUserExists() {
+  const now = Date.now();
+  if (_ownerExistsCache.val !== null && now - _ownerExistsCache.at < 30000) return _ownerExistsCache.val;
+  try {
+    const r = await getPool().query(
+      `SELECT 1 FROM users u JOIN roles r ON r.id=u.role_id
+        WHERE u.is_active = true AND r.level >= 900 LIMIT 1`);
+    _ownerExistsCache = { at: now, val: r.rowCount > 0 };
+  } catch { _ownerExistsCache = { at: now, val: false }; }
+  return _ownerExistsCache.val;
+}
+
 // Проверка одного permission. "*" покрывает всё. "shop.*" покрывает "shop.read".
 function hasPermission(userPerms, required) {
   if (!Array.isArray(userPerms)) return false;
@@ -22,8 +48,14 @@ function hasPermission(userPerms, required) {
 
 async function resolveUserByToken(token) {
   if (!token) return null;
-  // 1) legacy ADMIN_TOKEN → виртуальный owner
-  if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) {
+  // 1) legacy ADMIN_TOKEN → виртуальный owner (timing-safe, аудит #3)
+  if (process.env.ADMIN_TOKEN && safeEqual(token, process.env.ADMIN_TOKEN)) {
+    // bootstrap-only: после появления реального owner мастер-токен отключается
+    if (process.env.ADMIN_TOKEN_BOOTSTRAP_ONLY === '1' && await ownerUserExists()) {
+      console.warn('[rbac] ADMIN_TOKEN отклонён: bootstrap-режим, владелец уже существует');
+      return null;
+    }
+    console.warn('[rbac] вход по legacy ADMIN_TOKEN (owner-bypass) — рекомендуется завести именованного владельца');
     return { id: 0, display_name: 'legacy-admin', role: 'owner', role_level: 999, permissions: ['*'], branch_id: null };
   }
   // 2) user_tokens
