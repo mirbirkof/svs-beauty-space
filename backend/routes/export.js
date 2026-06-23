@@ -7,6 +7,18 @@
    GDPR (право на переносимость данных, ст.16 ЗУ "Про захист персональних даних"):
    GET /api/export/gdpr/client/:id        — полный JSON-дамп всех данных клиента
    GET /api/export/gdpr/client/:id.csv    — сводка клиента в CSV
+
+   M25+ расширенный экспорт (additive, ?format=csv|json):
+   GET /api/export/appointments      — записи/визиты      (clients.read)
+   GET /api/export/orders            — продажи/заказы     (reports.read)
+   GET /api/export/order-items       — позиции заказов    (reports.read)
+   GET /api/export/cash-operations   — движение денег     (reports.finance)
+   GET /api/export/inventory         — склад/остатки      (stock.read)
+   GET /api/export/stock-movements   — движение товара    (stock.read)
+   GET /api/export/consumption       — расход материалов  (stock.read)
+   GET /api/export/payroll           — зарплаты мастеров  (reports.finance)
+   Все фильтруются по тенанту (pool.query → app.tenant_id RLS) и
+   требуют export.read (глобально) + гранулярное право (выше). ?from=&to=.
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
@@ -201,6 +213,308 @@ router.get('/gdpr/client/:id(\\d+)', async (req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="gdpr-client-${req.params.id}.json"`);
   res.send(JSON.stringify({ exported_at: new Date().toISOString(), ...data }, null, 2));
+});
+
+/* ═══════════════════════════════════════════════════════
+   M25+ — расширенный экспорт (additive).
+   Универсальные эндпоинты с выбором формата ?format=csv|json.
+   Изоляция тенанта: все запросы идут через pool.query, который
+   db-pg.js оборачивает в транзакцию с app.tenant_id (RLS),
+   пока запрос внутри HTTP-контекста тенанта (lib/tenant).
+   Права: глобально router.use(requirePerm('export.read')) +
+   гранулярный requirePerm на чтение конкретной сущности.
+   ═══════════════════════════════════════════════════════ */
+
+// Отдать набор строк в выбранном формате. format: 'json' → JSON-массив,
+// иначе CSV (с BOM, запятая-разделитель, экранирование кавычек как в toCsv).
+function sendExport(res, { rows, columns, filename, format, meta }) {
+  if (String(format).toLowerCase() === 'json') {
+    // В JSON отдаём только колонки экспорта (стабильный контракт), плюс мета.
+    const items = rows.map(r => {
+      const o = {};
+      for (const c of columns) o[c.key] = r[c.key] == null ? null : r[c.key];
+      return o;
+    });
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+    return res.send(JSON.stringify({
+      exported_at: new Date().toISOString(),
+      entity: meta?.entity || filename,
+      count: items.length,
+      columns: columns.map(c => ({ key: c.key, label: c.label })),
+      items,
+    }, null, 2));
+  }
+  const csv = toCsv(rows, columns);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}-${Date.now()}.csv"`);
+  return res.send(csv);
+}
+
+// Унифицированный фильтр по диапазону дат для эндпоинтов с ?from=&to=.
+function dateRange(req, col, args) {
+  const cond = [];
+  if (req.query.from) { args.push(req.query.from); cond.push(`${col} >= $${args.length}`); }
+  if (req.query.to)   { args.push(req.query.to);   cond.push(`${col} <= $${args.length}`); }
+  return cond;
+}
+
+// ── ЗАПИСИ / ВІЗИТИ (appointments) — CSV/JSON ────────────
+// (дополняет существующий /appointments.csv; этот — с выбором формата)
+router.get('/appointments', requirePerm('clients.read'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'a.starts_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT a.id, a.starts_at, a.status,
+           COALESCE(c.name, a.client_name) AS client_name,
+           COALESCE(c.phone, '')          AS phone,
+           COALESCE(m.name, '')           AS master_name,
+           COALESCE(s.name, a.services_text) AS service_name,
+           a.price, a.payment_method, a.source,
+           CASE WHEN a.beautypro_id IS NOT NULL THEN 'BeautyPro' ELSE 'Власна' END AS origin
+    FROM appointments a
+    LEFT JOIN clients  c ON c.id = a.client_id
+    LEFT JOIN masters  m ON m.id = a.master_id
+    LEFT JOIN services s ON s.id = a.service_id
+    ${where}
+    ORDER BY a.starts_at DESC LIMIT 20000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'appointments',
+    meta: { entity: 'appointments' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'starts_at', label: 'Дата/час' },
+      { key: 'client_name', label: 'Клієнт' },
+      { key: 'phone', label: 'Телефон' },
+      { key: 'master_name', label: 'Майстер' },
+      { key: 'service_name', label: 'Послуга' },
+      { key: 'price', label: 'Ціна' },
+      { key: 'payment_method', label: 'Оплата' },
+      { key: 'status', label: 'Статус' },
+      { key: 'source', label: 'Джерело' },
+      { key: 'origin', label: 'Походження' },
+    ],
+  });
+});
+
+// ── ПРОДАЖІ / ЗАМОВЛЕННЯ (orders) — CSV/JSON ─────────────
+router.get('/orders', requirePerm('reports.read'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'o.created_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT o.id, o.created_at, c.phone, c.name AS client_name,
+           o.total, o.status, o.payment_method, o.delivery_type, o.notes
+    FROM orders o LEFT JOIN clients c ON c.id = o.client_id
+    ${where}
+    ORDER BY o.id DESC LIMIT 20000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'orders',
+    meta: { entity: 'orders' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'created_at', label: 'Дата' },
+      { key: 'phone', label: 'Телефон' },
+      { key: 'client_name', label: 'Клієнт' },
+      { key: 'total', label: 'Сума' },
+      { key: 'status', label: 'Статус' },
+      { key: 'payment_method', label: 'Оплата' },
+      { key: 'delivery_type', label: 'Доставка' },
+      { key: 'notes', label: 'Примітки' },
+    ],
+  });
+});
+
+// ── ПОЗИЦІЇ ЗАМОВЛЕНЬ (order_items) — детализация продаж ──
+router.get('/order-items', requirePerm('reports.read'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'o.created_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT oi.id, oi.order_id, o.created_at, o.status AS order_status,
+           oi.variant_id, oi.product_name, oi.volume, oi.qty,
+           oi.unit_price, oi.line_total
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    ${where}
+    ORDER BY oi.order_id DESC, oi.id LIMIT 50000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'order-items',
+    meta: { entity: 'order_items' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'order_id', label: 'Замовлення' },
+      { key: 'created_at', label: 'Дата' },
+      { key: 'order_status', label: 'Статус замовл.' },
+      { key: 'product_name', label: 'Товар' },
+      { key: 'volume', label: 'Обʼєм' },
+      { key: 'qty', label: 'Кількість' },
+      { key: 'unit_price', label: 'Ціна' },
+      { key: 'line_total', label: 'Сума позиції' },
+    ],
+  });
+});
+
+// ── РУХ ГРОШЕЙ (cash_operations) — CSV/JSON ──────────────
+router.get('/cash-operations', requirePerm('reports.finance'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'co.created_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT co.id, co.created_at,
+           CASE WHEN co.type='in' THEN 'Надходження' ELSE 'Витрата' END AS direction,
+           co.category, co.amount, co.method, co.description,
+           co.ref_type, co.ref_id,
+           COALESCE(m.name, '') AS master_name
+    FROM cash_operations co
+    LEFT JOIN masters m ON m.id = co.master_id
+    ${where}
+    ORDER BY co.created_at DESC LIMIT 50000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'cash-operations',
+    meta: { entity: 'cash_operations' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'created_at', label: 'Дата' },
+      { key: 'direction', label: 'Тип' },
+      { key: 'category', label: 'Категорія' },
+      { key: 'amount', label: 'Сума' },
+      { key: 'method', label: 'Спосіб' },
+      { key: 'description', label: 'Опис' },
+      { key: 'ref_type', label: 'Звʼязок' },
+      { key: 'ref_id', label: 'ID звʼязку' },
+      { key: 'master_name', label: 'Майстер' },
+    ],
+  });
+});
+
+// ── СКЛАД: ЗАЛИШКИ (products + stock) — CSV/JSON ──────────
+router.get('/inventory', requirePerm('stock.read'), async (req, res) => {
+  const pool = getPool();
+  const r = await pool.query(`
+    SELECT p.id, p.name, p.brand_id, p.category_id,
+           pv.id AS variant_id, pv.volume, pv.sku,
+           pv.price, pv.wholesale, pv.stock_qty, pv.reserved_qty,
+           (COALESCE(pv.stock_qty,0) - COALESCE(pv.reserved_qty,0)) AS available_qty
+    FROM products p
+    LEFT JOIN product_variants pv ON pv.product_id = p.id
+    WHERE p.active = TRUE
+    ORDER BY p.name, pv.price`);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'inventory',
+    meta: { entity: 'inventory' },
+    columns: [
+      { key: 'id', label: 'ID товару' },
+      { key: 'name', label: 'Назва' },
+      { key: 'brand_id', label: 'Бренд' },
+      { key: 'category_id', label: 'Категорія' },
+      { key: 'variant_id', label: 'ID варіанту' },
+      { key: 'volume', label: 'Обʼєм' },
+      { key: 'sku', label: 'SKU' },
+      { key: 'price', label: 'Ціна' },
+      { key: 'wholesale', label: 'Опт' },
+      { key: 'stock_qty', label: 'Залишок' },
+      { key: 'reserved_qty', label: 'Резерв' },
+      { key: 'available_qty', label: 'Доступно' },
+    ],
+  });
+});
+
+// ── СКЛАД: РУХ ТОВАРУ (stock_movements) — CSV/JSON ───────
+router.get('/stock-movements', requirePerm('stock.read'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'sm.created_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT sm.id, sm.created_at, sm.product_id, p.name AS product_name,
+           sm.delta, sm.reason, sm.notes
+    FROM stock_movements sm
+    LEFT JOIN products p ON p.id = sm.product_id
+    ${where}
+    ORDER BY sm.created_at DESC LIMIT 50000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'stock-movements',
+    meta: { entity: 'stock_movements' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'created_at', label: 'Дата' },
+      { key: 'product_id', label: 'ID товару' },
+      { key: 'product_name', label: 'Товар' },
+      { key: 'delta', label: 'Зміна' },
+      { key: 'reason', label: 'Причина' },
+      { key: 'notes', label: 'Примітки' },
+    ],
+  });
+});
+
+// ── СКЛАД: ВИТРАТНІ МАТЕРІАЛИ (material_consumption) ──────
+router.get('/consumption', requirePerm('stock.read'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'mc.consumed_at', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT mc.id, mc.consumed_at, mc.appointment_id, mc.master_id,
+           COALESCE(m.name, '') AS master_name,
+           mc.product_id, mc.product_name, mc.qty, mc.unit_cost, mc.total_cost
+    FROM material_consumption mc
+    LEFT JOIN masters m ON m.id = mc.master_id
+    ${where}
+    ORDER BY mc.consumed_at DESC LIMIT 50000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'consumption',
+    meta: { entity: 'material_consumption' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'consumed_at', label: 'Дата' },
+      { key: 'appointment_id', label: 'Запис' },
+      { key: 'master_name', label: 'Майстер' },
+      { key: 'product_name', label: 'Матеріал' },
+      { key: 'qty', label: 'Кількість' },
+      { key: 'unit_cost', label: 'Ціна од.' },
+      { key: 'total_cost', label: 'Сума' },
+    ],
+  });
+});
+
+// ── ЗАРПЛАТИ (payroll_records) — CSV/JSON ────────────────
+router.get('/payroll', requirePerm('reports.finance'), async (req, res) => {
+  const pool = getPool();
+  const args = [];
+  const cond = dateRange(req, 'pr.period_start', args);
+  const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  const r = await pool.query(`
+    SELECT pr.id, pr.master_id,
+           COALESCE(pr.master_name, m.name, '') AS master_name,
+           pr.period_start, pr.period_end,
+           pr.services_count, pr.services_revenue,
+           pr.bonus, pr.deduction, pr.total, pr.status
+    FROM payroll_records pr
+    LEFT JOIN masters m ON m.id = pr.master_id
+    ${where}
+    ORDER BY pr.period_start DESC, pr.master_id LIMIT 20000`, args);
+  sendExport(res, {
+    rows: r.rows, format: req.query.format, filename: 'payroll',
+    meta: { entity: 'payroll_records' },
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'master_name', label: 'Майстер' },
+      { key: 'period_start', label: 'Період з' },
+      { key: 'period_end', label: 'Період по' },
+      { key: 'services_count', label: 'Послуг' },
+      { key: 'services_revenue', label: 'Виручка' },
+      { key: 'bonus', label: 'Бонус' },
+      { key: 'deduction', label: 'Утримання' },
+      { key: 'total', label: 'До виплати' },
+      { key: 'status', label: 'Статус' },
+    ],
+  });
 });
 
 module.exports = router;
