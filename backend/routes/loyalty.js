@@ -3,8 +3,24 @@ const express = require('express');
 const router = express.Router();
 const { requirePerm } = require('../lib/rbac');
 const { getPool } = require('../db-pg');
+const bonus = require('../lib/bonus');
 
 const pool = getPool();
+
+// Аудит #37: рефералка/ДР раньше помечали бонус «начислено» в своих таблицах
+// (referrals / birthday_bonuses), но НЕ зачисляли его в реальный кошелёк
+// bonus_balances → клиент не мог потратить обещанные баллы. Резолвим телефон
+// → client_id (по последним 10 цифрам, т.к. форматы +380/380/80 расходятся) и
+// кредитим настоящий кошелёк через lib/bonus.accrue.
+async function clientIdByPhone(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '').slice(-10);
+  if (digits.length < 10) return null;
+  const r = await pool.query(
+    `SELECT id FROM clients WHERE right(regexp_replace(phone, '\\D', '', 'g'), 10) = $1 LIMIT 1`,
+    [digits]);
+  return r.rows[0]?.id || null;
+}
 
 // Авторизация: read на GET, write на мутации
 router.use((req, res, next) => {
@@ -141,7 +157,22 @@ router.post('/loyalty/referrals/:id/credit', async (req, res) => {
       [req.params.id]
     );
     if (!r.rows[0]) return res.status(400).json({ error: 'not found or already credited' });
-    res.json({ ok: true, referrer: r.rows[0].referrer_phone, bonus: r.rows[0].bonus_amount });
+    const row = r.rows[0];
+    // зачисляем в реальный кошелёк; при сбое — откатываем флаг, чтобы повторить
+    let walletCredited = false;
+    try {
+      const clientId = await clientIdByPhone(row.referrer_phone);
+      if (clientId) {
+        await bonus.accrue({ clientId, amount: parseFloat(row.bonus_amount), type: 'accrual',
+          sourceType: 'referral', sourceId: +req.params.id, description: 'Реферальний бонус' });
+        walletCredited = true;
+      }
+    } catch (e) {
+      console.error('[loyalty] referral wallet credit failed:', e.message);
+      await pool.query(`UPDATE referrals SET bonus_credited=false WHERE id=$1`, [req.params.id]);
+      return res.status(500).json({ error: 'wallet-credit-failed' });
+    }
+    res.json({ ok: true, referrer: row.referrer_phone, bonus: row.bonus_amount, wallet_credited: walletCredited });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -178,12 +209,22 @@ router.post('/loyalty/birthday/credit', async (req, res) => {
     );
     const credited = [];
     for (const row of cl.rows) {
-      const bonus = parseFloat(row.bonus_percent || 3) * 50; // подарок = tier% × 50
+      const gift = parseFloat(row.bonus_percent || 3) * 50; // подарок = tier% × 50
       await pool.query(
         `INSERT INTO birthday_bonuses (client_phone, bonus_amount, year) VALUES ($1, $2, $3)`,
-        [row.client_phone, bonus, y]
+        [row.client_phone, gift, y]
       );
-      credited.push({ phone: row.client_phone, bonus });
+      // зачисляем подарок в реальный кошелёк (если клиент есть в clients)
+      let walletCredited = false;
+      try {
+        const clientId = await clientIdByPhone(row.client_phone);
+        if (clientId) {
+          await bonus.accrue({ clientId, amount: gift, type: 'accrual',
+            sourceType: 'birthday', sourceId: null, description: `Подарунок до дня народження ${y}` });
+          walletCredited = true;
+        }
+      } catch (e) { console.error('[loyalty] birthday wallet credit failed:', row.client_phone, e.message); }
+      credited.push({ phone: row.client_phone, bonus: gift, wallet_credited: walletCredited });
     }
     res.json({ ok: true, credited_count: credited.length, items: credited });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
