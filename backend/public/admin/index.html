@@ -102,6 +102,14 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
   color:var(--sidebar-text); cursor:pointer; font-size:13px; padding:6px 0;
 }
 .sidebar-footer button:hover { color:#fff; }
+.sidebar-lang { display:flex; gap:4px; margin-bottom:10px; }
+.sidebar-lang button { flex:1; display:flex; align-items:center; justify-content:center; gap:0;
+  border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:var(--sidebar-text);
+  font-size:12px; font-weight:600; padding:6px 0; border-radius:8px; cursor:pointer; transition:all .15s; }
+.sidebar-lang button:hover { background:rgba(255,255,255,.08); color:#fff; }
+.sidebar-lang button.active { background:var(--sidebar-active); color:#fff; border-color:var(--sidebar-active); }
+.sb-collapsed .sidebar-lang { flex-direction:column; }
+.sb-collapsed .sidebar-lang button { font-size:11px; padding:5px 0; }
 
 /* COLLAPSE (icon-rail) — десктоп */
 /* Плаваюча кнопка шторки: зафіксована, завжди на одному місці, не зникає при прокрутці (заметка #29) */
@@ -787,9 +795,6 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="budgets" onclick="go('budgets')">
             <span class="material-icons-round">savings</span> Бюджети
           </a>
-          <a class="sidebar-item" data-embed="/admin/crm-extra.html" onclick="openEmbed('/admin/crm-extra.html','point_of_sale Рахунки і каси')" style="cursor:pointer">
-            <span class="material-icons-round">point_of_sale</span> Рахунки і каси
-          </a>
           <a class="sidebar-item" data-page="contractors" onclick="go('contractors')">
             <span class="material-icons-round">groups</span> Контрагенти
           </a>
@@ -875,7 +880,7 @@ select.input { background:var(--card); }
             <span class="material-icons-round">inventory_2</span> Товари
           </a>
           <a class="sidebar-item" data-page="stock" onclick="go('stock')">
-            <span class="material-icons-round">warehouse</span> Склад
+            <span class="material-icons-round">warehouse</span> Залишки на складі
           </a>
           <a class="sidebar-item" data-page="purchasing" onclick="go('purchasing')">
             <span class="material-icons-round">local_shipping</span> Закупівлі
@@ -975,8 +980,13 @@ select.input { background:var(--card); }
       </div>
     </nav>
     <div class="sidebar-footer">
+      <div class="sidebar-lang" id="langSwitch" title="Мова інтерфейсу">
+        <button type="button" data-lang="uk" onclick="setLang('uk')">UA</button>
+        <button type="button" data-lang="ru" onclick="setLang('ru')">RU</button>
+        <button type="button" data-lang="en" onclick="setLang('en')">EN</button>
+      </div>
       <button onclick="logout()">
-        <span class="material-icons-round" style="font-size:18px">logout</span> Вийти
+        <span class="material-icons-round" style="font-size:18px">logout</span> <span data-i18n-src="Вийти">Вийти</span>
       </button>
     </div>
   </aside>
@@ -1001,10 +1011,10 @@ select.input { background:var(--card); }
         <button id="emailVerifyChip" onclick="sendEmailVerify(this)" title="Підтвердіть свою пошту, щоб відновлювати доступ і отримувати службові листи"
           style="display:none;align-items:center;gap:5px;border:1px solid #f0c36d;background:#fff8e6;color:#8a6d1a;font-size:12px;font-weight:600;border-radius:14px;padding:3px 10px;cursor:pointer">
           <span class="material-icons-round" style="font-size:15px">mark_email_unread</span>
-          <span class="evc-text">Підтвердити пошту</span>
+          <span class="evc-text" data-i18n-src="Підтвердити пошту">Підтвердити пошту</span>
         </button>
         <button class="topbar-btn" onclick="window.open('/admin/export.html')">
-          <span class="material-icons-round" style="font-size:16px">download</span> Експорт
+          <span class="material-icons-round" style="font-size:16px">download</span> <span data-i18n-src="Експорт">Експорт</span>
         </button>
       </div>
     </div>
@@ -2947,6 +2957,73 @@ const pageTitles = {
   settings:'Налаштування'
 };
 
+// ═══ I18N — мова інтерфейсу (UA / RU / EN) ═══════════════
+// Базова мова коду — українська. Словник перекладає меню, шапку та заголовки.
+// Тіло сторінок лишається укр.; ключі додаються в DICT поступово без ризику.
+const I18N_DICT = {
+  ru: {
+    'Робота салону':'Работа салона','Клієнти':'Клиенты','Продажі':'Продажи','Гроші':'Деньги','Маркетинг':'Маркетинг','Команда':'Команда','Склад':'Склад','Налаштування':'Настройки','Система':'Система','Підписка':'Подписка','SaaS / Платформа':'SaaS / Платформа',
+    'Дашборд':'Дашборд','Журнал записів':'Журнал записей','Воронка візитів':'Воронка визитов','Зміни / Табель':'Смены / Табель','Послуги':'Услуги','Категорії послуг':'Категории услуг',
+    'Усі клієнти':'Все клиенты','Лист очікування':'Лист ожидания','Повторні візити':'Повторные визиты','Чорний список':'Чёрный список',
+    'Замовлення':'Заказы','Каса магазину':'Касса магазина','Сертифікати':'Сертификаты','Абонементи':'Абонементы','Вітрина (сайт)':'Витрина (сайт)',
+    'Доходи і Витрати':'Доходы и Расходы','Фінансовий центр':'Финансовый центр','Грошовий потік':'Денежный поток','Бюджети':'Бюджеты','Контрагенти':'Контрагенты','Звіти (P&L, RFM)':'Отчёты (P&L, RFM)','Конструктор звітів':'Конструктор отчётов','Експорт CSV':'Экспорт CSV',
+    'Центр повідомлень':'Центр уведомлений','Сегменти':'Сегменты','Кампанії / Розсилки':'Кампании / Рассылки','Авто-тригери':'Авто-триггеры','AI Відеостудія':'AI Видеостудия','Нагадування (записи)':'Напоминания (записи)','Акції / Промокоди':'Акции / Промокоды','Відгуки':'Отзывы','Dikidi (онлайн-запис)':'Dikidi (онлайн-запись)',
+    'Майстри / Співробітники':'Мастера / Сотрудники','Зарплата':'Зарплата','План місяця':'План месяца','Графіки роботи':'Графики работы',
+    'Товари':'Товары','Залишки на складі':'Остатки на складе','Закупівлі':'Закупки','Інвентаризація':'Инвентаризация','Розхідники':'Расходники',
+    'Профіль':'Профиль','Онлайн-запис':'Онлайн-запись','Передплата':'Предоплата','Конфіденційність':'Конфиденциальность','Бізнес-налаштування':'Бизнес-настройки','Кабінети / ресурси':'Кабинеты / ресурсы','Доступ до проєкту':'Доступ к проекту','Міграція з іншої CRM':'Миграция из другой CRM',
+    'Системний статус':'Системный статус','Управління магазинами':'Управление магазинами','Інтеграції':'Интеграции','BeautyPro синхро':'BeautyPro синхро','Аудит':'Аудит',
+    'Моя підписка':'Моя подписка','Панель SaaS':'Панель SaaS',
+    'Вийти':'Выйти','Експорт':'Экспорт','Підтвердити пошту':'Подтвердить почту',
+    'Подарункові сертифікати':'Подарочные сертификаты','Нагадування клієнтам':'Напоминания клиентам','Акції':'Акции','План місяця та аналітика':'План месяца и аналитика'
+  },
+  en: {
+    'Робота салону':'Salon operations','Клієнти':'Clients','Продажі':'Sales','Гроші':'Finance','Маркетинг':'Marketing','Команда':'Team','Склад':'Inventory','Налаштування':'Settings','Система':'System','Підписка':'Subscription','SaaS / Платформа':'SaaS / Platform',
+    'Дашборд':'Dashboard','Журнал записів':'Appointments','Воронка візитів':'Visit pipeline','Зміни / Табель':'Shifts / Timesheet','Послуги':'Services','Категорії послуг':'Service categories',
+    'Усі клієнти':'All clients','Лист очікування':'Waitlist','Повторні візити':'Repeat visits','Чорний список':'Blacklist',
+    'Замовлення':'Orders','Каса магазину':'Shop register','Сертифікати':'Gift cards','Абонементи':'Memberships','Вітрина (сайт)':'Storefront (site)',
+    'Доходи і Витрати':'Income & Expenses','Фінансовий центр':'Finance center','Грошовий потік':'Cash flow','Бюджети':'Budgets','Контрагенти':'Counterparties','Звіти (P&L, RFM)':'Reports (P&L, RFM)','Конструктор звітів':'Report builder','Експорт CSV':'Export CSV',
+    'Центр повідомлень':'Notification center','Сегменти':'Segments','Кампанії / Розсилки':'Campaigns','Авто-тригери':'Auto-triggers','AI Відеостудія':'AI Video studio','Нагадування (записи)':'Reminders (visits)','Акції / Промокоди':'Promos / Coupons','Відгуки':'Reviews','Dikidi (онлайн-запис)':'Dikidi (booking)',
+    'Майстри / Співробітники':'Staff / Masters','Зарплата':'Payroll','План місяця':'Monthly plan','Графіки роботи':'Work schedules',
+    'Товари':'Products','Залишки на складі':'Stock levels','Закупівлі':'Purchasing','Інвентаризація':'Inventory count','Розхідники':'Consumables',
+    'Профіль':'Profile','Онлайн-запис':'Online booking','Передплата':'Prepayment','Конфіденційність':'Privacy','Бізнес-налаштування':'Business settings','Кабінети / ресурси':'Rooms / resources','Доступ до проєкту':'Project access','Міграція з іншої CRM':'Migrate from another CRM',
+    'Системний статус':'System status','Управління магазинами':'Manage shops','Інтеграції':'Integrations','BeautyPro синхро':'BeautyPro sync','Аудит':'Audit',
+    'Моя підписка':'My subscription','Панель SaaS':'SaaS panel',
+    'Вийти':'Log out','Експорт':'Export','Підтвердити пошту':'Verify email',
+    'Подарункові сертифікати':'Gift certificates','Нагадування клієнтам':'Client reminders','Акції':'Promos','План місяця та аналітика':'Monthly plan & analytics'
+  }
+};
+function tr(s){ var l=window._lang||'uk'; if(l==='uk'||!s) return s; var d=I18N_DICT[l]; return (d&&d[s])||s; }
+function _tagMenuI18n(){
+  document.querySelectorAll('.sidebar-group-header, .sidebar-item').forEach(function(el){
+    Array.prototype.slice.call(el.childNodes).forEach(function(n){
+      if(n.nodeType===3 && n.textContent.trim()){
+        var sp=document.createElement('span');
+        sp.setAttribute('data-i18n-src', n.textContent.trim());
+        sp.textContent=n.textContent.trim();
+        el.replaceChild(sp,n);
+      }
+    });
+  });
+}
+function setLang(lang){
+  if(['uk','ru','en'].indexOf(lang)<0) lang='uk';
+  window._lang=lang;
+  try{ localStorage.setItem('crm_lang',lang); }catch(e){}
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n-src]').forEach(function(el){
+    el.textContent = tr(el.getAttribute('data-i18n-src'));
+  });
+  var pt=document.getElementById('pageTitle');
+  if(pt && typeof currentPage!=='undefined' && currentPage) pt.textContent = tr(pageTitles[currentPage]||currentPage);
+  document.querySelectorAll('#langSwitch button').forEach(function(b){ b.classList.toggle('active', b.dataset.lang===lang); });
+}
+function initI18n(){
+  _tagMenuI18n();
+  var saved='uk'; try{ saved=localStorage.getItem('crm_lang')||'uk'; }catch(e){}
+  setLang(saved);
+}
+if(document.readyState!=='loading') initI18n(); else document.addEventListener('DOMContentLoaded', initI18n);
+
 window.addEventListener('hashchange', () => {
   const h = location.hash.replace('#','');
   if (h && h !== currentPage && document.getElementById('page-' + h)) go(h);
@@ -3014,7 +3091,7 @@ function go(page) {
   // Стан груп меню НЕ чіпаємо при навігації — лишається рівно таким, яким його
   // залишив користувач (зберігається в localStorage). Жодного авто-розкриття →
   // меню не перемальовується і не «стрибає» при кожному кліку.
-  document.getElementById('pageTitle').textContent = pageTitles[page] || page;
+  document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
@@ -3456,7 +3533,7 @@ async function finSaveOp(){
     const r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description})});
     if(r.error){
       btn.disabled=false; msg.style.color='#991b1b';
-      msg.textContent = r.error==='no-open-shift' ? 'Немає відкритої зміни — відкрийте касу в розділі «Рахунки і каси»' : r.error;
+      msg.textContent = r.error==='no-open-shift' ? 'Немає відкритої зміни — відкрийте касу в розділі «Каса магазину»' : r.error;
       return;
     }
     msg.style.color='#166534'; msg.textContent='Збережено';
