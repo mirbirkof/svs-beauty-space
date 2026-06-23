@@ -2605,6 +2605,58 @@ function applyRoleUI(){
   }
   // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
+  // Ховаємо пункти меню, на які у співробітника немає прав (власник бачить усе)
+  applyMenuPerms();
+}
+
+// ── Приховування пунктів меню за правами ──────────────────────────────
+// Бекенд віддає USER.permissions (масив кодів або ['*']). Та сама wildcard-логіка,
+// що в lib/rbac.js hasPermission. Власник має '*' → бачить усе (для Босса меню НЕ
+// змінюється). Менеджер/адмін/обмежені ролі бачать лише дозволене — клік більше не
+// впирається в 403. Пункти без коду в карті завжди показуються (немає регресу).
+function userHasPerm(req){
+  const p = (USER && USER.permissions) || [];
+  if (!Array.isArray(p) || p.length === 0) return true; // немає даних про права → не ховаємо
+  if (p.includes('*')) return true;
+  if (p.includes(req)) return true;
+  const area = req.split('.')[0];
+  if (p.includes(area + '.*')) return true;
+  const act = req.split('.').slice(-1)[0];
+  if (p.includes('*.' + act)) return true;
+  return false;
+}
+const MENU_PERM_PAGE = {
+  journal:'booking.read', pipeline:'clients.read', shifts:'schedule.read',
+  clients:'clients.read', waitlist:'waitlist.read', repeat:'clients.read', blacklist:'blacklist.read',
+  orders:'order.write', giftcerts:'order.write', subscriptions:'order.write',
+  finance:'reports.finance', fincenter:'reports.finance', cashflow:'reports.finance',
+  budgets:'reports.finance', contractors:'reports.finance', payroll:'reports.finance',
+  reminders:'reminders.manage', promos:'promo.write', reviews:'reviews.write',
+  products:'stock.read', stock:'stock.read', purchasing:'stock.write', sync:'sync.write',
+};
+const MENU_PERM_EMBED = [
+  ['#cashbox','order.write'], ['#reports','reports.read'], ['/bi.html','reports.read'],
+  ['/export.html','export.read'], ['#center','marketing.read'], ['#segments','marketing.read'],
+  ['#campaigns','marketing.read'], ['#triggers','marketing.read'], ['/video-studio.html','marketing.read'],
+  ['/dikidi.html','reviews.write'], ['#users-access','users.write'], ['#users','users.read'],
+  ['#inventory','stock.write'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
+  ['/integrations.html','integrations.read'], ['#audit','audit.read'],
+];
+function applyMenuPerms(){
+  if (!USER || USER.role === 'owner') return; // власник бачить усе — жодних змін
+  document.querySelectorAll('.sidebar-item').forEach(it => {
+    let req = null;
+    const pg = it.dataset.page;
+    if (pg && MENU_PERM_PAGE[pg]) req = MENU_PERM_PAGE[pg];
+    const emb = it.dataset.embed;
+    if (!req && emb) { for (const [frag, p] of MENU_PERM_EMBED) { if (emb.includes(frag)) { req = p; break; } } }
+    if (req && !userHasPerm(req)) it.style.display = 'none';
+  });
+  // Порожню групу (усі пункти сховані) ховаємо повністю
+  document.querySelectorAll('.sidebar-nav > .sidebar-group').forEach(g => {
+    const items = [...g.querySelectorAll('.sidebar-item')];
+    if (items.length && items.every(i => i.style.display === 'none')) g.style.display = 'none';
+  });
 }
 
 // ── API helpers ──────────────────────────────
