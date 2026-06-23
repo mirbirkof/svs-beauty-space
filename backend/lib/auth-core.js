@@ -28,6 +28,29 @@ function getJwtSecret() {
   return global.__ephemeral_jwt_secret;
 }
 
+// Аудит #12: ротация ключей JWT через kid (key id) без обрыва живых сессий.
+//   • подпись — ВСЕГДА текущим ключом (JWT_SECRET), с kid в заголовке;
+//   • проверка — по списку: текущий + предыдущий (JWT_SECRET_PREVIOUS).
+// Сценарий ротации без разлогина:
+//   1) выставить JWT_SECRET_PREVIOUS = старый JWT_SECRET;
+//   2) JWT_SECRET = новый секрет, JWT_KID = новый id (напр. k2);
+//   3) старые живые токены (подписаны старым) проходят проверку по PREVIOUS,
+//      новые — по текущему. Через TTL access-токенов старый ключ можно убрать.
+// Совместимость: токены, выпущенные ДО этого изменения (без kid), проверяются
+// текущим JWT_SECRET — секрет не менялся, поэтому остаются валидными.
+function currentKid() {
+  return process.env.JWT_KID || 'k1';
+}
+// Список ключей для ПРОВЕРКИ: [текущий, предыдущий?]. Подпись — всегда [0].
+function getJwtKeys() {
+  const keys = [{ kid: currentKid(), secret: getJwtSecret() }];
+  const prev = process.env.JWT_SECRET_PREVIOUS;
+  if (prev && prev.length >= 32) {
+    keys.push({ kid: process.env.JWT_KID_PREVIOUS || 'prev', secret: prev });
+  }
+  return keys;
+}
+
 function sha256(s) {
   return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
@@ -59,16 +82,29 @@ function signAccessToken(payload) {
   return jwt.sign(
     { ...payload, typ: 'access' },
     getJwtSecret(),
-    { expiresIn: ACCESS_TTL_SEC, issuer: 'svs-crm' }
+    { expiresIn: ACCESS_TTL_SEC, issuer: 'svs-crm', keyid: currentKid() }
   );
 }
 
 function verifyAccessToken(token) {
+  // Берём kid из заголовка → пробуем сначала совпавший ключ, потом остальные.
+  let preferKid = null;
   try {
-    const decoded = jwt.verify(token, getJwtSecret(), { issuer: 'svs-crm' });
-    if (decoded.typ !== 'access') return null;
-    return decoded;
-  } catch { return null; }
+    const decodedHead = jwt.decode(token, { complete: true });
+    preferKid = decodedHead && decodedHead.header && decodedHead.header.kid || null;
+  } catch { /* ignore */ }
+  const keys = getJwtKeys();
+  const ordered = preferKid
+    ? [...keys.filter(k => k.kid === preferKid), ...keys.filter(k => k.kid !== preferKid)]
+    : keys;
+  for (const k of ordered) {
+    try {
+      const decoded = jwt.verify(token, k.secret, { issuer: 'svs-crm' });
+      if (decoded.typ !== 'access') return null;
+      return decoded;
+    } catch { /* пробуем следующий ключ */ }
+  }
+  return null;
 }
 
 function generateRefreshToken() {
