@@ -4,6 +4,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
+const { branchAndClause } = require('../lib/branch-scope');
 const router = express.Router();
 const pool = getPool();
 
@@ -187,11 +188,13 @@ router.get('/finance', requireHistory, async (req, res) => {
 router.get('/shifts', requireHistory, async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
+    // Аудит #2: привязанный к филиалу видит только свои смены (no-op для owner/одно-салона)
+    const b = branchAndClause(req, 'branch_id', 1);
     const r = await pool.query(
       `SELECT id, branch_id, opened_by, opened_at, closed_at, opening_cash, closing_cash,
               expected_cash, difference, status
-       FROM cash_shifts ORDER BY opened_at DESC LIMIT $1`,
-      [limit]
+       FROM cash_shifts WHERE 1=1${b.sql} ORDER BY opened_at DESC LIMIT $${1 + b.params.length}`,
+      [...b.params, limit]
     );
     res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

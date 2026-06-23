@@ -61,6 +61,9 @@ function requirePerm(perm) {
         return res.status(403).json({ error: 'forbidden', need: perm });
       }
       req.user = user;
+      // Аудит #2: зажать branch-параметры к филиалу привязанного юзера.
+      // No-op для owner / одно-салонных (branch_id=null) — поведение не меняется.
+      try { require('./branch-scope').enforceBranch(req); } catch (_) {}
       next();
     } catch (e) {
       console.error('[rbac]', e);
