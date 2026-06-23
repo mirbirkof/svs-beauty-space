@@ -96,9 +96,9 @@ router.post('/orders', requirePerm('stock.write'), async (req, res) => {
     for (const it of items) {
       const qty = parseFloat(it.quantity), price = parseFloat(it.unit_price);
       await client.query(
-        `INSERT INTO purchase_order_items(purchase_order_id, product_id, product_name, quantity_ordered, unit_price, total_price, supplier_sku, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [poId, it.product_id || null, it.product_name || null, qty, price, qty * price, it.supplier_sku || null, it.notes || null]);
+        `INSERT INTO purchase_order_items(purchase_order_id, product_id, variant_id, product_name, quantity_ordered, unit_price, total_price, supplier_sku, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [poId, it.product_id || null, it.variant_id || null, it.product_name || null, qty, price, qty * price, it.supplier_sku || null, it.notes || null]);
     }
     await recomputeTotal(client, poId);
     await client.query('COMMIT');
@@ -234,20 +234,30 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
           `INSERT INTO stock_receipt_items(receipt_id, product_id, product_name, qty, unit_cost)
            VALUES ($1,$2,$3,$4,$5)`, [stockReceiptId, r.poi.product_id, r.poi.product_name, good, r.poi.unit_price]);
         await client.query(`UPDATE products SET stock = COALESCE(stock,0) + $1 WHERE id=$2`, [good, r.poi.product_id]);
-        // Аудит #25: реальный остаток для продаж/списаний/инвентаризации хранится
-        // в product_variants.stock_qty, а не в products.stock. Раньше приёмка писала
-        // только в products.stock → оприходованный товар не появлялся в продаваемом
-        // остатке. Пополняем вариант. Позиция закупки не знает variant_id, поэтому:
-        //   • 1 активный вариант → однозначно пополняем его (83% товаров);
-        //   • несколько вариантов → не угадываем, пишем в products.stock + предупреждение
-        //     (распределение по объёмам требует variant_id в позиции — отдельная задача).
-        const vrows = (await client.query(
-          `SELECT id FROM product_variants WHERE product_id=$1 AND active IS NOT FALSE`,
-          [r.poi.product_id])).rows;
-        if (vrows.length === 1) {
-          await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [good, vrows[0].id]);
-        } else if (vrows.length > 1) {
-          console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов — приход ${good} не распределён по вариантам автоматически (нужен variant_id в позиции закупки)`);
+        // Аудит #25 + #10: реальный остаток для продаж/списаний/инвентаризации
+        // хранится в product_variants.stock_qty, а не в products.stock. Пополняем вариант:
+        //   • позиция закупки указывает variant_id → пополняем именно его (точно, #10);
+        //   • variant_id не задан, 1 активный вариант → пополняем единственный (83% товаров);
+        //   • variant_id не задан, >1 вариантов → не угадываем, предупреждение.
+        if (r.poi.variant_id) {
+          // целевой вариант указан в заказе — проверяем что он принадлежит товару
+          const vchk = (await client.query(
+            `SELECT id FROM product_variants WHERE id=$1 AND product_id=$2`,
+            [r.poi.variant_id, r.poi.product_id])).rows;
+          if (vchk.length) {
+            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [good, r.poi.variant_id]);
+          } else {
+            console.warn(`[purchasing] variant_id ${r.poi.variant_id} не принадлежит товару ${r.poi.product_id} — приход ${good} не распределён`);
+          }
+        } else {
+          const vrows = (await client.query(
+            `SELECT id FROM product_variants WHERE product_id=$1 AND active IS NOT FALSE`,
+            [r.poi.product_id])).rows;
+          if (vrows.length === 1) {
+            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [good, vrows[0].id]);
+          } else if (vrows.length > 1) {
+            console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов без variant_id в позиции — приход ${good} не распределён (выберите вариант в форме закупки)`);
+          }
         }
         await client.query(
           `INSERT INTO stock_movements(product_id, delta, reason, notes) VALUES ($1,$2,'purchase',$3)`,

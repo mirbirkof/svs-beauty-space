@@ -5993,6 +5993,8 @@ async function puOrderModal(){
     async ()=>{
       const items=_puReadLines();
       if(!items.length) return toast('Додай позиції','error');
+      const noVar=_puLines.find(l=>l.product_id&&+l.quantity>0&&l.variants&&l.variants.length>1&&!l.variant_id);
+      if(noVar) return toast('Оберіть варіант для товару «'+(noVar.product_name||'')+'»','error');
       const r=await api('/api/purchasing/orders',{method:'POST',body:JSON.stringify({
         supplier_id:document.getElementById('puSup').value||null,
         expected_delivery:document.getElementById('puEta').value||null,
@@ -6001,18 +6003,37 @@ async function puOrderModal(){
     });
   puRenderLines();
 }
-function puAddLine(){ _puLines.push({product_id:'',product_name:'',quantity:1,unit_price:0}); puRenderLines(); }
+function puAddLine(){ _puLines.push({product_id:'',product_name:'',quantity:1,unit_price:0,variant_id:'',variants:null}); puRenderLines(); }
+// при выборе товара — подгружаем его варианты; если >1, показываем выбор варианта (аудит #10)
+async function _puPickProduct(i,sel){
+  _puLines[i].product_id=sel.value;
+  _puLines[i].product_name=sel.options[sel.selectedIndex].text;
+  _puLines[i].variant_id=''; _puLines[i].variants=null;
+  if(sel.value){
+    try{ const r=await api('/api/admin/products/'+sel.value+'/variants'); _puLines[i].variants=r.items||[]; }
+    catch(_){ _puLines[i].variants=[]; }
+  }
+  puRenderLines();
+}
 function puRenderLines(){
   const prodOpts='<option value="">— товар —</option>'+_PU_PRODUCTS.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-  document.getElementById('puLines').innerHTML=_puLines.map((l,i)=>`
-    <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center">
-      <select class="input" style="flex:2" onchange="_puLines[${i}].product_id=this.value;_puLines[${i}].product_name=this.options[this.selectedIndex].text">${prodOpts.replace('value="'+l.product_id+'"','value="'+l.product_id+'" selected')}</select>
+  document.getElementById('puLines').innerHTML=_puLines.map((l,i)=>{
+    const v=l.variants;
+    let varSel='';
+    if(v&&v.length>1){
+      const opts='<option value="">— варіант (обовʼязково) —</option>'+v.map(x=>`<option value="${x.id}"${String(l.variant_id)===String(x.id)?' selected':''}>${escapeHtml(x.volume||('#'+x.id))} · ${x.stock_qty||0} шт</option>`).join('');
+      varSel=`<select class="input" style="flex:1;min-width:140px" onchange="_puLines[${i}].variant_id=this.value">${opts}</select>`;
+    }
+    return `
+    <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;flex-wrap:wrap">
+      <select class="input" style="flex:2;min-width:160px" onchange="_puPickProduct(${i},this)">${prodOpts.replace('value="'+l.product_id+'"','value="'+l.product_id+'" selected')}</select>
+      ${varSel}
       <input class="input" style="width:70px" type="number" min="1" value="${l.quantity}" placeholder="к-сть" oninput="_puLines[${i}].quantity=this.value">
       <input class="input" style="width:90px" type="number" min="0" step="0.01" value="${l.unit_price}" placeholder="ціна" oninput="_puLines[${i}].unit_price=this.value">
       <button class="btn-icon" onclick="_puLines.splice(${i},1);puRenderLines()">✕</button>
-    </div>`).join('');
+    </div>`;}).join('');
 }
-function _puReadLines(){ return _puLines.filter(l=>l.product_id&&+l.quantity>0).map(l=>({product_id:l.product_id,product_name:l.product_name,quantity:+l.quantity,unit_price:+l.unit_price||0})); }
+function _puReadLines(){ return _puLines.filter(l=>l.product_id&&+l.quantity>0).map(l=>({product_id:l.product_id,product_name:l.product_name,quantity:+l.quantity,unit_price:+l.unit_price||0,variant_id:l.variant_id||null})); }
 async function puOpen(id){
   const d=await api('/api/purchasing/orders/'+id);
   const o=d.order, s=_PU_ST[o.status]||[o.status,'flat'];

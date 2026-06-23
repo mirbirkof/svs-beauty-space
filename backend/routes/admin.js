@@ -114,6 +114,19 @@ router.delete('/products/:id', async (req, res) => {
   } catch (e) { console.error('[admin:del-product]', e); res.status(500).json({ error: 'internal' }); }
 });
 
+// Список вариантов товара (для выбора в форме закупки, аудит #10)
+router.get('/products/:id/variants', async (req, res) => {
+  try {
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT id, volume, price, sku, stock_qty, active
+         FROM product_variants WHERE product_id = $1 ORDER BY id`,
+      [req.params.id]
+    );
+    res.json({ items: r.rows, count: r.rowCount });
+  } catch (e) { console.error('[admin:get-variants]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 router.post('/products/:id/variants', async (req, res) => {
   try {
     const { volume, price, wholesale, sku, stock_qty = 0, branch_id } = req.body || {};
