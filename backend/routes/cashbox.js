@@ -299,7 +299,7 @@ router.post('/operations', async (req, res) => {
   // закриту зміну, ламаючи Z-звіт і зведення каси. Тепер вони серіалізуються.
   const client = await pool.connect();
   try {
-    const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description } = req.body || {};
+    const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, allow_no_shift } = req.body || {};
     if (!type || !category || !amount) return res.status(400).json({ error: 'type, category, amount required' });
     if (!['in', 'out'].includes(type)) return res.status(400).json({ error: 'bad type' });
     if (Number(amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
@@ -314,7 +314,15 @@ router.post('/operations', async (req, res) => {
         `SELECT id, status FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`
       );
       shiftRow = open.rows[0];
-      if (!shiftRow) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'no-open-shift' }); }
+      // Ручна операція без відкритої зміни. Каса працює з cash_operations напряму
+      // (фінансовий огляд /finance не залежить від зміни), тому витрату/дохід можна
+      // провести і поза зміною — shift_id лишається NULL (колонка nullable, міграція 139).
+      // POS-чекаут і Z-звіт це не зачіпає: вони завжди передають shift_id або відкриту зміну.
+      if (!shiftRow && allow_no_shift) {
+        shiftRow = { id: null, status: 'none' };
+      } else if (!shiftRow) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: 'no-open-shift' });
+      }
     } else {
       const chk = await client.query(`SELECT id, status FROM cash_shifts WHERE id=$1 FOR UPDATE`, [shift_id]);
       shiftRow = chk.rows[0];

@@ -174,8 +174,16 @@ router.patch('/:id(\\d+)', async (req, res) => {
     const allowed = ['name', 'phone', 'email', 'specialty', 'avatar', 'birth_date', 'gender', 'hire_date',
       'fire_date', 'position_id', 'department_id', 'manager_id', 'branch_id', 'mastery_level', 'status',
       'public_profile', 'bio', 'social_instagram', 'social_tiktok', 'sort_order', 'commission_pct', 'active'];
+    // phone входить у unique (tenant_id, phone): порожній рядок → NULL, інакше два
+    // співробітники без телефону падають у 23505 і профіль не зберігається.
+    const nullIfEmpty = new Set(['phone', 'email', 'specialty', 'avatar', 'birth_date', 'hire_date', 'fire_date',
+      'position_id', 'department_id', 'manager_id', 'branch_id', 'bio', 'social_instagram', 'social_tiktok']);
     const sets = [], vals = [];
-    for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k]); sets.push(`${k}=$${vals.length}`); }
+    for (const k of allowed) if (k in (req.body || {})) {
+      let v = req.body[k];
+      if (nullIfEmpty.has(k) && typeof v === 'string' && v.trim() === '') v = null;
+      vals.push(v); sets.push(`${k}=$${vals.length}`);
+    }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(+req.params.id);
     const r = await q(`UPDATE masters SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);

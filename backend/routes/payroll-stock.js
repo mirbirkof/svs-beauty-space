@@ -279,6 +279,37 @@ router.patch('/payroll/records/:id', async (req, res) => {
   } finally { client.release(); }
 });
 
+// DELETE /api/payroll/records/:id — видалити розрахунок ЗП.
+// Навіщо: захист від подвійного нарахування (period_overlap) назавжди блокував перерахунок,
+// бо чернетку розрахунку не було як прибрати (PATCH дозволяв лише draft/approved/paid, без
+// 'cancelled'/delete). Через це ЗП «не рахувалась» за період, де висіла стара чернетка —
+// саме скарга власника. Тепер чернетку/затверджений (ще не виплачений) розрахунок можна
+// видалити: застосовані бонуси/штрафи/аванси повертаються у пул (щоб не загубились), а
+// виплачений ('paid') видаляти заборонено — там уже проведено гроші в касі.
+router.delete('/payroll/records/:id', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const lock = await client.query(`SELECT id, status FROM payroll_records WHERE id=$1 FOR UPDATE`, [req.params.id]);
+    if (!lock.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
+    if (lock.rows[0].status === 'paid') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'already_paid', message: 'Розрахунок уже виплачено — спершу скасуйте виплату (paid → draft), потім видаляйте.' });
+    }
+    // повертаємо застосовані нарахування у пул, щоб перерахунок їх врахував знову
+    await client.query(`UPDATE payroll_bonuses   SET applied_record_id=NULL WHERE applied_record_id=$1`, [req.params.id]);
+    await client.query(`UPDATE payroll_penalties SET applied_record_id=NULL WHERE applied_record_id=$1`, [req.params.id]);
+    await client.query(`UPDATE payroll_advances  SET settled=FALSE, settled_record_id=NULL WHERE settled_record_id=$1`, [req.params.id]);
+    await client.query(`DELETE FROM payroll_records WHERE id=$1`, [req.params.id]);
+    await client.query('COMMIT');
+    logAction({ user: req.user, action: 'payroll.deleted', entity: 'payroll_records', entity_id: req.params.id, ip: req.ip });
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
+});
+
 /* ═══════════════ BONUSES / PENALTIES / ADVANCES ═══════════════ */
 
 // helper: универсальный CRUD-фабрикатор для бонусов/штрафов

@@ -2392,7 +2392,8 @@ select.input { background:var(--card); }
       </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
         <label style="font-size:13px;color:var(--text-secondary)">Стаття</label>
-        <select id="finOpCat" class="input"></select>
+        <select id="finOpCat" class="input" onchange="finCatChange()"></select>
+        <input id="finOpCatCustom" class="input" placeholder="Назва статті (своя)" style="display:none">
         <label style="font-size:13px;color:var(--text-secondary)">Сума, ₴</label>
         <input id="finOpAmount" type="number" min="1" step="0.01" class="input" placeholder="0">
         <label style="font-size:13px;color:var(--text-secondary)">Спосіб оплати</label>
@@ -3289,6 +3290,8 @@ function go(page) {
     finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
     suppliers:loadSuppliers, qcontrol:loadQControl, callcenter:loadCallCenter, viber:loadViber, branding:loadBranding, mobileapp:loadMobileApp };
   if (loaders[page]) loaders[page]();
+  // Розширені модулі (реєстр у /admin/modules/*) — окремий хук, щоб не чіпати монолітний об'єкт loaders
+  if (window.extLoaders && window.extLoaders[page]) { try { window.extLoaders[page](); } catch(_e){} }
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
   if (page === 'settings') {
@@ -3767,12 +3770,20 @@ async function loadFinance(){
 function finOpenOp(type){
   document.getElementById('finOpTitle').textContent = type==='in'?'Новий дохід':'Нова витрата';
   const sel=document.getElementById('finOpCat'); const cats=type==='in'?FIN_CATS_IN:FIN_CATS_OUT;
-  sel.innerHTML=Object.entries(cats).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('');
+  sel.innerHTML=Object.entries(cats).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')
+    +'<option value="__custom__">✏️ Інша стаття (вписати свою)…</option>';
+  const ci=document.getElementById('finOpCatCustom'); ci.style.display='none'; ci.value='';
   document.getElementById('finOpAmount').value='';
   document.getElementById('finOpNote').value='';
   document.getElementById('finOpMsg').textContent='';
   document.getElementById('finOpModal').dataset.type=type;
   document.getElementById('finOpModal').style.display='flex';
+}
+function finCatChange(){
+  const isCustom=document.getElementById('finOpCat').value==='__custom__';
+  const ci=document.getElementById('finOpCatCustom');
+  ci.style.display=isCustom?'block':'none';
+  if(isCustom) ci.focus();
 }
 function finCloseOp(){ document.getElementById('finOpModal').style.display='none'; }
 // ── Журнал: довідка + меню додаткових дій ──
@@ -3788,15 +3799,20 @@ function journalMenuClose(){ const m=document.getElementById('journalMenu'); if(
 function _journalMenuOutside(ev){ const w=ev.target.closest('.jt-menu-wrap'); if(!w) journalMenuClose(); }
 async function finSaveOp(){
   const modal=document.getElementById('finOpModal'); const type=modal.dataset.type;
-  const category=document.getElementById('finOpCat').value;
+  let category=document.getElementById('finOpCat').value;
+  const msg=document.getElementById('finOpMsg'); const btn=document.getElementById('finOpSave');
+  if(category==='__custom__'){
+    category=document.getElementById('finOpCatCustom').value.trim();
+    if(!category){ msg.style.color='#991b1b'; msg.textContent='Введіть назву статті'; return; }
+  }
   const amount=parseFloat(document.getElementById('finOpAmount').value);
   const method=document.getElementById('finOpMethod').value;
   const description=document.getElementById('finOpNote').value.trim();
-  const msg=document.getElementById('finOpMsg'); const btn=document.getElementById('finOpSave');
   if(!(amount>0)){ msg.style.color='#991b1b'; msg.textContent='Введіть суму більше 0'; return; }
   btn.disabled=true; msg.style.color='var(--text-secondary)'; msg.textContent='Зберігаю...';
   try{
-    const r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description})});
+    // allow_no_shift: ручну витрату/дохід можна провести і без відкритої зміни
+    const r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description,allow_no_shift:true})});
     if(r.error){
       btn.disabled=false; msg.style.color='#991b1b';
       msg.textContent = r.error==='no-open-shift' ? 'Немає відкритої зміни — відкрийте касу в розділі «Каса магазину»' : r.error;
@@ -8481,7 +8497,21 @@ async function calcPayroll() {
   const res = document.getElementById('pyCalcResult');
   res.innerHTML = 'Рахуємо…';
   const r = await api('/api/payroll/calculate', { method: 'POST', body: JSON.stringify({ master_id, period_start, period_end }) });
-  if (!r.ok) { res.innerHTML = `<div class="empty">${r.error || 'Помилка'}</div>`; return; }
+  if (!r.ok) {
+    // Період перетинається зі старою чернеткою розрахунку → пропонуємо прибрати її і перерахувати.
+    if (r.error === 'period_overlap' && Array.isArray(r.conflicts) && r.conflicts.length) {
+      const drafts = r.conflicts.filter(c => c.status !== 'paid');
+      const list = r.conflicts.map(c => `${(c.period_start||'').slice(0,10)}–${(c.period_end||'').slice(0,10)} · ${_pyMoney(c.total)} · ${c.status}`).join('<br>');
+      res.innerHTML = `<div class="empty" style="text-align:left">
+        <b>Період перетинається з наявним розрахунком ЗП</b><br>
+        <span style="color:#777;font-size:13px">${list}</span><br><br>
+        ${drafts.length ? `<button class="btn btn-primary btn-sm" onclick='recalcPayrollForce(${JSON.stringify(master_id)},${JSON.stringify(period_start)},${JSON.stringify(period_end)},${JSON.stringify(drafts.map(d=>d.id))})'>Видалити чернетки і перерахувати</button>`
+          : `<span style="color:#991b1b">Усі перетини вже виплачені — спершу скасуйте виплату.</span>`}
+      </div>`;
+      return;
+    }
+    res.innerHTML = `<div class="empty">${r.message || r.error || 'Помилка'}</div>`; return;
+  }
   const b = r.breakdown || {};
   res.innerHTML = `<div class="stat-cards">
     <div class="stat-c"><div class="v">${_pyMoney(r.total)}</div><div class="l">До виплати</div></div>
@@ -8490,6 +8520,30 @@ async function calcPayroll() {
     <div class="stat-c debt"><div class="v">−${_pyMoney((+b.penalty_sum || 0) + (+b.advance_sum || 0))}</div><div class="l">Штрафи + аванси</div></div>
   </div>`;
   loadPayrollRecords();
+}
+
+async function recalcPayrollForce(master_id, period_start, period_end, draftIds) {
+  const res = document.getElementById('pyCalcResult');
+  if (!await jConfirm('Видалити '+draftIds.length+' чернетку(и) розрахунку за цей період і перерахувати наново?', { okText:'Перерахувати' })) return;
+  res.innerHTML = 'Видаляю чернетки…';
+  try {
+    for (const id of draftIds) {
+      const d = await api('/api/payroll/records/'+id, { method:'DELETE' });
+      if (!d.ok) { res.innerHTML = `<div class="empty">${d.message||d.error||'Не вдалося видалити чернетку #'+id}</div>`; return; }
+    }
+    res.innerHTML = 'Рахуємо…';
+    const r = await api('/api/payroll/calculate', { method:'POST', body: JSON.stringify({ master_id, period_start, period_end, force:true }) });
+    if (!r.ok) { res.innerHTML = `<div class="empty">${r.message||r.error||'Помилка'}</div>`; return; }
+    const b = r.breakdown || {};
+    res.innerHTML = `<div class="stat-cards">
+      <div class="stat-c"><div class="v">${_pyMoney(r.total)}</div><div class="l">До виплати</div></div>
+      <div class="stat-c"><div class="v">${b.services_count || 0}</div><div class="l">Послуг · ${_pyMoney(b.services_revenue)}</div></div>
+      <div class="stat-c paid"><div class="v">+${_pyMoney(b.bonus_sum)}</div><div class="l">Бонуси</div></div>
+      <div class="stat-c debt"><div class="v">−${_pyMoney((+b.penalty_sum || 0) + (+b.advance_sum || 0))}</div><div class="l">Штрафи + аванси</div></div>
+    </div>`;
+    toast('Перераховано','success');
+    loadPayrollRecords();
+  } catch(e){ res.innerHTML = `<div class="empty">${e.message||'Помилка'}</div>`; }
 }
 
 async function loadPayrollRecords() {
@@ -9265,5 +9319,13 @@ function saasFlagEdit(flag){
 })();
 </script>
 <script src="/admin/assets/notes-widget.js"></script>
+<!-- ═══ РОЗШИРЕНІ МОДУЛІ (реєстр + UI нових backend-модулів) ═══ -->
+<script src="/admin/modules/_core.js"></script>
+<script src="/admin/modules/mod-finance.js"></script>
+<script src="/admin/modules/mod-ai.js"></script>
+<script src="/admin/modules/mod-marketing.js"></script>
+<script src="/admin/modules/mod-platform.js"></script>
+<script src="/admin/modules/mod-infra.js"></script>
+<script>if(window.__bootModules)window.__bootModules();</script>
 </body>
 </html>
