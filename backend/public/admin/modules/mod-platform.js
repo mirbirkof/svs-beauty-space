@@ -461,4 +461,270 @@
     }
   });
 
+  /* ════════════════════════════════════════════════════════════
+     5. МЕДИЧНІ КАРТИ  (SAL-10 Medical Cards)
+        cards     /api/medical/cards/:client_id
+        tests     /api/medical/allergy-tests
+        consents  /api/medical/consents
+        formulas  /api/medical/formulas
+        search    /api/medical/formulas/search
+  ════════════════════════════════════════════════════════════ */
+  window.registerModule({
+    page: 'medcards',
+    title: 'Медичні карти',
+    group: 'platform',
+    icon: 'medical_information',
+    section:
+      '<div id="mc-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:16px;align-items:center">' +
+        '<input id="mc-client-id" type="text" placeholder="ID клієнта (для пошуку карти)" ' +
+          'style="padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:240px">' +
+        '<button id="mc-search-btn" style="padding:7px 16px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Знайти карту</button>' +
+      '</div>' +
+      '<div id="mc-card-detail" style="margin-bottom:20px"></div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:8px;align-items:center">' +
+        '<input id="mc-shade-search" type="text" placeholder="Пошук формул: відтінок/бренд" ' +
+          'style="padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:280px">' +
+        '<button id="mc-shade-btn" style="padding:7px 16px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Шукати</button>' +
+      '</div>' +
+      '<div id="mc-formula-search-result" style="margin-bottom:18px"></div>' +
+      '<h3 style="margin:16px 0 8px;font-size:15px">Останні тести на алергію</h3>' +
+      '<div id="mc-tests"></div>' +
+      '<h3 style="margin:18px 0 8px;font-size:15px">Активні інформовані згоди</h3>' +
+      '<div id="mc-consents"></div>' +
+      '<h3 style="margin:18px 0 8px;font-size:15px">Останні формули фарбування</h3>' +
+      '<div id="mc-formulas"></div>',
+
+    loader: async function () {
+      var cardsEl   = document.getElementById('mc-cards');
+      var searchBtn = document.getElementById('mc-search-btn');
+      var clientInp = document.getElementById('mc-client-id');
+      var cardDetail= document.getElementById('mc-card-detail');
+      var shadeInp  = document.getElementById('mc-shade-search');
+      var shadeBtn  = document.getElementById('mc-shade-btn');
+      var fSearchEl = document.getElementById('mc-formula-search-result');
+      var testsEl   = document.getElementById('mc-tests');
+      var consentsEl= document.getElementById('mc-consents');
+      var formulasEl= document.getElementById('mc-formulas');
+
+      var TH = 'padding:9px 12px;text-align:left;border-bottom:2px solid #eee;font-size:12px;color:#888;font-weight:600';
+      var TD = 'padding:9px 12px;border-bottom:1px solid #f0f0f0;font-size:13px';
+
+      function severityColor(s) {
+        if (s === 'anaphylaxis' || s === 'severe') return '#d9534f';
+        if (s === 'moderate') return '#f0ad4e';
+        if (s === 'mild') return '#5bc0de';
+        return '#888';
+      }
+      function resultColor(r) {
+        if (r === 'negative') return '#28a745';
+        if (r === 'strong_reaction') return '#d9534f';
+        if (r === 'mild_reaction') return '#f0ad4e';
+        return '#888';
+      }
+      function localBadge(txt, color) {
+        return '<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;' +
+          'background:' + (color || '#eee') + '22;color:' + (color || '#666') + '">' + E(txt) + '</span>';
+      }
+      function localDt(v) {
+        if (!v) return '—';
+        try { return new Date(v).toLocaleDateString('uk-UA'); } catch (_) { return E(v); }
+      }
+
+      // ── KPI-картки: агрегати з тестів і згод ─────────────────
+      var totalTests = 0, expiredTests = 0, totalConsents = 0, totalFormulas = 0;
+      var kpiLoaded = 0;
+      function maybeRenderKpi() {
+        kpiLoaded++;
+        if (kpiLoaded < 3) return;
+        if (cardsEl) cardsEl.innerHTML =
+          window.modCard('Тестів на алергію', totalTests, '#222') +
+          window.modCard('Прострочених тестів', expiredTests, expiredTests ? '#d9534f' : '#888') +
+          window.modCard('Активних згод', totalConsents, '#28a745') +
+          window.modCard('Формул фарбування', totalFormulas, '#007bff');
+      }
+
+      // ── Тести ────────────────────────────────────────────────
+      if (testsEl) testsEl.innerHTML = window.modEmpty('Завантаження…');
+      window.modApi('/api/medical/allergy-tests?limit=30').then(function (d) {
+        totalTests = (d && d.total) != null ? d.total : 0;
+        expiredTests = 0;
+        var rows = (d && d.items) || [];
+        var now = new Date();
+        rows.forEach(function (t) {
+          if (t.valid_until && new Date(t.valid_until) < now) expiredTests++;
+        });
+        maybeRenderKpi();
+        if (!rows.length) { if (testsEl) testsEl.innerHTML = window.modEmpty('Тестів немає'); return; }
+        var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Продукт</th>' +
+          '<th style="'+TH+'">Зона</th><th style="'+TH+'">Результат</th>' +
+          '<th style="'+TH+'">Дійсний до</th><th style="'+TH+'">Нанесено</th>'];
+        var body = rows.map(function (t) {
+          var isExp = t.valid_until && new Date(t.valid_until) < now;
+          return '<tr style="' + (isExp ? 'opacity:0.6' : '') + '">' +
+            '<td style="'+TD+'">' + E(t.client_id || '—') + '</td>' +
+            '<td style="'+TD+'"><b>' + E(t.product_name || '—') + '</b>' +
+              (t.product_brand ? ' <span style="color:#888;font-size:12px">(' + E(t.product_brand) + ')</span>' : '') + '</td>' +
+            '<td style="'+TD+'">' + E(t.application_zone || '—') + '</td>' +
+            '<td style="'+TD+'">' + localBadge(t.final_result || 'pending', resultColor(t.final_result)) + '</td>' +
+            '<td style="'+TD+'">' + (isExp
+              ? '<span style="color:#d9534f">' + localDt(t.valid_until) + ' ⚠</span>'
+              : localDt(t.valid_until)) + '</td>' +
+            '<td style="'+TD+'">' + localDt(t.applied_at) + '</td>' +
+            '</tr>';
+        }).join('');
+        if (testsEl) testsEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' + heads.join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { maybeRenderKpi(); window.modErr(testsEl, e); });
+
+      // ── Активні згоди ─────────────────────────────────────────
+      if (consentsEl) consentsEl.innerHTML = window.modEmpty('Завантаження…');
+      window.modApi('/api/medical/consents?status=active&limit=30').then(function (d) {
+        totalConsents = (d && d.total) != null ? d.total : 0;
+        maybeRenderKpi();
+        var rows = (d && d.items) || [];
+        if (!rows.length) { if (consentsEl) consentsEl.innerHTML = window.modEmpty('Активних згод немає'); return; }
+        var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Процедура</th>' +
+          '<th style="'+TH+'">Тип</th><th style="'+TH+'">Підписано</th>' +
+          '<th style="'+TH+'">Дійсна до</th><th style="'+TH+'">Статус</th>'];
+        var body = rows.map(function (c) {
+          return '<tr>' +
+            '<td style="'+TD+'">' + E(c.client_id || '—') + '</td>' +
+            '<td style="'+TD+'"><b>' + E(c.procedure_name || '—') + '</b></td>' +
+            '<td style="'+TD+'">' + E(c.consent_type || '—') + '</td>' +
+            '<td style="'+TD+'">' + localDt(c.signed_at) + '</td>' +
+            '<td style="'+TD+'">' + (c.valid_until ? localDt(c.valid_until) : 'безстрокова') + '</td>' +
+            '<td style="'+TD+'">' + localBadge(c.status || '—', c.status === 'active' ? '#28a745' : '#888') + '</td>' +
+            '</tr>';
+        }).join('');
+        if (consentsEl) consentsEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' + heads.join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { maybeRenderKpi(); window.modErr(consentsEl, e); });
+
+      // ── Останні формули фарбування ────────────────────────────
+      if (formulasEl) formulasEl.innerHTML = window.modEmpty('Завантаження…');
+      window.modApi('/api/medical/formulas?limit=20').then(function (d) {
+        totalFormulas = (d && d.total) != null ? d.total : 0;
+        maybeRenderKpi();
+        var rows = (d && d.items) || [];
+        if (!rows.length) { if (formulasEl) formulasEl.innerHTML = window.modEmpty('Формул немає'); return; }
+        var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Майстер</th>' +
+          '<th style="'+TH+'">Дата</th><th style="'+TH+'">Зони / бренди</th>' +
+          '<th style="'+TH+'">Оцінка майстра</th><th style="'+TH+'">Оцінка клієнта</th>'];
+        var body = rows.map(function (f) {
+          var zones = Array.isArray(f.zones) ? f.zones : [];
+          var zoneStr = zones.slice(0, 2).map(function (z) {
+            return E((z.zone || '') + (z.brand ? ':' + z.brand : '') + (z.shade ? '/' + z.shade : ''));
+          }).join(', ') + (zones.length > 2 ? '…' : '');
+          return '<tr>' +
+            '<td style="'+TD+'">' + E(f.client_id || '—') + '</td>' +
+            '<td style="'+TD+'">' + E(f.employee_name || f.employee_id || '—') + '</td>' +
+            '<td style="'+TD+'">' + localDt(f.formula_date) + '</td>' +
+            '<td style="'+TD+'" title="' + E(JSON.stringify(zones)) + '">' + (zoneStr || '—') + '</td>' +
+            '<td style="'+TD+'">' + (f.result_rating != null ? '★'.repeat(Number(f.result_rating)) : '—') + '</td>' +
+            '<td style="'+TD+'">' + (f.client_rating != null ? '★'.repeat(Number(f.client_rating)) : '—') + '</td>' +
+            '</tr>';
+        }).join('');
+        if (formulasEl) formulasEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' + heads.join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { window.modErr(formulasEl, e); });
+
+      // ── Пошук карти клієнта ───────────────────────────────────
+      function loadClientCard() {
+        var cid = clientInp ? clientInp.value.trim() : '';
+        if (!cid) return;
+        if (cardDetail) cardDetail.innerHTML = window.modEmpty('Завантаження…');
+        window.modApi('/api/medical/cards/' + encodeURIComponent(cid)).then(function (d) {
+          var card = d && d.card;
+          if (!card) { if (cardDetail) cardDetail.innerHTML = window.modEmpty('Карту не знайдено'); return; }
+          var allergies = (card.allergies || []);
+          var contraind = (card.contraindications || []);
+          var meds      = (card.current_medications || []);
+          var allergyHtml = allergies.length
+            ? allergies.map(function (a) {
+                return '<span style="display:inline-block;margin:2px 4px;padding:3px 10px;border-radius:10px;' +
+                  'background:' + severityColor(a.severity) + '22;color:' + severityColor(a.severity) + ';font-size:12px">' +
+                  E(a.allergen || '?') + (a.severity ? ' (' + E(a.severity) + ')' : '') + '</span>';
+              }).join('')
+            : '<span style="color:#28a745;font-size:13px">Алергій не виявлено</span>';
+          var contrHtml = contraind.filter(function (c) { return c.active !== false; }).length
+            ? contraind.filter(function (c) { return c.active !== false; }).map(function (c) {
+                return '<span style="display:inline-block;margin:2px 4px;padding:3px 10px;border-radius:10px;' +
+                  'background:#d9534f22;color:#d9534f;font-size:12px">' + E(c.condition || '?') + '</span>';
+              }).join('')
+            : '<span style="color:#28a745;font-size:13px">Протипоказань немає</span>';
+          var medsHtml = meds.length
+            ? meds.map(function (m) {
+                return '<span style="display:inline-block;margin:2px 4px;padding:3px 10px;border-radius:10px;' +
+                  'background:#007bff22;color:#007bff;font-size:12px">' +
+                  E(m.name || '?') + (m.dosage ? ' ' + E(m.dosage) : '') + '</span>';
+              }).join('')
+            : '<span style="color:#888;font-size:13px">Немає</span>';
+          var html = '<div style="border:1px solid #eee;border-radius:8px;padding:16px;background:#fafafa">' +
+            '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px">' +
+              '<div><b style="font-size:12px;color:#888">Клієнт ID</b><br>' + E(card.client_id) + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Фототип шкіри</b><br>' + (card.skin_phototype ? E('Тип ' + card.skin_phototype) : '—') + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Тип шкіри</b><br>' + E(card.skin_type || '—') + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Стан волосся</b><br>' + E(card.hair_condition || '—') + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Група крові</b><br>' + E(card.blood_type || '—') + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Статус карти</b><br>' +
+                localBadge(card.status || '—', card.status === 'active' ? '#28a745' : card.status === 'needs_update' ? '#f0ad4e' : '#888') + '</div>' +
+              '<div><b style="font-size:12px;color:#888">Оновлено</b><br>' + localDt(card.last_reviewed_at) + '</div>' +
+            '</div>' +
+            '<div style="margin-bottom:10px"><b style="font-size:13px">Алергії</b><br>' + allergyHtml + '</div>' +
+            '<div style="margin-bottom:10px"><b style="font-size:13px">Протипоказання</b><br>' + contrHtml + '</div>' +
+            '<div style="margin-bottom:10px"><b style="font-size:13px">Поточні ліки</b><br>' + medsHtml + '</div>' +
+            (card.emergency_contact_name
+              ? '<div style="font-size:12px;color:#888">Екстрений контакт: ' +
+                  E(card.emergency_contact_name) +
+                  (card.emergency_contact_phone ? ' — ' + E(card.emergency_contact_phone) : '') + '</div>'
+              : '') +
+            '<div style="margin-top:10px;font-size:12px;color:#888">Формул фарбування: <b>' +
+              E(d.formulas_count != null ? d.formulas_count : '—') + '</b>' +
+              (d.active_consents && d.active_consents.length
+                ? ' | Активних згод: <b>' + E(d.active_consents.length) + '</b>' : '') +
+            '</div>' +
+          '</div>';
+          if (cardDetail) cardDetail.innerHTML = html;
+        }).catch(function (e) { window.modErr(cardDetail, e); });
+      }
+      if (searchBtn) searchBtn.addEventListener('click', loadClientCard);
+      if (clientInp) clientInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') loadClientCard(); });
+
+      // ── Пошук формул за відтінком / брендом ──────────────────
+      function searchFormulas() {
+        var q = shadeInp ? shadeInp.value.trim() : '';
+        if (!q) return;
+        if (fSearchEl) fSearchEl.innerHTML = window.modEmpty('Пошук…');
+        window.modApi('/api/medical/formulas/search?shade=' + encodeURIComponent(q) +
+          '&brand=' + encodeURIComponent(q) + '&limit=30').then(function (d) {
+          var rows = (d && d.items) || [];
+          if (!rows.length) { if (fSearchEl) fSearchEl.innerHTML = window.modEmpty('Нічого не знайдено'); return; }
+          var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Майстер</th>' +
+            '<th style="'+TH+'">Дата</th><th style="'+TH+'">Формула</th>'];
+          var body = rows.map(function (f) {
+            var zones = Array.isArray(f.zones) ? f.zones : [];
+            var zStr = zones.map(function (z) {
+              return E([z.zone, z.brand, z.shade, z.oxidant_pct].filter(Boolean).join(' '));
+            }).join(' | ');
+            return '<tr>' +
+              '<td style="'+TD+'">' + E(f.client_name || f.client_id || '—') + '</td>' +
+              '<td style="'+TD+'">' + E(f.employee_name || '—') + '</td>' +
+              '<td style="'+TD+'">' + localDt(f.formula_date) + '</td>' +
+              '<td style="'+TD+'">' + (zStr || '—') + '</td>' +
+              '</tr>';
+          }).join('');
+          if (fSearchEl) fSearchEl.innerHTML =
+            '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr>' + heads.join('') + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+        }).catch(function (e) { window.modErr(fSearchEl, e); });
+      }
+      if (shadeBtn) shadeBtn.addEventListener('click', searchFormulas);
+      if (shadeInp) shadeInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchFormulas(); });
+    }
+  });
+
 })();
