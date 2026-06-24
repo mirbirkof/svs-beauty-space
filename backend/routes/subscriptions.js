@@ -29,9 +29,22 @@ async function genNumber() {
   const seq = String(r.rows[0].c + 1).padStart(4, '0');
   return `SUB-${year}-${seq}`;
 }
-// Ліниве протермінування
+// Ліниве протермінування + авто-розморозка по даті + вихід з grace-period.
 async function refreshExpiry(sub) {
-  if (sub && ['active', 'frozen'].includes(sub.status) && sub.status !== 'frozen' && sub.expires_at && String(sub.expires_at).slice(0, 10) < kyivToday()) {
+  if (!sub) return sub;
+  const today = kyivToday();
+  // Авто-розморозка, якщо настала дата unfreeze_at (продовжуємо строк на дні заморозки).
+  if (sub.status === 'frozen' && sub.unfreeze_at && String(sub.unfreeze_at).slice(0, 10) <= today) {
+    const frozenDays = sub.frozen_at ? Math.max(1, Math.ceil((Date.now() - new Date(sub.frozen_at).getTime()) / 86400000)) : 0;
+    const newExpires = addDays(String(sub.expires_at).slice(0, 10), frozenDays);
+    await pool.query(`UPDATE subscriptions SET status='active', frozen_at=NULL, unfreeze_at=NULL, expires_at=$1, total_frozen_days=total_frozen_days+$2, updated_at=NOW() WHERE id=$3`, [newExpires, frozenDays, sub.id]);
+    await pool.query(`UPDATE subscription_freezes SET unfrozen_at=NOW(), days=$1 WHERE subscription_id=$2 AND unfrozen_at IS NULL`, [frozenDays, sub.id]);
+    sub.status = 'active'; sub.expires_at = newExpires; sub.frozen_at = null; sub.unfreeze_at = null;
+  }
+  // Протермінування активних/grace по строку дії.
+  if (['active', 'trial', 'grace_period'].includes(sub.status) && sub.expires_at && String(sub.expires_at).slice(0, 10) < today) {
+    // grace_period: ще даємо дожити до grace_until.
+    if (sub.status === 'grace_period' && sub.grace_until && String(sub.grace_until).slice(0, 10) >= today) return sub;
     await pool.query(`UPDATE subscriptions SET status='expired', updated_at=NOW() WHERE id=$1`, [sub.id]);
     sub.status = 'expired';
   }
@@ -60,15 +73,19 @@ router.post('/plans', async (req, res) => {
     const type = ['visits', 'time', 'minutes', 'combo'].includes(b.type) ? b.type : 'visits';
     const r = await pool.query(
       `INSERT INTO subscription_plans
-        (name,description,type,visits_included,minutes_included,duration_days,price,service_ids,category_ids,
-         master_restriction,master_ids,auto_renew,max_freezes,max_freeze_days,carry_over_visits,max_carry_over,max_users,active,sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        (name,description,type,visits_included,minutes_included,duration_days,price,price_monthly,trial_price,trial_days,
+         service_ids,category_ids,master_restriction,master_ids,branch_ids,branch_id,
+         auto_renew,max_freezes,max_freeze_days,carry_over_visits,max_carry_over,renew_grace_days,max_users,active,sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [b.name, b.description || null, type, b.visits_included || null, b.minutes_included || null,
        Number(b.duration_days) > 0 ? Number(b.duration_days) : 365, Number(b.price),
+       b.price_monthly != null ? Number(b.price_monthly) : null, b.trial_price != null ? Number(b.trial_price) : null,
+       Number(b.trial_days) > 0 ? Number(b.trial_days) : null,
        Array.isArray(b.service_ids) ? b.service_ids : [], Array.isArray(b.category_ids) ? b.category_ids : [],
        b.master_restriction === 'specific' ? 'specific' : 'any', Array.isArray(b.master_ids) ? b.master_ids : [],
+       Array.isArray(b.branch_ids) ? b.branch_ids : [], b.branch_id || null,
        !!b.auto_renew, b.max_freezes ?? 2, b.max_freeze_days ?? 14, !!b.carry_over_visits, b.max_carry_over ?? 0,
-       b.max_users > 0 ? b.max_users : 1, b.active !== false, b.sort_order ?? 0]);
+       b.renew_grace_days ?? 3, b.max_users > 0 ? b.max_users : 1, b.active !== false, b.sort_order ?? 0]);
     logAction({ user: req.user, action: 'subscription.plan.create', entity: 'subscription_plan', entity_id: r.rows[0].id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, plan: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -78,8 +95,9 @@ router.post('/plans', async (req, res) => {
 router.patch('/plans/:id', async (req, res) => {
   try {
     const allow = ['name', 'description', 'type', 'visits_included', 'minutes_included', 'duration_days', 'price',
-      'service_ids', 'category_ids', 'master_restriction', 'master_ids', 'auto_renew', 'max_freezes', 'max_freeze_days',
-      'carry_over_visits', 'max_carry_over', 'max_users', 'active', 'sort_order'];
+      'price_monthly', 'trial_price', 'trial_days', 'service_ids', 'category_ids', 'master_restriction', 'master_ids',
+      'branch_ids', 'branch_id', 'auto_renew', 'max_freezes', 'max_freeze_days', 'carry_over_visits', 'max_carry_over',
+      'renew_grace_days', 'max_users', 'active', 'sort_order'];
     const sets = [], params = [];
     for (const k of allow) if (k in (req.body || {})) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
     if (!sets.length) return res.status(400).json({ error: 'no fields' });
@@ -137,14 +155,58 @@ router.get('/analytics', async (req, res) => {
       SELECT p.id, p.name, COUNT(*)::int AS sales, COALESCE(SUM(p.price),0)::numeric AS revenue
       FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
       WHERE s.created_at BETWEEN $1 AND $2 GROUP BY p.id, p.name ORDER BY sales DESC LIMIT 5`, [from, to]);
+    // MRR: нормалізована місячна виручка по активних абонементах (помісячна ціна або price/міс по строку).
+    const mrrR = await pool.query(`
+      SELECT COALESCE(SUM(
+        CASE WHEN p.price_monthly IS NOT NULL AND p.price_monthly > 0 THEN p.price_monthly
+             WHEN p.duration_days > 0 THEN p.price / (p.duration_days / 30.0)
+             ELSE 0 END),0)::numeric(12,2) AS mrr
+      FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
+      WHERE s.status IN ('active','trial','frozen','grace_period')`);
+    // Середній строк життя клієнта на абонементі (місяців) по завершених/відмінених.
+    const lifeR = await pool.query(`
+      SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(s.cancelled_at, s.updated_at) - s.created_at)) / 86400 / 30.0),0)::numeric(10,1) AS avg_months
+      FROM subscriptions s WHERE s.status IN ('expired','cancelled')`);
+    // Retention: % абонементів з auto_renew, що мають >1 платіж (продовжили).
+    const retR = await pool.query(`
+      SELECT COUNT(*) FILTER (WHERE pay_cnt > 1)::numeric AS renewed, COUNT(*)::numeric AS total
+      FROM (SELECT s.id, COUNT(sp.id) AS pay_cnt FROM subscriptions s
+            LEFT JOIN subscription_payments sp ON sp.subscription_id=s.id AND sp.status='paid'
+            GROUP BY s.id) q`);
+    const retained = Number(retR.rows[0].total) > 0 ? Number(retR.rows[0].renewed) / Number(retR.rows[0].total) * 100 : 0;
     res.json({
       sold_count: sold.rows[0].sold_count,
       sold_amount: Number(sold.rows[0].sold_amount),
       active_count: active.rows[0].c,
+      mrr: Number(mrrR.rows[0].mrr),
       avg_usage_percent: Number(usage.rows[0].avg_usage_percent),
       churn_rate: Math.round(ch * 10) / 10,
+      retention_rate: Math.round(retained * 10) / 10,
+      avg_lifetime_months: Number(lifeR.rows[0].avg_months),
       top_plans: top.rows
     });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /expiring — абонементи що скоро закінчуються/закінчуються візити (для COM-01 нагадувань)
+router.get('/expiring', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+    const lowVisits = parseInt(req.query.low_visits, 10) || 2;
+    const limit = String(addDays(kyivToday(), days));
+    const r = await pool.query(`
+      SELECT s.id, s.subscription_number, s.client_id, s.status, s.expires_at,
+             s.visits_remaining, s.minutes_remaining, s.expiry_notified_at,
+             p.name AS plan_name, p.type AS plan_type, c.name AS client_name, c.phone AS client_phone
+      FROM subscriptions s
+      JOIN subscription_plans p ON p.id=s.plan_id
+      LEFT JOIN clients c ON c.id=s.client_id
+      WHERE s.status IN ('active','trial')
+        AND ( s.expires_at <= $1
+              OR (p.type IN ('visits','combo') AND COALESCE(s.visits_remaining,0) <= $2 AND COALESCE(s.visits_remaining,0) > 0)
+              OR (p.type='minutes' AND COALESCE(s.minutes_remaining,0) <= $3 AND COALESCE(s.minutes_remaining,0) > 0) )
+      ORDER BY s.expires_at ASC`, [limit, lowVisits, lowVisits * 30]);
+    res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -153,16 +215,21 @@ router.get('/check/:client_id', async (req, res) => {
   try {
     const cid = +req.params.client_id;
     const sid = req.query.service_id ? +req.query.service_id : null;
+    const branch = req.query.branch_id ? +req.query.branch_id : null;
+    // Власні + сімейні абонементи (клієнт може бути доданий до чужого як subscription_users).
     const r = await pool.query(
-      `SELECT s.*, p.name AS plan_name, p.type AS plan_type, p.service_ids, p.category_ids
+      `SELECT DISTINCT s.*, p.name AS plan_name, p.type AS plan_type, p.service_ids, p.category_ids, p.branch_ids
        FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
-       WHERE s.client_id=$1 AND s.status='active'
+       LEFT JOIN subscription_users su ON su.subscription_id=s.id AND su.removed_at IS NULL
+       WHERE (s.client_id=$1 OR su.client_id=$1) AND s.status IN ('active','trial')
        ORDER BY s.expires_at ASC`, [cid]);
     const today = kyivToday();
     for (let sub of r.rows) {
       if (String(sub.expires_at).slice(0, 10) < today) continue;
       // перевірка послуги (порожній service_ids = будь-яка)
       if (sid && Array.isArray(sub.service_ids) && sub.service_ids.length && !sub.service_ids.includes(sid)) continue;
+      // перевірка філії (порожній branch_ids = всі)
+      if (branch && Array.isArray(sub.branch_ids) && sub.branch_ids.length && !sub.branch_ids.includes(branch)) continue;
       const hasBalance = sub.plan_type === 'minutes'
         ? Number(sub.minutes_remaining) > 0
         : (sub.plan_type === 'time' ? true : Number(sub.visits_remaining) > 0);
@@ -206,21 +273,38 @@ router.post('/', async (req, res) => {
     if (!plan) return res.status(404).json({ error: 'plan not found' });
     if (!plan.active) return res.status(409).json({ error: 'plan inactive' });
     const start = b.start_date || kyivToday();
-    const expires = addDays(start, plan.duration_days || 365);
+    // Trial-період: якщо план має trial і клієнт явно/неявно його бере, строк = trial_days, ціна = trial_price.
+    const useTrial = b.trial === true && Number(plan.trial_days) > 0;
+    const durDays = useTrial ? Number(plan.trial_days) : (plan.duration_days || 365);
+    const expires = addDays(start, durDays);
+    const trialEnds = useTrial ? expires : null;
+    const status = useTrial ? 'trial' : 'active';
+    const price = useTrial ? (plan.trial_price != null ? Number(plan.trial_price) : 0)
+                : (b.payment_method === 'monthly' && plan.price_monthly != null ? Number(plan.price_monthly) : Number(plan.price));
     const number = await genNumber();
     const visitsRem = ['visits', 'combo'].includes(plan.type) ? plan.visits_included : null;
     const minutesRem = plan.type === 'minutes' ? plan.minutes_included : null;
     const ins = await pool.query(
       `INSERT INTO subscriptions
-        (plan_id,client_id,subscription_number,status,visits_remaining,minutes_remaining,started_at,expires_at,auto_renew,sold_by,notes)
-       VALUES ($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [plan.id, +b.client_id, number, visitsRem, minutesRem, start, expires, !!b.auto_renew, req.user?.display_name || null, b.notes || null]);
+        (plan_id,client_id,branch_id,subscription_number,status,visits_remaining,minutes_remaining,started_at,expires_at,
+         auto_renew,payment_method,is_trial,trial_ends_at,sold_by,notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [plan.id, +b.client_id, b.branch_id || null, number, status, visitsRem, minutesRem, start, expires,
+       !!b.auto_renew, b.payment_method || b.method || 'cash', useTrial, trialEnds, req.user?.display_name || null, b.notes || null]);
     const sub = ins.rows[0];
     // primary користувач
     await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [sub.id, +b.client_id]);
     // деньги в кассу/ДДС: продажа абонемента (аудит 22.06 #12). Идемпотентно по ext_ref.
-    await recordCashIn({ category: 'sale_subscription', amount: plan.price, method: b.method || 'cash', ref_type: 'subscription', ref_id: sub.id, description: `Продаж абонемента ${number} (${plan.name})`, ext_ref: `sub:sell:${sub.id}` }).catch(e => console.error('cash-ledger sub:', e.message));
-    logAction({ user: req.user, action: 'subscription.sell', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { number, plan: plan.name, price: plan.price } }).catch(() => {});
+    let cashOpId = null;
+    if (price > 0) {
+      cashOpId = await recordCashIn({ category: 'sale_subscription', amount: price, method: b.method || b.payment_method || 'cash', ref_type: 'subscription', ref_id: sub.id, description: `Продаж абонемента ${number} (${plan.name})${useTrial ? ' [trial]' : ''}`, ext_ref: `sub:sell:${sub.id}` }).catch(e => { console.error('cash-ledger sub:', e.message); return null; });
+    }
+    // Запис платежу (recurring billing leg).
+    await pool.query(
+      `INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,attempt,notes)
+       VALUES ($1,$2,$3,$4,'paid',$5,$6,1,$7)`,
+      [sub.id, price, start, expires, b.method || b.payment_method || 'cash', cashOpId, useTrial ? 'trial' : 'sale']).catch(e => console.error('sub-payment:', e.message));
+    logAction({ user: req.user, action: 'subscription.sell', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { number, plan: plan.name, price, trial: useTrial } }).catch(() => {});
     res.json({ ok: true, subscription: sub, plan });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -232,7 +316,7 @@ router.post('/:id/use', async (req, res) => {
     let sub = (await pool.query(`SELECT s.*, p.type AS plan_type FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1`, [+req.params.id])).rows[0];
     if (!sub) return res.status(404).json({ error: 'not found' });
     sub = await refreshExpiry(sub);
-    if (sub.status !== 'active') return res.status(409).json({ error: 'not-active', status: sub.status });
+    if (!['active', 'trial'].includes(sub.status)) return res.status(409).json({ error: 'not-active', status: sub.status });
     const isMinutes = sub.plan_type === 'minutes';
     const isTime = sub.plan_type === 'time';
     let balance = null, col = null;
@@ -242,7 +326,8 @@ router.post('/:id/use', async (req, res) => {
       if (qty > cur) return res.status(409).json({ error: 'insufficient-balance', remaining: cur });
       balance = cur - qty;
     }
-    const newStatus = (!isTime && balance <= 0) ? 'expired' : 'active';
+    // При нульовому остатку: visits/combo/minutes → expired; trial зберігає свій статус доки не вичерпано і не минув строк.
+    const newStatus = (!isTime && balance <= 0) ? 'expired' : sub.status;
     if (!isTime) {
       await pool.query(`UPDATE subscriptions SET ${col}=$1, status=$2, updated_at=NOW() WHERE id=$3`, [balance, newStatus, sub.id]);
     }
@@ -317,6 +402,183 @@ router.delete('/:id/users/:client_id', async (req, res) => {
   try {
     await pool.query(`UPDATE subscription_users SET removed_at=NOW() WHERE subscription_id=$1 AND client_id=$2 AND is_primary=false`, [+req.params.id, +req.params.client_id]);
     res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /:id/usage — історія списань (окремим ендпоінтом, з пагінацією)
+router.get('/:id/usage', async (req, res) => {
+  try {
+    const lim = Math.min(+req.query.limit || 100, 500);
+    const off = Math.max(+req.query.offset || 0, 0);
+    const r = await pool.query(
+      `SELECT u.*, c.name AS client_name FROM subscription_usage u
+       LEFT JOIN clients c ON c.id=u.client_id
+       WHERE u.subscription_id=$1 ORDER BY u.created_at DESC LIMIT ${lim} OFFSET ${off}`, [+req.params.id]);
+    res.json({ items: r.rows, count: r.rows.length });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /:id/payments — історія платежів
+router.get('/:id/payments', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM subscription_payments WHERE subscription_id=$1 ORDER BY created_at DESC`, [+req.params.id]);
+    res.json({ items: r.rows, count: r.rows.length });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /:id/payments — зафіксувати платіж (помісячне списання / повторна спроба)
+router.post('/:id/payments', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const b = req.body || {};
+    const sub = (await pool.query(`SELECT s.*, p.name AS plan_name, p.price_monthly, p.renew_grace_days FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1`, [id])).rows[0];
+    if (!sub) return res.status(404).json({ error: 'not found' });
+    const amount = Number(b.amount) > 0 ? Number(b.amount) : Number(sub.price_monthly) || 0;
+    const status = ['paid', 'pending', 'failed', 'refunded'].includes(b.status) ? b.status : 'paid';
+    const attempt = (sub.failed_payments || 0) + 1;
+    let cashOpId = null;
+    if (status === 'paid' && amount > 0) {
+      cashOpId = await recordCashIn({ category: 'sale_subscription', amount, method: b.payment_method || 'card', ref_type: 'subscription', ref_id: sub.id, description: `Платіж по абонементу ${sub.subscription_number}`, ext_ref: `sub:pay:${sub.id}:${Date.now()}` }).catch(() => null);
+    }
+    const ins = await pool.query(
+      `INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,attempt,next_retry_at,notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [sub.id, amount, b.period_start || null, b.period_end || null, status, b.payment_method || 'card', cashOpId,
+       status === 'failed' ? attempt : 1, b.next_retry_at || null, b.notes || null]);
+    // Обробка статусу автопродовження.
+    if (status === 'paid') {
+      await pool.query(`UPDATE subscriptions SET failed_payments=0, grace_until=NULL, status=CASE WHEN status='grace_period' THEN 'active' ELSE status END, updated_at=NOW() WHERE id=$1`, [sub.id]);
+    } else if (status === 'failed') {
+      // 3 спроби → grace-period → деактивація.
+      if (attempt >= 3) {
+        await pool.query(`UPDATE subscriptions SET failed_payments=$1, status='cancelled', cancelled_at=NOW(), cancel_reason='auto: payment failed x3', updated_at=NOW() WHERE id=$2`, [attempt, sub.id]);
+      } else {
+        const grace = addDays(kyivToday(), sub.renew_grace_days || 3);
+        await pool.query(`UPDATE subscriptions SET failed_payments=$1, status='grace_period', grace_until=$2, updated_at=NOW() WHERE id=$3`, [attempt, grace, sub.id]);
+      }
+    }
+    logAction({ user: req.user, action: 'subscription.payment', entity: 'subscription', entity_id: sub.id, ip: req.ip, meta: { amount, status, attempt } }).catch(() => {});
+    res.json({ ok: true, payment: ins.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /:id/adjust — ручна корекція остатку/строку (09.03, з аудитом)
+router.post('/:id/adjust', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const b = req.body || {};
+    const sub = (await pool.query(`SELECT s.*, p.type AS plan_type FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1`, [id])).rows[0];
+    if (!sub) return res.status(404).json({ error: 'not found' });
+    const field = b.field;
+    if (!['visits_remaining', 'minutes_remaining', 'expires_at'].includes(field)) return res.status(400).json({ error: 'field: visits_remaining|minutes_remaining|expires_at' });
+    let newVal, delta = null;
+    if (field === 'expires_at') {
+      if (!b.value) return res.status(400).json({ error: 'value (date) required' });
+      newVal = String(b.value).slice(0, 10);
+    } else {
+      const cur = Number(sub[field]) || 0;
+      newVal = b.value != null ? Number(b.value) : cur + (Number(b.delta) || 0);
+      if (!(newVal >= 0)) return res.status(400).json({ error: 'value must be >= 0' });
+      delta = newVal - cur;
+    }
+    const upd = (await pool.query(`UPDATE subscriptions SET ${field}=$1, updated_at=NOW() WHERE id=$2 RETURNING *`, [newVal, id])).rows[0];
+    await pool.query(
+      `INSERT INTO subscription_adjustments (subscription_id,field,old_value,new_value,delta,reason,performed_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, field, String(sub[field] ?? ''), String(newVal), delta, b.reason || null, req.user?.display_name || null]);
+    logAction({ user: req.user, action: 'subscription.adjust', entity: 'subscription', entity_id: id, ip: req.ip, meta: { field, delta, reason: b.reason } }).catch(() => {});
+    res.json({ ok: true, subscription: upd });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /:id/renew — продовжити абонемент (новий період, перенесення невикористаних візитів)
+router.post('/:id/renew', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const b = req.body || {};
+    let sub = (await pool.query(`SELECT * FROM subscriptions WHERE id=$1`, [id])).rows[0];
+    if (!sub) return res.status(404).json({ error: 'not found' });
+    sub = await refreshExpiry(sub);
+    if (['cancelled'].includes(sub.status)) return res.status(409).json({ error: 'cancelled' });
+    const plan = (await pool.query(`SELECT * FROM subscription_plans WHERE id=$1`, [sub.plan_id])).rows[0];
+    if (!plan) return res.status(404).json({ error: 'plan not found' });
+    // Перенесення невикористаних візитів (якщо план дозволяє).
+    let carry = 0;
+    if (plan.carry_over_visits && ['visits', 'combo'].includes(plan.type)) {
+      carry = Math.min(Number(sub.visits_remaining) || 0, Number(plan.max_carry_over) || 0);
+    }
+    const start = b.start_date || (String(sub.expires_at).slice(0, 10) >= kyivToday() ? String(sub.expires_at).slice(0, 10) : kyivToday());
+    const expires = addDays(start, plan.duration_days || 365);
+    const number = await genNumber();
+    const visitsRem = ['visits', 'combo'].includes(plan.type) ? (Number(plan.visits_included) || 0) + carry : null;
+    const minutesRem = plan.type === 'minutes' ? plan.minutes_included : null;
+    const price = b.payment_method === 'monthly' && plan.price_monthly != null ? Number(plan.price_monthly) : Number(plan.price);
+    const ins = await pool.query(
+      `INSERT INTO subscriptions
+        (plan_id,client_id,branch_id,subscription_number,status,visits_remaining,minutes_remaining,started_at,expires_at,
+         auto_renew,payment_method,carried_over,renewed_from_id,sold_by,notes)
+       VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [plan.id, sub.client_id, sub.branch_id, number, visitsRem, minutesRem, start, expires,
+       sub.auto_renew, b.payment_method || 'cash', carry, sub.id, req.user?.display_name || null, b.notes || null]);
+    const next = ins.rows[0];
+    await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [next.id, sub.client_id]);
+    let cashOpId = null;
+    if (price > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: price, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Продовження абонемента ${number} (${plan.name})`, ext_ref: `sub:renew:${next.id}` }).catch(() => null);
+    await pool.query(`INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,notes) VALUES ($1,$2,$3,$4,'paid',$5,$6,'renew')`, [next.id, price, start, expires, b.method || 'cash', cashOpId]).catch(() => {});
+    logAction({ user: req.user, action: 'subscription.renew', entity: 'subscription', entity_id: next.id, ip: req.ip, meta: { from: sub.id, carry } }).catch(() => {});
+    res.json({ ok: true, subscription: next, carried_over: carry });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /:id/upgrade — апгрейд/даунгрейд плану (перерахунок, перенесення остатку)
+router.post('/:id/upgrade', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const b = req.body || {};
+    if (!b.new_plan_id) return res.status(400).json({ error: 'new_plan_id required' });
+    let sub = (await pool.query(`SELECT s.*, p.price AS old_price FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1`, [id])).rows[0];
+    if (!sub) return res.status(404).json({ error: 'not found' });
+    sub = await refreshExpiry(sub);
+    if (!['active', 'trial', 'frozen', 'grace_period'].includes(sub.status)) return res.status(409).json({ error: 'not-upgradable', status: sub.status });
+    const np = (await pool.query(`SELECT * FROM subscription_plans WHERE id=$1`, [+b.new_plan_id])).rows[0];
+    if (!np) return res.status(404).json({ error: 'new plan not found' });
+    if (!np.active) return res.status(409).json({ error: 'new plan inactive' });
+    const start = kyivToday();
+    const expires = addDays(start, np.duration_days || 365);
+    const number = await genNumber();
+    // Перенесення остатку: visits → visits, інакше з нуля по новому плану.
+    let visitsRem = ['visits', 'combo'].includes(np.type) ? np.visits_included : null;
+    if (['visits', 'combo'].includes(np.type) && Number(sub.visits_remaining) > 0) visitsRem = Number(np.visits_included || 0) + Number(sub.visits_remaining);
+    const minutesRem = np.type === 'minutes' ? (Number(np.minutes_included || 0) + (Number(sub.minutes_remaining) || 0)) : null;
+    // Перерахунок: різниця цін (доплата при апгрейді; даунгрейд = 0, без повернення тут).
+    const diff = Math.max(0, Number(np.price) - Number(sub.old_price));
+    const ins = await pool.query(
+      `INSERT INTO subscriptions
+        (plan_id,client_id,branch_id,subscription_number,status,visits_remaining,minutes_remaining,started_at,expires_at,
+         auto_renew,payment_method,renewed_from_id,sold_by,notes)
+       VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [np.id, sub.client_id, sub.branch_id, number, visitsRem, minutesRem, start, expires,
+       sub.auto_renew, sub.payment_method || 'cash', sub.id, req.user?.display_name || null, b.notes || null]);
+    const next = ins.rows[0];
+    await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [next.id, sub.client_id]);
+    // Старий абонемент закриваємо, фіксуємо звʼязок.
+    await pool.query(`UPDATE subscriptions SET status='cancelled', cancelled_at=NOW(), cancel_reason='upgrade', upgraded_to_id=$1, updated_at=NOW() WHERE id=$2`, [next.id, sub.id]);
+    let cashOpId = null;
+    if (diff > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: diff, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Апгрейд абонемента ${number} (${np.name}), доплата`, ext_ref: `sub:upgrade:${next.id}` }).catch(() => null);
+    await pool.query(`INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,notes) VALUES ($1,$2,$3,$4,'paid',$5,$6,'upgrade')`, [next.id, diff, start, expires, b.method || 'cash', cashOpId]).catch(() => {});
+    logAction({ user: req.user, action: 'subscription.upgrade', entity: 'subscription', entity_id: next.id, ip: req.ip, meta: { from: sub.id, new_plan: np.id, diff } }).catch(() => {});
+    res.json({ ok: true, subscription: next, surcharge: diff });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /:id/notify — позначити надіслане нагадування (renewal | expiry) для COM-01
+router.post('/:id/notify', async (req, res) => {
+  try {
+    const kind = req.body?.kind === 'renewal' ? 'renewal' : 'expiry';
+    const col = kind === 'renewal' ? 'renewal_notified_at' : 'expiry_notified_at';
+    const upd = (await pool.query(`UPDATE subscriptions SET ${col}=NOW(), updated_at=NOW() WHERE id=$1 RETURNING id, ${col}`, [+req.params.id])).rows[0];
+    if (!upd) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true, kind, notified_at: upd[col] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
