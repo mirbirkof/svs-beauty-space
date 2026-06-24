@@ -727,4 +727,228 @@
     }
   });
 
+  /* ════ SAL-08 Procedure Materials UI ══════════════════════════════
+     Маршрути: /api/material-norms, /api/material-norms/consumption/*,
+               /api/material-norms/reports/profitability
+  ════════════════════════════════════════════════════════════════════ */
+  window.registerModule({
+    page: 'matconsume',
+    title: 'Матеріали процедур',
+    group: 'platform',
+    icon: 'science',
+    section:
+      '<div id="mcon-kpi" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">' +
+        '<label style="font-size:13px;color:#555">Від: <input id="mcon-dfrom" type="date" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:13px"></label>' +
+        '<label style="font-size:13px;color:#555">До: <input id="mcon-dto" type="date" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:13px"></label>' +
+        '<select id="mcon-groupby" style="padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px">' +
+          '<option value="product">По матеріалу</option>' +
+          '<option value="service">По послузі</option>' +
+          '<option value="employee">По майстру</option>' +
+        '</select>' +
+        '<button id="mcon-apply" style="padding:6px 16px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Застосувати</button>' +
+      '</div>' +
+      '<h3 style="font-size:14px;margin:0 0 8px;font-weight:600">Звіт розходу матеріалів</h3>' +
+      '<div id="mcon-report" style="margin-bottom:20px"></div>' +
+      '<h3 style="font-size:14px;margin:16px 0 8px;font-weight:600">Прогноз — що закінчується (14 днів)</h3>' +
+      '<div id="mcon-forecast" style="margin-bottom:20px"></div>' +
+      '<h3 style="font-size:14px;margin:16px 0 8px;font-weight:600">Маржинальність послуг</h3>' +
+      '<div id="mcon-profit" style="margin-bottom:20px"></div>' +
+      '<h3 style="font-size:14px;margin:16px 0 8px;font-weight:600">Нормативні карти</h3>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+        '<input id="mcon-search" type="text" placeholder="Пошук карти…" style="padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px;width:220px">' +
+        '<select id="mcon-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:5px;font-size:13px">' +
+          '<option value="">Усі статуси</option>' +
+          '<option value="active">Активні</option>' +
+          '<option value="draft">Чернетки</option>' +
+          '<option value="archived">Архів</option>' +
+        '</select>' +
+        '<button id="mcon-norm-search" style="padding:6px 14px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Знайти</button>' +
+      '</div>' +
+      '<div id="mcon-norms"></div>',
+
+    loader: async function () {
+      var TH = 'padding:8px 12px;text-align:left;border-bottom:2px solid #eee;font-size:12px;color:#888;font-weight:600';
+      var TD = 'padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:13px';
+
+      var kpiEl     = document.getElementById('mcon-kpi');
+      var reportEl  = document.getElementById('mcon-report');
+      var forecastEl= document.getElementById('mcon-forecast');
+      var profitEl  = document.getElementById('mcon-profit');
+      var normsEl   = document.getElementById('mcon-norms');
+      var dfromEl   = document.getElementById('mcon-dfrom');
+      var dtoEl     = document.getElementById('mcon-dto');
+      var groupbyEl = document.getElementById('mcon-groupby');
+      var applyBtn  = document.getElementById('mcon-apply');
+      var searchEl  = document.getElementById('mcon-search');
+      var statusEl  = document.getElementById('mcon-status');
+      var normSrchBtn = document.getElementById('mcon-norm-search');
+
+      // Дефолтный диапазон — текущий месяц
+      var now = new Date();
+      var y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
+      if (dfromEl) dfromEl.value = y + '-' + m + '-01';
+      if (dtoEl) dtoEl.value = y + '-' + m + '-' + String(now.getDate()).padStart(2, '0');
+
+      // deviation color: green <10%, yellow 10-20%, red >20%
+      function devColor(pct) {
+        var v = Math.abs(Number(pct) || 0);
+        if (v < 10) return '#28a745';
+        if (v < 20) return '#f0ad4e';
+        return '#d9534f';
+      }
+      function devBadge(pct) {
+        if (pct == null) return '—';
+        var sign = Number(pct) >= 0 ? '+' : '';
+        return '<span style="color:' + devColor(pct) + ';font-weight:600">' + sign + Number(pct).toFixed(1) + '%</span>';
+      }
+      function statusBadge(s) {
+        var colors = { active: '#28a745', draft: '#6c757d', archived: '#888' };
+        return '<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;' +
+          'background:' + (colors[s] || '#888') + '22;color:' + (colors[s] || '#888') + '">' + E(s || '—') + '</span>';
+      }
+      function eur(v) { return v != null ? Number(v).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; }
+
+      // ── KPI (кількість норм) ──────────────────────────────────────
+      window.modApi('/api/material-norms?limit=1').then(function (d) {
+        var total = (d && d.total) != null ? d.total : 0;
+        return window.modApi('/api/material-norms?status=active&limit=1').then(function (a) {
+          var active = (a && a.total) != null ? a.total : 0;
+          if (kpiEl) kpiEl.innerHTML =
+            window.modCard('Всього нормативних карт', total, '#222') +
+            window.modCard('Активних карт', active, '#28a745') +
+            window.modCard('Чернеток', total - active, active === total ? '#888' : '#f0ad4e');
+        });
+      }).catch(function () {});
+
+      // ── Звіт розходу ─────────────────────────────────────────────
+      function loadReport() {
+        if (reportEl) reportEl.innerHTML = window.modEmpty('Завантаження…');
+        var gb = groupbyEl ? groupbyEl.value : 'product';
+        var params = 'group_by=' + gb;
+        if (dfromEl && dfromEl.value) params += '&date_from=' + dfromEl.value;
+        if (dtoEl && dtoEl.value) params += '&date_to=' + dtoEl.value;
+        window.modApi('/api/material-norms/consumption/report?' + params).then(function (d) {
+          var rows = (d && d.rows) || [];
+          if (!rows.length) { if (reportEl) reportEl.innerHTML = window.modEmpty('Даних за вибраний період немає'); return; }
+          var heads = '<th style="'+TH+'">Групування</th>' +
+            '<th style="'+TH+'">Норма</th>' +
+            '<th style="'+TH+'">Факт</th>' +
+            '<th style="'+TH+'">Відхилення</th>' +
+            '<th style="'+TH+'">Собівартість</th>';
+          var body = rows.map(function (r) {
+            return '<tr>' +
+              '<td style="'+TD+'"><b>' + E(r.group_key || '—') + '</b></td>' +
+              '<td style="'+TD+'">' + E(Number(r.norm_total).toFixed(2)) + '</td>' +
+              '<td style="'+TD+'">' + E(Number(r.actual_total).toFixed(2)) + '</td>' +
+              '<td style="'+TD+'">' + devBadge(r.deviation_pct) + '</td>' +
+              '<td style="'+TD+'">₴ ' + eur(r.cost) + '</td>' +
+              '</tr>';
+          }).join('');
+          var total = (d.totals && d.totals.cost != null) ? '₴ ' + eur(d.totals.cost) : '';
+          var foot = total ? '<tfoot><tr>' +
+            '<td colspan="4" style="'+TD+';font-weight:700">Разом</td>' +
+            '<td style="'+TD+';font-weight:700">' + total + '</td>' +
+            '</tr></tfoot>' : '';
+          if (reportEl) reportEl.innerHTML =
+            '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr>' + heads + '</tr></thead><tbody>' + body + '</tbody>' + foot + '</table></div>';
+        }).catch(function (e) { window.modErr(reportEl, e); });
+      }
+      loadReport();
+      if (applyBtn) applyBtn.addEventListener('click', loadReport);
+
+      // ── Прогноз ──────────────────────────────────────────────────
+      if (forecastEl) forecastEl.innerHTML = window.modEmpty('Завантаження…');
+      window.modApi('/api/material-norms/consumption/forecast?days_ahead=14').then(function (d) {
+        var items = (d && d.items) || [];
+        // відфільтрувати тільки критичні (менше 14 днів до вичерпання)
+        var critical = items.filter(function (i) { return i.days_until_empty != null && i.days_until_empty <= 14; });
+        var display = critical.length ? critical : items.slice(0, 10);
+        if (!display.length) {
+          if (forecastEl) forecastEl.innerHTML = window.modEmpty('Запасів вистачає, критичних матеріалів немає');
+          return;
+        }
+        var heads = '<th style="'+TH+'">Матеріал</th>' +
+          '<th style="'+TH+'">Залишок (шт)</th>' +
+          '<th style="'+TH+'">Прогноз 14 днів</th>' +
+          '<th style="'+TH+'">Залишилось днів</th>';
+        var body = display.map(function (i) {
+          var days = i.days_until_empty;
+          var daysColor = days == null ? '#888' : days <= 3 ? '#d9534f' : days <= 7 ? '#f0ad4e' : '#28a745';
+          return '<tr>' +
+            '<td style="'+TD+'"><b>' + E(i.product_name || '—') + '</b></td>' +
+            '<td style="'+TD+'">' + E(i.stock_qty != null ? Number(i.stock_qty).toFixed(0) : '—') + '</td>' +
+            '<td style="'+TD+'">' + E(i.forecast_qty != null ? Number(i.forecast_qty).toFixed(2) : '—') + '</td>' +
+            '<td style="'+TD+';color:' + daysColor + ';font-weight:600">' +
+              (days != null ? days + ' дн.' : '∞') + '</td>' +
+            '</tr>';
+        }).join('');
+        if (forecastEl) forecastEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' + heads + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { window.modErr(forecastEl, e); });
+
+      // ── Маржинальність послуг ──────────────────────────────────
+      if (profitEl) profitEl.innerHTML = window.modEmpty('Завантаження…');
+      window.modApi('/api/material-norms/reports/profitability').then(function (d) {
+        var items = (d && d.items) || [];
+        if (!items.length) { if (profitEl) profitEl.innerHTML = window.modEmpty('Нормативних карт немає'); return; }
+        var heads = '<th style="'+TH+'">Послуга</th>' +
+          '<th style="'+TH+'">Ціна</th>' +
+          '<th style="'+TH+'">Собівартість</th>' +
+          '<th style="'+TH+'">Маржа</th>';
+        var body = items.map(function (r) {
+          var mPct = r.margin_pct != null ? Number(r.margin_pct) : null;
+          var mColor = mPct == null ? '#888' : mPct < 30 ? '#d9534f' : mPct < 50 ? '#f0ad4e' : '#28a745';
+          return '<tr>' +
+            '<td style="'+TD+'"><b>' + E(r.service || '—') + '</b></td>' +
+            '<td style="'+TD+'">₴ ' + eur(r.revenue) + '</td>' +
+            '<td style="'+TD+'">₴ ' + eur(r.cost) + '</td>' +
+            '<td style="'+TD+';color:' + mColor + ';font-weight:600">' +
+              (mPct != null ? mPct.toFixed(1) + '%' : '—') + '</td>' +
+            '</tr>';
+        }).join('');
+        if (profitEl) profitEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' + heads + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { window.modErr(profitEl, e); });
+
+      // ── Нормативні карти ──────────────────────────────────────
+      function loadNorms() {
+        if (normsEl) normsEl.innerHTML = window.modEmpty('Завантаження…');
+        var params = 'limit=50';
+        if (searchEl && searchEl.value) params += '&search=' + encodeURIComponent(searchEl.value);
+        if (statusEl && statusEl.value) params += '&status=' + encodeURIComponent(statusEl.value);
+        window.modApi('/api/material-norms?' + params).then(function (d) {
+          var items = (d && d.items) || [];
+          if (!items.length) { if (normsEl) normsEl.innerHTML = window.modEmpty('Карт не знайдено'); return; }
+          var heads = '<th style="'+TH+'">Назва</th>' +
+            '<th style="'+TH+'">Послуга</th>' +
+            '<th style="'+TH+'">Варіант</th>' +
+            '<th style="'+TH+'">Матеріалів</th>' +
+            '<th style="'+TH+'">Статус</th>' +
+            '<th style="'+TH+'">Оновлено</th>';
+          var body = items.map(function (n) {
+            return '<tr>' +
+              '<td style="'+TD+'"><b>' + E(n.name || '—') + '</b></td>' +
+              '<td style="'+TD+'">' + E(n.service_name || '—') + '</td>' +
+              '<td style="'+TD+'">' + E(n.service_variant || '—') + '</td>' +
+              '<td style="'+TD+';text-align:center">' + E(n.materials_count != null ? n.materials_count : '—') + '</td>' +
+              '<td style="'+TD+'">' + statusBadge(n.status) + '</td>' +
+              '<td style="'+TD+';color:#888;font-size:12px">' + (n.updated_at ? new Date(n.updated_at).toLocaleDateString('uk-UA') : '—') + '</td>' +
+              '</tr>';
+          }).join('');
+          if (normsEl) normsEl.innerHTML =
+            '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr>' + heads + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+            ((d.total > 50) ? '<p style="font-size:12px;color:#888;margin:6px 0">Показано 50 з ' + d.total + '</p>' : '');
+        }).catch(function (e) { window.modErr(normsEl, e); });
+      }
+      loadNorms();
+      if (normSrchBtn) normSrchBtn.addEventListener('click', loadNorms);
+      if (searchEl) searchEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') loadNorms(); });
+    }
+  });
+
 })();
