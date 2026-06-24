@@ -273,6 +273,7 @@ try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { conso
 try { app.use('/api/pnl', require('./routes/pnl')); } catch(e) { console.error('[pnl] mount failed:', e.message); }
 try { app.use('/api/payouts', require('./routes/payouts')); } catch(e) { console.error('[payouts] mount failed:', e.message); }
 try { app.use('/api/ai/quality', require('./routes/ai-quality')); } catch(e) { console.error('[ai-quality] mount failed:', e.message); }
+try { app.use('/api/v2', require('./routes/plans')); } catch(e) { console.error('[plans-v2] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
 try { app.use('/api/ai/kb', require('./routes/ai-kb')); } catch(e) { console.error('[ai-kb] mount failed:', e.message); }
 try { app.use('/api/ai/marketing', require('./routes/ai-marketing')); } catch(e) { console.error('[ai-marketing] mount failed:', e.message); }
