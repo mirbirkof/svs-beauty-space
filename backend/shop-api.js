@@ -292,6 +292,12 @@ try { app.use('/api/backup', require('./routes/backup')); } catch(e) { console.e
 try { app.use('/api/dwh', require('./routes/data-warehouse')); } catch(e) { console.error('[dwh] mount failed:', e.message); }
 try { app.use('/api/marketplace', require('./routes/marketplace')); } catch(e) { console.error('[marketplace] mount failed:', e.message); }
 try { app.use('/api/integrations', require('./routes/integrations')); } catch(e) { console.error('[integrations] mount failed:', e.message); }
+try { app.use('/api/suppliers', require('./routes/suppliers')); } catch(e) { console.error('[suppliers] mount failed:', e.message); }
+try { app.use('/api/viber', require('./routes/viber')); } catch(e) { console.error('[viber] mount failed:', e.message); }
+try { app.use('/api/branding', require('./routes/branding')); } catch(e) { console.error('[branding] mount failed:', e.message); }
+try { app.use('/api/call-center', require('./routes/call-center')); } catch(e) { console.error('[call-center] mount failed:', e.message); }
+try { app.use('/api/mobile', require('./routes/mobile')); } catch(e) { console.error('[mobile] mount failed:', e.message); }
+try { app.use('/api/quality-control', require('./routes/quality-control')); } catch(e) { console.error('[quality-control] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 

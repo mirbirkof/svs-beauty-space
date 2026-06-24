@@ -586,4 +586,81 @@ router.get('/analytics/employee/:id(\\d+)', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// GET /analytics/export — JSON-дамп даних для PDF-звіту (frontend генерує PDF)
+// ?branch_id=&days=30
+router.get('/analytics/export', async (req, res) => {
+  try {
+    const days = Math.min(366, Number(req.query.days) || 30);
+    const since = `NOW() - (${days} || ' days')::interval`;
+    const branchFilter = req.query.branch_id
+      ? `AND branch_id=${Number(req.query.branch_id)}`
+      : '';
+
+    const [main, nc, topFail, ranking, trend, mysteryList] = await Promise.all([
+      q(`SELECT ROUND(AVG(total_score)::numeric,2) avg_score, COUNT(*)::int checks_count
+         FROM qc_checks WHERE tenant_id=current_tenant_id() AND status IN ('completed','reviewed')
+           AND completed_at >= ${since} ${branchFilter}`),
+      q(`SELECT COUNT(*)::int nc_count,
+           COUNT(*) FILTER (WHERE severity='critical')::int critical,
+           COUNT(*) FILTER (WHERE severity='major')::int major,
+           COUNT(*) FILTER (WHERE severity='minor')::int minor,
+           COUNT(*) FILTER (WHERE status NOT IN ('verified','closed'))::int open
+         FROM qc_non_conformities WHERE tenant_id=current_tenant_id() AND created_at >= ${since} ${branchFilter}`),
+      q(`SELECT i.text, i.category, COUNT(*)::int fails
+         FROM qc_check_results r JOIN qc_checklist_items i ON i.id=r.item_id JOIN qc_checks ch ON ch.id=r.check_id
+         WHERE ch.tenant_id=current_tenant_id() AND r.score IS NOT NULL AND r.score < 1
+           AND ch.completed_at >= ${since} ${branchFilter}
+         GROUP BY i.text, i.category ORDER BY fails DESC LIMIT 20`),
+      q(`SELECT ch.inspected_employee_id employee_id, m.name employee_name,
+           ROUND(AVG(ch.total_score)::numeric,2) avg_score, COUNT(*)::int checks
+         FROM qc_checks ch LEFT JOIN masters m ON m.id=ch.inspected_employee_id
+         WHERE ch.tenant_id=current_tenant_id() AND ch.inspected_employee_id IS NOT NULL
+           AND ch.status IN ('completed','reviewed') AND ch.completed_at >= ${since} ${branchFilter}
+         GROUP BY ch.inspected_employee_id, m.name ORDER BY avg_score DESC NULLS LAST`),
+      q(`SELECT to_char(date_trunc('week',completed_at),'YYYY-WW') wk,
+           ROUND(AVG(total_score)::numeric,2) avg_score, COUNT(*)::int checks
+         FROM qc_checks WHERE tenant_id=current_tenant_id() AND status IN ('completed','reviewed')
+           AND completed_at >= ${since} ${branchFilter}
+         GROUP BY 1 ORDER BY 1`),
+      q(`SELECT id, visit_date, shopper_name, overall_score, status, recommendations
+         FROM mystery_shopper_reports WHERE tenant_id=current_tenant_id()
+           AND visit_date >= (${since})::date ${branchFilter}
+         ORDER BY visit_date DESC LIMIT 20`),
+    ]);
+
+    res.json({
+      exported_at: new Date().toISOString(),
+      period_days: days,
+      summary: {
+        avg_score: main[0].avg_score ? Number(main[0].avg_score) : null,
+        checks_count: main[0].checks_count,
+        nc_count: nc[0].nc_count,
+        nc_open: nc[0].open,
+        nc_by_severity: { critical: nc[0].critical, major: nc[0].major, minor: nc[0].minor },
+      },
+      top_fail_items: topFail,
+      employee_ranking: ranking,
+      weekly_trend: trend,
+      mystery_shopper: mysteryList,
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /mystery-shopper/:id/action-taken — позначити action_taken (MGT-05 05.04)
+router.post('/mystery-shopper/:id(\\d+)/action-taken', async (req, res) => {
+  try {
+    const row = (await q(
+      `UPDATE mystery_shopper_reports
+          SET status='action_taken', updated_at=NOW()
+        WHERE id=$1 AND tenant_id=current_tenant_id()
+          AND status IN ('submitted','reviewed')
+        RETURNING *`,
+      [req.params.id]
+    ))[0];
+    if (!row) return res.status(404).json({ error: 'not found or invalid status' });
+    await logAction({ user: req.user, action: 'qc.mystery.action_taken', entity: 'mystery_report', entity_id: row.id, ip: req.ip });
+    res.json(row);
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 module.exports = router;
