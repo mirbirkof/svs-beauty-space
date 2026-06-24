@@ -305,6 +305,7 @@ try { app.use('/api/mobile', require('./routes/mobile')); } catch(e) { console.e
 try { app.use('/api/quality-control', require('./routes/quality-control')); } catch(e) { console.error('[quality-control] mount failed:', e.message); }
 try { app.use('/api/referral-marketing', require('./routes/referral-marketing')); } catch(e) { console.error('[referral-marketing] mount failed:', e.message); }
 try { app.use('/api/material-norms', require('./routes/material-norms')); } catch(e) { console.error('[material-norms] mount failed:', e.message); }
+try { app.use('/api/v2', require('./routes/feature-flags')); } catch(e) { console.error('[feature-flags-v2] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
