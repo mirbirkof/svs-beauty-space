@@ -455,4 +455,257 @@
     }
   });
 
+  /* ═══════════ 5. FIN-05 Бюджетування ═══════════════════════════════════════ */
+  window.registerModule({
+    page:  'budgeting',
+    label: 'Бюджетування',
+    icon:  'account_balance_wallet',
+    group: 'analytics',
+
+    render: function (container) {
+      container.innerHTML =
+        '<div id="bgt-filters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">' +
+          '<select id="bgt-status" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="">Усі статуси</option>' +
+            '<option value="draft">Чернетка</option>' +
+            '<option value="pending_approval">На затвердженні</option>' +
+            '<option value="active" selected>Активний</option>' +
+            '<option value="closed">Закритий</option>' +
+          '</select>' +
+          '<select id="bgt-type" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="">Усі типи</option>' +
+            '<option value="month">Місяць</option>' +
+            '<option value="quarter">Квартал</option>' +
+            '<option value="year">Рік</option>' +
+          '</select>' +
+          '<input id="bgt-year" type="number" placeholder="Рік" min="2020" max="2030" style="width:90px;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<button id="bgt-load-btn" style="padding:7px 16px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">Оновити</button>' +
+          '<button id="bgt-consolidated-btn" style="padding:7px 16px;background:#2e9e5b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">Зведений звіт</button>' +
+        '</div>' +
+        '<div id="bgt-alerts-bar" style="margin-bottom:10px"></div>' +
+        '<div id="bgt-kpi" style="margin-bottom:18px"></div>' +
+        '<div id="bgt-list"></div>' +
+        '<div id="bgt-planfact" style="margin-top:24px"></div>' +
+        '<div id="bgt-consolidated" style="margin-top:24px"></div>';
+    },
+
+    mount: function (container) {
+      var self = this;
+      var listEl    = document.getElementById('bgt-list');
+      var kpiEl     = document.getElementById('bgt-kpi');
+      var pf        = document.getElementById('bgt-planfact');
+      var consEl    = document.getElementById('bgt-consolidated');
+      var alertsBar = document.getElementById('bgt-alerts-bar');
+
+      // ── статус-бейдж ───────────────────────────────────────────
+      var STATUS_COLOR = {
+        draft: '#888', pending_approval: '#e0a800',
+        active: '#2e9e5b', closed: '#1a73e8', archived: '#bbb'
+      };
+      var STATUS_LABEL = {
+        draft: 'Чернетка', pending_approval: 'На затвердженні',
+        active: 'Активний', closed: 'Закритий', archived: 'Архів'
+      };
+      function badge(status) {
+        var c = STATUS_COLOR[status] || '#888';
+        var l = STATUS_LABEL[status] || window.modEsc(status || '');
+        return '<span style="background:' + c + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + l + '</span>';
+      }
+
+      // ── завантаження алертів ───────────────────────────────────
+      async function loadAlerts() {
+        try {
+          var data = await window.modApi('/api/budgets/alerts');
+          var items = (data && data.data) || [];
+          if (!items.length) { alertsBar.innerHTML = ''; return; }
+          var html = '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;font-size:13px">' +
+            '<b>⚠ Алерти бюджету (' + items.length + '):</b> ';
+          items.slice(0, 3).forEach(function(a) {
+            html += '<span style="margin-left:8px;color:' + (a.alert_type === 'critical' ? '#d9534f' : '#e0a800') + '">' +
+              window.modEsc(a.category_name || '') + ' ' + fmtPct(a.actual_percent) + ' (' + a.alert_type + ')</span>';
+          });
+          if (items.length > 3) html += '<span style="margin-left:8px;color:#888">+' + (items.length - 3) + ' ще</span>';
+          html += '</div>';
+          alertsBar.innerHTML = html;
+        } catch (_) { alertsBar.innerHTML = ''; }
+      }
+
+      // ── завантаження списку бюджетів ──────────────────────────
+      async function loadList() {
+        var status = (document.getElementById('bgt-status') || {}).value || '';
+        var type   = (document.getElementById('bgt-type') || {}).value || '';
+        var year   = (document.getElementById('bgt-year') || {}).value || '';
+        var q = '';
+        if (status) q += '&status=' + encodeURIComponent(status);
+        if (type)   q += '&period_type=' + encodeURIComponent(type);
+        if (year)   q += '&year=' + encodeURIComponent(year);
+        if (q) q = '?' + q.slice(1);
+
+        listEl.innerHTML = window.modEmpty('Завантаження…');
+        kpiEl.innerHTML  = '';
+        pf.innerHTML     = '';
+        consEl.innerHTML = '';
+
+        try {
+          var data = await window.modApi('/api/budgets' + q);
+          var items = (data && data.items) || [];
+          await loadAlerts();
+
+          // KPI-картки
+          var total = items.length;
+          var active = items.filter(function(b) { return b.status === 'active'; }).length;
+          var totalRevPlan = items.reduce(function(s, b) { return s + Number(b.total_revenue_plan || 0); }, 0);
+          var totalExpPlan = items.reduce(function(s, b) { return s + Number(b.total_expense_plan || 0); }, 0);
+          kpiEl.innerHTML = cardsRow(
+            window.modCard('Бюджетів',       fmtNum(total),                       '#222') +
+            window.modCard('Активних',        fmtNum(active),                      '#2e9e5b') +
+            window.modCard('Дохід (план)',    fmtMoney(totalRevPlan),              '#1a73e8') +
+            window.modCard('Витрати (план)',  fmtMoney(totalExpPlan),              '#e67e22') +
+            window.modCard('Профіцит (план)', fmtMoney(totalRevPlan - totalExpPlan), totalRevPlan > totalExpPlan ? '#2e9e5b' : '#d9534f')
+          );
+
+          if (!items.length) { listEl.innerHTML = window.modEmpty('Бюджети не знайдені'); return; }
+
+          var html = '<h3 style="font-size:15px;font-weight:600;margin:0 0 10px">Список бюджетів</h3>';
+          html += tableOpen() + '<thead><tr>' +
+            th('Назва') + th('Тип') + th('Період') + th('Статус') +
+            th('Дохід (план)', true) + th('Витрати (план)', true) + th('Дія') +
+            '</tr></thead><tbody>';
+
+          items.forEach(function(b) {
+            var canSubmit  = b.status === 'draft';
+            var canApprove = b.status === 'pending_approval';
+            var canReject  = b.status === 'pending_approval';
+            var canClose   = b.status === 'active';
+            var actions = '';
+            if (canSubmit)  actions += '<button onclick="window._bgtAction(' + b.id + ',\'submit\')" style="font-size:11px;padding:2px 7px;border:1px solid #e0a800;background:#fff8e1;border-radius:4px;cursor:pointer;margin:1px">На затвердження</button>';
+            if (canApprove) actions += '<button onclick="window._bgtAction(' + b.id + ',\'approve\')" style="font-size:11px;padding:2px 7px;border:1px solid #2e9e5b;background:#e8f5e9;border-radius:4px;cursor:pointer;margin:1px">Затвердити</button>';
+            if (canReject)  actions += '<button onclick="window._bgtAction(' + b.id + ',\'reject\')" style="font-size:11px;padding:2px 7px;border:1px solid #d9534f;background:#fdf0f0;border-radius:4px;cursor:pointer;margin:1px">Відхилити</button>';
+            if (canClose)   actions += '<button onclick="window._bgtAction(' + b.id + ',\'close\')" style="font-size:11px;padding:2px 7px;border:1px solid #888;background:#f5f5f5;border-radius:4px;cursor:pointer;margin:1px">Закрити</button>';
+            actions += '<button onclick="window._bgtPlanFact(' + b.id + ')" style="font-size:11px;padding:2px 7px;border:1px solid #1a73e8;background:#e8f0fe;border-radius:4px;cursor:pointer;margin:1px">План/Факт</button>';
+
+            html += '<tr>' +
+              td('<b>' + window.modEsc(b.name || '') + '</b>') +
+              td(window.modEsc(b.period_type || '')) +
+              td(window.modEsc((b.period_start || '').slice(0, 10)) + ' — ' + window.modEsc((b.period_end || '').slice(0, 10))) +
+              td(badge(b.status)) +
+              td(fmtMoney(b.total_revenue_plan), true) +
+              td(fmtMoney(b.total_expense_plan), true) +
+              td(actions) +
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          listEl.innerHTML = html;
+
+        } catch (e) { window.modErr(listEl, e); }
+      }
+
+      // ── план/факт для вибраного бюджету ──────────────────────
+      window._bgtPlanFact = async function(budgetId) {
+        pf.innerHTML = window.modEmpty('Завантаження план/факт…');
+        consEl.innerHTML = '';
+        try {
+          var today = new Date();
+          var month = today.getUTCFullYear() + '-' + String(today.getUTCMonth() + 1).padStart(2, '0') + '-01';
+          var data = await window.modApi('/api/budgets/' + budgetId + '/plan-fact?month=' + month);
+          var cats = (data && data.categories) || [];
+          var html = '<h3 style="font-size:15px;font-weight:600;margin:0 0 10px">План/Факт — ' +
+            window.modEsc((data.month || '').slice(0, 7)) + '</h3>';
+
+          // Перемикач доходи/витрати
+          html += '<div style="margin-bottom:10px">' +
+            '<button id="bgt-pf-all" onclick="window._bgtFilterPF(\'all\')" style="padding:4px 12px;margin-right:4px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#1a73e8;color:#fff;font-size:12px">Усе</button>' +
+            '<button id="bgt-pf-rev" onclick="window._bgtFilterPF(\'revenue\')" style="padding:4px 12px;margin-right:4px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#fff;font-size:12px">Доходи</button>' +
+            '<button id="bgt-pf-exp" onclick="window._bgtFilterPF(\'expense\')" style="padding:4px 12px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#fff;font-size:12px">Витрати</button>' +
+          '</div>';
+
+          html += '<div id="bgt-pf-table">';
+          html += tableOpen() + '<thead><tr>' +
+            th('Категорія') + th('Тип') + th('План', true) + th('Факт', true) +
+            th('Відхилення', true) + th('%', true) + th('Прогноз EOM', true) + th('Статус') +
+            '</tr></thead><tbody>';
+
+          cats.forEach(function(c) {
+            var cat = c.category || {};
+            var pctColor = c.status === 'green' ? '#2e9e5b' : (c.status === 'yellow' ? '#e0a800' : '#d9534f');
+            var rowBg = c.status === 'green' ? '' : (c.status === 'yellow' ? 'background:#fffde7' : 'background:#fdf0f0');
+            var devStyle = 'color:' + (c.deviation_abs >= 0 ? '#2e9e5b' : '#d9534f');
+            html += '<tr style="' + rowBg + '" data-type="' + window.modEsc(cat.type || '') + '">' +
+              td('<b>' + window.modEsc(cat.name || '') + '</b>') +
+              td(window.modEsc(cat.type === 'revenue' ? 'Дохід' : 'Витрата')) +
+              td(fmtMoney(c.plan), true) +
+              td(fmtMoney(c.actual), true) +
+              td('<span style="' + devStyle + '">' + fmtMoney(c.deviation_abs) + '</span>', true) +
+              td('<span style="color:' + pctColor + ';font-weight:600">' + fmtPct(c.percent) + '</span>', true) +
+              td(fmtMoney(c.forecast_eom), true) +
+              td('<span style="color:' + pctColor + ';font-size:16px">' +
+                (c.status === 'green' ? '●' : (c.status === 'yellow' ? '●' : '●')) + '</span>') +
+              '</tr>';
+          });
+          html += '</tbody></table></div>';
+          pf.innerHTML = html;
+
+          window._bgtFilterPF = function(type) {
+            var rows = document.querySelectorAll('#bgt-pf-table tr[data-type]');
+            rows.forEach(function(r) {
+              r.style.display = (type === 'all' || r.dataset.type === type) ? '' : 'none';
+            });
+          };
+
+        } catch (e) { window.modErr(pf, e); }
+      };
+
+      // ── дії воркфлоу ─────────────────────────────────────────
+      window._bgtAction = async function(id, action) {
+        try {
+          await window.modApi('/api/budgets/' + id + '/' + action, { method: 'POST' });
+          await loadList();
+        } catch (e) { alert('Помилка: ' + (e.message || e)); }
+      };
+
+      // ── зведений звіт ────────────────────────────────────────
+      document.getElementById('bgt-consolidated-btn').addEventListener('click', async function() {
+        pf.innerHTML = '';
+        consEl.innerHTML = window.modEmpty('Завантаження…');
+        try {
+          var data = await window.modApi('/api/budgets/consolidated');
+          var cats = (data && data.categories) || [];
+          var tot  = (data && data.totals) || {};
+          var html = '<h3 style="font-size:15px;font-weight:600;margin:0 0 10px">Зведений звіт — ' +
+            window.modEsc((data.month || '').slice(0, 7)) +
+            ' <span style="font-size:12px;color:#888;font-weight:400">(' + (data.budgets_count || 0) + ' бюджетів)</span></h3>';
+
+          html += cardsRow(
+            window.modCard('Дохід план',    fmtMoney((tot.revenue || {}).plan),    '#1a73e8') +
+            window.modCard('Дохід факт',    fmtMoney((tot.revenue || {}).actual),  '#2e9e5b') +
+            window.modCard('Дохід %',       fmtPct((tot.revenue  || {}).percent),  '#7b5cd6') +
+            window.modCard('Витрати план',  fmtMoney((tot.expense || {}).plan),    '#e67e22') +
+            window.modCard('Витрати факт',  fmtMoney((tot.expense || {}).actual),  '#d9534f') +
+            window.modCard('Профіцит план', fmtMoney(tot.profit_plan),             tot.profit_plan >= 0 ? '#2e9e5b' : '#d9534f')
+          );
+
+          html += tableOpen() + '<thead><tr>' +
+            th('Категорія') + th('Тип') + th('План', true) + th('Факт', true) + th('Відхилення %', true) +
+            '</tr></thead><tbody>';
+          cats.forEach(function(c) {
+            var cat = c.category || {};
+            var devColor = c.deviation_percent >= 0 ? '#2e9e5b' : '#d9534f';
+            html += '<tr>' +
+              td(window.modEsc(cat.name || '')) +
+              td(window.modEsc(cat.type === 'revenue' ? 'Дохід' : 'Витрата')) +
+              td(fmtMoney(c.plan), true) +
+              td(fmtMoney(c.actual), true) +
+              td('<span style="color:' + devColor + '">' + fmtPct(c.deviation_percent) + '</span>', true) +
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          consEl.innerHTML = html;
+        } catch (e) { window.modErr(consEl, e); }
+      });
+
+      document.getElementById('bgt-load-btn').addEventListener('click', loadList);
+      loadList();
+    }
+  });
+
 })();

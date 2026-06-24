@@ -94,7 +94,114 @@ router.patch('/categories/:id', async (req, res) => {
 });
 
 // ════════ СЕЗОННІ ПРЕСЕТИ ════════
-router.get('/seasonal-presets', (req, res) => res.json({ items: [STANDARD_PRESET] }));
+router.get('/seasonal-presets', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM budget_seasonal_presets ORDER BY is_system DESC, id').catch(() => ({ rows: [] }));
+    const items = r.rows.length ? r.rows : [STANDARD_PRESET];
+    res.json({ items });
+  } catch (e) { res.json({ items: [STANDARD_PRESET] }); }
+});
+
+// POST /seasonal-presets — зберегти кастомний пресет
+router.post('/seasonal-presets', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name || !b.factors || typeof b.factors !== 'object') return res.status(400).json({ error: 'name and factors required' });
+    const r = await pool.query(
+      'INSERT INTO budget_seasonal_presets (name, is_system, factors) VALUES ($1, false, $2) RETURNING *',
+      [b.name, JSON.stringify(b.factors)]);
+    res.json({ ok: true, preset: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// POST /seasonal-presets/suggest — авто-пропозиція коефіцієнтів з даних каси
+router.post('/seasonal-presets/suggest', async (req, res) => {
+  try {
+    const baseYear = Number(req.body && req.body.base_year) || (new Date().getFullYear() - 1);
+    const r = await pool.query(
+      `SELECT to_char(created_at,'MM') m, SUM(amount)::numeric s
+       FROM cash_operations WHERE type='in'
+         AND created_at >= $1 AND created_at < $2
+       GROUP BY 1 ORDER BY 1`,
+      [`${baseYear}-01-01`, `${baseYear + 1}-01-01`]);
+    const sums = {};
+    r.rows.forEach(function(row) { sums[row.m] = Number(row.s); });
+    const total = Object.values(sums).reduce(function(a, v) { return a + v; }, 0) || 1;
+    const avgMonth = total / 12;
+    const factors = {};
+    for (var m = 1; m <= 12; m++) {
+      var key = String(m).padStart(2, '0');
+      factors[key] = avgMonth > 0 ? Math.round((sums[key] || avgMonth) / avgMonth * 100) / 100 : 1.0;
+    }
+    res.json({ factors, base_year: baseYear, source_months: r.rows.length });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// GET /alerts — непрочитані алерти
+router.get('/alerts', async (req, res) => {
+  try {
+    const cond = [], params = [];
+    if (req.query.budget_id) { params.push(+req.query.budget_id); cond.push('a.budget_id=$' + params.length); }
+    if (req.query.is_read !== undefined) { params.push(req.query.is_read === 'true'); cond.push('a.is_read=$' + params.length); }
+    else { cond.push('NOT a.is_read'); }
+    const where = 'WHERE ' + cond.join(' AND ');
+    const r = await pool.query(
+      'SELECT a.*, b.name budget_name, c.name category_name FROM budget_alerts a' +
+      ' JOIN budgets b ON b.id=a.budget_id JOIN budget_categories c ON c.id=a.category_id' +
+      ' ' + where + ' ORDER BY a.created_at DESC LIMIT 50', params);
+    res.json({ data: r.rows, total: r.rowCount });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// PUT /alerts/:id/read
+router.put('/alerts/:id/read', async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE budget_alerts SET is_read=true WHERE id=$1 RETURNING id', [+req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// GET /consolidated — зведений план/факт по всіх активних бюджетах за місяць
+router.get('/consolidated', async (req, res) => {
+  try {
+    const tz = 'Europe/Kiev';
+    const month = req.query.period_start
+      ? firstOfMonth(req.query.period_start)
+      : firstOfMonth(new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date()));
+    const budgets = (await pool.query(
+      `SELECT * FROM budgets WHERE status IN ('active','closed') AND period_start<=$1 AND period_end>=$1`, [month])).rows;
+    const cats = (await pool.query('SELECT * FROM budget_categories WHERE is_active=true ORDER BY type, sort_order')).rows;
+    let revPlan = 0, revAct = 0, expPlan = 0, expAct = 0;
+    const catMap = {};
+    for (var ci = 0; ci < cats.length; ci++) { catMap[cats[ci].id] = { category: cats[ci], plan: 0, actual: 0 }; }
+    for (var bi = 0; bi < budgets.length; bi++) {
+      const items = (await pool.query('SELECT * FROM budget_items WHERE budget_id=$1 AND month=$2', [budgets[bi].id, month])).rows;
+      for (var ii = 0; ii < items.length; ii++) {
+        const cm = catMap[items[ii].category_id]; if (!cm) continue;
+        const plan = Number(items[ii].plan_amount);
+        const actual = await actualFor(cm.category, month);
+        cm.plan += plan; cm.actual += actual;
+        if (cm.category.type === 'revenue') { revPlan += plan; revAct += actual; }
+        else { expPlan += plan; expAct += actual; }
+      }
+    }
+    const rows = Object.values(catMap).filter(function(r) { return r.plan > 0 || r.actual > 0; }).map(function(r) {
+      return { category: { id: r.category.id, name: r.category.name, type: r.category.type, code: r.category.code },
+        plan: r.plan, actual: r.actual,
+        deviation_percent: r.plan > 0 ? Math.round((r.actual - r.plan) / r.plan * 1000) / 10 : 0 };
+    });
+    res.json({
+      month, budgets_count: budgets.length,
+      categories: rows,
+      totals: {
+        revenue: { plan: revPlan, actual: revAct, percent: revPlan > 0 ? Math.round(revAct / revPlan * 1000) / 10 : 0 },
+        expense: { plan: expPlan, actual: expAct, percent: expPlan > 0 ? Math.round(expAct / expPlan * 1000) / 10 : 0 },
+        profit_plan: revPlan - expPlan, profit_actual: revAct - expAct
+      }
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
 
 // ════════ БЮДЖЕТИ ════════
 router.get('/', async (req, res) => {
@@ -309,6 +416,67 @@ router.get('/:id/plan-fact', async (req, res) => {
     }
     res.json({ budget_id: id, month, categories: out });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ════════ WORKFLOW: submit / approve / reject ════════
+async function logTransition(budgetId, fromStatus, toStatus, user, comment) {
+  await pool.query(
+    'INSERT INTO budget_approval_log (budget_id, from_status, to_status, user_id, comment) VALUES ($1,$2,$3,$4,$5)',
+    [budgetId, fromStatus, toStatus, user || null, comment || null]).catch(function() {});
+}
+
+// POST /:id/submit — draft → pending_approval
+router.post('/:id/submit', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const bg = (await pool.query('SELECT * FROM budgets WHERE id=$1', [id])).rows[0];
+    if (!bg) return res.status(404).json({ error: 'not found' });
+    if (bg.status !== 'draft') return res.status(409).json({ error: 'budget must be in draft to submit' });
+    await pool.query("UPDATE budgets SET status='pending_approval', updated_at=NOW() WHERE id=$1", [id]);
+    await logTransition(id, 'draft', 'pending_approval', req.user && req.user.display_name, req.body && req.body.comment);
+    logAction({ user: req.user, action: 'budget.submit', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    res.json({ ok: true, status: 'pending_approval' });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// POST /:id/approve — pending_approval → active
+router.post('/:id/approve', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const bg = (await pool.query('SELECT * FROM budgets WHERE id=$1', [id])).rows[0];
+    if (!bg) return res.status(404).json({ error: 'not found' });
+    if (bg.status !== 'pending_approval') return res.status(409).json({ error: 'budget must be pending_approval' });
+    const approver = req.user && req.user.display_name;
+    await pool.query(
+      "UPDATE budgets SET status='active', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2",
+      [approver, id]);
+    await logTransition(id, 'pending_approval', 'active', approver, req.body && req.body.comment);
+    logAction({ user: req.user, action: 'budget.approve', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    res.json({ ok: true, status: 'active' });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// POST /:id/reject — pending_approval → draft
+router.post('/:id/reject', async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const bg = (await pool.query('SELECT * FROM budgets WHERE id=$1', [id])).rows[0];
+    if (!bg) return res.status(404).json({ error: 'not found' });
+    if (bg.status !== 'pending_approval') return res.status(409).json({ error: 'budget must be pending_approval' });
+    await pool.query("UPDATE budgets SET status='draft', updated_at=NOW() WHERE id=$1", [id]);
+    await logTransition(id, 'pending_approval', 'draft', req.user && req.user.display_name, req.body && req.body.comment);
+    logAction({ user: req.user, action: 'budget.reject', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    res.json({ ok: true, status: 'draft' });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
+// GET /:id/approval-log — історія переходів
+router.get('/:id/approval-log', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT * FROM budget_approval_log WHERE budget_id=$1 ORDER BY created_at DESC', [+req.params.id]);
+    res.json({ items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
 module.exports = router;
