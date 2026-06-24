@@ -708,4 +708,341 @@
     }
   });
 
+  /* ═══════════ 6. FIN-06 Cash Flow ════════════════════════════════════════ */
+  window.registerModule({
+    page:  'cashflow',
+    label: 'Cash Flow',
+    icon:  'account_balance',
+    group: 'analytics',
+
+    render: function (container) {
+      container.innerHTML =
+        '<div id="cf-toolbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">' +
+          '<select id="cf-section" style="padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="dashboard">Дашборд</option>' +
+            '<option value="accounts">Рахунки</option>' +
+            '<option value="flows">Реєстр потоків</option>' +
+            '<option value="calendar">Календар платежів</option>' +
+            '<option value="forecast">Прогноз</option>' +
+            '<option value="report">Звіт ДДС</option>' +
+          '</select>' +
+          '<input id="cf-from" type="date" style="padding:7px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<input id="cf-to"   type="date" style="padding:7px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<button id="cf-load" style="padding:7px 16px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">Оновити</button>' +
+          '<button id="cf-add-entry" style="padding:7px 16px;background:#2e9e5b;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">+ Запис</button>' +
+          '<button id="cf-add-payment" style="padding:7px 16px;background:#7b5cd6;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">+ Платіж</button>' +
+        '</div>' +
+        '<div id="cf-main"></div>' +
+        // modal add entry
+        '<div id="cf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">' +
+          '<div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:360px;max-width:500px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.2)">' +
+            '<h3 id="cf-modal-title" style="margin:0 0 18px;font-size:16px">Новий запис</h3>' +
+            '<div style="display:flex;flex-direction:column;gap:10px">' +
+              '<select id="cf-m-type" style="padding:8px;border:1px solid #ddd;border-radius:6px"><option value="inflow">Надходження</option><option value="outflow" selected>Витрата</option></select>' +
+              '<select id="cf-m-cat" style="padding:8px;border:1px solid #ddd;border-radius:6px"><option value="other">Інше</option><option value="services">Послуги</option><option value="products">Товари</option><option value="salary">Зарплата</option><option value="purchasing">Закупівля</option><option value="rent">Оренда</option><option value="taxes">Податки</option><option value="marketing">Маркетинг</option><option value="utilities">Комунальні</option></select>' +
+              '<input id="cf-m-amount" type="number" placeholder="Сума ₴" min="0.01" step="0.01" style="padding:8px;border:1px solid #ddd;border-radius:6px">' +
+              '<input id="cf-m-date" type="date" style="padding:8px;border:1px solid #ddd;border-radius:6px">' +
+              '<input id="cf-m-counterparty" type="text" placeholder="Контрагент" style="padding:8px;border:1px solid #ddd;border-radius:6px">' +
+              '<input id="cf-m-desc" type="text" placeholder="Опис" style="padding:8px;border:1px solid #ddd;border-radius:6px">' +
+            '</div>' +
+            '<div id="cf-m-err" style="color:#d9534f;font-size:12px;margin-top:8px"></div>' +
+            '<div style="display:flex;gap:10px;margin-top:18px">' +
+              '<button id="cf-m-save" style="padding:8px 20px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Зберегти</button>' +
+              '<button id="cf-m-cancel" style="padding:8px 20px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px">Скасувати</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    },
+
+    mount: function (container) {
+      var mainEl = document.getElementById('cf-main');
+      var modal  = document.getElementById('cf-modal');
+
+      // set default dates (current month)
+      var now = new Date();
+      var y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+      document.getElementById('cf-from').value = y+'-'+m+'-01';
+      document.getElementById('cf-to').value   = y+'-'+m+'-'+String(new Date(y,now.getMonth()+1,0).getDate()).padStart(2,'0');
+
+      function showSection() {
+        var sec = document.getElementById('cf-section').value;
+        var from = document.getElementById('cf-from').value;
+        var to   = document.getElementById('cf-to').value;
+        mainEl.innerHTML = '<div style="padding:20px;text-align:center;color:#888">Завантаження…</div>';
+        if (sec === 'dashboard') loadDashboard();
+        else if (sec === 'accounts') loadAccounts();
+        else if (sec === 'flows') loadFlows(from, to);
+        else if (sec === 'calendar') loadCalendar(from, to);
+        else if (sec === 'forecast') loadForecast();
+        else if (sec === 'report') loadReport(from, to);
+      }
+
+      // ── DASHBOARD ────────────────────────────────────────────────────────────
+      function loadDashboard() {
+        window.modApi('/api/cash-flow/dashboard').then(function(d) {
+          var balColor = d.balance_alerts.length ? '#d9534f' : '#2e9e5b';
+          var html = cardsRow(
+            window.modCard('Загальний баланс', fmtMoney(d.total_balance), balColor) +
+            window.modCard('Сьогодні надходження', fmtMoney(d.today.inflow), '#2e9e5b') +
+            window.modCard('Сьогодні витрати', fmtMoney(d.today.outflow), '#d9534f') +
+            window.modCard('Сьогодні нетто', fmtMoney(d.today.net), d.today.net>=0?'#2e9e5b':'#d9534f') +
+            window.modCard('Місяць нетто', fmtMoney(d.month.net), d.month.net>=0?'#2e9e5b':'#d9534f') +
+            window.modCard('Рахунки з алертами', String(d.balance_alerts.length), d.balance_alerts.length?'#d9534f':'#2e9e5b')
+          );
+          // alerts bar
+          if (d.balance_alerts.length) {
+            html += '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">' +
+              '⚠️ <b>Низький баланс:</b> ' +
+              d.balance_alerts.map(function(a){ return window.modEsc(a.name)+' ('+fmtMoney(a.current_balance)+' / мін '+fmtMoney(a.min_balance_alert)+')'; }).join(', ') +
+              '</div>';
+          }
+          // accounts table
+          html += '<h4 style="margin:0 0 10px;font-size:14px;color:#555">Рахунки та каси</h4>';
+          html += tableOpen()+'<thead><tr>'+th('Рахунок')+th('Тип')+th('Баланс',true)+th('Мін. поріг',true)+th('Валюта')+'</tr></thead><tbody>';
+          d.accounts.forEach(function(a){
+            if (!a.active) return;
+            var balStyle = a.min_balance_alert!==null && a.current_balance<a.min_balance_alert ? 'color:#d9534f;font-weight:600' : '';
+            var typeLabel = {cash:'Готівка',bank:'Банк',card_terminal:'Термінал',online:'Онлайн'}[a.type]||a.type;
+            html += '<tr>'+
+              td(window.modEsc(a.name))+
+              td(window.modEsc(typeLabel))+
+              td('<span style="'+balStyle+'">'+fmtMoney(a.current_balance)+'</span>',true)+
+              td(a.min_balance_alert!==null?fmtMoney(a.min_balance_alert):'—',true)+
+              td(window.modEsc(a.currency||'UAH'))+
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          // upcoming payments
+          if (d.upcoming_payments.length) {
+            html += '<h4 style="margin:18px 0 10px;font-size:14px;color:#555">Найближчі платежі (7 днів)</h4>';
+            html += tableOpen()+'<thead><tr>'+th('Дата')+th('Тип')+th('Сума',true)+th('Одержувач')+th('Категорія')+th('Статус')+'</tr></thead><tbody>';
+            d.upcoming_payments.forEach(function(p){
+              var stColor = {planned:'#1a73e8',overdue:'#d9534f',paid:'#2e9e5b'}[p.status]||'#888';
+              var tLabel  = p.type==='outflow'?'Витрата':'Надх.';
+              html += '<tr>'+
+                td(window.modEsc(String(p.due_date).slice(0,10)))+
+                td(window.modEsc(tLabel))+
+                td(fmtMoney(p.amount),true)+
+                td(window.modEsc(p.counterparty_name||'—'))+
+                td(window.modEsc(p.category||'—'))+
+                td('<span style="color:'+stColor+';font-weight:600">'+window.modEsc(p.status)+'</span>')+
+                '</tr>';
+            });
+            html += '</tbody></table>';
+          }
+          mainEl.innerHTML = html;
+        }).catch(function(e){ window.modErr(mainEl, e); });
+      }
+
+      // ── ACCOUNTS ─────────────────────────────────────────────────────────────
+      function loadAccounts() {
+        window.modApi('/api/cash-flow/accounts').then(function(d) {
+          var html = cardsRow(window.modCard('Загальний баланс', fmtMoney(d.total_balance), '#1a73e8'));
+          html += tableOpen()+'<thead><tr>'+th('Назва')+th('Тип')+th('Банк')+th('Баланс',true)+th('Мін. поріг',true)+th('Статус')+'</tr></thead><tbody>';
+          (d.items||[]).forEach(function(a){
+            var balStyle = a.min_balance_alert!==null && Number(a.current_balance)<Number(a.min_balance_alert) ? 'color:#d9534f;font-weight:600' : '';
+            var typeLabel = {cash:'Готівка',bank:'Банк',card_terminal:'Термінал',online:'Онлайн'}[a.type]||a.type;
+            html += '<tr>'+
+              td(window.modEsc(a.name))+
+              td(window.modEsc(typeLabel))+
+              td(window.modEsc(a.bank_name||'—'))+
+              td('<span style="'+balStyle+'">'+fmtMoney(Number(a.current_balance))+'</span>',true)+
+              td(a.min_balance_alert!==null?fmtMoney(Number(a.min_balance_alert)):'—',true)+
+              td(a.active?'<span style="color:#2e9e5b">Активний</span>':'<span style="color:#888">Архів</span>')+
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          mainEl.innerHTML = html;
+        }).catch(function(e){ window.modErr(mainEl, e); });
+      }
+
+      // ── FLOWS ─────────────────────────────────────────────────────────────────
+      function loadFlows(from, to) {
+        var qs = '?limit=100'+(from?'&from='+from:'')+(to?'&to='+to:'');
+        window.modApi('/api/cash-flow'+qs).then(function(d) {
+          var t = d.totals||{};
+          var netColor = (t.net>=0)?'#2e9e5b':'#d9534f';
+          var html = cardsRow(
+            window.modCard('Надходження', fmtMoney(t.inflow), '#2e9e5b') +
+            window.modCard('Витрати', fmtMoney(t.outflow), '#d9534f') +
+            window.modCard('Нетто', fmtMoney(t.net), netColor)
+          );
+          if (!d.items||!d.items.length) { mainEl.innerHTML = html + window.modEmpty('Потоків за період не знайдено'); return; }
+          html += tableOpen()+'<thead><tr>'+th('Дата')+th('Тип')+th('Категорія')+th('Сума',true)+th('Опис')+'</tr></thead><tbody>';
+          d.items.forEach(function(e){
+            var tColor = e.type==='inflow'?'#2e9e5b':'#d9534f';
+            var tLabel = e.type==='inflow'?'Надходж.':'Витрата';
+            html += '<tr>'+
+              td(window.modEsc((e.entry_date||e.created_at||'').toString().slice(0,10)))+
+              td('<span style="color:'+tColor+';font-weight:600">'+window.modEsc(tLabel)+'</span>')+
+              td(window.modEsc(e.category||'—'))+
+              td(fmtMoney(e.amount),true)+
+              td(window.modEsc(e.description||'—'))+
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          mainEl.innerHTML = html;
+        }).catch(function(e){ window.modErr(mainEl, e); });
+      }
+
+      // ── CALENDAR ─────────────────────────────────────────────────────────────
+      function loadCalendar(from, to) {
+        var qs = '?'+(from?'from='+from:'')+(to?'&to='+to:'');
+        window.modApi('/api/cash-flow/calendar'+qs).then(function(d) {
+          var html = cardsRow(window.modCard('До сплати', fmtMoney(d.total_due), '#e67e22'));
+          if (!d.payments||!d.payments.length) { mainEl.innerHTML = html + window.modEmpty('Платежів не знайдено'); return; }
+          html += tableOpen()+'<thead><tr>'+th('Дата')+th('Тип')+th('Категорія')+th('Сума',true)+th('Кому')+th('Статус')+th('Дії')+'</tr></thead><tbody>';
+          d.payments.forEach(function(p){
+            var stColor = {planned:'#1a73e8',overdue:'#d9534f',paid:'#2e9e5b',cancelled:'#888'}[p.status]||'#888';
+            var tLabel  = p.type==='outflow'?'Витрата':'Надходж.';
+            var payBtn  = p.status!=='paid'&&p.status!=='cancelled'
+              ? '<button onclick="window._cfMarkPaid('+p.id+')" style="padding:3px 10px;font-size:11px;background:#2e9e5b;color:#fff;border:none;border-radius:4px;cursor:pointer">Оплачено</button>'
+              : '';
+            html += '<tr>'+
+              td(window.modEsc(String(p.due_date).slice(0,10)))+
+              td(window.modEsc(tLabel))+
+              td(window.modEsc(p.category||'—'))+
+              td(fmtMoney(p.amount),true)+
+              td(window.modEsc(p.counterparty_name||'—'))+
+              td('<span style="color:'+stColor+';font-weight:600">'+window.modEsc(p.status)+'</span>')+
+              td(payBtn)+
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          mainEl.innerHTML = html;
+          window._cfMarkPaid = function(id) {
+            window.modApi('/api/cash-flow/calendar/'+id+'/mark-paid','POST',{}).then(function(){ showSection(); }).catch(function(e){ alert(e.message||e); });
+          };
+        }).catch(function(e){ window.modErr(mainEl, e); });
+      }
+
+      // ── FORECAST ─────────────────────────────────────────────────────────────
+      function loadForecast() {
+        var selEl = document.createElement('div');
+        selEl.style.cssText = 'margin-bottom:14px;display:flex;gap:10px;align-items:center';
+        selEl.innerHTML =
+          '<select id="cf-f-scen" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">'+
+            '<option value="realistic" selected>Реалістичний</option>'+
+            '<option value="optimistic">Оптимістичний (+15%)</option>'+
+            '<option value="pessimistic">Песимістичний (-20%)</option>'+
+          '</select>'+
+          '<select id="cf-f-days" style="padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">'+
+            '<option value="30">30 днів</option>'+
+            '<option value="60">60 днів</option>'+
+            '<option value="90" selected>90 днів</option>'+
+          '</select>'+
+          '<button id="cf-f-go" style="padding:7px 14px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">Розрахувати</button>';
+        var forecastEl = document.createElement('div');
+        mainEl.innerHTML = '';
+        mainEl.appendChild(selEl);
+        mainEl.appendChild(forecastEl);
+        function fetchForecast() {
+          var scen = document.getElementById('cf-f-scen').value;
+          var days = document.getElementById('cf-f-days').value;
+          forecastEl.innerHTML = '<div style="color:#888;padding:12px">Завантаження…</div>';
+          window.modApi('/api/cash-flow/forecast?scenario='+scen+'&days='+days).then(function(d) {
+            var gapHtml = d.gap_date
+              ? '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">⚠️ Касовий розрив очікується <b>'+window.modEsc(d.gap_date)+'</b> (баланс '+fmtMoney(d.gap_amount)+')</div>'
+              : '<div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">✅ Касових розривів не прогнозується</div>';
+            var html = cardsRow(
+              window.modCard('Поточний баланс', fmtMoney(d.start_balance), '#1a73e8') +
+              window.modCard('Денний притік', fmtMoney(d.daily_inflow), '#2e9e5b') +
+              window.modCard('Поріг алерту', fmtMoney(d.threshold), '#e67e22')
+            ) + gapHtml;
+            // mini table (10 рядків)
+            var sample = d.forecast.filter(function(_,i){ return i%Math.ceil(d.forecast.length/15)===0||i===d.forecast.length-1; }).slice(0,20);
+            html += tableOpen()+'<thead><tr>'+th('Дата')+th('Надходж.',true)+th('Планові',true)+th('Прогноз балансу',true)+'</tr></thead><tbody>';
+            sample.forEach(function(r){
+              var balColor = r.balance<d.threshold?'color:#d9534f':'';
+              html += '<tr>'+
+                td(window.modEsc(r.date))+
+                td(fmtMoney(r.expected_inflow),true)+
+                td(fmtMoney(r.planned),true)+
+                td('<span style="'+balColor+'">'+fmtMoney(r.balance)+'</span>',true)+
+                '</tr>';
+            });
+            html += '</tbody></table>';
+            forecastEl.innerHTML = html;
+          }).catch(function(e){ window.modErr(forecastEl, e); });
+        }
+        document.getElementById('cf-f-go').addEventListener('click', fetchForecast);
+        fetchForecast();
+      }
+
+      // ── REPORT ───────────────────────────────────────────────────────────────
+      function loadReport(from, to) {
+        var qs = '?'+(from?'from='+from:'')+(to?'&to='+to:'');
+        window.modApi('/api/cash-flow/report'+qs).then(function(d) {
+          if (!d.periods||!d.periods.length) { mainEl.innerHTML = window.modEmpty('Даних за вказаний період не знайдено'); return; }
+          var totalIn=0, totalOut=0;
+          d.periods.forEach(function(p){ totalIn+=p.inflow||0; totalOut+=p.outflow||0; });
+          var html = cardsRow(
+            window.modCard('Надходження (разом)', fmtMoney(totalIn), '#2e9e5b') +
+            window.modCard('Витрати (разом)', fmtMoney(totalOut), '#d9534f') +
+            window.modCard('Чистий потік', fmtMoney(totalIn-totalOut), (totalIn-totalOut)>=0?'#2e9e5b':'#d9534f')
+          );
+          html += tableOpen()+'<thead><tr>'+th('Період')+th('Надходження',true)+th('Витрати',true)+th('Нетто',true)+'</tr></thead><tbody>';
+          d.periods.forEach(function(p){
+            var net = (p.net!=null?p.net:p.inflow-p.outflow);
+            var netColor = net>=0?'color:#2e9e5b':'color:#d9534f';
+            html += '<tr>'+
+              td(window.modEsc(p.period))+
+              td(fmtMoney(p.inflow),true)+
+              td(fmtMoney(p.outflow),true)+
+              td('<span style="'+netColor+';font-weight:600">'+fmtMoney(net)+'</span>',true)+
+              '</tr>';
+          });
+          html += '</tbody></table>';
+          mainEl.innerHTML = html;
+        }).catch(function(e){ window.modErr(mainEl, e); });
+      }
+
+      // ── MODAL add entry ───────────────────────────────────────────────────────
+      function openModal() {
+        var d = new Date();
+        document.getElementById('cf-m-date').value = d.toISOString().slice(0,10);
+        document.getElementById('cf-m-amount').value = '';
+        document.getElementById('cf-m-desc').value = '';
+        document.getElementById('cf-m-counterparty').value = '';
+        document.getElementById('cf-m-err').textContent = '';
+        modal.style.display = 'flex';
+      }
+      document.getElementById('cf-m-cancel').addEventListener('click', function(){ modal.style.display='none'; });
+      document.getElementById('cf-m-save').addEventListener('click', function(){
+        var body = {
+          type:             document.getElementById('cf-m-type').value,
+          category:         document.getElementById('cf-m-cat').value,
+          amount:           parseFloat(document.getElementById('cf-m-amount').value),
+          entry_date:       document.getElementById('cf-m-date').value,
+          counterparty_name:document.getElementById('cf-m-counterparty').value||null,
+          description:      document.getElementById('cf-m-desc').value||null,
+        };
+        if (!body.amount||body.amount<=0) { document.getElementById('cf-m-err').textContent='Введіть суму'; return; }
+        if (!body.entry_date)            { document.getElementById('cf-m-err').textContent='Оберіть дату'; return; }
+        window.modApi('/api/cash-flow','POST',body).then(function(){
+          modal.style.display = 'none';
+          document.getElementById('cf-section').value = 'flows';
+          showSection();
+        }).catch(function(e){ document.getElementById('cf-m-err').textContent = e.message||String(e); });
+      });
+
+      document.getElementById('cf-add-entry').addEventListener('click', openModal);
+      document.getElementById('cf-add-payment').addEventListener('click', function(){
+        // Quick add payment to calendar
+        var desc  = prompt('Опис платежу:');
+        var amt   = parseFloat(prompt('Сума (₴):'));
+        var date  = prompt('Дата (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+        if (!desc||!amt||!date) return;
+        window.modApi('/api/cash-flow/calendar','POST',{ type:'outflow', category:'other', amount:amt, counterparty_name:desc, due_date:date }).then(function(){
+          document.getElementById('cf-section').value = 'calendar';
+          showSection();
+        }).catch(function(e){ alert(e.message||e); });
+      });
+
+      document.getElementById('cf-load').addEventListener('click', showSection);
+      document.getElementById('cf-section').addEventListener('change', showSection);
+      showSection();
+    }
+  });
+
 })();

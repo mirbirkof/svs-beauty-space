@@ -232,4 +232,170 @@ router.get('/report', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ════════ РУЧНІ ЗАПИСИ (cash_flow_entries) ════════
+const VALID_CATEGORIES = ['services','products','salary','purchasing','rent','taxes','marketing','utilities','other'];
+const VALID_TYPES = ['inflow','outflow'];
+
+router.post('/', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.amount || !b.entry_date) return res.status(400).json({ error: 'amount, entry_date required' });
+    if (!VALID_TYPES.includes(b.type)) return res.status(400).json({ error: 'type must be inflow|outflow' });
+    const r = await pool.query(
+      `INSERT INTO cash_flow_entries
+         (account_id,type,category,subcategory,amount,currency,description,counterparty_name,counterparty_type,entry_date,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [b.account_id||null, b.type,
+       VALID_CATEGORIES.includes(b.category)?b.category:'other', b.subcategory||null,
+       Number(b.amount), b.currency||'UAH', b.description||null,
+       b.counterparty_name||null, b.counterparty_type||null,
+       b.entry_date, req.user?.display_name||null]);
+    // оновити баланс рахунку якщо вказаний
+    if (b.account_id) {
+      const delta = b.type === 'inflow' ? Number(b.amount) : -Number(b.amount);
+      await pool.query(`UPDATE bank_accounts SET current_balance=current_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, b.account_id]);
+    }
+    logAction({ user: req.user, action: 'cashflow.entry_create', entity: 'cash_flow_entries', entity_id: r.rows[0].id, ip: req.ip, meta: { type: b.type, amount: b.amount } }).catch(()=>{});
+    res.json({ ok: true, entry: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.patch('/:id', async (req, res) => {
+  try {
+    const allow = ['account_id','type','category','subcategory','amount','currency','description','counterparty_name','counterparty_type','entry_date','reconciled','bank_statement_ref'];
+    const sets = [], params = [];
+    for (const k of allow) if (k in (req.body||{})) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
+    if (!sets.length) return res.status(400).json({ error: 'no fields' });
+    params.push(+req.params.id);
+    const r = await pool.query(
+      `UPDATE cash_flow_entries SET ${sets.join(', ')}, updated_at=NOW()
+       WHERE id=$${params.length} AND source_type='manual' RETURNING *`, params);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not found or auto-entry' });
+    res.json({ ok: true, entry: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `DELETE FROM cash_flow_entries WHERE id=$1 AND source_type='manual' RETURNING id, type, amount, account_id`, [+req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not found or auto-entry' });
+    const e = r.rows[0];
+    // відкат балансу
+    if (e.account_id) {
+      const delta = e.type === 'inflow' ? -Number(e.amount) : Number(e.amount);
+      await pool.query(`UPDATE bank_accounts SET current_balance=current_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, e.account_id]);
+    }
+    logAction({ user: req.user, action: 'cashflow.entry_delete', entity: 'cash_flow_entries', entity_id: +req.params.id, ip: req.ip, meta: {} }).catch(()=>{});
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /entries — лише ручні записи (окремо від cashbox)
+router.get('/entries', async (req, res) => {
+  try {
+    const cond = [], params = [];
+    if (req.query.from) { params.push(req.query.from); cond.push(`entry_date>=$${params.length}`); }
+    if (req.query.to)   { params.push(req.query.to);   cond.push(`entry_date<=$${params.length}`); }
+    if (req.query.type) { params.push(req.query.type); cond.push(`type=$${params.length}`); }
+    if (req.query.category) { params.push(req.query.category); cond.push(`category=$${params.length}`); }
+    if (req.query.reconciled !== undefined) { params.push(req.query.reconciled === 'true'); cond.push(`reconciled=$${params.length}`); }
+    const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+    const lim = Math.min(+req.query.limit||100, 500);
+    const off = +req.query.offset||0;
+    const r = await pool.query(
+      `SELECT e.*, a.name account_name FROM cash_flow_entries e
+       LEFT JOIN bank_accounts a ON a.id=e.account_id
+       ${where} ORDER BY entry_date DESC, id DESC LIMIT ${lim} OFFSET ${off}`, params);
+    const tot = await pool.query(
+      `SELECT COALESCE(SUM(amount) FILTER(WHERE type='inflow'),0)::numeric inflow,
+              COALESCE(SUM(amount) FILTER(WHERE type='outflow'),0)::numeric outflow
+       FROM cash_flow_entries ${where}`, params);
+    const { inflow, outflow } = tot.rows[0];
+    res.json({ items: r.rows.map(x=>({...x,amount:Number(x.amount)})), totals:{ inflow: Number(inflow), outflow: Number(outflow), net: Number(inflow)-Number(outflow) } });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ════════ ЗВІРКА З БАНКОМ ════════
+router.post('/reconcile', async (req, res) => {
+  try {
+    const b = req.body || {};
+    // [ { entry_id, bank_ref } ]  — для записів у cash_flow_entries
+    // або [ { cashbox_id, bank_ref } ] — для cash_operations
+    if (!Array.isArray(b.entries) || !b.entries.length) return res.status(400).json({ error: 'entries array required' });
+    let matched = 0;
+    for (const item of b.entries) {
+      if (item.entry_id) {
+        const r = await pool.query(
+          `UPDATE cash_flow_entries SET reconciled=true, bank_statement_ref=$1, updated_at=NOW()
+           WHERE id=$2 RETURNING id`, [item.bank_ref||null, +item.entry_id]);
+        if (r.rows[0]) matched++;
+      }
+    }
+    // зберегти лог імпорту якщо вказано account_id
+    let importRec = null;
+    if (b.account_id) {
+      const { rows } = await pool.query(
+        `INSERT INTO bank_statement_imports (account_id, row_count, matched, unmatched, imported_by)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [b.account_id, b.entries.length, matched, b.entries.length - matched, req.user?.display_name||null]);
+      importRec = rows[0];
+    }
+    logAction({ user: req.user, action: 'cashflow.reconcile', entity: 'bank_statement_imports', entity_id: importRec?.id||null, ip: req.ip, meta: { matched } }).catch(()=>{});
+    res.json({ ok: true, matched, unmatched: b.entries.length - matched, import: importRec });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /reconcile/status — статистика звірки по рахунку
+router.get('/reconcile/status', async (req, res) => {
+  try {
+    const acc = req.query.account_id ? [+req.query.account_id] : [];
+    const where = acc.length ? 'WHERE account_id=$1' : '';
+    const r = await pool.query(
+      `SELECT COUNT(*) FILTER(WHERE reconciled=true)::int reconciled,
+              COUNT(*) FILTER(WHERE reconciled=false)::int unreconciled,
+              COUNT(*)::int total
+       FROM cash_flow_entries ${where}`, acc);
+    const imports = await pool.query(
+      `SELECT * FROM bank_statement_imports ${where} ORDER BY created_at DESC LIMIT 10`, acc);
+    res.json({ stats: r.rows[0], recent_imports: imports.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ════════ ДАШБОРД (підсумок для UI) ════════
+router.get('/dashboard', async (req, res) => {
+  try {
+    const today = kyivToday();
+    const monthStart = today.slice(0,8) + '01';
+    // баланси рахунків
+    const accounts = await pool.query(`SELECT id,name,type,current_balance,min_balance_alert,currency,active FROM bank_accounts ORDER BY sort_order,id`);
+    const totalBalance = accounts.rows.filter(a=>a.active).reduce((s,a)=>s+Number(a.current_balance),0);
+    // потоки за сьогодні з каси
+    const todayFlows = await pool.query(
+      `SELECT COALESCE(SUM(amount) FILTER(WHERE type='in'),0)::numeric t_in,
+              COALESCE(SUM(amount) FILTER(WHERE type='out'),0)::numeric t_out
+       FROM cash_operations WHERE created_at::date=$1`, [today]);
+    // потоки за місяць
+    const monthFlows = await pool.query(
+      `SELECT COALESCE(SUM(amount) FILTER(WHERE type='in'),0)::numeric m_in,
+              COALESCE(SUM(amount) FILTER(WHERE type='out'),0)::numeric m_out
+       FROM cash_operations WHERE created_at::date>=$1`, [monthStart]);
+    // найближчі платежі (7 днів)
+    await pool.query(`UPDATE payment_calendar SET status='overdue', updated_at=NOW() WHERE status='planned' AND due_date<$1`, [today]);
+    const upcoming = await pool.query(
+      `SELECT * FROM payment_calendar WHERE status IN ('planned','overdue') AND due_date<=$1 ORDER BY due_date LIMIT 10`,
+      [addDays(today,7)]);
+    // рахунки нижче порогу
+    const alerts = accounts.rows.filter(a=>a.active && a.min_balance_alert!==null && Number(a.current_balance)<Number(a.min_balance_alert));
+    res.json({
+      total_balance: Math.round(totalBalance),
+      accounts: accounts.rows.map(a=>({...a,current_balance:Number(a.current_balance),min_balance_alert:a.min_balance_alert!=null?Number(a.min_balance_alert):null})),
+      today: { inflow: Number(todayFlows.rows[0].t_in), outflow: Number(todayFlows.rows[0].t_out), net: Number(todayFlows.rows[0].t_in)-Number(todayFlows.rows[0].t_out) },
+      month: { inflow: Number(monthFlows.rows[0].m_in), outflow: Number(monthFlows.rows[0].m_out), net: Number(monthFlows.rows[0].m_in)-Number(monthFlows.rows[0].m_out) },
+      upcoming_payments: upcoming.rows,
+      balance_alerts: alerts,
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 module.exports = router;
