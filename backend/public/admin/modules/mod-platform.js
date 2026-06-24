@@ -951,4 +951,309 @@
     }
   });
 
+
+  /* ════ SAL-05 Shifts UI ═══════════════════════════════════════════════
+     Маршрути: /api/shifts, /api/shifts/templates, /api/shifts/swaps,
+               /api/shifts/timesheet, /api/shifts/generate, /api/shifts/publish
+  ════════════════════════════════════════════════════════════════════════ */
+  window.registerModule({
+    page: 'shifts',
+    title: 'Графік змін',
+    group: 'platform',
+    icon: 'schedule',
+    section:
+      '<div id="sh-kpi" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
+
+      '<h3 style="font-size:15px;margin:0 0 8px;font-weight:600">Шаблони ротацій</h3>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+        '<select id="sh-tpl-branch" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<option value="">Всі філіали</option>' +
+        '</select>' +
+        '<select id="sh-tpl-active" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<option value="true">Активні</option>' +
+          '<option value="">Всі</option>' +
+        '</select>' +
+        '<button id="sh-tpl-load" style="padding:6px 14px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Оновити</button>' +
+      '</div>' +
+      '<div id="sh-templates" style="margin-bottom:20px"></div>' +
+
+      '<h3 style="font-size:15px;margin:16px 0 8px;font-weight:600">Зміни сьогодні (статус публікації)</h3>' +
+      '<div id="sh-today" style="margin-bottom:20px"></div>' +
+
+      '<h3 style="font-size:15px;margin:16px 0 8px;font-weight:600">Заявки на обмін</h3>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+        '<select id="sh-swap-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+          '<option value="pending">Pending</option>' +
+          '<option value="accepted">Accepted</option>' +
+          '<option value="approved">Approved</option>' +
+          '<option value="">Всі</option>' +
+        '</select>' +
+        '<button id="sh-swap-load" style="padding:6px 14px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Оновити</button>' +
+      '</div>' +
+      '<div id="sh-swaps" style="margin-bottom:20px"></div>' +
+
+      '<h3 style="font-size:15px;margin:16px 0 8px;font-weight:600">Табель поточного місяця</h3>' +
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+        '<input id="sh-ts-empid" type="text" placeholder="ID або ім\'я майстра (пошук)" ' +
+          'style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:200px">' +
+        '<button id="sh-ts-load" style="padding:6px 14px;background:#6c757d;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Показати табель</button>' +
+      '</div>' +
+      '<div id="sh-timesheet"></div>',
+
+    loader: async function () {
+      var TH = 'padding:9px 13px;text-align:left;border-bottom:2px solid #eee;font-size:12px;color:#888;font-weight:600;text-transform:uppercase';
+      var TD = 'padding:9px 13px;border-bottom:1px solid #f0f0f0;font-size:13px';
+
+      var kpiEl    = document.getElementById('sh-kpi');
+      var tplEl    = document.getElementById('sh-templates');
+      var todayEl  = document.getElementById('sh-today');
+      var swapsEl  = document.getElementById('sh-swaps');
+      var tsEl     = document.getElementById('sh-timesheet');
+      var tplBranchSel = document.getElementById('sh-tpl-branch');
+      var tplActiveSel = document.getElementById('sh-tpl-active');
+      var tplBtn   = document.getElementById('sh-tpl-load');
+      var swapStatusSel = document.getElementById('sh-swap-status');
+      var swapBtn  = document.getElementById('sh-swap-load');
+      var tsEmpInp = document.getElementById('sh-ts-empid');
+      var tsBtn    = document.getElementById('sh-ts-load');
+
+      function localDt(v) {
+        if (!v) return '—';
+        try { return new Date(v).toLocaleDateString('uk-UA'); } catch (_) { return E(v); }
+      }
+      function localBadge(txt, color) {
+        return '<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;' +
+          'background:' + (color || '#eee') + '22;color:' + (color || '#666') + '">' + E(txt) + '</span>';
+      }
+      function shiftStatusColor(s) {
+        s = String(s || '').toLowerCase();
+        if (s === 'published' || s === 'completed') return '#28a745';
+        if (s === 'in_progress' || s === 'confirmed') return '#007bff';
+        if (s === 'planned') return '#6c757d';
+        if (s === 'cancelled') return '#d9534f';
+        return '#888';
+      }
+      function swapColor(s) {
+        if (s === 'approved' || s === 'completed') return '#28a745';
+        if (s === 'accepted') return '#007bff';
+        if (s === 'pending') return '#f0ad4e';
+        if (s === 'rejected' || s === 'cancelled') return '#d9534f';
+        return '#888';
+      }
+      function typeLabel(t) {
+        var map = { morning: 'Ранкова', evening: 'Вечірня', full: 'Повна', split: 'Розділена', night: 'Нічна' };
+        return map[t] || E(t || '—');
+      }
+
+      // ── KPI: templates count + pending swaps + today's overloaded ──
+      var kpiDone = 0;
+      var kpiTpl = 0, kpiSwap = 0, kpiShifts = 0, kpiPublished = 0;
+      function renderKpi() {
+        kpiDone++;
+        if (kpiDone < 3) return;
+        if (kpiEl) kpiEl.innerHTML =
+          window.modCard('Активних шаблонів', kpiTpl, '#222') +
+          window.modCard('Pending-обмінів', kpiSwap, kpiSwap ? '#f0ad4e' : '#888') +
+          window.modCard('Змін сьогодні', kpiShifts, '#007bff') +
+          window.modCard('Опубліковано', kpiPublished, '#28a745');
+      }
+
+      // templates count
+      window.modApi('/api/shifts/templates?active=true&limit=1').then(function (d) {
+        kpiTpl = (d && d.total) != null ? d.total : ((d && Array.isArray(d.items)) ? d.items.length : 0);
+        renderKpi();
+      }).catch(function () { renderKpi(); });
+
+      // pending swaps count
+      window.modApi('/api/shifts/swaps?status=pending&limit=1').then(function (d) {
+        kpiSwap = (d && d.total) != null ? d.total : ((d && Array.isArray(d.items)) ? d.items.length : 0);
+        renderKpi();
+      }).catch(function () { renderKpi(); });
+
+      // today's shifts
+      var todayStr = new Date().toISOString().slice(0, 10);
+      window.modApi('/api/shifts?date_from=' + todayStr + '&date_to=' + todayStr + '&limit=200').then(function (d) {
+        var items = (d && d.items) || [];
+        kpiShifts = items.length;
+        kpiPublished = items.filter(function (s) { return s.status === 'published' || s.status === 'completed' || s.status === 'in_progress'; }).length;
+        renderKpi();
+        // render today grid
+        if (!items.length) {
+          if (todayEl) todayEl.innerHTML = window.modEmpty('Змін на сьогодні не заплановано');
+          return;
+        }
+        var body = items.map(function (s) {
+          return '<tr>' +
+            '<td style="' + TD + '"><b>' + E(s.employee_name || s.employee_id || '—') + '</b></td>' +
+            '<td style="' + TD + '">' + typeLabel(s.shift_type) + '</td>' +
+            '<td style="' + TD + '">' + E(s.start_time || '—') + ' – ' + E(s.end_time || '—') + '</td>' +
+            '<td style="' + TD + '">' + E(s.planned_hours != null ? Number(s.planned_hours).toFixed(1) + ' год' : '—') + '</td>' +
+            '<td style="' + TD + '">' + localBadge(s.status || '—', shiftStatusColor(s.status)) + '</td>' +
+            '<td style="' + TD + ';color:#888;font-size:12px">' + E(s.branch_name || s.branch_id || '—') + '</td>' +
+            '</tr>';
+        }).join('');
+        if (todayEl) todayEl.innerHTML =
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+          '<thead><tr>' +
+            '<th style="' + TH + '">Майстер</th>' +
+            '<th style="' + TH + '">Тип</th>' +
+            '<th style="' + TH + '">Час</th>' +
+            '<th style="' + TH + '">Год (план)</th>' +
+            '<th style="' + TH + '">Статус</th>' +
+            '<th style="' + TH + '">Філіал</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      }).catch(function (e) { renderKpi(); window.modErr(todayEl, e); });
+
+      // ── Шаблони ───────────────────────────────────────────────────
+      function loadTemplates() {
+        if (tplEl) tplEl.innerHTML = window.modEmpty('Завантаження…');
+        var q = '/api/shifts/templates?limit=100';
+        var av = tplActiveSel ? tplActiveSel.value : 'true';
+        var br = tplBranchSel ? tplBranchSel.value : '';
+        if (av) q += '&active=' + encodeURIComponent(av);
+        if (br) q += '&branch_id=' + encodeURIComponent(br);
+        window.modApi(q).then(function (d) {
+          var items = (d && d.items) || (Array.isArray(d) ? d : []);
+          if (!items.length) {
+            if (tplEl) tplEl.innerHTML = window.modEmpty('Шаблонів не знайдено');
+            return;
+          }
+          var body = items.map(function (t) {
+            var days = Array.isArray(t.weekdays) ? t.weekdays.map(function (d) {
+              return ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'][d] || d;
+            }).join(', ') : E(t.weekdays || '—');
+            return '<tr>' +
+              '<td style="' + TD + '"><b>' + E(t.name || '—') + '</b></td>' +
+              '<td style="' + TD + '">' + typeLabel(t.shift_type) + '</td>' +
+              '<td style="' + TD + '">' + E(t.start_time || '—') + ' – ' + E(t.end_time || '—') + '</td>' +
+              '<td style="' + TD + '">' + days + '</td>' +
+              '<td style="' + TD + '">' + E(t.rotation_pattern || '—') + '</td>' +
+              '<td style="' + TD + '">' + E(t.min_staff != null ? t.min_staff + ' ос.' : '—') + '</td>' +
+              '<td style="' + TD + '">' + localBadge(t.active ? 'active' : 'inactive', t.active ? '#28a745' : '#888') + '</td>' +
+              '</tr>';
+          }).join('');
+          if (tplEl) tplEl.innerHTML =
+            '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr>' +
+              '<th style="' + TH + '">Назва</th>' +
+              '<th style="' + TH + '">Тип зміни</th>' +
+              '<th style="' + TH + '">Час</th>' +
+              '<th style="' + TH + '">Дні тижня</th>' +
+              '<th style="' + TH + '">Ротація</th>' +
+              '<th style="' + TH + '">Мін. персонал</th>' +
+              '<th style="' + TH + '">Статус</th>' +
+            '</tr></thead><tbody>' + body + '</tbody></table></div>';
+        }).catch(function (e) { window.modErr(tplEl, e); });
+      }
+      loadTemplates();
+      if (tplBtn) tplBtn.addEventListener('click', loadTemplates);
+
+      // ── Заявки на обмін ───────────────────────────────────────────
+      function loadSwaps() {
+        if (swapsEl) swapsEl.innerHTML = window.modEmpty('Завантаження…');
+        var q = '/api/shifts/swaps?limit=50';
+        var sv = swapStatusSel ? swapStatusSel.value : 'pending';
+        if (sv) q += '&status=' + encodeURIComponent(sv);
+        window.modApi(q).then(function (d) {
+          var items = (d && d.items) || (Array.isArray(d) ? d : []);
+          if (!items.length) {
+            if (swapsEl) swapsEl.innerHTML = window.modEmpty('Заявок на обмін немає');
+            return;
+          }
+          var body = items.map(function (sw) {
+            return '<tr>' +
+              '<td style="' + TD + '"><b>' + E(sw.requester_name || sw.requester_id || '—') + '</b></td>' +
+              '<td style="' + TD + '">' + E(sw.acceptor_name  || sw.acceptor_id  || '—') + '</td>' +
+              '<td style="' + TD + '">' + localDt(sw.shift_date || sw.created_at) + '</td>' +
+              '<td style="' + TD + '">' + localBadge(sw.status || '—', swapColor(sw.status)) + '</td>' +
+              '<td style="' + TD + ';color:#888;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + E(sw.reason || '—') + '</td>' +
+              '<td style="' + TD + ';color:#888;font-size:12px">' + (sw.approved_at ? '✔ ' + localDt(sw.approved_at) : (sw.accepted_at ? '⏳ ' + localDt(sw.accepted_at) : '—')) + '</td>' +
+              '</tr>';
+          }).join('');
+          if (swapsEl) swapsEl.innerHTML =
+            '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr>' +
+              '<th style="' + TH + '">Ініціатор</th>' +
+              '<th style="' + TH + '">Адресат</th>' +
+              '<th style="' + TH + '">Дата</th>' +
+              '<th style="' + TH + '">Статус</th>' +
+              '<th style="' + TH + '">Причина</th>' +
+              '<th style="' + TH + '">Підтверджено</th>' +
+            '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+            ((d && d.total > 50) ? '<p style="font-size:12px;color:#888;margin:6px 0">Показано 50 з ' + d.total + '</p>' : '');
+        }).catch(function (e) { window.modErr(swapsEl, e); });
+      }
+      loadSwaps();
+      if (swapBtn) swapBtn.addEventListener('click', loadSwaps);
+
+      // ── Табель поточного місяця ────────────────────────────────────
+      function loadTimesheet() {
+        var empId = tsEmpInp ? tsEmpInp.value.trim() : '';
+        if (tsEl) tsEl.innerHTML = window.modEmpty('Завантаження…');
+        var now2 = new Date();
+        var month = now2.getFullYear() + '-' + String(now2.getMonth() + 1).padStart(2, '0');
+        var q = '/api/shifts/timesheet?month=' + month;
+        if (empId) q += '&employee_id=' + encodeURIComponent(empId);
+        window.modApi(q).then(function (d) {
+          // Response може бути масивом (кілька майстрів) або одним об'єктом
+          var entries = Array.isArray(d) ? d : (d && d.items ? d.items : (d && d.employee ? [d] : []));
+          if (!entries.length) {
+            if (tsEl) tsEl.innerHTML = window.modEmpty('Табель порожній (немає даних за ' + month + ')');
+            return;
+          }
+          var html = '';
+          entries.forEach(function (entry) {
+            var emp = entry.employee || {};
+            var days = Array.isArray(entry.days) ? entry.days : [];
+            var tot  = entry.totals || {};
+            html += '<div style="margin-bottom:16px;border:1px solid #eee;border-radius:8px;padding:14px">';
+            html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px">' +
+              E(emp.name || emp.full_name || entry.employee_id || 'Майстер') +
+              (emp.position ? ' <span style="font-size:12px;color:#888;font-weight:400">– ' + E(emp.position) + '</span>' : '') +
+              '</div>';
+            if (days.length) {
+              html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px">';
+              html += '<thead><tr>' +
+                '<th style="' + TH + ';font-size:11px">Дата</th>' +
+                '<th style="' + TH + ';font-size:11px">Тип</th>' +
+                '<th style="' + TH + ';font-size:11px">Год план</th>' +
+                '<th style="' + TH + ';font-size:11px">Год факт</th>' +
+                '<th style="' + TH + ';font-size:11px">Переробка</th>' +
+                '<th style="' + TH + ';font-size:11px">Статус</th>' +
+                '</tr></thead><tbody>';
+              days.forEach(function (day) {
+                var sc = shiftStatusColor(day.status);
+                html += '<tr>' +
+                  '<td style="' + TD + ';font-size:12px">' + E(day.date || '—') + '</td>' +
+                  '<td style="' + TD + ';font-size:12px">' + typeLabel(day.shift_type || day.day_type) + '</td>' +
+                  '<td style="' + TD + ';font-size:12px;text-align:center">' + (day.planned_hours != null ? Number(day.planned_hours).toFixed(1) : '—') + '</td>' +
+                  '<td style="' + TD + ';font-size:12px;text-align:center">' + (day.actual_hours  != null ? Number(day.actual_hours).toFixed(1)  : '—') + '</td>' +
+                  '<td style="' + TD + ';font-size:12px;text-align:center;color:' + (day.overtime != null && Number(day.overtime) > 0 ? '#d9534f' : '#888') + '">' +
+                    (day.overtime != null ? (Number(day.overtime) > 0 ? '+' + Number(day.overtime).toFixed(1) : '—') : '—') + '</td>' +
+                  '<td style="' + TD + ';font-size:12px">' + localBadge(day.status || '—', sc) + '</td>' +
+                  '</tr>';
+              });
+              html += '</tbody></table></div>';
+            }
+            // Підсумок
+            html += '<div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px">' +
+              (tot.plan_hours   != null ? '<span><b>' + Number(tot.plan_hours).toFixed(1)   + '</b> год план</span>'  : '') +
+              (tot.actual_hours != null ? '<span><b>' + Number(tot.actual_hours).toFixed(1) + '</b> год факт</span>'  : '') +
+              (tot.overtime     != null ? '<span style="color:' + (Number(tot.overtime) > 0 ? '#d9534f' : '#888') + '"><b>' +
+                (Number(tot.overtime) > 0 ? '+' : '') + Number(tot.overtime).toFixed(1) + '</b> переробка</span>' : '') +
+              (tot.late_count   != null ? '<span style="color:#f0ad4e"><b>' + tot.late_count   + '</b> запізнень</span>'   : '') +
+              (tot.absent_count != null ? '<span style="color:#d9534f"><b>' + tot.absent_count + '</b> прогулів</span>'    : '') +
+              '</div>';
+            html += '</div>';
+          });
+          if (tsEl) tsEl.innerHTML = html;
+        }).catch(function (e) { window.modErr(tsEl, e); });
+      }
+      // Автозавантаження табеля без ID (загальний)
+      loadTimesheet();
+      if (tsBtn) tsBtn.addEventListener('click', loadTimesheet);
+      if (tsEmpInp) tsEmpInp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') loadTimesheet(); });
+    }
+  });
+
 })();
