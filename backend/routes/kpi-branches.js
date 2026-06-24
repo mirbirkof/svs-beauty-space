@@ -153,4 +153,98 @@ router.put('/targets', MANAGE, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Бенчмаркінг: порівняння філіалів за ключовими метриками ─────────────────
+router.get('/benchmark', READ, async (req, res) => {
+  try {
+    const { from, to } = dateBounds(req);
+    const r = await pool.query(`
+      WITH agg AS (
+        SELECT b.id, b.name, b.code,
+          COUNT(*) FILTER (WHERE ${DONE}) AS visits,
+          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+          COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
+          COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled,
+          COUNT(*) AS total_slots
+        FROM branches b
+        LEFT JOIN appointments a ON a.branch_id=b.id
+          AND a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)
+        WHERE b.is_active
+        GROUP BY b.id, b.name, b.code
+      ),
+      with_metrics AS (
+        SELECT *,
+          CASE WHEN visits>0 THEN ROUND(revenue/visits,2) ELSE 0 END AS avg_check,
+          CASE WHEN total_slots>0 THEN ROUND(100.0*visits/total_slots,1) ELSE 0 END AS occupancy,
+          CASE WHEN (visits+cancelled)>0 THEN ROUND(100.0*cancelled/(visits+cancelled),1) ELSE 0 END AS cancel_rate
+        FROM agg
+      ),
+      ranked AS (
+        SELECT *,
+          RANK() OVER (ORDER BY revenue DESC) AS rev_rank,
+          RANK() OVER (ORDER BY avg_check DESC) AS avgcheck_rank,
+          RANK() OVER (ORDER BY visits DESC) AS visits_rank,
+          RANK() OVER (ORDER BY clients DESC) AS clients_rank,
+          RANK() OVER (ORDER BY occupancy DESC) AS occ_rank,
+          COUNT(*) OVER () AS total_count
+        FROM with_metrics
+      )
+      SELECT *,
+        ROUND(100.0*(total_count - rev_rank)/(NULLIF(total_count-1,0)::numeric),1) AS rev_percentile,
+        ROUND(100.0*(total_count - avgcheck_rank)/(NULLIF(total_count-1,0)::numeric),1) AS avgcheck_percentile,
+        ROUND(100.0*(total_count - visits_rank)/(NULLIF(total_count-1,0)::numeric),1) AS visits_percentile,
+        ROUND(100.0*(total_count - occ_rank)/(NULLIF(total_count-1,0)::numeric),1) AS occ_percentile,
+        -- сумарний бал (середнє перцентилів, вище = краще)
+        ROUND((
+          COALESCE(100.0*(total_count - rev_rank)/(NULLIF(total_count-1,0)::numeric),50) +
+          COALESCE(100.0*(total_count - avgcheck_rank)/(NULLIF(total_count-1,0)::numeric),50) +
+          COALESCE(100.0*(total_count - visits_rank)/(NULLIF(total_count-1,0)::numeric),50) +
+          COALESCE(100.0*(total_count - occ_rank)/(NULLIF(total_count-1,0)::numeric),50)
+        ) / 4, 1) AS total_score
+      FROM ranked
+      ORDER BY total_score DESC`, [from, to]);
+
+    const count = r.rows.length;
+    const top25 = Math.ceil(count * 0.25);
+    const bot25 = Math.floor(count * 0.75);
+    const benchmark = r.rows.map((row, idx) => ({
+      ...row,
+      tier: idx < top25 ? 'top' : (idx >= bot25 ? 'bottom' : 'mid')
+    }));
+    res.json({ period: { from, to }, benchmark });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Зведення по мережі (best/worst/totals) ──────────────────────────────────
+router.get('/network-summary', READ, async (req, res) => {
+  try {
+    const { from, to } = dateBounds(req);
+    const r = await pool.query(`
+      WITH agg AS (
+        SELECT b.id, b.name,
+          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+          COUNT(*) FILTER (WHERE ${DONE}) AS visits,
+          COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
+          COUNT(*) AS total_slots
+        FROM branches b
+        LEFT JOIN appointments a ON a.branch_id=b.id
+          AND a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)
+        WHERE b.is_active
+        GROUP BY b.id, b.name
+      )
+      SELECT
+        SUM(revenue) AS total_revenue,
+        SUM(visits) AS total_visits,
+        SUM(clients) AS total_clients,
+        COUNT(*) AS branch_count,
+        CASE WHEN SUM(visits)>0 THEN ROUND(SUM(revenue)/SUM(visits),2) ELSE 0 END AS network_avg_check,
+        CASE WHEN SUM(total_slots)>0 THEN ROUND(100.0*SUM(visits)/SUM(total_slots),1) ELSE 0 END AS avg_occupancy,
+        (SELECT name FROM agg ORDER BY revenue DESC LIMIT 1) AS best_branch_name,
+        (SELECT revenue FROM agg ORDER BY revenue DESC LIMIT 1) AS best_branch_revenue,
+        (SELECT name FROM agg ORDER BY revenue ASC LIMIT 1) AS worst_branch_name,
+        (SELECT revenue FROM agg ORDER BY revenue ASC LIMIT 1) AS worst_branch_revenue
+      FROM agg`, [from, to]);
+    res.json({ period: { from, to }, summary: r.rows[0] || {} });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
