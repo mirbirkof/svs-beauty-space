@@ -985,6 +985,34 @@ select.input { background:var(--card); }
           </a>
         </div>
       </div>
+
+      <!-- Розширені модулі — постачальники, контроль якості, комунікації, брендинг, мобайл -->
+      <div class="sidebar-group" id="grp-ext">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round">extension</span> Розширені модулі
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-page="suppliers" onclick="go('suppliers')">
+            <span class="material-icons-round">local_shipping</span> Постачальники
+          </a>
+          <a class="sidebar-item" data-page="qcontrol" onclick="go('qcontrol')">
+            <span class="material-icons-round">verified</span> Контроль якості
+          </a>
+          <a class="sidebar-item" data-page="callcenter" onclick="go('callcenter')">
+            <span class="material-icons-round">support_agent</span> Колл-центр
+          </a>
+          <a class="sidebar-item" data-page="viber" onclick="go('viber')">
+            <span class="material-icons-round">forum</span> Viber
+          </a>
+          <a class="sidebar-item" data-page="branding" onclick="go('branding')">
+            <span class="material-icons-round">palette</span> Брендинг
+          </a>
+          <a class="sidebar-item" data-page="mobileapp" onclick="go('mobileapp')">
+            <span class="material-icons-round">smartphone</span> Мобільний застосунок
+          </a>
+        </div>
+      </div>
     </nav>
     <div class="sidebar-footer">
       <div class="sidebar-lang" id="langSwitch" title="Мова інтерфейсу">
@@ -1042,6 +1070,45 @@ select.input { background:var(--card); }
         <span class="material-icons-round" style="font-size:24px">receipt_long</span>
         <span id="billingBannerText" style="flex:1;font-weight:600;font-size:14.5px;min-width:200px"></span>
         <button class="btn btn-sm" style="background:#fff;color:#d9534f;font-weight:700;border:0" onclick="go('mysub')">Сплатити</button>
+      </div>
+
+      <!-- ═══ РОЗШИРЕНІ МОДУЛІ (suppliers / qc / call-center / viber / branding / mobile) ═══ -->
+      <div class="page" id="page-suppliers">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <h2 style="margin:0">Постачальники</h2>
+          <button class="btn btn-primary btn-sm" onclick="supplierCreate()"><span class="material-icons-round" style="font-size:18px">add</span> Додати</button>
+        </div>
+        <div id="suppliersBody" class="card" style="padding:0;overflow:auto"></div>
+      </div>
+
+      <div class="page" id="page-qcontrol">
+        <h2 style="margin:0 0 14px">Контроль якості</h2>
+        <div id="qcStats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+        <div id="qcAlerts" class="card" style="padding:0;overflow:auto"></div>
+      </div>
+
+      <div class="page" id="page-callcenter">
+        <h2 style="margin:0 0 14px">Колл-центр</h2>
+        <div id="ccStats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+        <div id="ccBody" class="card" style="padding:0;overflow:auto"></div>
+      </div>
+
+      <div class="page" id="page-viber">
+        <h2 style="margin:0 0 14px">Viber-канал</h2>
+        <div id="viberBody"></div>
+      </div>
+
+      <div class="page" id="page-branding">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <h2 style="margin:0">Брендинг</h2>
+          <button class="btn btn-primary btn-sm" onclick="brandingUpload()"><span class="material-icons-round" style="font-size:18px">upload</span> Завантажити лого</button>
+        </div>
+        <div id="brandingBody"></div>
+      </div>
+
+      <div class="page" id="page-mobileapp">
+        <h2 style="margin:0 0 14px">Мобільний застосунок</h2>
+        <div id="mobileBody"></div>
       </div>
 
       <!-- ═══ ВБУДОВАНІ МОДУЛІ — єдиний каркас, без переходу на окрему сторінку ═══ -->
@@ -2970,6 +3037,7 @@ const pageTitles = {
   finance:'Доходи і Витрати', contractors:'Контрагенти',
   saas:'SaaS / Платформа',
   mysub:'Моя підписка',
+  suppliers:'Постачальники', qcontrol:'Контроль якості', callcenter:'Колл-центр', viber:'Viber-канал', branding:'Брендинг', mobileapp:'Мобільний застосунок',
   settings:'Налаштування'
 };
 
@@ -3218,7 +3286,8 @@ function go(page) {
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
-    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub };
+    finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
+    suppliers:loadSuppliers, qcontrol:loadQControl, callcenter:loadCallCenter, viber:loadViber, branding:loadBranding, mobileapp:loadMobileApp };
   if (loaders[page]) loaders[page]();
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
@@ -3227,6 +3296,82 @@ function go(page) {
     setTab(cur ? cur.id.replace('tab-', '') : 'profile');
   }
 }
+
+// ═══ РОЗШИРЕНІ МОДУЛІ: завантажувачі сторінок ═══════════════
+function _extEmpty(msg){ return '<div style="padding:40px;text-align:center;color:#9aa0a6">'+(msg||'Поки що порожньо')+'</div>'; }
+function _extErr(el, e){ el.innerHTML='<div style="padding:30px;text-align:center;color:#d9534f">Помилка завантаження: '+((e&&e.message)||e||'невідома')+'</div>'; }
+function _extEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function loadSuppliers(){
+  const el=document.getElementById('suppliersBody'); el.innerHTML=_extEmpty('Завантаження…');
+  try{ const d=await api('/api/suppliers'); const rows=(d&&d.suppliers)||[];
+    if(!rows.length){ el.innerHTML=_extEmpty('Немає постачальників. Натисніть «Додати».'); return; }
+    el.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #eee;color:#666;font-size:13px">'+
+      '<th style="padding:11px 14px">Назва</th><th style="padding:11px 14px">Контакт</th><th style="padding:11px 14px">Телефон</th><th style="padding:11px 14px">Статус</th></tr></thead><tbody>'+
+      rows.map(s=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:11px 14px;font-weight:600">'+_extEsc(s.name)+'</td>'+
+        '<td style="padding:11px 14px">'+_extEsc(s.contact_person||s.email||'—')+'</td>'+
+        '<td style="padding:11px 14px">'+_extEsc(s.phone||'—')+'</td>'+
+        '<td style="padding:11px 14px">'+(s.is_active===false?'<span style="color:#9aa0a6">Неактивний</span>':'<span style="color:#0a8f5f">Активний</span>')+'</td></tr>').join('')+
+      '</tbody></table>';
+  }catch(e){ _extErr(el,e); } }
+function supplierCreate(){
+  showModal('Новий постачальник','<input id="supName" placeholder="Назва" style="width:100%;margin-bottom:8px;padding:9px;border:1px solid #ddd;border-radius:8px"><input id="supPhone" placeholder="Телефон" style="width:100%;margin-bottom:8px;padding:9px;border:1px solid #ddd;border-radius:8px"><input id="supContact" placeholder="Контактна особа" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px">',
+    async()=>{ const name=document.getElementById('supName').value.trim(); if(!name){ toast&&toast('Вкажіть назву'); return false; }
+      try{ await api('/api/suppliers',{method:'POST',body:JSON.stringify({name,phone:document.getElementById('supPhone').value.trim(),contact_person:document.getElementById('supContact').value.trim()})}); toast&&toast('Додано'); loadSuppliers(); }catch(e){ toast&&toast('Помилка'); } }); }
+
+async function loadQControl(){
+  const stats=document.getElementById('qcStats'), al=document.getElementById('qcAlerts');
+  stats.innerHTML=''; al.innerHTML=_extEmpty('Завантаження…');
+  try{ const d=await api('/api/quality-control/dashboard');
+    const card=(t,v,c)=>'<div class="card" style="flex:1;min-width:150px;padding:16px"><div style="font-size:12px;color:#888">'+t+'</div><div style="font-size:26px;font-weight:700;color:'+(c||'#222')+'">'+v+'</div></div>';
+    stats.innerHTML=card('Оцінка якості',(d.quality_score!=null?d.quality_score:'—'),'#0a8f5f')+card('Активні алерти',(d.active_alerts_count||0),(d.active_alerts_count?'#d9534f':'#222'))+card('Тональність',(d.sentiment_avg!=null?d.sentiment_avg:'—'));
+    const a=await api('/api/quality-control/alerts'); const items=(a&&a.items)||[];
+    if(!items.length){ al.innerHTML=_extEmpty('Активних алертів немає — все добре'); return; }
+    al.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #eee;color:#666;font-size:13px"><th style="padding:11px 14px">Серйозність</th><th style="padding:11px 14px">Опис</th><th style="padding:11px 14px">Дата</th></tr></thead><tbody>'+
+      items.map(x=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:11px 14px">'+_extEsc(x.severity||'—')+'</td><td style="padding:11px 14px">'+_extEsc(x.message||x.title||'—')+'</td><td style="padding:11px 14px">'+_extEsc((x.created_at||'').slice(0,10))+'</td></tr>').join('')+'</tbody></table>';
+  }catch(e){ _extErr(al,e); } }
+
+async function loadCallCenter(){
+  const stats=document.getElementById('ccStats'), body=document.getElementById('ccBody');
+  stats.innerHTML=''; body.innerHTML=_extEmpty('Завантаження…');
+  try{ const p=await api('/api/call-center/providers'); const provs=(p&&p.providers)||[];
+    let live={}; try{ live=await api('/api/call-center/calls/analytics'); }catch(_){}
+    const card=(t,v)=>'<div class="card" style="flex:1;min-width:150px;padding:16px"><div style="font-size:12px;color:#888">'+t+'</div><div style="font-size:26px;font-weight:700">'+v+'</div></div>';
+    stats.innerHTML=card('Провайдери',provs.length)+card('Дзвінків сьогодні',(live&&(live.total_calls||live.calls_today))||0)+card('Пропущені',(live&&live.missed)||0);
+    if(!provs.length){ body.innerHTML=_extEmpty('Немає підключених телефонних провайдерів. Додайте у Інтеграціях.'); return; }
+    body.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #eee;color:#666;font-size:13px"><th style="padding:11px 14px">Провайдер</th><th style="padding:11px 14px">Тип</th><th style="padding:11px 14px">Статус</th></tr></thead><tbody>'+
+      provs.map(x=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:11px 14px;font-weight:600">'+_extEsc(x.name||x.provider_type)+'</td><td style="padding:11px 14px">'+_extEsc(x.provider_type||'—')+'</td><td style="padding:11px 14px">'+(x.is_active!==false?'<span style="color:#0a8f5f">Активний</span>':'<span style="color:#9aa0a6">Вимкнено</span>')+'</td></tr>').join('')+'</tbody></table>';
+  }catch(e){ _extErr(body,e); } }
+
+async function loadViber(){
+  const el=document.getElementById('viberBody'); el.innerHTML=_extEmpty('Завантаження…');
+  try{ const d=await api('/api/viber/config'); const cfg=(d&&d.config)||{}; const ready=d&&d.channel_ready;
+    el.innerHTML='<div class="card" style="padding:20px;max-width:560px">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><span class="material-icons-round" style="color:'+(ready?'#0a8f5f':'#d9863b')+'">'+(ready?'check_circle':'pending')+'</span><b>'+(ready?'Канал підключено':'Очікує ключ Viber у Інтеграціях')+'</b></div>'+
+      '<div style="font-size:14px;color:#555;line-height:1.7">Назва бота: <b>'+_extEsc(cfg.bot_name||'—')+'</b><br>Підписників: <b>'+_extEsc(cfg.subscribers_count!=null?cfg.subscribers_count:'—')+'</b><br>Webhook: <b>'+(cfg.webhook_set?'налаштовано':'не налаштовано')+'</b></div>'+
+      '<p style="margin-top:16px;font-size:13px;color:#888">Щоб увімкнути розсилки Viber — додайте токен у розділі Інтеграції. Решта працює автоматично.</p></div>';
+  }catch(e){ _extErr(el,e); } }
+
+async function loadBranding(){
+  const el=document.getElementById('brandingBody'); el.innerHTML=_extEmpty('Завантаження…');
+  try{ const d=await api('/api/branding/assets'); const assets=(d&&d.assets)||[];
+    let g={}; try{ g=await api('/api/branding/guidelines'); }catch(_){}
+    const gl=(g&&g.guidelines)||g||{};
+    el.innerHTML='<div class="card" style="padding:20px;max-width:640px;margin-bottom:14px"><b>Фірмові кольори</b><div style="display:flex;gap:10px;margin-top:12px">'+
+      ['primary_color','secondary_color','accent_color'].map(k=>{const c=gl[k]||'#e9e9e9';return '<div style="text-align:center"><div style="width:54px;height:54px;border-radius:10px;border:1px solid #ddd;background:'+_extEsc(c)+'"></div><div style="font-size:11px;color:#888;margin-top:4px">'+_extEsc(c)+'</div></div>';}).join('')+'</div></div>'+
+      '<div class="card" style="padding:20px;max-width:640px"><b>Логотипи та ассети ('+assets.length+')</b>'+
+      (assets.length?'<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">'+assets.map(a=>'<div style="border:1px solid #eee;border-radius:8px;padding:8px;text-align:center"><img src="'+_extEsc(a.url||a.file_url||'')+'" style="max-width:90px;max-height:60px;object-fit:contain" onerror="this.style.display=\'none\'"><div style="font-size:11px;color:#888;margin-top:4px">'+_extEsc(a.asset_type||a.name||'ассет')+'</div></div>').join('')+'</div>':'<div style="color:#9aa0a6;margin-top:10px">Логотипи ще не завантажені</div>')+'</div>';
+  }catch(e){ _extErr(el,e); } }
+function brandingUpload(){ toast&&toast('Завантаження лого — через розділ Налаштування → Бренд'); go('settings'); }
+
+async function loadMobileApp(){
+  const el=document.getElementById('mobileBody'); el.innerHTML=_extEmpty('Завантаження…');
+  try{ let devices=[]; try{ const d=await api('/api/mobile/admin/devices'); devices=(d&&(d.devices||d.items))||[]; }catch(_){}
+    el.innerHTML='<div class="card" style="padding:20px;max-width:640px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span class="material-icons-round" style="color:#0a8f5f">smartphone</span><b>Мобільний застосунок майстра</b></div>'+
+      '<div style="font-size:14px;color:#555;line-height:1.7">Підключені пристрої: <b>'+devices.length+'</b><br>Майстри бачать свій розклад, записи та статистику з телефону. Вхід — за номером і кодом, біометрія підтримується.</div>'+
+      (devices.length?'<table style="width:100%;border-collapse:collapse;margin-top:14px"><thead><tr style="text-align:left;border-bottom:1px solid #eee;color:#666;font-size:13px"><th style="padding:9px 12px">Пристрій</th><th style="padding:9px 12px">Майстер</th><th style="padding:9px 12px">Остання активність</th></tr></thead><tbody>'+
+        devices.map(x=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:9px 12px">'+_extEsc(x.device_name||x.platform||'—')+'</td><td style="padding:9px 12px">'+_extEsc(x.master_name||x.user_name||'—')+'</td><td style="padding:9px 12px">'+_extEsc((x.last_seen||x.updated_at||'').slice(0,10))+'</td></tr>').join('')+'</tbody></table>':'<p style="margin-top:14px;font-size:13px;color:#888">Поки що жоден майстер не увійшов з телефону.</p>')+'</div>';
+  }catch(e){ _extErr(el,e); } }
 
 // ═══ SERVICES / ПОСЛУГИ (SAL-01) ═══════════════
 let _svcList = [];
