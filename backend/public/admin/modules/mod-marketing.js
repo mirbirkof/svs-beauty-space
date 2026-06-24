@@ -1,8 +1,9 @@
 /* ═══ UI-МОДУЛЬ: Маркетинг ═══════════════════════════════════
  * Реєструє сторінки групи «Аналітика та AI»:
- *   • mktcenter — Маркетинг-центр (routes/marketing-center.js)
- *   • forms     — Конструктор форм (routes/forms.js)
- *   • refmkt    — Реферальний маркетинг (routes/referral-marketing.js) MKT-05
+ *   • mktcenter   — Маркетинг-центр (routes/marketing-center.js)
+ *   • forms       — Конструктор форм (routes/forms.js)
+ *   • refmkt      — Реферальний маркетинг (routes/referral-marketing.js) MKT-05
+ *   • beforeafter — Фото До/Після (routes/portfolio.js) SAL-09
  * Захисний рендер: відсутнє поле → '—', порожній масив → modEmpty.
  * ─────────────────────────────────────────────────────────── */
 (function () {
@@ -347,6 +348,282 @@
       } catch (e) {
         window.modErr(root, e);
       }
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 4) ФОТО ДО/ПІСЛЯ (SAL-09)
+  // ═══════════════════════════════════════════════════════════
+  window.registerModule({
+    page: 'beforeafter',
+    title: 'Фото До/Після',
+    group: 'analytics',
+    icon: 'photo_library',
+    section: '<div id="beforeafter-root"></div>',
+    loader: async function () {
+      var root = document.getElementById('beforeafter-root');
+      if (!root) return;
+      root.innerHTML = window.modEmpty('Завантаження…');
+
+      // ── стан фільтрів ──
+      var state = { category: '', status: '', in_portfolio: '', page: 0, limit: 30 };
+
+      async function render() {
+        root.innerHTML = window.modEmpty('Завантаження…');
+        try {
+          var qs = '?limit=' + state.limit + '&offset=' + (state.page * state.limit);
+          if (state.category) qs += '&category=' + encodeURIComponent(state.category);
+          if (state.status)   qs += '&status='   + encodeURIComponent(state.status);
+          if (state.in_portfolio) qs += '&in_portfolio=1';
+
+          var list    = await window.modApi('/api/portfolio' + qs);
+          var stats   = await window.modApi('/api/portfolio/stats').catch(function () { return {}; });
+          var consents= await window.modApi('/api/portfolio/consents?limit=20').catch(function () { return { items: [] }; });
+
+          var photos   = (list && Array.isArray(list.rows)) ? list.rows : [];
+          var statData = stats || {};
+          var conItems = (consents && Array.isArray(consents.items)) ? consents.items : [];
+
+          var html = '';
+
+          // ── KPI-картки ──
+          html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">';
+          html += window.modCard('Усього фото', num(statData.total_photos), '#222');
+          html += window.modCard('Перегляди портфоліо', num(statData.total_views), '#2e7d32');
+          var totalCats = (Array.isArray(statData.photos_by_category) ? statData.photos_by_category.length : 0);
+          html += window.modCard('Категорій', num(totalCats), '#222');
+          var topEmpName = (Array.isArray(statData.top_employees) && statData.top_employees.length)
+            ? statData.top_employees[0].master : '—';
+          html += window.modCard('Топ майстер', window.modEsc(topEmpName), '#5e86c8');
+          html += '</div>';
+
+          // ── Фільтри ──
+          html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">';
+          html += '<select id="ba-cat" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="">Всі категорії</option>' +
+            ['haircut','coloring','nails','extensions','makeup','cosmetology','other'].map(function (c) {
+              return '<option value="' + c + '"' + (state.category === c ? ' selected' : '') + '>' + c + '</option>';
+            }).join('') +
+            '</select>';
+          html += '<select id="ba-status" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="">Всі статуси</option>' +
+            ['uploaded','moderated','published','rejected','removed'].map(function (s) {
+              return '<option value="' + s + '"' + (state.status === s ? ' selected' : '') + '>' + s + '</option>';
+            }).join('') +
+            '</select>';
+          html += '<label style="font-size:13px;display:flex;align-items:center;gap:5px;cursor:pointer">' +
+            '<input type="checkbox" id="ba-portfolio"' + (state.in_portfolio ? ' checked' : '') + '> В портфоліо</label>';
+          html += '<button id="ba-filter-btn" style="padding:6px 16px;background:#5e86c8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Фільтр</button>';
+          html += '</div>';
+
+          // ── Таблиця фото ──
+          html += '<div class="card" style="padding:16px;margin-bottom:18px">';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+          html += '<h3 style="margin:0;font-size:15px">Список фото (' + num(photos.length) + ')</h3>';
+          html += '<span style="font-size:12px;color:#888">Сторінка ' + (state.page + 1) + '</span>';
+          html += '</div>';
+
+          if (!photos.length) {
+            html += window.modEmpty('Фото не знайдено');
+          } else {
+            html += '<div style="overflow-x:auto"><table style="' + TBL + '"><thead><tr>' +
+              '<th style="' + TH + '">Фото</th>' +
+              '<th style="' + TH + '">Майстер</th>' +
+              '<th style="' + TH + '">Клієнт</th>' +
+              '<th style="' + TH + '">Категорія</th>' +
+              '<th style="' + TH + '">Статус</th>' +
+              '<th style="' + TH + '">Порт.</th>' +
+              '<th style="' + TH + '">Дата</th>' +
+              '<th style="' + TH + '">Дії</th>' +
+              '</tr></thead><tbody>';
+
+            var STATUS_BADGE = {
+              uploaded:  'background:#e3f2fd;color:#1565c0',
+              moderated: 'background:#e8f5e9;color:#2e7d32',
+              published: 'background:#e0f7fa;color:#006064',
+              rejected:  'background:#fce4ec;color:#b71c1c',
+              removed:   'background:#f5f5f5;color:#9e9e9e'
+            };
+
+            photos.forEach(function (p) {
+              var imgUrl = p.before_url || p.after_url || '';
+              var thumbStyle = 'width:48px;height:48px;object-fit:cover;border-radius:4px;background:#eee';
+              var imgHtml = imgUrl
+                ? '<img src="' + window.modEsc(imgUrl) + '" style="' + thumbStyle + '" loading="lazy" onerror="this.style.display=\'none\'">'
+                : '<div style="' + thumbStyle + ';display:flex;align-items:center;justify-content:center;font-size:10px;color:#aaa">нема</div>';
+
+              var st = p.status || 'uploaded';
+              var badge = STATUS_BADGE[st] || 'background:#eee;color:#333';
+              var canApprove = (st === 'uploaded');
+              var canReject  = (st === 'uploaded' || st === 'moderated');
+              var canPublish = (st === 'moderated');
+              var canUnpub   = (st === 'published');
+
+              var actions = '';
+              if (canApprove) actions += '<button class="ba-approve" data-id="' + p.id + '" style="margin:1px;padding:3px 8px;font-size:11px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:4px;cursor:pointer">✔ Схвалити</button>';
+              if (canReject)  actions += '<button class="ba-reject"  data-id="' + p.id + '" style="margin:1px;padding:3px 8px;font-size:11px;background:#fce4ec;color:#b71c1c;border:1px solid #f8bbd0;border-radius:4px;cursor:pointer">✘ Відхилити</button>';
+              if (canPublish) actions += '<button class="ba-publish" data-id="' + p.id + '" style="margin:1px;padding:3px 8px;font-size:11px;background:#e0f7fa;color:#006064;border:1px solid #b2ebf2;border-radius:4px;cursor:pointer">↑ Публік.</button>';
+              if (canUnpub)   actions += '<button class="ba-unpub"   data-id="' + p.id + '" style="margin:1px;padding:3px 8px;font-size:11px;background:#fff3e0;color:#e65100;border:1px solid #ffe0b2;border-radius:4px;cursor:pointer">↓ Зняти</button>';
+
+              html += '<tr>' +
+                '<td style="' + TD + '">' + imgHtml + '</td>' +
+                '<td style="' + TD + '">' + dash(p.master_name) + '</td>' +
+                '<td style="' + TD + '">' + dash(p.client_name) + '</td>' +
+                '<td style="' + TD + '">' + dash(p.category) + '</td>' +
+                '<td style="' + TD + '"><span style="padding:2px 8px;border-radius:10px;font-size:11px;' + badge + '">' + window.modEsc(st) + '</span></td>' +
+                '<td style="' + TD + ';text-align:center">' + (p.in_portfolio ? '★' : '·') + '</td>' +
+                '<td style="' + TD + '">' + dash(p.created_at ? String(p.created_at).slice(0, 10) : null) + '</td>' +
+                '<td style="' + TD + ';white-space:nowrap">' + actions + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div>';
+
+            // пагінація
+            html += '<div style="display:flex;gap:8px;margin-top:12px">';
+            if (state.page > 0) html += '<button id="ba-prev" style="padding:5px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px">← Назад</button>';
+            if (photos.length === state.limit) html += '<button id="ba-next" style="padding:5px 14px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px">Вперед →</button>';
+            html += '</div>';
+          }
+          html += '</div>';
+
+          // ── Топ майстри ──
+          if (Array.isArray(statData.top_employees) && statData.top_employees.length) {
+            html += '<div class="card" style="padding:16px;margin-bottom:18px">';
+            html += '<h3 style="margin:0 0 12px;font-size:15px">Топ майстри за кількістю фото в портфоліо</h3>';
+            html += '<table style="' + TBL + '"><thead><tr>' +
+              '<th style="' + TH + '">#</th>' +
+              '<th style="' + TH + '">Майстер</th>' +
+              '<th style="' + TH + ';text-align:right">Фото</th>' +
+              '</tr></thead><tbody>';
+            statData.top_employees.forEach(function (e, i) {
+              html += '<tr>' +
+                '<td style="' + TD + ';color:#888">' + (i + 1) + '</td>' +
+                '<td style="' + TD + '">' + dash(e.master) + '</td>' +
+                '<td style="' + TD + ';text-align:right">' + num(e.photos) + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table></div>';
+          }
+
+          // ── Аналітика по категоріях ──
+          if (Array.isArray(statData.photos_by_category) && statData.photos_by_category.length) {
+            html += '<div class="card" style="padding:16px;margin-bottom:18px">';
+            html += '<h3 style="margin:0 0 12px;font-size:15px">Розподіл по категоріях</h3>';
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+            statData.photos_by_category.forEach(function (c) {
+              html += '<div class="card" style="padding:10px 16px;text-align:center;min-width:100px">' +
+                '<div style="font-size:11px;color:#888">' + window.modEsc(c.category || 'other') + '</div>' +
+                '<div style="font-size:20px;font-weight:700">' + num(c.cnt) + '</div></div>';
+            });
+            html += '</div></div>';
+          }
+
+          // ── Згоди клієнтів ──
+          html += '<div class="card" style="padding:16px;margin-bottom:18px">';
+          html += '<h3 style="margin:0 0 12px;font-size:15px">Згоди клієнтів (останні 20)</h3>';
+          if (!conItems.length) {
+            html += window.modEmpty('Жодної згоди ще не оформлено');
+          } else {
+            var CON_BADGE = { active: 'color:#16a34a', expired: 'color:#e65100', revoked: 'color:#b71c1c' };
+            html += '<table style="' + TBL + '"><thead><tr>' +
+              '<th style="' + TH + '">Клієнт (ID)</th>' +
+              '<th style="' + TH + '">Тип</th>' +
+              '<th style="' + TH + '">Статус</th>' +
+              '<th style="' + TH + '">Підписав</th>' +
+              '<th style="' + TH + '">Дата</th>' +
+              '<th style="' + TH + '">Дії</th>' +
+              '</tr></thead><tbody>';
+            conItems.forEach(function (c) {
+              var badge = CON_BADGE[c.status] || '';
+              html += '<tr>' +
+                '<td style="' + TD + ';font-family:monospace;font-size:11px">' + dash(c.client_id ? String(c.client_id).slice(0, 8) + '…' : null) + '</td>' +
+                '<td style="' + TD + '">' + dash(c.consent_type) + '</td>' +
+                '<td style="' + TD + '"><span style="font-weight:600;' + badge + '">' + dash(c.status) + '</span></td>' +
+                '<td style="' + TD + '">' + dash(c.signed_by_name) + '</td>' +
+                '<td style="' + TD + '">' + dash(c.granted_at ? String(c.granted_at).slice(0, 10) : null) + '</td>' +
+                '<td style="' + TD + '">' +
+                  (c.status === 'active'
+                    ? '<button class="ba-revoke-consent" data-id="' + c.id + '" style="padding:3px 8px;font-size:11px;background:#fce4ec;color:#b71c1c;border:1px solid #f8bbd0;border-radius:4px;cursor:pointer">Відкликати</button>'
+                    : '') +
+                '</td></tr>';
+            });
+            html += '</tbody></table>';
+          }
+          html += '</div>';
+
+          root.innerHTML = html;
+
+          // ── прив'язка подій ──
+          var filterBtn = document.getElementById('ba-filter-btn');
+          if (filterBtn) {
+            filterBtn.addEventListener('click', function () {
+              state.category    = (document.getElementById('ba-cat') || {}).value || '';
+              state.status      = (document.getElementById('ba-status') || {}).value || '';
+              state.in_portfolio= (document.getElementById('ba-portfolio') || {}).checked ? '1' : '';
+              state.page = 0;
+              render();
+            });
+          }
+          var prevBtn = document.getElementById('ba-prev');
+          if (prevBtn) prevBtn.addEventListener('click', function () { state.page--; render(); });
+          var nextBtn = document.getElementById('ba-next');
+          if (nextBtn) nextBtn.addEventListener('click', function () { state.page++; render(); });
+
+          // кнопки модерації
+          root.querySelectorAll('.ba-approve').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+              var id = this.getAttribute('data-id');
+              try {
+                await window.modApi('/api/portfolio/' + id + '/moderate', { method: 'PATCH', body: JSON.stringify({ action: 'approve' }) });
+                render();
+              } catch (e2) { alert('Помилка: ' + (e2 && e2.message ? e2.message : e2)); }
+            });
+          });
+          root.querySelectorAll('.ba-reject').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+              var id = this.getAttribute('data-id');
+              var reason = prompt('Причина відхилення (необов\'язково):') || '';
+              try {
+                await window.modApi('/api/portfolio/' + id + '/moderate', { method: 'PATCH', body: JSON.stringify({ action: 'reject', rejection_reason: reason }) });
+                render();
+              } catch (e2) { alert('Помилка: ' + (e2 && e2.message ? e2.message : e2)); }
+            });
+          });
+          root.querySelectorAll('.ba-publish').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+              var id = this.getAttribute('data-id');
+              try {
+                await window.modApi('/api/portfolio/' + id + '/publish', { method: 'PATCH' });
+                render();
+              } catch (e2) { alert('Помилка: ' + (e2 && e2.message ? e2.message : e2)); }
+            });
+          });
+          root.querySelectorAll('.ba-unpub').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+              var id = this.getAttribute('data-id');
+              try {
+                await window.modApi('/api/portfolio/' + id + '/unpublish', { method: 'PATCH' });
+                render();
+              } catch (e2) { alert('Помилка: ' + (e2 && e2.message ? e2.message : e2)); }
+            });
+          });
+          root.querySelectorAll('.ba-revoke-consent').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+              var id = this.getAttribute('data-id');
+              var reason = prompt('Причина відкликання згоди:') || '';
+              try {
+                await window.modApi('/api/portfolio/consents/' + id + '/revoke', { method: 'PATCH', body: JSON.stringify({ revoke_reason: reason }) });
+                render();
+              } catch (e2) { alert('Помилка: ' + (e2 && e2.message ? e2.message : e2)); }
+            });
+          });
+
+        } catch (e) {
+          window.modErr(root, e);
+        }
+      }
+
+      render();
     }
   });
 })();
