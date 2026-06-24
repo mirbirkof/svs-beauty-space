@@ -298,6 +298,7 @@ try { app.use('/api/branding', require('./routes/branding')); } catch(e) { conso
 try { app.use('/api/call-center', require('./routes/call-center')); } catch(e) { console.error('[call-center] mount failed:', e.message); }
 try { app.use('/api/mobile', require('./routes/mobile')); } catch(e) { console.error('[mobile] mount failed:', e.message); }
 try { app.use('/api/quality-control', require('./routes/quality-control')); } catch(e) { console.error('[quality-control] mount failed:', e.message); }
+try { app.use('/api/referral-marketing', require('./routes/referral-marketing')); } catch(e) { console.error('[referral-marketing] mount failed:', e.message); }
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
