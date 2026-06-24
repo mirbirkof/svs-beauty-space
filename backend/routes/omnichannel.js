@@ -149,7 +149,9 @@ router.post('/conversations/:id/send', async (req, res) => {
       `INSERT INTO omni_messages (conversation_id, direction, channel, body, status)
        VALUES ($1,'out',$2,$3,$4) RETURNING *`,
       [conv.id, conv.channel, body, status]))[0];
-    await pool.query(`UPDATE omni_conversations SET last_message=$2, last_message_at=now() WHERE id=$1`,
+    // фіксуємо час першої відповіді оператора (для SLA) — лише якщо ще не було
+    await pool.query(`UPDATE omni_conversations SET last_message=$2, last_message_at=now(),
+        first_response_at=COALESCE(first_response_at, now()) WHERE id=$1`,
       [conv.id, body.slice(0, 500)]);
     res.json({ ok: true, message: msg, needs_config: !configured });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -158,9 +160,10 @@ router.post('/conversations/:id/send', async (req, res) => {
 // PATCH /api/omni/conversations/:id — статус/назначение/привязка клиента
 router.patch('/conversations/:id', async (req, res) => {
   try {
-    const allowed = ['status', 'assigned_to', 'client_id', 'contact_name'];
+    const allowed = ['status', 'assigned_to', 'client_id', 'contact_name', 'tags', 'priority', 'sla_due_at'];
     const sets = [], params = [];
     for (const k of allowed) if (req.body[k] !== undefined) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
+    if (req.body.status === 'closed') sets.push(`closed_at=now()`);
     if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
     params.push(req.params.id);
     const row = (await q(`UPDATE omni_conversations SET ${sets.join(', ')} WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
@@ -231,6 +234,124 @@ router.patch('/instagram/settings', async (req, res) => {
     }
     await q(`UPDATE omni_channels SET config=$1, updated_at=now() WHERE channel='instagram' AND tenant_id=current_tenant_id()`, [JSON.stringify(c)]);
     res.json({ ok: true, auto_agent: !!c.auto_agent, auto_book: !!c.auto_book, agent_id: c.agent_id || null });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+/* ── COM-08 дотягування: швидкі відповіді, статус оператора, transfer, CSAT ── */
+
+// GET /api/omni/quick-replies — швидкі відповіді
+router.get('/quick-replies', async (req, res) => {
+  try {
+    const params = [], wh = [`tenant_id=current_tenant_id()`, `active=true`];
+    if (req.query.channel) { params.push(req.query.channel); wh.push(`(channel IS NULL OR channel=$${params.length})`); }
+    const rows = await q(`SELECT * FROM omni_quick_replies WHERE ${wh.join(' AND ')} ORDER BY category NULLS LAST, shortcut`, params);
+    res.json({ rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/omni/quick-replies — створити
+router.post('/quick-replies', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.shortcut || !b.body) return res.status(400).json({ error: 'shortcut and body required' });
+    const row = (await q(
+      `INSERT INTO omni_quick_replies (shortcut, title, body, category, channel) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [b.shortcut, b.title || null, b.body, b.category || null, b.channel || null]))[0];
+    res.json({ ok: true, quick_reply: row });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// PATCH /api/omni/quick-replies/:id
+router.patch('/quick-replies/:id', async (req, res) => {
+  try {
+    const allowed = ['shortcut', 'title', 'body', 'category', 'channel', 'active'];
+    const sets = [], params = [];
+    for (const k of allowed) if (req.body[k] !== undefined) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
+    if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
+    params.push(req.params.id);
+    const row = (await q(`UPDATE omni_quick_replies SET ${sets.join(', ')}, updated_at=now() WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true, quick_reply: row });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// DELETE /api/omni/quick-replies/:id
+router.delete('/quick-replies/:id', async (req, res) => {
+  try {
+    const row = (await q(`DELETE FROM omni_quick_replies WHERE id=$1 AND tenant_id=current_tenant_id() RETURNING id`, [req.params.id]))[0];
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /api/omni/operators — статуси операторів
+router.get('/operators', async (req, res) => {
+  try {
+    const rows = await q(`SELECT * FROM omni_operator_status WHERE tenant_id=current_tenant_id() ORDER BY status, operator_name`);
+    res.json({ rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// PUT /api/omni/operators/status — встановити свій статус
+router.put('/operators/status', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const opId = b.operator_id || req.user?.id;
+    if (!opId) return res.status(400).json({ error: 'operator_id required' });
+    const status = ['online', 'away', 'offline'].includes(b.status) ? b.status : 'offline';
+    const row = (await q(
+      `INSERT INTO omni_operator_status (operator_id, operator_name, status) VALUES ($1,$2,$3)
+       ON CONFLICT (tenant_id, operator_id) DO UPDATE SET status=EXCLUDED.status,
+         operator_name=COALESCE(EXCLUDED.operator_name, omni_operator_status.operator_name), updated_at=now()
+       RETURNING *`,
+      [opId, b.operator_name || req.user?.display_name || null, status]))[0];
+    res.json({ ok: true, operator: row });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/omni/conversations/:id/transfer — передати діалог іншому оператору
+router.post('/conversations/:id/transfer', async (req, res) => {
+  try {
+    const to = req.body?.to_operator_id;
+    if (!to) return res.status(400).json({ error: 'to_operator_id required' });
+    const row = (await q(
+      `UPDATE omni_conversations SET assigned_to=$1, status=CASE WHEN status='closed' THEN 'open' ELSE status END
+       WHERE id=$2 AND tenant_id=current_tenant_id() RETURNING *`, [to, req.params.id]))[0];
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    // системне повідомлення в стрічку
+    await q(`INSERT INTO omni_messages (conversation_id, direction, channel, body, status, meta)
+             VALUES ($1,'out',$2,$3,'sent',$4)`,
+      [req.params.id, row.channel, `↪ Діалог передано оператору #${to}`, JSON.stringify({ system: true, transfer_to: to })]).catch(()=>{});
+    res.json({ ok: true, conversation: row });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/omni/conversations/:id/csat — зберегти оцінку клієнта (CSAT)
+router.post('/conversations/:id/csat', async (req, res) => {
+  try {
+    const score = parseInt(req.body?.score, 10);
+    if (!(score >= 1 && score <= 5)) return res.status(400).json({ error: 'score 1..5 required' });
+    const row = (await q(
+      `UPDATE omni_conversations SET csat_score=$1, csat_comment=$2 WHERE id=$3 AND tenant_id=current_tenant_id() RETURNING *`,
+      [score, req.body?.comment || null, req.params.id]))[0];
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true, conversation: row });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /api/omni/sla — порушення SLA + середній CSAT
+router.get('/sla', async (req, res) => {
+  try {
+    const breaches = await q(
+      `SELECT id, channel, contact_name, status, sla_due_at, first_response_at, last_message_at
+         FROM omni_conversations
+        WHERE tenant_id=current_tenant_id() AND status<>'closed'
+          AND sla_due_at IS NOT NULL AND first_response_at IS NULL AND sla_due_at < now()
+        ORDER BY sla_due_at LIMIT 100`);
+    const csat = (await q(
+      `SELECT ROUND(AVG(csat_score)::numeric,2) AS avg_csat, COUNT(*)::int AS responses
+         FROM omni_conversations WHERE tenant_id=current_tenant_id() AND csat_score IS NOT NULL`))[0];
+    res.json({ sla_breaches: breaches, breach_count: breaches.length, avg_csat: Number(csat?.avg_csat || 0), csat_responses: csat?.responses || 0 });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
