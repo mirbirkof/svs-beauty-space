@@ -277,6 +277,7 @@ try { app.use('/api/ai/calls', require('./routes/ai-call-analysis')); } catch(e)
 try { app.use('/api/ai/video', require('./routes/ai-video')); } catch(e) { console.error('[ai-video] mount failed:', e.message); }
 try { app.use('/api/pipeline', require('./routes/pipeline')); } catch(e) { console.error('[pipeline] mount failed:', e.message); }
 try { app.use('/api/shifts', require('./routes/shifts')); } catch(e) { console.error('[shifts] mount failed:', e.message); }
+try { app.use('/api/employees', require('./routes/employees')); } catch(e) { console.error('[employees] mount failed:', e.message); }
 try { app.use('/api/financial', require('./routes/financial')); } catch(e) { console.error('[financial] mount failed:', e.message); }
 try { app.use('/api/gift-certificates', require('./routes/gift-certificates')); } catch(e) { console.error('[gift-certificates] mount failed:', e.message); }
 try { app.use('/api/subscriptions', require('./routes/subscriptions')); } catch(e) { console.error('[subscriptions] mount failed:', e.message); }
