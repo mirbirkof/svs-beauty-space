@@ -270,6 +270,7 @@ try { app.use('/api/reviews-moderation', require('./routes/reviews-moderation'))
 try { app.use('/api/fin-integrations', require('./routes/integrations-fin')); } catch(e) { console.error('[fin-integrations] mount failed:', e.message); }
 try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console.error('[quality] mount failed:', e.message); }
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
+try { app.use('/api/pnl', require('./routes/pnl')); } catch(e) { console.error('[pnl] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
 try { app.use('/api/ai/kb', require('./routes/ai-kb')); } catch(e) { console.error('[ai-kb] mount failed:', e.message); }
 try { app.use('/api/ai/marketing', require('./routes/ai-marketing')); } catch(e) { console.error('[ai-marketing] mount failed:', e.message); }
