@@ -8,6 +8,8 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+// Публікація доменних подій у шину INF-01 (опційно — не валить перехід якщо шини нема)
+let emit = async () => {}; try { ({ emit } = require('../lib/event-bus')); } catch { /* optional */ }
 
 const router = express.Router();
 const pool = getPool();
@@ -196,6 +198,13 @@ router.post('/transition', async (req, res) => {
        VALUES ($1,$2,$3,$4) RETURNING *`,
       [+appointment_id, stageCode, req.user?.display_name || null, reason || null])).rows[0];
     await client.query('COMMIT');
+
+    // Подія в шину INF-01 — інші модулі (нотифікації, задачі, аналітика) реагують асинхронно
+    emit('crm.visit.stage_changed', {
+      appointment_id: +appointment_id, from_status: appt.status,
+      to_stage: stageCode, to_status: newStatus,
+      client_id: appt.client_id, service_id: appt.service_id, reason: reason || null,
+    }, { entityType: 'appointment', entityId: +appointment_id, actor: String(req.user?.id || 'system') }).catch(() => {});
 
     const triggered = await fireTriggers(appt, stageCode, 'enter');
     logAction({ user: req.user, action: 'pipeline.transition', entity: 'appointment', entity_id: +appointment_id, ip: req.ip, meta: { stage: stageCode } }).catch(()=>{});
