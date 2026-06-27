@@ -323,4 +323,190 @@ router.post('/what-if', requirePerm('reports.finance'), async (req, res) => {
   }
 });
 
+// ── GET /seasonality — тижнева + місячна сезонність + свята ─
+router.get('/seasonality', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const series = await dailyRevenueSeries(365);
+    if (series.length < 14) return res.json({ enough_data: false });
+    const dc = decompose(series);
+    // місячні фактори
+    const monSum = Array(12).fill(0), monCnt = Array(12).fill(0);
+    for (const p of series) { const m = +p.date.slice(5, 7) - 1; monSum[m] += p.value; monCnt[m]++; }
+    const overall = dc.overallAvg || 1;
+    const MONTHS = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+    const monthly = monSum.map((s, i) => ({ month: MONTHS[i], factor: monCnt[i] ? +((s / monCnt[i]) / overall).toFixed(2) : null }));
+    res.json({
+      enough_data: true, based_on_days: series.length,
+      weekday: dc.wdFactor.map((f, i) => ({ day: WEEKDAYS[i], factor: +f.toFixed(2) })),
+      monthly,
+      holidays: Object.entries(HOLIDAY_BOOST).map(([d, m]) => ({ date: d, boost: m })),
+    });
+  } catch (e) { console.error('[forecast:seasonality]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── GET /capacity — прогноз завантаження потужностей ───────
+router.get('/capacity', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const horizon = Math.min(Math.max(parseInt(req.query.horizon, 10) || 14, 7), 60);
+    // середнє зайнятих хвилин по днях тижня за 60 днів + кількість майстрів × робочий день
+    const rows = (await pool.query(
+      `SELECT EXTRACT(DOW FROM starts_at AT TIME ZONE 'Europe/Kiev')::int dow,
+              COALESCE(SUM(EXTRACT(EPOCH FROM (ends_at - starts_at))/60),0)::numeric busy_min,
+              COUNT(DISTINCT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD'))::int days
+         FROM appointments
+        WHERE status NOT IN ('cancelled','noshow') AND starts_at >= NOW() - INTERVAL '60 days'
+        GROUP BY dow`).then(r => r.rows).catch(() => []));
+    const mastersR = await pool.query(`SELECT COUNT(*)::int c FROM masters WHERE COALESCE(is_active,true)=true`).then(r => r.rows).catch(() => [{ c: 1 }]);
+    const masters = Math.max(Number(mastersR[0]?.c || 1), 1);
+    const dailyCapMin = masters * 8 * 60; // 8-годинний день
+    const byDow = new Map(rows.map(r => [r.dow, r.days ? Number(r.busy_min) / r.days : 0]));
+    const today = new Date(ymdKyiv(new Date()) + 'T12:00:00Z');
+    const out = [];
+    for (let h = 1; h <= horizon; h++) {
+      const fd = new Date(today.getTime() + h * DAY_MS); const dow = fd.getUTCDay();
+      const busy = Math.round(byDow.get(dow) || 0);
+      out.push({ date: ymdKyiv(fd), weekday: WEEKDAYS[dow], busy_min: busy, capacity_min: dailyCapMin, utilization_pct: dailyCapMin ? +((busy / dailyCapMin) * 100).toFixed(1) : 0 });
+    }
+    res.json({ enough_data: rows.length > 0, masters, capacity_min_per_day: dailyCapMin, horizon, daily: out });
+  } catch (e) { console.error('[forecast:capacity]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── GET /anomalies — аномалії денної виручки (z-score) ──────
+router.get('/anomalies', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const series = await dailyRevenueSeries(120);
+    if (series.length < 14) return res.json({ enough_data: false, anomalies: [] });
+    const dc = decompose(series);
+    const anomalies = [];
+    series.forEach((p, i) => {
+      const fitted = (dc.trendA * i + dc.trendB) * (dc.wdFactor[p.dow] || 1);
+      const resid = p.value - fitted;
+      const z = dc.sigma > 0 ? resid / dc.sigma : 0;
+      if (Math.abs(z) >= 2.5) anomalies.push({ date: p.date, weekday: WEEKDAYS[p.dow], value: p.value, expected: Math.round(fitted), deviation_pct: fitted > 0 ? +((resid / fitted) * 100).toFixed(0) : null, z: +z.toFixed(1), type: z > 0 ? 'spike' : 'drop' });
+    });
+    res.json({ enough_data: true, threshold_z: 2.5, count: anomalies.length, anomalies: anomalies.slice(-30) });
+  } catch (e) { console.error('[forecast:anomalies]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── Бектест: hold-out останніх K днів, MAPE ────────────────
+async function backtest(holdout = 14) {
+  const series = await dailyRevenueSeries(150);
+  if (series.length < holdout + 21) return null;
+  const train = series.slice(0, series.length - holdout);
+  const actual = series.slice(series.length - holdout);
+  const fc = forecast(train, holdout);
+  let apeSum = 0, n = 0, sse = 0;
+  for (let i = 0; i < holdout; i++) {
+    const a = actual[i].value, p = fc.daily[i].point;
+    if (a > 0) { apeSum += Math.abs(a - p) / a; n++; }
+    sse += (a - p) * (a - p);
+  }
+  return { holdout, mape: n ? +((apeSum / n) * 100).toFixed(1) : null, rmse: Math.round(Math.sqrt(sse / holdout)), points: holdout };
+}
+
+// ── GET /accuracy — точність моделі (MAPE на hold-out) ─────
+router.get('/accuracy', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const bt = await backtest(Math.min(Math.max(parseInt(req.query.holdout, 10) || 14, 7), 30));
+    if (!bt) return res.json({ enough_data: false });
+    res.json({ enough_data: true, ...bt, quality: bt.mape == null ? 'unknown' : bt.mape < 15 ? 'good' : bt.mape < 30 ? 'fair' : 'poor' });
+  } catch (e) { console.error('[forecast:accuracy]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── MODELS реєстр ──────────────────────────────────────────
+router.get('/models', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM ai_forecast_models ORDER BY is_active DESC, id`).catch(() => ({ rows: [] }));
+    res.json({ items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+router.post('/models/:id/train', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const bt = await backtest(14);
+    const metrics = bt ? { mape: bt.mape, rmse: bt.rmse, backtest_at: new Date().toISOString() } : { error: 'not_enough_data' };
+    const r = await pool.query(`UPDATE ai_forecast_models SET metrics=$1, trained_at=NOW() WHERE id=$2 RETURNING *`, [JSON.stringify(metrics), req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, model: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+router.get('/models/:id/backtest', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const bt = await backtest(Math.min(Math.max(parseInt(req.query.holdout, 10) || 14, 7), 30));
+    if (!bt) return res.json({ enough_data: false });
+    res.json({ enough_data: true, model_id: +req.params.id, ...bt });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── SCENARIOS (персист + calculate + compare) ──────────────
+router.get('/scenarios', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM ai_forecast_scenarios ORDER BY id DESC LIMIT 100`).catch(() => ({ rows: [] }));
+    res.json({ items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+router.post('/scenarios', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.name || !['price_change', 'discount', 'extra_master', 'custom'].includes(b.type)) return res.status(400).json({ error: 'name+type required' });
+    const r = await pool.query(
+      `INSERT INTO ai_forecast_scenarios (name, type, params, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [b.name, b.type, JSON.stringify(b.params || {}), req.user?.id || null]);
+    res.json({ ok: true, scenario: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+// Розрахунок впливу сценарію на базовий прогноз (та сама логіка, що /what-if)
+function applyScenario(baseTotal, type, params) {
+  const p = params || {};
+  if (type === 'price_change') {
+    const pct = Number(p.price_change_pct || 0) / 100;       // +/- ціна
+    const elasticity = Number(p.elasticity ?? -0.5);          // еластичність попиту
+    const demandChange = elasticity * pct;
+    return baseTotal * (1 + pct) * (1 + demandChange);
+  }
+  if (type === 'discount') {
+    const disc = Number(p.discount_pct || 0) / 100;
+    const uplift = Number(p.demand_uplift_pct ?? 30) / 100;   // приріст попиту від акції
+    return baseTotal * (1 - disc) * (1 + uplift);
+  }
+  if (type === 'extra_master') {
+    const extra = Number(p.extra_masters || 1);
+    const perMaster = Number(p.revenue_per_master_pct ?? 15) / 100;
+    return baseTotal * (1 + extra * perMaster);
+  }
+  // custom — прямий множник
+  return baseTotal * (1 + Number(p.delta_pct || 0) / 100);
+}
+
+router.post('/scenarios/:id/calculate', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const sc = (await pool.query(`SELECT * FROM ai_forecast_scenarios WHERE id=$1`, [req.params.id]).catch(() => ({ rows: [] }))).rows[0];
+    if (!sc) return res.status(404).json({ error: 'not-found' });
+    const horizon = Math.min(Math.max(parseInt(req.body?.horizon, 10) || 30, 7), 90);
+    const series = await dailyRevenueSeries(120);
+    if (series.length < 14) return res.json({ enough_data: false });
+    const fc = forecast(series, horizon);
+    const projected = Math.round(applyScenario(fc.total, sc.type, sc.params));
+    const result = {
+      horizon, baseline_total: fc.total, projected_total: projected,
+      delta: projected - fc.total, delta_pct: fc.total ? +(((projected - fc.total) / fc.total) * 100).toFixed(1) : 0,
+      calculated_at: new Date().toISOString(),
+    };
+    await pool.query(`UPDATE ai_forecast_scenarios SET result=$1, calculated_at=NOW() WHERE id=$2`, [JSON.stringify(result), sc.id]);
+    res.json({ ok: true, enough_data: true, scenario: { id: sc.id, name: sc.name, type: sc.type }, ...result });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
+router.get('/scenarios/:id/compare', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const sc = (await pool.query(`SELECT * FROM ai_forecast_scenarios WHERE id=$1`, [req.params.id]).catch(() => ({ rows: [] }))).rows[0];
+    if (!sc) return res.status(404).json({ error: 'not-found' });
+    if (!sc.result) return res.json({ calculated: false, hint: 'спочатку POST /scenarios/:id/calculate' });
+    res.json({ calculated: true, scenario: { id: sc.id, name: sc.name, type: sc.type, params: sc.params }, comparison: sc.result });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'internal' }); }
+});
+
 module.exports = router;
