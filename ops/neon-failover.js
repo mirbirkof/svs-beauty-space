@@ -196,6 +196,14 @@ if (process.argv.includes('--failover-now')) {
   runSync('manual').then(ok => { writeState({ ...readState(), lastSyncAt: new Date().toISOString() }); process.exit(ok ? 0 : 1); });
 } else if (process.argv.includes('--daemon')) {
   if (!PRIMARY_DB || !BACKUP_DB) { log('FATAL: DATABASE_URL or NEON_BACKUP_URL missing'); process.exit(1); }
+  // single-instance guard (prevents double sync / double failover)
+  const PIDFILE = '/tmp/neon-failover.pid';
+  try {
+    const old = parseInt(fs.readFileSync(PIDFILE, 'utf8'), 10);
+    if (old && old !== process.pid) { try { process.kill(old, 0); log(`another daemon alive (PID ${old}), exiting`); process.exit(0); } catch (_) {} }
+  } catch (_) {}
+  try { fs.writeFileSync(PIDFILE, String(process.pid)); } catch (_) {}
+  process.on('exit', () => { try { if (parseInt(fs.readFileSync(PIDFILE, 'utf8'), 10) === process.pid) fs.unlinkSync(PIDFILE); } catch (_) {} });
   log(`daemon started (check ${CHECK_INTERVAL_MS/1000}s, sync ${SYNC_INTERVAL_MS/60000}min, mode=${readState().mode || 'primary'})`);
   const run = () => tick().catch(e => log('tick error: ' + e.message));
   run();
