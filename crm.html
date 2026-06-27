@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1">
+<title>SVS CRM</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0b10;color:#e8c87a;font-family:Arial,sans-serif}
+  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:18px;text-align:center;padding:20px}
+  .spin{width:42px;height:42px;border:3px solid rgba(232,200,122,.25);border-top-color:#e8c87a;border-radius:50%;animation:r 1s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .msg{font-size:14px;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+  .links{display:none;flex-direction:column;gap:12px;margin-top:8px}
+  .links a{color:#0b0b10;background:#e8c87a;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;letter-spacing:.05em}
+  .sub{font-size:12px;opacity:.6;max-width:380px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="spin" id="spin"></div>
+  <div class="msg" id="msg">Підключення до CRM…</div>
+  <div class="links" id="links"></div>
+  <div class="sub" id="sub"></div>
+</div>
+<script>
+(function(){
+  // Стабильная точка входа в CRM. Сама находит живой backend и ведёт туда.
+  // primary в приоритете; если он лежит (suspended/biling) — backup.
+  var ENDPOINTS = [
+    'https://svs-shop-api.onrender.com',
+    'https://svs-shop-api-backup.onrender.com'
+  ];
+  var TARGET = '/admin/login.html';
+  var msg = document.getElementById('msg');
+  var spin = document.getElementById('spin');
+  var links = document.getElementById('links');
+  var sub = document.getElementById('sub');
+
+  function probe(base){
+    return new Promise(function(resolve){
+      var done=false;
+      var to=setTimeout(function(){ if(!done){done=true;resolve(false);} }, 12000);
+      fetch(base+'/health',{method:'GET',cache:'no-store'})
+        .then(function(r){ return r.ok ? r.json().catch(function(){return{};}) : Promise.reject(); })
+        .then(function(d){ if(done)return; done=true; clearTimeout(to); resolve(d && d.ok!==false); })
+        .catch(function(){ if(done)return; done=true; clearTimeout(to); resolve(false); });
+    });
+  }
+
+  function go(base){ location.replace(base + TARGET); }
+
+  function showManual(){
+    spin.style.display='none';
+    msg.textContent='Сервер прокидається…';
+    sub.textContent='Безкоштовний сервер засинає без навантаження і стартує 30–50 сек. Натисніть посилання — воно розбудить і відкриє CRM.';
+    links.style.display='flex';
+    links.innerHTML='';
+    ENDPOINTS.forEach(function(b,i){
+      var a=document.createElement('a');
+      a.href=b+TARGET;
+      a.textContent=(i===0?'Відкрити CRM (основний)':'Відкрити CRM (резерв)');
+      links.appendChild(a);
+    });
+  }
+
+  // Перебираем по очереди: первый живой выигрывает.
+  (function tryNext(i){
+    if(i>=ENDPOINTS.length){ showManual(); return; }
+    var base=ENDPOINTS[i];
+    msg.textContent = (i===0?'Перевірка основного сервера…':'Перевірка резервного сервера…');
+    probe(base).then(function(ok){
+      if(ok){ msg.textContent='Готово, відкриваю CRM…'; go(base); }
+      else { tryNext(i+1); }
+    });
+  })(0);
+
+  // Страховка: если за 30с ничего — показать ручные кнопки.
+  setTimeout(function(){ if(links.style.display!=='flex' && document.visibilityState!=='hidden'){} }, 30000);
+})();
+</script>
+</body>
+</html>
