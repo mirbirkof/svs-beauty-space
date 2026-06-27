@@ -170,7 +170,7 @@ router.post('/link', adminOnly, async (req, res) => {
     // Сначала пытаемся обновить существующего
     let r = await pool.query(
       `UPDATE users SET telegram_id = $1, updated_at = NOW()
-       WHERE phone = $2 RETURNING id, display_name, role_id, false AS created`,
+       WHERE regexp_replace(phone, '\\D', '', 'g') = $2 RETURNING id, display_name, role_id, false AS created`,
       [telegram_id, phone]
     );
 
@@ -243,7 +243,7 @@ router.post('/request', async (req, res) => {
 
     // Ищем юзера
     const u = await pool.query(
-      `SELECT id, display_name, telegram_id, is_active FROM users WHERE phone = $1`,
+      `SELECT id, display_name, telegram_id, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`,
       [phone]
     );
     if (!u.rowCount) {
@@ -316,7 +316,7 @@ router.post('/verify', async (req, res) => {
       `SELECT o.id, o.user_id, o.code_hash, o.attempts, o.max_attempts, o.expires_at, u.display_name, u.role_id, u.is_active
        FROM staff_otp_codes o
        JOIN users u ON u.id = o.user_id
-       WHERE u.phone = $1 AND o.used_at IS NULL
+       WHERE regexp_replace(u.phone, '\\D', '', 'g') = $1 AND o.used_at IS NULL
        ORDER BY o.created_at DESC LIMIT 1`,
       [phone]
     );
@@ -427,7 +427,7 @@ router.post('/login-password', async (req, res) => {
     }
 
     const u = await pool.query(
-      `SELECT id, display_name, role_id, password_hash, is_active FROM users WHERE phone = $1`,
+      `SELECT id, display_name, role_id, password_hash, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`,
       [phone]
     );
     // Единый ответ при любой неудаче — не раскрываем, есть ли юзер/пароль
