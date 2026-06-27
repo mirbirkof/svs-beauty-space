@@ -2024,7 +2024,7 @@ select.input { background:var(--card); }
             <table class="fin-table" id="finTable">
               <thead><tr>
                 <th>Тип</th><th>Стаття</th><th>Спосіб</th><th>Майстер</th>
-                <th style="text-align:right">Сума</th><th>Примітка</th><th>Створено</th>
+                <th style="text-align:right">Сума</th><th>Примітка</th><th>Створено</th><th></th>
               </tr></thead>
               <tbody id="finTableBody"></tbody>
             </table>
@@ -3755,18 +3755,25 @@ async function loadFinance(){
     document.getElementById('finSumOut').textContent=_finMoney(exp.total);
     const res=r.result||0; const resEl=document.getElementById('finSumRes');
     resEl.textContent=(res>=0?'+':'−')+_finMoney(Math.abs(res)); resEl.style.color=res>=0?'#166534':'#991b1b';
+    _finTx = {};
     const rows=(r.transactions||[]).map(t=>{
+      _finTx[t.id] = t;
       const d=new Date(t.created_at); const pad=n=>String(n).padStart(2,'0');
       const dt=pad(d.getDate())+'.'+pad(d.getMonth()+1)+' '+pad(d.getHours())+':'+pad(d.getMinutes());
       const methods={cash:'Готівка',card:'Картка',transfer:'Переказ',mono:'Mono',other:'Інше'};
       return '<tr><td><span class="fin-pill '+(t.type==='in'?'in':'out')+'">'+(t.type==='in'?'Дохід':'Витрата')+'</span></td>'+
         '<td>'+(t.label||t.category||'—')+'</td><td>'+(methods[t.method]||t.method||'—')+'</td>'+
         '<td>'+(t.master_name||'—')+'</td><td style="text-align:right;font-weight:600;color:'+(t.type==='in'?'#166534':'#991b1b')+'">'+(t.type==='in'?'+':'−')+_finMoney(t.amount)+'</td>'+
-        '<td style="color:var(--text-secondary)">'+(t.description||'')+'</td><td style="white-space:nowrap;color:var(--text-secondary)">'+dt+'</td></tr>';
+        '<td style="color:var(--text-secondary)">'+(t.description||'')+'</td><td style="white-space:nowrap;color:var(--text-secondary)">'+dt+'</td>'+
+        '<td style="white-space:nowrap;text-align:right">'+
+          '<button class="icon-btn" title="Редагувати" onclick="finEditOp('+t.id+')" style="background:none;border:none;cursor:pointer;color:var(--accent,#6366f1);padding:2px 4px"><span class="material-icons-round" style="font-size:18px">edit</span></button>'+
+          '<button class="icon-btn" title="Видалити" onclick="finDelOp('+t.id+')" style="background:none;border:none;cursor:pointer;color:#dc2626;padding:2px 4px"><span class="material-icons-round" style="font-size:18px">delete</span></button>'+
+        '</td></tr>';
     }).join('');
-    document.getElementById('finTableBody').innerHTML = rows || '<tr><td colspan="7" class="empty" style="padding:24px">Немає операцій за період</td></tr>';
+    document.getElementById('finTableBody').innerHTML = rows || '<tr><td colspan="8" class="empty" style="padding:24px">Немає операцій за період</td></tr>';
   }catch(e){ box.innerHTML='<div class="empty"><span class="material-icons-round">error</span>'+e.message+'</div>'; }
 }
+let _finTx = {};
 function finOpenOp(type){
   document.getElementById('finOpTitle').textContent = type==='in'?'Новий дохід':'Нова витрата';
   const sel=document.getElementById('finOpCat'); const cats=type==='in'?FIN_CATS_IN:FIN_CATS_OUT;
@@ -3775,9 +3782,36 @@ function finOpenOp(type){
   const ci=document.getElementById('finOpCatCustom'); ci.style.display='none'; ci.value='';
   document.getElementById('finOpAmount').value='';
   document.getElementById('finOpNote').value='';
+  document.getElementById('finOpMethod').value='cash';
   document.getElementById('finOpMsg').textContent='';
-  document.getElementById('finOpModal').dataset.type=type;
-  document.getElementById('finOpModal').style.display='flex';
+  const modal=document.getElementById('finOpModal');
+  modal.dataset.type=type; modal.dataset.editId='';
+  document.getElementById('finOpSave').disabled=false;
+  modal.style.display='flex';
+}
+// Редагування записаної операції — переймовуємо ту саму модалку.
+function finEditOp(id){
+  const t=_finTx[id]; if(!t) return;
+  const type=t.type==='in'?'in':'out';
+  finOpenOp(type);
+  document.getElementById('finOpTitle').textContent = type==='in'?'Редагувати дохід':'Редагувати витрату';
+  const sel=document.getElementById('finOpCat'); const ci=document.getElementById('finOpCatCustom');
+  // якщо стаття є у списку — обираємо її, інакше показуємо як «свою»
+  const known=[...sel.options].some(o=>o.value===t.category);
+  if(known){ sel.value=t.category; ci.style.display='none'; }
+  else { sel.value='__custom__'; ci.style.display='block'; ci.value=t.category||''; }
+  document.getElementById('finOpAmount').value=t.amount;
+  document.getElementById('finOpMethod').value=t.method||'cash';
+  document.getElementById('finOpNote').value=t.description||'';
+  document.getElementById('finOpModal').dataset.editId=String(id);
+}
+async function finDelOp(id){
+  if(!confirm('Видалити цю операцію? Дію не можна скасувати.')) return;
+  try{
+    const r=await api('/api/cashbox/operations/'+id,{method:'DELETE'});
+    if(r.error){ toast(r.error==='shift-closed'?'Зміну вже закрито — операцію змінити не можна':r.error,'error'); return; }
+    toast('Операцію видалено','success'); loadFinance();
+  }catch(e){ toast(e.message,'error'); }
 }
 function finCatChange(){
   const isCustom=document.getElementById('finOpCat').value==='__custom__';
@@ -3810,12 +3844,20 @@ async function finSaveOp(){
   const description=document.getElementById('finOpNote').value.trim();
   if(!(amount>0)){ msg.style.color='#991b1b'; msg.textContent='Введіть суму більше 0'; return; }
   btn.disabled=true; msg.style.color='var(--text-secondary)'; msg.textContent='Зберігаю...';
+  const editId=modal.dataset.editId;
   try{
-    // allow_no_shift: ручну витрату/дохід можна провести і без відкритої зміни
-    const r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description,allow_no_shift:true})});
+    let r;
+    if(editId){
+      // редагування існуючої операції
+      r=await api('/api/cashbox/operations/'+editId,{method:'PATCH',body:JSON.stringify({type,category,amount,method,description})});
+    } else {
+      // allow_no_shift: ручну витрату/дохід можна провести і без відкритої зміни
+      r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description,allow_no_shift:true})});
+    }
     if(r.error){
       btn.disabled=false; msg.style.color='#991b1b';
-      msg.textContent = r.error==='no-open-shift' ? 'Немає відкритої зміни — відкрийте касу в розділі «Каса магазину»' : r.error;
+      msg.textContent = r.error==='no-open-shift' ? 'Немає відкритої зміни — відкрийте касу в розділі «Каса магазину»'
+        : r.error==='shift-closed' ? 'Зміну вже закрито — операцію змінити не можна' : r.error;
       return;
     }
     msg.style.color='#166534'; msg.textContent='Збережено';

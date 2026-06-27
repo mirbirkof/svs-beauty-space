@@ -363,16 +363,67 @@ router.get('/operations', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// DELETE /api/cashbox/operations/:id — удалить (только в открытой смене)
+// PATCH /api/cashbox/operations/:id — редактировать операцию (категория, сумма, метод,
+// мастер, описание). Разрешено для операций в ОТКРЫТОЙ смене или ручных (shift_id NULL).
+// Это закрывает требование «редактировать абсолютно всё»: записанную продажу/расход
+// можно поправить без удаления и пересоздания.
+router.patch('/operations/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    // LEFT JOIN: ручные операции имеют shift_id=NULL и не должны выпадать из выборки.
+    const op = await pool.query(
+      `SELECT o.*, s.status AS shift_status FROM cash_operations o
+       LEFT JOIN cash_shifts s ON s.id=o.shift_id WHERE o.id=$1`, [id]
+    );
+    if (!op.rows[0]) return res.status(404).json({ error: 'not-found' });
+    // shift_id NULL → ручная операция (редактируется всегда); иначе смена обязана быть открытой.
+    if (op.rows[0].shift_id != null && op.rows[0].shift_status !== 'open') {
+      return res.status(400).json({ error: 'shift-closed' });
+    }
+
+    const b = req.body || {};
+    const sets = []; const params = [];
+    const setCol = (c, v) => { params.push(v); sets.push(`${c}=$${params.length}`); };
+
+    if (b.type !== undefined) {
+      if (!['in', 'out'].includes(b.type)) return res.status(400).json({ error: 'bad type' });
+      setCol('type', b.type);
+    }
+    if (b.amount !== undefined) {
+      if (Number(b.amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
+      setCol('amount', b.amount);
+    }
+    if (b.category !== undefined) {
+      if (!String(b.category).trim()) return res.status(400).json({ error: 'category required' });
+      setCol('category', String(b.category).trim());
+    }
+    if (b.method !== undefined) setCol('method', b.method || 'cash');
+    if (b.master_id !== undefined) setCol('master_id', b.master_id || null);
+    if (b.description !== undefined) setCol('description', b.description || null);
+
+    if (!sets.length) return res.status(400).json({ error: 'nothing-to-update' });
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE cash_operations SET ${sets.join(', ')} WHERE id=$${params.length} RETURNING *`, params
+    );
+    res.json({ ok: true, operation: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// DELETE /api/cashbox/operations/:id — удалить (открытая смена или ручная операция)
 router.delete('/operations/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
+    // LEFT JOIN: ручные операции (shift_id NULL) раньше выпадали из INNER JOIN
+    // и не удалялись («not-found»). Теперь удаляются корректно.
     const op = await pool.query(
       `SELECT o.*, s.status AS shift_status FROM cash_operations o
-       JOIN cash_shifts s ON s.id=o.shift_id WHERE o.id=$1`, [id]
+       LEFT JOIN cash_shifts s ON s.id=o.shift_id WHERE o.id=$1`, [id]
     );
     if (!op.rows[0]) return res.status(404).json({ error: 'not-found' });
-    if (op.rows[0].shift_status !== 'open') return res.status(400).json({ error: 'shift-closed' });
+    if (op.rows[0].shift_id != null && op.rows[0].shift_status !== 'open') {
+      return res.status(400).json({ error: 'shift-closed' });
+    }
     await pool.query(`DELETE FROM cash_operations WHERE id=$1`, [id]);
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
