@@ -249,6 +249,7 @@ app.use('/api/triggers', triggersRoutes);
 try { app.use('/api/reputation', require('./routes/reputation')); } catch(e) { console.error('[reputation] mount failed:', e.message); }
 try { app.use('/api/ai', require('./routes/ai')); } catch(e) { console.error('[ai] mount failed:', e.message); }
 try { app.use('/api/forecast', require('./routes/forecasting')); } catch(e) { console.error('[forecast] mount failed:', e.message); }
+try { app.use('/api/ai/analytics', require('./routes/ai-analytics')); } catch(e) { console.error('[ai-analytics] mount failed:', e.message); }
 try { app.use('/api/recommendations', require('./routes/recommendations')); } catch(e) { console.error('[recommendations] mount failed:', e.message); }
 try { app.use('/api/search', require('./routes/search')); } catch(e) { console.error('[search] mount failed:', e.message); }
 try { app.use('/api/audit', require('./routes/audit')); } catch(e) { console.error('[audit] mount failed:', e.message); }
