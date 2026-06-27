@@ -52,7 +52,7 @@ app.use(cors({
     /\.vercel\.app$/,
     /\.lhr\.life$/,
     /\.pinggy\.link$/,
-    /svs-shop-api\.onrender\.com$/,
+    /\.onrender\.com$/,
     'https://svsbeautyworld.com',
     'https://www.svsbeautyworld.com',
   ],
