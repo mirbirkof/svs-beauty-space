@@ -174,6 +174,11 @@ router.patch('/masters/:id/profile', async (req, res) => {
       // оповіщення
       'notify_channel', 'notify_telegram', 'notify_new_booking', 'notify_cancellation', 'notify_reschedule'];
     const boolFields = new Set(['provides_services', 'online_booking_enabled', 'notify_new_booking', 'notify_cancellation', 'notify_reschedule']);
+    // Поля з UNIQUE-обмеженням або просто необов'язкові: порожній рядок → NULL.
+    // phone входить у unique (tenant_id, phone) — два майстри з phone='' падали в 23505
+    // duplicate key, через що ламалося збереження ВСЬОГО профілю (зокрема імені). NULL
+    // не конфліктує в unique-індексі, тож майстрів без телефону можна редагувати вільно.
+    const nullIfEmpty = new Set(['phone', 'email', 'category', 'surname', 'avatar', 'bio', 'online_title', 'online_description', 'notify_telegram']);
     const sets = [], vals = [];
     for (const f of allowed) {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
@@ -181,6 +186,7 @@ router.patch('/masters/:id/profile', async (req, res) => {
         if (f === 'commission_pct' && (v === '' || v == null)) v = null;
         if (f === 'online_rank') v = (v === '' || v == null) ? 0 : parseInt(v, 10) || 0;
         if (boolFields.has(f)) v = !!v;
+        if (nullIfEmpty.has(f) && typeof v === 'string' && v.trim() === '') v = null;
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
     }

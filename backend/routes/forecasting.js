@@ -348,26 +348,40 @@ router.get('/seasonality', requirePerm('reports.finance'), async (req, res) => {
 router.get('/capacity', requirePerm('reports.finance'), async (req, res) => {
   try {
     const horizon = Math.min(Math.max(parseInt(req.query.horizon, 10) || 14, 7), 60);
-    // середнє зайнятих хвилин по днях тижня за 60 днів + кількість майстрів × робочий день
+    // За 60 днів: для кожного дня тижня рахуємо середню зайнятість (хв) і
+    // середню к-сть майстрів, що РЕАЛЬНО працювали того дня → реалістична потужність.
     const rows = (await pool.query(
-      `SELECT EXTRACT(DOW FROM starts_at AT TIME ZONE 'Europe/Kiev')::int dow,
-              COALESCE(SUM(EXTRACT(EPOCH FROM (ends_at - starts_at))/60),0)::numeric busy_min,
-              COUNT(DISTINCT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD'))::int days
-         FROM appointments
-        WHERE status NOT IN ('cancelled','noshow') AND starts_at >= NOW() - INTERVAL '60 days'
-        GROUP BY dow`).then(r => r.rows).catch(() => []));
-    const mastersR = await pool.query(`SELECT COUNT(*)::int c FROM masters WHERE COALESCE(is_active,true)=true`).then(r => r.rows).catch(() => [{ c: 1 }]);
-    const masters = Math.max(Number(mastersR[0]?.c || 1), 1);
-    const dailyCapMin = masters * 8 * 60; // 8-годинний день
-    const byDow = new Map(rows.map(r => [r.dow, r.days ? Number(r.busy_min) / r.days : 0]));
+      `WITH per_day AS (
+         SELECT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
+                EXTRACT(DOW FROM starts_at AT TIME ZONE 'Europe/Kiev')::int dow,
+                SUM(EXTRACT(EPOCH FROM (ends_at - starts_at))/60) busy_min,
+                COUNT(DISTINCT master_id) masters
+           FROM appointments
+          WHERE status NOT IN ('cancelled','noshow') AND starts_at >= NOW() - INTERVAL '60 days'
+          GROUP BY d, dow)
+       SELECT dow,
+              AVG(busy_min)::numeric avg_busy_min,
+              AVG(masters)::numeric avg_masters,
+              COUNT(*)::int days
+         FROM per_day GROUP BY dow`).then(r => r.rows).catch(() => []));
+    // Загальна к-сть активних майстрів — стеля потужності (колонка active, не is_active).
+    const mastersR = await pool.query(`SELECT COUNT(*)::int c FROM masters WHERE COALESCE(active,true)=true`).then(r => r.rows).catch(() => [{ c: 0 }]);
+    const activeMasters = Math.max(Number(mastersR[0]?.c || 0), 1);
+    const byDow = new Map(rows.map(r => [r.dow, {
+      busy: Number(r.avg_busy_min) || 0,
+      // майстрів того дня: фактичні, але не більше активних і не менше 1
+      masters: Math.min(Math.max(Math.round(Number(r.avg_masters) || 0), 1), activeMasters),
+    }]));
     const today = new Date(ymdKyiv(new Date()) + 'T12:00:00Z');
     const out = [];
     for (let h = 1; h <= horizon; h++) {
       const fd = new Date(today.getTime() + h * DAY_MS); const dow = fd.getUTCDay();
-      const busy = Math.round(byDow.get(dow) || 0);
-      out.push({ date: ymdKyiv(fd), weekday: WEEKDAYS[dow], busy_min: busy, capacity_min: dailyCapMin, utilization_pct: dailyCapMin ? +((busy / dailyCapMin) * 100).toFixed(1) : 0 });
+      const info = byDow.get(dow) || { busy: 0, masters: 1 };
+      const busy = Math.round(info.busy);
+      const cap = info.masters * 8 * 60; // 8-годинний робочий день на майстра
+      out.push({ date: ymdKyiv(fd), weekday: WEEKDAYS[dow], busy_min: busy, masters: info.masters, capacity_min: cap, utilization_pct: cap ? +((busy / cap) * 100).toFixed(1) : 0 });
     }
-    res.json({ enough_data: rows.length > 0, masters, capacity_min_per_day: dailyCapMin, horizon, daily: out });
+    res.json({ enough_data: rows.length > 0, active_masters: activeMasters, masters: activeMasters, capacity_min_per_day: activeMasters * 8 * 60, horizon, daily: out });
   } catch (e) { console.error('[forecast:capacity]', e); res.status(500).json({ error: 'internal' }); }
 });
 
