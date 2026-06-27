@@ -112,8 +112,8 @@
 
 <script>
 const API = (function() {
-  try { return localStorage.getItem('DIKIDI_API') || 'https://svs-shop-api.onrender.com'; }
-  catch(e) { return 'https://svs-shop-api.onrender.com'; }
+  try { return localStorage.getItem('DIKIDI_API') || location.origin; }
+  catch(e) { return location.origin; }
 })();
 
 let CURRENT_PHONE = null;
