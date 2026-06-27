@@ -22,7 +22,4 @@ CREATE INDEX IF NOT EXISTS ix_bks_tenant_branch
 CREATE INDEX IF NOT EXISTS ix_bks_period
   ON branch_kpi_snapshots (tenant_id, period_type, period_start);
 
--- Register in migration log if the table exists
-INSERT INTO migrations_log (version, name, applied_at)
-VALUES (182, 'kpi_branches_snapshots', NOW())
-ON CONFLICT DO NOTHING;
+-- Migration registration handled by the runner (_migrations table).
