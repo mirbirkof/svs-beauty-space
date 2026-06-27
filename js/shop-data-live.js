@@ -4,19 +4,37 @@
    Завантажується async — не блокує рендер вітрини.
 */
 (function () {
-  var FALLBACK_API = 'https://svs-shop-api.onrender.com'; // permanent Render URL
+  // Відмовостійкий доступ до CRM: основний Render → резервний, якщо основний лежить.
+  // Живий адрес кешуємо в sessionStorage, щоб не пінгувати щоразу.
+  var ENDPOINTS = ['https://svs-shop-api.onrender.com', 'https://svs-shop-api-backup.onrender.com'];
+  function liveBase() {
+    try { var c = sessionStorage.getItem('svs_shop_base'); if (c && ENDPOINTS.indexOf(c) >= 0) return c; } catch (e) {}
+    return ENDPOINTS[0];
+  }
+  function svsFetch(path, opts) {
+    var eps = ENDPOINTS.slice(), cached = liveBase();
+    var ci = eps.indexOf(cached); if (ci > 0) { eps.splice(ci, 1); eps.unshift(cached); }
+    var i = 0;
+    function go() {
+      return fetch(eps[i] + path, opts).then(function (r) {
+        if (r.status >= 500 && i < eps.length - 1) { i++; return go(); }
+        try { if (r.ok) sessionStorage.setItem('svs_shop_base', eps[i]); } catch (e) {}
+        return r;
+      }).catch(function (e) { if (i < eps.length - 1) { i++; return go(); } throw e; });
+    }
+    return go();
+  }
 
   function api(path, opts) {
     opts = opts || {};
-    var url = FALLBACK_API + path;
-    return fetch(url, Object.assign({
+    return svsFetch(path, Object.assign({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     }, opts)).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'invalid-json' }; }); });
   }
 
   window.SVS_API = {
-    baseUrl: FALLBACK_API,
+    baseUrl: liveBase(),
     createOrder: function (payload) {
       return api('/api/orders', { body: JSON.stringify(payload) });
     },
@@ -27,7 +45,7 @@
       return api('/api/cabinet/verify', { body: JSON.stringify({ phone: phone, code: code }) });
     },
     refreshStock: function () {
-      return fetch(FALLBACK_API + '/api/catalog/legacy/all').then(function (r) { return r.json(); })
+      return svsFetch('/api/catalog/legacy/all', { method: 'GET' }).then(function (r) { return r.json(); })
         .then(function (d) {
           if (!d || !d.products || !window.SHOP_PRODUCTS) return;
           var byId = {};

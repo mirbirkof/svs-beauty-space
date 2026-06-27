@@ -9,6 +9,20 @@
   // Каталог (послуги + реальна звʼязка майстер↔послуга) беремо з НАШОЇ CRM — джерело правди.
   // Слоти/доступність/створення запису лишаються на booking-api (там ключі BeautyPro).
   const CRM = window.SVS_CRM_API || 'https://svs-shop-api.onrender.com';
+  // Відмовостійкий доступ до CRM: основний Render → резервний при відмові основного.
+  const CRM_ENDPOINTS = ['https://svs-shop-api.onrender.com', 'https://svs-shop-api-backup.onrender.com'];
+  function crmFetch(path, opts) {
+    let eps = CRM_ENDPOINTS.slice(), cached;
+    try { cached = sessionStorage.getItem('svs_shop_base'); } catch (e) {}
+    const ci = cached ? eps.indexOf(cached) : -1; if (ci > 0) { eps.splice(ci, 1); eps.unshift(cached); }
+    let i = 0;
+    const go = () => fetch(eps[i] + path, opts).then(r => {
+      if (r.status >= 500 && i < eps.length - 1) { i++; return go(); }
+      try { if (r.ok) sessionStorage.setItem('svs_shop_base', eps[i]); } catch (e) {}
+      return r;
+    }).catch(e => { if (i < eps.length - 1) { i++; return go(); } throw e; });
+    return go();
+  }
 
   const html = `
     <div id="svs-book-modal" class="svs-book-modal" hidden>
@@ -155,7 +169,7 @@
     const loader = addLoading();
     try {
       // 1) каталог з нашої CRM: послуги + майстри з реальною звʼязкою (тільки активні, без звільнених)
-      const r = await fetch(CRM + '/api/booking/catalog');
+      const r = await crmFetch('/api/booking/catalog');
       const c = r.ok ? await r.json() : null;
       if (c && Array.isArray(c.services) && c.services.length) {
         state.services = c.services;

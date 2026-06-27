@@ -7,7 +7,25 @@
 (function () {
   'use strict';
 
-  var API = (window.SVS_API && window.SVS_API.baseUrl) || 'https://svs-shop-api.onrender.com';
+  // Відмовостійкий доступ до CRM: основний Render → резервний при відмові основного.
+  var ENDPOINTS = ['https://svs-shop-api.onrender.com', 'https://svs-shop-api-backup.onrender.com'];
+  function liveBase() {
+    try { var c = sessionStorage.getItem('svs_shop_base'); if (c && ENDPOINTS.indexOf(c) >= 0) return c; } catch (e) {}
+    return ENDPOINTS[0];
+  }
+  function svsFetch(path, opts) {
+    var eps = ENDPOINTS.slice(), cached = liveBase();
+    var ci = eps.indexOf(cached); if (ci > 0) { eps.splice(ci, 1); eps.unshift(cached); }
+    var i = 0;
+    function go() {
+      return fetch(eps[i] + path, opts).then(function (r) {
+        if (r.status >= 500 && i < eps.length - 1) { i++; return go(); }
+        try { if (r.ok) sessionStorage.setItem('svs_shop_base', eps[i]); } catch (e) {}
+        return r;
+      }).catch(function (e) { if (i < eps.length - 1) { i++; return go(); } throw e; });
+    }
+    return go();
+  }
 
   var token = localStorage.getItem('svs_cab_token') || null;
   var page = document.getElementById('authPage');
@@ -20,7 +38,7 @@
       token ? { Authorization: 'Bearer ' + token } : {},
       opts.headers || {}
     );
-    return fetch(API + path, opts).then(function (r) {
+    return svsFetch(path, opts).then(function (r) {
       if (r.status === 401) { logout(false); throw new Error('unauthorized'); }
       return r.json();
     });
