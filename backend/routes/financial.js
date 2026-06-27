@@ -205,7 +205,148 @@ router.post('/digest/send-now', requirePerm('reports.finance'), async (req, res)
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// ── CRON: щоденне зведення ───────────────────────────────
+// ── SNAPSHOTS: предрозрахунок для миттєвого дашборду ──────
+// Межі періоду за типом і датою
+function snapBounds(type, dateStr) {
+  const d = dateStr || kyivDate();
+  if (type === 'weekly') {
+    const base = new Date(d + 'T12:00:00'); const dow = (base.getDay() + 6) % 7;
+    const mon = new Date(base); mon.setDate(base.getDate() - dow);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: `${fmt(mon)} 00:00:00+03`, to: `${fmt(sun)} 23:59:59+03`, period_date: fmt(mon) };
+  }
+  if (type === 'monthly') {
+    const first = d.slice(0, 8) + '01';
+    const base = new Date(first + 'T12:00:00'); const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    return { from: `${first} 00:00:00+03`, to: `${fmt(last)} 23:59:59+03`, period_date: first };
+  }
+  return { from: `${d} 00:00:00+03`, to: `${d} 23:59:59+03`, period_date: d }; // daily
+}
+
+router.get('/snapshots', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const type = ['daily', 'weekly', 'monthly'].includes(req.query.period_type) ? req.query.period_type : 'daily';
+    const limit = Math.min(Math.max(+req.query.limit || 30, 1), 365);
+    const r = await pool.query(
+      `SELECT period_type, period_date, data, generated_at FROM financial_snapshots
+        WHERE period_type=$1 ORDER BY period_date DESC LIMIT $2`, [type, limit]);
+    res.json({ period_type: type, count: r.rows.length, items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// Перерахувати знімок(и). { period_type, period_date } або діапазон { period_type, days }
+router.post('/snapshots/recalculate', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const type = ['daily', 'weekly', 'monthly'].includes(req.body?.period_type) ? req.body.period_type : 'daily';
+    const targets = [];
+    if (req.body?.days && type === 'daily') {
+      const n = Math.min(Math.max(+req.body.days, 1), 90);
+      for (let i = 0; i < n; i++) { const d = new Date(); d.setDate(d.getDate() - i); targets.push(kyivDate(d)); }
+    } else {
+      targets.push(req.body?.period_date || kyivDate());
+    }
+    let count = 0;
+    for (const dateStr of targets) {
+      const b = snapBounds(type, dateStr);
+      const data = await snapshot(b.from, b.to);
+      await pool.query(
+        `INSERT INTO financial_snapshots (period_type, period_date, data, generated_at)
+         VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (period_type, period_date) DO UPDATE SET data=EXCLUDED.data, generated_at=NOW()`,
+        [type, b.period_date, JSON.stringify(data)]);
+      count++;
+    }
+    res.json({ ok: true, period_type: type, recalculated: count });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── WIDGETS: налаштовуваний дашборд ──────────────────────
+const WIDGET_TYPES = ['revenue_today', 'expense_breakdown', 'profit_trend', 'kpi_card', 'top_masters', 'category_pie'];
+
+router.get('/widgets', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const uid = req.user?.id || null;
+    const r = await pool.query(
+      `SELECT * FROM financial_widgets WHERE user_id IS NULL OR user_id=$1 ORDER BY position, id`, [uid]);
+    res.json({ items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.post('/widgets', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!WIDGET_TYPES.includes(b.widget_type)) return res.status(400).json({ error: 'bad widget_type', allowed: WIDGET_TYPES });
+    const r = await pool.query(
+      `INSERT INTO financial_widgets (user_id, widget_type, title, config, position, is_visible)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.user?.id || null, b.widget_type, b.title || null, JSON.stringify(b.config || {}), Number(b.position) || 0, b.is_visible !== false]);
+    res.json({ ok: true, widget: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.put('/widgets/:id', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const b = req.body || {}; const sets = [], vals = [];
+    for (const k of ['title', 'position', 'is_visible']) if (k in b) { vals.push(b[k]); sets.push(`${k}=$${vals.length}`); }
+    if ('config' in b) { vals.push(JSON.stringify(b.config || {})); sets.push(`config=$${vals.length}`); }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const r = await pool.query(`UPDATE financial_widgets SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, widget: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.delete('/widgets/:id', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const r = await pool.query(`DELETE FROM financial_widgets WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── EXPORT: знімок дашборду → файл/розшарене посилання ───
+const crypto = require('crypto');
+router.post('/export', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const scope = ['full_dashboard', 'widget', 'custom_report'].includes(req.body?.scope) ? req.body.scope : 'full_dashboard';
+    const format = ['xlsx', 'pdf', 'csv', 'json'].includes(req.body?.format) ? req.body.format : 'xlsx';
+    const { from, to, fromD, toD } = periodBounds(req.body || {});
+    const data = await snapshot(from, to);
+    const payload = { scope, period: { from: fromD, to: toD }, generated_at: new Date().toISOString(), data };
+    const share = req.body?.share === true;
+    const token = share ? crypto.randomBytes(16).toString('hex') : null;
+    const sharedUntil = share ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
+    const r = await pool.query(
+      `INSERT INTO financial_exports (scope, format, params, status, payload, share_token, shared_until, created_by)
+       VALUES ($1,$2,$3,'ready',$4,$5,$6,$7) RETURNING id, scope, format, status, share_token, shared_until, created_at`,
+      [scope, format, JSON.stringify(req.body?.params || {}), JSON.stringify(payload), token, sharedUntil, req.user?.id || null]);
+    const out = r.rows[0];
+    if (token) out.share_url = `/api/financial/export/shared/${token}`;
+    res.json({ ok: true, export: out });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+router.get('/export/:id', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM financial_exports WHERE id=$1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    res.json(r.rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// Публічне розшарене посилання (без auth) — лише поки не протермінувалось
+router.get('/export/shared/:token', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM financial_exports WHERE share_token=$1`, [req.params.token]);
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: 'not-found' });
+    if (row.shared_until && new Date(row.shared_until) < new Date()) return res.status(410).json({ error: 'expired' });
+    res.json({ scope: row.scope, format: row.format, payload: row.payload, created_at: row.created_at });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── CRON: щоденне зведення + нічний снапшот ──────────────
 let cronRef = null;
 async function digestTick() {
   try {
@@ -228,12 +369,28 @@ async function digestTick() {
     console.log('[fin-digest] sent to', chat);
   } catch (e) { console.error('[fin-digest] tick error:', e.message); }
 }
+// Фоновий перерахунок знімка поточного дня (щоб дашборд вантажився миттєво з snapshot)
+let snapRef = null;
+async function snapshotTick() {
+  try {
+    const b = snapBounds('daily', kyivDate());
+    const data = await snapshot(b.from, b.to);
+    await pool.query(
+      `INSERT INTO financial_snapshots (period_type, period_date, data, generated_at)
+       VALUES ('daily',$1,$2,NOW())
+       ON CONFLICT (period_type, period_date) DO UPDATE SET data=EXCLUDED.data, generated_at=NOW()`,
+      [b.period_date, JSON.stringify(data)]);
+  } catch (e) { /* таблиці може ще не бути до міграції — тихо */ }
+}
 function startDigestCron() {
   if (cronRef) return;
   setTimeout(digestTick, 60 * 1000);
   cronRef = setInterval(digestTick, 5 * 60 * 1000); // перевірка кожні 5 хв
   cronRef.unref();
-  console.log('[fin-digest] cron started (check every 5 min)');
+  setTimeout(snapshotTick, 90 * 1000);
+  snapRef = setInterval(snapshotTick, 15 * 60 * 1000); // знімок дня кожні 15 хв
+  snapRef.unref();
+  console.log('[fin-digest] cron started (check every 5 min, snapshot every 15 min)');
 }
 startDigestCron();
 
