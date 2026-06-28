@@ -328,6 +328,19 @@ try {
     setInterval(tick, 12 * 60 * 60 * 1000);
   }
 } catch(e) { console.error('[recurring-expenses] mount failed:', e.message); }
+// Віртуальний керуючий (шар 2): авто-запит відгуку після візиту + ранковий розклад майстрам.
+try {
+  const vm = require('./lib/virtual-manager');
+  if (process.env.DATABASE_URL) {
+    const kyivHour = () => Number(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kiev', hour: '2-digit', hour12: false }).slice(0, 2));
+    const tick = async () => {
+      try { const n = await vm.autoReviewRequests(); if (n) console.log(`[vm] запитано відгуків: ${n}`); } catch (e) { console.error('[vm] reviews tick:', e.message); }
+      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.masterDailySchedules(); if (n) console.log(`[vm] розклад майстрам: ${n}`); } } catch (e) { console.error('[vm] sched tick:', e.message); }
+    };
+    setTimeout(tick, 45000);
+    setInterval(tick, 30 * 60 * 1000);
+  }
+} catch(e) { console.error('[virtual-manager] init failed:', e.message); }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }

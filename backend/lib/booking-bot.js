@@ -414,10 +414,37 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
 
 // Вільний текст: старт або уточнення послуги.
 // Повертає true якщо повідомлення оброблено цим модулем.
+// FAQ-відповіді з профілю салону (графік/адреса/телефон) — шар 2 «віртуального керуючого».
+// Повертає текст відповіді або null, якщо питання не про FAQ.
+async function tryFaq(text, ctx) {
+  const t = text.toLowerCase();
+  const isHours = /графік|час(и|у)? робот|коли (ви )?(працює|відкрит|зачинен)|режим робот|до котр|з котр|робочі години|когда (вы )?работа|во сколько/.test(t);
+  const isAddr = /адрес|де ви|де знаход|доїхати|дістат|проїзд|як пройти|як знайти|локац|орієнтир|куди (їхати|йти|іти)|где (вы )?наход/.test(t);
+  const isPhone = /телефон|номер|подзвон|зв.?яза|контакт|вайбер|viber|whats|зателеф/.test(t);
+  if (!isHours && !isAddr && !isPhone) return null;
+  let sp = {};
+  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'`)).rows[0]?.value || {}; } catch (_) {}
+  const out = [];
+  if (sp.name) out.push(`<b>${sp.name}</b>`);
+  if (isHours && sp.hours) out.push(`🕐 Графік роботи: <b>${sp.hours}</b>`);
+  if (isAddr) {
+    if (sp.address) out.push(`📍 Адреса: <b>${sp.address}</b>`);
+    if (sp.landmarks) out.push(`🧭 ${sp.landmarks}`);
+  }
+  if (isPhone && sp.phones) out.push(`📞 Телефон: <b>${sp.phones}</b>`);
+  if (out.length <= 1) return null; // профіль порожній по запитаному — не вдаємо, що відповіли
+  out.push(`\nНапишіть назву послуги — підберу вільний час і запишу. 💛`);
+  return out.join('\n');
+}
+
 async function onText(msg, ctx) {
   const uid = msg.from.id, chatId = msg.chat.id;
   const text = (msg.text || '').trim();
   if (!text || text.startsWith('/')) return false; // команди — не сюди
+
+  // FAQ перед розпізнаванням послуги: графік/адреса/телефон
+  const faq = await tryFaq(text, ctx);
+  if (faq) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq }); return true; }
 
   const cat = await loadCatalog(ctx.pool);
   const result = matcher.match(text, cat.indexed);
