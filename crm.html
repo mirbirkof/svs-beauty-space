@@ -47,7 +47,8 @@
     });
   }
 
-  function go(base){ location.replace(base + TARGET); }
+  function remember(base){ try{ localStorage.setItem('svs_last_backend', base); }catch(_){} }
+  function go(base){ remember(base); location.replace(base + TARGET); }
 
   function showManual(){
     spin.style.display='none';
@@ -66,11 +67,21 @@
     setTimeout(function(){ go(ENDPOINTS[ENDPOINTS.length-1]); }, 2500);
   }
 
+  // Порядок проверки: СНАЧАЛА сервер, на котором была последняя успешная сессия,
+  // чтобы держать ОДИН и тот же адрес и не терять логин. Потом — обычный список.
+  var order = ENDPOINTS.slice();
+  try {
+    var last = localStorage.getItem('svs_last_backend');
+    if (last && ENDPOINTS.indexOf(last) >= 0) {
+      order = [last].concat(ENDPOINTS.filter(function(b){ return b!==last; }));
+    }
+  } catch(_){}
+
   // Перебираем по очереди: первый живой выигрывает.
   (function tryNext(i){
-    if(i>=ENDPOINTS.length){ showManual(); return; }
-    var base=ENDPOINTS[i];
-    msg.textContent = (i===0?'Перевірка основного сервера…':'Перевірка резервного сервера…');
+    if(i>=order.length){ showManual(); return; }
+    var base=order[i];
+    msg.textContent = 'Перевірка сервера…';
     probe(base).then(function(ok){
       if(ok){ msg.textContent='Готово, відкриваю CRM…'; go(base); }
       else { tryNext(i+1); }
