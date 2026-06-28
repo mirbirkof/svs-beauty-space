@@ -137,7 +137,7 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
     const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
 
     const fin = await liveFinance(pool, from, to);
-    const [revByMaster, commByMaster, cashOps] = await Promise.all([
+    const [revByMaster, commByMaster, cashOps, clientsM] = await Promise.all([
       q(`SELECT m.name, COALESCE(SUM(co.amount),0)::numeric revenue
            FROM cash_operations co JOIN masters m ON m.id=co.master_id
           WHERE co.type='in' AND co.category IN ('sale_service','sale_product') AND co.created_at BETWEEN $1 AND $2
@@ -153,6 +153,8 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
       q(`SELECT created_at, category, amount::numeric, description FROM cash_operations
           WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
           ORDER BY created_at DESC LIMIT 200`, [from, to]),
+      q(`SELECT COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL)::int uniq
+           FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
     ]);
 
     res.json({
@@ -170,6 +172,7 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
         cash_ops: cashOps.map(o => ({ date: o.created_at, category: o.category, label: CAT_LABELS[o.category] || o.category, amount: Number(o.amount), description: o.description })),
       },
       profit: { total: fin.profit.net, revenue_total: fin.revenue.total, expense_total: fin.expenses.total, margin_pct: fin.profit.margin_pct },
+      metrics: { avg_check: fin.avg_check, tx_count: fin.tx_count, unique_clients: Number(clientsM[0]?.uniq || 0), commission_appts: fin.commission_appts },
     });
   } catch (e) { console.error('[financial/detail]', e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

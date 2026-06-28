@@ -5994,6 +5994,7 @@ function fcRangeCustom(){
   loadFinCenter();
 }
 async function fcDrill(type){
+  const esc = escapeHtml; // глобальної esc() немає — використовуємо escapeHtml
   const qs = (_fcRange.from && _fcRange.to) ? `?from=${_fcRange.from}&to=${_fcRange.to}` : '';
   let d; try{ d=await api('/api/financial/detail'+qs); }catch(e){ toast('Не вдалося завантажити деталі','error'); return; }
   if(!d||d.error){ toast((d&&d.error)||'Помилка','error'); return; }
@@ -6015,6 +6016,23 @@ async function fcDrill(type){
       + `<div style="margin:14px 0 6px;font-weight:700">Касові витрати (операції):</div>`
       + (d.expenses.cash_ops.length ? d.expenses.cash_ops.map(o=>row((o.label||o.category)+(o.description?' · '+o.description:''), o.amount, new Date(o.date).toLocaleDateString('uk-UA'))).join('') : '<div class="muted">Немає</div>')
       + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:16px"><span>Разом витрати</span><span>${_fcMoney(d.expenses.total)}</span></div>`;
+  } else if(type==='avgcheck'){
+    const m=d.metrics||{};
+    title='🧾 Середній чек — як рахується';
+    body = row('Разом виручка', d.revenue.total)
+      + `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0"><span>÷ кількість продажів</span><b>${m.tx_count||0}</b></div>`
+      + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:18px"><span>= Середній чек</span><span>${_fcMoney(m.avg_check||0)}</span></div>`
+      + `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:10px">Скільки в середньому залишає клієнт за одну оплату.</div>`;
+  } else if(type==='checks'){
+    const m=d.metrics||{};
+    title='👥 Чеки і клієнти';
+    body = row('Кількість продажів (чеків)', m.tx_count||0)
+      + row('Унікальних клієнтів', m.unique_clients||0)
+      + row('Послуг виконано', m.commission_appts||0)
+      + `<div style="display:flex;gap:8px;margin-top:14px">
+           <button class="btn btn-sm" onclick="document.getElementById('fcDrillModal').style.display='none';go('journal')">Відкрити журнал записів →</button>
+           <button class="btn btn-sm" onclick="document.getElementById('fcDrillModal').style.display='none';go('clients')">Відкрити клієнтів →</button>
+         </div>`;
   } else {
     title='📈 Прибуток — з чого склався';
     body = row('Виручка (послуги)', d.revenue.services) + row('Виручка (товари)', d.revenue.products)
@@ -6044,8 +6062,8 @@ async function loadFinCenter(){
     <div class="fc-kpi fc-clk" onclick="fcDrill('revenue')" title="Натисніть — деталі виручки"><div class="lbl">ВИРУЧКА 🔍</div><div class="val">${_fcMoney(d.revenue.total)}</div>${_fcChg(cmp.revenue&&cmp.revenue.change_pct)}</div>
     <div class="fc-kpi fc-clk" onclick="fcDrill('expenses')" title="Натисніть — перелік усіх витрат"><div class="lbl">ВИТРАТИ 🔍</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}</div>
     <div class="fc-kpi fc-clk" onclick="fcDrill('profit')" title="Натисніть — з чого склався прибуток"><div class="lbl">ПРИБУТОК 🔍 (маржа ${d.profit.margin_pct}%)</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
-    <div class="fc-kpi"><div class="lbl">СЕРЕДНІЙ ЧЕК</div><div class="val">${_fcMoney(d.metrics.avg_check)}</div>${_fcChg(cmp.avg_check&&cmp.avg_check.change_pct)}</div>
-    <div class="fc-kpi"><div class="lbl">ЧЕКІВ / КЛІЄНТІВ</div><div class="val">${d.metrics.transaction_count} / ${d.metrics.unique_clients}</div><span class="chg flat">нових ${d.metrics.new_clients}</span></div>`;
+    <div class="fc-kpi fc-clk" onclick="fcDrill('avgcheck')" title="Натисніть — як рахується середній чек"><div class="lbl">СЕРЕДНІЙ ЧЕК 🔍</div><div class="val">${_fcMoney(d.metrics.avg_check)}</div>${_fcChg(cmp.avg_check&&cmp.avg_check.change_pct)}</div>
+    <div class="fc-kpi fc-clk" onclick="fcDrill('checks')" title="Натисніть — чеки і клієнти"><div class="lbl">ЧЕКІВ / КЛІЄНТІВ 🔍</div><div class="val">${d.metrics.transaction_count} / ${d.metrics.unique_clients}</div><span class="chg flat">нових ${d.metrics.new_clients}</span></div>`;
   // структура виручки
   const rev=[{nm:'Послуги',v:d.revenue.services,c:'#6366f1'},{nm:'Товари',v:d.revenue.products,c:'#0ea5e9'}];
   const revMax=Math.max(1,...rev.map(x=>x.v));
