@@ -138,11 +138,21 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
           WHERE period_start >= $1::date AND period_end <= $2::date
             AND master_id ~ '^\d+$'
           GROUP BY master_id::int
+       ),
+       -- НАРАХОВАНА ЗП (виручка × % схеми) за період — щоб колонка ЗП не була 0 до дня виплати
+       accrued AS (
+         SELECT da.master_id,
+                ROUND(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END)) AS accrued_sum
+           FROM (SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+                  WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
+                    AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))) da
+           LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+          GROUP BY da.master_id
        )
        SELECT m.id, m.name,
               a.total_appts, a.done_appts, a.canceled_appts, a.no_show_appts,
               a.unique_clients, COALESCE(ca.revenue,0)::numeric AS revenue,
-              p.payroll_sum,
+              COALESCE(NULLIF(p.payroll_sum,0), acc.accrued_sum, 0) AS payroll_sum,
               CASE WHEN a.done_appts > 0
                    THEN ROUND(COALESCE(ca.revenue,0) / a.done_appts, 2)
                    ELSE 0 END AS avg_ticket,
@@ -153,6 +163,7 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
          LEFT JOIN appts a   ON a.master_id = m.id
          LEFT JOIN cash ca   ON ca.master_id = m.id
          LEFT JOIN payroll p ON p.master_id = m.id
+         LEFT JOIN accrued acc ON acc.master_id = m.id
          WHERE a.total_appts > 0 OR p.payroll_sum > 0 OR ca.revenue > 0
          ORDER BY revenue DESC NULLS LAST`,
       [from, to]

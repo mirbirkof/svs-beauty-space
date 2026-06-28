@@ -486,12 +486,24 @@ async function loadReports(){
       (p.expenses.length ? p.expenses.map(e=>`<span class="pill gray">${e.category}: ${(+e.sum).toFixed(0)} ₴</span> `).join('') : '<span class="empty">немає</span>') + '</div>';
     const m = await api('/api/reports/masters'+q);
     document.getElementById('r-masters').innerHTML = m.items.length ?
-      `<table><thead><tr><th>Майстер</th><th>Сеансів</th><th>Унік.клієнтів</th><th>Дохід</th><th>Сер.чек</th><th>% відмін</th><th>ЗП</th></tr></thead><tbody>${m.items.map(r=>`<tr><td>${r.name||'#'+r.id}</td><td>${r.total_appts||0}</td><td>${r.unique_clients||0}</td><td><b>${(+r.revenue||0).toFixed(0)} ₴</b></td><td>${(+r.avg_ticket||0).toFixed(0)}</td><td>${(+r.cancel_rate_pct||0).toFixed(1)}%</td><td>${(+r.payroll_sum||0).toFixed(0)}</td></tr>`).join('')}</tbody></table>` :
+      `<table><thead><tr><th>Майстер</th><th>Сеансів</th><th>Унік.клієнтів</th><th>Дохід</th><th>Сер.чек</th><th>% відмін</th><th>ЗП</th></tr></thead><tbody>${m.items.map(r=>`<tr style="cursor:pointer" onclick="openMasterCard(${r.id})" title="Картка майстра"><td>${r.name||'#'+r.id}</td><td>${r.total_appts||0}</td><td>${r.unique_clients||0}</td><td><b>${(+r.revenue||0).toFixed(0)} ₴</b></td><td>${(+r.avg_ticket||0).toFixed(0)}</td><td>${(+r.cancel_rate_pct||0).toFixed(1)}%</td><td>${(+r.payroll_sum||0).toFixed(0)}</td></tr>`).join('')}</tbody></table>` :
       '<div class="empty">Даних за період немає</div>';
     const rfm = await api('/api/reports/rfm');
-    const sumHtml = Object.entries(rfm.summary).map(([k,v])=>`<span class="pill ${k==='champion'?'ok':k==='lost'?'dng':k==='at_risk'?'warn':'info'}">${k}: ${v.count} (${(+v.revenue).toFixed(0)} ₴)</span> `).join('');
-    document.getElementById('r-rfm').innerHTML = `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
-      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th>R/F/M</th><th>Днів тому</th><th>Покупок</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,50).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${r.segment==='champion'?'ok':r.segment==='lost'?'dng':'info'}">${r.segment}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
+    const RSEG = {
+      champion:{l:'Чемпіони',c:'ok',d:'Найкращі: ходять часто, недавно, витрачають багато'},
+      loyal:{l:'Лояльні',c:'ok',d:'Регулярні постійні клієнти'},
+      new:{l:'Новачки',c:'info',d:'Прийшли недавно, ще мало візитів'},
+      at_risk:{l:'Під загрозою',c:'warn',d:'Були активні, але давно не приходили — час повертати'},
+      lost:{l:'Втрачені',c:'dng',d:'Давно і рідко — майже пішли'},
+      regular:{l:'Звичайні',c:'gray',d:'Середні показники'},
+    };
+    const rsegL=k=>(RSEG[k]||{l:k}).l, rsegC=k=>(RSEG[k]||{c:'info'}).c, rsegD=k=>(RSEG[k]||{}).d||'';
+    const rfmLegend = '<div style="font-size:12px;color:#888;margin-bottom:10px;line-height:1.7">'+
+      '<b>RFM</b> — сегментація клієнтів за поведінкою. <b>R</b> — як давно був (1=давно…5=недавно), <b>F</b> — як часто (1=рідко…5=часто), <b>M</b> — скільки витратив (1=мало…5=багато).<br>'+
+      Object.entries(RSEG).map(([k,v])=>`<span class="pill ${v.c}">${v.l}</span> — ${v.d}.`).join('<br>')+'</div>';
+    const sumHtml = Object.entries(rfm.summary).sort((a,b)=>b[1].count-a[1].count).map(([k,v])=>`<span class="pill ${rsegC(k)}" title="${rsegD(k)}">${rsegL(k)}: ${v.count} клієнт. · ${(+v.revenue).toFixed(0)} ₴</span> `).join('');
+    document.getElementById('r-rfm').innerHTML = rfmLegend + `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
+      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th title="Давність / Частота / Сума, 1-5">R/F/M</th><th>Днів тому</th><th>Візитів</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,100).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${rsegC(r.segment)}" title="${rsegD(r.segment)}">${rsegL(r.segment)}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
     const ch = await api('/api/reports/churn?days=90');
     document.getElementById('r-churn').innerHTML = ch.items.length ?
       `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
