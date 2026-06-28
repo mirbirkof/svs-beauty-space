@@ -51,8 +51,11 @@ router.get('/pnl', requirePerm('reports.finance'), cacheReport(), async (req, re
       [from, to]
     );
     const revProductsSalon = await pool.query(
+      // ref_type IS DISTINCT FROM 'order' — не двоїмо товари: касова продаж із ref_type='order'
+      // це та сама онлайн-покупка, що вже врахована в orders(paid) вище (як у liveFinance/pnl).
       `SELECT COALESCE(SUM(amount),0)::numeric AS rev, COUNT(*)::int AS cnt
-         FROM cash_operations WHERE type='in' AND category='sale_product' AND created_at BETWEEN $1 AND $2`,
+         FROM cash_operations WHERE type='in' AND category='sale_product'
+           AND ref_type IS DISTINCT FROM 'order' AND created_at BETWEEN $1 AND $2`,
       [from, to]
     );
     // Доход — услуги: из кассы (sale_service)

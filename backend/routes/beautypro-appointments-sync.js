@@ -205,7 +205,9 @@ async function syncAppointments(from, to) {
            master_id=CASE WHEN manual_override THEN master_id ELSE $2 END,
            service_id=$3,
            starts_at=CASE WHEN manual_override THEN starts_at ELSE ($4::timestamp AT TIME ZONE 'Europe/Kyiv') END,
-           ends_at=CASE WHEN manual_override THEN ends_at ELSE ($5::timestamp AT TIME ZONE 'Europe/Kyiv') END,
+           ends_at=CASE WHEN manual_override THEN ends_at
+                        ELSE GREATEST(($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
+                                      ($4::timestamp AT TIME ZONE 'Europe/Kyiv') + interval '15 minutes') END,
            status=CASE WHEN manual_override AND status='cancelled' THEN 'cancelled'
                        WHEN $6 IN ('cancelled','noshow') THEN $6
                        WHEN status='done' THEN 'done'
@@ -219,7 +221,10 @@ async function syncAppointments(from, to) {
     } else {
       const ins = await pool.query(
         `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, bp_state, price, source, beautypro_id, bp_client, synced_at)
-         VALUES ($1,$2,$3,($4::timestamp AT TIME ZONE 'Europe/Kyiv'),($5::timestamp AT TIME ZONE 'Europe/Kyiv'),$6,$7,$8,'beautypro',$9,$10,NOW())
+         VALUES ($1,$2,$3,($4::timestamp AT TIME ZONE 'Europe/Kyiv'),
+                 GREATEST(($5::timestamp AT TIME ZONE 'Europe/Kyiv'),
+                          ($4::timestamp AT TIME ZONE 'Europe/Kyiv') + interval '15 minutes'),
+                 $6,$7,$8,'beautypro',$9,$10,NOW())
          RETURNING id`,
         [cl.rows[0]?.id || null, firstMasterId, sv.rows[0]?.id || null,
          startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.id, a.client || null]
