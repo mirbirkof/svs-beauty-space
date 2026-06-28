@@ -148,7 +148,7 @@ $('btn-verify').addEventListener('click', async () => {
     if (data.ok && data.token) {
       saveSession(data);
       showMsg($('msg2'), 'ok', 'Вхід виконано. Перенаправлення...');
-      setTimeout(() => location.href = '/admin/crm-extra.html', 600);
+      setTimeout(() => location.href = '/admin/index.html', 600);
     } else {
       const left = data.attempts_left != null ? ` (залишилось ${data.attempts_left})` : '';
       showMsg($('msg2'), 'err', (data.error === 'invalid-or-expired' ? 'Невірний або прострочений код' : data.error) + left);
@@ -175,7 +175,7 @@ $('btn-pwd').addEventListener('click', async () => {
     if (data.ok && data.token) {
       saveSession(data);
       showMsg($('msg3'), 'ok', 'Вхід виконано. Перенаправлення...');
-      setTimeout(() => location.href = '/admin/crm-extra.html', 600);
+      setTimeout(() => location.href = '/admin/index.html', 600);
     } else if (r.status === 429) {
       showMsg($('msg3'), 'err', 'Забагато спроб. Спробуйте через хвилину.');
     } else if (data.error === 'password-not-set') {
