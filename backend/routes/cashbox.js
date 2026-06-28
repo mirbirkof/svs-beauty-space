@@ -6,8 +6,36 @@ const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { branchAndClause } = require('../lib/branch-scope');
 const { liveFinance } = require('../lib/live-finance');
+const { getSetting, setSetting } = require('../lib/settings');
 const router = express.Router();
 const pool = getPool();
+
+// Преднабір статей (ключі) — усе інше вважаємо «своєю» статтею і запам'ятовуємо,
+// щоб наступного разу вона була у випадайці (а не вписувалась щоразу заново — заметка #75).
+const FIN_PRESET_KEYS = new Set([
+  'sale_service', 'sale_product', 'prepayment', 'return', 'encashment_in', 'other_in',
+  'salary', 'payroll', 'supplier', 'rent', 'utilities', 'refund', 'encashment_out', 'other_out',
+]);
+async function rememberCustomCat(type, category) {
+  try {
+    if (!category || FIN_PRESET_KEYS.has(category)) return;
+    const cat = String(category).trim();
+    if (!cat || cat === '__custom__') return;
+    const cur = (await getSetting('fin_custom_cats', { in: [], out: [] })) || { in: [], out: [] };
+    const list = Array.isArray(cur[type]) ? cur[type] : [];
+    if (!list.some((x) => String(x).toLowerCase() === cat.toLowerCase())) {
+      list.push(cat);
+      cur[type] = list;
+      await setSetting('fin_custom_cats', cur);
+    }
+  } catch (e) { console.error('rememberCustomCat', e.message); }
+}
+// Дата операції з тіла запиту → timestamptz на полудень за Києвом (щоб TZ-зсув не
+// перекидав операцію на сусідній день). Дозволяє ставити витрату «заднім числом» (#72).
+function opDateParam(body) {
+  const d = body && body.date;
+  return (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? `${d} 12:00:00+03` : null;
+}
 
 // Авторизация: read на GET, write на мутации
 router.use((req, res, next) => {
@@ -304,6 +332,49 @@ router.post('/shifts/:id/close', async (req, res) => {
   }
 });
 
+// GET /api/cashbox/categories — збережені «свої» статті доходів/витрат (заметка #75).
+// Адміну достатньо cashbox.read. Повертає { in:[...], out:[...] }.
+router.get('/categories', async (req, res) => {
+  try {
+    const cur = (await getSetting('fin_custom_cats', { in: [], out: [] })) || { in: [], out: [] };
+    res.json({ in: Array.isArray(cur.in) ? cur.in : [], out: Array.isArray(cur.out) ? cur.out : [] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// DELETE /api/cashbox/categories — прибрати «свою» статтю зі списку (на майбутнє; UI може не показувати).
+router.delete('/categories', requireHistory, async (req, res) => {
+  try {
+    const { type, category } = req.body || {};
+    if (!['in', 'out'].includes(type) || !category) return res.status(400).json({ error: 'type, category required' });
+    const cur = (await getSetting('fin_custom_cats', { in: [], out: [] })) || { in: [], out: [] };
+    cur[type] = (Array.isArray(cur[type]) ? cur[type] : []).filter((x) => String(x).toLowerCase() !== String(category).toLowerCase());
+    await setSetting('fin_custom_cats', cur);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /api/cashbox/category-colors — кольори категорій для діаграм (заметка #73).
+router.get('/category-colors', async (req, res) => {
+  try {
+    const cur = (await getSetting('fin_cat_colors', {})) || {};
+    res.json(cur);
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/cashbox/category-colors — задати довільний колір категорії (#73).
+router.post('/category-colors', async (req, res) => {
+  try {
+    const { category, color } = req.body || {};
+    if (!category || !/^#[0-9a-fA-F]{6}$/.test(String(color || ''))) {
+      return res.status(400).json({ error: 'category, color(#rrggbb) required' });
+    }
+    const cur = (await getSetting('fin_cat_colors', {})) || {};
+    cur[String(category)] = String(color).toLowerCase();
+    await setSetting('fin_cat_colors', cur);
+    res.json({ ok: true, colors: cur });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 // ── OPERATIONS ─────────────────────────────────────────
 
 // POST /api/cashbox/operations — добавить операцию (приход/расход)
@@ -345,12 +416,14 @@ router.post('/operations', async (req, res) => {
       if (shiftRow.status !== 'open') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'shift-closed' }); }
     }
 
+    const createdAt = opDateParam(req.body); // дата «заднім числом» (#72) або NULL → NOW()
     const r = await client.query(
-      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null]
+      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10::timestamptz, NOW())) RETURNING *`,
+      [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null, createdAt]
     );
     await client.query('COMMIT');
+    await rememberCustomCat(type, category); // запам'ятати «свою» статтю (#75)
     res.json({ ok: true, operation: r.rows[0] });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) {}
@@ -415,12 +488,19 @@ router.patch('/operations/:id', async (req, res) => {
     if (b.method !== undefined) setCol('method', b.method || 'cash');
     if (b.master_id !== undefined) setCol('master_id', b.master_id || null);
     if (b.description !== undefined) setCol('description', b.description || null);
+    // дата операції (можна правити «заднім числом» — #72)
+    if (b.date !== undefined) {
+      const cd = opDateParam(b);
+      if (!cd) return res.status(400).json({ error: 'bad date' });
+      setCol('created_at', cd);
+    }
 
     if (!sets.length) return res.status(400).json({ error: 'nothing-to-update' });
     params.push(id);
     const r = await pool.query(
       `UPDATE cash_operations SET ${sets.join(', ')} WHERE id=$${params.length} RETURNING *`, params
     );
+    if (b.category !== undefined) await rememberCustomCat(r.rows[0].type, r.rows[0].category); // #75
     res.json({ ok: true, operation: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

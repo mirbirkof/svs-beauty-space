@@ -2455,6 +2455,8 @@ select.input { background:var(--card); }
           <option value="mono">Mono</option>
           <option value="other">Інше</option>
         </select>
+        <label style="font-size:13px;color:var(--text-secondary)">Дата операції</label>
+        <input id="finOpDate" type="date" class="input" title="Можна поставити минулим числом">
         <label style="font-size:13px;color:var(--text-secondary)">Примітка</label>
         <input id="finOpNote" class="input" placeholder="необов'язково">
         <div id="finOpRecurWrap" style="display:none;border-top:1px solid var(--border,#eee);padding-top:10px">
@@ -3789,10 +3791,25 @@ function _finDonut(segments){
     arcs+='<circle cx="'+CX+'" cy="'+CX+'" r="'+R+'" fill="none" stroke="'+s.color+'" stroke-width="'+SW+'" stroke-dasharray="'+len+' '+(C-len)+'" stroke-dashoffset="'+(-off)+'"/>'; off+=len; } }
   return '<div class="fin-donut"><svg width="'+SZ+'" height="'+SZ+'" viewBox="0 0 '+SZ+' '+SZ+'">'+arcs+'</svg></div>';
 }
-function _finCard(title, sumLabel, sumColor, segments, legend){
+function _finCard(title, sumLabel, sumColor, segments, legend, opts){
   const leg=(legend||segments).filter(s=>s.value>0||s.always);
-  const legHtml=(leg.length?leg:[{label:'—',value:0,color:'#e5e7eb'}]).map(s=>'<div class="fin-leg"><span class="dot" style="background:'+s.color+'"></span><span class="lab">'+s.label+'</span><span class="val">'+_finMoney(s.value)+'</span></div>').join('');
-  return '<div class="fin-card"><h4>'+title+'</h4><div class="fin-sum" style="color:'+sumColor+'">'+sumLabel+'</div>'+_finDonut(segments)+'<div class="fin-legend">'+legHtml+'</div></div>';
+  const colorEdit=opts&&opts.colorEdit;
+  const legHtml=(leg.length?leg:[{label:'—',value:0,color:'#e5e7eb'}]).map(s=>{
+    const marker=(colorEdit&&s.cat)
+      ? '<input type="color" class="fin-cdot" data-cat="'+_finEsc(s.cat)+'" value="'+(s.color||'#cccccc')+'" title="Обрати свій колір" onchange="finSetCatColor(this.dataset.cat,this.value)" style="width:15px;height:15px;border:none;padding:0;background:none;cursor:pointer;vertical-align:middle">'
+      : '<span class="dot" style="background:'+s.color+'"></span>';
+    return '<div class="fin-leg">'+marker+'<span class="lab">'+_finEsc(s.label)+'</span><span class="val">'+_finMoney(s.value)+'</span></div>';
+  }).join('');
+  return '<div class="fin-card"><h4>'+_finEsc(title)+'</h4><div class="fin-sum" style="color:'+sumColor+'">'+sumLabel+'</div>'+_finDonut(segments)+'<div class="fin-legend">'+legHtml+'</div></div>';
+}
+let _finCatColors = {};
+async function finSetCatColor(category, color){
+  try{
+    _finCatColors[category]=color;
+    const r=await api('/api/cashbox/category-colors',{method:'POST',body:JSON.stringify({category,color})});
+    if(r&&r.error){ toast(r.error,'error'); return; }
+    loadFinance();
+  }catch(e){ toast(e.message,'error'); }
 }
 async function loadFinance(){
   const box=document.getElementById('finDonuts');
@@ -3802,15 +3819,17 @@ async function loadFinance(){
   try{
     const r=await api('/api/cashbox/finance?from='+from+'&to='+to);
     if(r.error){ box.innerHTML='<div class="empty"><span class="material-icons-round">lock</span>'+(r.error==='forbidden'?'Доступно лише власнику':r.error)+'</div>'; document.getElementById('finTableBody').innerHTML=''; return; }
+    // кольори категорій (заметка #73) — best-effort
+    try{ const cc=await api('/api/cashbox/category-colors'); if(cc&&!cc.error) _finCatColors=cc||{}; }catch(_){}
     const op=r.opening, inc=r.income, exp=r.expense, cl=r.closing;
     const openSeg=[{label:'Готівка',value:op.cash,color:FIN_BAL_CASH,always:true},{label:'Безготівка',value:op.cashless,color:FIN_BAL_CASHLESS,always:true}];
     const closeSeg=[{label:'Готівка',value:cl.cash,color:FIN_BAL_CASH,always:true},{label:'Безготівка',value:cl.cashless,color:FIN_BAL_CASHLESS,always:true}];
-    const incSeg=(inc.by_category||[]).map((c,i)=>({label:c.label,value:c.amount,color:FIN_INCOME_PAL[i%FIN_INCOME_PAL.length]}));
-    const expSeg=(exp.by_category||[]).map((c,i)=>({label:c.label,value:c.amount,color:FIN_EXPENSE_PAL[i%FIN_EXPENSE_PAL.length]}));
+    const incSeg=(inc.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||FIN_INCOME_PAL[i%FIN_INCOME_PAL.length]}));
+    const expSeg=(exp.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||FIN_EXPENSE_PAL[i%FIN_EXPENSE_PAL.length]}));
     box.innerHTML =
       _finCard('Залишок на початок', _finMoney(op.total), '#3b82f6', openSeg, openSeg) +
-      _finCard('Доходи', _finMoney(inc.total), '#059669', incSeg, incSeg.slice(0,6)) +
-      _finCard('Витрати', _finMoney(exp.total), '#dc2626', expSeg, expSeg.slice(0,6)) +
+      _finCard('Доходи', _finMoney(inc.total), '#059669', incSeg, incSeg.slice(0,6), {colorEdit:true}) +
+      _finCard('Витрати', _finMoney(exp.total), '#dc2626', expSeg, expSeg.slice(0,6), {colorEdit:true}) +
       _finCard('Залишок на кінець', _finMoney(cl.total), '#3b82f6', closeSeg, closeSeg);
     document.getElementById('finSummary').style.display='flex';
     document.getElementById('finSumIn').textContent=_finMoney(inc.total);
@@ -3836,15 +3855,22 @@ async function loadFinance(){
   }catch(e){ box.innerHTML='<div class="empty"><span class="material-icons-round">error</span>'+e.message+'</div>'; }
 }
 let _finTx = {};
-function finOpenOp(type){
+let _finCustomCats = { in: [], out: [] };
+function _finEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+async function finOpenOp(type){
   document.getElementById('finOpTitle').textContent = type==='in'?'Новий дохід':'Нова витрата';
   const sel=document.getElementById('finOpCat'); const cats=type==='in'?FIN_CATS_IN:FIN_CATS_OUT;
+  // підтягуємо збережені «свої» статті (заметка #75) — best-effort, не блокуємо відкриття
+  try{ const cc=await api('/api/cashbox/categories'); if(cc&&!cc.error) _finCustomCats={in:cc.in||[],out:cc.out||[]}; }catch(_){}
+  const custom=(_finCustomCats[type]||[]);
   sel.innerHTML=Object.entries(cats).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')
+    +custom.map(c=>'<option value="'+_finEsc(c)+'">'+_finEsc(c)+'</option>').join('')
     +'<option value="__custom__">✏️ Інша стаття (вписати свою)…</option>';
   const ci=document.getElementById('finOpCatCustom'); ci.style.display='none'; ci.value='';
   document.getElementById('finOpAmount').value='';
   document.getElementById('finOpNote').value='';
   document.getElementById('finOpMethod').value='cash';
+  { const dEl=document.getElementById('finOpDate'); if(dEl){ const n=new Date(); const pad=x=>String(x).padStart(2,'0'); dEl.value=n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate()); } }
   document.getElementById('finOpMsg').textContent='';
   // блок «постійна витрата» — лише для витрат
   const rw=document.getElementById('finOpRecurWrap');
@@ -3860,10 +3886,10 @@ function finRecurToggle(){
   document.getElementById('finOpRecurDay').style.display=document.getElementById('finOpRecur').checked?'block':'none';
 }
 // Редагування записаної операції — переймовуємо ту саму модалку.
-function finEditOp(id){
+async function finEditOp(id){
   const t=_finTx[id]; if(!t) return;
   const type=t.type==='in'?'in':'out';
-  finOpenOp(type);
+  await finOpenOp(type);
   document.getElementById('finOpTitle').textContent = type==='in'?'Редагувати дохід':'Редагувати витрату';
   const sel=document.getElementById('finOpCat'); const ci=document.getElementById('finOpCatCustom');
   // якщо стаття є у списку — обираємо її, інакше показуємо як «свою»
@@ -3873,6 +3899,7 @@ function finEditOp(id){
   document.getElementById('finOpAmount').value=t.amount;
   document.getElementById('finOpMethod').value=t.method||'cash';
   document.getElementById('finOpNote').value=t.description||'';
+  { const dEl=document.getElementById('finOpDate'); if(dEl&&t.created_at) dEl.value=String(t.created_at).slice(0,10); }
   document.getElementById('finOpModal').dataset.editId=String(id);
 }
 async function finDelOp(id){
@@ -3912,6 +3939,7 @@ async function finSaveOp(){
   const amount=parseFloat(document.getElementById('finOpAmount').value);
   const method=document.getElementById('finOpMethod').value;
   const description=document.getElementById('finOpNote').value.trim();
+  const dateEl=document.getElementById('finOpDate'); const date=(dateEl&&dateEl.value)?dateEl.value:undefined;
   if(!(amount>0)){ msg.style.color='#991b1b'; msg.textContent='Введіть суму більше 0'; return; }
   btn.disabled=true; msg.style.color='var(--text-secondary)'; msg.textContent='Зберігаю...';
   const editId=modal.dataset.editId;
@@ -3931,10 +3959,10 @@ async function finSaveOp(){
     let r;
     if(editId){
       // редагування існуючої операції
-      r=await api('/api/cashbox/operations/'+editId,{method:'PATCH',body:JSON.stringify({type,category,amount,method,description})});
+      r=await api('/api/cashbox/operations/'+editId,{method:'PATCH',body:JSON.stringify({type,category,amount,method,description,date})});
     } else {
       // allow_no_shift: ручну витрату/дохід можна провести і без відкритої зміни
-      r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description,allow_no_shift:true})});
+      r=await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type,category,amount,method,description,date,allow_no_shift:true})});
     }
     if(r.error){
       btn.disabled=false; msg.style.color='#991b1b';
