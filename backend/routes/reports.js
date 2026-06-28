@@ -187,7 +187,7 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
        scored AS (
          SELECT id, name, phone, last_activity, frequency, monetary,
                 EXTRACT(EPOCH FROM (NOW()-last_activity))/86400 AS recency_days,
-                NTILE(5) OVER (ORDER BY last_activity DESC) AS r_score,
+                NTILE(5) OVER (ORDER BY last_activity ASC)  AS r_score,
                 NTILE(5) OVER (ORDER BY frequency ASC)      AS f_score,
                 NTILE(5) OVER (ORDER BY monetary ASC)       AS m_score
            FROM filtered
@@ -206,7 +206,7 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
               END AS segment
          FROM scored
          ORDER BY monetary DESC
-         LIMIT 1000`
+         LIMIT 6000`
     );
 
     // сводка по сегментам
