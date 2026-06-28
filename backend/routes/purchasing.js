@@ -239,13 +239,16 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
         //   • позиция закупки указывает variant_id → пополняем именно его (точно, #10);
         //   • variant_id не задан, 1 активный вариант → пополняем единственный (83% товаров);
         //   • variant_id не задан, >1 вариантов → не угадываем, предупреждение.
+        const cost = Number(r.poi.unit_price) > 0 ? Number(r.poi.unit_price) : null; // ціна приходу → нова собівартість
+        let targetVariant = null;
         if (r.poi.variant_id) {
           // целевой вариант указан в заказе — проверяем что он принадлежит товару
           const vchk = (await client.query(
             `SELECT id FROM product_variants WHERE id=$1 AND product_id=$2`,
             [r.poi.variant_id, r.poi.product_id])).rows;
           if (vchk.length) {
-            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [good, r.poi.variant_id]);
+            targetVariant = r.poi.variant_id;
+            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`, [good, targetVariant, cost]);
           } else {
             console.warn(`[purchasing] variant_id ${r.poi.variant_id} не принадлежит товару ${r.poi.product_id} — приход ${good} не распределён`);
           }
@@ -254,14 +257,16 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
             `SELECT id FROM product_variants WHERE product_id=$1 AND active IS NOT FALSE`,
             [r.poi.product_id])).rows;
           if (vrows.length === 1) {
-            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [good, vrows[0].id]);
+            targetVariant = vrows[0].id;
+            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`, [good, targetVariant, cost]);
           } else if (vrows.length > 1) {
             console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов без variant_id в позиции — приход ${good} не распределён (выберите вариант в форме закупки)`);
           }
         }
+        // Рух складу прив'язуємо до variant_id (а не product_id) — для трасування й COGS.
         await client.query(
-          `INSERT INTO stock_movements(product_id, delta, reason, notes) VALUES ($1,$2,'purchase',$3)`,
-          [r.poi.product_id, good, `PO ${po.rows[0].po_number}`]);
+          `INSERT INTO stock_movements(variant_id, product_id, delta, reason, notes) VALUES ($1,$2,$3,'purchase',$4)`,
+          [targetVariant, r.poi.product_id, good, `PO ${po.rows[0].po_number}`]);
       }
     }
 
