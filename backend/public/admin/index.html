@@ -1123,6 +1123,15 @@ select.input { background:var(--card); }
       <div class="page active" id="page-dashboard">
         <div class="kpi-grid" id="kpi"></div>
 
+        <!-- ═══ Панель витрат за місяць ═══ -->
+        <div class="card" id="dashExpenseCard" style="margin-bottom:24px;display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <h3 style="margin:0;display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:#f59e0b">payments</span> Витрати за місяць <span id="dashExpenseTotal" style="font-size:14px;font-weight:600;color:var(--text-secondary)"></span></h3>
+            <button class="btn btn-sm" onclick="go('fincenter')" title="Детальніше">Фінцентр →</button>
+          </div>
+          <div id="dashExpenses"></div>
+        </div>
+
         <!-- ═══ AI-аналітик ═══ -->
         <div class="card" id="aiCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7)">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
@@ -4545,6 +4554,19 @@ let _timers = {};
 function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = setTimeout(fn, ms); }
 
 // ═══ DASHBOARD ═══════════════════════════════
+async function loadDashExpenses(){
+  const card=document.getElementById('dashExpenseCard'); if(!card) return;
+  try{
+    const d=await api('/api/financial/dashboard?period=month&compare=0');
+    const exp=(d&&d.expenses&&d.expenses.by_category)||[];
+    const total=(d&&d.expenses&&d.expenses.total)||0;
+    if(!exp.length){ card.style.display='none'; return; }
+    card.style.display='';
+    document.getElementById('dashExpenseTotal').textContent='· '+_fcMoney(total);
+    const mx=Math.max(1,...exp.map(x=>x.sum));
+    document.getElementById('dashExpenses').innerHTML=exp.map(x=>`<div class="fc-bar"><span class="nm">${(typeof _FC_CATS!=='undefined'&&_FC_CATS[x.category])||escapeHtml(x.category||'—')}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/mx*100)}%;background:#f59e0b"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join('');
+  }catch(e){ card.style.display='none'; }
+}
 async function loadDashboard() {
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
@@ -4595,6 +4617,7 @@ async function loadDashboard() {
     `<div class="kpi-card ${c}"${nav?` data-nav="${nav}" onclick="kpiNav(event,this)" style="cursor:pointer" title="Перейти до розділу"`:''}><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
   // Блок «Повернути клієнтів» — одразу під цифрами дашборда
   try { const rc=document.getElementById('reactCard'), kpiEl=document.getElementById('kpi'); if(rc&&kpiEl) kpiEl.insertAdjacentElement('afterend', rc); } catch {}
+  loadDashExpenses();
 
   // Топ майстри — дефолт поточний місяць; ініціалізуємо пікери дат один раз
   try {
