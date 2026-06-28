@@ -7,6 +7,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { tgSend } = require('./telegram-notify');
+const { liveFinance } = require('../lib/live-finance');
 
 const router = express.Router();
 const pool = getPool();
@@ -50,41 +51,28 @@ function prevBounds(fromD, toD) {
 // ── Консолідований знімок за період ──────────────────────
 async function snapshot(from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
-  const [svc, prodSalon, orders, expRows, cogsR, appts, newCli] = await Promise.all([
-    q(`SELECT COALESCE(SUM(amount),0)::numeric s, COUNT(*)::int c FROM cash_operations WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COALESCE(SUM(amount),0)::numeric s, COUNT(*)::int c FROM cash_operations WHERE type='in' AND category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`SELECT category, COALESCE(SUM(amount),0)::numeric sum FROM cash_operations WHERE type='out' AND created_at BETWEEN $1 AND $2 GROUP BY category ORDER BY sum DESC`, [from, to]),
-    q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric cogs FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
+  // ЄДИНЕ джерело правди по грошах (lib/live-finance) — щоб Фінцентр і Дашборд показували ОДНІ цифри.
+  const [fin, appts, newCli] = await Promise.all([
+    liveFinance(pool, from, to),
     q(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int done,
               COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int uniq,
               COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') <> 'bp_deleted')::int cancelled,
               COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') <> 'bp_deleted')::int noshow
          FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
-    // "Нові клієнти" = ПЕРШИЙ реальний візит у періоді, а НЕ дата імпорту в clients.created_at
-    // (вся база завантажена одним днем → created_at у всіх = дата імпорту, KPI був би завищений).
     q(`SELECT COUNT(*)::int c FROM (
          SELECT client_id, MIN(starts_at) AS fv FROM appointments
           WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL
           GROUP BY client_id
        ) t WHERE fv BETWEEN $1 AND $2`, [from, to]),
   ]);
-  const revServices = Number(svc[0]?.s || 0);
-  const revProducts = Number(prodSalon[0]?.s || 0) + Number(orders[0]?.s || 0);
-  const revTotal = revServices + revProducts;
-  const expByCat = expRows.map(r => ({ category: r.category, sum: Number(r.sum) }));
-  const expTotal = expByCat.reduce((a, r) => a + r.sum, 0);
-  const cogs = Number(cogsR[0]?.cogs || 0);
-  const grossProfit = revTotal - cogs;
-  const netProfit = grossProfit - expTotal;
-  const txCount = Number(svc[0]?.c || 0) + Number(prodSalon[0]?.c || 0) + Number(orders[0]?.c || 0);
   return {
-    revenue: { services: revServices, products: revProducts, total: revTotal },
-    expenses: { by_category: expByCat, total: expTotal },
-    profit: { cogs, gross: grossProfit, net: netProfit, margin_pct: revTotal > 0 ? Math.round(netProfit / revTotal * 100) : 0 },
+    revenue: fin.revenue,
+    expenses: { by_category: fin.expenses.by_category, total: fin.expenses.total },
+    profit: { net: fin.profit.net, margin_pct: fin.profit.margin_pct,
+              materials: fin.expenses.materials, commission: fin.expenses.commission },
     metrics: {
-      transaction_count: txCount,
-      avg_check: txCount > 0 ? Math.round(revTotal / txCount) : 0,
+      transaction_count: fin.tx_count,
+      avg_check: fin.avg_check,
       done_appts: Number(appts[0]?.done || 0),
       unique_clients: Number(appts[0]?.uniq || 0),
       new_clients: Number(newCli[0]?.c || 0),

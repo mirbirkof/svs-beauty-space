@@ -6,6 +6,7 @@ const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 const { cacheReport } = require('../lib/report-cache');
+const { liveFinance } = require('../lib/live-finance');
 
 const router = express.Router();
 const pool = getPool();
@@ -898,10 +899,13 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
     if (canFinance) {
       const rt = revToday.rows[0], rm = revMonth.rows[0];
       out.revenue_today = { services: Number(rt.svc), products: Number(rt.prod), total: Number(rt.svc) + Number(rt.prod) };
-      out.revenue_month = { services: Number(rm.svc), products: Number(rm.prod), total: Number(rm.svc) + Number(rm.prod) };
       out.revenue_yesterday = Number(revYesterday.rows[0].total);
-      out.expense_month = Number(expMonth.rows[0].sum);
-      out.profit_month = out.revenue_month.total - out.expense_month;
+      // ЄДИНЕ джерело правди — lib/live-finance: виручка/витрати/прибуток як у Дашборді й Фінцентрі.
+      const finMonth = await liveFinance(pool, monFrom, new Date().toISOString());
+      out.revenue_month = finMonth.revenue;
+      out.expense_month = finMonth.expenses.total;
+      out.profit_month = finMonth.profit.net;
+      out.master_commission_month = finMonth.expenses.commission;
       const salesCnt = Number(rm.cnt || 0);
       out.avg_check_month = salesCnt > 0 ? Math.round(out.revenue_month.total / salesCnt) : 0;
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
@@ -919,37 +923,15 @@ router.get('/live-expenses', requirePerm('reports.finance'), async (req, res) =>
   try {
     const monStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit' }).format(new Date()) + '-01';
     const monFrom = kyivDayBound(monStr, false).toISOString();
-    const [rev, comm, fixed, cogs, other] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at >= $1`, [monFrom]),
-      // нарахований % за завершені послуги цього місяця, по схемі майстра
-      pool.query(`WITH da AS (
-                    SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
-                     WHERE a.starts_at >= $1 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
-                  SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END),0)::numeric comm,
-                         COUNT(*)::int appts
-                    FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [monFrom]),
-      pool.query(`SELECT COALESCE(SUM(COALESCE(fixed_per_month,0)),0)::numeric fx FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`),
-      pool.query(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric g FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at >= $1`, [monFrom]),
-      pool.query(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at >= $1 GROUP BY category ORDER BY s DESC`, [monFrom]),
-    ]);
-    const revenue = Number(rev.rows[0].s);
-    const commission = Math.round(Number(comm.rows[0].comm) + Number(fixed.rows[0].fx));
-    const materials = Math.round(Number(cogs.rows[0].g));
-    const otherCats = other.rows.map(r => ({ category: r.category, sum: Math.round(Number(r.s)) }));
-    const otherTotal = otherCats.reduce((a, r) => a + r.sum, 0);
-    const total = commission + materials + otherTotal;
+    const f = await liveFinance(pool, monFrom, new Date().toISOString());
     res.json({
       period: monStr,
-      revenue,
-      breakdown: [
-        { category: 'materials', label: 'Матеріали (собівартість)', sum: materials },
-        { category: 'commission', label: 'Зарплата майстрів (нарахована)', sum: commission },
-        ...otherCats,
-      ].filter(x => x.sum > 0),
-      commission, materials, other: otherCats,
-      total,
-      profit: revenue - total,
-      commission_appts: comm.rows[0].appts,
+      revenue: f.revenue.total,
+      breakdown: f.expenses.by_category,
+      commission: f.expenses.commission, materials: f.expenses.materials, other: f.expenses.other,
+      total: f.expenses.total,
+      profit: f.profit.net,
+      commission_appts: f.commission_appts,
     });
   } catch (e) { console.error('[live-expenses]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
