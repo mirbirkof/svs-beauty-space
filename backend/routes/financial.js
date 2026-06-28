@@ -119,6 +119,57 @@ router.get('/dashboard/trend', requirePerm('reports.finance'), async (req, res) 
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── Детальна розшифровка для клікабельних карток Фінцентру ──
+// GET /api/financial/detail?from=&to= → перелік: виручка по майстрах,
+// витрати по майстрах(ЗП)/статтях/касових операціях, прибуток (формула).
+router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const dRe = /^\d{4}-\d{2}-\d{2}$/;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const fromD = (req.query.from && dRe.test(req.query.from)) ? req.query.from : today.slice(0, 8) + '01';
+    const toD = (req.query.to && dRe.test(req.query.to)) ? req.query.to : today;
+    const from = `${fromD} 00:00:00+03`;
+    const to = (toD >= today) ? new Date().toISOString() : `${toD} 23:59:59+03`;
+    const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+
+    const fin = await liveFinance(pool, from, to);
+    const [revByMaster, commByMaster, cashOps] = await Promise.all([
+      q(`SELECT m.name, COALESCE(SUM(co.amount),0)::numeric revenue
+           FROM cash_operations co JOIN masters m ON m.id=co.master_id
+          WHERE co.type='in' AND co.category IN ('sale_service','sale_product') AND co.created_at BETWEEN $1 AND $2
+          GROUP BY m.name HAVING SUM(co.amount)>0 ORDER BY revenue DESC LIMIT 30`, [from, to]),
+      q(`WITH da AS (SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+            WHERE a.starts_at BETWEEN $1 AND $2 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
+          SELECT m.name, MAX(ps.percent) percent, ROUND(SUM(da.rev))::numeric revenue,
+                 ROUND(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END))::numeric sum
+            FROM da JOIN masters m ON m.id=da.master_id
+            LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+           GROUP BY m.name HAVING SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END)>0
+           ORDER BY sum DESC LIMIT 50`, [from, to]),
+      q(`SELECT created_at, category, amount::numeric, description FROM cash_operations
+          WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
+          ORDER BY created_at DESC LIMIT 200`, [from, to]),
+    ]);
+
+    res.json({
+      period: { from: fromD, to: toD },
+      revenue: {
+        services: fin.revenue.services, products: fin.revenue.products, total: fin.revenue.total,
+        by_master: revByMaster.map(r => ({ name: r.name, revenue: Number(r.revenue) })),
+      },
+      expenses: {
+        total: fin.expenses.total,
+        by_category: fin.expenses.by_category,
+        materials: fin.expenses.materials,
+        commission_total: fin.expenses.commission,
+        commission_by_master: commByMaster.map(r => ({ name: r.name, percent: r.percent != null ? Number(r.percent) : null, revenue: Number(r.revenue), sum: Number(r.sum) })),
+        cash_ops: cashOps.map(o => ({ date: o.created_at, category: o.category, label: CAT_LABELS[o.category] || o.category, amount: Number(o.amount), description: o.description })),
+      },
+      profit: { total: fin.profit.net, revenue_total: fin.revenue.total, expense_total: fin.expenses.total, margin_pct: fin.profit.margin_pct },
+    });
+  } catch (e) { console.error('[financial/detail]', e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 // ── Telegram-зведення ────────────────────────────────────
 const CAT_LABELS = { rent: 'Оренда', salary: 'Зарплата', payroll: 'Зарплата', purchase: 'Закупівлі', marketing: 'Маркетинг', utilities: 'Комуналка', supplies: 'Витратні', other: 'Інше' };
 
