@@ -80,21 +80,22 @@ router.get('/pnl', requirePerm('reports.finance'), cacheReport(), async (req, re
       [from, to]
     );
 
-    const revenueProducts = Number(revOrders.rows[0].rev) + Number(revProductsSalon.rows[0].rev);
-    const revenueServices = Number(revServices.rows[0].rev);
-    const revenueTotal    = revenueProducts + revenueServices;
-    const cogsTotal       = Number(cogs.rows[0].cogs);
-    const grossProfit     = revenueTotal - cogsTotal;
-    const expenseTotal    = exp.rows.reduce((s, r) => s + Number(r.sum), 0);
-    const netProfit       = grossProfit - expenseTotal;
+    // ЄДИНЕ джерело правди (lib/live-finance) — щоб P&L збігався з Дашбордом і Фінцентром.
+    const fin = await liveFinance(pool, from, to);
+    const revenueTotal = fin.revenue.total;
+    const cogsTotal    = fin.expenses.materials;                 // собівартість матеріалів = COGS
+    const grossProfit  = revenueTotal - cogsTotal;
+    const expRows      = fin.expenses.by_category.filter(x => x.category !== 'materials'); // % майстрам + оренда + інше
+    const expenseTotal = fin.expenses.total - cogsTotal;
+    const netProfit    = revenueTotal - fin.expenses.total;
 
     res.json({
       period: { from, to },
-      revenue: { products: revenueProducts, services: revenueServices, total: revenueTotal },
+      revenue: { products: fin.revenue.products, services: fin.revenue.services, total: revenueTotal },
       cogs: cogsTotal,
       gross_profit: grossProfit,
       gross_margin_pct: revenueTotal > 0 ? Math.round(grossProfit / revenueTotal * 100) : 0,
-      expenses: exp.rows,
+      expenses: expRows.map(x => ({ category: x.category, label: x.label, sum: x.sum })),
       expense_total: expenseTotal,
       net_profit: netProfit,
       net_margin_pct: revenueTotal > 0 ? Math.round(netProfit / revenueTotal * 100) : 0,
