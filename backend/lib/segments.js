@@ -30,6 +30,8 @@ const FIELDS = {
       EXTRACT(DOY FROM make_date(EXTRACT(YEAR FROM NOW())::int, EXTRACT(MONTH FROM c.birthday)::int, LEAST(EXTRACT(DAY FROM c.birthday)::int,28)))
       - EXTRACT(DOY FROM NOW()) + 365)::int % 365`, type: 'number' },
   created_days_ago:  { expr: `EXTRACT(EPOCH FROM (NOW()-c.created_at))/86400`, type: 'number' },
+  // Днів з ПЕРШОГО реального візиту (а не дати імпорту картки) — для коректного «Нові».
+  first_visit_days_ago: { expr: `EXTRACT(EPOCH FROM (NOW()-(SELECT MIN(starts_at) FROM appointments a WHERE a.client_id=c.id AND a.status NOT IN ('cancelled','noshow'))))/86400`, type: 'number' },
 };
 
 const OPS = ['=', '!=', '>', '<', '>=', '<=', 'between', 'in', 'not_in', 'contains', 'is_null', 'is_not_null'];
@@ -90,7 +92,7 @@ function compileRules(rules) {
 
 // Предустановленные сегменты (правила в коде)
 const PRESETS = {
-  new:       { name: 'Нові',        rules: { op: 'AND', conditions: [{ field: 'created_days_ago', operator: '<=', value: 30 }] } },
+  new:       { name: 'Нові',        rules: { op: 'AND', conditions: [{ field: 'first_visit_days_ago', operator: '<=', value: 30 }] } },
   active:    { name: 'Активні',     rules: { op: 'AND', conditions: [{ field: 'days_since_visit', operator: '<=', value: 30 }] } },
   sleeping:  { name: 'Засинають',   rules: { op: 'AND', conditions: [{ field: 'days_since_visit', operator: 'between', value: [31, 60] }] } },
   lost:      { name: 'Втрачені',    rules: { op: 'AND', conditions: [{ field: 'days_since_visit', operator: '>', value: 90 }] } },

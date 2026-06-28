@@ -179,6 +179,12 @@ router.post('/booking/confirm', async (req, res) => {
     if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
 
     const ph = normalizePhone(phone);
+
+    // Чорний список: якщо номер заблокований для запису — не дозволяємо бронювання.
+    const blk = await pool.query(
+      `SELECT reason FROM blacklist WHERE client_phone=$1 AND COALESCE(blocks_booking,true)=true LIMIT 1`, [ph]);
+    if (blk.rows[0]) return res.status(403).json({ error: 'client-blocked', message: 'Запис неможливий: номер у чорному списку' + (blk.rows[0].reason ? ' (' + blk.rows[0].reason + ')' : '') });
+
     const client_id = await getOrCreateClient(ph, name, telegram_id);
 
     // слот занят подтверждённой записью? (защита от двойного бронирования)
