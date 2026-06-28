@@ -655,6 +655,7 @@ select.input { background:var(--card); }
 .fin-pill.out { background:#fee2e2; color:#991b1b; }
 @media(max-width:1100px){ .fin-donuts { grid-template-columns:repeat(2,1fr); } }
 @media(max-width:640px){ .fin-donuts { grid-template-columns:1fr; } .fin-actions { margin-left:0; width:100%; } }
+.dash-rng.active { background:var(--sidebar-active,#5B5FC7); color:#fff; border-color:var(--sidebar-active,#5B5FC7); }
 </style>
 </head>
 <body>
@@ -1121,6 +1122,19 @@ select.input { background:var(--card); }
 
       <!-- ═══ DASHBOARD ═══ -->
       <div class="page active" id="page-dashboard">
+        <div id="dashRangeBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <span style="font-size:13px;color:var(--text-secondary);font-weight:600">Період:</span>
+          <button class="btn btn-sm dash-rng" data-r="today" onclick="dashRange('today')">Сьогодні</button>
+          <button class="btn btn-sm dash-rng" data-r="week" onclick="dashRange('week')">Тиждень</button>
+          <button class="btn btn-sm dash-rng active" data-r="month" onclick="dashRange('month')">Місяць</button>
+          <button class="btn btn-sm dash-rng" data-r="prevmonth" onclick="dashRange('prevmonth')">Мин. місяць</button>
+          <button class="btn btn-sm dash-rng" data-r="year" onclick="dashRange('year')">Рік</button>
+          <span style="width:1px;height:22px;background:var(--border,#e5e5e5);margin:0 4px"></span>
+          <input type="date" id="dashFrom" class="input" style="width:auto;padding:6px 9px;font-size:13px" onchange="dashRangeCustom()">
+          <span style="color:var(--text-secondary)">—</span>
+          <input type="date" id="dashTo" class="input" style="width:auto;padding:6px 9px;font-size:13px" onchange="dashRangeCustom()">
+          <span id="dashRangeLbl" style="font-size:12.5px;color:var(--text-secondary);margin-left:4px"></span>
+        </div>
         <div class="kpi-grid" id="kpi"></div>
 
         <!-- ═══ Панель витрат за місяць ═══ -->
@@ -4554,6 +4568,34 @@ let _timers = {};
 function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = setTimeout(fn, ms); }
 
 // ═══ DASHBOARD ═══════════════════════════════
+let _dashRange = { from:null, to:null }; // null/null = поточний місяць (дефолт бекенду)
+function _kyD(d){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(d); }
+function dashRange(preset){
+  const now=new Date(); const today=_kyD(now); let from, to=today;
+  if(preset==='today'){ from=today; }
+  else if(preset==='week'){ const d=new Date(now); d.setDate(d.getDate()-6); from=_kyD(d); }
+  else if(preset==='month'){ from=today.slice(0,7)+'-01'; }
+  else if(preset==='prevmonth'){ const d=new Date(now.getFullYear(), now.getMonth()-1, 1); from=_kyD(d).slice(0,7)+'-01'; const e=new Date(now.getFullYear(), now.getMonth(), 0); to=_kyD(e); }
+  else if(preset==='year'){ from=today.slice(0,4)+'-01-01'; }
+  _dashRange={from, to};
+  document.querySelectorAll('.dash-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===preset));
+  const f=document.getElementById('dashFrom'), t=document.getElementById('dashTo'); if(f)f.value=from; if(t)t.value=to;
+  _dashRangeLabel(from,to);
+  loadDashboard();
+}
+function dashRangeCustom(){
+  const from=document.getElementById('dashFrom').value, to=document.getElementById('dashTo').value;
+  if(!from||!to) return;
+  _dashRange={from, to};
+  document.querySelectorAll('.dash-rng').forEach(b=>b.classList.remove('active'));
+  _dashRangeLabel(from,to);
+  loadDashboard();
+}
+function _dashRangeLabel(from,to){
+  const lbl=document.getElementById('dashRangeLbl'); if(!lbl) return;
+  const fmt=s=>{ const [y,m,d]=s.split('-'); return `${d}.${m}.${y}`; };
+  lbl.textContent = from===to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
+}
 async function loadDashExpenses(preloaded){
   const card=document.getElementById('dashExpenseCard'); if(!card) return;
   try{
@@ -4576,9 +4618,10 @@ async function loadDashExpenses(preloaded){
 async function loadDashboard() {
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
-  try { o = await api('/api/reports/overview'); } catch { o = {}; }
-  // Реальні витрати «на цю секунду» (матеріали + нарахований % майстрам) — для прибутку і панелі
-  let le = null; try { le = await api('/api/reports/live-expenses'); } catch {}
+  const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';
+  try { o = await api('/api/reports/overview'+_rq); } catch { o = {}; }
+  // Реальні витрати за обраний період (матеріали + нарахований % майстрам) — для прибутку і панелі
+  let le = null; try { le = await api('/api/reports/live-expenses'+_rq); } catch {}
 
   // ── Кабінет майстра: власна статистика ──
   if (o && o.is_master) {

@@ -792,6 +792,10 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
     const dayFrom = kyivDayBound(todayStr, false).toISOString();
     const dayTo   = kyivDayBound(todayStr, true).toISOString();
     const monFrom = kyivDayBound(monthStr, false).toISOString();
+    // Довільний період з ?from=&to= (YYYY-MM-DD). За замовчуванням — поточний місяць.
+    const _dRe = /^\d{4}-\d{2}-\d{2}$/;
+    const periodFrom = (req.query.from && _dRe.test(req.query.from)) ? kyivDayBound(req.query.from, false).toISOString() : monFrom;
+    const periodTo   = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : now.toISOString();
 
     // ── Кабінет майстра: тільки власні записи та виручка ──
     if (req.user.role === 'master' && req.user.master_id) {
@@ -838,9 +842,9 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
       pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric AS svc,
                          COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod,
                          COUNT(*) FILTER (WHERE category IN ('sale_service','sale_product'))::int AS cnt
-                  FROM cash_operations WHERE type='in' AND created_at >= $1`, [monFrom]),
-      // расходы месяц
-      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
+                  FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [periodFrom, periodTo]),
+      // расходы (резерв, не используется — берём из live-finance)
+      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at BETWEEN $1 AND $2`, [periodFrom, periodTo]),
       // записи сегодня по статусам
       pool.query(`SELECT COUNT(*)::int AS total,
                          COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
@@ -852,17 +856,17 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                     SELECT client_id, MIN(starts_at) AS first_visit
                       FROM appointments WHERE client_id IS NOT NULL
                      GROUP BY client_id
-                  ) t WHERE first_visit >= $1`, [monFrom]).catch(()=>({rows:[{n:0}]})),
+                  ) t WHERE first_visit BETWEEN $1 AND $2`, [periodFrom, periodTo]).catch(()=>({rows:[{n:0}]})),
       // топ мастеров месяца по выручке — источник правды касса (BeautyPro оставляет записи 'confirmed', а не 'done')
       pool.query(`SELECT m.id, m.name,
                          COALESCE(SUM(co.amount),0)::numeric AS revenue,
                          COUNT(*) FILTER (WHERE co.category='sale_service')::int AS done
                   FROM cash_operations co JOIN masters m ON m.id=co.master_id
                   WHERE co.type='in' AND co.category IN ('sale_service','sale_product')
-                    AND co.created_at >= $1
+                    AND co.created_at BETWEEN $1 AND $2
                   GROUP BY m.id, m.name
                   HAVING SUM(co.amount) > 0
-                  ORDER BY revenue DESC LIMIT 8`, [monFrom]),
+                  ORDER BY revenue DESC LIMIT 8`, [periodFrom, periodTo]),
       pool.query(`SELECT COUNT(*)::int AS n FROM cash_shifts WHERE status='open'`).catch(()=>({rows:[{n:0}]})),
     ]);
 
@@ -880,7 +884,7 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                     AND created_at BETWEEN $1 AND $2`, [yFrom, yTo]).catch(()=>({rows:[{total:0}]})),
       // виконано записів за місяць (для середнього чека і KPI) = реально проведені візити (не лише 'done')
       pool.query(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done
-                  FROM appointments WHERE starts_at >= $1`, [monFrom]).catch(()=>({rows:[{done:0}]})),
+                  FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [periodFrom, periodTo]).catch(()=>({rows:[{done:0}]})),
       // відтік: єдине визначення (cadence-aware) з lib/churn.js — синхронно з дашбордом і AI
       pool.query(CHURN_COUNT_SQL).catch(()=>({rows:[{n:0}]})),
       // позицій на виході (≤ поріг)
@@ -901,8 +905,9 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
       const rt = revToday.rows[0], rm = revMonth.rows[0];
       out.revenue_today = { services: Number(rt.svc), products: Number(rt.prod), total: Number(rt.svc) + Number(rt.prod) };
       out.revenue_yesterday = Number(revYesterday.rows[0].total);
-      // ЄДИНЕ джерело правди — lib/live-finance: виручка/витрати/прибуток як у Дашборді й Фінцентрі.
-      const finMonth = await liveFinance(pool, monFrom, new Date().toISOString());
+      out.period = { from: (req.query.from && _dRe.test(req.query.from)) ? req.query.from : monthStr, to: (req.query.to && _dRe.test(req.query.to)) ? req.query.to : todayStr };
+      // ЄДИНЕ джерело правди — lib/live-finance: виручка/витрати/прибуток за обраний період.
+      const finMonth = await liveFinance(pool, periodFrom, periodTo);
       out.revenue_month = finMonth.revenue;
       out.expense_month = finMonth.expenses.total;
       out.profit_month = finMonth.profit.net;
@@ -923,8 +928,10 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
 router.get('/live-expenses', requirePerm('reports.finance'), async (req, res) => {
   try {
     const monStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit' }).format(new Date()) + '-01';
-    const monFrom = kyivDayBound(monStr, false).toISOString();
-    const f = await liveFinance(pool, monFrom, new Date().toISOString());
+    const _dRe = /^\d{4}-\d{2}-\d{2}$/;
+    const from = (req.query.from && _dRe.test(req.query.from)) ? kyivDayBound(req.query.from, false).toISOString() : kyivDayBound(monStr, false).toISOString();
+    const to = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : new Date().toISOString();
+    const f = await liveFinance(pool, from, to);
     res.json({
       period: monStr,
       revenue: f.revenue.total,
