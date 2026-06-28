@@ -503,10 +503,10 @@ async function loadReports(){
       Object.entries(RSEG).map(([k,v])=>`<span class="pill ${v.c}">${v.l}</span> — ${v.d}.`).join('<br>')+'</div>';
     const sumHtml = Object.entries(rfm.summary).sort((a,b)=>b[1].count-a[1].count).map(([k,v])=>`<span class="pill ${rsegC(k)}" title="${rsegD(k)}">${rsegL(k)}: ${v.count} клієнт. · ${(+v.revenue).toFixed(0)} ₴</span> `).join('');
     document.getElementById('r-rfm').innerHTML = rfmLegend + `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
-      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th title="Давність / Частота / Сума, 1-5">R/F/M</th><th>Днів тому</th><th>Візитів</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,100).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${rsegC(r.segment)}" title="${rsegD(r.segment)}">${rsegL(r.segment)}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
+      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th title="Давність / Частота / Сума, 1-5">R/F/M</th><th>Днів тому</th><th>Візитів</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,100).map(r=>`<tr style="cursor:pointer" onclick="openClientCard(${r.id})" title="Картка клієнта"><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${rsegC(r.segment)}" title="${rsegD(r.segment)}">${rsegL(r.segment)}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
     const ch = await api('/api/reports/churn?days=90');
     document.getElementById('r-churn').innerHTML = ch.items.length ?
-      `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr><td>${r.name||fmtPhone(r.phone)}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
+      `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr style="cursor:pointer" onclick="openClientCard(${r.id})" title="Картка клієнта"><td>${r.name||fmtPhone(r.phone)}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
       '<div class="empty">Клієнтів у відтоку немає</div>';
 
     // ── Графіки ──────────────────────────────────────
@@ -695,6 +695,31 @@ async function openMasterCard(id){
     _mcTabKey='profile';
     _mcRenderShell();
   }catch(e){ document.getElementById('cardBody').innerHTML = '<div style="color:#c00;padding:14px 0">Помилка: '+(e.message||e)+'</div>'; }
+}
+async function openClientCard(id){
+  const box=document.getElementById('cardModal'); if(box) box.style.display='flex';
+  const body=document.getElementById('cardBody');
+  if(body) body.innerHTML = '<div style="color:#888;padding:14px 0">Завантаження…</div>';
+  try{
+    const r = await api('/api/admin/clients/'+id);
+    const c = (r&&r.client)||{};
+    const st = c.stats||{};
+    const visits = Array.isArray(c.visits)?c.visits:[];
+    const tags = Array.isArray(c.tags)?c.tags:[];
+    const money = v => (Math.round(+v||0)).toLocaleString('uk-UA')+' ₴';
+    const row=(k,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0"><span style="color:#888">${k}</span><b>${v}</b></div>`;
+    body.innerHTML = `
+      <div style="padding:4px 0 10px">
+        <div style="font-size:19px;font-weight:800">${c.name||'Клієнт'}</div>
+        <div style="color:#888;font-size:13px">${c.phone||''} ${c.email?('· '+c.email):''}</div>
+        ${tags.length?`<div style="margin-top:8px">${tags.map(t=>`<span class="pill info">${typeof t==='string'?t:(t.name||t.tag||'')}</span> `).join('')}</div>`:''}
+      </div>
+      ${row('Візитів усього', st.visits_count ?? st.total_visits ?? visits.length ?? '—')}
+      ${row('Витрачено всього', money(st.total_spent ?? st.lifetime_value ?? 0))}
+      ${row('Середній чек', money(st.avg_check ?? 0))}
+      ${row('Останній візит', st.last_visit ? new Date(st.last_visit).toLocaleDateString('uk') : '—')}
+      ${visits.length?`<div style="margin-top:12px;font-weight:700">Останні візити:</div>`+visits.slice(0,8).map(v=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f6f6f6;font-size:13px"><span>${v.date?new Date(v.date).toLocaleDateString('uk'):''} · ${v.service_name||v.service||'Послуга'}</span><span>${money(v.amount||v.price||0)}</span></div>`).join(''):''}`;
+  }catch(e){ if(body) body.innerHTML = '<div style="color:#c00;padding:14px 0">Помилка: '+(e.message||e)+'</div>'; }
 }
 function _mcRenderShell(){
   const ms=_mcData.ms;
