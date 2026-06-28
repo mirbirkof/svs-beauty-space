@@ -912,6 +912,48 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// GET /api/reports/live-expenses — РЕАЛЬНІ витрати «на цю секунду» за поточний місяць:
+// собівартість матеріалів + НАРАХОВАНИЙ % майстрам по реальних схемах (за завершені послуги)
+// + інші витрати каси (оренда, реклама...). Оновлюється щойно проходить послуга.
+router.get('/live-expenses', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const monStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit' }).format(new Date()) + '-01';
+    const monFrom = kyivDayBound(monStr, false).toISOString();
+    const [rev, comm, fixed, cogs, other] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at >= $1`, [monFrom]),
+      // нарахований % за завершені послуги цього місяця, по схемі майстра
+      pool.query(`WITH da AS (
+                    SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+                     WHERE a.starts_at >= $1 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
+                  SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END),0)::numeric comm,
+                         COUNT(*)::int appts
+                    FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [monFrom]),
+      pool.query(`SELECT COALESCE(SUM(COALESCE(fixed_per_month,0)),0)::numeric fx FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`),
+      pool.query(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric g FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0 AND sm.created_at >= $1`, [monFrom]),
+      pool.query(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at >= $1 GROUP BY category ORDER BY s DESC`, [monFrom]),
+    ]);
+    const revenue = Number(rev.rows[0].s);
+    const commission = Math.round(Number(comm.rows[0].comm) + Number(fixed.rows[0].fx));
+    const materials = Math.round(Number(cogs.rows[0].g));
+    const otherCats = other.rows.map(r => ({ category: r.category, sum: Math.round(Number(r.s)) }));
+    const otherTotal = otherCats.reduce((a, r) => a + r.sum, 0);
+    const total = commission + materials + otherTotal;
+    res.json({
+      period: monStr,
+      revenue,
+      breakdown: [
+        { category: 'materials', label: 'Матеріали (собівартість)', sum: materials },
+        { category: 'commission', label: 'Зарплата майстрів (нарахована)', sum: commission },
+        ...otherCats,
+      ].filter(x => x.sum > 0),
+      commission, materials, other: otherCats,
+      total,
+      profit: revenue - total,
+      commission_appts: comm.rows[0].appts,
+    });
+  } catch (e) { console.error('[live-expenses]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
 // GET /api/reports/top-masters?from=&to= — топ майстрів за виручкою за довільний період.
 // Джерело правди — каса (cash_operations), як і в /overview. Без from/to → поточний місяць.
 router.get('/top-masters', requirePerm('reports.finance'), cacheReport(), async (req, res) => {

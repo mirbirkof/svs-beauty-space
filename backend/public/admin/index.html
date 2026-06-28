@@ -4557,14 +4557,20 @@ function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = s
 async function loadDashExpenses(){
   const card=document.getElementById('dashExpenseCard'); if(!card) return;
   try{
-    const d=await api('/api/financial/dashboard?period=month&compare=0');
-    const exp=(d&&d.expenses&&d.expenses.by_category)||[];
-    const total=(d&&d.expenses&&d.expenses.total)||0;
+    const d=await api('/api/reports/live-expenses');
+    const exp=(d&&d.breakdown)||[];
+    const total=(d&&d.total)||0;
     if(!exp.length){ card.style.display='none'; return; }
     card.style.display='';
-    document.getElementById('dashExpenseTotal').textContent='· '+_fcMoney(total);
+    document.getElementById('dashExpenseTotal').textContent='· '+_fcMoney(total)+' (реальні, зараз)';
     const mx=Math.max(1,...exp.map(x=>x.sum));
-    document.getElementById('dashExpenses').innerHTML=exp.map(x=>`<div class="fc-bar"><span class="nm">${(typeof _FC_CATS!=='undefined'&&_FC_CATS[x.category])||escapeHtml(x.category||'—')}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/mx*100)}%;background:#f59e0b"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join('');
+    const labelOf=x=>x.label||((typeof _FC_CATS!=='undefined'&&_FC_CATS[x.category])||escapeHtml(x.category||'—'));
+    const colorOf=x=>x.category==='commission'?'#8b5cf6':x.category==='materials'?'#0ea5e9':'#f59e0b';
+    const profit=(d&&d.profit!=null)?d.profit:null;
+    document.getElementById('dashExpenses').innerHTML=
+      exp.map(x=>`<div class="fc-bar"><span class="nm">${labelOf(x)}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/mx*100)}%;background:${colorOf(x)}"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join('')
+      + (profit!=null?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#eee);display:flex;justify-content:space-between;font-weight:700"><span>Реальний прибуток зараз</span><span style="color:${profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(profit)}</span></div>`:'')
+      + `<div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px">Враховано собівартість матеріалів та нарахований % майстрам (по реальній схемі) за ${d.commission_appts||0} завершених послуг цього місяця. Оновлюється щойно проходить послуга.</div>`;
   }catch(e){ card.style.display='none'; }
 }
 async function loadDashboard() {
