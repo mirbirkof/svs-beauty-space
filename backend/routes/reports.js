@@ -837,8 +837,11 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                          COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod,
                          COUNT(*) FILTER (WHERE category IN ('sale_service','sale_product'))::int AS cnt
                   FROM cash_operations WHERE type='in' AND created_at >= $1`, [monFrom]),
-      // расходы месяц
-      pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS sum FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
+      // расходы месяц: операційні (без зарплати майстрів) ОКРЕМО від виплат майстрам (рішення Боса 28.06, варіант B)
+      pool.query(`SELECT
+                    COALESCE(SUM(amount) FILTER (WHERE category NOT IN ('salary','payroll')),0)::numeric AS opex,
+                    COALESCE(SUM(amount) FILTER (WHERE category IN ('salary','payroll')),0)::numeric AS masters
+                  FROM cash_operations WHERE type='out' AND created_at >= $1`, [monFrom]),
       // записи сегодня по статусам
       pool.query(`SELECT COUNT(*)::int AS total,
                          COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
@@ -900,8 +903,10 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
       out.revenue_today = { services: Number(rt.svc), products: Number(rt.prod), total: Number(rt.svc) + Number(rt.prod) };
       out.revenue_month = { services: Number(rm.svc), products: Number(rm.prod), total: Number(rm.svc) + Number(rm.prod) };
       out.revenue_yesterday = Number(revYesterday.rows[0].total);
-      out.expense_month = Number(expMonth.rows[0].sum);
-      out.profit_month = out.revenue_month.total - out.expense_month;
+      out.expense_month = Number(expMonth.rows[0].opex);            // операційні витрати без зарплати майстрів
+      out.master_payouts_month = Number(expMonth.rows[0].masters);  // виплати майстрам — окремо
+      out.profit_month = out.revenue_month.total - out.expense_month;           // прибуток ДО виплат майстрам
+      out.net_profit_month = out.profit_month - out.master_payouts_month;       // чистий прибуток (після майстрів)
       const salesCnt = Number(rm.cnt || 0);
       out.avg_check_month = salesCnt > 0 ? Math.round(out.revenue_month.total / salesCnt) : 0;
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
