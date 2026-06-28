@@ -1756,6 +1756,16 @@ select.input { background:var(--card); }
           #page-payroll .stat-c.debt .v{color:#d9534f}
           #page-payroll .stat-c.paid .v{color:#0a8f5f}
         </style>
+        <div class="card" id="expConfirmCard" style="margin-bottom:18px;border:1px solid #f0c36d;background:#fffdf6">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+            <h3 style="margin:0;display:flex;align-items:center;gap:8px">🔔 Підтвердження витрат <span id="ecPeriodLbl" style="font-size:13px;font-weight:500;color:var(--text-secondary)"></span></h3>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="month" id="ecMonth" class="inp" style="padding:6px 9px" onchange="loadExpenseConfirm()">
+            </div>
+          </div>
+          <div class="muted" style="font-size:12.5px;margin-bottom:10px">Нараховані витрати за період (зарплата майстрам, оренда тощо). Перевірте суму й натисніть «Провести» — або скоригуйте. Проводиться у касу. Нагадування приходять 1-го, 15-го і в кінці місяця.</div>
+          <div id="ecList"><div class="empty">Завантаження…</div></div>
+        </div>
         <div class="plan-tabs">
           <button class="plan-tab active" data-pyt="schemes" onclick="payrollTab('schemes')"><span class="material-icons-round">tune</span>Схеми</button>
           <button class="plan-tab" data-pyt="calc" onclick="payrollTab('calc')"><span class="material-icons-round">calculate</span>Розрахунки</button>
@@ -8696,6 +8706,57 @@ const _pyKindLabel = k => ({ kpi: 'KPI', premium: 'Премія', onetime: 'Ра
 async function loadPayroll() {
   await loadPayrollMasters();
   payrollTab('schemes');
+  loadExpenseConfirm();
+}
+function _ecYM(){ const el=document.getElementById('ecMonth'); if(el&&!el.value){ el.value=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit'}).format(new Date()); } return el?el.value:''; }
+async function loadExpenseConfirm(){
+  const box=document.getElementById('ecList'); if(!box) return;
+  const ym=_ecYM();
+  const from = ym+'-01';
+  const to = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev'}).format(new Date()).slice(0,7)===ym
+    ? new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+    : ym+'-'+new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();
+  box.innerHTML='<div class="empty">Завантаження…</div>';
+  try{
+    const d=await api('/api/expense-confirm/pending?from='+from+'&to='+to);
+    document.getElementById('ecPeriodLbl').textContent = d.period?('· '+d.period.from+' – '+d.period.to):'';
+    const items=d.items||[];
+    if(!items.length){ box.innerHTML='<div class="empty">Витрат до підтвердження немає</div>'; return; }
+    const money=v=>(Math.round(+v||0)).toLocaleString('uk-UA')+' ₴';
+    box.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">`+items.map(x=>{
+      const calc=money(x.amount_calc);
+      if(x.confirmed){
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #cbebd6;border-radius:10px;background:#f1faf4">
+          <span style="flex:1">${escapeHtml(x.label)}</span>
+          <b style="color:#1B7A3D">✓ Проведено ${money(x.amount_paid)}</b>
+          <button class="btn btn-sm" title="Скасувати" onclick="ecUndo('${encodeURIComponent(x.ref_key)}')">↺</button></div>`;
+      }
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border,#eee);border-radius:10px;background:#fff">
+        <span style="flex:1">${escapeHtml(x.label)}</span>
+        <span class="muted" style="font-size:12px">нараховано</span>
+        <input type="number" class="inp" id="ec_${x.ref_key.replace(/[^a-z0-9]/gi,'_')}" value="${Math.round(x.amount_calc)}" style="width:120px;padding:6px 9px;text-align:right">
+        <button class="btn btn-primary btn-sm" onclick='ecConfirm(${JSON.stringify(x).replace(/'/g,"&#39;")})'>Провести</button></div>`;
+    }).join('')+`</div>
+      <div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #eee;padding-top:10px">
+        <span>Разом нараховано: ${money(d.summary.total_calc)}</span>
+        <span style="color:#1B7A3D">Проведено: ${money(d.summary.total_confirmed)}</span></div>`;
+  }catch(e){ box.innerHTML='<div class="empty">Помилка: '+escapeHtml(e.message||'')+'</div>'; }
+}
+async function ecConfirm(x){
+  const inp=document.getElementById('ec_'+x.ref_key.replace(/[^a-z0-9]/gi,'_'));
+  const amount=inp?parseFloat(inp.value):x.amount_calc;
+  if(!(amount>0)){ toast('Сума має бути більше 0','error'); return; }
+  const ym=_ecYM();
+  try{
+    const r=await api('/api/expense-confirm/confirm',{method:'POST',body:JSON.stringify({kind:x.kind,ref_key:x.ref_key,label:x.label,amount,amount_calc:x.amount_calc,period:ym,master_id:x.master_id||null,category:x.kind==='recurring'?'rent':undefined})});
+    if(r&&(r.ok||r.already)){ toast('Проведено ✓','success'); loadExpenseConfirm(); if(typeof loadFinCenter==='function')try{loadFinCenter();}catch(_){} }
+    else toast((r&&r.error)||'Помилка','error');
+  }catch(e){ toast(e.message,'error'); }
+}
+async function ecUndo(refkeyEnc){
+  if(!confirm('Скасувати проведення цієї витрати?')) return;
+  try{ await api('/api/expense-confirm/confirm/'+refkeyEnc,{method:'DELETE'}); loadExpenseConfirm(); }
+  catch(e){ toast(e.message,'error'); }
 }
 
 async function loadPayrollMasters() {

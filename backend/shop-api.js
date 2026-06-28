@@ -273,26 +273,29 @@ try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/pnl', require('./routes/pnl')); } catch(e) { console.error('[pnl] mount failed:', e.message); }
 try { app.use('/api/payouts', require('./routes/payouts')); } catch(e) { console.error('[payouts] mount failed:', e.message); }
-// Авто-розрахунок зарплати: тік раз на 6 год. Сам спрацьовує лише 1-го і 16-го (виплати).
-// Рахує по реальній схемі майстра, проводить витрату ЗП у касу (ідемпотентно) + нагадування в Telegram.
+try { app.use('/api/expense-confirm', require('./routes/expense-confirm')); } catch(e) { console.error('[expense-confirm] mount failed:', e.message); }
+// Нагадування про витрати: 1-го, 15-го і в останній день місяця.
+// НЕ проводить автоматично — лише нагадує підтвердити (адмін підтверджує/коригує у CRM).
 if (process.env.DATABASE_URL) {
-  const payrollTick = async () => {
+  let _lastExpReminder = null;
+  const expenseReminderTick = async () => {
     try {
-      const payouts = require('./routes/payouts');
-      if (typeof payouts.autoPayrollRun !== 'function') return;
-      const r = await payouts.autoPayrollRun();
-      if (r && r.posted > 0) {
-        console.log(`[auto-payroll] проведено ${r.posted} ЗП на ${r.fund}₴ за ${r.period.label}`);
-        try {
-          const { tgSend } = require('./routes/telegram-notify');
-          const chat = process.env.ADMIN_TG_CHAT;
-          if (chat) await tgSend(chat, `💰 <b>Зарплата нарахована автоматично</b>\nПеріод: ${r.period.label}\nМайстрів: ${r.posted} · Фонд: <b>${r.fund.toLocaleString('uk-UA')} ₴</b>\nПроведено у витрати каси. Перевірте у Зарплаті → Відомість.`, { parse_mode: 'HTML' }).catch(()=>{});
-        } catch {}
-      }
-    } catch (e) { console.error('[auto-payroll] tick:', e.message); }
+      const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[x.type] = x.value;
+      const y = +p.year, m = +p.month, d = +p.day;
+      const lastDay = new Date(y, m, 0).getDate();
+      const isReminderDay = (d === 1 || d === 15 || d === lastDay);
+      const stamp = `${y}-${m}-${d}`;
+      if (!isReminderDay || _lastExpReminder === stamp) return;
+      _lastExpReminder = stamp;
+      const when = d === 1 ? 'початок місяця' : d === 15 ? 'середина місяця' : 'кінець місяця';
+      const { tgSend } = require('./routes/telegram-notify');
+      const chat = process.env.ADMIN_TG_CHAT;
+      if (chat) await tgSend(chat, `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`, { parse_mode: 'HTML' }).catch(()=>{});
+      console.log(`[expense-reminder] нагадування надіслано (${when})`);
+    } catch (e) { console.error('[expense-reminder] tick:', e.message); }
   };
-  setTimeout(payrollTick, 45000);
-  setInterval(payrollTick, 6 * 60 * 60 * 1000);
+  setTimeout(expenseReminderTick, 50000);
+  setInterval(expenseReminderTick, 6 * 60 * 60 * 1000);
 }
 try { app.use('/api/ai/quality', require('./routes/ai-quality')); } catch(e) { console.error('[ai-quality] mount failed:', e.message); }
 try { app.use('/api/v2', require('./routes/plans')); } catch(e) { console.error('[plans-v2] mount failed:', e.message); }
