@@ -283,6 +283,7 @@ try { app.use('/api/ai/calls', require('./routes/ai-call-analysis')); } catch(e)
 try { app.use('/api/ai/video', require('./routes/ai-video')); } catch(e) { console.error('[ai-video] mount failed:', e.message); }
 try { app.use('/api/pipeline', require('./routes/pipeline')); } catch(e) { console.error('[pipeline] mount failed:', e.message); }
 try { app.use('/api/shifts', require('./routes/shifts')); } catch(e) { console.error('[shifts] mount failed:', e.message); }
+try { app.use('/api/shift-checklist', require('./routes/shift-checklist')); } catch(e) { console.error('[shift-checklist] mount failed:', e.message); }
 try { app.use('/api/employees', require('./routes/employees')); } catch(e) { console.error('[employees] mount failed:', e.message); }
 try { app.use('/api/clients', require('./routes/crm-card')); } catch(e) { console.error('[crm-card] mount failed:', e.message); }
 try { app.use('/api/kpi', require('./routes/kpi')); } catch(e) { console.error('[kpi] mount failed:', e.message); }

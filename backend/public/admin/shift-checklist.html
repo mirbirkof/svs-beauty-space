@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>SVS Admin — Чек-лист зміни</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .topbar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:6px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input{padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .msg{font-size:13px;margin-top:10px;min-height:18px}
+  .ok{background:#E3F6E9;border:1px solid #A8E0BC;border-radius:10px;padding:10px 12px;font-size:13px;color:#1B7A3D}
+  .warn{background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:10px 12px;font-size:13px;color:#7A5C00}
+  .phase{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);font-weight:700;margin:14px 0 8px}
+  .item{display:flex;align-items:center;gap:11px;padding:9px 10px;border:1px solid var(--border,#eee);border-radius:10px;margin-bottom:7px;cursor:pointer;transition:background .12s}
+  .item:hover{background:#f7f7fb}
+  .item.done{background:#F1FAF4;border-color:#CBEBD6}
+  .item input{width:19px;height:19px;cursor:pointer;flex:none}
+  .item span{font-size:13.5px}
+  .item.done span{color:#1B7A3D;text-decoration:line-through;text-decoration-color:#9ed3b1}
+  .cashrow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:10px}
+  .cashrow .fld input{width:100%}
+  .diff{font-size:15px;font-weight:700}
+  .diff.bad{color:#C62828}.diff.good{color:#1B7A3D}
+  .btn.primary{background:var(--accent,#6c5ce7);color:#fff;border:none}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .hist{font-size:12.5px}
+  .hist .h{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
+  .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600}
+  .pill.closed{background:#E3F6E9;color:#1B7A3D}.pill.open{background:#FFF3E0;color:#B26A00}
+  @media(max-width:1000px){.cashrow{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="content">
+  <h1>Чек-лист зміни</h1>
+  <div class="intro">Розпорядок дня адміністратора з посадової інструкції — у вигляді галочок. Відмічайте по ходу зміни. Зміну не можна закрити, доки не зведена каса.</div>
+
+  <div class="card">
+    <div class="topbar">
+      <div class="fld"><label>Дата зміни</label><input type="date" id="date"></div>
+      <div class="fld"><label>Адміністратор</label><input type="text" id="admin" placeholder="Ім'я" style="width:180px"></div>
+      <div id="statePill"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>✅ Чек-лист</h3>
+    <div id="list"><div class="muted">Завантаження…</div></div>
+  </div>
+
+  <div class="card">
+    <h3>💰 Звірка каси (кінець зміни)</h3>
+    <div class="muted" style="margin-bottom:10px">Інструкція: звірити суму за програмою та журналом з реальною готівкою. Розбіжність — повідомити керівника.</div>
+    <div class="cashrow">
+      <div class="fld"><label>Сума за програмою, ₴</label><input type="number" id="cashProgram" step="0.01" oninput="recalcDiff()"></div>
+      <div class="fld"><label>Сума за журналом, ₴</label><input type="number" id="cashJournal" step="0.01"></div>
+      <div class="fld"><label>Реально в касі, ₴</label><input type="number" id="cashFact" step="0.01" oninput="recalcDiff()"></div>
+    </div>
+    <div>Розбіжність: <span id="diff" class="diff">—</span></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" onclick="save()">Зберегти</button>
+    <button class="btn" id="closeBtn" onclick="closeShift()">Закрити зміну</button>
+  </div>
+  <div class="msg" id="msg"></div>
+
+  <div class="card" style="margin-top:20px">
+    <h3>📅 Останні зміни</h3>
+    <div id="hist" class="hist"><div class="muted">—</div></div>
+  </div>
+</main>
+
+<script src="/admin/assets/admin-shell.js" data-title="Чек-лист зміни"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TOK = () => (window.adminToken ? adminToken() : '');
+async function apiGet(p){ const r=await fetch(p,{headers:{'X-Admin-Token':TOK()}}); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function apiSend(p,body,method){ const r=await fetch(p,{method:method||'POST',headers:{'X-Admin-Token':TOK(),'Content-Type':'application/json'},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||('HTTP '+r.status)); return j; }
+
+const PHASES = { open:'🌅 Відкриття зміни', day:'☀️ Протягом дня', close:'🌙 Закриття зміни' };
+let DATA = null;
+
+function kyivToday(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+
+async function load(){
+  const date = $('date').value || kyivToday();
+  $('list').innerHTML='<div class="muted">Завантаження…</div>';
+  try{
+    DATA = await apiGet('/api/shift-checklist?date='+encodeURIComponent(date));
+    $('admin').value = DATA.admin_name||'';
+    $('cashProgram').value = DATA.cash_program!=null?DATA.cash_program:'';
+    $('cashJournal').value = DATA.cash_journal!=null?DATA.cash_journal:'';
+    $('cashFact').value = DATA.cash_fact!=null?DATA.cash_fact:'';
+    recalcDiff();
+    renderList();
+    renderState();
+  }catch(e){ $('list').innerHTML='<div class="warn">Не вдалося завантажити: '+esc(e.message)+'</div>'; }
+}
+
+function renderList(){
+  const items = DATA.items||[];
+  let html=''; let lastPhase=null;
+  items.forEach((it,i)=>{
+    if(it.phase!==lastPhase){ html+='<div class="phase">'+(PHASES[it.phase]||it.phase)+'</div>'; lastPhase=it.phase; }
+    html+=`<label class="item ${it.done?'done':''}">
+      <input type="checkbox" ${it.done?'checked':''} onchange="toggle(${i},this.checked)">
+      <span>${esc(it.label)}</span></label>`;
+  });
+  $('list').innerHTML=html;
+}
+function toggle(i,val){ DATA.items[i].done=val; renderList(); }
+
+function renderState(){
+  const closed = !!DATA.closed_at;
+  $('statePill').innerHTML = DATA.saved
+    ? (closed ? '<span class="pill closed">Зміну закрито</span>' : '<span class="pill open">Зміна відкрита</span>')
+    : '<span class="muted">Новий день — не збережено</span>';
+  $('closeBtn').textContent = closed ? 'Зміну закрито ✓' : 'Закрити зміну';
+  $('closeBtn').disabled = closed;
+}
+
+function recalcDiff(){
+  const p=parseFloat($('cashProgram').value), f=parseFloat($('cashFact').value);
+  const el=$('diff');
+  if(isNaN(p)||isNaN(f)){ el.textContent='—'; el.className='diff'; return; }
+  const d=+(f-p).toFixed(2);
+  el.textContent=(d>0?'+':'')+d+' ₴'+(d===0?' (сходиться)':'');
+  el.className='diff '+(d===0?'good':'bad');
+}
+
+function collect(){
+  return {
+    work_date: $('date').value||kyivToday(),
+    admin_name: $('admin').value||null,
+    items: DATA.items,
+    cash_program: $('cashProgram').value, cash_journal: $('cashJournal').value, cash_fact: $('cashFact').value,
+  };
+}
+async function save(){
+  $('msg').textContent='Зберігаю…';
+  try{ const r=await apiSend('/api/shift-checklist', collect()); DATA={...r,saved:true}; renderState(); recalcDiff();
+    $('msg').innerHTML='<span class="ok">Збережено ✓</span>'; loadHist();
+  }catch(e){ $('msg').innerHTML='<span class="warn">Помилка: '+esc(e.message)+'</span>'; }
+}
+async function closeShift(){
+  await save();
+  try{ const r=await apiSend('/api/shift-checklist/close',{work_date:$('date').value||kyivToday()}); DATA={...r,saved:true}; renderState();
+    $('msg').innerHTML='<span class="ok">Зміну закрито ✓ Каса зведена.</span>'; loadHist();
+  }catch(e){ $('msg').innerHTML='<span class="warn">'+esc(e.message)+'</span>'; }
+}
+
+async function loadHist(){
+  try{
+    const d=await apiGet('/api/shift-checklist/history?limit=14');
+    const items=(d&&d.items)||[];
+    $('hist').innerHTML = items.length ? items.map(h=>{
+      const dt=new Date(h.work_date).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit'});
+      const cl=h.closed_at?'<span class="pill closed">закрито</span>':'<span class="pill open">відкрито</span>';
+      const diff=h.cash_diff!=null?(' · каса '+(h.cash_diff>0?'+':'')+h.cash_diff+'₴'):'';
+      return `<div class="h"><span>${dt} · ${esc(h.admin_name||'—')} · ${h.done_cnt}/${h.total_cnt} ✓${diff}</span>${cl}</div>`;
+    }).join('') : '<div class="muted">Поки що порожньо</div>';
+  }catch(e){ $('hist').innerHTML='<div class="muted">—</div>'; }
+}
+
+$('date').value = kyivToday();
+$('date').addEventListener('change', load);
+load();
+loadHist();
+</script>
+</body>
+</html>

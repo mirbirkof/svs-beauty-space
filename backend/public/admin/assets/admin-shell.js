@@ -12,6 +12,7 @@
   const NAV = [
     { icon: 'dashboard', label: 'Дашборд', href: '/admin/index.html#dashboard' },
     { icon: 'event_note', label: 'Журнал записів', href: '/admin/index.html#journal' },
+    { icon: 'checklist', label: 'Чек-лист зміни', href: '/admin/shift-checklist.html' },
     { icon: 'calendar_month', label: 'Графік роботи', href: '/admin/index.html#settings' },
     { icon: 'content_cut', label: 'Послуги', href: '/admin/index.html#services' },
     { icon: 'account_tree', label: 'Категорії послуг', href: '/admin/index.html#svccats' },
