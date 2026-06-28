@@ -4,9 +4,13 @@
 <meta charset="utf-8">
 <title>SVS Admin — Чек-лист зміни</title>
 <meta name="viewport" content="width=1280">
-<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}
+// Якщо відкрито всередині основної CRM (iframe-embed) — ховаємо власний шелл, щоб не виглядало як «інша система»
+try{ if(window.top!==window.self) document.documentElement.classList.add('embedded'); }catch(e){ document.documentElement.classList.add('embedded'); }</script>
 <link rel="stylesheet" href="/admin/assets/admin-shell.css">
 <style>
+  html.embedded .sidebar, html.embedded .topbar-shell, html.embedded .app-topbar { display:none !important; }
+  html.embedded .content, html.embedded main.content { margin-left:0 !important; padding:18px 20px !important; }
   .intro{color:var(--text-secondary);font-size:14px;margin:2px 0 16px}
   .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
   .card h3{margin:0 0 12px;font-size:15px;display:flex;align-items:center;gap:8px}

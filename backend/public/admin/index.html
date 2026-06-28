@@ -728,7 +728,7 @@ select.input { background:var(--card); }
           <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
             <span class="material-icons-round">event_available</span> Зміни / Табель
           </a>
-          <a class="sidebar-item" href="/admin/shift-checklist.html">
+          <a class="sidebar-item" data-embed="/admin/shift-checklist.html" onclick="openEmbed('/admin/shift-checklist.html','checklist Чек-лист зміни')" style="cursor:pointer">
             <span class="material-icons-round">checklist</span> Чек-лист зміни
           </a>
           <a class="sidebar-item" data-page="services" onclick="go('services')">
