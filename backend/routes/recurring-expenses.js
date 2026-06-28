@@ -32,11 +32,18 @@ async function postDue(db = pool) {
   let posted = 0;
   for (const t of due.rows) {
     try {
+      // Атомарний «claim»: ставимо last_posted ТІЛЬКИ якщо ще не проведено за цей місяць.
+      // Якщо паралельний тік / ручний /run уже провів — rowCount=0, пропускаємо.
+      // Це закриває гонку (подвійну проводку грошей) без окремої транзакції.
+      const claim = await db.query(
+        `UPDATE recurring_expenses SET last_posted=$1::date, updated_at=NOW()
+          WHERE id=$2 AND (last_posted IS NULL OR last_posted < $1::date)`,
+        [ms, t.id]);
+      if (claim.rowCount === 0) continue;
       await db.query(
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, description)
          VALUES (NULL,'out',$1,$2,$3,$4)`,
         [t.category, t.amount, t.method || 'cash', (t.description || 'Постійна витрата') + ' (авто)']);
-      await db.query(`UPDATE recurring_expenses SET last_posted=$1::date, updated_at=NOW() WHERE id=$2`, [ms, t.id]);
       posted++;
     } catch (e) { console.error('[recurring-exp] post', t.id, e.message); }
   }

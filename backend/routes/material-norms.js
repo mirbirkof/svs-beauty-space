@@ -231,7 +231,7 @@ router.post('/consumption/write-off', W, async (req, res) => {
         )).rows[0];
         // склад: списываем целыми единицами только для pcs/pair
         if ((m.unit === 'pcs' || m.unit === 'pair') && Number.isFinite(usedQty)) {
-          await client.query(`UPDATE product_variants SET stock_qty = stock_qty - $1 WHERE id=$2`, [Math.round(usedQty), m.variant_id]);
+          await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1) WHERE id=$2`, [Math.round(usedQty), m.variant_id]);
         }
         logged.push(row);
       }
