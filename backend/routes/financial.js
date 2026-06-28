@@ -72,17 +72,17 @@ async function snapshot(from, to) {
   const revServices = Number(svc[0]?.s || 0);
   const revProducts = Number(prodSalon[0]?.s || 0) + Number(orders[0]?.s || 0);
   const revTotal = revServices + revProducts;
-  // Виплати майстрам (їх %) — ОКРЕМО від операційних витрат (рішення Боса 28.06, варіант B).
-  // Прибуток показуємо ДО виплат майстрам, а їх частку — окремим рядком.
+  // Витрати показуємо ПОВНІСТЮ (з зарплатою майстрів як окрема категорія — як оренда),
+  // але прибуток рахуємо ДО виплат майстрам, а їх частку — окремим рядком (рішення Боса 28.06).
   const MASTER_CATS = ['salary', 'payroll'];
-  const allExp = expRows.map(r => ({ category: r.category, sum: Number(r.sum) }));
-  const masterPayouts = allExp.filter(r => MASTER_CATS.includes(r.category)).reduce((a, r) => a + r.sum, 0);
-  const expByCat = allExp.filter(r => !MASTER_CATS.includes(r.category)); // операційні витрати без зарплати майстрів
-  const expTotal = expByCat.reduce((a, r) => a + r.sum, 0);
+  const expByCat = expRows.map(r => ({ category: r.category, sum: Number(r.sum) })); // ВСІ статті, вкл. ЗП
+  const expTotal = expByCat.reduce((a, r) => a + r.sum, 0);                            // повні витрати
+  const masterPayouts = expByCat.filter(r => MASTER_CATS.includes(r.category)).reduce((a, r) => a + r.sum, 0);
+  const opex = expTotal - masterPayouts;                                               // витрати без ЗП майстрів
   const cogs = Number(cogsR[0]?.cogs || 0);
   const grossProfit = revTotal - cogs;
-  const profitBeforeMasters = grossProfit - expTotal; // прибуток ДО виплат майстрам
-  const netProfit = profitBeforeMasters - masterPayouts; // чистий прибуток (після майстрів)
+  const profitBeforeMasters = grossProfit - opex;        // прибуток ДО виплат майстрам
+  const netProfit = grossProfit - expTotal;              // чистий прибуток (після майстрів)
   const txCount = Number(svc[0]?.c || 0) + Number(prodSalon[0]?.c || 0) + Number(orders[0]?.c || 0);
   return {
     revenue: { services: revServices, products: revProducts, total: revTotal },
