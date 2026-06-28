@@ -104,6 +104,17 @@ async function resume(svc) {
   return r.status === 200 || r.status === 202;
 }
 
+// Перезапуск зависшего інстансу (живий процес, але HTTP не відповідає — 000/timeout).
+// resume лікує лише suspended; для «висить» потрібен саме restart.
+async function restart(svc) {
+  if (!svc.key) return false;
+  const r = await req('POST', `https://api.render.com/v1/services/${svc.sid}/restart`, {
+    Authorization: `Bearer ${svc.key}`,
+  });
+  log(`restart(${svc.name}) -> HTTP ${r.status}`);
+  return r.status === 200 || r.status === 202;
+}
+
 async function tg(text) {
   if (!TG_TOKEN || !TG_CHAT) return;
   await req('POST', `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
@@ -130,21 +141,35 @@ async function checkOnce() {
   // choose active: primary preferred, else backup
   let active = pHealthy ? PRIMARY : bHealthy ? BACKUP : null;
 
-  // recovery actions
-  if (!pHealthy) {
-    const ps = await suspendState(PRIMARY);
-    if (ps === 'suspended') {
-      const ok = await resume(PRIMARY);
-      if (ok) log('primary resume requested (was suspended)');
-    }
-  }
-  if (!bHealthy) {
-    const bs = await suspendState(BACKUP);
-    if (bs === 'suspended') await resume(BACKUP);
-  }
-
   const prev = readState();
   const now = new Date().toISOString();
+  const RESTART_THROTTLE_MS = 10 * 60 * 1000; // не частіше разу на 10 хв
+  const FAIL_THRESHOLD = 3;                    // 3 невдалі тіки поспіль (~6 хв)
+
+  // Авто-відновлення сервісу: suspended → resume; «висить» (живий, але HTTP мовчить) → restart.
+  async function recover(svc, healthy) {
+    const fkey = 'fail_' + svc.name, rkey = 'lastRestart_' + svc.name;
+    if (healthy) { prev[fkey] = 0; return; }
+    const st = await suspendState(svc);
+    if (st === 'suspended') {
+      const ok = await resume(svc);
+      if (ok) log(`${svc.name}: resume requested (was suspended)`);
+      return;
+    }
+    // not_suspended але нездоровий → завис. Рахуємо поспіль і рестартимо з тротлінгом.
+    prev[fkey] = (prev[fkey] || 0) + 1;
+    const sinceRestart = Date.now() - (prev[rkey] ? new Date(prev[rkey]).getTime() : 0);
+    if (prev[fkey] >= FAIL_THRESHOLD && sinceRestart > RESTART_THROTTLE_MS) {
+      log(`${svc.name}: завис (${prev[fkey]} тіків поспіль) → restart`);
+      const ok = await restart(svc);
+      prev[rkey] = now; prev[fkey] = 0;
+      if (ok) await tg(`🔧 <b>CRM (${svc.name})</b> завис і не відповідав — перезапустив автоматично. За хвилину має піднятися.`).catch(()=>{});
+    }
+  }
+
+  // recovery actions
+  await recover(PRIMARY, pHealthy);
+  await recover(BACKUP, bHealthy);
 
   if (!active) {
     log('BOTH DOWN — primary & backup unhealthy');
@@ -171,6 +196,7 @@ async function checkOnce() {
   }
 
   writeState({
+    ...prev,
     active: active.name,
     activeUrl: active.url,
     primaryHealthy: pHealthy,
