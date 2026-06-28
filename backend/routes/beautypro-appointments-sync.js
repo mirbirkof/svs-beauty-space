@@ -354,10 +354,27 @@ async function syncSchedules(from, to) {
 // ── Продажи BP → касса (cash_operations) ───────────────────────────────
 // BP-кошельки → способ оплаты. Безнал = банковская карта, остальное = готівка.
 const BP_CARD_ACCOUNTS = new Set(['88de9f80-b486-7c3d-2721-6e895eccd818']);
-function saleMethod(payments) {
-  if (!Array.isArray(payments) || !payments.length) return 'cash';
-  const main = payments.slice().sort((a, b) => (Number(b.sum) || 0) - (Number(a.sum) || 0))[0];
-  return BP_CARD_ACCOUNTS.has(main.account) ? 'card' : 'cash';
+// Розкладає чек на способи оплати ЗА ФАКТИЧНИМИ платежами. BeautyPro дозволяє оплату
+// частково карткою + частково готівкою в одному чеку. Раніше брали лише НАЙБІЛЬШИЙ
+// платіж і вішали на нього ВСЮ суму чека → готівкова частина спліт-чеків падала в безнал,
+// і «Готівка за день» занижувалась (1469 → 400). Тепер кожен спосіб отримує свою частку;
+// безнал = решта суми чека (гарантує, що сума рядків точно дорівнює s.sum — виручка не зміщується).
+function splitSale(s) {
+  const sum = Number(s.sum) || 0;
+  const ps = Array.isArray(s.payments) ? s.payments : [];
+  if (!ps.length) return [{ method: 'cash', amount: sum }]; // без платежів — за замовч. готівка
+  let cashPart = 0;
+  for (const p of ps) if (!BP_CARD_ACCOUNTS.has(p.account)) cashPart += Number(p.sum) || 0;
+  cashPart = Math.max(0, Math.min(cashPart, sum));
+  let cardPart = +(sum - cashPart).toFixed(2);
+  cashPart = +cashPart.toFixed(2);
+  // копійчані «хвости» від округлень не дробимо на окремий рядок
+  if (cardPart < 0.5) { cashPart = sum; cardPart = 0; }
+  else if (cashPart < 0.5) { cardPart = sum; cashPart = 0; }
+  const out = [];
+  if (cashPart > 0) out.push({ method: 'cash', amount: cashPart });
+  if (cardPart > 0) out.push({ method: 'card', amount: cardPart });
+  return out.length ? out : [{ method: 'cash', amount: sum }];
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -408,12 +425,27 @@ async function syncSales(from, to) {
     const raw = await fetchSalesDay(token, day);
     const recs = raw.filter(
       (s) => !s.cancel && (s.type === 'Service' || s.type === 'Product') && (Number(s.sum) || 0) > 0);
+    recs.sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
+
+    // Розкладаємо кожен чек на способи оплати (спліт готівка/безнал). Один чек → 1-2 рядки.
+    // ext_ref: один спосіб → s.id (зворотна сумісність); спліт → `${s.id}:cash`/`${s.id}:card`.
+    const ops = [];
+    for (const s of recs) {
+      const parts = splitSale(s);
+      const single = parts.length === 1;
+      for (const p of parts) {
+        ops.push({ s, method: p.method, amount: p.amount,
+          extRef: single ? String(s.id) : `${s.id}:${p.method}` });
+      }
+    }
 
     // Реконсиляція каси: продаж, скасований або видалений у BeautyPro вже ПІСЛЯ
     // проведення, прибираємо з каси. Інакше скасування накопичуються як фантомна
     // виручка (каса не сходиться). Межі дня — UTC, бо created_at = sale_date (UTC).
     // Чіпаємо лише власні bp_sale-операції; ручні операції каси недоторкані.
-    const validIds = recs.map((s) => String(s.id));
+    // validIds = усі ext_ref, що проводимо (з урахуванням спліту), інакше частини
+    // спліт-чеків видалялися б на кожному синку.
+    const validIds = ops.map((o) => o.extRef);
     const nextD = new Date(day + 'T00:00:00Z'); nextD.setUTCDate(nextD.getUTCDate() + 1);
     const del = await pool.query(
       `DELETE FROM cash_operations
@@ -423,9 +455,8 @@ async function syncSales(from, to) {
       [day + 'T00:00:00Z', nextD.toISOString(), validIds]);
     removed += del.rowCount || 0;
 
-    if (!recs.length) continue;
-    recs.sort((a, b) => new Date(a.sale_date) - new Date(b.sale_date));
-    const cashSum = recs.filter((s) => saleMethod(s.payments) === 'cash').reduce((a, s) => a + Number(s.sum), 0);
+    if (!ops.length) continue;
+    const cashSum = ops.filter((o) => o.method === 'cash').reduce((a, o) => a + o.amount, 0);
 
     // смена дня
     let sh = await pool.query('SELECT id FROM cash_shifts WHERE notes = $1 LIMIT 1', ['BeautyPro ' + day]);
@@ -439,20 +470,23 @@ async function syncSales(from, to) {
       shiftId = ins.rows[0].id; shifts++;
     }
 
-    for (const s of recs) {
+    for (const o of ops) {
+      const s = o.s;
       const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
       const bpClient = s.client ? String(s.client) : null;
       const bpCalendar = s.calendar_date || null; // час запису в BP (для матчингу з appointments)
-      // ON CONFLICT DO UPDATE: бэкфиллим bp_client/bp_calendar у вже проведених продажів (раніше їх не зберігали)
+      // ON CONFLICT DO UPDATE: на повторному синку оновлюємо суму/спосіб (раптом чек
+      // дооплатили/змінили спосіб) + бэкфиллим bp_client/bp_calendar.
       const r = await pool.query(
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, created_at, ext_ref, bp_client, bp_calendar)
          VALUES ($1,'in',$2,$3,$4,'bp_sale',$5,$6,$7,$8,$9,$10)
          ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO UPDATE SET
+           amount=EXCLUDED.amount, method=EXCLUDED.method,
            bp_client=COALESCE(EXCLUDED.bp_client, cash_operations.bp_client),
            bp_calendar=COALESCE(EXCLUDED.bp_calendar, cash_operations.bp_calendar)
          RETURNING (xmax = 0) AS inserted`,
-        [shiftId, s.type === 'Service' ? 'sale_service' : 'sale_product', Number(s.sum),
-         saleMethod(s.payments), masterId, s.name || null, s.sale_date, s.id, bpClient, bpCalendar]);
+        [shiftId, s.type === 'Service' ? 'sale_service' : 'sale_product', o.amount,
+         o.method, masterId, s.name || null, s.sale_date, o.extRef, bpClient, bpCalendar]);
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
 
