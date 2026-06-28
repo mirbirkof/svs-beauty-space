@@ -273,6 +273,27 @@ try { app.use('/api/quality', require('./routes/quality')); } catch(e) { console
 try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { console.error('[ai-sales] mount failed:', e.message); }
 try { app.use('/api/pnl', require('./routes/pnl')); } catch(e) { console.error('[pnl] mount failed:', e.message); }
 try { app.use('/api/payouts', require('./routes/payouts')); } catch(e) { console.error('[payouts] mount failed:', e.message); }
+// Авто-розрахунок зарплати: тік раз на 6 год. Сам спрацьовує лише 1-го і 16-го (виплати).
+// Рахує по реальній схемі майстра, проводить витрату ЗП у касу (ідемпотентно) + нагадування в Telegram.
+if (process.env.DATABASE_URL) {
+  const payrollTick = async () => {
+    try {
+      const payouts = require('./routes/payouts');
+      if (typeof payouts.autoPayrollRun !== 'function') return;
+      const r = await payouts.autoPayrollRun();
+      if (r && r.posted > 0) {
+        console.log(`[auto-payroll] проведено ${r.posted} ЗП на ${r.fund}₴ за ${r.period.label}`);
+        try {
+          const { tgSend } = require('./routes/telegram-notify');
+          const chat = process.env.ADMIN_TG_CHAT;
+          if (chat) await tgSend(chat, `💰 <b>Зарплата нарахована автоматично</b>\nПеріод: ${r.period.label}\nМайстрів: ${r.posted} · Фонд: <b>${r.fund.toLocaleString('uk-UA')} ₴</b>\nПроведено у витрати каси. Перевірте у Зарплаті → Відомість.`, { parse_mode: 'HTML' }).catch(()=>{});
+        } catch {}
+      }
+    } catch (e) { console.error('[auto-payroll] tick:', e.message); }
+  };
+  setTimeout(payrollTick, 45000);
+  setInterval(payrollTick, 6 * 60 * 60 * 1000);
+}
 try { app.use('/api/ai/quality', require('./routes/ai-quality')); } catch(e) { console.error('[ai-quality] mount failed:', e.message); }
 try { app.use('/api/v2', require('./routes/plans')); } catch(e) { console.error('[plans-v2] mount failed:', e.message); }
 try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }

@@ -511,4 +511,60 @@ router.get('/my', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
+/* ═══════════ АВТО-РОЗРАХУНОК ЗАРПЛАТИ (виплати 1-го і 16-го) ═══════════
+   Період: 16-го → за [1..15] цього міс; 1-го → за [16..кінець] минулого міс.
+   Рахує по реальній схемі майстра (liveEstimate), створює payroll_record (status='auto')
+   і проводить витрату ЗП у касу. Ідемпотентно по (master, period_start). */
+function kyivYMD() {
+  const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[x.type] = x.value;
+  return { y: +p.year, m: +p.month, d: +p.day };
+}
+function payPeriodFor(y, m, payDay) {
+  const pad = n => String(n).padStart(2, '0');
+  if (payDay === 16) return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-16`, label: `1–15.${pad(m)}.${y}` };
+  const pm = m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
+  return { from: `${pm.y}-${pad(pm.m)}-16`, to: `${y}-${pad(m)}-01`, label: `16–кін.${pad(pm.m)}.${pm.y}` };
+}
+async function autoPayrollRun({ force = false, dry = false } = {}) {
+  const t = kyivYMD();
+  if (!force && t.d !== 1 && t.d !== 16) return { skipped: true, reason: 'not-payday', day: t.d };
+  const payDay = (t.d === 1 || t.d === 16) ? t.d : (t.d > 16 ? 16 : 1);
+  const { from, to, label } = payPeriodFor(t.y, t.m, payDay);
+  const masters = await q(`SELECT id, name FROM masters WHERE active=TRUE ORDER BY name`);
+  let posted = 0, skipped = 0, fund = 0; const lines = [];
+  for (const mst of masters) {
+    const est = await liveEstimate(mst.id, from, to);
+    if (!(est.total > 0)) continue;
+    const exists = await q(`SELECT 1 FROM payroll_records WHERE master_id=$1::text AND period_start=$2::date LIMIT 1`, [String(mst.id), from]);
+    if (exists.length) { skipped++; continue; }
+    fund += Math.round(est.total); lines.push(`${mst.name}: ${Math.round(est.total)}₴`);
+    if (dry) continue;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      const pr = await client.query(
+        `INSERT INTO payroll_records (master_id, master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, total, status)
+         VALUES ($1::text,$2,$3::date,($4::date - interval '1 day'),$5,$6,$7,$8,$9,'auto') RETURNING id`,
+        [String(mst.id), mst.name, from, to, est.services_count, est.services_revenue, Math.round(est.percent_part), Math.round(est.fixed_part), Math.round(est.total)]);
+      await client.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+         VALUES (NULL,'out','salary',$1,'cash','auto_payroll',$2,$3,$4)`,
+        [Math.round(est.total), pr.rows[0].id, mst.id, `ЗП ${mst.name} (авто, ${label})`]);
+      await client.query('COMMIT'); posted++;
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error('[auto-payroll]', mst.name, e.message); }
+    finally { client.release(); }
+  }
+  return { posted, skipped, fund, period: { from, to, label }, masters: masters.length, lines, dry };
+}
+
+// POST /api/payouts/auto-run?dry=1 — ручний запуск/прев'ю авто-розрахунку
+router.post('/auto-run', async (req, res) => {
+  try {
+    const dry = req.query.dry === '1' || req.body?.dry === true;
+    const r = await autoPayrollRun({ force: true, dry });
+    res.json({ ok: true, ...r });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
+module.exports.autoPayrollRun = autoPayrollRun;
