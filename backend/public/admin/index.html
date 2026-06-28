@@ -3869,7 +3869,7 @@ async function loadContractors(){
   box.innerHTML='<div class="empty">Завантаження…</div>';
   try{
     const r=await api('/api/suppliers');
-    const items=r.items||[];
+    const items=r.suppliers||r.items||[];
     window._contractors=items;
     box.innerHTML = items.length ? `<table class="tbl" style="width:100%"><thead><tr><th style="text-align:left">Назва</th><th style="text-align:left">Телефон</th><th style="text-align:left">Email</th><th style="text-align:left">Примітка</th><th></th></tr></thead><tbody>${
       items.map(s=>`<tr>
