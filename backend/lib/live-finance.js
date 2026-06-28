@@ -22,7 +22,7 @@ async function liveFinance(pool, from, to) {
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`WITH da AS (
          SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
-          WHERE a.starts_at BETWEEN $1 AND $2
+          WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
        SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END),0)::numeric comm,
               COUNT(*)::int appts

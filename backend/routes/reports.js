@@ -795,7 +795,8 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
     // Довільний період з ?from=&to= (YYYY-MM-DD). За замовчуванням — поточний місяць.
     const _dRe = /^\d{4}-\d{2}-\d{2}$/;
     const periodFrom = (req.query.from && _dRe.test(req.query.from)) ? kyivDayBound(req.query.from, false).toISOString() : monFrom;
-    const periodTo   = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : now.toISOString();
+    // Верхня межа = кінець дня (повний день/місяць). % майстрам капається на NOW() в liveFinance.
+    const periodTo   = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : kyivDayBound(todayStr, true).toISOString();
 
     // ── Кабінет майстра: тільки власні записи та виручка ──
     if (req.user.role === 'master' && req.user.master_id) {
@@ -929,8 +930,9 @@ router.get('/live-expenses', requirePerm('reports.finance'), async (req, res) =>
   try {
     const monStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit' }).format(new Date()) + '-01';
     const _dRe = /^\d{4}-\d{2}-\d{2}$/;
+    const _today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const from = (req.query.from && _dRe.test(req.query.from)) ? kyivDayBound(req.query.from, false).toISOString() : kyivDayBound(monStr, false).toISOString();
-    const to = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : new Date().toISOString();
+    const to = (req.query.to && _dRe.test(req.query.to)) ? kyivDayBound(req.query.to, true).toISOString() : kyivDayBound(_today, true).toISOString();
     const f = await liveFinance(pool, from, to);
     res.json({
       period: monStr,

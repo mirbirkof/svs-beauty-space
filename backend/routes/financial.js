@@ -35,11 +35,9 @@ function periodBounds(query) {
   } else { // month
     fromD = today.slice(0, 8) + '01'; toD = today;
   }
-  // Верхня межа: якщо період закінчується сьогодні/в майбутньому — рахуємо до ПОТОЧНОГО моменту
-  // (як Дашборд/Детадізація), щоб майбутні передоплачені записи не зараховувались наперед і
-  // цифри СКРІЗЬ збігались. Інакше Фінцентр розходився з рештою екранів.
-  const to = (toD >= today) ? new Date().toISOString() : `${toD} 23:59:59+03`;
-  return { from: `${fromD} 00:00:00+03`, to, fromD, toD };
+  // Верхня межа = кінець вибраного дня (повний день). Нарахований % майстрам капається на NOW()
+  // усередині liveFinance, тож майбутні послуги не зараховуються; а виручка = всі гроші за день.
+  return { from: `${fromD} 00:00:00+03`, to: `${toD} 23:59:59+03`, fromD, toD };
 }
 function fmt(d) { return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
 
@@ -133,7 +131,7 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
     const fromD = (req.query.from && dRe.test(req.query.from)) ? req.query.from : today.slice(0, 8) + '01';
     const toD = (req.query.to && dRe.test(req.query.to)) ? req.query.to : today;
     const from = `${fromD} 00:00:00+03`;
-    const to = (toD >= today) ? new Date().toISOString() : `${toD} 23:59:59+03`;
+    const to = `${toD} 23:59:59+03`;
     const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
 
     const fin = await liveFinance(pool, from, to);

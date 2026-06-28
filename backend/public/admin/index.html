@@ -2998,10 +2998,11 @@ async function pollOnlineEvents() {
     // Журнал тримаємо свіжим (щоб не записати на зайнятий час): оновлюємо на
     // кожному тіку, поки адмін не зайнятий (модалка закрита, вкладка активна).
     // gotEvent тут лише для ясності — рішення приймає _journalBusy().
-    if (currentPage === 'journal' && !_journalBusy()) {
-      if (typeof loadJournal === 'function') loadJournal(true); // тихо, без мигання
+    // Оновлюємо журнал ЛИШЕ коли реально прийшла нова подія (новий запис),
+    // а не на кожному тіку — інакше журнал «миготить» і скрол стрибає вгору кожні 15с.
+    if (gotEvent && currentPage === 'journal' && !_journalBusy()) {
+      if (typeof loadJournal === 'function') loadJournal(true); // тихо
     }
-    void gotEvent;
   } catch (_) { /* мережа моргнула — наступний тік спробує знову */ }
 }
 
@@ -6811,6 +6812,8 @@ async function loadJournal(silent) {
   // silent=true — фонове авто-оновлення (кожні 15с): НЕ показуємо плейсхолдер
   // «Завантаження…», щоб журнал не мигав. Контент тихо перемалюється даними.
   if (!silent) container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
+  // Зберігаємо позицію прокрутки, щоб тихе оновлення не стрибало вгору
+  const _scrollY = window.scrollY, _scTop = container.scrollTop;
   try {
     if (journalMode === 'week') return renderJournalWeek(container, date);
     const data = await api('/api/schedule/journal?date=' + date);
@@ -6818,6 +6821,7 @@ async function loadJournal(silent) {
     if (data.error) { container.innerHTML = `<div class="empty"><span class="material-icons-round">error</span>${data.error}</div>`; return; }
     if (journalMode === 'list') renderJournalList(container, data);
     else renderJournalDay(container, data);
+    if (silent) { try { window.scrollTo(0, _scrollY); container.scrollTop = _scTop; } catch(_){} }
   } catch (e) {
     container.innerHTML = '<div class="empty"><span class="material-icons-round">error</span>Помилка завантаження журналу</div>';
   }

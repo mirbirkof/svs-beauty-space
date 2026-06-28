@@ -164,10 +164,9 @@ router.get('/finance', requireHistory, async (req, res) => {
 
     // ЄДИНЕ джерело правди (lib/live-finance) — щоб Доходи/Витрати/результат збігались
     // з Дашбордом, Фінцентром і P&L. Витрати = матеріали + нарахований % майстрам + інші витрати.
-    // Верхня межа: якщо період до сьогодні — рахуємо до ПОТОЧНОГО моменту (як Дашборд/Фінцентр),
-    // інакше до кінця дня. Інакше цифри злегка розходяться з канонічними.
-    const toIso = (to >= today) ? new Date().toISOString() : `${to} 23:59:59+03`;
-    const fin = await liveFinance(pool, `${from} 00:00:00+03`, toIso);
+    // Верхня межа = кінець вибраного дня (повний день). Виручка = всі гроші за день;
+    // нарахований % майстрам усередині liveFinance і так капається на NOW() (майбутні послуги не рахуються).
+    const fin = await liveFinance(pool, `${from} 00:00:00+03`, `${to} 23:59:59+03`);
     const income = {
       total: fin.revenue.total, cash: cashIn.cash, cashless: cashIn.cashless,
       by_category: [
