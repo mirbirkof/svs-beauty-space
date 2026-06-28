@@ -72,24 +72,16 @@ async function snapshot(from, to) {
   const revServices = Number(svc[0]?.s || 0);
   const revProducts = Number(prodSalon[0]?.s || 0) + Number(orders[0]?.s || 0);
   const revTotal = revServices + revProducts;
-  // Витрати показуємо ПОВНІСТЮ (з зарплатою майстрів як окрема категорія — як оренда),
-  // але прибуток рахуємо ДО виплат майстрам, а їх частку — окремим рядком (рішення Боса 28.06).
-  const MASTER_CATS = ['salary', 'payroll'];
-  const expByCat = expRows.map(r => ({ category: r.category, sum: Number(r.sum) })); // ВСІ статті, вкл. ЗП
-  const expTotal = expByCat.reduce((a, r) => a + r.sum, 0);                            // повні витрати
-  const masterPayouts = expByCat.filter(r => MASTER_CATS.includes(r.category)).reduce((a, r) => a + r.sum, 0);
-  const opex = expTotal - masterPayouts;                                               // витрати без ЗП майстрів
+  const expByCat = expRows.map(r => ({ category: r.category, sum: Number(r.sum) }));
+  const expTotal = expByCat.reduce((a, r) => a + r.sum, 0);
   const cogs = Number(cogsR[0]?.cogs || 0);
   const grossProfit = revTotal - cogs;
-  const profitBeforeMasters = grossProfit - opex;        // прибуток ДО виплат майстрам
-  const netProfit = grossProfit - expTotal;              // чистий прибуток (після майстрів)
+  const netProfit = grossProfit - expTotal;
   const txCount = Number(svc[0]?.c || 0) + Number(prodSalon[0]?.c || 0) + Number(orders[0]?.c || 0);
   return {
     revenue: { services: revServices, products: revProducts, total: revTotal },
     expenses: { by_category: expByCat, total: expTotal },
-    master_payouts: masterPayouts,
-    profit: { cogs, gross: grossProfit, before_masters: profitBeforeMasters, net: netProfit,
-              margin_pct: revTotal > 0 ? Math.round(profitBeforeMasters / revTotal * 100) : 0 },
+    profit: { cogs, gross: grossProfit, net: netProfit, margin_pct: revTotal > 0 ? Math.round(netProfit / revTotal * 100) : 0 },
     metrics: {
       transaction_count: txCount,
       avg_check: txCount > 0 ? Math.round(revTotal / txCount) : 0,
@@ -163,13 +155,8 @@ async function buildDigest(opts = {}) {
     }
   }
   lines.push('');
-  const pbm = (s.profit.before_masters != null ? s.profit.before_masters : s.profit.net);
-  const profIcon = pbm >= 0 ? '🟢' : '🔴';
-  lines.push(`${profIcon} Прибуток до виплат майстрам: <b>${pbm.toLocaleString('uk-UA')} ₴</b> (маржа ${s.profit.margin_pct}%)`);
-  if (s.master_payouts > 0) {
-    lines.push(`💇 Виплати майстрам: <b>${s.master_payouts.toLocaleString('uk-UA')} ₴</b>`);
-    lines.push(`🟢 Чистий прибуток: <b>${s.profit.net.toLocaleString('uk-UA')} ₴</b>`);
-  }
+  const profIcon = s.profit.net >= 0 ? '🟢' : '🔴';
+  lines.push(`${profIcon} Прибуток: <b>${s.profit.net.toLocaleString('uk-UA')} ₴</b> (маржа ${s.profit.margin_pct}%)`);
   if (opts.include_comparison !== false) {
     const lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
     const lw = kyivDate(lastWeek);

@@ -4583,9 +4583,7 @@ async function loadDashboard() {
     const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
     kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.', 'finance']);
     kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.', 'finance']);
-    kpis.push(['Витрати місяця', _money2(o.expense_month||0) + _sub(`з них ЗП майстрів ${_money2(o.master_payouts_month||0)}`), 'orange', 'Усі витрати салону за місяць, проведені через касу/фінанси (оренда, зарплата майстрів, закупівлі, реклама тощо). Зарплата майстрів — окрема стаття всередині витрат. Розбивку по статтях дивіться у Фінансовому центрі.', 'fincenter']);
-    kpis.push(['Прибуток до виплат майстрам', _money2(o.profit_month) + _sub(`операційні витрати ${_money2(o.opex_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус витрати БЕЗ зарплати майстрів (оренда, закупівлі, реклама). Це «брудний» прибуток салону до виплат майстрам.', 'fincenter']);
-    if (o.master_payouts_month != null) kpis.push(['Чистий прибуток', _money2(o.net_profit_month||0) + _sub(`виплати майстрам ${_money2(o.master_payouts_month||0)}`), o.net_profit_month>=0?'green':'orange', 'Прибуток уже ПІСЛЯ виплат майстрам = прибуток до майстрів мінус їх частка. Це фінальні гроші салону.', 'payroll']);
+    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус усі витрати (зарплати, закупівлі, оренда тощо), проведені через касу/фінанси. Якщо число червоне — витрати перевищили дохід.', 'fincenter']);
     kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.', 'plan']);
   }
   kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.', 'journal']);
@@ -5900,10 +5898,8 @@ async function loadFinCenter(){
   const cmp=d.comparison||{};
   document.getElementById('fcKpis').innerHTML=`
     <div class="fc-kpi"><div class="lbl">ВИРУЧКА</div><div class="val">${_fcMoney(d.revenue.total)}</div>${_fcChg(cmp.revenue&&cmp.revenue.change_pct)}</div>
-    <div class="fc-kpi"><div class="lbl">ВИТРАТИ (вкл. ЗП майстрів)</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}</div>
-    <div class="fc-kpi"><div class="lbl">ПРИБУТОК до майстрів (маржа ${d.profit.margin_pct}%)</div><div class="val" style="color:${(d.profit.before_masters??d.profit.net)>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.before_masters??d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
-    <div class="fc-kpi"><div class="lbl">ВИПЛАТИ МАЙСТРАМ</div><div class="val" style="color:#d97706">${_fcMoney(d.master_payouts||0)}</div><span class="chg flat">їх частка</span></div>
-    <div class="fc-kpi"><div class="lbl">ЧИСТИЙ ПРИБУТОК</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div><span class="chg flat">після виплат майстрам</span></div>
+    <div class="fc-kpi"><div class="lbl">ВИТРАТИ</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}</div>
+    <div class="fc-kpi"><div class="lbl">ПРИБУТОК (маржа ${d.profit.margin_pct}%)</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
     <div class="fc-kpi"><div class="lbl">СЕРЕДНІЙ ЧЕК</div><div class="val">${_fcMoney(d.metrics.avg_check)}</div>${_fcChg(cmp.avg_check&&cmp.avg_check.change_pct)}</div>
     <div class="fc-kpi"><div class="lbl">ЧЕКІВ / КЛІЄНТІВ</div><div class="val">${d.metrics.transaction_count} / ${d.metrics.unique_clients}</div><span class="chg flat">нових ${d.metrics.new_clients}</span></div>`;
   // структура виручки
