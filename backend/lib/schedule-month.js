@@ -19,7 +19,8 @@ async function buildMonthGrid(pool, ym) {
 
   const mrows = (await pool.query(
     `SELECT id, name, specialty, avatar, schedule_json FROM masters
-      WHERE active = true AND COALESCE(provides_services, true) = true ORDER BY name`
+      WHERE active = true AND (COALESCE(provides_services, true) = true OR staff_role = 'admin')
+      ORDER BY (staff_role='admin') ASC, name`
   )).rows;
 
   // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з BeautyPro)
