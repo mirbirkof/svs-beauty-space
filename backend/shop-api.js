@@ -313,6 +313,7 @@ try { app.use('/api/clients', require('./routes/crm-card')); } catch(e) { consol
 try { app.use('/api/kpi', require('./routes/kpi')); } catch(e) { console.error('[kpi] mount failed:', e.message); }
 try { app.use('/api/ai/recommendations', require('./routes/ai-recommendations')); } catch(e) { console.error('[ai-recommendations] mount failed:', e.message); }
 try { app.use('/api/financial', require('./routes/financial')); } catch(e) { console.error('[financial] mount failed:', e.message); }
+try { app.use('/api/zones', require('./routes/zones')); } catch(e) { console.error('[zones] mount failed:', e.message); }
 try { app.use('/api/gift-certificates', require('./routes/gift-certificates')); } catch(e) { console.error('[gift-certificates] mount failed:', e.message); }
 try { app.use('/api/subscriptions', require('./routes/subscriptions')); } catch(e) { console.error('[subscriptions] mount failed:', e.message); }
 try { app.use('/api/budgets', require('./routes/budgets')); } catch(e) { console.error('[budgets] mount failed:', e.message); }

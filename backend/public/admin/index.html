@@ -1415,6 +1415,12 @@ select.input { background:var(--card); }
         </div>
         <div class="fc-card" style="margin-top:14px"><h4>Тренд виручки (30 днів)</h4><div id="fcTrend"></div></div>
         <div class="fc-card" style="margin-top:14px">
+          <h4 style="display:flex;align-items:center;justify-content:space-between;gap:8px">💈 Зали / напрямки — дохід, витрати, прибуток
+            <button class="btn btn-sm" onclick="zonesManage()" title="Створити зали, призначити майстрів"><span class="material-icons-round" style="font-size:16px">tune</span> Керувати залами</button></h4>
+          <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:8px">Зал = група майстрів. Виручка, % майстрам, матеріали і частка спільних витрат рахуються по кожному напрямку. Суми точно збігаються із Фінцентром.</div>
+          <div id="fcZones"><div class="empty">Завантаження…</div></div>
+        </div>
+        <div class="fc-card" style="margin-top:14px">
           <h4 style="display:flex;align-items:center;justify-content:space-between">🔁 Постійні витрати (щомісяця)
             <button class="btn btn-sm" onclick="finOpenOp('out')" title="Додати витрату">+ Додати</button></h4>
           <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:8px">Оренда, фікс-зарплати, підписки — проводяться в касу автоматично кожного місяця. Тут можна вимкнути/змінити.</div>
@@ -2472,6 +2478,15 @@ select.input { background:var(--card); }
         <p id="finOpMsg" style="font-size:13px;min-height:18px;margin:0"></p>
         <button id="finOpSave" class="btn btn-primary" onclick="finSaveOp()">Зберегти</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Керування залами / напрямками (заметка #76) -->
+  <div id="zonesModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) zonesClose()">
+    <div class="modal" style="max-width:520px;max-height:84vh;display:flex;flex-direction:column">
+      <div class="modal-header"><h3>Зали / напрямки</h3><button class="modal-close" onclick="zonesClose()">✕</button></div>
+      <div class="muted" style="padding:0 4px 8px;font-size:12.5px">Зал = група майстрів. Перетягуйте майстрів між залами — дохід і витрати рахуються по кожному напрямку.</div>
+      <div class="modal-body" id="zonesCfgBody" style="overflow:auto"></div>
     </div>
   </div>
 
@@ -6119,7 +6134,75 @@ async function loadFinCenter(){
     document.getElementById('fcTrend').innerHTML=data.length?`<div class="fc-spark">${data.map(x=>`<span class="col" style="height:${Math.round(x.value/mx*100)}%" title="${x.date}: ${_fcMoney(x.value)}"></span>`).join('')}</div>`:'<div class="empty">Немає даних</div>';
   }catch{ document.getElementById('fcTrend').innerHTML='<div class="empty">Тренд недоступний</div>'; }
   loadRecurring();
+  loadZones();
 }
+// ── Зали / напрямки (заметка #76) ──────────────────────────
+let _zonesCfg = { zones:[], unassigned:[] };
+async function loadZones(){
+  const box=document.getElementById('fcZones'); if(!box) return;
+  const qs=(_fcRange.from&&_fcRange.to)?`?from=${_fcRange.from}&to=${_fcRange.to}`:'';
+  box.innerHTML='<div class="empty">Завантаження…</div>';
+  try{
+    const r=await api('/api/zones'+qs);
+    if(!r||r.error){ box.innerHTML='<div class="empty">'+((r&&r.error)||'Помилка')+'</div>'; return; }
+    const zones=r.zones||[];
+    if(!zones.length){ box.innerHTML='<div class="empty">Залів ще немає. Натисніть «Керувати залами», щоб створити.</div>'; return; }
+    const seg=zones.filter(z=>z.revenue>0).map(z=>({label:z.name,value:z.revenue,color:z.color}));
+    const donut=_finDonut(seg.length?seg:[{label:'—',value:0,color:'#e5e7eb'}]);
+    const rows=zones.map(z=>`<tr>
+      <td><span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${z.color};margin-right:6px"></span>${_finEsc(z.name)}<span style="color:var(--text-secondary);font-size:11px"> · ${z.count} чек.</span></td>
+      <td style="text-align:right;color:#16a34a;font-weight:600">${_fcMoney(z.revenue)}</td>
+      <td style="text-align:right;color:#dc2626" title="% майстрам ${_fcMoney(z.commission)} + матеріали ${_fcMoney(z.materials)} + спільні ${_fcMoney(z.shared)}">${_fcMoney(z.expense)}</td>
+      <td style="text-align:right;font-weight:700;color:${z.profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(z.profit)}</td>
+      <td style="text-align:right;color:var(--text-secondary)">${z.margin_pct}%</td></tr>`).join('');
+    const shop=r.shop||{};
+    const shopRow=(shop.revenue>0)?`<tr style="opacity:.85"><td>🛍️ Магазин (товари)</td><td style="text-align:right;color:#16a34a">${_fcMoney(shop.revenue)}</td><td style="text-align:right;color:#dc2626">${_fcMoney(shop.cogs)}</td><td style="text-align:right;font-weight:700;color:${shop.profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(shop.profit)}</td><td style="text-align:right">—</td></tr>`:'';
+    const t=r.totals||{};
+    box.innerHTML=`<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:0 0 auto">${donut}</div>
+      <div style="flex:1 1 340px;min-width:300px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+          <thead><tr style="color:var(--text-secondary);font-size:12px"><th style="text-align:left;padding:4px 6px">Напрямок</th><th style="text-align:right;padding:4px 6px">Дохід</th><th style="text-align:right;padding:4px 6px">Витрати</th><th style="text-align:right;padding:4px 6px">Прибуток</th><th style="text-align:right;padding:4px 6px">Маржа</th></tr></thead>
+          <tbody>${rows}${shopRow}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--border,#eee);font-weight:700"><td style="padding:6px">Разом</td><td style="text-align:right;padding:6px">${_fcMoney(t.revenue)}</td><td style="text-align:right;padding:6px">${_fcMoney(t.expense)}</td><td style="text-align:right;padding:6px;color:${t.profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(t.profit)}</td><td></td></tr></tfoot>
+        </table>
+        <div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px">Витрати = % майстрам + матеріали (${r.material_pct}%) + частка спільних. Наведіть на «Витрати» — розбивка.</div>
+      </div></div>`;
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+async function zonesManage(){ document.getElementById('zonesModal').style.display='flex'; await zonesRenderConfig(); }
+function zonesClose(){ document.getElementById('zonesModal').style.display='none'; loadZones(); }
+async function zonesRenderConfig(){
+  const box=document.getElementById('zonesCfgBody'); box.innerHTML='<div class="empty">Завантаження…</div>';
+  try{
+    const r=await api('/api/zones/config'); _zonesCfg={zones:r.zones||[],unassigned:r.unassigned||[]};
+    const un=_zonesCfg.unassigned;
+    const unOpts=un.map(mu=>`<option value="${mu.id}">${_finEsc(mu.name)}${mu.specialty?' — '+_finEsc(mu.specialty):''}</option>`).join('');
+    box.innerHTML=_zonesCfg.zones.map(z=>`
+      <div style="border:1px solid var(--border,#eee);border-radius:10px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="color" value="${z.color}" onchange="zonePatch(${z.id},'color',this.value)" style="width:26px;height:26px;border:none;background:none;cursor:pointer;padding:0">
+          <input class="input" value="${_finEsc(z.name)}" onchange="zonePatch(${z.id},'name',this.value)" style="flex:1;font-weight:600">
+          <button class="btn btn-sm" style="color:#dc2626" onclick="zoneDelete(${z.id})" title="Видалити зал"><span class="material-icons-round" style="font-size:18px">delete</span></button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${z.masters.map(mm=>`<span style="background:var(--bg,#f3f4f6);border-radius:20px;padding:3px 10px;font-size:12.5px;display:inline-flex;align-items:center;gap:5px">${_finEsc(mm.name)} <span style="cursor:pointer;color:#dc2626;font-weight:700" onclick="zoneRemoveMaster(${z.id},${mm.id})">✕</span></span>`).join('')||'<span class="muted" style="font-size:12px">майстрів немає</span>'}
+        </div>
+        ${un.length?`<div style="margin-top:8px"><select class="input" style="font-size:13px" onchange="if(this.value)zoneAddMaster(${z.id},this.value)"><option value="">+ додати майстра…</option>${unOpts}</select></div>`:''}
+      </div>`).join('')+
+      `<div style="border-top:1px solid var(--border,#eee);padding-top:10px;margin-top:6px;display:flex;gap:8px">
+        <input id="newZoneName" class="input" placeholder="Назва нового залу" style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="zoneCreate()">Створити</button></div>`+
+      (un.length?`<div class="muted" style="font-size:12px;margin-top:8px">Без залу: ${un.map(x=>_finEsc(x.name)).join(', ')}</div>`:'');
+  }catch(e){ box.innerHTML='<div class="empty">'+e.message+'</div>'; }
+}
+function _zoneMasters(zid){ const z=(_zonesCfg.zones||[]).find(x=>x.id===zid); return z?z.masters.map(m=>m.id):[]; }
+async function zoneSetMasters(zid,ids){ try{ const r=await api('/api/zones/'+zid+'/masters',{method:'PUT',body:JSON.stringify({master_ids:ids})}); if(r&&r.error){toast(r.error,'error');return;} await zonesRenderConfig(); }catch(e){ toast(e.message,'error'); } }
+async function zoneAddMaster(zid,mid){ await zoneSetMasters(zid,[..._zoneMasters(zid),Number(mid)]); }
+async function zoneRemoveMaster(zid,mid){ await zoneSetMasters(zid,_zoneMasters(zid).filter(x=>x!==Number(mid))); }
+async function zonePatch(zid,field,val){ try{ const b={}; b[field]=val; const r=await api('/api/zones/'+zid,{method:'PATCH',body:JSON.stringify(b)}); if(r&&r.error){toast(r.error,'error');return;} if(field==='color')await zonesRenderConfig(); }catch(e){ toast(e.message,'error'); } }
+async function zoneDelete(zid){ if(!confirm('Видалити цей зал? Майстри стануть «без залу».'))return; try{ await api('/api/zones/'+zid,{method:'DELETE'}); await zonesRenderConfig(); }catch(e){ toast(e.message,'error'); } }
+async function zoneCreate(){ const el=document.getElementById('newZoneName'); const n=(el&&el.value||'').trim(); if(!n){toast('Введіть назву','error');return;} try{ const r=await api('/api/zones',{method:'POST',body:JSON.stringify({name:n})}); if(r&&r.error){toast(r.error,'error');return;} await zonesRenderConfig(); }catch(e){ toast(e.message,'error'); } }
 async function loadRecurring(){
   const box=document.getElementById('fcRecurring'); if(!box) return;
   try{
