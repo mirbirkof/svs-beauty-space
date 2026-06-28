@@ -5,6 +5,7 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { branchAndClause } = require('../lib/branch-scope');
+const { liveFinance } = require('../lib/live-finance');
 const router = express.Router();
 const pool = getPool();
 
@@ -154,21 +155,36 @@ router.get('/finance', requireHistory, async (req, res) => {
        WHERE o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
        ORDER BY o.created_at DESC LIMIT 300`, params);
 
-    const income = { total: 0, cash: 0, cashless: 0, by_category: [] };
-    const expense = { total: 0, cash: 0, cashless: 0, by_category: [] };
+    // Касовий рух (для балансу готівки/безготівки — реальні гроші в касі)
+    const cashIn = { cash: 0, cashless: 0 }, cashOut = { cash: 0, cashless: 0 };
     for (const r of cats.rows) {
-      const b = r.type === 'in' ? income : expense;
-      b.total += r.amount; b.cash += r.cash; b.cashless += r.cashless;
-      b.by_category.push({ category: r.category, label: FIN_CAT_LABELS[r.category] || r.category, amount: r.amount });
+      const b = r.type === 'in' ? cashIn : cashOut;
+      b.cash += r.cash; b.cashless += r.cashless;
     }
-    income.by_category.sort((a, b) => b.amount - a.amount);
-    expense.by_category.sort((a, b) => b.amount - a.amount);
+
+    // ЄДИНЕ джерело правди (lib/live-finance) — щоб Доходи/Витрати/результат збігались
+    // з Дашбордом, Фінцентром і P&L. Витрати = матеріали + нарахований % майстрам + інші витрати.
+    // Верхня межа: якщо період до сьогодні — рахуємо до ПОТОЧНОГО моменту (як Дашборд/Фінцентр),
+    // інакше до кінця дня. Інакше цифри злегка розходяться з канонічними.
+    const toIso = (to >= today) ? new Date().toISOString() : `${to} 23:59:59+03`;
+    const fin = await liveFinance(pool, `${from} 00:00:00+03`, toIso);
+    const income = {
+      total: fin.revenue.total, cash: cashIn.cash, cashless: cashIn.cashless,
+      by_category: [
+        { category: 'sale_service', label: 'Послуги', amount: fin.revenue.services },
+        { category: 'sale_product', label: 'Товари', amount: fin.revenue.products },
+      ].filter(x => x.amount > 0),
+    };
+    const expense = {
+      total: fin.expenses.total, cash: cashOut.cash, cashless: cashOut.cashless,
+      by_category: fin.expenses.by_category.map(x => ({ category: x.category, label: x.label, amount: x.sum })),
+    };
 
     const o = open.rows[0];
     const opening = { cash: o.cash, cashless: o.cashless, total: o.cash + o.cashless };
     const closing = {
-      cash: opening.cash + income.cash - expense.cash,
-      cashless: opening.cashless + income.cashless - expense.cashless,
+      cash: opening.cash + cashIn.cash - cashOut.cash,
+      cashless: opening.cashless + cashIn.cashless - cashOut.cashless,
     };
     closing.total = closing.cash + closing.cashless;
 
