@@ -293,6 +293,16 @@ try { app.use('/api/gift-certificates', require('./routes/gift-certificates')); 
 try { app.use('/api/subscriptions', require('./routes/subscriptions')); } catch(e) { console.error('[subscriptions] mount failed:', e.message); }
 try { app.use('/api/budgets', require('./routes/budgets')); } catch(e) { console.error('[budgets] mount failed:', e.message); }
 try { app.use('/api/cash-flow', require('./routes/cash-flow')); } catch(e) { console.error('[cash-flow] mount failed:', e.message); }
+try {
+  const recExp = require('./routes/recurring-expenses');
+  app.use('/api/recurring-expenses', recExp);
+  // Тік авто-проводки постійних витрат: на старті (через 30с) і кожні 12 год. Ідемпотентно по місяцю.
+  if (process.env.DATABASE_URL && typeof recExp.postDue === 'function') {
+    const tick = () => recExp.postDue().then(n => { if (n) console.log(`[recurring-exp] проведено ${n} постійних витрат`); }).catch(e => console.error('[recurring-exp] tick:', e.message));
+    setTimeout(tick, 30000);
+    setInterval(tick, 12 * 60 * 60 * 1000);
+  }
+} catch(e) { console.error('[recurring-expenses] mount failed:', e.message); }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }

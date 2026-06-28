@@ -1384,6 +1384,12 @@ select.input { background:var(--card); }
           <div class="fc-card"><h4>Витрати за категоріями</h4><div id="fcExpenses"></div></div>
         </div>
         <div class="fc-card" style="margin-top:14px"><h4>Тренд виручки (30 днів)</h4><div id="fcTrend"></div></div>
+        <div class="fc-card" style="margin-top:14px">
+          <h4 style="display:flex;align-items:center;justify-content:space-between">🔁 Постійні витрати (щомісяця)
+            <button class="btn btn-sm" onclick="finOpenOp('out')" title="Додати витрату">+ Додати</button></h4>
+          <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:8px">Оренда, фікс-зарплати, підписки — проводяться в касу автоматично кожного місяця. Тут можна вимкнути/змінити.</div>
+          <div id="fcRecurring"><div class="empty">Завантаження…</div></div>
+        </div>
       </div>
 
       <!-- ═══ ГРОШОВИЙ ПОТІК (FIN-06) ═══ -->
@@ -2409,6 +2415,16 @@ select.input { background:var(--card); }
         </select>
         <label style="font-size:13px;color:var(--text-secondary)">Примітка</label>
         <input id="finOpNote" class="input" placeholder="необов'язково">
+        <div id="finOpRecurWrap" style="display:none;border-top:1px solid var(--border,#eee);padding-top:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer">
+            <input type="checkbox" id="finOpRecur" onchange="finRecurToggle()" style="width:17px;height:17px"> 🔁 Постійна витрата (щомісяця)
+          </label>
+          <div id="finOpRecurDay" style="display:none;margin-top:8px">
+            <label style="font-size:12.5px;color:var(--text-secondary)">Число місяця для авто-проводки (1–28)</label>
+            <input id="finOpDom" type="number" min="1" max="28" value="1" class="input" style="width:90px">
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Кожен місяць ця витрата проведеться автоматично. Керувати — у Фінансовому центрі.</div>
+          </div>
+        </div>
         <p id="finOpMsg" style="font-size:13px;min-height:18px;margin:0"></p>
         <button id="finOpSave" class="btn btn-primary" onclick="finSaveOp()">Зберегти</button>
       </div>
@@ -3787,10 +3803,18 @@ function finOpenOp(type){
   document.getElementById('finOpNote').value='';
   document.getElementById('finOpMethod').value='cash';
   document.getElementById('finOpMsg').textContent='';
+  // блок «постійна витрата» — лише для витрат
+  const rw=document.getElementById('finOpRecurWrap');
+  if(rw){ rw.style.display = type==='out' ? 'block' : 'none';
+    document.getElementById('finOpRecur').checked=false;
+    document.getElementById('finOpRecurDay').style.display='none'; }
   const modal=document.getElementById('finOpModal');
   modal.dataset.type=type; modal.dataset.editId='';
   document.getElementById('finOpSave').disabled=false;
   modal.style.display='flex';
+}
+function finRecurToggle(){
+  document.getElementById('finOpRecurDay').style.display=document.getElementById('finOpRecur').checked?'block':'none';
 }
 // Редагування записаної операції — переймовуємо ту саму модалку.
 function finEditOp(id){
@@ -3848,6 +3872,18 @@ async function finSaveOp(){
   if(!(amount>0)){ msg.style.color='#991b1b'; msg.textContent='Введіть суму більше 0'; return; }
   btn.disabled=true; msg.style.color='var(--text-secondary)'; msg.textContent='Зберігаю...';
   const editId=modal.dataset.editId;
+  // Постійна витрата → зберігаємо як шаблон (він сам проведеться в касу за цей і наступні місяці)
+  const recur=document.getElementById('finOpRecur');
+  if(type==='out' && !editId && recur && recur.checked){
+    try{
+      const dom=parseInt(document.getElementById('finOpDom').value,10)||1;
+      const r=await api('/api/recurring-expenses',{method:'POST',body:JSON.stringify({category,amount,method,description,day_of_month:dom})});
+      if(r.error){ btn.disabled=false; msg.style.color='#991b1b'; msg.textContent=r.error; return; }
+      msg.style.color='#166534'; msg.textContent='Постійну витрату заплановано'+(r.posted_now?' і проведено за цей місяць':'');
+      setTimeout(()=>{ finCloseOp(); btn.disabled=false; loadFinance(); }, 700);
+    }catch(e){ btn.disabled=false; msg.style.color='#991b1b'; msg.textContent=e.message; }
+    return;
+  }
   try{
     let r;
     if(editId){
@@ -5884,7 +5920,24 @@ async function loadFinCenter(){
     const data=t.data||[]; const mx=Math.max(1,...data.map(x=>x.value));
     document.getElementById('fcTrend').innerHTML=data.length?`<div class="fc-spark">${data.map(x=>`<span class="col" style="height:${Math.round(x.value/mx*100)}%" title="${x.date}: ${_fcMoney(x.value)}"></span>`).join('')}</div>`:'<div class="empty">Немає даних</div>';
   }catch{ document.getElementById('fcTrend').innerHTML='<div class="empty">Тренд недоступний</div>'; }
+  loadRecurring();
 }
+async function loadRecurring(){
+  const box=document.getElementById('fcRecurring'); if(!box) return;
+  try{
+    const r=await api('/api/recurring-expenses'); const items=r.items||[];
+    if(!items.length){ box.innerHTML='<div class="empty">Немає постійних витрат. Додайте через «+ Додати» і позначте «Постійна».</div>'; return; }
+    box.innerHTML=items.map(t=>`<div class="fc-bar" style="${t.active?'':'opacity:.5'}">
+      <span class="nm">${_FC_CATS[t.category]||escapeHtml(t.category)} <span style="color:var(--text-secondary);font-size:11px">· ${t.day_of_month} числа</span></span>
+      <span class="amt">${_fcMoney(Number(t.amount))}</span>
+      <span style="display:inline-flex;gap:6px;margin-left:8px">
+        <button class="btn btn-sm" title="${t.active?'Вимкнути':'Увімкнути'}" onclick="recurToggle(${t.id},${!t.active})">${t.active?'⏸':'▶️'}</button>
+        <button class="btn btn-sm" title="Видалити" onclick="recurDel(${t.id})">✕</button>
+      </span></div>`).join('');
+  }catch(e){ box.innerHTML='<div class="empty">Не вдалося завантажити</div>'; }
+}
+async function recurToggle(id,active){ try{ await api('/api/recurring-expenses/'+id,{method:'PATCH',body:JSON.stringify({active})}); loadRecurring(); }catch(e){ toast(e.message,'error'); } }
+async function recurDel(id){ if(!confirm('Прибрати цю постійну витрату? Вже проведені витрати лишаться в касі.')) return; try{ await api('/api/recurring-expenses/'+id,{method:'DELETE'}); loadRecurring(); }catch(e){ toast(e.message,'error'); } }
 async function fcSendDigest(btn){
   if(btn){ btn.disabled=true; }
   try{
