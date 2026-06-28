@@ -2020,9 +2020,10 @@ select.input { background:var(--card); }
       <!-- ═══ SYNC ═══ -->
       <div class="page" id="page-sync">
         <div class="kpi-grid" id="syncStats" style="max-width:600px"></div>
-        <button onclick="runSync()" class="btn btn-primary" style="margin-bottom:16px">
-          <span class="material-icons-round" style="font-size:16px">sync</span> Запустити синхро
+        <button onclick="runSync()" class="btn btn-primary" style="margin-bottom:6px">
+          <span class="material-icons-round" style="font-size:16px">sync</span> Звʼязати клієнтів
         </button>
+        <p class="set-p" style="margin:0 0 14px;font-size:12.5px;color:var(--text-secondary)">📌 <b>Записи, продажі, послуги й графіки</b> синхронізуються з BeautyPro <b>автоматично</b> кожні 5–30 хв — нічого тиснути не треба. Ця кнопка <b>звʼязує клієнтів</b> за телефоном (за раз до 50). Статус зверху: скільки клієнтів уже звʼязано.</p>
         <div class="card">
           <div class="card-body">
             <pre id="syncLog" style="font-size:12px;max-height:400px;overflow:auto;white-space:pre-wrap">Натисніть «Запустити синхро» для початку</pre>
@@ -8965,10 +8966,26 @@ async function loadSync() {
   ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
 }
 async function runSync() {
-  document.getElementById('syncLog').textContent = 'Запуск...';
-  const r = await api('/api/sync/all-clients', { method:'POST' });
-  document.getElementById('syncLog').textContent = JSON.stringify(r, null, 2);
-  loadSync();
+  const log = document.getElementById('syncLog');
+  const btn = event && event.target ? event.target.closest('button') : null;
+  if(btn) btn.disabled = true;
+  log.textContent = 'Звʼязую клієнтів з BeautyPro за телефоном… зачекайте';
+  try {
+    const r = await api('/api/sync/all-clients', { method:'POST' });
+    if(r && r.ok){
+      const st = await api('/api/sync/status').catch(()=>null);
+      const left = st && st.sync ? st.sync.unlinked : '?';
+      log.textContent =
+        `✅ Готово.\n`+
+        `Опрацьовано цього разу: ${r.processed}\n`+
+        `Звʼязано нових клієнтів: ${r.linked}\n`+
+        `Залишилось не звʼязаних: ${left}\n\n`+
+        (Number(left)>0 ? '↻ Натисніть «Запустити синхро» ще раз, щоб продовжити (за раз обробляється до 50).' : '🎉 Усі клієнти звʼязані!');
+    } else {
+      log.textContent = '⚠️ ' + ((r&&r.error)||'Не вдалося. Перевірте звʼязок з BeautyPro.');
+    }
+  } catch(e){ log.textContent = '⚠️ Помилка: ' + e.message; }
+  finally { if(btn) btn.disabled = false; loadSync(); }
 }
 
 // ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом) ═══════════════
