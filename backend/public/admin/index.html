@@ -2293,6 +2293,7 @@ select.input { background:var(--card); }
                     <select id="bz_fin_currency" class="input"><option value="UAH">грн (UAH)</option><option value="USD">$ (USD)</option><option value="EUR">€ (EUR)</option></select>
                   </div>
                   <div class="set-field"><label>Комісія майстра за замовч., %</label><input id="bz_fin_commission" class="input" type="number" min="0" max="100" value="40"></div>
+                  <div class="set-field"><label>Собівартість матеріалів, % від послуг <button type="button" class="info-i" data-t="<b>Матеріали на послуги.</b> Скільки в середньому коштують матеріали (фарба, окисник тощо) у відсотках від виручки за послуги. Ця частка автоматично додається у витрати по кожній послузі. Напр. 12%. Поставте 0 — рахуватиметься лише собівартість проданих товарів." onclick="showInfo(event,this.dataset.t)">i</button></label><input id="bz_fin_material" class="input" type="number" min="0" max="100" step="0.5" value="0"></div>
                   <div class="set-field"><label>Податок, %</label><input id="bz_fin_tax" class="input" type="number" min="0" max="100" step="0.1" value="0"></div>
                   <label class="set-toggle"><input type="checkbox" id="bz_fin_fiscal"><span><b>РРО / фіскалізація</b></span></label>
                 </div>
@@ -4031,7 +4032,7 @@ function loadBusiness(s) {
   const pm=s.payment_methods||{};
   chk('bz_pay_cash', pm.cash!==false); chk('bz_pay_card', pm.card!==false); chk('bz_pay_mono', pm.mono); chk('bz_pay_apple', pm.apple); chk('bz_pay_google', pm.google);
   const fin=s.finance||{};
-  val('bz_fin_currency', fin.currency || 'UAH'); val('bz_fin_commission', fin.commission_pct ?? 40); val('bz_fin_tax', fin.tax_pct ?? 0); chk('bz_fin_fiscal', fin.fiscal);
+  val('bz_fin_currency', fin.currency || 'UAH'); val('bz_fin_commission', fin.commission_pct ?? 40); val('bz_fin_material', fin.material_pct ?? 0); val('bz_fin_tax', fin.tax_pct ?? 0); chk('bz_fin_fiscal', fin.fiscal);
   const can=s.cancellation||{};
   val('bz_can_hours', can.min_hours ?? 24); val('bz_can_fee', can.noshow_fee ?? 0);
   const vis=s.masters_visibility||{};
@@ -4044,7 +4045,7 @@ async function saveBusiness(group) {
     loyalty:    { msg:'bzLoyMsg', payload:{ loyalty:{ enabled:c('bz_loy_enabled'), percent:n('bz_loy_pct'), min_redeem:n('bz_loy_min'), expire_days:n('bz_loy_exp') } } },
     notifications:{ msg:'bzNtfMsg', payload:{ notifications:{ channels:{ sms:c('bz_ntf_sms'), telegram:c('bz_ntf_tg') }, reminder_hours:n('bz_ntf_hours') } } },
     payment_methods:{ msg:'bzPayMsg', payload:{ payment_methods:{ cash:c('bz_pay_cash'), card:c('bz_pay_card'), mono:c('bz_pay_mono'), apple:c('bz_pay_apple'), google:c('bz_pay_google') } } },
-    finance:    { msg:'bzFinMsg', payload:{ finance:{ currency:document.getElementById('bz_fin_currency').value, commission_pct:n('bz_fin_commission'), tax_pct:n('bz_fin_tax'), fiscal:c('bz_fin_fiscal') } } },
+    finance:    { msg:'bzFinMsg', payload:{ finance:{ currency:document.getElementById('bz_fin_currency').value, commission_pct:n('bz_fin_commission'), material_pct:n('bz_fin_material'), tax_pct:n('bz_fin_tax'), fiscal:c('bz_fin_fiscal') } } },
     cancellation:{ msg:'bzCanMsg', payload:{ cancellation:{ min_hours:n('bz_can_hours'), noshow_fee:n('bz_can_fee') } } },
     masters_visibility:{ msg:'bzVisMsg', payload:{ masters_visibility:{ see_others:c('bz_vis_others'), see_finance:c('bz_vis_finance'), see_contacts:c('bz_vis_contacts') } } },
   };

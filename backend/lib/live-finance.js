@@ -14,7 +14,7 @@ const CAT_LABELS = {
 async function liveFinance(pool, from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
   const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
-  const [revC, ordR, comm, fixed, cogs, other] = await Promise.all([
+  const [revC, ordR, comm, fixed, cogs, other, finSet] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
               COUNT(*) FILTER (WHERE category IN ('sale_service','sale_product'))::int cnt
@@ -37,6 +37,7 @@ async function liveFinance(pool, from, to) {
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
         GROUP BY category ORDER BY s DESC`, [from, to]),
+    q(`SELECT value FROM app_settings WHERE key='finance'`),
   ]);
 
   const revServices = Number(revC[0]?.svc || 0);
@@ -46,7 +47,11 @@ async function liveFinance(pool, from, to) {
   const commissionPct = Number(comm[0]?.comm || 0);
   const fixedAccrued = Number(fixed[0]?.fx || 0) * (days / 30); // оклади — пропорційно довжині періоду
   const commission = Math.round(commissionPct + fixedAccrued);
-  const materials = Math.round(Number(cogs[0]?.g || 0));
+  // Матеріали = собівартість проданих товарів (COGS) + матеріали послуг як % від виручки послуг
+  // (норм на послуги в системі нема, тож рахуємо % з налаштувань; 0 = вимкнено, як зараз).
+  const materialPct = Number(finSet[0]?.value?.material_pct || 0);
+  const serviceMaterials = Math.round(revServices * materialPct / 100);
+  const materials = Math.round(Number(cogs[0]?.g || 0)) + serviceMaterials;
   const otherCats = other.map(r => ({ category: r.category, label: CAT_LABELS[r.category] || r.category, sum: Math.round(Number(r.s)) }));
   const otherTotal = otherCats.reduce((a, r) => a + r.sum, 0);
   const expTotal = commission + materials + otherTotal;
