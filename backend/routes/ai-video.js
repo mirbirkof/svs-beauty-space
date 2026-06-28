@@ -7,13 +7,22 @@
    это штатный ответ, а не сбой. */
 const express = require('express');
 const multer = require('multer');
+const fs = require('fs');
+const fsp = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
 const router = express.Router();
 const { requirePerm } = require('../lib/rbac');
 const studio = require('../lib/ai-video-studio');
 const montager = require('../lib/ai-video-montage');
+let _pool = null;
+function db() { if (!_pool) { try { _pool = require('../db-pg').getPool(); } catch { _pool = null; } } return _pool; }
 
 const canRead = requirePerm('marketing.read');
 const canWrite = requirePerm('marketing.write');
+
+// Куди зберігаємо готові ролики (той самий диск, що й files.js).
+const VIDEO_DIR = path.join(__dirname, '..', 'uploads', 'video');
 
 // Загрузка своих клипов: в память (montage сам пишет во временную папку и чистит).
 // Лимиты — защита и от DoS, и от таймаутов рендера на проде.
@@ -140,11 +149,35 @@ router.post('/montage', canRead, (req, res) => {
         scenes,
         { aspect }
       );
+      // Зберігаємо готовий ролик у бібліотеку (диск + запис у БД), щоб він НЕ зникав
+      // після оновлення сторінки. Помилка збереження не блокує віддачу відео користувачу.
+      let savedPath = result.path, videoId = null;
+      try {
+        await fsp.mkdir(VIDEO_DIR, { recursive: true });
+        const fname = `${Date.now()}_${crypto.randomBytes(6).toString('hex')}.mp4`;
+        const abs = path.join(VIDEO_DIR, fname);
+        await fsp.copyFile(result.path, abs);
+        savedPath = abs;
+        const size = (await fsp.stat(abs)).size;
+        const title = (Array.isArray(scenes) && scenes[0] && scenes[0].caption)
+          ? String(scenes[0].caption).slice(0, 120) : 'Промо-ролик';
+        const pool = db();
+        if (pool) {
+          const ins = await pool.query(
+            `INSERT INTO ai_video_library (title, storage_path, aspect, duration_sec, clips, size_bytes, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+            [title, path.join('video', fname), aspect, result.durationSec, result.clips, size,
+             (req.staff && req.staff.name) || (req.user && req.user.name) || null]);
+          videoId = ins.rows[0].id;
+        }
+      } catch (saveErr) { console.error('[ai-video] save library:', saveErr.message); }
+
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Content-Disposition', 'attachment; filename="svs-promo.mp4"');
       res.setHeader('X-Montage-Duration', String(result.durationSec));
       res.setHeader('X-Montage-Clips', String(result.clips));
-      const stream = require('fs').createReadStream(result.path);
+      if (videoId) res.setHeader('X-Video-Id', String(videoId));
+      const stream = fs.createReadStream(savedPath);
       stream.on('error', () => { if (!res.headersSent) res.status(500).end(); });
       stream.on('close', () => result.cleanup());
       stream.pipe(res);
@@ -158,6 +191,60 @@ router.post('/montage', canRead, (req, res) => {
       fail(res, e, 'montage');
     }
   });
+});
+
+/** Бібліотека збережених роликів — щоб після оновлення сторінки вони не зникали. */
+router.get('/library', canRead, async (req, res) => {
+  try {
+    const pool = db();
+    if (!pool) return res.json({ items: [] });
+    const r = await pool.query(
+      `SELECT id, title, aspect, duration_sec, clips, size_bytes, created_by, created_at
+         FROM ai_video_library ORDER BY created_at DESC LIMIT 100`);
+    res.json({ items: r.rows });
+  } catch (e) { fail(res, e, 'library'); }
+});
+
+/** Віддача збереженого ролика (з підтримкою Range — щоб <video> перемотувався). */
+router.get('/file/:id', canRead, async (req, res) => {
+  try {
+    const pool = db();
+    if (!pool) return res.status(404).json({ error: 'not-found' });
+    const r = await pool.query(`SELECT storage_path FROM ai_video_library WHERE id=$1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    const abs = path.join(__dirname, '..', 'uploads', r.rows[0].storage_path);
+    if (!abs.startsWith(path.join(__dirname, '..', 'uploads')) || !fs.existsSync(abs)) {
+      return res.status(410).json({ error: 'file-gone' }); // запис є, файл стерто (редеплой)
+    }
+    const stat = fs.statSync(abs);
+    const range = req.headers.range;
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (range) {
+      const m = /bytes=(\d+)-(\d*)/.exec(range) || [];
+      const start = parseInt(m[1], 10) || 0;
+      const end = m[2] ? parseInt(m[2], 10) : stat.size - 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+      res.setHeader('Content-Length', end - start + 1);
+      return fs.createReadStream(abs, { start, end }).pipe(res);
+    }
+    res.setHeader('Content-Length', stat.size);
+    fs.createReadStream(abs).pipe(res);
+  } catch (e) { fail(res, e, 'file'); }
+});
+
+/** Видалити ролик із бібліотеки (запис + файл). */
+router.delete('/library/:id', canWrite, async (req, res) => {
+  try {
+    const pool = db();
+    if (!pool) return res.status(404).json({ error: 'not-found' });
+    const r = await pool.query(`DELETE FROM ai_video_library WHERE id=$1 RETURNING storage_path`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    const abs = path.join(__dirname, '..', 'uploads', r.rows[0].storage_path);
+    if (abs.startsWith(path.join(__dirname, '..', 'uploads'))) await fsp.rm(abs, { force: true }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'library-delete'); }
 });
 
 module.exports = router;

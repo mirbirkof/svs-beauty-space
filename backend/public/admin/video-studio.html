@@ -81,6 +81,12 @@
     <div class="msg" id="mMsg"></div>
     <div id="mResult" style="margin-top:12px"></div>
   </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 4px">🎬 Мої відео <span class="muted" id="libCount" style="font-size:13px;font-weight:400"></span></h2>
+    <div class="msg muted" style="margin-bottom:10px">Усі змонтовані ролики зберігаються тут і не зникають після оновлення сторінки.</div>
+    <div id="libList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+  </div>
 </main>
 
 <script src="/admin/assets/admin-shell.js" data-title="AI Відеостудія"></script>
@@ -158,6 +164,44 @@ async function produce(){
 
 loadStatus();
 
+// ═══ Бібліотека збережених роликів ═══
+async function loadLibrary(){
+  const box = $('libList'); if(!box) return;
+  box.innerHTML = '<div class="muted">Завантаження…</div>';
+  try{
+    const resp = await fetch('/api/ai/video/library',{ headers:{ 'X-Admin-Token': (window.adminToken?adminToken():'') }});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const d = await resp.json();
+    const items = (d&&d.items)||[];
+    $('libCount').textContent = items.length ? `· ${items.length}` : '';
+    if(!items.length){ box.innerHTML='<div class="muted">Поки що немає збережених роликів. Змонтуйте перший вище ⬆️</div>'; return; }
+    box.innerHTML = items.map(v=>{
+      const dt = v.created_at ? new Date(v.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      const mb = v.size_bytes ? (v.size_bytes/1048576).toFixed(1)+' МБ' : '';
+      return `<div style="border:1px solid var(--border,#e5e5e5);border-radius:12px;overflow:hidden;background:#fff">
+        <video src="/api/ai/video/file/${v.id}" controls playsinline preload="metadata" style="width:100%;display:block;background:#000;aspect-ratio:9/16;object-fit:contain"></video>
+        <div style="padding:8px 10px">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.title||'Промо-ролик')}</div>
+          <div class="muted" style="font-size:11.5px;margin:2px 0 8px">${dt} · ${v.aspect||''} · ${v.duration_sec?('~'+v.duration_sec+'с · '):''}${mb}</div>
+          <div style="display:flex;gap:6px">
+            <a class="btn sm" href="/api/ai/video/file/${v.id}" download="svs-promo-${v.id}.mp4">Завантажити</a>
+            <button class="btn sm" onclick="delVideo(${v.id})" title="видалити">✕</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="muted">Не вдалося завантажити: '+esc(e.message)+'</div>'; }
+}
+async function delVideo(id){
+  if(!confirm('Видалити цей ролик?')) return;
+  try{
+    const resp = await fetch('/api/ai/video/library/'+id,{ method:'DELETE', headers:{ 'X-Admin-Token': (window.adminToken?adminToken():'') }});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    loadLibrary();
+  }catch(e){ alert('Помилка: '+e.message); }
+}
+loadLibrary();
+
 // ═══ Монтаж із своїх відео ═══
 const MAX_CLIPS = 8, MAX_MB = 80;
 let mClips = [];   // {file, caption, dur}
@@ -223,6 +267,7 @@ async function doMontage(){
       <video src="${url}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
       <div style="margin-top:8px"><a class="btn" href="${url}" download="svs-promo.mp4">Завантажити MP4</a></div>`;
     $('mMsg').textContent='';
+    loadLibrary();  // ролик збережено — оновлюємо галерею «Мої відео»
   }catch(e){ $('mMsg').textContent='Помилка: '+e.message; }
   finally{ $('mGo').disabled=false; }
 }
