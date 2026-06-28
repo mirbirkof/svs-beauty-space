@@ -4554,10 +4554,10 @@ let _timers = {};
 function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = setTimeout(fn, ms); }
 
 // ═══ DASHBOARD ═══════════════════════════════
-async function loadDashExpenses(){
+async function loadDashExpenses(preloaded){
   const card=document.getElementById('dashExpenseCard'); if(!card) return;
   try{
-    const d=await api('/api/reports/live-expenses');
+    const d=preloaded||await api('/api/reports/live-expenses');
     const exp=(d&&d.breakdown)||[];
     const total=(d&&d.total)||0;
     if(!exp.length){ card.style.display='none'; return; }
@@ -4577,6 +4577,8 @@ async function loadDashboard() {
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   try { o = await api('/api/reports/overview'); } catch { o = {}; }
+  // Реальні витрати «на цю секунду» (матеріали + нарахований % майстрам) — для прибутку і панелі
+  let le = null; try { le = await api('/api/reports/live-expenses'); } catch {}
 
   // ── Кабінет майстра: власна статистика ──
   if (o && o.is_master) {
@@ -4611,7 +4613,9 @@ async function loadDashboard() {
     const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
     kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.', 'finance']);
     kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.', 'finance']);
-    kpis.push(['Прибуток місяця', _money2(o.profit_month) + _sub(`витрати ${_money2(o.expense_month||0)}`), o.profit_month>=0?'purple':'orange', 'Виручка за місяць мінус усі витрати (зарплати, закупівлі, оренда тощо), проведені через касу/фінанси. Якщо число червоне — витрати перевищили дохід.', 'fincenter']);
+    const _prof = le ? le.profit : o.profit_month;
+    const _exp  = le ? le.total : (o.expense_month||0);
+    kpis.push(['Прибуток місяця', _money2(_prof) + _sub(`реальні витрати ${_money2(_exp)}`), _prof>=0?'purple':'orange', 'Виручка за місяць мінус РЕАЛЬНІ витрати на цю секунду: собівартість матеріалів + нарахований % майстрам (по реальній схемі за завершені послуги) + оренда та інші витрати каси. Оновлюється щойно проходить послуга. Деталі — у панелі «Витрати за місяць» нижче.', 'fincenter']);
     kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.', 'plan']);
   }
   kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.', 'journal']);
@@ -4623,7 +4627,7 @@ async function loadDashboard() {
     `<div class="kpi-card ${c}"${nav?` data-nav="${nav}" onclick="kpiNav(event,this)" style="cursor:pointer" title="Перейти до розділу"`:''}><div class="kpi-label" style="display:flex;align-items:center;gap:5px">${l}${info?' '+iInfo(info):''}</div><div class="kpi-value">${v}</div></div>`).join('');
   // Блок «Повернути клієнтів» — одразу під цифрами дашборда
   try { const rc=document.getElementById('reactCard'), kpiEl=document.getElementById('kpi'); if(rc&&kpiEl) kpiEl.insertAdjacentElement('afterend', rc); } catch {}
-  loadDashExpenses();
+  loadDashExpenses(le);
 
   // Топ майстри — дефолт поточний місяць; ініціалізуємо пікери дат один раз
   try {
