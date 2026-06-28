@@ -35,7 +35,11 @@ function periodBounds(query) {
   } else { // month
     fromD = today.slice(0, 8) + '01'; toD = today;
   }
-  return { from: `${fromD} 00:00:00+03`, to: `${toD} 23:59:59+03`, fromD, toD };
+  // Верхня межа: якщо період закінчується сьогодні/в майбутньому — рахуємо до ПОТОЧНОГО моменту
+  // (як Дашборд/Детадізація), щоб майбутні передоплачені записи не зараховувались наперед і
+  // цифри СКРІЗЬ збігались. Інакше Фінцентр розходився з рештою екранів.
+  const to = (toD >= today) ? new Date().toISOString() : `${toD} 23:59:59+03`;
+  return { from: `${fromD} 00:00:00+03`, to, fromD, toD };
 }
 function fmt(d) { return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
 
