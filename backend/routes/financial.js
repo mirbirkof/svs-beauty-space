@@ -110,13 +110,25 @@ router.get('/dashboard', requirePerm('reports.finance'), async (req, res) => {
 router.get('/dashboard/trend', requirePerm('reports.finance'), async (req, res) => {
   try {
     const days = Math.min(Math.max(+req.query.days || 30, 7), 365);
+    // Безперервний ряд днів (Київ): дні з нульовою виручкою НЕ випадають,
+    // інакше графік схлопує дати й тренд показує неправильно.
     const r = await pool.query(
-      `SELECT to_char(created_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
-              SUM(amount)::numeric v
-         FROM cash_operations
-        WHERE type='in' AND category IN ('sale_service','sale_product')
-          AND created_at >= NOW() - ($1||' days')::interval
-        GROUP BY d ORDER BY d`, [days]);
+      `WITH series AS (
+         SELECT to_char(gs,'YYYY-MM-DD') d
+           FROM generate_series(
+                  (NOW() AT TIME ZONE 'Europe/Kiev')::date - ($1::int - 1),
+                  (NOW() AT TIME ZONE 'Europe/Kiev')::date,
+                  '1 day') gs),
+       rev AS (
+         SELECT to_char(created_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
+                SUM(amount)::numeric v
+           FROM cash_operations
+          WHERE type='in' AND category IN ('sale_service','sale_product')
+            AND created_at >= ((NOW() AT TIME ZONE 'Europe/Kiev')::date - ($1::int - 1))::timestamp AT TIME ZONE 'Europe/Kiev'
+          GROUP BY d)
+       SELECT series.d, COALESCE(rev.v,0)::numeric v
+         FROM series LEFT JOIN rev ON rev.d=series.d
+        ORDER BY series.d`, [days]);
     res.json({ metric: 'revenue', days, data: r.rows.map(x => ({ date: x.d, value: Number(x.v) })) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
