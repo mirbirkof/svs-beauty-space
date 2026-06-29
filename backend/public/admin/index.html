@@ -725,12 +725,6 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
             <span class="material-icons-round">view_kanban</span> Воронка візитів
           </a>
-          <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
-            <span class="material-icons-round">event_available</span> Зміни / Табель
-          </a>
-          <a class="sidebar-item" data-embed="/admin/shift-checklist.html" onclick="openEmbed('/admin/shift-checklist.html','checklist Чек-лист зміни')" style="cursor:pointer">
-            <span class="material-icons-round">checklist</span> Чек-лист зміни
-          </a>
           <a class="sidebar-item" data-page="services" onclick="go('services')">
             <span class="material-icons-round">content_cut</span> Послуги
           </a>
@@ -868,14 +862,20 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
             <span class="material-icons-round">badge</span> Майстри / Співробітники
           </a>
+          <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
+            <span class="material-icons-round">calendar_month</span> Графіки роботи
+          </a>
+          <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
+            <span class="material-icons-round">event_available</span> Зміни / Табель
+          </a>
+          <a class="sidebar-item" data-embed="/admin/shift-checklist.html" onclick="openEmbed('/admin/shift-checklist.html','checklist Чек-лист зміни')" style="cursor:pointer">
+            <span class="material-icons-round">checklist</span> Чек-лист зміни
+          </a>
           <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
             <span class="material-icons-round">payments</span> Зарплата
           </a>
           <a class="sidebar-item" data-page="plan" onclick="go('plan')">
             <span class="material-icons-round">flag</span> План місяця
-          </a>
-          <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
-            <span class="material-icons-round">calendar_month</span> Графіки роботи
           </a>
         </div>
       </div>
@@ -895,6 +895,9 @@ select.input { background:var(--card); }
           </a>
           <a class="sidebar-item" data-page="purchasing" onclick="go('purchasing')">
             <span class="material-icons-round">local_shipping</span> Закупівлі
+          </a>
+          <a class="sidebar-item" data-page="suppliers" onclick="go('suppliers')">
+            <span class="material-icons-round">contacts</span> Постачальники
           </a>
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#inventory" onclick="openEmbed('/admin/crm-extra.html#inventory','fact_check Інвентаризація')" style="cursor:pointer">
             <span class="material-icons-round">fact_check</span> Інвентаризація
@@ -997,9 +1000,6 @@ select.input { background:var(--card); }
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
-          <a class="sidebar-item" data-page="suppliers" onclick="go('suppliers')">
-            <span class="material-icons-round">local_shipping</span> Постачальники
-          </a>
           <a class="sidebar-item" data-page="qcontrol" onclick="go('qcontrol')">
             <span class="material-icons-round">verified</span> Контроль якості
           </a>
