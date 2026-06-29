@@ -80,4 +80,38 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
   } catch (e) { console.error('[manager/kpi]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
+// GET /api/manager/staff-metrics — метрики по кожному майстру за місяць:
+// візити, унікальні клієнти, повторні візити %, середній чек, відміни.
+router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT m.id, m.name,
+              COUNT(*) FILTER (WHERE a.status IN ('done','confirmed'))::int visits,
+              COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','confirmed'))::int uniq,
+              COUNT(*) FILTER (WHERE a.status='cancelled')::int cancelled,
+              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)) FILTER (WHERE a.status IN ('done','confirmed')),0)::numeric revenue
+         FROM masters m
+         LEFT JOIN appointments a ON a.master_id=m.id
+              AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
+              AND a.bp_state IS DISTINCT FROM 'bp_deleted'
+        WHERE COALESCE(m.active,true)=true
+        GROUP BY m.id, m.name
+       HAVING COUNT(*) FILTER (WHERE a.status IN ('done','confirmed')) > 0
+        ORDER BY revenue DESC`);
+    const items = r.rows.map(x => {
+      const visits = x.visits, uniq = x.uniq, rev = Number(x.revenue);
+      const finished = visits + x.cancelled;
+      return {
+        master_id: x.id, name: x.name, visits, unique_clients: uniq,
+        revenue: Math.round(rev),
+        avg_check: visits > 0 ? Math.round(rev / visits) : 0,
+        repeat_pct: visits > 0 ? Math.round((visits - uniq) / visits * 100) : 0,
+        cancelled: x.cancelled,
+        cancel_pct: finished > 0 ? Math.round(x.cancelled / finished * 100) : 0,
+      };
+    });
+    res.json({ period: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }).slice(0, 7), items });
+  } catch (e) { console.error('[manager/staff-metrics]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
 module.exports = router;

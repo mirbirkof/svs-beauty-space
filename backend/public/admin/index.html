@@ -1146,6 +1146,7 @@ select.input { background:var(--card); }
             <h3 style="margin:0">Панель керуючого <span style="font-size:12px;font-weight:500;color:var(--text-secondary)">— пульс салону за місяць</span></h3>
           </div>
           <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
+          <div id="mgrStaff" style="margin-top:16px;overflow-x:auto"></div>
         </div>
 
         <div class="kpi-grid" id="kpi"></div>
@@ -4715,7 +4716,38 @@ async function loadManagerPanel() {
       card('Нові клієнти', k.clients_new||0, 'перший візит цього місяця', 'var(--text)') +
       card('Активних майстрів', k.masters_active||0, '', 'var(--text)');
     panel.style.display = '';
+    loadStaffMetrics();
   } catch (_) { /* тихо — панель опціональна */ }
+}
+async function loadStaffMetrics() {
+  const box = document.getElementById('mgrStaff');
+  if (!box) return;
+  try {
+    const d = await api('/api/manager/staff-metrics');
+    if (!d || d.error || !d.items || !d.items.length) { box.innerHTML = ''; return; }
+    const m = n => Math.round(Number(n)||0).toLocaleString('uk-UA');
+    const rows = d.items.map(s => {
+      const cancelColor = s.cancel_pct > 20 ? 'color:#dc2626;font-weight:600' : 'color:var(--text-secondary)';
+      return `<tr style="cursor:pointer" onclick="openMasterCard&&openMasterCard(${s.master_id})">
+        <td>${s.name}</td>
+        <td style="text-align:center">${s.visits}</td>
+        <td style="text-align:center">${s.unique_clients}</td>
+        <td style="text-align:center">${s.repeat_pct}%</td>
+        <td style="text-align:right">${m(s.avg_check)} ₴</td>
+        <td style="text-align:right;font-weight:600">${m(s.revenue)} ₴</td>
+        <td style="text-align:center;${cancelColor}">${s.cancel_pct}%</td>
+      </tr>`;
+    }).join('');
+    box.innerHTML =
+      `<div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px">Метрики команди за місяць</div>
+       <table class="tbl" style="width:100%;font-size:13px">
+         <thead><tr>
+           <th>Майстер</th><th style="text-align:center">Візити</th><th style="text-align:center">Клієнтів</th>
+           <th style="text-align:center" title="Частка повторних візитів цього місяця">Повторні</th>
+           <th style="text-align:right">Сер. чек</th><th style="text-align:right">Оборот</th>
+           <th style="text-align:center" title="Частка відмін">Відміни</th>
+         </tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (_) { box.innerHTML = ''; }
 }
 async function loadDashboard() {
   loadManagerPanel();
