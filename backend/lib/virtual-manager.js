@@ -153,16 +153,31 @@ async function ownerDailyReport(pool = getPool()) {
       WHERE status NOT IN ('cancelled','noshow')
         AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`))[0] || { n: 0 };
 
+  // Закриття заявок за місяць (без bp_deleted — то синк-артефакти, не відмови клієнтів).
+  // served = проведені (done+confirmed), lost = реальні відмови + noshow.
+  const clRow = (await q(
+    `SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served,
+            COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost
+       FROM appointments
+      WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
+        AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`))[0] || { served: 0, lost: 0 };
+  const clFinished = clRow.served + clRow.lost;
+  const closurePct = clFinished > 0 ? Math.round(clRow.served / clFinished * 100) : null;
+
   const planLine = pct != null
     ? `📈 <b>Місяць:</b> ${_money(mRevenue)} з ${_money(mPlan)} плану (<b>${pct}%</b>)`
     : `📈 <b>Місяць:</b> ${_money(mRevenue)} обороту`;
+  const closureLine = closurePct != null
+    ? `🎯 <b>Закриття заявок:</b> ${closurePct}% ${closurePct >= 80 ? '✅' : '⚠️ нижче цілі 80%'} (${clRow.served} з ${clFinished})`
+    : '';
   const body =
     `☀️ <b>Ранковий звіт</b>\n\n` +
     `💰 <b>Вчора в касі: ${_money(yTotal)}</b> (${yChecks} чек.)\n` +
     `   • Послуги ${_money(ySvc)} · Товари ${_money(yProd)}\n` +
     `   • Готівка ${_money(yCash)} · Безнал ${_money(yCard)}\n\n` +
-    `${planLine}\n\n` +
-    `📅 <b>Сьогодні записів:</b> ${tRow.n}`;
+    `${planLine}\n` +
+    (closureLine ? closureLine + '\n' : '') +
+    `\n📅 <b>Сьогодні записів:</b> ${tRow.n}`;
 
   await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
     category: 'transactional', priority: 'normal', source: 'vm-owner-report', dedupKey: `ownerrep:${today}` });
