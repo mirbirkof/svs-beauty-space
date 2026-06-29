@@ -80,11 +80,14 @@ router.post('/assistant', requirePerm('reports.finance'), async (req, res) => {
     if (!question) return res.status(400).json({ error: 'no_message' });
 
     const catalog = ASSISTANT_TOOLS.map(n => `- ${n}: ${TOOLS[n].description}`).join('\n');
+    const PAGES = { dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', clients:'Клієнти', services:'Послуги', orders:'Замовлення', finance:'Доходи і витрати', fincenter:'Фінансовий центр', cashflow:'Грошовий потік', budgets:'Бюджети', payroll:'Зарплата', plan:'План місяця', products:'Товари', stock:'Склад', purchasing:'Закупівлі', reviews:'Відгуки', promos:'Акції', reminders:'Нагадування', shifts:'Графіки', sync:'BeautyPro синхро', settings:'Налаштування' };
     const system = `Ти — помічник керуючого салону краси в CRM. Відповідай українською, коротко, цифрами.
 Інструменти:
 ${catalog}
+Сторінки для відкриття (open_page): ${Object.entries(PAGES).map(([k,v])=>`${k}=${v}`).join(', ')}
 Працюй покроково. Відповідай ЛИШЕ валідним JSON:
 {"action":"tool","tool":"<імʼя>","args":{...}}  — викликати інструмент
+{"action":"open_page","page":"<ключ>","response":"<коротко що відкрив>"}  — відкрити сторінку CRM на екрані (коли просять «відкрий/покажи/перейди»)
 {"action":"final","response":"<відповідь людині>"}  — фінальна відповідь
 Для дій, що змінюють дані (create_expense/add_bonus/add_penalty), спочатку за потреби знайди id через get_masters, потім виклич інструмент дії — система сама попросить підтвердження в людини.`;
 
@@ -102,6 +105,9 @@ ${catalog}
       const d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
       if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
       if (d.action === 'final') { answer = d.response || ''; break; }
+      if (d.action === 'open_page' && d.page && PAGES[d.page]) {
+        return res.json({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` });
+      }
       if (d.action === 'tool') {
         const t = TOOLS[d.tool];
         if (!t || !ASSISTANT_TOOLS.includes(d.tool)) { trail.push(`OBSERVATION: інструмент недоступний.`); continue; }

@@ -10075,6 +10075,16 @@ function aiFabToggle(force){
   if(document.readyState!=='loading') go(); else document.addEventListener('DOMContentLoaded',go);
 })();
 function aiFabQuick(q){ document.getElementById('aiFabInput').value=q; aiFabSend(); }
+function _aiNavigate(page){
+  try{
+    if(typeof go==='function') go(page);
+    // підсвітити пункт меню
+    const item=document.querySelector('.sidebar-item[data-page="'+page+'"]');
+    if(item){ item.style.transition='box-shadow .3s'; item.style.boxShadow='0 0 0 2px #7c5cff inset'; setTimeout(()=>{item.style.boxShadow='';},2200); item.scrollIntoView({block:'nearest'}); }
+    // підсвітити відкриту сторінку
+    setTimeout(()=>{ const pg=document.getElementById('page-'+page); if(pg){ pg.style.transition='box-shadow .4s'; pg.style.boxShadow='0 0 0 3px rgba(124,92,255,.45)'; setTimeout(()=>{pg.style.boxShadow='';},2200); } },300);
+  }catch(_){}
+}
 function _aiEsc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 window._aiHist = (function(){ try{ return JSON.parse(localStorage.getItem('aiChatHist')||'[]'); }catch(_){ return []; } })();
 function _aiSaveLog(){ try{ const l=document.getElementById('aiFabLog'); if(l) localStorage.setItem('aiChatLog', l.innerHTML); localStorage.setItem('aiChatHist', JSON.stringify(window._aiHist.slice(-20))); }catch(_){} }
@@ -10090,6 +10100,7 @@ async function aiFabSend(){
     document.getElementById('aiFabWait')?.closest('.bot')?.remove();
     if(r.pending){ window._aiFabPending=r.pending;
       _aiAdd('bot',`Підтвердьте: <i>${_aiEsc(r.pending.label)}</i><br><button onclick="aiFabConfirm(true)" style="margin-top:6px;border:none;background:#7c5cff;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Так</button> <button onclick="aiFabConfirm(false)" style="border:1px solid #e3e6ef;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Ні</button>`);
+    } else if(r.navigate && r.navigate.page){ const ans=r.answer||('Відкриваю «'+r.navigate.label+'»'); _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); _aiNavigate(r.navigate.page);
     } else { const ans=r.answer||r.error||'—'; _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); }
   }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
 }
