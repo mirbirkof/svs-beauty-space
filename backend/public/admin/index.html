@@ -1147,6 +1147,7 @@ select.input { background:var(--card); }
           </div>
           <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
           <div id="mgrStaff" style="margin-top:16px;overflow-x:auto"></div>
+          <div id="mgrOnboard" style="margin-top:16px"></div>
         </div>
 
         <div class="kpi-grid" id="kpi"></div>
@@ -4717,7 +4718,57 @@ async function loadManagerPanel() {
       card('Активних майстрів', k.masters_active||0, '', 'var(--text)');
     panel.style.display = '';
     loadStaffMetrics();
+    loadOnboarding();
   } catch (_) { /* тихо — панель опціональна */ }
+}
+let _obMasters = null;
+async function loadOnboarding(masterId) {
+  const box = document.getElementById('mgrOnboard');
+  if (!box) return;
+  try {
+    if (!_obMasters) {
+      try { const ms = await api('/api/schedule/masters'); _obMasters = (ms.items || ms.masters || ms || []).filter(m => m.active !== false); } catch { _obMasters = []; }
+    }
+    const sum = await api('/api/onboarding/summary').catch(() => ({ items: [] }));
+    const opts = _obMasters.map(m => `<option value="${m.id}">${escapeHtml(m.name || ('#' + m.id))}</option>`).join('');
+    const sumHtml = (sum.items && sum.items.length)
+      ? sum.items.map(s => {
+          const c = s.overdue > 0 ? '#dc2626' : (s.pct === 100 ? '#16a34a' : 'var(--text-secondary)');
+          return `<span class="pill" style="cursor:pointer;border:1px solid var(--border,#eee)" onclick="loadOnboarding(${s.master_id})">${escapeHtml(s.name)}: ${s.done}/${s.total}${s.overdue ? ` ⚠️${s.overdue}` : ''} <b style="color:${c}">${s.pct}%</b></span>`;
+        }).join(' ')
+      : '<span style="color:var(--text-secondary);font-size:12.5px">Чек-листів ще немає. Оберіть майстра і створіть стандартний.</span>';
+    let detail = '';
+    if (masterId) {
+      const d = await api('/api/onboarding/' + masterId).catch(() => ({ items: [] }));
+      const catL = { adaptation: 'Адаптація', training: 'Навчання', attestation: 'Атестація' };
+      detail = d.items && d.items.length
+        ? '<div style="margin-top:10px">' + d.items.map(it => `
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">
+              <input type="checkbox" ${it.status === 'done' ? 'checked' : ''} onchange="obToggle(${it.id}, this.checked, ${masterId})">
+              <span style="color:var(--text-secondary);font-size:11px;min-width:74px">${catL[it.category] || it.category}</span>
+              <span style="${it.status === 'done' ? 'text-decoration:line-through;color:var(--text-secondary)' : ''}">${escapeHtml(it.title)}</span>
+            </label>`).join('') + '</div>'
+        : `<div style="margin-top:10px;font-size:13px;color:var(--text-secondary)">Пунктів немає. <button class="btn btn-sm btn-primary" onclick="obSeed(${masterId})">Створити стандартний чек-лист</button></div>`;
+    }
+    box.innerHTML =
+      `<div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px">Адаптація / навчання команди</div>
+       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+         <select id="obMaster" class="input" style="width:auto;padding:6px 9px;font-size:13px"><option value="">— майстер —</option>${opts}</select>
+         <button class="btn btn-sm" onclick="loadOnboarding(document.getElementById('obMaster').value)">Показати</button>
+         <button class="btn btn-sm btn-primary" onclick="obSeed(document.getElementById('obMaster').value)">Створити чек-лист</button>
+       </div>
+       <div style="margin-bottom:6px">${sumHtml}</div>${detail}`;
+    if (masterId) { const sel = document.getElementById('obMaster'); if (sel) sel.value = masterId; }
+  } catch (_) { box.innerHTML = ''; }
+}
+async function obSeed(mid) {
+  if (!mid) return toast('Оберіть майстра', 'error');
+  try { await api('/api/onboarding/' + mid + '/seed', { method: 'POST' }); loadOnboarding(mid); }
+  catch (e) { toast(e.message, 'error'); }
+}
+async function obToggle(id, done, mid) {
+  try { await api('/api/onboarding/item/' + id, { method: 'PATCH', body: JSON.stringify({ status: done ? 'done' : 'pending' }) }); loadOnboarding(mid); }
+  catch (e) { toast(e.message, 'error'); }
 }
 async function loadStaffMetrics() {
   const box = document.getElementById('mgrStaff');
