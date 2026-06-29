@@ -483,7 +483,7 @@ async function loadReports(){
         <div class="metric ${(+p.net_profit)>=0?'ok':'dng'}"><div class="label">Чистий прибуток</div><div class="value">${(+p.net_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.net_margin_pct}%</div></div>
       </div>
       <div style="margin-top:12px"><b>Витрати по категоріях:</b><br>` +
-      (p.expenses.length ? p.expenses.map(e=>`<span class="pill gray">${e.category}: ${(+e.sum).toFixed(0)} ₴</span> `).join('') : '<span class="empty">немає</span>') + '</div>';
+      (p.expenses.length ? p.expenses.map(e=>`<span class="pill gray">${e.label||e.category}: ${(+e.sum).toFixed(0)} ₴</span> `).join('') : '<span class="empty">немає</span>') + '</div>';
     const m = await api('/api/reports/masters'+q);
     document.getElementById('r-masters').innerHTML = m.items.length ?
       `<table><thead><tr><th>Майстер</th><th>Сеансів</th><th>Унік.клієнтів</th><th>Дохід</th><th>Сер.чек</th><th>% відмін</th><th>ЗП</th></tr></thead><tbody>${m.items.map(r=>`<tr style="cursor:pointer" onclick="openMasterCard(${r.id})" title="Картка майстра"><td>${r.name||'#'+r.id}</td><td>${r.total_appts||0}</td><td>${r.unique_clients||0}</td><td><b>${(+r.revenue||0).toFixed(0)} ₴</b></td><td>${(+r.avg_ticket||0).toFixed(0)}</td><td>${(+r.cancel_rate_pct||0).toFixed(1)}%</td><td>${(+r.payroll_sum||0).toFixed(0)}</td></tr>`).join('')}</tbody></table>` :

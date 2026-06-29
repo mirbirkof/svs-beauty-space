@@ -9359,21 +9359,27 @@ async function runSync() {
   const log = document.getElementById('syncLog');
   const btn = event && event.target ? event.target.closest('button') : null;
   if(btn) btn.disabled = true;
-  log.textContent = 'Звʼязую клієнтів з BeautyPro за телефоном… зачекайте';
+  // Авто-цикл по партіях, поки є незвʼязані — щоб результат був ФІНАЛЬНИЙ, а не мінявся з кожним кліком.
+  let totalLinked = 0, totalProcessed = 0, left = '?', prevLeft = null;
   try {
-    const r = await api('/api/sync/all-clients', { method:'POST' });
-    if(r && r.ok){
+    for(let batch=1; batch<=20; batch++){
+      log.textContent = `Звʼязую клієнтів з BeautyPro… партія ${batch}\nВже звʼязано: ${totalLinked}`;
+      const r = await api('/api/sync/all-clients', { method:'POST' });
+      if(!r || !r.ok){ log.textContent = '⚠️ ' + ((r&&r.error)||'Не вдалося. Перевірте звʼязок з BeautyPro.'); break; }
+      totalProcessed += (r.processed||0);
+      totalLinked += (r.success!=null ? r.success : (r.linked||0)); // ендпоінт повертає success
       const st = await api('/api/sync/status').catch(()=>null);
-      const left = st && st.sync ? st.sync.unlinked : '?';
-      log.textContent =
-        `✅ Готово.\n`+
-        `Опрацьовано цього разу: ${r.processed}\n`+
-        `Звʼязано нових клієнтів: ${r.linked}\n`+
-        `Залишилось не звʼязаних: ${left}\n\n`+
-        (Number(left)>0 ? '↻ Натисніть «Запустити синхро» ще раз, щоб продовжити (за раз обробляється до 50).' : '🎉 Усі клієнти звʼязані!');
-    } else {
-      log.textContent = '⚠️ ' + ((r&&r.error)||'Не вдалося. Перевірте звʼязок з BeautyPro.');
+      left = st && st.sync ? st.sync.unlinked : '?';
+      if((r.processed||0) === 0 || Number(left) === 0) break;       // більше нема кого звʼязувати
+      if(prevLeft !== null && Number(left) >= Number(prevLeft)) break; // прогресу немає — стоп (захист від циклу)
+      prevLeft = Number(left);
     }
+    log.textContent =
+      `✅ Синхронізація завершена.\n`+
+      `Опрацьовано: ${totalProcessed}\n`+
+      `Звʼязано нових клієнтів: ${totalLinked}\n`+
+      `Залишилось не звʼязаних: ${left}\n\n`+
+      (Number(left)>0 ? 'ℹ️ Решта не має збігу за телефоном у BeautyPro — це нормально.' : '🎉 Усі клієнти звʼязані!');
   } catch(e){ log.textContent = '⚠️ Помилка: ' + e.message; }
   finally { if(btn) btn.disabled = false; loadSync(); }
 }
