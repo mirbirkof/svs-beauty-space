@@ -821,12 +821,18 @@ select.input { background:var(--card); }
       <!-- Маркетинг -->
       <div class="sidebar-group" id="grp-marketing">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
-          <span class="material-icons-round">campaign</span> Маркетинг
+          <span class="material-icons-round">campaign</span> Маркетинг і комунікації
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
           <a class="sidebar-item" data-embed="/admin/crm-marketing.html#center" onclick="openEmbed('/admin/crm-marketing.html#center','notifications_active Центр повідомлень')" style="cursor:pointer">
             <span class="material-icons-round">notifications_active</span> Центр повідомлень
+          </a>
+          <a class="sidebar-item" data-page="callcenter" onclick="go('callcenter')">
+            <span class="material-icons-round">support_agent</span> Колл-центр
+          </a>
+          <a class="sidebar-item" data-page="viber" onclick="go('viber')">
+            <span class="material-icons-round">forum</span> Viber
           </a>
           <a class="sidebar-item" data-embed="/admin/crm-marketing.html#segments" onclick="openEmbed('/admin/crm-marketing.html#segments','groups Сегменти')" style="cursor:pointer">
             <span class="material-icons-round">groups</span> Сегменти
@@ -1002,12 +1008,6 @@ select.input { background:var(--card); }
         <div class="sidebar-group-items">
           <a class="sidebar-item" data-page="qcontrol" onclick="go('qcontrol')">
             <span class="material-icons-round">verified</span> Контроль якості
-          </a>
-          <a class="sidebar-item" data-page="callcenter" onclick="go('callcenter')">
-            <span class="material-icons-round">support_agent</span> Колл-центр
-          </a>
-          <a class="sidebar-item" data-page="viber" onclick="go('viber')">
-            <span class="material-icons-round">forum</span> Viber
           </a>
           <a class="sidebar-item" data-page="branding" onclick="go('branding')">
             <span class="material-icons-round">palette</span> Брендинг
