@@ -917,11 +917,38 @@ function _mcTabAccess(){
         <button class="btn sm ghost" onclick="issueToken(${linkedUser.id})">Видати токен</button>
       </div>`;
   } else {
-    access=`<p style="font-size:13px;color:#888;margin-bottom:12px">У цього співробітника ще немає облікового запису для входу. Створіть його у вкладці <b>Доступи до системи</b>.</p>
-      <button class="btn sm" onclick="goToAccessList()">До списку доступів</button>`;
+    const lbl='font-size:12px;color:#888;display:block;margin-bottom:4px';
+    access=`<p style="font-size:13px;color:#888;margin-bottom:12px">У цього співробітника ще немає облікового запису. Створіть доступ прямо тут — майстра буде додано у ваш проєкт.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="${lbl}">Логін (телефон)</label><input id="mcAccPhone" class="inp" value="${_mcEsc(ms.phone||'')}" placeholder="+380…"></div>
+        <div><label style="${lbl}">Пароль (мін. 6)</label><input id="mcAccPass" class="inp" type="text" placeholder="задайте пароль"></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn sm" style="background:#7c5cff;color:#fff" onclick="mcCreateAccess(${ms.id})">Створити доступ майстру</button>
+        <button class="btn sm ghost" onclick="goToAccessList()">Розширені налаштування</button>
+      </div>`;
   }
   return `<h4 style="margin:0 0 10px;font-size:14px">Доступ до системи</h4>${access}
     <p style="font-size:12px;color:#888;margin-top:12px">Майстер бачить лише свій графік і записи. Адміністратор — журнал без фінансів власника (залежить від ролі).</p>`;
+}
+async function mcCreateAccess(masterId){
+  const ms=_mcData.ms;
+  const phone=(document.getElementById('mcAccPhone')||{}).value?.trim()||'';
+  const pass=(document.getElementById('mcAccPass')||{}).value||'';
+  if(!phone){ alert('Вкажіть телефон/логін'); return; }
+  if(pass && pass.length<6){ alert('Пароль мінімум 6 символів'); return; }
+  try{
+    const r=await api('/api/users',{method:'POST',body:JSON.stringify({
+      display_name:[ms.name,ms.surname].filter(Boolean).join(' ')||ms.name||'Майстер',
+      phone, username:phone, role_code:'master', master_id:masterId,
+      password: pass||undefined,
+    })});
+    if(!r||!r.ok){ alert('Помилка: '+((r&&(r.message||r.error))||'невідома')); return; }
+    if(typeof loadUsers==='function') await loadUsers();
+    if(typeof _mcToast==='function') _mcToast('Доступ створено ✓');
+    await openMasterCard(masterId);
+    setTimeout(()=>{ try{ mcTab('access'); }catch(_){} }, 250);
+  }catch(e){ alert(e.message||'Помилка створення доступу'); }
 }
 async function saveMasterCard(){
   if(!_mcId) return;
