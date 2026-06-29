@@ -89,7 +89,13 @@ ${catalog}
 Для дій, що змінюють дані (create_expense/add_bonus/add_penalty), спочатку за потреби знайди id через get_masters, потім виклич інструмент дії — система сама попросить підтвердження в людини.`;
 
     const cfg = await aiConfig();
-    const trail = [`USER: ${question}`];
+    // Контекст попередніх реплік (заметка #83 — бот має памʼятати діалог)
+    const hist = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-8) : [];
+    const trail = [];
+    for (const h of hist) {
+      if (h && h.text) trail.push(`${h.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(h.text).slice(0, 300)}`);
+    }
+    trail.push(`USER: ${question}`);
     let answer = null, pending = null;
     for (let step = 0; step < 6; step++) {
       const prompt = system + '\n\n' + trail.join('\n\n') + '\n\nASSISTANT (тільки JSON):';

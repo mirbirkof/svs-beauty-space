@@ -10003,7 +10003,7 @@ function saasFlagEdit(flag){
 
 <!-- ═══ AI-помічник: плаваюча голова (FAB) поверх усього ═══ -->
 <style>
-  #aiFab{position:fixed;right:22px;bottom:22px;z-index:99999;width:62px;height:62px;border-radius:50%;cursor:pointer;
+  #aiFab{position:fixed;left:250px;top:12px;z-index:99999;width:52px;height:52px;border-radius:50%;cursor:pointer;
     border:none;display:flex;align-items:center;justify-content:center;font-size:30px;
     background:linear-gradient(135deg,#7c5cff,#5b8def);color:#fff;
     box-shadow:0 8px 26px rgba(124,92,255,.45);animation:aiBreathe 3.2s ease-in-out infinite;transition:transform .15s}
@@ -10058,7 +10058,7 @@ function aiFabToggle(force){
 (function initFabDrag(){
   function go(){
     const fab=document.getElementById('aiFab'); if(!fab) return;
-    try{ const s=JSON.parse(localStorage.getItem('aiFabPos')||'null'); if(s){ fab.style.left=s.left; fab.style.top=s.top; fab.style.right='auto'; fab.style.bottom='auto'; } }catch(_){}
+    try{ const s=JSON.parse(localStorage.getItem('aiFabPos2')||'null'); if(s){ fab.style.left=s.left; fab.style.top=s.top; fab.style.right='auto'; fab.style.bottom='auto'; } }catch(_){}
     let moved=false,sx,sy,ox,oy;
     const down=e=>{ const t=e.touches?e.touches[0]:e; moved=false; sx=t.clientX; sy=t.clientY; const r=fab.getBoundingClientRect(); ox=r.left; oy=r.top;
       document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up); };
@@ -10066,26 +10066,31 @@ function aiFabToggle(force){
       let nl=Math.min(Math.max(4,ox+dx),innerWidth-66), nt=Math.min(Math.max(4,oy+dy),innerHeight-66);
       fab.style.left=nl+'px'; fab.style.top=nt+'px'; fab.style.right='auto'; fab.style.bottom='auto'; } };
     const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up);
-      if(moved){ try{ localStorage.setItem('aiFabPos',JSON.stringify({left:fab.style.left,top:fab.style.top})); }catch(_){} } };
+      if(moved){ try{ localStorage.setItem('aiFabPos2',JSON.stringify({left:fab.style.left,top:fab.style.top})); }catch(_){} } };
     fab.addEventListener('mousedown',down); fab.addEventListener('touchstart',down,{passive:true});
     // клік відкриває лише якщо не тягнули
     fab.addEventListener('click',e=>{ if(moved){ e.stopImmediatePropagation(); e.preventDefault(); } },true);
+    try{ if(typeof _aiRestore==='function') _aiRestore(); }catch(_){}
   }
   if(document.readyState!=='loading') go(); else document.addEventListener('DOMContentLoaded',go);
 })();
 function aiFabQuick(q){ document.getElementById('aiFabInput').value=q; aiFabSend(); }
 function _aiEsc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-function _aiAdd(cls,html){ const l=document.getElementById('aiFabLog'); l.innerHTML+=`<div class="${cls}"><span>${html}</span></div>`; l.scrollTop=l.scrollHeight; }
+window._aiHist = (function(){ try{ return JSON.parse(localStorage.getItem('aiChatHist')||'[]'); }catch(_){ return []; } })();
+function _aiSaveLog(){ try{ const l=document.getElementById('aiFabLog'); if(l) localStorage.setItem('aiChatLog', l.innerHTML); localStorage.setItem('aiChatHist', JSON.stringify(window._aiHist.slice(-20))); }catch(_){} }
+function _aiRestore(){ try{ const saved=localStorage.getItem('aiChatLog'); const l=document.getElementById('aiFabLog'); if(saved && l) l.innerHTML=saved; }catch(_){} }
+function _aiAdd(cls,html){ const l=document.getElementById('aiFabLog'); if(!l)return; l.innerHTML+=`<div class="${cls}"><span>${html}</span></div>`; l.scrollTop=l.scrollHeight; _aiSaveLog(); }
 async function aiFabSend(){
   const inp=document.getElementById('aiFabInput'); const msg=inp.value.trim(); if(!msg)return; inp.value='';
   _aiAdd('me',_aiEsc(msg));
+  window._aiHist.push({role:'user',text:msg});
   _aiAdd('bot','<i id="aiFabWait">друкує…</i>');
   try{
-    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({message:msg})});
+    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({message:msg, history:window._aiHist.slice(-8,-1)})});
     document.getElementById('aiFabWait')?.closest('.bot')?.remove();
     if(r.pending){ window._aiFabPending=r.pending;
       _aiAdd('bot',`Підтвердьте: <i>${_aiEsc(r.pending.label)}</i><br><button onclick="aiFabConfirm(true)" style="margin-top:6px;border:none;background:#7c5cff;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Так</button> <button onclick="aiFabConfirm(false)" style="border:1px solid #e3e6ef;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Ні</button>`);
-    } else _aiAdd('bot',_aiEsc(r.answer||r.error||'—'));
+    } else { const ans=r.answer||r.error||'—'; _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); }
   }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
 }
 async function aiFabConfirm(yes){
