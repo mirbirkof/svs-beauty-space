@@ -248,4 +248,40 @@ async function adminDayPlan(pool = getPool()) {
   return 1;
 }
 
-module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport, adminDayPlan };
+// ── E) Тижневі / місячні нагадування керуючому ───────────────────────────
+// Понеділок — закупка матеріалів (+ скільки позицій на нулі). 5 і 20 числа —
+// нагадування завести тайного покупця (2-3/міс). Шлеться в ADMIN_TG_CHAT.
+async function weeklyMonthlyReminders(pool = getPool()) {
+  const chat = process.env.ADMIN_TG_CHAT;
+  if (!chat) return 0;
+  const today = kyivDate();
+  // день тижня (0=Нд..6=Сб) і число місяця — з київської дати
+  const dow = new Date(today + 'T12:00:00Z').getUTCDay();
+  const dom = Number(today.slice(8, 10));
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  let sent = 0;
+
+  // Понеділок — закупка
+  if (dow === 1 && (await getSetting('vm_purchase_sent', null)) !== today) {
+    const low = (await q(`SELECT COUNT(*)::int n FROM salon_stock WHERE COALESCE(qty,0) <= 2`))[0] || { n: 0 };
+    const lowLine = low.n > 0 ? `\n📉 На низькому залишку: <b>${low.n} позицій</b> — перевірте у розділі «Склад».` : '';
+    await hub.enqueue({ recipient: String(chat), channel: 'telegram',
+      body: `🛒 <b>Понеділок — день закупки</b>\nПеревірте залишки розхідників (фарби, окисники тощо) і замовте що закінчується.${lowLine}`,
+      category: 'transactional', priority: 'normal', source: 'vm-purchase', dedupKey: `purchase:${today}` });
+    await setSetting('vm_purchase_sent', today);
+    sent++;
+  }
+
+  // 5 і 20 числа — тайний покупець
+  if ((dom === 5 || dom === 20) && (await getSetting('vm_mystery_sent', null)) !== today) {
+    await hub.enqueue({ recipient: String(chat), channel: 'telegram',
+      body: `🕵️ <b>Нагадування: тайний покупець</b>\nЗаплануйте перевірку (2-3 на місяць): запис під виглядом клієнта, оцінка скриптів, сервісу й чистоти. Зафіксуйте результат.`,
+      category: 'transactional', priority: 'normal', source: 'vm-mystery', dedupKey: `mystery:${today}` });
+    await setSetting('vm_mystery_sent', today);
+    sent++;
+  }
+
+  return sent;
+}
+
+module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport, adminDayPlan, weeklyMonthlyReminders };
