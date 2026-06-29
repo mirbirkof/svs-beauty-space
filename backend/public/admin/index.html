@@ -9997,5 +9997,79 @@ function saasFlagEdit(flag){
 <script src="/admin/modules/mod-platform.js"></script>
 <script src="/admin/modules/mod-infra.js"></script>
 <script>if(window.__bootModules)window.__bootModules();</script>
+
+<!-- ═══ AI-помічник: плаваюча голова (FAB) поверх усього ═══ -->
+<style>
+  #aiFab{position:fixed;right:22px;bottom:22px;z-index:99999;width:62px;height:62px;border-radius:50%;cursor:pointer;
+    border:none;display:flex;align-items:center;justify-content:center;font-size:30px;
+    background:linear-gradient(135deg,#7c5cff,#5b8def);color:#fff;
+    box-shadow:0 8px 26px rgba(124,92,255,.45);animation:aiBreathe 3.2s ease-in-out infinite;transition:transform .15s}
+  #aiFab:hover{transform:scale(1.08)}
+  #aiFab.hidden{display:none}
+  @keyframes aiBreathe{0%,100%{transform:scale(1);box-shadow:0 8px 26px rgba(124,92,255,.40)}50%{transform:scale(1.06);box-shadow:0 10px 32px rgba(91,141,239,.6)}}
+  #aiFab .dot{position:absolute;top:6px;right:8px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid #fff}
+  #aiPanel{position:fixed;right:22px;bottom:96px;z-index:99999;width:min(380px,calc(100vw - 32px));height:min(540px,calc(100vh - 130px));
+    background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(20,24,38,.34);display:none;flex-direction:column;overflow:hidden;animation:aiPop .18s ease-out}
+  #aiPanel.open{display:flex}
+  @keyframes aiPop{from{transform:translateY(20px) scale(.96);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
+  #aiPanel .hd{background:linear-gradient(135deg,#7c5cff,#5b8def);color:#fff;padding:13px 16px;display:flex;align-items:center;gap:9px;font-weight:700}
+  #aiPanel .hd .x{margin-left:auto;cursor:pointer;font-size:20px;opacity:.85;background:none;border:none;color:#fff}
+  #aiPanel .log{flex:1;overflow-y:auto;padding:12px 14px;font-size:13.5px;line-height:1.5;background:#f7f8fb}
+  #aiPanel .log .me{text-align:right;margin:6px 0}
+  #aiPanel .log .me span{background:#7c5cff;color:#fff;padding:7px 11px;border-radius:13px 13px 3px 13px;display:inline-block;max-width:85%}
+  #aiPanel .log .bot span{background:#fff;border:1px solid #eef0f5;padding:7px 11px;border-radius:13px 13px 13px 3px;display:inline-block;max-width:90%}
+  #aiPanel .log .bot{margin:6px 0}
+  #aiPanel .ft{display:flex;gap:8px;padding:10px;border-top:1px solid #eef0f5;background:#fff}
+  #aiPanel .ft input{flex:1;border:1px solid #e3e6ef;border-radius:11px;padding:10px 12px;font-size:14px;outline:none}
+  #aiPanel .ft button{border:none;background:#7c5cff;color:#fff;border-radius:11px;padding:0 15px;font-weight:600;cursor:pointer}
+  #aiPanel .chips{padding:0 12px 10px;display:flex;gap:6px;flex-wrap:wrap;background:#f7f8fb}
+  #aiPanel .chips button{font-size:11.5px;border:1px solid #e3e6ef;background:#fff;border-radius:20px;padding:5px 10px;cursor:pointer;color:#5a6275}
+</style>
+<button id="aiFab" title="AI-помічник" onclick="aiFabToggle()">🤖<span class="dot"></span></button>
+<div id="aiPanel">
+  <div class="hd"><span style="font-size:18px">🤖</span> AI-помічник<button class="x" onclick="aiFabToggle(false)">×</button></div>
+  <div class="log" id="aiFabLog"><div class="bot"><span>Вітаю! Спитайте про касу, план, заявки, кого дозаписати — або попросіть внести витрату чи премію.</span></div></div>
+  <div class="chips" id="aiFabChips">
+    <button onclick="aiFabQuick('каса за вчора')">каса за вчора</button>
+    <button onclick="aiFabQuick('скільки до плану')">до плану</button>
+    <button onclick="aiFabQuick('закриття заявок')">заявки</button>
+    <button onclick="aiFabQuick('кого дозаписати')">кого дозаписати</button>
+  </div>
+  <div class="ft"><input id="aiFabInput" placeholder="Напишіть запит…" onkeydown="if(event.key==='Enter')aiFabSend()"><button onclick="aiFabSend()">▶</button></div>
+</div>
+<script>
+function aiFabToggle(force){
+  const p=document.getElementById('aiPanel');
+  const open=(force===undefined)?!p.classList.contains('open'):force;
+  p.classList.toggle('open',open);
+  if(open) setTimeout(()=>document.getElementById('aiFabInput')?.focus(),100);
+}
+function aiFabQuick(q){ document.getElementById('aiFabInput').value=q; aiFabSend(); }
+function _aiEsc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function _aiAdd(cls,html){ const l=document.getElementById('aiFabLog'); l.innerHTML+=`<div class="${cls}"><span>${html}</span></div>`; l.scrollTop=l.scrollHeight; }
+async function aiFabSend(){
+  const inp=document.getElementById('aiFabInput'); const msg=inp.value.trim(); if(!msg)return; inp.value='';
+  _aiAdd('me',_aiEsc(msg));
+  _aiAdd('bot','<i id="aiFabWait">друкує…</i>');
+  try{
+    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({message:msg})});
+    document.getElementById('aiFabWait')?.closest('.bot')?.remove();
+    if(r.pending){ window._aiFabPending=r.pending;
+      _aiAdd('bot',`Підтвердьте: <i>${_aiEsc(r.pending.label)}</i><br><button onclick="aiFabConfirm(true)" style="margin-top:6px;border:none;background:#7c5cff;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Так</button> <button onclick="aiFabConfirm(false)" style="border:1px solid #e3e6ef;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Ні</button>`);
+    } else _aiAdd('bot',_aiEsc(r.answer||r.error||'—'));
+  }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
+}
+async function aiFabConfirm(yes){
+  const p=window._aiFabPending; window._aiFabPending=null;
+  if(!yes||!p){ _aiAdd('bot','Скасовано.'); return; }
+  _aiAdd('bot','<i id="aiFabWait">виконую…</i>');
+  try{
+    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({confirm:{tool:p.tool,args:p.args}})});
+    document.getElementById('aiFabWait')?.closest('.bot')?.remove();
+    _aiAdd('bot',_aiEsc(r.answer||r.error||'—'));
+    if(typeof loadManagerPanel==='function')try{loadManagerPanel();}catch(_){}
+  }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
+}
+</script>
 </body>
 </html>
