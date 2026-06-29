@@ -1138,6 +1138,16 @@ select.input { background:var(--card); }
           <input type="date" id="dashTo" class="input" style="width:auto;padding:6px 9px;font-size:13px" onchange="dashRangeCustom()">
           <span id="dashRangeLbl" style="font-size:12.5px;color:var(--text-secondary);margin-left:4px"></span>
         </div>
+
+        <!-- ═══ Панель керуючого (KPI однією картиною) ═══ -->
+        <div class="card" id="mgrPanel" style="margin-bottom:20px;display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span class="material-icons-round" style="color:var(--primary,#6c5ce7)">insights</span>
+            <h3 style="margin:0">Панель керуючого <span style="font-size:12px;font-weight:500;color:var(--text-secondary)">— пульс салону за місяць</span></h3>
+          </div>
+          <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
+        </div>
+
         <div class="kpi-grid" id="kpi"></div>
 
         <!-- ═══ Панель витрат за місяць ═══ -->
@@ -4678,7 +4688,37 @@ async function loadDashExpenses(preloaded){
       + `<div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px">Враховано собівартість матеріалів та нарахований % майстрам (по реальній схемі) за ${d.commission_appts||0} завершених послуг цього місяця. Оновлюється щойно проходить послуга.</div>`;
   }catch(e){ card.style.display='none'; }
 }
+async function loadManagerPanel() {
+  const panel = document.getElementById('mgrPanel'), box = document.getElementById('mgrKpis');
+  if (!panel || !box) return;
+  try {
+    const k = await api('/api/manager/kpi');
+    if (!k || k.error) return; // нема прав reports.finance — просто не показуємо
+    const m = n => Math.round(Number(n)||0).toLocaleString('uk-UA') + ' ₴';
+    const card = (label, value, sub, color) =>
+      `<div style="background:var(--bg,#f7f8fb);border-radius:12px;padding:12px 14px">
+        <div style="font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">${label}</div>
+        <div style="font-size:19px;font-weight:700;color:${color||'var(--text)'}">${value}</div>
+        ${sub?`<div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px">${sub}</div>`:''}
+      </div>`;
+    const planSub = k.plan_pct!=null ? `${k.plan_pct}% від плану ${m(k.plan)}` : 'план не заданий';
+    const planColor = k.plan_pct==null?'var(--text)':(k.plan_pct>=100?'#16a34a':k.plan_pct>=70?'#d97706':'#dc2626');
+    const cl = k.closure||{};
+    const clColor = cl.pct==null?'var(--text)':(cl.pct>=80?'#16a34a':'#dc2626');
+    const clSub = cl.pct!=null?`${cl.served} з ${cl.finished} · ціль ${cl.target}%`:'немає даних';
+    const rv = k.reviews||{};
+    const rvColor = rv.negative>0?'#dc2626':'#16a34a';
+    box.innerHTML =
+      card('Оборот місяця', m(k.revenue), planSub, planColor) +
+      card('Закриття заявок', cl.pct!=null?cl.pct+'%':'—', clSub, clColor) +
+      card('Рекламації', rv.negative||0, `відгуків ${rv.total||0} · рейтинг ${rv.avg_rating!=null?rv.avg_rating:'—'}★`, rvColor) +
+      card('Нові клієнти', k.clients_new||0, 'перший візит цього місяця', 'var(--text)') +
+      card('Активних майстрів', k.masters_active||0, '', 'var(--text)');
+    panel.style.display = '';
+  } catch (_) { /* тихо — панель опціональна */ }
+}
 async function loadDashboard() {
+  loadManagerPanel();
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';

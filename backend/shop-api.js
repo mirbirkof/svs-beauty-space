@@ -274,6 +274,7 @@ try { app.use('/api/ai/sales', require('./routes/ai-sales')); } catch(e) { conso
 try { app.use('/api/pnl', require('./routes/pnl')); } catch(e) { console.error('[pnl] mount failed:', e.message); }
 try { app.use('/api/payouts', require('./routes/payouts')); } catch(e) { console.error('[payouts] mount failed:', e.message); }
 try { app.use('/api/expense-confirm', require('./routes/expense-confirm')); } catch(e) { console.error('[expense-confirm] mount failed:', e.message); }
+try { app.use('/api/manager', require('./routes/manager')); } catch(e) { console.error('[manager] mount failed:', e.message); }
 // Нагадування про витрати: 1-го, 15-го і в останній день місяця.
 // НЕ проводить автоматично — лише нагадує підтвердити (адмін підтверджує/коригує у CRM).
 if (process.env.DATABASE_URL) {
