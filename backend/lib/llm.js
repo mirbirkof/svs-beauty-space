@@ -27,8 +27,8 @@ function _post(opts, body) {
 // gemini-2.5-flash: окремий квота-бакет від 2.0-flash (яку вичерпує gemini-бот),
 // працює з датацентрового IP. thinkingBudget:0 — вимикаємо "мислення", інакше
 // воно зʼїдає maxOutputTokens і JSON обрізається (finishReason MAX_TOKENS).
-async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-flash' } = {}) {
-  const key = process.env.GEMINI_API_KEY;
+async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-flash', apiKey } = {}) {
+  const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('no GEMINI_API_KEY');
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -49,8 +49,8 @@ async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-f
 }
 
 // ── Groq (OpenAI-совместимый) — fallback ───────────────────
-async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-versatile' } = {}) {
-  const key = process.env.GROQ_API_KEY;
+async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-versatile', apiKey } = {}) {
+  const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) throw new Error('no GROQ_API_KEY');
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
@@ -70,8 +70,8 @@ async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-
 }
 
 // ── OpenRouter (OpenAI-совместимый шлюз) — primary на проде ─
-async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-llama/llama-3.3-70b-instruct' } = {}) {
-  const key = process.env.OPENROUTER_API_KEY;
+async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-llama/llama-3.3-70b-instruct', apiKey } = {}) {
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('no OPENROUTER_API_KEY');
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
@@ -101,7 +101,16 @@ const PROVIDERS = [
 ];
 
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
+// Пряме звернення до конкретного провайдера (для вибору «мозку» в налаштуваннях).
+const PROVIDER_FNS = { gemini: _gemini, openrouter: _openrouter, groq: _groq };
+
 async function ask(prompt, opts = {}) {
+  // Якщо явно обрано провайдера (налаштування користувача) — пробуємо його першим,
+  // потім падаємо у звичайний каскад (надійність важливіша за впертість).
+  if (opts.provider && PROVIDER_FNS[opts.provider]) {
+    try { return await PROVIDER_FNS[opts.provider](prompt, opts); }
+    catch (e) { /* далі — каскад за замовчуванням */ }
+  }
   const errors = [];
   for (const [name, fn] of PROVIDERS) {
     try { return await fn(prompt, opts); }

@@ -7,9 +7,45 @@ const { requirePerm } = require('../lib/rbac');
 const { shiftDaysByMaster } = require('../lib/schedule-month');
 const llm = require('../lib/llm');
 const { TOOLS } = require('../lib/agent-tools');
+const { getSetting, setSetting } = require('../lib/settings');
 
 const router = express.Router();
 const pool = getPool();
+
+// ── Налаштування «мозку» помічника (провайдер/модель/свій ключ) ──
+const AI_PROVIDERS = ['gemini', 'openrouter', 'groq'];
+async function aiConfig() {
+  const provider = await getSetting('ai_provider', null);
+  const model = await getSetting('ai_model', null);
+  const apiKey = await getSetting('ai_api_key', null);
+  const cfg = {};
+  if (provider && AI_PROVIDERS.includes(provider)) cfg.provider = provider;
+  if (model) cfg.model = model;
+  if (apiKey) cfg.apiKey = apiKey;
+  return cfg;
+}
+
+router.get('/ai-settings', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    res.json({
+      provider: (await getSetting('ai_provider', '')) || 'auto',
+      model: (await getSetting('ai_model', '')) || '',
+      has_key: !!(await getSetting('ai_api_key', null)),
+      providers: AI_PROVIDERS,
+    });
+  } catch (e) { res.status(500).json({ error: 'internal' }); }
+});
+
+router.post('/ai-settings', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const provider = AI_PROVIDERS.includes(b.provider) ? b.provider : '';
+    await setSetting('ai_provider', provider);
+    await setSetting('ai_model', (b.model || '').toString().slice(0, 80));
+    if (b.api_key != null) await setSetting('ai_api_key', String(b.api_key).slice(0, 200)); // '' очищає
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'internal' }); }
+});
 
 // Помічник керуючого (v1): командний чат тільки з читаючими інструментами.
 // ReAct-цикл, без деструктивних дій — безпечно. Дії з підтвердженням — наступний крок.
@@ -52,11 +88,12 @@ ${catalog}
 {"action":"final","response":"<відповідь людині>"}  — фінальна відповідь
 Для дій, що змінюють дані (create_expense/add_bonus/add_penalty), спочатку за потреби знайди id через get_masters, потім виклич інструмент дії — система сама попросить підтвердження в людини.`;
 
+    const cfg = await aiConfig();
     const trail = [`USER: ${question}`];
     let answer = null, pending = null;
     for (let step = 0; step < 6; step++) {
       const prompt = system + '\n\n' + trail.join('\n\n') + '\n\nASSISTANT (тільки JSON):';
-      const d = await llm.askJSON(prompt, { system, maxTokens: 900 }).catch(() => null);
+      const d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
       if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
       if (d.action === 'final') { answer = d.response || ''; break; }
       if (d.action === 'tool') {

@@ -1155,6 +1155,27 @@ select.input { background:var(--card); }
               <input id="asstInput" class="input" style="flex:1" placeholder="напр. «каса за вчора» або «кого дозаписати»" onkeydown="if(event.key==='Enter')asstSend()">
               <button class="btn btn-primary" onclick="asstSend()">Спитати</button>
             </div>
+            <div style="margin-top:6px"><a href="#" style="font-size:12px;color:var(--text-secondary)" onclick="var b=document.getElementById('aiCfgBox');b.style.display=b.style.display==='none'?'block':'none';if(b.style.display==='block')loadAiSettings();return false">⚙️ Налаштувати мозок помічника</a></div>
+            <div id="aiCfgBox" style="display:none;margin-top:8px;padding:10px;background:var(--bg,#f7f8fb);border-radius:10px;font-size:13px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div><label style="font-size:11px;color:var(--text-secondary)">Провайдер</label>
+                  <select id="aiProvider" class="input" style="padding:6px 8px">
+                    <option value="auto">Авто (за замовчуванням)</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openrouter">OpenRouter (GPT, Claude, Llama…)</option>
+                    <option value="groq">Groq</option>
+                  </select></div>
+                <div><label style="font-size:11px;color:var(--text-secondary)">Модель (необовʼязково)</label>
+                  <input id="aiModel" class="input" style="padding:6px 8px" placeholder="напр. openai/gpt-4o"></div>
+              </div>
+              <label style="font-size:11px;color:var(--text-secondary)">Свій API-ключ (необовʼязково, замінює системний)</label>
+              <input id="aiKey" class="input" type="password" style="padding:6px 8px;margin-bottom:8px" placeholder="пусто — використати системний">
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn btn-sm btn-primary" onclick="saveAiSettings()">Зберегти</button>
+                <span id="aiCfgMsg" style="font-size:12px;color:var(--text-secondary)"></span>
+              </div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-top:6px">OpenRouter — доступ до GPT-4, Claude, Llama одним ключем. Підписки (ChatGPT Plus) не мають API — лише ключ.</div>
+            </div>
           </div>
         </div>
 
@@ -4777,6 +4798,28 @@ async function obSeed(mid) {
 async function obToggle(id, done, mid) {
   try { await api('/api/onboarding/item/' + id, { method: 'PATCH', body: JSON.stringify({ status: done ? 'done' : 'pending' }) }); loadOnboarding(mid); }
   catch (e) { toast(e.message, 'error'); }
+}
+async function loadAiSettings() {
+  try {
+    const s = await api('/api/manager/ai-settings');
+    const pv = document.getElementById('aiProvider'); if (pv) pv.value = s.provider || 'auto';
+    const md = document.getElementById('aiModel'); if (md) md.value = s.model || '';
+    const k = document.getElementById('aiKey'); if (k) k.placeholder = s.has_key ? 'ключ збережено (введіть новий, щоб змінити)' : 'пусто — використати системний';
+  } catch (_) {}
+}
+async function saveAiSettings() {
+  const m = document.getElementById('aiCfgMsg');
+  const body = {
+    provider: document.getElementById('aiProvider').value,
+    model: document.getElementById('aiModel').value.trim(),
+  };
+  const key = document.getElementById('aiKey').value;
+  if (key) body.api_key = key;
+  try {
+    await api('/api/manager/ai-settings', { method: 'POST', body: JSON.stringify(body) });
+    if (m) { m.textContent = 'Збережено ✓'; m.style.color = '#16a34a'; }
+    const k = document.getElementById('aiKey'); if (k) k.value = '';
+  } catch (e) { if (m) { m.textContent = 'Помилка: ' + e.message; m.style.color = '#dc2626'; } }
 }
 async function asstSend() {
   const inp = document.getElementById('asstInput'), log = document.getElementById('asstLog');
