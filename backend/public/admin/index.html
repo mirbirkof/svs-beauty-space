@@ -306,7 +306,7 @@ select.input { background:var(--card); }
 .empty { text-align:center; padding:40px; color:var(--text-secondary); }
 .empty .material-icons-round { font-size:48px; opacity:.3; display:block; margin-bottom:8px; }
 
-/* JOURNAL — DIKIDI-style day grid */
+/* JOURNAL — день-сітка day grid */
 .jgrid { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; max-width:100%; border:1px solid var(--border); border-radius:12px; background:var(--card); }
 .jgrid-time { flex:0 0 56px; border-right:1px solid var(--border); background:var(--bg); position:sticky; left:0; z-index:3; }
 .jgrid-time .jhead { height:64px; border-bottom:1px solid var(--border); }
@@ -355,7 +355,7 @@ select.input { background:var(--card); }
 .jappt .paid-tag { font-size:9px; font-weight:700; background:rgba(255,255,255,.25); padding:0 4px; border-radius:4px; margin-left:3px; vertical-align:middle; }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
-/* Журнал: панель навігації по датах (DIKIDI-style) */
+/* Журнал: панель навігації по датах (день-сітка) */
 .journal-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:16px; position:relative; flex-wrap:wrap; }
 .jt-modes { display:flex; gap:6px; }
 /* фільтр майстрів — зліва, поруч із режимами (День/Тиждень/Список) */
@@ -368,7 +368,7 @@ select.input { background:var(--card); }
 .jt-date { height:34px; min-width:200px; padding:0 14px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; font-size:14px; font-weight:700; color:var(--text); text-transform:capitalize; }
 .jt-date:hover { border-color:var(--primary); }
 .jt-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-/* Журнал: 5 функціональних кнопок (DIKIDI-style) */
+/* Журнал: 5 функціональних кнопок (день-сітка) */
 .jt-icon-btn { width:34px; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); transition:background .12s,color .12s,border-color .12s; flex:0 0 auto; }
 .jt-icon-btn:hover { background:var(--primary-light); color:var(--primary); border-color:var(--primary); }
 .jt-icon-btn .material-icons-round { font-size:20px; }
@@ -525,7 +525,7 @@ select.input { background:var(--card); }
 .sch-times { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .sch-times .input { width:104px; }
 .sch-brk { font-size:11px; color:var(--text-secondary); margin-left:8px; }
-/* ── DIKIDI-style зведена дошка графіка ── */
+/* ── день-сітка зведена дошка графіка ── */
 .schboard { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:#fff; }
 .schboard-grid { display:grid; grid-template-columns:210px repeat(7, minmax(86px,1fr)); min-width:812px; }
 .schb-cell { padding:8px 6px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:46px; display:flex; flex-direction:column; justify-content:center; overflow:hidden; }
@@ -546,7 +546,7 @@ select.input { background:var(--card); }
 .schb-pill .brk { display:block; font-size:9.5px; font-weight:500; color:#9a8a3a; }
 .schb-off { color:#cfd2e0; font-size:14px; }
 .schb-row-off .schb-name { background:#fff5f5; }
-/* Місячна матриця графіка (DIKIDI-style) */
+/* Місячна матриця графіка (день-сітка) */
 .schmon-bar { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
 .schmon-title { font-weight:700; font-size:15px; min-width:150px; text-align:center; text-transform:capitalize; }
 .schmon { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:#fff; }
@@ -591,14 +591,14 @@ select.input { background:var(--card); }
 }
 .jappt.dragging { opacity:.45; }
 .jcol-body.drop-active { background:var(--primary-light); }
-/* Червона лінія поточного часу (як у DIKIDI) */
+/* Червона лінія поточного часу */
 .jnow { position:absolute; left:0; right:0; height:2px; background:#ef4444; z-index:4; pointer-events:none; }
 .jnow::before { content:''; position:absolute; left:-3px; top:-3px; width:8px; height:8px; border-radius:50%; background:#ef4444; }
 @media(max-width:768px){
   .journal-toolbar { flex-wrap:wrap; gap:8px; }
   .jt-nav { order:3; width:100%; margin:0; justify-content:center; }
   .jt-modes { order:1; }
-  /* Журнал на мобільному: панель дій на всю ширину, кнопки = рівні іконки (DIKIDI-style) */
+  /* Журнал на мобільному: панель дій на всю ширину, кнопки = рівні іконки (день-сітка) */
   .jt-right { order:2; width:100%; margin-left:0; justify-content:space-between; flex-wrap:nowrap; gap:6px; }
   #journalFocus { order:-1; flex:1 1 100%; max-width:none !important; margin-bottom:2px; }
   .jt-right .jt-act, .jt-right .jt-icon-btn { flex:1 1 0; min-width:0; height:42px; padding:0; justify-content:center; }
@@ -855,8 +855,8 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="reviews" onclick="go('reviews')">
             <span class="material-icons-round">star_rate</span> Відгуки
           </a>
-          <a class="sidebar-item" data-embed="/admin/dikidi.html" onclick="openEmbed('/admin/dikidi.html','reviews Dikidi — онлайн-запис')" style="cursor:pointer">
-            <span class="material-icons-round">reviews</span> Dikidi (онлайн-запис)
+          <a class="sidebar-item" data-embed="/admin/dikidi.html" onclick="openEmbed('/admin/dikidi.html','reviews Онлайн-запис')" style="cursor:pointer">
+            <span class="material-icons-round">reviews</span> Онлайн-запис
           </a>
         </div>
       </div>
@@ -2067,7 +2067,7 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- ═══ FINANCE (Доходи і Витрати, DIKIDI-style) ═══ -->
+      <!-- ═══ FINANCE (Доходи і Витрати, день-сітка) ═══ -->
       <div class="page" id="page-finance">
         <div class="fin-toolbar">
           <div class="fin-periods" id="finPeriods">
@@ -2182,7 +2182,7 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- ═══ SETTINGS (DIKIDI-style: ліве підменю + панелі) ═══ -->
+      <!-- ═══ SETTINGS (день-сітка: ліве підменю + панелі) ═══ -->
       <div class="page" id="page-settings">
         <div class="settings-layout">
           <div class="settings-content">
@@ -2510,7 +2510,7 @@ select.input { background:var(--card); }
     </div>
   </div>
 
-  <!-- Довідка по журналу записів (DIKIDI-style) -->
+  <!-- Довідка по журналу записів (день-сітка) -->
   <div id="journalHelpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) journalCloseHelp()">
     <div class="modal" style="max-width:520px">
       <div class="modal-header">
@@ -3151,7 +3151,7 @@ const I18N_DICT = {
     'Усі клієнти':'Все клиенты','Лист очікування':'Лист ожидания','Повторні візити':'Повторные визиты','Чорний список':'Чёрный список',
     'Замовлення':'Заказы','Каса магазину':'Касса магазина','Сертифікати':'Сертификаты','Абонементи':'Абонементы','Вітрина (сайт)':'Витрина (сайт)',
     'Доходи і Витрати':'Доходы и Расходы','Фінансовий центр':'Финансовый центр','Грошовий потік':'Денежный поток','Бюджети':'Бюджеты','Контрагенти':'Контрагенты','Звіти (P&L, RFM)':'Отчёты (P&L, RFM)','Конструктор звітів':'Конструктор отчётов','Експорт CSV':'Экспорт CSV',
-    'Центр повідомлень':'Центр уведомлений','Сегменти':'Сегменты','Кампанії / Розсилки':'Кампании / Рассылки','Авто-тригери':'Авто-триггеры','AI Відеостудія':'AI Видеостудия','Нагадування (записи)':'Напоминания (записи)','Акції / Промокоди':'Акции / Промокоды','Відгуки':'Отзывы','Dikidi (онлайн-запис)':'Dikidi (онлайн-запись)',
+    'Центр повідомлень':'Центр уведомлений','Сегменти':'Сегменты','Кампанії / Розсилки':'Кампании / Рассылки','Авто-тригери':'Авто-триггеры','AI Відеостудія':'AI Видеостудия','Нагадування (записи)':'Напоминания (записи)','Акції / Промокоди':'Акции / Промокоды','Відгуки':'Отзывы','Онлайн-запис':'Онлайн-запись',
     'Майстри / Співробітники':'Мастера / Сотрудники','Зарплата':'Зарплата','План місяця':'План месяца','Графіки роботи':'Графики работы',
     'Товари':'Товары','Залишки на складі':'Остатки на складе','Закупівлі':'Закупки','Інвентаризація':'Инвентаризация','Розхідники':'Расходники',
     'Профіль':'Профиль','Онлайн-запис':'Онлайн-запись','Передплата':'Предоплата','Конфіденційність':'Конфиденциальность','Бізнес-налаштування':'Бизнес-настройки','Кабінети / ресурси':'Кабинеты / ресурсы','Доступ до проєкту':'Доступ к проекту','Міграція з іншої CRM':'Миграция из другой CRM',
@@ -3166,7 +3166,7 @@ const I18N_DICT = {
     'Усі клієнти':'All clients','Лист очікування':'Waitlist','Повторні візити':'Repeat visits','Чорний список':'Blacklist',
     'Замовлення':'Orders','Каса магазину':'Shop register','Сертифікати':'Gift cards','Абонементи':'Memberships','Вітрина (сайт)':'Storefront (site)',
     'Доходи і Витрати':'Income & Expenses','Фінансовий центр':'Finance center','Грошовий потік':'Cash flow','Бюджети':'Budgets','Контрагенти':'Counterparties','Звіти (P&L, RFM)':'Reports (P&L, RFM)','Конструктор звітів':'Report builder','Експорт CSV':'Export CSV',
-    'Центр повідомлень':'Notification center','Сегменти':'Segments','Кампанії / Розсилки':'Campaigns','Авто-тригери':'Auto-triggers','AI Відеостудія':'AI Video studio','Нагадування (записи)':'Reminders (visits)','Акції / Промокоди':'Promos / Coupons','Відгуки':'Reviews','Dikidi (онлайн-запис)':'Dikidi (booking)',
+    'Центр повідомлень':'Notification center','Сегменти':'Segments','Кампанії / Розсилки':'Campaigns','Авто-тригери':'Auto-triggers','AI Відеостудія':'AI Video studio','Нагадування (записи)':'Reminders (visits)','Акції / Промокоди':'Promos / Coupons','Відгуки':'Reviews','Онлайн-запис':'Online booking',
     'Майстри / Співробітники':'Staff / Masters','Зарплата':'Payroll','План місяця':'Monthly plan','Графіки роботи':'Work schedules',
     'Товари':'Products','Залишки на складі':'Stock levels','Закупівлі':'Purchasing','Інвентаризація':'Inventory count','Розхідники':'Consumables',
     'Профіль':'Profile','Онлайн-запис':'Online booking','Передплата':'Prepayment','Конфіденційність':'Privacy','Бізнес-налаштування':'Business settings','Кабінети / ресурси':'Rooms / resources','Доступ до проєкту':'Project access','Міграція з іншої CRM':'Migrate from another CRM',
@@ -3181,7 +3181,7 @@ const I18N_DICT = {
     'Усі клієнти':'Wszyscy klienci','Лист очікування':'Lista oczekujących','Повторні візити':'Powtórne wizyty','Чорний список':'Czarna lista',
     'Замовлення':'Zamówienia','Каса магазину':'Kasa sklepu','Сертифікати':'Certyfikaty','Абонементи':'Karnety','Вітрина (сайт)':'Witryna (strona)',
     'Доходи і Витрати':'Przychody i wydatki','Фінансовий центр':'Centrum finansowe','Грошовий потік':'Przepływ gotówki','Бюджети':'Budżety','Контрагенти':'Kontrahenci','Звіти (P&L, RFM)':'Raporty (P&L, RFM)','Конструктор звітів':'Kreator raportów','Експорт CSV':'Eksport CSV',
-    'Центр повідомлень':'Centrum powiadomień','Сегменти':'Segmenty','Кампанії / Розсилки':'Kampanie / Wysyłki','Авто-тригери':'Auto-wyzwalacze','AI Відеостудія':'Studio wideo AI','Нагадування (записи)':'Przypomnienia (wizyty)','Акції / Промокоди':'Promocje / Kody','Відгуки':'Opinie','Dikidi (онлайн-запис)':'Dikidi (rezerwacja)',
+    'Центр повідомлень':'Centrum powiadomień','Сегменти':'Segmenty','Кампанії / Розсилки':'Kampanie / Wysyłki','Авто-тригери':'Auto-wyzwalacze','AI Відеостудія':'Studio wideo AI','Нагадування (записи)':'Przypomnienia (wizyty)','Акції / Промокоди':'Promocje / Kody','Відгуки':'Opinie','Онлайн-запис':'Rezerwacja online',
     'Майстри / Співробітники':'Pracownicy / Mistrzowie','Зарплата':'Wynagrodzenia','План місяця':'Plan miesiąca','Графіки роботи':'Grafiki pracy',
     'Товари':'Towary','Залишки на складі':'Stany magazynowe','Закупівлі':'Zakupy','Інвентаризація':'Inwentaryzacja','Розхідники':'Materiały zużywalne',
     'Профіль':'Profil','Онлайн-запис':'Rezerwacja online','Передплата':'Przedpłata','Конфіденційність':'Prywatność','Бізнес-налаштування':'Ustawienia biznesu','Кабінети / ресурси':'Gabinety / zasoby','Доступ до проєкту':'Dostęp do projektu','Міграція з іншої CRM':'Migracja z innego CRM',
@@ -3196,7 +3196,7 @@ const I18N_DICT = {
     'Усі клієнти':'Alle Kunden','Лист очікування':'Warteliste','Повторні візити':'Wiederholungsbesuche','Чорний список':'Sperrliste',
     'Замовлення':'Bestellungen','Каса магазину':'Ladenkasse','Сертифікати':'Gutscheine','Абонементи':'Abos','Вітрина (сайт)':'Schaufenster (Website)',
     'Доходи і Витрати':'Einnahmen & Ausgaben','Фінансовий центр':'Finanzzentrum','Грошовий потік':'Cashflow','Бюджети':'Budgets','Контрагенти':'Geschäftspartner','Звіти (P&L, RFM)':'Berichte (P&L, RFM)','Конструктор звітів':'Berichts-Generator','Експорт CSV':'CSV-Export',
-    'Центр повідомлень':'Benachrichtigungszentrum','Сегменти':'Segmente','Кампанії / Розсилки':'Kampagnen / Mailings','Авто-тригери':'Auto-Trigger','AI Відеостудія':'KI-Videostudio','Нагадування (записи)':'Erinnerungen (Termine)','Акції / Промокоди':'Aktionen / Gutscheincodes','Відгуки':'Bewertungen','Dikidi (онлайн-запис)':'Dikidi (Buchung)',
+    'Центр повідомлень':'Benachrichtigungszentrum','Сегменти':'Segmente','Кампанії / Розсилки':'Kampagnen / Mailings','Авто-тригери':'Auto-Trigger','AI Відеостудія':'KI-Videostudio','Нагадування (записи)':'Erinnerungen (Termine)','Акції / Промокоди':'Aktionen / Gutscheincodes','Відгуки':'Bewertungen','Онлайн-запис':'Online-Buchung',
     'Майстри / Співробітники':'Mitarbeiter / Stylisten','Зарплата':'Gehalt','План місяця':'Monatsplan','Графіки роботи':'Arbeitspläne',
     'Товари':'Produkte','Залишки на складі':'Lagerbestände','Закупівлі':'Einkauf','Інвентаризація':'Inventur','Розхідники':'Verbrauchsmaterial',
     'Профіль':'Profil','Онлайн-запис':'Online-Buchung','Передплата':'Anzahlung','Конфіденційність':'Datenschutz','Бізнес-налаштування':'Geschäftseinstellungen','Кабінети / ресурси':'Räume / Ressourcen','Доступ до проєкту':'Projektzugriff','Міграція з іншої CRM':'Migration aus anderem CRM',
@@ -3211,7 +3211,7 @@ const I18N_DICT = {
     'Усі клієнти':'Todos los clientes','Лист очікування':'Lista de espera','Повторні візити':'Visitas repetidas','Чорний список':'Lista negra',
     'Замовлення':'Pedidos','Каса магазину':'Caja de la tienda','Сертифікати':'Certificados','Абонементи':'Bonos','Вітрина (сайт)':'Escaparate (sitio)',
     'Доходи і Витрати':'Ingresos y Gastos','Фінансовий центр':'Centro financiero','Грошовий потік':'Flujo de caja','Бюджети':'Presupuestos','Контрагенти':'Contrapartes','Звіти (P&L, RFM)':'Informes (P&L, RFM)','Конструктор звітів':'Generador de informes','Експорт CSV':'Exportar CSV',
-    'Центр повідомлень':'Centro de notificaciones','Сегменти':'Segmentos','Кампанії / Розсилки':'Campañas / Envíos','Авто-тригери':'Auto-disparadores','AI Відеостудія':'Estudio de vídeo IA','Нагадування (записи)':'Recordatorios (citas)','Акції / Промокоди':'Promos / Cupones','Відгуки':'Reseñas','Dikidi (онлайн-запис)':'Dikidi (reserva)',
+    'Центр повідомлень':'Centro de notificaciones','Сегменти':'Segmentos','Кампанії / Розсилки':'Campañas / Envíos','Авто-тригери':'Auto-disparadores','AI Відеостудія':'Estudio de vídeo IA','Нагадування (записи)':'Recordatorios (citas)','Акції / Промокоди':'Promos / Cupones','Відгуки':'Reseñas','Онлайн-запис':'Reserva online',
     'Майстри / Співробітники':'Personal / Estilistas','Зарплата':'Nómina','План місяця':'Plan del mes','Графіки роботи':'Horarios de trabajo',
     'Товари':'Productos','Залишки на складі':'Existencias','Закупівлі':'Compras','Інвентаризація':'Inventario','Розхідники':'Consumibles',
     'Профіль':'Perfil','Онлайн-запис':'Reserva online','Передплата':'Anticipo','Конфіденційність':'Privacidad','Бізнес-налаштування':'Ajustes del negocio','Кабінети / ресурси':'Salas / recursos','Доступ до проєкту':'Acceso al proyecto','Міграція з іншої CRM':'Migración desde otro CRM',
@@ -3226,7 +3226,7 @@ const I18N_DICT = {
     'Усі клієнти':'Tous les clients','Лист очікування':"Liste d'attente",'Повторні візити':'Visites répétées','Чорний список':'Liste noire',
     'Замовлення':'Commandes','Каса магазину':'Caisse boutique','Сертифікати':'Certificats','Абонементи':'Abonnements','Вітрина (сайт)':'Vitrine (site)',
     'Доходи і Витрати':'Revenus et Dépenses','Фінансовий центр':'Centre financier','Грошовий потік':'Flux de trésorerie','Бюджети':'Budgets','Контрагенти':'Contreparties','Звіти (P&L, RFM)':'Rapports (P&L, RFM)','Конструктор звітів':'Générateur de rapports','Експорт CSV':'Export CSV',
-    'Центр повідомлень':'Centre de notifications','Сегменти':'Segments','Кампанії / Розсилки':'Campagnes / Envois','Авто-тригери':'Déclencheurs auto','AI Відеостудія':'Studio vidéo IA','Нагадування (записи)':'Rappels (RDV)','Акції / Промокоди':'Promos / Codes','Відгуки':'Avis','Dikidi (онлайн-запис)':'Dikidi (réservation)',
+    'Центр повідомлень':'Centre de notifications','Сегменти':'Segments','Кампанії / Розсилки':'Campagnes / Envois','Авто-тригери':'Déclencheurs auto','AI Відеостудія':'Studio vidéo IA','Нагадування (записи)':'Rappels (RDV)','Акції / Промокоди':'Promos / Codes','Відгуки':'Avis','Онлайн-запис':'Réservation en ligne',
     'Майстри / Співробітники':'Personnel / Stylistes','Зарплата':'Salaire','План місяця':'Plan du mois','Графіки роботи':'Plannings de travail',
     'Товари':'Produits','Залишки на складі':'Stocks','Закупівлі':'Achats','Інвентаризація':'Inventaire','Розхідники':'Consommables',
     'Профіль':'Profil','Онлайн-запис':'Réservation en ligne','Передплата':'Acompte','Конфіденційність':'Confidentialité','Бізнес-налаштування':'Paramètres entreprise','Кабінети / ресурси':'Salles / ressources','Доступ до проєкту':'Accès au projet','Міграція з іншої CRM':'Migration depuis un autre CRM',
@@ -3241,7 +3241,7 @@ const I18N_DICT = {
     'Усі клієнти':'Tutti i clienti','Лист очікування':"Lista d'attesa",'Повторні візити':'Visite ripetute','Чорний список':'Lista nera',
     'Замовлення':'Ordini','Каса магазину':'Cassa negozio','Сертифікати':'Certificati','Абонементи':'Abbonamenti','Вітрина (сайт)':'Vetrina (sito)',
     'Доходи і Витрати':'Entrate e Uscite','Фінансовий центр':'Centro finanziario','Грошовий потік':'Flusso di cassa','Бюджети':'Budget','Контрагенти':'Controparti','Звіти (P&L, RFM)':'Report (P&L, RFM)','Конструктор звітів':'Generatore di report','Експорт CSV':'Esporta CSV',
-    'Центр повідомлень':'Centro notifiche','Сегменти':'Segmenti','Кампанії / Розсилки':'Campagne / Invii','Авто-тригери':'Auto-trigger','AI Відеостудія':'Studio video IA','Нагадування (записи)':'Promemoria (appuntamenti)','Акції / Промокоди':'Promo / Coupon','Відгуки':'Recensioni','Dikidi (онлайн-запис)':'Dikidi (prenotazione)',
+    'Центр повідомлень':'Centro notifiche','Сегменти':'Segmenti','Кампанії / Розсилки':'Campagne / Invii','Авто-тригери':'Auto-trigger','AI Відеостудія':'Studio video IA','Нагадування (записи)':'Promemoria (appuntamenti)','Акції / Промокоди':'Promo / Coupon','Відгуки':'Recensioni','Онлайн-запис':'Prenotazione online',
     'Майстри / Співробітники':'Staff / Stilisti','Зарплата':'Stipendio','План місяця':'Piano del mese','Графіки роботи':'Orari di lavoro',
     'Товари':'Prodotti','Залишки на складі':'Giacenze','Закупівлі':'Acquisti','Інвентаризація':'Inventario','Розхідники':'Materiali di consumo',
     'Профіль':'Profilo','Онлайн-запис':'Prenotazione online','Передплата':'Acconto','Конфіденційність':'Privacy','Бізнес-налаштування':'Impostazioni aziendali','Кабінети / ресурси':'Sale / risorse','Доступ до проєкту':'Accesso al progetto','Міграція з іншої CRM':'Migrazione da altro CRM',
@@ -3256,7 +3256,7 @@ const I18N_DICT = {
     'Усі клієнти':'Toți clienții','Лист очікування':'Listă de așteptare','Повторні візити':'Vizite repetate','Чорний список':'Listă neagră',
     'Замовлення':'Comenzi','Каса магазину':'Casa magazinului','Сертифікати':'Certificate','Абонементи':'Abonamente','Вітрина (сайт)':'Vitrină (site)',
     'Доходи і Витрати':'Venituri și Cheltuieli','Фінансовий центр':'Centru financiar','Грошовий потік':'Flux de numerar','Бюджети':'Bugete','Контрагенти':'Parteneri','Звіти (P&L, RFM)':'Rapoarte (P&L, RFM)','Конструктор звітів':'Generator de rapoarte','Експорт CSV':'Export CSV',
-    'Центр повідомлень':'Centru de notificări','Сегменти':'Segmente','Кампанії / Розсилки':'Campanii / Trimiteri','Авто-тригери':'Declanșatoare auto','AI Відеостудія':'Studio video AI','Нагадування (записи)':'Memento-uri (programări)','Акції / Промокоди':'Promoții / Coduri','Відгуки':'Recenzii','Dikidi (онлайн-запис)':'Dikidi (rezervare)',
+    'Центр повідомлень':'Centru de notificări','Сегменти':'Segmente','Кампанії / Розсилки':'Campanii / Trimiteri','Авто-тригери':'Declanșatoare auto','AI Відеостудія':'Studio video AI','Нагадування (записи)':'Memento-uri (programări)','Акції / Промокоди':'Promoții / Coduri','Відгуки':'Recenzii','Онлайн-запис':'Rezervare online',
     'Майстри / Співробітники':'Personal / Stiliști','Зарплата':'Salariu','План місяця':'Planul lunii','Графіки роботи':'Programe de lucru',
     'Товари':'Produse','Залишки на складі':'Stocuri','Закупівлі':'Achiziții','Інвентаризація':'Inventar','Розхідники':'Consumabile',
     'Профіль':'Profil','Онлайн-запис':'Rezervare online','Передплата':'Avans','Конфіденційність':'Confidențialitate','Бізнес-налаштування':'Setări de business','Кабінети / ресурси':'Cabinete / resurse','Доступ до проєкту':'Acces la proiect','Міграція з іншої CRM':'Migrare din alt CRM',
@@ -3271,7 +3271,7 @@ const I18N_DICT = {
     'Усі клієнти':'Tüm müşteriler','Лист очікування':'Bekleme listesi','Повторні візити':'Tekrar ziyaretler','Чорний список':'Kara liste',
     'Замовлення':'Siparişler','Каса магазину':'Mağaza kasası','Сертифікати':'Sertifikalar','Абонементи':'Üyelikler','Вітрина (сайт)':'Vitrin (site)',
     'Доходи і Витрати':'Gelir ve Gider','Фінансовий центр':'Finans merkezi','Грошовий потік':'Nakit akışı','Бюджети':'Bütçeler','Контрагенти':'Cari hesaplar','Звіти (P&L, RFM)':'Raporlar (P&L, RFM)','Конструктор звітів':'Rapor oluşturucu','Експорт CSV':'CSV dışa aktar',
-    'Центр повідомлень':'Bildirim merkezi','Сегменти':'Segmentler','Кампанії / Розсилки':'Kampanyalar / Gönderiler','Авто-тригери':'Otomatik tetikleyiciler','AI Відеостудія':'AI Video stüdyosu','Нагадування (записи)':'Hatırlatmalar (randevular)','Акції / Промокоди':'Promosyonlar / Kodlar','Відгуки':'Yorumlar','Dikidi (онлайн-запис)':'Dikidi (rezervasyon)',
+    'Центр повідомлень':'Bildirim merkezi','Сегменти':'Segmentler','Кампанії / Розсилки':'Kampanyalar / Gönderiler','Авто-тригери':'Otomatik tetikleyiciler','AI Відеостудія':'AI Video stüdyosu','Нагадування (записи)':'Hatırlatmalar (randevular)','Акції / Промокоди':'Promosyonlar / Kodlar','Відгуки':'Yorumlar','Онлайн-запис':'Online rezervasyon',
     'Майстри / Співробітники':'Personel / Stilistler','Зарплата':'Maaş','План місяця':'Aylık plan','Графіки роботи':'Çalışma programları',
     'Товари':'Ürünler','Залишки на складі':'Stok durumu','Закупівлі':'Satın alma','Інвентаризація':'Envanter','Розхідники':'Sarf malzemeleri',
     'Профіль':'Profil','Онлайн-запис':'Online rezervasyon','Передплата':'Ön ödeme','Конфіденційність':'Gizlilik','Бізнес-налаштування':'İşletme ayarları','Кабінети / ресурси':'Odalar / kaynaklar','Доступ до проєкту':'Proje erişimi','Міграція з іншої CRM':"Başka CRM'den geçiş",
@@ -4149,17 +4149,17 @@ async function loadSchMasters() {
   try {
     const r = await api('/api/schedule/masters?all=1');
     _schMastersCache = (r.items || r.masters || []);
-    const def = keep || '__all__'; // дефолт — зведений огляд усієї команди (як у DIKIDI)
+    const def = keep || '__all__'; // дефолт — зведений огляд усієї команди
     sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
       `<option value="__all__"${def==='__all__'?' selected':''}>👥 Усі майстри (огляд)</option>` +
       _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(def)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
     loadSchedule();
   } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }
 }
-// Зведений огляд графіка всіх майстрів — DIKIDI-style дошка (тільки перегляд)
+// Зведений огляд графіка всіх майстрів — день-сітка дошка (тільки перегляд)
 function _schAvColor(name){ let h=0; const s=String(name||'?'); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return `hsl(${h},55%,52%)`; }
 function _schMinutes(d){ if(!d||!d.start||!d.end) return 0; const [h1,m1]=d.start.split(':').map(Number),[h2,m2]=d.end.split(':').map(Number); let mins=(h2*60+m2)-(h1*60+m1); if(d.break_start&&d.break_end){const[b1,c1]=d.break_start.split(':').map(Number),[b2,c2]=d.break_end.split(':').map(Number); mins-=Math.max(0,(b2*60+c2)-(b1*60+c1));} return Math.max(0,mins); }
-// Місячна матриця графіка (як DIKIDI): рядки=майстри, колонки=дні місяця, клітинка=зміна.
+// Місячна матриця графіка: рядки=майстри, колонки=дні місяця, клітинка=зміна.
 const _SCH_WD = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб']; // index = getUTCDay()
 const _SCH_MON = ['січень','лютий','березень','квітень','травень','червень','липень','серпень','вересень','жовтень','листопад','грудень'];
 let _schMonth = null;      // 'YYYY-MM'
@@ -4311,7 +4311,7 @@ function schToggleFs(){
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){ const w=document.getElementById('schWrap'); if(w&&w.classList.contains('fs')) schToggleFs(); }
 });
-// Редагування зміни конкретного дня (модалка як у DIKIDI: «Робочий час» з/до)
+// Редагування зміни конкретного дня (модалка поточний час: «Робочий час» з/до)
 function schEditDay(mid, date){
   const m = (_schMonthData && _schMonthData.items || []).find(x => String(x.id)===String(mid)); if (!m) return;
   const d = (m.days||[]).find(x => x.date===date) || { off:true };
@@ -7170,7 +7170,7 @@ function renderJournalDay(container, data) {
   let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
   appts.forEach(a => { minM=Math.min(minM,_hm(a.starts_at)); maxM=Math.max(maxM,_hm(a.ends_at)); });
   minM = Math.floor(minM/60)*60; maxM = Math.ceil(maxM/60)*60;     // вирівнюємо по годинах
-  const slots = (maxM-minM)/15;                                    // сітка по 15 хв (як у DIKIDI)
+  const slots = (maxM-minM)/15;                                    // сітка по 15 хв
   const colH = (maxM-minM)*J_PX_PER_MIN;
 
   const apptByMaster = {};
@@ -8463,7 +8463,7 @@ async function openMasterCard(id){
     _mcRenderShell();
   } catch(e){ document.getElementById('masterCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
 }
-// ── Каркас: шапка + вкладки + контент (DIKIDI-стиль) ──
+// ── Каркас: шапка + вкладки + контент  ──
 const _MC_TABS = [
   ['profile','Профіль'], ['schedule','Графік'], ['services','Послуги'],
   ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
