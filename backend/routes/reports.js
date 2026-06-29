@@ -210,13 +210,16 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
               ROUND(recency_days)::int AS recency_days,
               frequency, monetary,
               r_score, f_score, m_score,
+              -- Сегменти за РЕАЛЬНИМИ днями і візитами (абсолютні пороги),
+              -- а не за відносними процентилями NTILE — інакше клієнт, що був 2 тижні
+              -- тому, міг потрапити в «під загрозою» лише тому, що інші приходили вчора.
               CASE
-                WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4 THEN 'champion'
-                WHEN r_score >= 3 AND f_score >= 3                  THEN 'loyal'
-                WHEN r_score >= 4 AND f_score <= 2                  THEN 'new'
-                WHEN r_score <= 2 AND f_score >= 3                  THEN 'at_risk'
-                WHEN r_score <= 2 AND f_score <= 2                  THEN 'lost'
-                ELSE 'regular'
+                WHEN frequency >= 4 AND recency_days <= 45  THEN 'champion'  -- часто + недавно
+                WHEN frequency >= 2 AND recency_days <= 75  THEN 'loyal'     -- повторні, активні
+                WHEN frequency = 1 AND recency_days <= 45   THEN 'new'       -- перший візит недавно
+                WHEN frequency >= 2 AND recency_days <= 180  THEN 'at_risk'  -- були постійними, зникають
+                WHEN recency_days > 180                      THEN 'lost'     -- понад пів року немає
+                ELSE 'regular'                                               -- разовий, давненько
               END AS segment
          FROM scored
          ORDER BY monetary DESC

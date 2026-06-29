@@ -490,20 +490,20 @@ async function loadReports(){
       '<div class="empty">Даних за період немає</div>';
     const rfm = await api('/api/reports/rfm');
     const RSEG = {
-      champion:{l:'Чемпіони',c:'ok',d:'Найкращі: ходять часто, недавно, витрачають багато'},
-      loyal:{l:'Лояльні',c:'ok',d:'Регулярні постійні клієнти'},
-      new:{l:'Новачки',c:'info',d:'Прийшли недавно, ще мало візитів'},
-      at_risk:{l:'Під загрозою',c:'warn',d:'Були активні, але давно не приходили — час повертати'},
-      lost:{l:'Втрачені',c:'dng',d:'Давно і рідко — майже пішли'},
-      regular:{l:'Звичайні',c:'gray',d:'Середні показники'},
+      champion:{l:'Чемпіони',c:'ok',d:'Ходять часто і були нещодавно (4+ візити, до 1,5 міс)',a:'Бережіть: VIP-увага, бонус, ранній доступ до акцій'},
+      loyal:{l:'Лояльні',c:'ok',d:'Постійні, були в останні ~2,5 місяці',a:'Тримайте: програма лояльності, персональні пропозиції'},
+      new:{l:'Новачки',c:'info',d:'Перший візит за останні 1,5 місяця',a:'Закріпіть: подзвоніть, запросіть на 2-й візит зі знижкою'},
+      at_risk:{l:'Під загрозою',c:'warn',d:'Були постійними, але немає 2,5–6 місяців',a:'Повертайте: «скучили» + спецпропозиція, поки не пішли'},
+      lost:{l:'Втрачені',c:'dng',d:'Понад пів року не приходили',a:'Реанімація: вигідна акція — або більше не турбувати'},
+      regular:{l:'Звичайні',c:'gray',d:'Разовий клієнт, був давненько',a:'Нагадайте про послугу — спробуйте повернути'},
     };
-    const rsegL=k=>(RSEG[k]||{l:k}).l, rsegC=k=>(RSEG[k]||{c:'info'}).c, rsegD=k=>(RSEG[k]||{}).d||'';
+    const rsegL=k=>(RSEG[k]||{l:k}).l, rsegC=k=>(RSEG[k]||{c:'info'}).c, rsegD=k=>(RSEG[k]||{}).d||'', rsegA=k=>(RSEG[k]||{}).a||'';
     const rfmLegend = '<div style="font-size:12px;color:#888;margin-bottom:10px;line-height:1.7">'+
-      '<b>RFM</b> — сегментація клієнтів за поведінкою. <b>R</b> — як давно був (1=давно…5=недавно), <b>F</b> — як часто (1=рідко…5=часто), <b>M</b> — скільки витратив (1=мало…5=багато).<br>'+
-      Object.entries(RSEG).map(([k,v])=>`<span class="pill ${v.c}">${v.l}</span> — ${v.d}.`).join('<br>')+'</div>';
+      '<b>Сегменти клієнтів</b> — автоматично за тим, <b>як давно</b> клієнт був і <b>скільки разів</b> приходив. Натисніть на рядок — відкриється картка.<br>'+
+      Object.entries(RSEG).map(([k,v])=>`<span class="pill ${v.c}">${v.l}</span> — ${v.d}. <i>→ ${v.a}.</i>`).join('<br>')+'</div>';
     const sumHtml = Object.entries(rfm.summary).sort((a,b)=>b[1].count-a[1].count).map(([k,v])=>`<span class="pill ${rsegC(k)}" title="${rsegD(k)}">${rsegL(k)}: ${v.count} клієнт. · ${(+v.revenue).toFixed(0)} ₴</span> `).join('');
     document.getElementById('r-rfm').innerHTML = rfmLegend + `<div style="margin-bottom:10px">${sumHtml}</div>` + (rfm.items.length ?
-      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th title="Давність / Частота / Сума, 1-5">R/F/M</th><th>Днів тому</th><th>Візитів</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,100).map(r=>`<tr style="cursor:pointer" onclick="openClientCard(${r.id})" title="Картка клієнта"><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${rsegC(r.segment)}" title="${rsegD(r.segment)}">${rsegL(r.segment)}</span></td><td>${r.r_score}/${r.f_score}/${r.m_score}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
+      `<div style="max-height:400px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Сегмент</th><th>Що робити</th><th>Був днів тому</th><th>Візитів</th><th>Сума</th></tr></thead><tbody>${rfm.items.slice(0,100).map(r=>`<tr style="cursor:pointer" onclick="openClientCard(${r.id})" title="Картка клієнта"><td>${r.name||fmtPhone(r.phone)}</td><td><span class="pill ${rsegC(r.segment)}" title="${rsegD(r.segment)}">${rsegL(r.segment)}</span></td><td style="font-size:11px;color:#888">${rsegA(r.segment)}</td><td>${r.recency_days}</td><td>${r.frequency}</td><td>${(+r.monetary).toFixed(0)} ₴</td></tr>`).join('')}</tbody></table></div>` : '');
     const ch = await api('/api/reports/churn?days=90');
     document.getElementById('r-churn').innerHTML = ch.items.length ?
       `<table><thead><tr><th>Клієнт</th><th>Останній візит</th><th>Днів тому</th><th>Всього візитів</th></tr></thead><tbody>${ch.items.slice(0,50).map(r=>`<tr style="cursor:pointer" onclick="openClientCard(${r.id})" title="Картка клієнта"><td>${r.name||fmtPhone(r.phone)}</td><td>${new Date(r.last_visit).toLocaleDateString('uk')}</td><td><b>${Math.round(+r.days_since)}</b></td><td>${r.total_visits}</td></tr>`).join('')}</tbody></table>` :
@@ -536,11 +536,11 @@ async function loadReports(){
         scales:{x:{ticks:{callback:v=>v.toLocaleString('uk')}}} }
     });
 
-    const segColors = {champion:'#7B9E89', loyal:'#C9A24B', potential:'#8FB3CC', at_risk:'#E0A458', lost:'#C46B6B', new:'#A99ACb'};
+    const segColors = {champion:'#7B9E89', loyal:'#C9A24B', potential:'#8FB3CC', at_risk:'#E0A458', lost:'#C46B6B', new:'#A99ACb', regular:'#B8BCC4'};
     const segEntries = Object.entries(rfm.summary||{});
     drawChart('chart-rfm', {
       type:'doughnut',
-      data:{ labels: segEntries.map(([k])=>k),
+      data:{ labels: segEntries.map(([k])=>rsegL(k)),
         datasets:[{ data:segEntries.map(([,v])=>v.count), backgroundColor:segEntries.map(([k])=>segColors[k]||'#bbb'), borderWidth:2, borderColor:'#fff' }]},
       options:{ responsive:true, maintainAspectRatio:false, cutout:'58%', plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,font:{size:10}}}} }
     });
