@@ -142,6 +142,13 @@
 
         var html = '';
 
+        // Пояснення (заметка #80: «незрозуміло що це»)
+        html += '<div style="background:#f0f4ff;border:1px solid #d8e0ff;border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.6;color:#33415c">' +
+          '<b>Конструктор форм</b> — анкети для клієнтів: запис на консультацію, опитування якості, згода на обробку даних, бриф перед процедурою. ' +
+          'Готову форму отримуєте посиланням — клієнт заповнює, відповіді збираються тут. ' +
+          (forms.length ? '' : 'Своїх форм ще немає — оберіть готовий <b>шаблон нижче</b> або натисніть «Нова форма».') +
+          '</div>';
+
         // KPI-картки
         var totalSubs = forms.reduce(function (s, f) { return s + (Number(f.submit_count) || 0); }, 0);
         var published = forms.filter(function (f) { return f.status === 'published'; }).length;

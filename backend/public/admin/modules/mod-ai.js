@@ -139,6 +139,10 @@
     group: 'analytics',
     icon: 'recommend',
     section:
+      '<div style="background:#f0f4ff;border:1px solid #d8e0ff;border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.6;color:#33415c">' +
+        '<b>AI-рекомендації</b> — система підказує клієнтам супутні послуги/товари (допродаж) і показує що працює: покази, кліки, конверсія, додаткова виручка. ' +
+        'Метрики накопичуються по мірі показів у онлайн-записі та чеках. Якщо тут нулі — рекомендації ще не показувались клієнтам.' +
+      '</div>' +
       '<div id="aireco-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px"></div>' +
       '<h3 style="margin:8px 0 10px;font-size:15px;font-weight:700">Популярні послуги</h3>' +
       '<div id="aireco-popular" class="card" style="padding:0;overflow:auto"></div>',
