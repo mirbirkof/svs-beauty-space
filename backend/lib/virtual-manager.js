@@ -10,6 +10,7 @@
 const { getPool } = require('../db-pg');
 const hub = require('./notification-hub');
 const { getSetting, setSetting } = require('./settings');
+const { shiftDaysByMaster } = require('./schedule-month');
 
 const TENANT = '00000000-0000-0000-0000-000000000000';
 const BASE = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api-backup.onrender.com';
@@ -91,4 +92,82 @@ async function masterDailySchedules(pool = getPool()) {
   return sent;
 }
 
-module.exports = { autoReviewRequests, masterDailySchedules };
+// ── C) Ранковий звіт собственнику ────────────────────────────────────────
+// Щоранку: вчорашня каса (нал/безнал, послуги/товари, чеків), оборот місяця
+// проти плану (%), записи на сьогодні. Шлеться в ADMIN_TG_CHAT раз на добу.
+function _money(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
+
+async function ownerDailyReport(pool = getPool()) {
+  const chat = process.env.ADMIN_TG_CHAT;
+  if (!chat) return 0;
+  const today = kyivDate();
+  if ((await getSetting('vm_owner_report_sent', null)) === today) return 0; // вже слали сьогодні
+
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+
+  // Вчора (київський день)
+  const yRows = await q(
+    `SELECT category, method, COALESCE(SUM(amount),0)::numeric v, COUNT(*)::int n
+       FROM cash_operations
+      WHERE type='in' AND category IN ('sale_service','sale_product')
+        AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date - 1
+      GROUP BY category, method`);
+  let ySvc = 0, yProd = 0, yCash = 0, yCard = 0, yChecks = 0;
+  for (const r of yRows) {
+    const v = Number(r.v);
+    if (r.category === 'sale_service') ySvc += v; else yProd += v;
+    if (r.method === 'cash') yCash += v; else yCard += v;
+    yChecks += r.n;
+  }
+  const yTotal = ySvc + yProd;
+
+  // Місяць: оборот (факт)
+  const mRow = (await q(
+    `SELECT COALESCE(SUM(amount),0)::numeric v
+       FROM cash_operations
+      WHERE type='in' AND category IN ('sale_service','sale_product')
+        AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`))[0] || { v: 0 };
+  const mRevenue = Number(mRow.v);
+
+  // Місяць: план = Σ по майстрах (plan_per_shift × змін у графіку)
+  let mPlan = 0;
+  try {
+    const now = new Date();
+    const ym = kyivDate().slice(0, 7);
+    const [year, month] = ym.split('-').map(Number);
+    const plans = await q(
+      `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
+         FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true
+        WHERE mp.year=$1 AND mp.month=$2`, [year, month]);
+    const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map());
+    for (const p of plans) {
+      const auto = p.auto_from_shifts;
+      mPlan += auto ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total);
+    }
+  } catch (_) { mPlan = 0; }
+  const pct = mPlan > 0 ? Math.round(mRevenue / mPlan * 100) : null;
+
+  // Сьогодні: записів заплановано
+  const tRow = (await q(
+    `SELECT COUNT(*)::int n FROM appointments
+      WHERE status NOT IN ('cancelled','noshow')
+        AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`))[0] || { n: 0 };
+
+  const planLine = pct != null
+    ? `📈 <b>Місяць:</b> ${_money(mRevenue)} з ${_money(mPlan)} плану (<b>${pct}%</b>)`
+    : `📈 <b>Місяць:</b> ${_money(mRevenue)} обороту`;
+  const body =
+    `☀️ <b>Ранковий звіт</b>\n\n` +
+    `💰 <b>Вчора в касі: ${_money(yTotal)}</b> (${yChecks} чек.)\n` +
+    `   • Послуги ${_money(ySvc)} · Товари ${_money(yProd)}\n` +
+    `   • Готівка ${_money(yCash)} · Безнал ${_money(yCard)}\n\n` +
+    `${planLine}\n\n` +
+    `📅 <b>Сьогодні записів:</b> ${tRow.n}`;
+
+  await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
+    category: 'transactional', priority: 'normal', source: 'vm-owner-report', dedupKey: `ownerrep:${today}` });
+  await setSetting('vm_owner_report_sent', today);
+  return 1;
+}
+
+module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport };
