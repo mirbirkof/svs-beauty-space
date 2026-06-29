@@ -80,11 +80,14 @@ router.post('/assistant', requirePerm('reports.finance'), async (req, res) => {
     if (!question) return res.status(400).json({ error: 'no_message' });
 
     const catalog = ASSISTANT_TOOLS.map(n => `- ${n}: ${TOOLS[n].description}`).join('\n');
-    const PAGES = { dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', clients:'Клієнти', services:'Послуги', orders:'Замовлення', finance:'Доходи і витрати', fincenter:'Фінансовий центр', cashflow:'Грошовий потік', budgets:'Бюджети', payroll:'Зарплата', plan:'План місяця', products:'Товари', stock:'Склад', purchasing:'Закупівлі', reviews:'Відгуки', promos:'Акції', reminders:'Нагадування', shifts:'Графіки', sync:'BeautyPro синхро', settings:'Налаштування' };
+    const PAGES = { dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', services:'Послуги', svccats:'Категорії послуг', clients:'Усі клієнти', waitlist:'Лист очікування', repeat:'Повторні візити', blacklist:'Чорний список', orders:'Замовлення', giftcerts:'Сертифікати', subscriptions:'Абонементи', finance:'Доходи і витрати', fincenter:'Фінансовий центр', cashflow:'Грошовий потік', budgets:'Бюджети', contractors:'Контрагенти', reminders:'Нагадування', promos:'Акції / Промокоди', reviews:'Відгуки', payroll:'Зарплата', plan:'План місяця', products:'Товари', stock:'Залишки на складі', purchasing:'Закупівлі', suppliers:'Постачальники', qcontrol:'Контроль якості', callcenter:'Колл-центр', viber:'Viber', branding:'Брендинг', mobileapp:'Мобільний застосунок', sync:'BeautyPro синхро', mysub:'Моя підписка', settings:'Налаштування' };
+    // Розділи, що відкриваються окремим вікном (embed). Значення: [назва, url]
+    const EMBEDS = { cashbox:['Каса магазину','/admin/crm-extra.html#cashbox'], reports:['Звіти (P&L, RFM)','/admin/crm-extra.html#reports'], bi:['Конструктор звітів','/admin/bi.html'], exportcsv:['Експорт CSV','/admin/export.html'], masters:['Майстри / Співробітники','/admin/crm-extra.html#users'], inventory:['Інвентаризація','/admin/crm-extra.html#inventory'], msgcenter:['Центр повідомлень','/admin/crm-marketing.html#center'], segments:['Сегменти','/admin/crm-marketing.html#segments'], campaigns:['Кампанії / Розсилки','/admin/crm-marketing.html#campaigns'], triggers:['Авто-тригери','/admin/crm-marketing.html#triggers'], videostudio:['AI Відеостудія','/admin/video-studio.html'], integrations:['Інтеграції','/admin/integrations.html'], audit:['Аудит','/admin/crm-extra.html#audit'], monitoring:['Системний статус','/admin/monitoring.html'], branches:['Управління магазинами','/admin/crm-extra.html#branches'], access:['Доступ до проєкту','/admin/crm-extra.html#users-access'], migrate:['Міграція з іншої CRM','/admin/crm-migrate.html'], checklist:['Чек-лист зміни','/admin/shift-checklist.html'] };
     const system = `Ти — помічник керуючого салону краси в CRM. Відповідай українською, коротко, цифрами.
 Інструменти:
 ${catalog}
 Сторінки для відкриття (open_page): ${Object.entries(PAGES).map(([k,v])=>`${k}=${v}`).join(', ')}
+Розділи в окремому вікні (open_page тим самим форматом): ${Object.entries(EMBEDS).map(([k,v])=>`${k}=${v[0]}`).join(', ')}
 Працюй покроково. Відповідай ЛИШЕ валідним JSON:
 {"action":"tool","tool":"<імʼя>","args":{...}}  — викликати інструмент
 {"action":"open_page","page":"<ключ>","response":"<коротко що відкрив>"}  — відкрити сторінку CRM на екрані (коли просять «відкрий/покажи/перейди»)
@@ -105,8 +108,9 @@ ${catalog}
       const d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
       if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
       if (d.action === 'final') { answer = d.response || ''; break; }
-      if (d.action === 'open_page' && d.page && PAGES[d.page]) {
-        return res.json({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` });
+      if (d.action === 'open_page' && d.page) {
+        if (PAGES[d.page]) return res.json({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` });
+        if (EMBEDS[d.page]) return res.json({ navigate: { embed: EMBEDS[d.page][1], label: EMBEDS[d.page][0] }, answer: d.response || `Відкриваю «${EMBEDS[d.page][0]}»` });
       }
       if (d.action === 'tool') {
         const t = TOOLS[d.tool];

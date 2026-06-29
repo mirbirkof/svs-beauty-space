@@ -10100,6 +10100,7 @@ async function aiFabSend(){
     document.getElementById('aiFabWait')?.closest('.bot')?.remove();
     if(r.pending){ window._aiFabPending=r.pending;
       _aiAdd('bot',`Підтвердьте: <i>${_aiEsc(r.pending.label)}</i><br><button onclick="aiFabConfirm(true)" style="margin-top:6px;border:none;background:#7c5cff;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Так</button> <button onclick="aiFabConfirm(false)" style="border:1px solid #e3e6ef;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Ні</button>`);
+    } else if(r.navigate && r.navigate.embed){ const ans=r.answer||('Відкриваю «'+r.navigate.label+'»'); _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); try{ openEmbed(r.navigate.embed,(r.navigate.label||'')); }catch(_){ location.href=r.navigate.embed; }
     } else if(r.navigate && r.navigate.page){ const ans=r.answer||('Відкриваю «'+r.navigate.label+'»'); _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); _aiNavigate(r.navigate.page);
     } else { const ans=r.answer||r.error||'—'; _aiAdd('bot',_aiEsc(ans)); window._aiHist.push({role:'assistant',text:ans}); _aiSaveLog(); }
   }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
