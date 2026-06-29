@@ -240,6 +240,73 @@ const TOOLS = {
       return { count: rows.length, clients: rows.map(r => ({ name: r.name, phone: r.phone })) };
     },
   },
+
+  get_masters: {
+    category: 'manager',
+    description: 'Список активних майстрів (id + імʼя) — щоб знайти master_id за іменем. Параметри: {query?: string}.',
+    parameters_schema: { type: 'object', properties: { query: { type: 'string' } } },
+    is_destructive: false,
+    async impl(args) {
+      const f = args.query ? `%${String(args.query).toLowerCase()}%` : null;
+      const rows = await q(`SELECT id, name FROM masters WHERE COALESCE(active,true)=true ${f ? 'AND lower(name) LIKE $1' : ''} ORDER BY name LIMIT 60`, f ? [f] : []).catch(() => []);
+      return { masters: rows.map(m => ({ id: m.id, name: m.name })) };
+    },
+  },
+
+  // ── Управлінські дії (потребують підтвердження) ──
+  create_expense: {
+    category: 'manager',
+    description: 'Внести витрату в касу. Параметри: {amount: number, category?: "rent"|"marketing"|"utilities"|"purchase"|"supplies"|"other", description?: string}. ПОТРЕБУЄ підтвердження.',
+    parameters_schema: { type: 'object', properties: { amount: { type: 'number' }, category: { type: 'string' }, description: { type: 'string' } }, required: ['amount'] },
+    is_destructive: true,
+    async impl(args) {
+      const amount = Number(args.amount);
+      if (!(amount > 0)) return { error: 'amount має бути > 0' };
+      const cats = ['rent', 'marketing', 'utilities', 'purchase', 'supplies', 'salary', 'other'];
+      const category = cats.includes(args.category) ? args.category : 'other';
+      const r = await q(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, description)
+         VALUES (NULL,'out',$1,$2,'cash','assistant',$3) RETURNING id`,
+        [category, amount, args.description || 'Витрата (помічник)']).catch(e => ({ error: e.message }));
+      return Array.isArray(r) && r[0] ? { ok: true, id: r[0].id, amount, category } : { error: (r && r.error) || 'не вдалось' };
+    },
+  },
+
+  add_bonus: {
+    category: 'manager',
+    description: 'Нарахувати премію майстру. Параметри: {master_id: number, amount: number, reason?: string}. Спочатку знайди master_id через get_masters. ПОТРЕБУЄ підтвердження.',
+    parameters_schema: { type: 'object', properties: { master_id: { type: 'number' }, amount: { type: 'number' }, reason: { type: 'string' } }, required: ['master_id', 'amount'] },
+    is_destructive: true,
+    async impl(args) {
+      const mid = parseInt(args.master_id, 10), amount = Number(args.amount);
+      if (!mid || !(amount > 0)) return { error: 'master_id і amount обовʼязкові' };
+      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch(() => []))[0];
+      if (!m) return { error: 'майстра не знайдено' };
+      const r = await q(
+        `INSERT INTO payroll_bonuses (master_id, master_name, amount, kind, reason, bonus_date)
+         VALUES ($1,$2,$3,'premium',$4,CURRENT_DATE) RETURNING id`,
+        [mid, m.name, amount, args.reason || 'Премія (помічник)']).catch(e => ({ error: e.message }));
+      return Array.isArray(r) && r[0] ? { ok: true, id: r[0].id, master: m.name, amount } : { error: (r && r.error) || 'не вдалось' };
+    },
+  },
+
+  add_penalty: {
+    category: 'manager',
+    description: 'Нарахувати штраф майстру. Параметри: {master_id: number, amount: number, reason?: string}. Спочатку знайди master_id через get_masters. ПОТРЕБУЄ підтвердження.',
+    parameters_schema: { type: 'object', properties: { master_id: { type: 'number' }, amount: { type: 'number' }, reason: { type: 'string' } }, required: ['master_id', 'amount'] },
+    is_destructive: true,
+    async impl(args) {
+      const mid = parseInt(args.master_id, 10), amount = Number(args.amount);
+      if (!mid || !(amount > 0)) return { error: 'master_id і amount обовʼязкові' };
+      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch(() => []))[0];
+      if (!m) return { error: 'майстра не знайдено' };
+      const r = await q(
+        `INSERT INTO payroll_penalties (master_id, master_name, amount, kind, reason, penalty_date)
+         VALUES ($1,$2,$3,'manual',$4,CURRENT_DATE) RETURNING id`,
+        [mid, m.name, amount, args.reason || 'Штраф (помічник)']).catch(e => ({ error: e.message }));
+      return Array.isArray(r) && r[0] ? { ok: true, id: r[0].id, master: m.name, amount } : { error: (r && r.error) || 'не вдалось' };
+    },
+  },
 };
 
 /** Upsert каталога инструментов в ai_agent_tools (вызывается при старте). */
