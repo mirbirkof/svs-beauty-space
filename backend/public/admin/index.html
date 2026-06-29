@@ -6935,6 +6935,10 @@ async function loadJournal(silent) {
   if (!silent) container.innerHTML = '<div class="empty"><span class="material-icons-round">event_note</span>Завантаження…</div>';
   // Зберігаємо позицію прокрутки, щоб тихе оновлення не стрибало вгору
   const _scrollY = window.scrollY, _scTop = container.scrollTop;
+  // Горизонтальна прокрутка журналу живе на .jgrid (overflow-x:auto), не на контейнері.
+  // Зберігаємо її окремо — інакше тихе оновлення кожні 15с скидає журнал у початок.
+  const _prevGrid = container.querySelector('.jgrid');
+  const _scLeft = _prevGrid ? _prevGrid.scrollLeft : 0;
   try {
     if (journalMode === 'week') return renderJournalWeek(container, date);
     const data = await api('/api/schedule/journal?date=' + date);
@@ -6942,7 +6946,7 @@ async function loadJournal(silent) {
     if (data.error) { container.innerHTML = `<div class="empty"><span class="material-icons-round">error</span>${data.error}</div>`; return; }
     if (journalMode === 'list') renderJournalList(container, data);
     else renderJournalDay(container, data);
-    if (silent) { try { window.scrollTo(0, _scrollY); container.scrollTop = _scTop; } catch(_){} }
+    if (silent) { try { window.scrollTo(0, _scrollY); container.scrollTop = _scTop; const _ng = container.querySelector('.jgrid'); if (_ng) _ng.scrollLeft = _scLeft; } catch(_){} }
   } catch (e) {
     container.innerHTML = '<div class="empty"><span class="material-icons-round">error</span>Помилка завантаження журналу</div>';
   }
