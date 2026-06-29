@@ -105,7 +105,11 @@ ${catalog}
     let answer = null, pending = null;
     for (let step = 0; step < 6; step++) {
       const prompt = system + '\n\n' + trail.join('\n\n') + '\n\nASSISTANT (тільки JSON):';
-      const d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
+      let d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
+      // Надійність: LLM іноді віддає невалідний JSON/текст → один повтор з жорсткою вимогою формату
+      if (!d || !d.action) {
+        d = await llm.askJSON(prompt + '\n\nУВАГА: поверни РІВНО один валідний JSON-обʼєкт без markdown, без пояснень.', { system, maxTokens: 900, ...cfg }).catch(() => null);
+      }
       if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
       if (d.action === 'final') { answer = d.response || ''; break; }
       if (d.action === 'open_page' && d.page) {
