@@ -1148,6 +1148,14 @@ select.input { background:var(--card); }
           <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
           <div id="mgrStaff" style="margin-top:16px;overflow-x:auto"></div>
           <div id="mgrOnboard" style="margin-top:16px"></div>
+          <div style="margin-top:16px;border-top:1px solid var(--border,#eee);padding-top:14px">
+            <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px">💬 Помічник — спитайте про касу, план, заявки, кого дозаписати</div>
+            <div id="asstLog" style="max-height:240px;overflow-y:auto;margin-bottom:8px;font-size:13.5px;line-height:1.5"></div>
+            <div style="display:flex;gap:8px">
+              <input id="asstInput" class="input" style="flex:1" placeholder="напр. «каса за вчора» або «кого дозаписати»" onkeydown="if(event.key==='Enter')asstSend()">
+              <button class="btn btn-primary" onclick="asstSend()">Спитати</button>
+            </div>
+          </div>
         </div>
 
         <div class="kpi-grid" id="kpi"></div>
@@ -4769,6 +4777,24 @@ async function obSeed(mid) {
 async function obToggle(id, done, mid) {
   try { await api('/api/onboarding/item/' + id, { method: 'PATCH', body: JSON.stringify({ status: done ? 'done' : 'pending' }) }); loadOnboarding(mid); }
   catch (e) { toast(e.message, 'error'); }
+}
+async function asstSend() {
+  const inp = document.getElementById('asstInput'), log = document.getElementById('asstLog');
+  if (!inp || !log) return;
+  const msg = inp.value.trim(); if (!msg) return;
+  inp.value = '';
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  log.innerHTML += `<div style="margin:6px 0"><b>Ви:</b> ${esc(msg)}</div><div id="asstWait" style="color:var(--text-secondary);margin:6px 0">Помічник думає…</div>`;
+  log.scrollTop = log.scrollHeight;
+  try {
+    const r = await api('/api/manager/assistant', { method: 'POST', body: JSON.stringify({ message: msg }) });
+    document.getElementById('asstWait')?.remove();
+    log.innerHTML += `<div style="margin:6px 0;padding:8px 10px;background:var(--bg,#f7f8fb);border-radius:10px"><b>Помічник:</b> ${esc(r.answer || r.error || '—')}</div>`;
+  } catch (e) {
+    document.getElementById('asstWait')?.remove();
+    log.innerHTML += `<div style="margin:6px 0;color:#dc2626">Помилка: ${esc(e.message)}</div>`;
+  }
+  log.scrollTop = log.scrollHeight;
 }
 async function loadStaffMetrics() {
   const box = document.getElementById('mgrStaff');

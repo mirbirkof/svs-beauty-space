@@ -5,9 +5,51 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { shiftDaysByMaster } = require('../lib/schedule-month');
+const llm = require('../lib/llm');
+const { TOOLS } = require('../lib/agent-tools');
 
 const router = express.Router();
 const pool = getPool();
+
+// Помічник керуючого (v1): командний чат тільки з читаючими інструментами.
+// ReAct-цикл, без деструктивних дій — безпечно. Дії з підтвердженням — наступний крок.
+const ASSISTANT_TOOLS = ['get_cashbox', 'get_month_plan', 'get_closure', 'get_clients_to_rebook', 'get_services', 'get_client'];
+
+router.post('/assistant', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    if (!llm.available()) return res.status(503).json({ error: 'ai_unconfigured', answer: 'AI поки не налаштований.' });
+    const question = String((req.body && req.body.message) || '').trim().slice(0, 500);
+    if (!question) return res.status(400).json({ error: 'no_message' });
+
+    const catalog = ASSISTANT_TOOLS.map(n => `- ${n}: ${TOOLS[n].description}`).join('\n');
+    const system = `Ти — помічник керуючого салону краси в CRM. Відповідай українською, коротко, цифрами.
+Маєш інструменти (тільки читання):
+${catalog}
+Працюй покроково. Відповідай ЛИШЕ валідним JSON:
+{"action":"tool","tool":"<імʼя>","args":{...}}  — викликати інструмент
+{"action":"final","response":"<відповідь людині>"}  — фінальна відповідь
+Якщо запит про дію, що змінює дані (створити/провести/видалити) — поясни, що поки вмієш лише показувати, і запропонуй що саме показати.`;
+
+    const trail = [`USER: ${question}`];
+    let answer = null;
+    for (let step = 0; step < 5; step++) {
+      const prompt = system + '\n\n' + trail.join('\n\n') + '\n\nASSISTANT (тільки JSON):';
+      const d = await llm.askJSON(prompt, { system, maxTokens: 900 }).catch(() => null);
+      if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
+      if (d.action === 'final') { answer = d.response || ''; break; }
+      if (d.action === 'tool') {
+        const t = TOOLS[d.tool];
+        if (!t || !ASSISTANT_TOOLS.includes(d.tool)) { trail.push(`OBSERVATION: інструмент недоступний.`); continue; }
+        let out; try { out = await t.impl(d.args || {}); } catch (e) { out = { error: e.message }; }
+        trail.push(`ASSISTANT: ${JSON.stringify(d)}`);
+        trail.push(`OBSERVATION: ${JSON.stringify(out).slice(0, 1500)}`);
+        continue;
+      }
+      break;
+    }
+    res.json({ question, answer: answer || 'Готово.' });
+  } catch (e) { console.error('[manager/assistant]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
 
 router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
   try {

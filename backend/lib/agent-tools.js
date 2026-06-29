@@ -176,6 +176,70 @@ const TOOLS = {
       return { error: (r && r.error) || 'не вдалось створити запис' };
     },
   },
+
+  // ── Управлінські (читання, безпечні) ──
+  get_cashbox: {
+    category: 'manager',
+    description: 'Каса за день: послуги/товари, готівка/безнал, чеків. Параметри: {day?: "today"|"yesterday" (за замовч. today)}.',
+    parameters_schema: { type: 'object', properties: { day: { type: 'string', enum: ['today', 'yesterday'] } } },
+    is_destructive: false,
+    async impl(args) {
+      const off = args.day === 'yesterday' ? 1 : 0;
+      const rows = await q(
+        `SELECT category, method, COALESCE(SUM(amount),0)::numeric v, COUNT(*)::int n
+           FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
+            AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date - ${off}
+          GROUP BY category, method`).catch(() => []);
+      let svc = 0, prod = 0, cash = 0, card = 0, checks = 0;
+      for (const r of rows) { const v = Number(r.v); if (r.category === 'sale_service') svc += v; else prod += v; if (r.method === 'cash') cash += v; else card += v; checks += r.n; }
+      return { day: args.day || 'today', total: Math.round(svc + prod), services: Math.round(svc), products: Math.round(prod), cash: Math.round(cash), card: Math.round(card), checks };
+    },
+  },
+
+  get_month_plan: {
+    category: 'manager',
+    description: 'Оборот місяця проти плану і % виконання. Без параметрів.',
+    parameters_schema: { type: 'object', properties: {} },
+    is_destructive: false,
+    async impl() {
+      const rev = (await q(`SELECT COALESCE(SUM(amount),0)::numeric v FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`).catch(() => [{ v: 0 }]))[0];
+      const revenue = Number(rev.v);
+      const ym = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }).slice(0, 7);
+      const [y, mo] = ym.split('-').map(Number);
+      const plans = await q(`SELECT mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts, mp.master_id FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true WHERE mp.year=$1 AND mp.month=$2`, [y, mo]).catch(() => []);
+      let plan = 0;
+      try { const { shiftDaysByMaster } = require('./schedule-month'); const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map()); for (const p of plans) plan += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total); } catch (_) {}
+      return { revenue: Math.round(revenue), plan: Math.round(plan), pct: plan > 0 ? Math.round(revenue / plan * 100) : null };
+    },
+  },
+
+  get_closure: {
+    category: 'manager',
+    description: 'Закриття заявок за місяць (% обслужених, ціль 80%). Без параметрів.',
+    parameters_schema: { type: 'object', properties: {} },
+    is_destructive: false,
+    async impl() {
+      const r = (await q(`SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served, COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost FROM appointments WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`).catch(() => [{ served: 0, lost: 0 }]))[0];
+      const fin = r.served + r.lost;
+      return { served: r.served, finished: fin, pct: fin > 0 ? Math.round(r.served / fin * 100) : null, target: 80 };
+    },
+  },
+
+  get_clients_to_rebook: {
+    category: 'manager',
+    description: 'Клієнти «під загрозою» для обдзвону (були 2+ рази, немає 75-180 днів). Повертає імена і телефони. Параметри: {limit?: number}.',
+    parameters_schema: { type: 'object', properties: { limit: { type: 'number' } } },
+    is_destructive: false,
+    async impl(args) {
+      const lim = Math.min(Math.max(parseInt(args.limit, 10) || 10, 1), 50);
+      const rows = await q(
+        `WITH base AS (SELECT c.id, c.name, c.phone, MAX(a.starts_at) last, COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow')) freq
+           FROM clients c JOIN appointments a ON a.client_id=c.id WHERE c.phone IS NOT NULL GROUP BY c.id, c.name, c.phone)
+         SELECT name, phone FROM base WHERE freq >= 2 AND last < NOW()-INTERVAL '75 days' AND last > NOW()-INTERVAL '180 days'
+          ORDER BY last DESC LIMIT ${lim}`).catch(() => []);
+      return { count: rows.length, clients: rows.map(r => ({ name: r.name, phone: r.phone })) };
+    },
+  },
 };
 
 /** Upsert каталога инструментов в ai_agent_tools (вызывается при старте). */
