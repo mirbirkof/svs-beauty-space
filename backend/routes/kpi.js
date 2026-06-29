@@ -37,11 +37,11 @@ function periodRange(period) {
 async function computePeriod(masterId, from, to) {
   const a = (await q(
     `SELECT
-       COUNT(*) FILTER (WHERE status='done')::int AS visits,
-       COALESCE(SUM(price) FILTER (WHERE status='done'),0)::numeric AS revenue,
+       COUNT(*) FILTER (WHERE status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))::int AS visits,
+       COALESCE(SUM(COALESCE(real_amount,price)) FILTER (WHERE status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL)),0)::numeric AS revenue,
        COUNT(*) FILTER (WHERE status='noshow')::int AS noshow,
        COUNT(*)::int AS total_appts,
-       COUNT(DISTINCT client_id) FILTER (WHERE status='done' AND client_id IS NOT NULL)::int AS distinct_clients,
+       COUNT(DISTINCT client_id) FILTER (WHERE (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL)) AND client_id IS NOT NULL)::int AS distinct_clients,
        COALESCE(SUM(duration_min) FILTER (WHERE status IN ('done','confirmed','booked')),0)::int AS busy_min,
        COUNT(DISTINCT date(starts_at)) FILTER (WHERE status IN ('done','confirmed','booked'))::int AS work_days
      FROM appointments WHERE master_id=$1 AND starts_at >= $2 AND starts_at < $3`,

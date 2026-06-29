@@ -29,7 +29,7 @@ router.get('/:id(\\d+)/card', async (req, res) => {
       safe(q(
         `SELECT COUNT(*) FILTER (WHERE status='done')::int AS visits_done,
                 COUNT(*) FILTER (WHERE status='noshow')::int AS noshow,
-                COALESCE(SUM(price) FILTER (WHERE status='done'),0) AS visits_sum,
+                COALESCE(SUM(COALESCE(real_amount,price)) FILTER (WHERE status='done'),0) AS visits_sum,
                 MIN(starts_at) FILTER (WHERE status='done') AS first_visit,
                 MAX(starts_at) FILTER (WHERE status='done') AS last_visit
            FROM appointments WHERE client_id=$1`, [id]), [{}]),

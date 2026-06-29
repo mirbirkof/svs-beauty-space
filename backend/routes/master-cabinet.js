@@ -49,10 +49,10 @@ router.get('/clients', async (req, res) => {
           COALESCE(c.id, 0)                                      AS client_id,
           COALESCE(c.name, a.client_name, 'Без імені')           AS name,
           c.phone,
-          COUNT(*) FILTER (WHERE a.status IN ('done','confirmed','completed'))::int AS visits,
+          COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int AS visits,
           MAX(a.starts_at)                                        AS last_visit,
           COALESCE(SUM(
-            CASE WHEN a.status IN ('done','confirmed','completed')
+            CASE WHEN a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)
                  THEN COALESCE(a.real_amount, a.price) ELSE 0 END
           ), 0)::numeric                                          AS spent
         FROM appointments a

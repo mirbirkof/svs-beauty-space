@@ -210,17 +210,17 @@ router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) =>
   try {
     const r = await pool.query(
       `SELECT m.id, m.name,
-              COUNT(*) FILTER (WHERE a.status IN ('done','confirmed'))::int visits,
-              COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','confirmed'))::int uniq,
+              COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int visits,
+              COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int uniq,
               COUNT(*) FILTER (WHERE a.status='cancelled')::int cancelled,
-              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)) FILTER (WHERE a.status IN ('done','confirmed')),0)::numeric revenue
+              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)::numeric revenue
          FROM masters m
          LEFT JOIN appointments a ON a.master_id=m.id
               AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
               AND a.bp_state IS DISTINCT FROM 'bp_deleted'
         WHERE COALESCE(m.active,true)=true
         GROUP BY m.id, m.name
-       HAVING COUNT(*) FILTER (WHERE a.status IN ('done','confirmed')) > 0
+       HAVING COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)) > 0
         ORDER BY revenue DESC`);
     const items = r.rows.map(x => {
       const visits = x.visits, uniq = x.uniq, rev = Number(x.revenue);
