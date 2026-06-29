@@ -117,6 +117,8 @@ app.use('/p', express.static(__dirname + '/public'));
 
 // Публічна онлайн-запис (INT-08 сайт / INT-06 TG Mini App) — короткий URL
 app.get('/book', (req, res) => res.redirect(302, '/p/book.html'));
+app.get('/signup', (req, res) => res.redirect(302, '/p/signup.html'));
+app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
 
 // Render health check (root + /health)
 app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
