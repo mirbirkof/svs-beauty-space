@@ -211,7 +211,10 @@ async function fixSequences(primary, backup) {
     try {
       await backup.query(`SELECT setval($1, $2, true)`, [`${s.schemaname}.${s.sequencename}`, s.last_value]);
       n++;
-    } catch (e) { log(`setval ${s.sequencename} skip: ${e.message}`); }
+    } catch (e) {
+      // Suppress "does not exist" — sequence on primary not yet created on backup (migration pending)
+      if (!e.message.includes('does not exist')) log(`setval ${s.sequencename} skip: ${e.message}`);
+    }
   }
   return n;
 }
