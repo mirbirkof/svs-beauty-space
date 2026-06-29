@@ -10039,8 +10039,34 @@ function aiFabToggle(force){
   const p=document.getElementById('aiPanel');
   const open=(force===undefined)?!p.classList.contains('open'):force;
   p.classList.toggle('open',open);
+  // прив'язати панель до поточної позиції голови
+  const fab=document.getElementById('aiFab');
+  if(open && fab){ const r=fab.getBoundingClientRect();
+    const below=r.top<innerHeight/2;
+    p.style.left=Math.min(Math.max(8,r.left-318),innerWidth-388)+'px'; p.style.right='auto';
+    if(below){ p.style.top=(r.bottom+10)+'px'; p.style.bottom='auto'; } else { p.style.bottom=(innerHeight-r.top+10)+'px'; p.style.top='auto'; }
+  }
   if(open) setTimeout(()=>document.getElementById('aiFabInput')?.focus(),100);
 }
+// Перетягування голови-бота — стає де поставиш, позиція запам'ятовується.
+(function initFabDrag(){
+  function go(){
+    const fab=document.getElementById('aiFab'); if(!fab) return;
+    try{ const s=JSON.parse(localStorage.getItem('aiFabPos')||'null'); if(s){ fab.style.left=s.left; fab.style.top=s.top; fab.style.right='auto'; fab.style.bottom='auto'; } }catch(_){}
+    let moved=false,sx,sy,ox,oy;
+    const down=e=>{ const t=e.touches?e.touches[0]:e; moved=false; sx=t.clientX; sy=t.clientY; const r=fab.getBoundingClientRect(); ox=r.left; oy=r.top;
+      document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up); };
+    const move=e=>{ const t=e.touches?e.touches[0]:e; const dx=t.clientX-sx, dy=t.clientY-sy; if(Math.abs(dx)+Math.abs(dy)>5){ moved=true; if(e.cancelable)e.preventDefault();
+      let nl=Math.min(Math.max(4,ox+dx),innerWidth-66), nt=Math.min(Math.max(4,oy+dy),innerHeight-66);
+      fab.style.left=nl+'px'; fab.style.top=nt+'px'; fab.style.right='auto'; fab.style.bottom='auto'; } };
+    const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up);
+      if(moved){ try{ localStorage.setItem('aiFabPos',JSON.stringify({left:fab.style.left,top:fab.style.top})); }catch(_){} } };
+    fab.addEventListener('mousedown',down); fab.addEventListener('touchstart',down,{passive:true});
+    // клік відкриває лише якщо не тягнули
+    fab.addEventListener('click',e=>{ if(moved){ e.stopImmediatePropagation(); e.preventDefault(); } },true);
+  }
+  if(document.readyState!=='loading') go(); else document.addEventListener('DOMContentLoaded',go);
+})();
 function aiFabQuick(q){ document.getElementById('aiFabInput').value=q; aiFabSend(); }
 function _aiEsc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function _aiAdd(cls,html){ const l=document.getElementById('aiFabLog'); l.innerHTML+=`<div class="${cls}"><span>${html}</span></div>`; l.scrollTop=l.scrollHeight; }
