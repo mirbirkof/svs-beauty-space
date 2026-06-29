@@ -97,6 +97,25 @@ async function masterDailySchedules(pool = getPool()) {
 // проти плану (%), записи на сьогодні. Шлеться в ADMIN_TG_CHAT раз на добу.
 function _money(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') + ' ₴'; }
 
+// План обороту на місяць = Σ по активних майстрах (plan_per_shift × змін у графіку).
+// Спільний для ранкового звіту і плану дня — щоб числа не розходились.
+async function _monthPlanTotal(pool) {
+  try {
+    const ym = kyivDate().slice(0, 7);
+    const [year, month] = ym.split('-').map(Number);
+    const plans = (await pool.query(
+      `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
+         FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true
+        WHERE mp.year=$1 AND mp.month=$2`, [year, month])).rows;
+    const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map());
+    let total = 0;
+    for (const p of plans) {
+      total += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total);
+    }
+    return total;
+  } catch (_) { return 0; }
+}
+
 async function ownerDailyReport(pool = getPool()) {
   const chat = process.env.ADMIN_TG_CHAT;
   if (!chat) return 0;
@@ -129,22 +148,8 @@ async function ownerDailyReport(pool = getPool()) {
         AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`))[0] || { v: 0 };
   const mRevenue = Number(mRow.v);
 
-  // Місяць: план = Σ по майстрах (plan_per_shift × змін у графіку)
-  let mPlan = 0;
-  try {
-    const now = new Date();
-    const ym = kyivDate().slice(0, 7);
-    const [year, month] = ym.split('-').map(Number);
-    const plans = await q(
-      `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
-         FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true
-        WHERE mp.year=$1 AND mp.month=$2`, [year, month]);
-    const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map());
-    for (const p of plans) {
-      const auto = p.auto_from_shifts;
-      mPlan += auto ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total);
-    }
-  } catch (_) { mPlan = 0; }
+  // Місяць: план (спільний helper)
+  const mPlan = await _monthPlanTotal(pool);
   const pct = mPlan > 0 ? Math.round(mRevenue / mPlan * 100) : null;
 
   // Сьогодні: записів заплановано
@@ -185,4 +190,62 @@ async function ownerDailyReport(pool = getPool()) {
   return 1;
 }
 
-module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport };
+// ── D) Ранковий план дня адміну ──────────────────────────────────────────
+// Скільки треба зробити сьогодні для плану, що вже записано, і КОГО дозаписати
+// (клієнти «під загрозою»: були 2+ рази, зникли 75-180 днів — їх легше повернути).
+async function adminDayPlan(pool = getPool()) {
+  const chat = process.env.ADMIN_TG_CHAT;
+  if (!chat) return 0;
+  const today = kyivDate();
+  if ((await getSetting('vm_admin_dayplan_sent', null)) === today) return 0;
+
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+
+  // Денна ціль = план місяця / днів у місяці
+  const mPlan = await _monthPlanTotal(pool);
+  const d = new Date();
+  const parts = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d)) parts[x.type] = x.value;
+  const daysInMonth = new Date(+parts.year, +parts.month, 0).getDate();
+  const dailyTarget = mPlan > 0 ? Math.round(mPlan / daysInMonth) : 0;
+
+  // Сьогодні вже записано (очікувана виручка)
+  const tRow = (await q(
+    `SELECT COUNT(*)::int n, COALESCE(SUM(COALESCE(real_amount,price,0)),0)::numeric v
+       FROM appointments
+      WHERE status NOT IN ('cancelled','noshow')
+        AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`))[0] || { n: 0, v: 0 };
+  const booked = Number(tRow.v);
+  const gap = dailyTarget > 0 ? Math.max(0, dailyTarget - booked) : 0;
+
+  // Кого дозаписати: «під загрозою» з телефоном (легше повернути, ніж знайти нового)
+  const calls = await q(
+    `WITH base AS (
+       SELECT c.id, c.name, c.phone, MAX(a.starts_at) last,
+              COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow')) freq
+         FROM clients c JOIN appointments a ON a.client_id=c.id
+        WHERE c.phone IS NOT NULL GROUP BY c.id, c.name, c.phone)
+     SELECT name, phone FROM base
+      WHERE freq >= 2 AND last < NOW()-INTERVAL '75 days' AND last > NOW()-INTERVAL '180 days'
+      ORDER BY last DESC LIMIT 6`);
+
+  const callLines = calls.length
+    ? calls.map(c => `   • ${c.name || 'клієнт'} — ${c.phone}`).join('\n')
+    : '   • немає кандидатів — усі активні 👍';
+  const planLine = dailyTarget > 0
+    ? `🎯 <b>Ціль на сьогодні:</b> ${_money(dailyTarget)}\n📌 Вже записано: ${_money(booked)} (${tRow.n} зап.)` +
+      (gap > 0 ? `\n⚠️ <b>Дозаписати ще на ${_money(gap)}</b>` : `\n✅ Денну ціль уже виконано!`)
+    : `📌 Сьогодні записано: ${_money(booked)} (${tRow.n} зап.)`;
+
+  const body =
+    `📋 <b>План дня</b> (адміну)\n\n` +
+    `${planLine}\n\n` +
+    `📞 <b>Подзвонити — повернути клієнтів:</b>\n${callLines}\n\n` +
+    `💡 Запропонуй зручний час і додаткову послугу — це закриє денну ціль.`;
+
+  await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
+    category: 'transactional', priority: 'normal', source: 'vm-admin-dayplan', dedupKey: `dayplan:${today}` });
+  await setSetting('vm_admin_dayplan_sent', today);
+  return 1;
+}
+
+module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport, adminDayPlan };

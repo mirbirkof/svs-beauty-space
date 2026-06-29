@@ -338,6 +338,7 @@ try {
       try { const n = await vm.autoReviewRequests(); if (n) console.log(`[vm] запитано відгуків: ${n}`); } catch (e) { console.error('[vm] reviews tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.masterDailySchedules(); if (n) console.log(`[vm] розклад майстрам: ${n}`); } } catch (e) { console.error('[vm] sched tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.ownerDailyReport(); if (n) console.log('[vm] ранковий звіт собственнику надіслано'); } } catch (e) { console.error('[vm] owner-report tick:', e.message); }
+      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.adminDayPlan(); if (n) console.log('[vm] план дня адміну надіслано'); } } catch (e) { console.error('[vm] day-plan tick:', e.message); }
     };
     setTimeout(tick, 45000);
     setInterval(tick, 30 * 60 * 1000);
