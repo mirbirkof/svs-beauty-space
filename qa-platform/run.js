@@ -29,11 +29,15 @@ async function main() {
 
   if (arg === '--loop') {
     console.log('[qa] LOOP MODE — Ctrl+C для остановки');
+    const reloadFlag = require('path').join(cfg.dataDir, 'reload.flag');
+    const fs = require('fs');
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const n = nextCycleNo();
       const r = await runCycle(n);
       console.log(`[qa] цикл #${n}: ${r.scenarios} сценариев, +${r.newBugs} новых, ${r.closed} закрыто, открыто ${r.openBugs} (${r.ms}мс)`);
+      // Само-перезапуск без kill: если кто-то положил reload.flag — выходим, keepalive поднимет свежий код.
+      if (fs.existsSync(reloadFlag)) { fs.unlinkSync(reloadFlag); console.log('[qa] reload.flag → перезапуск на свежий код'); await pool.end(); process.exit(0); }
       if (cfg.cycleCooldownMs > 0) await new Promise((res) => setTimeout(res, cfg.cycleCooldownMs));
     }
   }

@@ -19,6 +19,26 @@ const RULES = [
     sql: `SELECT COUNT(*)::int n FROM tasks WHERE status NOT IN ('backlog','todo','in_progress','review','done','cancelled')`, severity: 'high' },
   { module: 'finance', role: 'accountant', title: 'Касса прихода с нулевой/отрицательной суммой',
     sql: `SELECT COUNT(*)::int n FROM cash_operations WHERE type='in' AND amount <= 0 AND created_at >= NOW()-INTERVAL '30 days'`, severity: 'medium' },
+  // ── склад ──
+  { module: 'warehouse', role: 'warehouse', title: 'Отрицательный остаток на складе (salon_stock.qty < 0)',
+    sql: `SELECT COUNT(*)::int n FROM salon_stock WHERE qty < 0`, severity: 'high', optional: true },
+  // ── подарочные сертификаты ──
+  { module: 'certificates', role: 'accountant', title: 'Сертификат: остаток больше номинала (невозможно)',
+    sql: `SELECT COUNT(*)::int n FROM gift_certificates WHERE remaining_amount > original_amount`, severity: 'high', optional: true },
+  { module: 'certificates', role: 'accountant', title: 'Сертификат: отрицательный остаток',
+    sql: `SELECT COUNT(*)::int n FROM gift_certificates WHERE remaining_amount < 0`, severity: 'high', optional: true },
+  { module: 'certificates', role: 'accountant', title: 'Сертификат активен, но срок истёк (статус не обновлён)',
+    sql: `SELECT COUNT(*)::int n FROM gift_certificates WHERE status='active' AND valid_until IS NOT NULL AND valid_until < CURRENT_DATE`, severity: 'medium', optional: true },
+  // ── лояльность / бонусы ──
+  { module: 'loyalty', role: 'accountant', title: 'Отрицательный бонусный баланс',
+    sql: `SELECT COUNT(*)::int n FROM bonus_balances WHERE balance < 0`, severity: 'high', optional: true },
+  { module: 'loyalty', role: 'accountant', title: 'Рассинхрон бонусов: balance ≠ начислено − списано − сгорело',
+    sql: `SELECT COUNT(*)::int n FROM bonus_balances WHERE balance <> (COALESCE(total_accrued,0)-COALESCE(total_redeemed,0)-COALESCE(total_expired,0))`, severity: 'high', optional: true },
+  { module: 'loyalty', role: 'accountant', title: 'Записи лояльности на несуществующего клиента',
+    sql: `SELECT COUNT(*)::int n FROM loyalty_ledger l WHERE NOT EXISTS(SELECT 1 FROM clients c WHERE c.id=l.client_id)`, severity: 'medium', optional: true },
+  // ── зарплата ──
+  { module: 'payroll', role: 'accountant', title: 'Выплаты зарплаты с отрицательной суммой',
+    sql: `SELECT COUNT(*)::int n FROM payroll_records WHERE total < 0`, severity: 'high', optional: true },
 ];
 
 module.exports = {

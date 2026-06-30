@@ -6,14 +6,17 @@ const path = require('path');
 const cfg = require('../config');
 const reg = require('./registry');
 
-// Реестр агентов. Деструктивные (load/security-mutating) подключаются ТОЛЬКО в full-режиме.
+// Реестр агентов. Горячая загрузка: каждый цикл берём ВСЕ *.js из agents/ со сбросом require-кэша,
+// чтобы 24/7-loop подхватывал новых агентов и правки БЕЗ перезапуска процесса (cron/kill не нужны).
+// Деструктивные агенты сами проверяют cfg.allowDestructive и в safe-режиме помечают needs-manual.
 function loadAgents() {
   const dir = path.join(__dirname, '../agents');
-  const safe = ['finance-reconciler', 'data-integrity', 'eventbus-checker', 'api-contract', 'security-probe', 'workflow-trail'];
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).sort();
   const agents = [];
-  for (const name of safe) {
-    const f = path.join(dir, name + '.js');
-    if (fs.existsSync(f)) { try { agents.push(require(f)); } catch (e) { console.error(`[qa] агент ${name} не загрузился: ${e.message}`); } }
+  for (const file of files) {
+    const f = path.join(dir, file);
+    try { delete require.cache[require.resolve(f)]; agents.push(require(f)); }
+    catch (e) { console.error(`[qa] агент ${file} не загрузился: ${e.message}`); }
   }
   return agents;
 }
