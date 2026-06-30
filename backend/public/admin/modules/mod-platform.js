@@ -482,6 +482,10 @@
         '<button id="mc-search-btn" style="padding:7px 16px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Знайти карту</button>' +
       '</div>' +
       '<div id="mc-card-detail" style="margin-bottom:20px"></div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">' +
+        '<button id="mc-new-formula" style="padding:8px 16px;background:#007bff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">➕ Нова формула фарбування</button>' +
+        '<button id="mc-new-test" style="padding:8px 16px;background:#0a8f5f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">➕ Новий тест на алергію</button>' +
+      '</div>' +
       '<div style="display:flex;gap:10px;margin-bottom:8px;align-items:center">' +
         '<input id="mc-shade-search" type="text" placeholder="Пошук формул: відтінок/бренд" ' +
           'style="padding:7px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:280px">' +
@@ -558,9 +562,11 @@
         if (!rows.length) { if (testsEl) testsEl.innerHTML = window.modEmpty('Тестів немає'); return; }
         var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Продукт</th>' +
           '<th style="'+TH+'">Зона</th><th style="'+TH+'">Результат</th>' +
-          '<th style="'+TH+'">Дійсний до</th><th style="'+TH+'">Нанесено</th>'];
+          '<th style="'+TH+'">Дійсний до</th><th style="'+TH+'">Нанесено</th>' +
+          '<th style="'+TH+'">Дії</th>'];
         var body = rows.map(function (t) {
           var isExp = t.valid_until && new Date(t.valid_until) < now;
+          var pending = !t.final_result || t.final_result === 'pending';
           return '<tr style="' + (isExp ? 'opacity:0.6' : '') + '">' +
             '<td style="'+TD+'">' + E(t.client_id || '—') + '</td>' +
             '<td style="'+TD+'"><b>' + E(t.product_name || '—') + '</b>' +
@@ -571,6 +577,9 @@
               ? '<span style="color:#d9534f">' + localDt(t.valid_until) + ' ⚠</span>'
               : localDt(t.valid_until)) + '</td>' +
             '<td style="'+TD+'">' + localDt(t.applied_at) + '</td>' +
+            '<td style="'+TD+'">' +
+              '<button data-act="test-result" data-id="'+E(t.id)+'" style="padding:4px 10px;border:none;border-radius:5px;cursor:pointer;font-size:12px;background:'+(pending?'#fff3cd':'#eef')+';color:'+(pending?'#9a7b00':'#007bff')+'">'+(pending?'Внести результат':'Оновити')+'</button>' +
+            '</td>' +
             '</tr>';
         }).join('');
         if (testsEl) testsEl.innerHTML =
@@ -612,12 +621,14 @@
         if (!rows.length) { if (formulasEl) formulasEl.innerHTML = window.modEmpty('Формул немає'); return; }
         var heads = ['<th style="'+TH+'">Клієнт</th><th style="'+TH+'">Майстер</th>' +
           '<th style="'+TH+'">Дата</th><th style="'+TH+'">Зони / бренди</th>' +
-          '<th style="'+TH+'">Оцінка майстра</th><th style="'+TH+'">Оцінка клієнта</th>'];
+          '<th style="'+TH+'">Оцінка майстра</th><th style="'+TH+'">Оцінка клієнта</th>' +
+          '<th style="'+TH+'">Дії</th>'];
         var body = rows.map(function (f) {
           var zones = Array.isArray(f.zones) ? f.zones : [];
           var zoneStr = zones.slice(0, 2).map(function (z) {
             return E((z.zone || '') + (z.brand ? ':' + z.brand : '') + (z.shade ? '/' + z.shade : ''));
           }).join(', ') + (zones.length > 2 ? '…' : '');
+          var btn = 'padding:4px 10px;border:none;border-radius:5px;cursor:pointer;font-size:12px;margin-right:6px';
           return '<tr>' +
             '<td style="'+TD+'">' + E(f.client_id || '—') + '</td>' +
             '<td style="'+TD+'">' + E(f.employee_name || f.employee_id || '—') + '</td>' +
@@ -625,6 +636,10 @@
             '<td style="'+TD+'" title="' + E(JSON.stringify(zones)) + '">' + (zoneStr || '—') + '</td>' +
             '<td style="'+TD+'">' + (f.result_rating != null ? '★'.repeat(Number(f.result_rating)) : '—') + '</td>' +
             '<td style="'+TD+'">' + (f.client_rating != null ? '★'.repeat(Number(f.client_rating)) : '—') + '</td>' +
+            '<td style="'+TD+'">' +
+              '<button data-act="edit-formula" data-id="'+E(f.id)+'" style="'+btn+';background:#eef;color:#007bff">Редагувати</button>' +
+              '<button data-act="repeat-formula" data-id="'+E(f.id)+'" style="'+btn+';background:#e6f7ee;color:#0a8f5f">Повторити</button>' +
+            '</td>' +
             '</tr>';
         }).join('');
         if (formulasEl) formulasEl.innerHTML =
@@ -724,6 +739,195 @@
       }
       if (shadeBtn) shadeBtn.addEventListener('click', searchFormulas);
       if (shadeInp) shadeInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchFormulas(); });
+
+      // ════ РЕДАКТОРИ Beauty Core: формули (створення/редагування/повтор) + тести ════
+      var ZONE_FIELDS = [
+        { k: 'zone', ph: 'Зона', w: '130px' }, { k: 'brand', ph: 'Бренд', w: '100px' },
+        { k: 'line', ph: 'Лінія', w: '85px' }, { k: 'shade', ph: 'Відтінок', w: '85px' },
+        { k: 'oxidant_pct', ph: 'Оксид %', w: '75px' }, { k: 'ratio', ph: 'Пропорція', w: '85px' },
+        { k: 'amount_g', ph: 'Грами', w: '65px' }, { k: 'time_min', ph: 'Хв', w: '55px' }
+      ];
+      function escA(v) { return E(v == null ? '' : v); }
+      function mcOverlay(title, innerHtml) {
+        var ov = document.createElement('div');
+        ov.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 12px';
+        ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+        ov.innerHTML = '<div style="max-width:780px;width:100%;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #eee">' +
+            '<h3 style="margin:0;font-size:17px">' + E(title) + '</h3>' +
+            '<button class="mc-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button></div>' +
+          '<div style="padding:18px 20px;max-height:68vh;overflow:auto">' + innerHtml + '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 20px;border-top:1px solid #eee">' +
+            '<button class="mc-cancel" style="padding:8px 16px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer">Скасувати</button>' +
+            '<button class="mc-save" style="padding:8px 18px;border:none;background:#007bff;color:#fff;border-radius:6px;cursor:pointer;font-weight:600">Зберегти</button></div></div>';
+        document.body.appendChild(ov);
+        ov.querySelector('.mc-close').onclick = function () { ov.remove(); };
+        ov.querySelector('.mc-cancel').onclick = function () { ov.remove(); };
+        return ov;
+      }
+      function zoneRowHtml(z) {
+        z = z || {};
+        var cells = ZONE_FIELDS.map(function (f) {
+          return '<input data-zk="' + f.k + '" placeholder="' + f.ph + '" value="' + escA(z[f.k]) +
+            '" style="padding:6px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;width:' + f.w + '">';
+        }).join('');
+        return '<div class="mc-zone-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:8px;background:#fafafa;border-radius:6px">' +
+          cells + '<button class="mc-zone-del" style="padding:5px 9px;border:none;background:#f8d7da;color:#d9534f;border-radius:5px;cursor:pointer;font-size:12px">✕</button></div>';
+      }
+      function inRow(label, id, value, ph, type) {
+        return '<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#888;margin-bottom:3px">' + E(label) + '</label>' +
+          '<input id="' + id + '" type="' + (type || 'text') + '" value="' + escA(value) + '" placeholder="' + escA(ph || '') +
+          '" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>';
+      }
+
+      function openFormulaEditor(mode, data) {
+        data = data || {};
+        var isEdit = mode === 'edit', isRepeat = mode === 'repeat';
+        var title = isEdit ? 'Редагувати формулу #' + data.id
+          : (isRepeat ? 'Повторити формулу (нова на основі #' + data.id + ')' : 'Нова формула фарбування');
+        var zones = Array.isArray(data.zones) && data.zones.length ? data.zones : [{}];
+        var clientVal = data.client_id != null ? data.client_id : (clientInp && clientInp.value.trim());
+        var dateVal = isRepeat ? '' : (data.formula_date || '').slice(0, 10);
+        var notesVal = isRepeat ? '' : (data.result_notes || '');
+        var rrVal = isRepeat ? '' : (data.result_rating || '');
+        var crVal = isRepeat ? '' : (data.client_rating || '');
+        var body =
+          (isEdit ? '' : inRow('ID клієнта *', 'mc-f-client', clientVal, 'напр. 1234')) +
+          (isEdit ? '' : inRow('Майстер', 'mc-f-emp', isRepeat ? (data.employee_name || '') : '', 'ПІБ майстра')) +
+          (isEdit ? '' : inRow('Дата', 'mc-f-date', dateVal, '', 'date')) +
+          '<div style="margin:14px 0 6px;font-weight:600;font-size:13px">Зони фарбування</div>' +
+          '<div id="mc-zones">' + zones.map(zoneRowHtml).join('') + '</div>' +
+          '<button id="mc-add-zone" style="padding:6px 14px;border:1px dashed #007bff;background:#f0f6ff;color:#007bff;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:14px">➕ Додати зону</button>' +
+          inRow('Передобробка (pre-treatment)', 'mc-f-pre', data.pre_treatment || '') +
+          inRow('Післяобробка (post-treatment)', 'mc-f-post', data.post_treatment || '') +
+          inRow('Загальна вага суміші, г', 'mc-f-total', data.total_amount_g || '', 'напр. 120', 'number') +
+          inRow('Нотатки по результату', 'mc-f-notes', notesVal) +
+          inRow('Оцінка майстра (1-5)', 'mc-f-rr', rrVal, '1-5', 'number') +
+          inRow('Оцінка клієнта (1-5)', 'mc-f-cr', crVal, '1-5', 'number') +
+          inRow('Рекомендація на наступний візит', 'mc-f-next', data.next_visit_recommendation || '');
+        var ov = mcOverlay(title, body);
+        var zonesBox = ov.querySelector('#mc-zones');
+        ov.querySelector('#mc-add-zone').onclick = function () {
+          var tmp = document.createElement('div'); tmp.innerHTML = zoneRowHtml({});
+          zonesBox.appendChild(tmp.firstChild);
+        };
+        zonesBox.addEventListener('click', function (e) {
+          var del = e.target.closest('.mc-zone-del');
+          if (del) { if (zonesBox.children.length > 1) del.closest('.mc-zone-row').remove(); else toast('Має бути хоча б одна зона', 'error'); }
+        });
+        function collectZones() {
+          return Array.prototype.map.call(zonesBox.querySelectorAll('.mc-zone-row'), function (row) {
+            var z = {};
+            Array.prototype.forEach.call(row.querySelectorAll('[data-zk]'), function (inp) {
+              var v = inp.value.trim(); if (v === '') return;
+              var k = inp.getAttribute('data-zk');
+              z[k] = (k === 'oxidant_pct' || k === 'amount_g' || k === 'time_min') && !isNaN(Number(v)) ? Number(v) : v;
+            });
+            return z;
+          }).filter(function (z) { return Object.keys(z).length; });
+        }
+        function val(id) { var el = ov.querySelector('#' + id); return el ? el.value.trim() : ''; }
+        ov.querySelector('.mc-save').onclick = async function () {
+          var zonesArr = collectZones();
+          if (!zonesArr.length) { toast('Додайте хоча б одну зону з даними', 'error'); return; }
+          var btn = this; btn.disabled = true; btn.textContent = 'Збереження…';
+          function fail(m) { toast(m || 'Помилка збереження', 'error'); btn.disabled = false; btn.textContent = 'Зберегти'; }
+          try {
+            var payload = {
+              zones: zonesArr, pre_treatment: val('mc-f-pre') || null, post_treatment: val('mc-f-post') || null,
+              total_amount_g: val('mc-f-total') || null, result_notes: val('mc-f-notes') || null,
+              result_rating: val('mc-f-rr') || null, client_rating: val('mc-f-cr') || null,
+              next_visit_recommendation: val('mc-f-next') || null
+            };
+            var r;
+            if (isEdit) {
+              r = await window.modApi('/api/medical/formulas/' + data.id, { method: 'PATCH', body: JSON.stringify(payload) });
+            } else {
+              var cid = val('mc-f-client'); if (!cid) { return fail('Вкажіть ID клієнта'); }
+              payload.client_id = Number(cid); payload.employee_name = val('mc-f-emp') || null;
+              var dt = val('mc-f-date'); if (dt) payload.formula_date = dt;
+              r = await window.modApi('/api/medical/formulas', { method: 'POST', body: JSON.stringify(payload) });
+            }
+            if (r && r.ok) { toast(isEdit ? 'Формулу оновлено' : 'Формулу збережено'); ov.remove(); if (typeof go === 'function') go('medcards'); }
+            else fail(r && r.error);
+          } catch (err) { fail(err.message); }
+        };
+      }
+
+      function openTestEditor() {
+        var clientVal = clientInp && clientInp.value.trim();
+        var body =
+          inRow('ID клієнта *', 'mc-t-client', clientVal, 'напр. 1234') +
+          inRow('Продукт *', 'mc-t-prod', '', 'назва барвника/продукту') +
+          inRow('Бренд', 'mc-t-brand', '') +
+          '<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#888;margin-bottom:3px">Зона нанесення</label>' +
+            '<select id="mc-t-zone" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+            '<option value="behind_ear">За вухом</option><option value="inner_elbow">Згин ліктя</option><option value="wrist">Запʼястя</option></select></div>' +
+          inRow('Час експозиції, хв', 'mc-t-exp', '30', '', 'number') +
+          inRow('Дійсний (місяців)', 'mc-t-valid', '12', '', 'number') +
+          inRow('Нотатки', 'mc-t-notes', '');
+        var ov = mcOverlay('Новий тест на алергію', body);
+        function val(id) { var el = ov.querySelector('#' + id); return el ? el.value.trim() : ''; }
+        ov.querySelector('.mc-save').onclick = async function () {
+          var cid = val('mc-t-client'), prod = val('mc-t-prod');
+          if (!cid || !prod) { toast('ID клієнта і продукт обовʼязкові', 'error'); return; }
+          var btn = this; btn.disabled = true; btn.textContent = 'Збереження…';
+          function fail(m) { toast(m || 'Помилка', 'error'); btn.disabled = false; btn.textContent = 'Зберегти'; }
+          try {
+            var r = await window.modApi('/api/medical/allergy-tests', { method: 'POST', body: JSON.stringify({
+              client_id: Number(cid), product_name: prod, product_brand: val('mc-t-brand') || null,
+              application_zone: val('mc-t-zone') || 'behind_ear', exposure_minutes: Number(val('mc-t-exp')) || 30,
+              valid_months: Number(val('mc-t-valid')) || 12, notes: val('mc-t-notes') || null }) });
+            if (r && r.ok) { toast('Тест створено'); ov.remove(); if (typeof go === 'function') go('medcards'); }
+            else fail(r && r.error);
+          } catch (err) { fail(err.message); }
+        };
+      }
+
+      function openTestResult(id) {
+        var opts = '<option value="">—</option><option value="negative">Негативний</option>' +
+          '<option value="mild_reaction">Слабка реакція</option><option value="strong_reaction">Сильна реакція</option>';
+        var body =
+          '<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#888;margin-bottom:3px">Результат 24 год</label>' +
+            '<select id="mc-r-24" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' + opts + '</select></div>' +
+          '<div style="margin-bottom:10px"><label style="display:block;font-size:12px;color:#888;margin-bottom:3px">Результат 48 год (фінальний)</label>' +
+            '<select id="mc-r-48" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">' + opts + '</select></div>' +
+          inRow('Нотатки', 'mc-r-notes', '');
+        var ov = mcOverlay('Результат тесту #' + id, body);
+        function val(id2) { var el = ov.querySelector('#' + id2); return el ? el.value.trim() : ''; }
+        ov.querySelector('.mc-save').onclick = async function () {
+          var r24 = val('mc-r-24'), r48 = val('mc-r-48');
+          if (!r24 && !r48) { toast('Вкажіть хоча б один результат', 'error'); return; }
+          var btn = this; btn.disabled = true; btn.textContent = 'Збереження…';
+          function fail(m) { toast(m || 'Помилка', 'error'); btn.disabled = false; btn.textContent = 'Зберегти'; }
+          try {
+            var r = await window.modApi('/api/medical/allergy-tests/' + id + '/result', { method: 'PATCH', body: JSON.stringify({
+              result_24h: r24 || null, result_48h: r48 || null, final_result: (r48 || r24 || 'pending'), notes: val('mc-r-notes') || null }) });
+            if (r && r.ok) { toast('Результат внесено'); ov.remove(); if (typeof go === 'function') go('medcards'); }
+            else fail(r && r.error);
+          } catch (err) { fail(err.message); }
+        };
+      }
+
+      var newFBtn = document.getElementById('mc-new-formula');
+      if (newFBtn) newFBtn.addEventListener('click', function () { openFormulaEditor('new', {}); });
+      var newTBtn = document.getElementById('mc-new-test');
+      if (newTBtn) newTBtn.addEventListener('click', function () { openTestEditor(); });
+
+      if (formulasEl) formulasEl.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-act]'); if (!b) return;
+        var id = b.getAttribute('data-id'), act = b.getAttribute('data-act');
+        if (act === 'edit-formula' || act === 'repeat-formula') {
+          window.modApi('/api/medical/formulas/' + id).then(function (d) {
+            if (!d || !d.formula) { toast('Формулу не знайдено', 'error'); return; }
+            openFormulaEditor(act === 'edit-formula' ? 'edit' : 'repeat', d.formula);
+          }).catch(function (err) { toast(err.message || 'Помилка', 'error'); });
+        }
+      });
+      if (testsEl) testsEl.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-act="test-result"]'); if (!b) return;
+        openTestResult(b.getAttribute('data-id'));
+      });
     }
   });
 
