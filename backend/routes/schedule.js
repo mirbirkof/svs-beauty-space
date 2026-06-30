@@ -13,13 +13,14 @@ const router = express.Router();
 // Единая точка эмита события «визит завершён». Подписчик lib/report-cache.js
 // сбрасывает кэш отчётов → цифры в отчётах/дашборде/аналитике обновляются сразу.
 // В try/catch: эмит НИКОГДА не должен ронять оплату/закрытие записи.
-async function emitAppointmentCompleted(apptId, masterId) {
+async function emitAppt(eventType, apptId, masterId) {
   try {
-    await emitEvent('appointment.completed',
+    await emitEvent(eventType,
       { appointment_id: Number(apptId), master_id: masterId || null },
       { entityType: 'appointment', entityId: apptId });
-  } catch (e) { console.error('[schedule] emit appointment.completed failed:', e.message); }
+  } catch (e) { console.error(`[schedule] emit ${eventType} failed:`, e.message); }
 }
+const emitAppointmentCompleted = (id, m) => emitAppt('appointment.completed', id, m);
 
 // GET = schedule.read, мутации = schedule.write
 router.use((req, res, next) => {
@@ -1058,6 +1059,7 @@ router.post('/appointments', async (req, res) => {
       [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
        sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]
     );
+    await emitAppt('appointment.created', r.rows[0].id, Number(master_id)); // в журнал событий + вебхуки
     // Подтверждение клиенту через Notification Hub (не блокирует ответ).
     if (cid) {
       const time = startDate.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
@@ -1196,6 +1198,7 @@ router.delete('/appointments/:id', async (req, res) => {
     } finally {
       client.release();
     }
+    await emitAppt('appointment.cancelled', id, null); // в журнал событий + вебхуки
     res.json({ ok: true, deleted: id, soft });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
