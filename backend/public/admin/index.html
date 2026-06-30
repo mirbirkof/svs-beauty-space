@@ -736,6 +736,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="kb" onclick="go('kb')">
             <span class="material-icons-round">menu_book</span> База знань
           </a>
+          <a class="sidebar-item" data-page="surveys" onclick="go('surveys')">
+            <span class="material-icons-round">poll</span> Опитування / NPS
+          </a>
           <a class="sidebar-item" data-page="services" onclick="go('services')">
             <span class="material-icons-round">content_cut</span> Послуги
           </a>
@@ -1461,6 +1464,23 @@ select.input { background:var(--card); }
           <table class="tbl">
             <thead><tr><th></th><th>№</th><th>Заголовок</th><th>Тип</th><th>Пріоритет</th><th>Статус</th><th>Дії</th></tr></thead>
             <tbody id="incBody"><tr><td colspan="7" style="padding:14px;color:var(--text-secondary)">Завантаження…</td></tr></tbody>
+          </table>
+        </div></div>
+      </div>
+
+      <!-- ═══ ОПИТУВАННЯ / NPS (MGT-09) ═══ -->
+      <div class="page" id="page-surveys">
+        <div class="kpi-grid" id="surveysKpi" style="max-width:680px;margin-bottom:14px"></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-primary btn-sm" onclick="openSurveyNew()"><span class="material-icons-round" style="font-size:16px">add</span> Нове опитування</button>
+          <button class="btn btn-sm" onclick="loadSurveys()"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <div id="surveysStats" style="margin-left:auto;font-size:13px;color:var(--text-secondary)"></div>
+        </div>
+        <p class="set-p" style="margin:0 0 12px">Опитування клієнтів: NPS (готовність рекомендувати), CSAT (задоволеність), CES (легкість). Негативні відгуки автоматично ескалюються менеджеру.</p>
+        <div class="card"><div class="card-body" style="padding:0">
+          <table class="tbl">
+            <thead><tr><th>Назва</th><th>Тип</th><th>Статус</th><th>Відповідей</th><th>Сер. бал</th><th>Дії</th></tr></thead>
+            <tbody id="surveysBody"><tr><td colspan="6" style="padding:14px;color:var(--text-secondary)">Завантаження…</td></tr></tbody>
           </table>
         </div></div>
       </div>
@@ -2587,6 +2607,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Опитування (MGT-09) -->
+  <div id="surveyModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeSurvey()">
+    <div class="modal" style="max-width:620px;width:92vw;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h3 id="surveyTitle">Опитування</h3>
+        <button class="modal-close" onclick="closeSurvey()">✕</button>
+      </div>
+      <div class="modal-body" id="surveyBody" style="overflow:auto"></div>
+    </div>
+  </div>
+
   <!-- Стаття бази знань (MGT-03) -->
   <div id="kbModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeKb()">
     <div class="modal" style="max-width:680px;width:92vw;max-height:90vh;display:flex;flex-direction:column">
@@ -3311,7 +3342,7 @@ function showInfo(ev, text){
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
-  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', tasks:'Задачі', incidents:'Інциденти', kb:'База знань', shifts:'Зміни / Табель', clients:'Клієнти',
+  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', tasks:'Задачі', incidents:'Інциденти', kb:'База знань', surveys:'Опитування / NPS', shifts:'Зміни / Табель', clients:'Клієнти',
   fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', purchasing:'Закупівлі', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
@@ -3565,7 +3596,7 @@ function go(page) {
   // меню не перемальовується і не «стрибає» при кожному кліку.
   document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
-  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, shifts:loadShifts, clients:loadClients,
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
@@ -8874,6 +8905,79 @@ async function saveIncident(){
   try{ await api('/api/incidents',{method:'POST',body:JSON.stringify(body)});
     closeIncident(); loadIncidents();
   }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+// ═══ ОПИТУВАННЯ / NPS (MGT-09) ═══════════════════════════
+const SRV_TYPE={nps:'NPS',csat:'CSAT',ces:'CES',post_visit:'Після візиту',employee:'Персонал',custom:'Інше'};
+const SRV_STATUS={draft:['Чернетка','#6b7280'],active:['Активне','#22c55e'],paused:['Пауза','#f59e0b'],closed:['Закрите','#6b7280'],archived:['Архів','#9ca3af']};
+async function loadSurveys(){
+  const tb=document.getElementById('surveysBody'); if(!tb) return;
+  // KPI NPS + CSAT
+  try{
+    const [nps,csat]=await Promise.all([api('/api/surveys/nps/current'),api('/api/surveys/csat/current')]);
+    const npsVal=nps&&nps.nps!=null?nps.nps:'—';
+    const npsColor=nps&&nps.nps!=null?(nps.nps>=50?'#22c55e':nps.nps>=0?'#f59e0b':'#dc2626'):'#6b7280';
+    const csatVal=csat&&csat.csat_avg!=null?csat.csat_avg:'—';
+    document.getElementById('surveysKpi').innerHTML=
+      `<div class="kpi-card"><div class="kpi-label">NPS (90 днів)</div><div class="kpi-value" style="color:${npsColor}">${npsVal}</div><div class="kpi-sub">${nps?nps.total+' відповідей · ❤${nps.promoters} 😐${nps.passives} 💔${nps.detractors}':''}</div></div>`
+      +`<div class="kpi-card"><div class="kpi-label">CSAT (90 днів)</div><div class="kpi-value">${csatVal}${csatVal!=='—'?'/5':''}</div><div class="kpi-sub">${csat&&csat.csat_percent!=null?csat.csat_percent+'% задоволені':''}</div></div>`;
+  }catch(_){}
+  let d;
+  try{ d=await api('/api/surveys'); }
+  catch(e){ tb.innerHTML='<tr><td colspan="6" style="padding:14px;color:#c0392b">Помилка: '+(e.message||e)+'</td></tr>'; return; }
+  const items=d.items||[];
+  const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+  if(!items.length){ tb.innerHTML='<tr><td colspan="6" style="padding:14px;color:var(--text-secondary)">Опитувань немає. Створіть перше — наприклад NPS.</td></tr>'; document.getElementById('surveysStats').textContent=''; return; }
+  tb.innerHTML=items.map(s=>{
+    const st=SRV_STATUS[s.status]||[s.status,'#6b7280'];
+    let act='';
+    if(s.status==='draft'||s.status==='paused') act+=`<button class="btn btn-sm" title="Активувати" onclick="surveyAction(${s.id},'activate')">▶</button> `;
+    if(s.status==='active') act+=`<button class="btn btn-sm" title="Пауза" onclick="surveyAction(${s.id},'pause')">⏸</button> `;
+    if(s.status!=='closed') act+=`<button class="btn btn-sm" title="Закрити" onclick="surveyAction(${s.id},'close')">⏹</button> `;
+    act+=`<button class="btn btn-sm" title="Відповіді" onclick="viewSurveyResponses(${s.id})">📊</button>`;
+    return `<tr><td style="cursor:pointer" onclick="viewSurveyResponses(${s.id})">${E(s.title)}</td>`
+      +`<td>${SRV_TYPE[s.type]||E(s.type)}</td>`
+      +`<td><span style="color:${st[1]};font-weight:600">${st[0]}</span></td>`
+      +`<td>${s.completed_count||0}</td><td>${s.avg_score!=null?s.avg_score:'—'}</td><td style="white-space:nowrap">${act}</td></tr>`;
+  }).join('');
+  document.getElementById('surveysStats').textContent=`Опитувань: ${items.length}`;
+}
+async function surveyAction(id,action){
+  try{ await api('/api/surveys/'+id+'/'+action,{method:'POST',body:'{}'}); loadSurveys(); }
+  catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+function closeSurvey(){ document.getElementById('surveyModal').style.display='none'; }
+function openSurveyNew(){
+  document.getElementById('surveyTitle').textContent='Нове опитування';
+  const L='font-size:12px;color:var(--text-secondary)';
+  document.getElementById('surveyBody').innerHTML=`
+    <div style="margin-bottom:10px"><label style="${L}">Назва *</label><input id="svTitle" class="input" placeholder="Напр.: NPS після візиту"></div>
+    <div style="margin-bottom:10px"><label style="${L}">Тип</label><select id="svType" class="input">${Object.keys(SRV_TYPE).map(k=>`<option value="${k}">${SRV_TYPE[k]}</option>`).join('')}</select>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">NPS/CSAT/CES автоматично додають типове питання.</div></div>
+    <div style="margin-bottom:12px"><label style="${L}">Опис</label><textarea id="svDesc" class="input" rows="2"></textarea></div>
+    <button class="btn btn-primary btn-sm" onclick="saveSurvey()">Створити</button>`;
+  document.getElementById('surveyModal').style.display='flex';
+}
+async function saveSurvey(){
+  const title=document.getElementById('svTitle').value.trim();
+  if(!title){ alert('Вкажіть назву'); return; }
+  const body={ title, type:document.getElementById('svType').value, description:document.getElementById('svDesc').value||'' };
+  try{ await api('/api/surveys',{method:'POST',body:JSON.stringify(body)});
+    closeSurvey(); loadSurveys();
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+async function viewSurveyResponses(id){
+  let d; try{ d=await api('/api/surveys/'+id+'/responses?limit=100'); }catch(e){ alert('Помилка: '+(e.message||e)); return; }
+  const items=d.items||[];
+  const E=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  document.getElementById('surveyTitle').textContent='Відповіді ('+items.length+')';
+  const rows=items.map(r=>{
+    const score=r.nps_score!=null?r.nps_score+' NPS':(r.csat_score!=null?r.csat_score+'/5':(r.ces_score!=null?r.ces_score+' CES':'—'));
+    const esc=r.is_escalated?' <span style="color:#dc2626">⚠ ескалація</span>':'';
+    const dt=r.completed_at?new Date(r.completed_at).toLocaleDateString('uk-UA'):(r.created_at?new Date(r.created_at).toLocaleDateString('uk-UA'):'—');
+    return `<tr><td style="padding:5px">${dt}</td><td style="padding:5px">${E(score)}${esc}</td><td style="padding:5px;color:#555">${E(r.comment||r.feedback||'')}</td></tr>`;
+  }).join('')||'<tr><td colspan="3" style="padding:10px;color:#888">Відповідей ще немає</td></tr>';
+  document.getElementById('surveyBody').innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;border-bottom:1px solid #999;padding:5px">Дата</th><th style="text-align:left;border-bottom:1px solid #999;padding:5px">Оцінка</th><th style="text-align:left;border-bottom:1px solid #999;padding:5px">Коментар</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('surveyModal').style.display='flex';
 }
 // ═══ БАЗА ЗНАНЬ (MGT-03) ═══════════════════════════════
 const KB_STATUS={draft:['Чернетка','#6b7280'],review:['На перевірці','#f59e0b'],published:['Опубліковано','#22c55e'],archived:['Архів','#9ca3af']};
