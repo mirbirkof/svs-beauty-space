@@ -192,6 +192,100 @@ ${catalog ? 'Інструменти:\n' + catalog : 'Інструментів д
   } catch (e) { console.error('[manager/assistant]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
+// ── Утрішній брифінг: вільні вікна майстрів на сьогодні ──────────────
+// Голова-бот першочергово показує адміну на зміні, де у майстрів «дірки» в записі,
+// щоб дозаписати клієнтів. Вікна рахуються ЛОКАЛЬНО (графік − зайняті записи),
+// беруться лише ВІКНА В МАЙБУТНЬОМУ (минулі години вже не закрити).
+const MIN_GAP_MIN = 30;          // вікно коротше 30 хв не вважаємо вартим уваги
+const _kyivNow = () => {
+  // поточний час у Києві в хвилинах від півночі + дата YYYY-MM-DD
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kiev', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const hh = +(p.find(x => x.type === 'hour').value), mm = +(p.find(x => x.type === 'minute').value);
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return { date, nowMin: hh * 60 + mm };
+};
+const _t2m = (t) => { if (!t) return null; const [h, m] = String(t).split(':'); return (+h) * 60 + (+m); };
+const _m2t = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+
+async function computeFreeGaps() {
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  const { date: today, nowMin } = _kyivNow();
+  // майстри на зміні сьогодні (надають послуги). Джерело правди — master_schedule_days.
+  const work = await q(
+    `SELECT msd.master_id, m.name, msd.start_time, msd.end_time
+       FROM master_schedule_days msd JOIN masters m ON m.id = msd.master_id
+      WHERE msd.work_date = $1 AND msd.start_time IS NOT NULL
+        AND m.active = true AND COALESCE(m.provides_services, true) = true
+      ORDER BY m.name`, [today]);
+  if (!work.length) return { today, masters: [], total_free_min: 0 };
+  // зайняті інтервали сьогодні (у київському часі)
+  const busy = await q(
+    `SELECT master_id,
+            EXTRACT(HOUR FROM (starts_at AT TIME ZONE 'Europe/Kiev'))*60 + EXTRACT(MINUTE FROM (starts_at AT TIME ZONE 'Europe/Kiev')) AS st,
+            EXTRACT(HOUR FROM (ends_at   AT TIME ZONE 'Europe/Kiev'))*60 + EXTRACT(MINUTE FROM (ends_at   AT TIME ZONE 'Europe/Kiev')) AS en
+       FROM appointments
+      WHERE (starts_at AT TIME ZONE 'Europe/Kiev')::date = $1
+        AND status NOT IN ('cancelled','noshow')
+      ORDER BY starts_at`, [today]);
+  const busyBy = {};
+  for (const b of busy) { (busyBy[b.master_id] = busyBy[b.master_id] || []).push([Math.round(+b.st), Math.round(+b.en)]); }
+  const masters = [];
+  let total = 0;
+  for (const w of work) {
+    const wStart = _t2m(w.start_time), wEnd = _t2m(w.end_time);
+    if (wStart == null || wEnd == null || wEnd <= wStart) continue;
+    const taken = (busyBy[w.master_id] || []).slice().sort((a, b) => a[0] - b[0]);
+    // йдемо по робочому дню з поточного моменту, шукаємо дірки
+    let cursor = Math.max(wStart, nowMin);
+    const gaps = [];
+    for (const [bs, be] of taken) {
+      if (be <= cursor) continue;            // запис у минулому
+      if (bs > cursor) { const g = Math.min(bs, wEnd) - cursor; if (g >= MIN_GAP_MIN) gaps.push([cursor, Math.min(bs, wEnd)]); }
+      cursor = Math.max(cursor, be);
+      if (cursor >= wEnd) break;
+    }
+    if (cursor < wEnd && (wEnd - cursor) >= MIN_GAP_MIN) gaps.push([cursor, wEnd]);
+    if (!gaps.length) continue;
+    const freeMin = gaps.reduce((s, g) => s + (g[1] - g[0]), 0);
+    total += freeMin;
+    masters.push({
+      master_id: w.master_id, name: w.name,
+      work: `${_m2t(wStart)}–${_m2t(wEnd)}`,
+      gaps: gaps.map(g => ({ from: _m2t(g[0]), to: _m2t(g[1]), minutes: g[1] - g[0] })),
+      free_min: freeMin,
+      whole_day: taken.length === 0,
+    });
+  }
+  return { today, masters, total_free_min: total };
+}
+
+// GET /api/manager/daily-briefing — лише для управлінців (reports.read).
+// Майстер/обмежений акаунт сюди не лізе (це інфа про завантаження всіх майстрів).
+router.get('/daily-briefing', requirePerm('reports.read'), async (req, res) => {
+  try {
+    const data = await computeFreeGaps();
+    if (!data.masters.length) {
+      return res.json({ has_gaps: false, today: data.today, message: '', masters: [] });
+    }
+    // формуємо текст плану на стороні сервера — фронт лише показує
+    const lines = data.masters.map(m => {
+      if (m.whole_day) return `• <b>${m.name}</b>: весь день вільний (${m.work}) — жодного запису`;
+      const g = m.gaps.map(x => `${x.from}–${x.to}`).join(', ');
+      const h = Math.round(m.free_min / 6) / 10;
+      return `• <b>${m.name}</b>: вільно ${g} (≈${h} год)`;
+    });
+    const totalH = Math.round(data.total_free_min / 6) / 10;
+    const message =
+      `🔔 <b>Першочергове на сьогодні.</b> Є вільні вікна у майстрів — варто дозаписати клієнтів (разом ≈${totalH} год):\n` +
+      lines.join('\n') +
+      `\n\n<b>План дій:</b>\n1) Відкрий «Лист очікування» і «Повторні візити» — кому пора на запис.\n2) Обдзвони/напиши клієнтів на вільні години.\n3) За потреби — запусти точкову акцію на сьогодні, щоб закрити порожні слоти.\nЯк закриєш вікна — берись за решту задач.`;
+    res.json({ has_gaps: true, today: data.today, total_free_min: data.total_free_min, masters: data.masters, message });
+  } catch (e) {
+    console.error('[manager/daily-briefing]', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
   try {
     const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);

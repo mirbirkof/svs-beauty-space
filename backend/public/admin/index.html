@@ -10075,6 +10075,21 @@ function aiFabToggle(force){
   if(document.readyState!=='loading') go(); else document.addEventListener('DOMContentLoaded',go);
 })();
 function aiFabQuick(q){ document.getElementById('aiFabInput').value=q; aiFabSend(); }
+// Утрішній брифінг: бот сам показує вільні вікна майстрів і план «дозаписати».
+// Першочергове завдання адміна на зміні. Показуємо 1 раз на день на акаунт.
+async function aiDailyBriefing(){
+  try{
+    const r=await api('/api/manager/daily-briefing').catch(()=>null);
+    if(!r||!r.has_gaps||!r.message) return;            // окон нет / нет прав — не турбуємо
+    if(localStorage.getItem('aiBriefingDay')===r.today) return; // вже показували сьогодні
+    localStorage.setItem('aiBriefingDay',r.today);
+    const html=_aiEsc(r.message).replace(/\n/g,'<br>').replace(/&lt;b&gt;/g,'<b>').replace(/&lt;\/b&gt;/g,'</b>');
+    aiFabToggle(true);                                 // бот сам відкривається
+    _aiAdd('bot',html);
+    window._aiHist.push({role:'assistant',text:r.message.replace(/<[^>]+>/g,'')}); _aiSaveLog();
+  }catch(_){}
+}
+document.addEventListener('DOMContentLoaded',()=>{ setTimeout(aiDailyBriefing,2500); });
 function _aiNavigate(page){
   try{
     if(typeof go==='function') go(page);
