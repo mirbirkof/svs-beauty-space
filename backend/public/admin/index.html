@@ -2466,6 +2466,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Beauty: формула окрашивания -->
+  <div id="formulaModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeFormula()">
+    <div class="modal" style="max-width:540px">
+      <div class="modal-header">
+        <h3 id="formulaTitle">Формула фарбування</h3>
+        <button class="modal-close" onclick="closeFormula()">✕</button>
+      </div>
+      <div class="modal-body" id="formulaBody"></div>
+    </div>
+  </div>
+
   <!-- Глибокий AI-розбір теми (drill-down) -->
   <div id="drillModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeDrill()">
     <div class="modal" style="max-width:880px;width:94vw;max-height:92vh;display:flex;flex-direction:column">
@@ -8412,19 +8423,21 @@ async function loadClientMedical(id){
     }
     // история формул окрашивания
     const fh = await api('/api/medical/formulas/history/'+id).catch(()=>null);
+    html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🎨 Формули фарбування${fh&&fh.items?' ('+fh.items.length+')':''}</b>`
+      + `<button class="btn btn-sm" style="margin-left:auto" onclick="openFormula(${id})">➕ Нова формула</button></div>`;
     if(fh && fh.items && fh.items.length){
-      html += '<div style="margin-top:8px"><b style="font-size:13px">🎨 Формули фарбування ('+fh.items.length+')</b>';
-      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Майстер</th><th>Формула / зони</th><th>Оцінка</th></tr></thead><tbody>';
+      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Майстер</th><th>Формула / зони</th><th>Оцінка</th><th></th></tr></thead><tbody>';
       html += fh.items.slice(0,8).map(f=>{
         const d=f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
         const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
         let zones='';
-        try{ const z=typeof f.zones==='string'?JSON.parse(f.zones):f.zones; if(Array.isArray(z)) zones=z.map(x=>x.formula||x.name||x.zone||'').filter(Boolean).join('; '); }catch(_){}
+        try{ const z=typeof f.zones==='string'?JSON.parse(f.zones):f.zones; if(Array.isArray(z)) zones=z.map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('; '); }catch(_){}
         const formula=zones||E(f.result_notes)||(f.total_amount_g?f.total_amount_g+' г':'—');
         const rating=f.result_rating?('★'.repeat(Number(f.result_rating))):'—';
-        return `<tr><td>${d}</td><td>${E(f.employee_name)}</td><td>${E(formula)}</td><td>${rating}</td></tr>`;
+        return `<tr><td>${d}</td><td>${E(f.employee_name)}</td><td>${E(formula)}</td><td>${rating}</td>`
+          + `<td><button class="btn btn-sm" title="Повторити" onclick="repeatFormula(${id},${f.id})">↻</button></td></tr>`;
       }).join('');
-      html += '</tbody></table></div>';
+      html += '</tbody></table>';
     }
     html += `<div style="margin-top:6px"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button></div>`;
     box.innerHTML = html;
@@ -8479,6 +8492,49 @@ async function saveMedCard(){
     else { await api('/api/medical/cards',{method:'POST',body:JSON.stringify(body)}); }
     closeMedCard(); loadClientMedical(_medClientId);
   }catch(e){ alert('Помилка збереження: '+(e.message||e)); }
+}
+// Формула окрашивания: создать / повторить предыдущую.
+let _formClientId = null;
+function closeFormula(){ document.getElementById('formulaModal').style.display='none'; }
+function _zonesToText(z){ try{ const a=typeof z==='string'?JSON.parse(z):z; if(Array.isArray(a)) return a.map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('\n'); }catch(_){} return ''; }
+async function openFormula(clientId, prefill){
+  _formClientId=clientId;
+  const m=document.getElementById('formulaModal'); const body=document.getElementById('formulaBody');
+  document.getElementById('formulaTitle').textContent = prefill?'Повторити формулу (нова на основі минулої)':'Нова формула фарбування';
+  const E=s=>String(s==null?'':s).replace(/"/g,'&quot;'); const L='font-size:12px;color:var(--text-secondary)';
+  const zonesTxt = prefill?_zonesToText(prefill.zones):'';
+  body.innerHTML=`
+    <div style="margin-bottom:10px"><label style="${L}">Формула по зонах (по рядку: «Зона: формула»)</label>
+      <textarea id="fZones" class="input" rows="4" placeholder="Корінь: 6.0 + 9.0 (1:1) 6%&#10;Довжина: 8.1 9%">${E(zonesTxt)}</textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="${L}">Догляд до</label><input id="fPre" class="input" value="${E(prefill&&prefill.pre_treatment)}"></div>
+      <div><label style="${L}">Догляд після</label><input id="fPost" class="input" value="${E(prefill&&prefill.post_treatment)}"></div>
+      <div><label style="${L}">Всього грамів</label><input id="fGram" type="number" class="input"></div>
+      <div><label style="${L}">Оцінка результату (1-5)</label><input id="fRating" type="number" min="1" max="5" class="input"></div>
+    </div>
+    <div style="margin-bottom:10px"><label style="${L}">Нотатки по результату</label><textarea id="fNotes" class="input" rows="2"></textarea></div>
+    <div style="margin-bottom:12px"><label style="${L}">Рекомендація на наступний візит</label><input id="fNext" class="input"></div>
+    <button class="btn btn-primary btn-sm" onclick="saveFormula()">Зберегти формулу</button>`;
+  m.style.display='flex';
+}
+async function saveFormula(){
+  const zones=document.getElementById('fZones').value.split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{
+    const i=line.indexOf(':'); return i>0?{zone:line.slice(0,i).trim(),formula:line.slice(i+1).trim()}:{formula:line};
+  });
+  const body={ client_id:_formClientId, zones,
+    pre_treatment:document.getElementById('fPre').value||null,
+    post_treatment:document.getElementById('fPost').value||null,
+    total_amount_g:document.getElementById('fGram').value||null,
+    result_rating:document.getElementById('fRating').value||null,
+    result_notes:document.getElementById('fNotes').value||null,
+    next_visit_recommendation:document.getElementById('fNext').value||null };
+  try{ await api('/api/medical/formulas',{method:'POST',body:JSON.stringify(body)});
+    closeFormula(); loadClientMedical(_formClientId);
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+async function repeatFormula(clientId, formulaId){
+  try{ const r=await api('/api/medical/formulas/'+formulaId); openFormula(clientId, r.formula); }
+  catch(e){ alert('Не вдалося завантажити формулу: '+(e.message||e)); }
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){

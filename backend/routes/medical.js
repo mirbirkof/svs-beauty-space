@@ -371,7 +371,7 @@ router.post('/formulas', async (req, res) => {
     const ins = await q(
       `INSERT INTO coloring_formulas (client_id, medical_card_id, appointment_id, employee_id, employee_name, service_id, formula_date,
         zones, pre_treatment, post_treatment, total_amount_g, result_notes, result_rating, client_rating, next_visit_recommendation, photo_id, previous_formula_id, is_current)
-       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,CURRENT_DATE),COALESCE($8,'[]'),$9,$10,$11,$12,$13,$14,$15,$16,$17,true) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,CURRENT_DATE),COALESCE($8::jsonb,'[]'),$9,$10,$11,$12,$13,$14,$15,$16,$17,true) RETURNING *`,
       [Number(b.client_id), card?.id || null, num(b.appointment_id), b.employee_id || req.user?.id || null, b.employee_name || req.user?.display_name || null,
        num(b.service_id), b.formula_date || null, jb(b.zones), b.pre_treatment || null, b.post_treatment || null, num(b.total_amount_g),
        b.result_notes || null, num(b.result_rating), num(b.client_rating), b.next_visit_recommendation || null, num(b.photo_id), prev?.id || null]);
@@ -384,7 +384,7 @@ router.patch('/formulas/:id(\\d+)', async (req, res) => {
     const b = req.body || {};
     const sets = ['updated_at=NOW()']; const p = [];
     const set = (col, v) => { p.push(v); sets.push(`${col}=$${p.length}`); };
-    if (b.zones !== undefined) set('zones', jb(b.zones) || '[]');
+    if (b.zones !== undefined) { p.push(jb(b.zones) || '[]'); sets.push(`zones=$${p.length}::jsonb`); }
     if (b.pre_treatment !== undefined) set('pre_treatment', b.pre_treatment);
     if (b.post_treatment !== undefined) set('post_treatment', b.post_treatment);
     if (b.total_amount_g !== undefined) set('total_amount_g', num(b.total_amount_g));
