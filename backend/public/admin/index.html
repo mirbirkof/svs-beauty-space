@@ -8399,6 +8399,22 @@ async function loadClientMedical(id){
     if(!blockers.length && !warns.length){
       html += '<div style="font-size:12px;color:#27ae60">✓ Протипоказань і алергій не зазначено</div>';
     }
+    // история формул окрашивания
+    const fh = await api('/api/medical/formulas/history/'+id).catch(()=>null);
+    if(fh && fh.items && fh.items.length){
+      html += '<div style="margin-top:8px"><b style="font-size:13px">🎨 Формули фарбування ('+fh.items.length+')</b>';
+      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Майстер</th><th>Формула / зони</th><th>Оцінка</th></tr></thead><tbody>';
+      html += fh.items.slice(0,8).map(f=>{
+        const d=f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
+        const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+        let zones='';
+        try{ const z=typeof f.zones==='string'?JSON.parse(f.zones):f.zones; if(Array.isArray(z)) zones=z.map(x=>x.formula||x.name||x.zone||'').filter(Boolean).join('; '); }catch(_){}
+        const formula=zones||E(f.result_notes)||(f.total_amount_g?f.total_amount_g+' г':'—');
+        const rating=f.result_rating?('★'.repeat(Number(f.result_rating))):'—';
+        return `<tr><td>${d}</td><td>${E(f.employee_name)}</td><td>${E(formula)}</td><td>${rating}</td></tr>`;
+      }).join('');
+      html += '</tbody></table></div>';
+    }
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
 }
