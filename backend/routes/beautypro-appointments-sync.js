@@ -909,6 +909,7 @@ router.get('/v2/appointments/status', requirePerm('sync.write'), async (req, res
 //   FAST (кожні 5 хв)  — те, що має бачитись "одразу": записи, оплати/каса, нові клієнти.
 //   SLOW (кожні 30 хв) — важче й менш термінове: графік майстрів (30 днів), детальні продажі товарів.
 let fastRef = null, slowRef = null, fastBusy = false, slowBusy = false;
+let lastReconcileDay = null; // дата останньої добової 30-денної реконсиляції каси
 
 // FAST: запис / оплата / новий клієнт — головне для Боса.
 async function fastTick() {
@@ -944,6 +945,14 @@ async function slowTick() {
     if (sc.upserted) console.log(`[bp-appt-sync] графік: ${sc.upserted} днів-майстрів`);
     const ps = await withAuthRetry(() => syncProductSales(iso(new Date(now.getTime() - 3 * 864e5)), iso(now)));
     if (ps.posted) console.log(`[bp-appt-sync] товари: +${ps.posted} позицій (${ps.matched} матч)`);
+    // Раз на добу — реконсиляція каси за 30 днів: прибираємо продажі, скасовані в BP
+    // пізніше ніж 3-денне вікно fastTick. Інакше скасування "застрягають" у касі фантомами.
+    const todayKey = iso(now);
+    if (lastReconcileDay !== todayKey) {
+      lastReconcileDay = todayKey;
+      const rec = await withAuthRetry(() => syncSales(iso(new Date(now.getTime() - 30 * 864e5)), iso(now)));
+      if (rec.removed) console.log(`[bp-appt-sync] реконсиляція 30д: прибрано ${rec.removed} фантомних продажів`);
+    }
     // підстраховка вебхука: підбираємо нових клієнтів (навіть без записів) за останні 2 дні
     const rc = await withAuthRetry(() => syncRecentClients(2));
     if (rc.clients_created || rc.clients_linked) console.log(`[bp-appt-sync] нові клієнти: +${rc.clients_created}, лінк ${rc.clients_linked}`);
