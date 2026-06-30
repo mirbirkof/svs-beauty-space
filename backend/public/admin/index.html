@@ -8337,6 +8337,7 @@ async function openClientCard(id){
         <div id="ccTags">${_ccRenderTags(c.tags)}</div></div>
       <div style="margin-bottom:12px"><label style="font-size:12px;color:var(--text-secondary)">Особисті нотатки</label>
         <textarea id="ccNotes" class="input" rows="3" placeholder="Уподобання, алергії, важливі деталі…">${c.notes||''}</textarea></div>
+      <div id="ccMedical" style="margin-bottom:12px"></div>
       <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;padding:10px 12px;background:#fff7f0;border:1px solid #ffd9b3;border-radius:8px;cursor:pointer">
         <input type="checkbox" id="ccPrepay" ${c.prepayment_required?'checked':''} style="margin-top:2px">
         <span style="font-size:13px;line-height:1.4"><b>Вимагати 100% передоплату</b><br>
@@ -8370,7 +8371,36 @@ async function openClientCard(id){
       <div id="ccHistory"><div class="empty">Завантаження…</div></div>`;
     loadClientHistory(id);
     loadClientRecs(id);
+    loadClientMedical(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// Beauty Core: медкарта в карточке клиента — предупреждения (аллергии/противопоказания)
+// и формулы окрашивания. Безопасность: критичное видно перед записью.
+async function loadClientMedical(id){
+  const box = document.getElementById('ccMedical'); if(!box) return;
+  try {
+    const w = await api('/api/medical/cards/warnings/'+id).catch(()=>null);
+    let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:14px">⚕️ Медична карта</b>';
+    if(!w || !w.has_card){
+      html += '<span style="font-size:12px;color:#c0392b">картки немає</span></div>'
+        + '<div style="font-size:12px;color:var(--text-secondary)">Для хімічних процедур (фарбування) бажано завести медкарту: алергії, протипоказання, тест.</div>';
+      box.innerHTML = html; return;
+    }
+    html += '</div>';
+    const blockers = w.blockers||[], warns = w.warnings||[];
+    if(blockers.length){
+      html += '<div style="background:#fdecea;border:1px solid #f5b7b1;border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+        + blockers.map(b=>`<div style="color:#922b21;font-size:13px">⛔ ${_aiEsc?_aiEsc(b.message):b.message}</div>`).join('')+'</div>';
+    }
+    if(warns.length){
+      html += '<div style="background:#fff7e6;border:1px solid #ffe0a3;border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+        + warns.map(b=>`<div style="color:#9c6a00;font-size:13px">⚠️ ${_aiEsc?_aiEsc(b.message):b.message}</div>`).join('')+'</div>';
+    }
+    if(!blockers.length && !warns.length){
+      html += '<div style="font-size:12px;color:#27ae60">✓ Протипоказань і алергій не зазначено</div>';
+    }
+    box.innerHTML = html;
+  } catch(_){ box.innerHTML=''; }
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){
