@@ -2477,6 +2477,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Beauty: алергопроба -->
+  <div id="allergyModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeAllergy()">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <h3 id="allergyTitle">Алергопроба</h3>
+        <button class="modal-close" onclick="closeAllergy()">✕</button>
+      </div>
+      <div class="modal-body" id="allergyBody"></div>
+    </div>
+  </div>
+
   <!-- Глибокий AI-розбір теми (drill-down) -->
   <div id="drillModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeDrill()">
     <div class="modal" style="max-width:880px;width:94vw;max-height:92vh;display:flex;flex-direction:column">
@@ -8439,6 +8450,27 @@ async function loadClientMedical(id){
       }).join('');
       html += '</tbody></table>';
     }
+    // алергопроби
+    const at = await api('/api/medical/allergy-tests?client_id='+id+'&limit=6').catch(()=>null);
+    html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🧪 Алергопроби${at&&at.items?' ('+at.total+')':''}</b>`
+      + `<button class="btn btn-sm" style="margin-left:auto" onclick="openAllergy(${id})">➕ Зробити пробу</button></div>`;
+    if(at && at.items && at.items.length){
+      const RES={negative:['Негативна','#27ae60'],mild_reaction:['Легка реакція','#9c6a00'],strong_reaction:['Сильна реакція','#c0392b'],pending:['Очікує','#7f8c8d']};
+      const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Препарат</th><th>Результат</th><th>Дійсна до</th><th></th></tr></thead><tbody>';
+      html += at.items.map(t=>{
+        const d=t.applied_at?new Date(t.applied_at).toLocaleDateString('uk-UA'):'—';
+        const r=RES[t.final_result]||[t.final_result,'#7f8c8d'];
+        const exp=t.valid_until?new Date(t.valid_until):null;
+        const expired=exp&&exp<new Date();
+        const vu=exp?exp.toLocaleDateString('uk-UA'):'—';
+        const act=t.final_result==='pending'?`<button class="btn btn-sm" title="Внести результат" onclick="resultAllergy(${id},${t.id})">📋</button>`:'';
+        return `<tr><td>${d}</td><td>${E(t.product_name)}${t.product_brand?' <span style="color:var(--text-secondary)">('+E(t.product_brand)+')</span>':''}</td>`
+          + `<td><span style="color:${r[1]};font-weight:600">${E(r[0])}</span></td>`
+          + `<td style="color:${expired?'#c0392b':'inherit'}">${vu}${expired?' ⛔':''}</td><td>${act}</td></tr>`;
+      }).join('');
+      html += '</tbody></table>';
+    }
     html += `<div style="margin-top:6px"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button></div>`;
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
@@ -8535,6 +8567,60 @@ async function saveFormula(){
 async function repeatFormula(clientId, formulaId){
   try{ const r=await api('/api/medical/formulas/'+formulaId); openFormula(clientId, r.formula); }
   catch(e){ alert('Не вдалося завантажити формулу: '+(e.message||e)); }
+}
+// Алергопроба: створення проби та внесення результату (24/48 год).
+let _allClientId=null, _allTestId=null;
+function closeAllergy(){ document.getElementById('allergyModal').style.display='none'; }
+function openAllergy(clientId){
+  _allClientId=clientId; _allTestId=null;
+  document.getElementById('allergyTitle').textContent='Нова алергопроба';
+  const L='font-size:12px;color:var(--text-secondary)';
+  document.getElementById('allergyBody').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="${L}">Препарат *</label><input id="aProd" class="input" placeholder="Напр.: Фарба 6.0"></div>
+      <div><label style="${L}">Бренд</label><input id="aBrand" class="input" placeholder="Estel, Wella…"></div>
+      <div><label style="${L}">Зона нанесення</label><select id="aZone" class="input"><option value="behind_ear">За вухом</option><option value="inner_elbow">Згин ліктя</option><option value="wrist">Зап'ястя</option></select></div>
+      <div><label style="${L}">Експозиція (хв)</label><input id="aExp" type="number" class="input" value="30"></div>
+      <div><label style="${L}">Дійсна (місяців)</label><input id="aValid" type="number" class="input" value="12"></div>
+    </div>
+    <div style="margin-bottom:12px"><label style="${L}">Нотатки</label><textarea id="aNotes" class="input" rows="2"></textarea></div>
+    <button class="btn btn-primary btn-sm" onclick="saveAllergy()">Зберегти пробу</button>`;
+  document.getElementById('allergyModal').style.display='flex';
+}
+async function saveAllergy(){
+  const prod=document.getElementById('aProd').value.trim();
+  if(!prod){ alert('Вкажіть препарат'); return; }
+  const body={ client_id:_allClientId, product_name:prod,
+    product_brand:document.getElementById('aBrand').value||null,
+    application_zone:document.getElementById('aZone').value,
+    exposure_minutes:document.getElementById('aExp').value||30,
+    valid_months:document.getElementById('aValid').value||12,
+    notes:document.getElementById('aNotes').value||null };
+  try{ await api('/api/medical/allergy-tests',{method:'POST',body:JSON.stringify(body)});
+    closeAllergy(); loadClientMedical(_allClientId);
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+function resultAllergy(clientId, testId){
+  _allClientId=clientId; _allTestId=testId;
+  document.getElementById('allergyTitle').textContent='Результат проби';
+  const L='font-size:12px;color:var(--text-secondary)';
+  document.getElementById('allergyBody').innerHTML=`
+    <div style="margin-bottom:12px"><label style="${L}">Підсумковий результат *</label>
+      <select id="aRes" class="input">
+        <option value="negative">Негативна (реакції немає — можна фарбувати)</option>
+        <option value="mild_reaction">Легка реакція</option>
+        <option value="strong_reaction">Сильна реакція (фарбувати не можна)</option>
+      </select></div>
+    <div style="margin-bottom:12px"><label style="${L}">Коментар</label><textarea id="aResNotes" class="input" rows="2"></textarea></div>
+    <button class="btn btn-primary btn-sm" onclick="saveAllergyResult()">Зберегти результат</button>`;
+  document.getElementById('allergyModal').style.display='flex';
+}
+async function saveAllergyResult(){
+  const final=document.getElementById('aRes').value;
+  const body={ final_result:final, result_48h:final, notes:document.getElementById('aResNotes').value||null };
+  try{ await api('/api/medical/allergy-tests/'+_allTestId+'/result',{method:'PATCH',body:JSON.stringify(body)});
+    closeAllergy(); loadClientMedical(_allClientId);
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){
