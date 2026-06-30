@@ -1,7 +1,7 @@
 /* Schedule: расписание мастеров — CRUD + синк с BeautyPro
    Подключается как /api/schedule */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
@@ -1127,15 +1127,28 @@ router.post('/appointments/:id/pay', async (req, res) => {
     if (!sh.rows[0]) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
     const shiftId = sh.rows[0].id;
 
-    // прихід у касу
-    const op = await pool.query(
-      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-       VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6) RETURNING id`,
-      [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга']
-    );
+    // Приход в кассу + статус «выполнено» — АТОМАРНО в одной транзакции.
+    // Иначе при падении между ними возможен рассинхрон (деньги есть, статус нет — или наоборот).
+    const client = await pool.connect();
+    let op;
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      op = await client.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6) RETURNING id`,
+        [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга']
+      );
+      await client.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
 
-    // запис виконано + списання розхідників (ідемпотентно)
-    await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
+    // После COMMIT: списание расходников (идемпотентно) и эмит события — best-effort,
+    // не влияют на зафиксированные деньги/статус. Их сбой не откатывает оплату.
     let stock = null;
     try {
       const { writeOffForAppointment } = require('../lib/consumables');
