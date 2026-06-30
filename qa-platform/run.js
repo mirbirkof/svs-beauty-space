@@ -21,6 +21,14 @@ function printReport() {
   console.log(`Покрытие: ${modules} модулей, ${items} проверок`);
   const real = open.filter((b) => !b.needsManual);
   if (real.length) { console.log('\nРеальные открытые баги:'); real.slice(0, 15).forEach((b) => console.log(`  [${b.severity}] ${b.module}/${b.role}: ${b.title} (${b.actual || ''})`)); }
+  // Ростер 13 AI-агентов из ТЗ и их статус
+  try {
+    const roster = require('./roster');
+    const ic = { ready: '✅', partial: '🟡', gated: '🔒', meta: '🧠' };
+    console.log('\n=== РОСТЕР 13 AI-АГЕНТОВ (ТЗ) ===');
+    roster.forEach((r) => console.log(`  ${ic[r.status] || '·'} ${r.role} — ${r.status} · ${r.covers}`));
+    console.log('Легенда: ✅ работает · 🟡 частично (HTTP/активное ждёт staging) · 🔒 ждёт изолированный staging · 🧠 мета');
+  } catch (_) {}
 }
 
 async function main() {
