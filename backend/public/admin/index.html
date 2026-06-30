@@ -2488,6 +2488,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Beauty: інформована згода на процедуру -->
+  <div id="consentModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeConsent()">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <h3 id="consentTitle">Інформована згода</h3>
+        <button class="modal-close" onclick="closeConsent()">✕</button>
+      </div>
+      <div class="modal-body" id="consentBody"></div>
+    </div>
+  </div>
+
   <!-- Глибокий AI-розбір теми (drill-down) -->
   <div id="drillModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeDrill()">
     <div class="modal" style="max-width:880px;width:94vw;max-height:92vh;display:flex;flex-direction:column">
@@ -8471,6 +8482,24 @@ async function loadClientMedical(id){
       }).join('');
       html += '</tbody></table>';
     }
+    // інформовані згоди на процедуру
+    const cs = await api('/api/medical/consents?client_id='+id+'&limit=6').catch(()=>null);
+    html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">📝 Згоди на процедуру${cs&&cs.items?' ('+cs.total+')':''}</b>`
+      + `<button class="btn btn-sm" style="margin-left:auto" onclick="openConsent(${id})">➕ Оформити згоду</button></div>`;
+    if(cs && cs.items && cs.items.length){
+      const CST={active:['Чинна','#27ae60'],expired:['Прострочена','#9c6a00'],revoked:['Відкликана','#c0392b'],used:['Використана','#7f8c8d']};
+      const TYP={single:'разова',course:'курс',permanent:'безстрокова'};
+      const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Процедура</th><th>Тип</th><th>Статус</th><th></th></tr></thead><tbody>';
+      html += cs.items.map(c=>{
+        const d=c.signed_at?new Date(c.signed_at).toLocaleDateString('uk-UA'):'—';
+        const st=CST[c.status]||[c.status,'#7f8c8d'];
+        const act=c.status==='active'?`<button class="btn btn-sm" title="Відкликати згоду" onclick="revokeConsent(${id},${c.id})">✖</button>`:'';
+        return `<tr><td>${d}</td><td>${E(c.procedure_name)}</td><td>${TYP[c.consent_type]||E(c.consent_type)}</td>`
+          + `<td><span style="color:${st[1]};font-weight:600">${E(st[0])}</span></td><td>${act}</td></tr>`;
+      }).join('');
+      html += '</tbody></table>';
+    }
     html += `<div style="margin-top:6px"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button></div>`;
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
@@ -8621,6 +8650,44 @@ async function saveAllergyResult(){
   try{ await api('/api/medical/allergy-tests/'+_allTestId+'/result',{method:'PATCH',body:JSON.stringify(body)});
     closeAllergy(); loadClientMedical(_allClientId);
   }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+// Інформована згода на процедуру: оформлення + відкликання.
+let _consentClientId=null;
+function closeConsent(){ document.getElementById('consentModal').style.display='none'; }
+function openConsent(clientId){
+  _consentClientId=clientId;
+  document.getElementById('consentTitle').textContent='Оформити згоду на процедуру';
+  const L='font-size:12px;color:var(--text-secondary)';
+  document.getElementById('consentBody').innerHTML=`
+    <div style="margin-bottom:10px"><label style="${L}">Процедура *</label><input id="cProc" class="input" placeholder="Напр.: Освітлення волосся"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="${L}">Тип згоди</label><select id="cType" class="input"><option value="single">Разова</option><option value="course">На курс</option><option value="permanent">Безстрокова</option></select></div>
+      <div><label style="${L}">ПІБ того, хто підписав *</label><input id="cName" class="input" placeholder="Клієнт"></div>
+      <div><label style="${L}">Дійсна до (необов'язково)</label><input id="cValid" type="date" class="input"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="cRisks"> Клієнт ознайомлений з ризиками та протипоказаннями</label>
+    <button class="btn btn-primary btn-sm" onclick="saveConsent()">Зберегти згоду</button>`;
+  document.getElementById('consentModal').style.display='flex';
+}
+async function saveConsent(){
+  const proc=document.getElementById('cProc').value.trim();
+  const name=document.getElementById('cName').value.trim();
+  if(!proc){ alert('Вкажіть процедуру'); return; }
+  if(!name){ alert('Вкажіть ПІБ того, хто підписав'); return; }
+  const body={ client_id:_consentClientId, procedure_name:proc, signed_by_name:name,
+    consent_type:document.getElementById('cType').value,
+    risks_acknowledged:document.getElementById('cRisks').checked,
+    valid_until:document.getElementById('cValid').value||null };
+  try{ await api('/api/medical/consents',{method:'POST',body:JSON.stringify(body)});
+    closeConsent(); loadClientMedical(_consentClientId);
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+async function revokeConsent(clientId, consentId){
+  const reason=prompt('Причина відкликання згоди:'); if(reason===null) return;
+  try{ await api('/api/medical/consents/'+consentId+'/revoke',{method:'PATCH',body:JSON.stringify({revoke_reason:reason||null})});
+    loadClientMedical(clientId);
+  }catch(e){ alert('Не вдалося відкликати: '+(e.message||e)); }
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){
