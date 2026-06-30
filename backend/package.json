@@ -9,6 +9,7 @@
     "test": "node --test -r dotenv/config test/*.test.js"
   },
   "dependencies": {
+    "@sentry/node": "^8.55.2",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",

@@ -7,6 +7,10 @@
    ═══════════════════════════════════════════════════════ */
 require('dotenv').config();
 
+// Sentry — мониторинг ошибок прода. No-op без SENTRY_DSN. Инициализируем до express.
+const sentry = require('./lib/sentry');
+sentry.init();
+
 const express = require('express');
 const cors = require('cors');
 const catalogRoutes = require('./routes/catalog');
@@ -372,6 +376,7 @@ try { app.use('/api/v2', require('./routes/feature-flags')); } catch(e) { consol
 
 app.use((err, req, res, next) => {
   console.error('[shop-api]', err);
+  sentry.capture(err, { path: req.path, method: req.method });
   const { safeMessage } = require('./lib/safe-error');
   res.status(500).json({ error: safeMessage(err, 'internal') });
 });
@@ -430,6 +435,16 @@ async function gracefulShutdown(signal) {
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
+// Необработанные ошибки — главная причина падений прода. Логируем + шлём в Sentry (если включён).
+process.on('unhandledRejection', (reason) => {
+  console.error('[shop-api] unhandledRejection:', reason);
+  sentry.capture(reason instanceof Error ? reason : new Error(String(reason)), { kind: 'unhandledRejection' });
+});
+process.on('uncaughtException', (err) => {
+  console.error('[shop-api] uncaughtException:', err);
+  sentry.capture(err, { kind: 'uncaughtException' });
+});
 
 // ── Авто-миграции при старте: БД, в которую смотрит ЭТОТ процесс, всегда догоняет код ──
 // Причина: 12.06 verify падал 42P10 — на Render-базе не было clients_tenant_phone_key
