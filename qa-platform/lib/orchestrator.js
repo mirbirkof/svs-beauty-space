@@ -57,6 +57,20 @@ async function runCycle(cycleNo) {
   fs.writeFileSync(path.join(cfg.dataDir, 'last-cycle.json'), JSON.stringify(report, null, 2));
   const stateFile = path.join(cfg.dataDir, 'cycle-state.json');
   fs.writeFileSync(stateFile, JSON.stringify({ lastCycle: cycleNo, at: report.at }, null, 2));
+
+  // Накопительная статистика по агентам (кто сколько работает / сколько багов) + общий статус.
+  try {
+    const statsFile = path.join(cfg.dataDir, 'agent-stats.json');
+    const stats = (() => { try { return JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch (_) { return {}; } })();
+    for (const [name, s] of Object.entries(summary.byAgent)) {
+      stats[name] = stats[name] || { cycles: 0, scenarios: 0, bugs: 0, errors: 0, lastRun: null };
+      stats[name].cycles++; stats[name].scenarios += s.scenarios || 0; stats[name].bugs += s.bugs || 0;
+      if (s.error) stats[name].errors++;
+      stats[name].lastRun = report.at;
+    }
+    fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
+    writeStatus(cycleNo, report, stats);
+  } catch (_) { /* статистика не критична */ }
   return report;
 }
 
@@ -78,6 +92,22 @@ async function regressionVerify(agents) {
     }
   }
   return closed;
+}
+
+// Всегда-доступный статус для бота: кто работает, сколько, сколько багов. → data/status.json
+function writeStatus(cycleNo, report, stats) {
+  let roster = []; try { roster = require('../roster'); } catch (_) {}
+  const open = reg.openBugs(), all = reg.allBugs(), manual = reg.manualBugs();
+  const status = {
+    at: report.at, cycle: cycleNo, mode: cfg.mode,
+    checks: report.coverageItems, modules: Object.keys(reg.coverage()).length,
+    bugs: { open: open.length, closed: all.filter((b) => b.status === 'closed').length, manual: manual.length,
+      bySeverity: open.reduce((a, b) => ((a[b.severity] = (a[b.severity] || 0) + 1), a), {}) },
+    openList: open.filter((b) => !b.needsManual).map((b) => ({ id: b.id, sev: b.severity, module: b.module, title: b.title, actual: b.actual })),
+    agents: roster.map((r) => ({ role: r.role, status: r.status, covers: r.covers,
+      stats: stats[r.agent] || { cycles: 0, scenarios: 0, bugs: 0 } })),
+  };
+  fs.writeFileSync(path.join(cfg.dataDir, 'status.json'), JSON.stringify(status, null, 2));
 }
 
 function nextCycleNo() {
