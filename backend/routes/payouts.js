@@ -190,10 +190,14 @@ router.post('/kpi-bonuses/pull', async (req, res) => {
 async function liveEstimate(masterId, from, to) {
   const s = (await q(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE LIMIT 1`, [masterId]))[0];
   const ob = (await q(
+    // Границы периода как в едином accrual-эталоне (lib/live-finance): киевский пояс (+03)
+    // и только фактически оказанные визиты (starts_at <= NOW) — ЗП за выполненное, не за будущее.
     `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
        FROM appointments
       WHERE master_id=$1::int
-        AND starts_at >= $2::date AND starts_at < $3::date
+        AND starts_at >= ($2||' 00:00:00+03')::timestamptz
+        AND starts_at <  ($3||' 00:00:00+03')::timestamptz
+        AND starts_at <= NOW()
         AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))`,
     [masterId, from, to]))[0];
   const revenue = num(ob.revenue), cnt = ob.cnt || 0;
