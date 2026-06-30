@@ -229,7 +229,7 @@ main { padding:24px 0; }
       <select id="u-role" onchange="toggleMasterFields()">
         <option value="owner">Власник</option>
         <option value="admin">Адмін</option>
-        <option value="manager">Менеджер</option>
+        <option value="manager">Керуючий (управитель)</option>
         <option value="accountant">Бухгалтер</option>
         <option value="master" selected>Майстер</option>
         <option value="reception">Рецепшен</option>
@@ -245,7 +245,7 @@ main { padding:24px 0; }
       </span>
       <button class="btn" onclick="createUser()">Створити</button>
     </div>
-    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мінімум 6 символів. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
+    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мінімум 8 символів, обовʼязково літера і цифра (напр. Salon2026). Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
   </div>
   <div class="card">
     <h2>Майстри салону <span id="m-count" style="font-size:13px;color:#888;font-weight:400"></span></h2>
@@ -936,7 +936,7 @@ async function mcCreateAccess(masterId){
   const phone=(document.getElementById('mcAccPhone')||{}).value?.trim()||'';
   const pass=(document.getElementById('mcAccPass')||{}).value||'';
   if(!phone){ alert('Вкажіть телефон/логін'); return; }
-  if(pass && pass.length<6){ alert('Пароль мінімум 6 символів'); return; }
+  if(pass){ const iss=pwIssues(pass); if(iss.length){ alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад: Salon2026'); return; } }
   try{
     const r=await api('/api/users',{method:'POST',body:JSON.stringify({
       display_name:[ms.name,ms.surname].filter(Boolean).join(' ')||ms.name||'Майстер',
@@ -1139,12 +1139,15 @@ async function loadUsers(){
   }catch(e){ alert(e.message); }
 }
 function pwIssues(p){
-  const e=[];
-  if((p||'').length<6) e.push('мін. 6 символів');
+  // Требования синхронизированы с бэком (checkPasswordComplexity): 8+ символов, буква и цифра.
+  const s=String(p||''); const e=[];
+  if(s.length<8) e.push('мінімум 8 символів');
+  if(!/[A-Za-zА-Яа-яЇїІіЄєҐґ]/.test(s)) e.push('хоча б одна літера');
+  if(!/[0-9]/.test(s)) e.push('хоча б одна цифра');
   return e;
 }
 function pwError(e){
-  if(e && e.message==='weak-password') return 'Пароль закороткий. Потрібно: мінімум 6 символів.';
+  if(e && e.message==='weak-password') return 'Пароль заслабкий. Потрібно: мінімум 8 символів, літера і цифра. Приклад: Salon2026';
   return (e&&e.message)||'Помилка';
 }
 async function createUser(){
