@@ -7,7 +7,19 @@ const { getSetting, maskPhone } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid } = require('../lib/schedule-month');
 const { findOverlap } = require('../lib/booking-guard');
+const { emit: emitEvent } = require('../lib/event-bus');
 const router = express.Router();
+
+// Единая точка эмита события «визит завершён». Подписчик lib/report-cache.js
+// сбрасывает кэш отчётов → цифры в отчётах/дашборде/аналитике обновляются сразу.
+// В try/catch: эмит НИКОГДА не должен ронять оплату/закрытие записи.
+async function emitAppointmentCompleted(apptId, masterId) {
+  try {
+    await emitEvent('appointment.completed',
+      { appointment_id: Number(apptId), master_id: masterId || null },
+      { entityType: 'appointment', entityId: apptId });
+  } catch (e) { console.error('[schedule] emit appointment.completed failed:', e.message); }
+}
 
 // GET = schedule.read, мутации = schedule.write
 router.use((req, res, next) => {
@@ -988,6 +1000,7 @@ router.patch('/appointments/:id', async (req, res) => {
         const { writeOffForAppointment } = require('../lib/consumables');
         stock = await writeOffForAppointment(Number(req.params.id));
       } catch (e) { stock = { written: false, error: e.message }; }
+      await emitAppointmentCompleted(req.params.id, r.rows[0] && r.rows[0].master_id);
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -1088,6 +1101,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     );
     if (dup.rows[0]) {
       await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
+      await emitAppointmentCompleted(id, appt.master_id);
       return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].id });
     }
     // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
@@ -1103,6 +1117,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
       );
       if (bp.rows[0]) {
         await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
+        await emitAppointmentCompleted(id, appt.master_id);
         return res.json({ ok: true, already_paid: true, paid_via: 'beautypro', operation_id: bp.rows[0].id });
       }
     }
@@ -1126,6 +1141,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
       const { writeOffForAppointment } = require('../lib/consumables');
       stock = await writeOffForAppointment(id);
     } catch (e) { stock = { written: false, error: e.message }; }
+    await emitAppointmentCompleted(id, appt.master_id);
 
     res.json({ ok: true, operation_id: op.rows[0].id, amount, method, stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

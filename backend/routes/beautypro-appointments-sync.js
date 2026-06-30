@@ -551,6 +551,12 @@ async function syncSales(from, to) {
                  = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)`,
     [from, to]);
   const marked_done = md.rowCount || 0;
+  // Завершились визиты (оплата пришла из BeautyPro) → сбрасываем кэш отчётов,
+  // чтобы выручка/дашборд/P&L сразу показали свежие цифры. Одного события достаточно.
+  if (marked_done > 0) {
+    try { await require('../lib/event-bus').emit('appointment.completed', { source: 'bp_sync', count: marked_done }, { entityType: 'appointment' }); }
+    catch (e) { console.error('[bp-sync] emit appointment.completed failed:', e.message); }
+  }
 
   // Реальна сплачена сума → у сам запис (real_amount).
   // price лишається ПЛАНОВОЮ, real_amount = факт із продажів послуг.
