@@ -415,11 +415,33 @@ async function syncSales(from, to) {
   // Алиасы: в /sales BeautyPro мастер может фигурировать под другим именем,
   // чем в карточке. Иначе продажи падают в "ничьи" (master_id=null).
   // 'Перукар Світлана' = та же людина, що 'Скібенко Світлана'.
-  const NAME_ALIASES = { 'Перукар Світлана': 'Скібенко Світлана' };
+  const NAME_ALIASES = {
+    'Перукар Світлана': 'Скібенко Світлана',
+    'Лера Маникюр': 'Лера',     // BP додає спеціальність до імені — зводимо до картки
+    'Вера Колорист': 'Вера',
+  };
   for (const [alias, real] of Object.entries(NAME_ALIASES)) {
     const id = mmap.get(real);
     if (id && !mmap.has(alias)) mmap.set(alias, id);
   }
+  // Нормалізований fallback: ключ = слова імені, в нижньому регістрі, відсортовані.
+  // Ловить перевернутий порядок ('Світлана Скібенко' = 'Скібенко Світлана') БЕЗ
+  // ризику для точних збігів — застосовується ЛИШЕ коли exact-match не спрацював.
+  // Колізії (два різні майстри з однаковим набором слів) виключаємо: такий ключ → null.
+  const normName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').split(' ').sort().join(' ');
+  const normMap = new Map();
+  for (const r of mres.rows) {
+    const k = normName(r.name);
+    if (!k) continue;
+    normMap.set(k, normMap.has(k) ? null : r.id); // друге входження → колізія → null
+  }
+  const resolveMaster = (name) => {
+    if (!name) return null;
+    const exact = mmap.get(String(name).trim());
+    if (exact) return exact;
+    const n = normMap.get(normName(name));
+    return n || null; // null якщо колізія або не знайдено
+  };
 
   let posted = 0, skipped = 0, shifts = 0, removed = 0;
   const days = [];
@@ -477,7 +499,7 @@ async function syncSales(from, to) {
 
     for (const o of ops) {
       const s = o.s;
-      const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
+      const masterId = resolveMaster(s.professional_name);
       const bpClient = s.client ? String(s.client) : null;
       const bpCalendar = s.calendar_date || null; // час запису в BP (для матчингу з appointments)
       // ON CONFLICT DO UPDATE: на повторному синку оновлюємо суму/спосіб (раптом чек
@@ -680,6 +702,11 @@ async function syncProductSales(from, to) {
   const token = await getToken();
   const mres = await pool.query('SELECT id, name FROM masters');
   const mmap = new Map(mres.rows.map((r) => [String(r.name).trim(), r.id]));
+  // нормалізований fallback (як у syncSales): ловить перевернутий порядок слів, колізії → null
+  const normName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').split(' ').sort().join(' ');
+  const normMap = new Map();
+  for (const r of mres.rows) { const k = normName(r.name); if (!k) continue; normMap.set(k, normMap.has(k) ? null : r.id); }
+  const resolveMaster = (name) => { if (!name) return null; const e = mmap.get(String(name).trim()); if (e) return e; return normMap.get(normName(name)) || null; };
   const days = [];
   for (let d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z'); d <= end; d.setUTCDate(d.getUTCDate() + 1))
     days.push(d.toISOString().slice(0, 10));
@@ -702,7 +729,7 @@ async function syncProductSales(from, to) {
     for (const s of recs) {
       const qty = Number(s.quantity) || 1;
       const total = Number(s.sum) || 0;
-      const masterId = s.professional_name ? (mmap.get(String(s.professional_name).trim()) || null) : null;
+      const masterId = resolveMaster(s.professional_name);
       const stockId = await matchStock(pool, s.name);
       if (stockId) matched++;
       const bpClient = s.client ? String(s.client) : null;
