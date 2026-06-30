@@ -855,7 +855,16 @@ router.get('/roles', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/roles', async (req, res) => {
+// Защита от вертикальной эскалации: создание/изменение/удаление РОЛЕЙ (структуры прав)
+// доступно только владельцу. Иначе admin (имеющий admin.*) мог бы выписать своей роли
+// reports.finance / payroll.write / '*' и обойти все ограничения доступа.
+function ownerOnlyRoles(req, res, next) {
+  const u = req.user || {};
+  if (u.role === 'owner' || (u.role_level || 0) >= 100) return next();
+  return res.status(403).json({ error: 'owner-only', message: 'Керування ролями доступне лише власнику' });
+}
+
+router.post('/roles', ownerOnlyRoles, async (req, res) => {
   try {
     const { code, name, level, permissions } = req.body || {};
     if (!code || !name) return res.status(400).json({ error: 'code and name required' });
@@ -870,7 +879,7 @@ router.post('/roles', async (req, res) => {
   }
 });
 
-router.patch('/roles/:id', async (req, res) => {
+router.patch('/roles/:id', ownerOnlyRoles, async (req, res) => {
   try {
     const { code, name, level, permissions } = req.body || {};
     const r = await getPool().query(
@@ -885,7 +894,7 @@ router.patch('/roles/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.delete('/roles/:id', async (req, res) => {
+router.delete('/roles/:id', ownerOnlyRoles, async (req, res) => {
   try {
     const r = await getPool().query('DELETE FROM roles WHERE id=$1 RETURNING id', [parseInt(req.params.id)]);
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
