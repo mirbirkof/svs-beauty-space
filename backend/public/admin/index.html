@@ -8500,7 +8500,9 @@ async function loadClientMedical(id){
       }).join('');
       html += '</tbody></table>';
     }
-    html += `<div style="margin-top:6px"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button></div>`;
+    html += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button>`
+      + ((w&&w.has_card)?`<button class="btn btn-sm" onclick="printMedCard(${id})">📄 Друк / Експорт</button>`:'')
+      + `</div>`;
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
 }
@@ -8688,6 +8690,35 @@ async function revokeConsent(clientId, consentId){
   try{ await api('/api/medical/consents/'+consentId+'/revoke',{method:'PATCH',body:JSON.stringify({revoke_reason:reason||null})});
     loadClientMedical(clientId);
   }catch(e){ alert('Не вдалося відкликати: '+(e.message||e)); }
+}
+// Друк / експорт повної медкарти — друкований вигляд у новому вікні.
+async function printMedCard(clientId){
+  let d;
+  try{ d=await api('/api/medical/cards/'+clientId+'/export'); }
+  catch(e){ alert('Не вдалося отримати медкарту: '+(e.message||e)); return; }
+  const E=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const card=d.card||{}, tests=d.allergy_tests||[], consents=d.consents||[], formulas=d.coloring_formulas||[];
+  const arr=v=>{ try{ const a=typeof v==='string'?JSON.parse(v):v; return Array.isArray(a)?a:[]; }catch(_){ return []; } };
+  const dt=s=>s?new Date(s).toLocaleDateString('uk-UA'):'—';
+  const allerg=arr(card.allergies), contra=arr(card.contraindications);
+  const sec=(t,inner)=>`<h3 style="margin:16px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px">${t}</h3>${inner}`;
+  const rows=(head,body)=>`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>${head.map(h=>'<th style="text-align:left;border-bottom:1px solid #999;padding:4px">'+h+'</th>').join('')}</tr></thead><tbody>${body}</tbody></table>`;
+  let html=`<h2>Медична карта клієнта</h2><div style="color:#555;font-size:12px">Сформовано: ${dt(d.exported_at)}</div>`;
+  html+=sec('Загальне', `<div style="font-size:13px;line-height:1.6">
+    <b>Алергії:</b> ${allerg.length?allerg.map(a=>E(a.allergen||a.name||a)).join(', '):'—'}<br>
+    <b>Протипоказання:</b> ${contra.length?contra.map(a=>E(a.condition||a.name||a)).join(', '):'—'}<br>
+    <b>Тип шкіри:</b> ${E(card.skin_type||'—')} &nbsp; <b>Стан волосся:</b> ${E(card.hair_condition||'—')}<br>
+    <b>Догляд вдома:</b> ${E(card.home_care_notes||'—')}</div>`);
+  html+=sec('Алергопроби', tests.length?rows(['Дата','Препарат','Результат','Дійсна до'],
+    tests.map(t=>`<tr><td style="padding:4px">${dt(t.applied_at)}</td><td style="padding:4px">${E(t.product_name)}</td><td style="padding:4px">${E(t.final_result)}</td><td style="padding:4px">${dt(t.valid_until)}</td></tr>`).join('')):'<i>немає</i>');
+  html+=sec('Згоди на процедуру', consents.length?rows(['Дата','Процедура','Тип','Статус'],
+    consents.map(c=>`<tr><td style="padding:4px">${dt(c.signed_at)}</td><td style="padding:4px">${E(c.procedure_name)}</td><td style="padding:4px">${E(c.consent_type)}</td><td style="padding:4px">${E(c.status)}</td></tr>`).join('')):'<i>немає</i>');
+  html+=sec('Формули фарбування', formulas.length?rows(['Дата','Майстер','Зони/формула','Оцінка'],
+    formulas.map(f=>{ const z=arr(f.zones).map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('; '); return `<tr><td style="padding:4px">${dt(f.formula_date)}</td><td style="padding:4px">${E(f.employee_name)}</td><td style="padding:4px">${E(z||f.result_notes||'—')}</td><td style="padding:4px">${f.result_rating?'★'.repeat(Number(f.result_rating)):'—'}</td></tr>`; }).join('')):'<i>немає</i>');
+  const w=window.open('','_blank');
+  if(!w){ alert('Дозвольте спливаючі вікна для друку'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Медкарта</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#222}h2{margin:0}@media print{button{display:none}}</style></head><body>${html}<div style="margin-top:24px"><button onclick="window.print()" style="padding:8px 16px;font-size:14px;cursor:pointer">🖨 Друкувати</button></div></body></html>`);
+  w.document.close();
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){
