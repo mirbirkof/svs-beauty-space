@@ -11,14 +11,16 @@ const cfg = {
   prodApiBase: 'https://svs-shop-api.onrender.com',
   adminToken: process.env.ADMIN_TOKEN || '',
 
-  // Изолированный таргет для деструктивных тестов. Пока не задан — деструктив запрещён.
+  // Изолированный таргет для деструктивных тестов: ОТДЕЛЬНАЯ Neon-ветка (qa-sandbox).
+  // Это copy-on-write копия БД — запись сюда НЕ касается ни прода, ни бэкап-main.
+  qaDbUrl: process.env.QA_DB_URL || null,
   qaTenantId: process.env.QA_TENANT_ID || null,
   stagingApi: process.env.QA_STAGING_API || null,
 
-  // Режим: 'safe' (только read-only + сверки) | 'full' (нужен изолированный таргет)
-  get mode() { return (this.qaTenantId || this.stagingApi) ? 'full' : 'safe'; },
-  // Разрешены ли деструктивные операции (массовая генерация, мутации, инъекции)
-  get allowDestructive() { return this.mode === 'full'; },
+  // Режим: 'safe' (только read-only + сверки) | 'full' (есть изолированная QA-ветка)
+  get mode() { return (this.qaDbUrl || this.qaTenantId || this.stagingApi) ? 'full' : 'safe'; },
+  // Деструктив РАЗРЕШЁН только при изолированной QA-ветке — НИКОГДА против прод-пула.
+  get allowDestructive() { return !!this.qaDbUrl; },
 
   // Пути хранения
   dataDir: require('path').join(__dirname, 'data'),

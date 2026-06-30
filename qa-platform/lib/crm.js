@@ -5,8 +5,24 @@ const https = require('https');
 const { URL } = require('url');
 const cfg = require('../config');
 const { getPool } = require('../../backend/db-pg');
+// pg резолвим из backend/node_modules (в qa-platform своего node_modules нет).
+const { Pool } = require(require.resolve('pg', { paths: [require('path').join(__dirname, '../../backend/node_modules')] }));
 
-const pool = getPool();
+const pool = getPool(); // ПРОД — только чтение (read-only сверки)
+
+// Изолированная QA-ветка для деструктивных тестов (запись/нагрузка/мутации). Создаётся лениво.
+let _qaPool = null;
+function qaPool() {
+  if (!cfg.qaDbUrl) return null;
+  if (!_qaPool) _qaPool = new Pool({ connectionString: cfg.qaDbUrl, ssl: { rejectUnauthorized: false }, max: 4 });
+  return _qaPool;
+}
+// qaQ — запросы ТОЛЬКО к QA-ветке. Если ветки нет — бросаем (деструктив запрещён без изоляции).
+const qaQ = (sql, params = []) => {
+  const p = qaPool();
+  if (!p) throw new Error('QA branch not configured — деструктив запрещён');
+  return p.query(sql, params).then((r) => r.rows);
+};
 
 // HTTP-запрос к CRM API. Возвращает {status, json, ms, raw} — всё для доказательства бага.
 function apiRaw(method, path, { body, token, base } = {}) {
@@ -37,4 +53,4 @@ function apiRaw(method, path, { body, token, base } = {}) {
 const api = (m, p, o) => apiRaw(m, p, o);
 const q = (sql, params = []) => pool.query(sql, params).then((r) => r.rows);
 
-module.exports = { api, apiRaw, q, pool };
+module.exports = { api, apiRaw, q, pool, qaQ, qaPool };
