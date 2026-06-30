@@ -1169,22 +1169,34 @@ router.delete('/appointments/:id', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'bad-id' });
     const chk = await pool.query(`SELECT id, beautypro_id FROM appointments WHERE id=$1`, [id]);
     if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
-    // прибрати привʼязані касові операції лише з відкритих змін (минулі не чіпаємо)
-    await pool.query(
-      `DELETE FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1
-         AND shift_id IN (SELECT id FROM cash_shifts WHERE status='open')`, [id]
-    );
-    // BeautyPro-запис не можна видаляти жорстко: автосинк побачить його в BP і
-    // відтворить знову (саме тому видалені записи «поверталися»). Тому мʼяке
-    // видалення: cancelled + manual_override, щоб синк більше його не воскрешав.
-    if (chk.rows[0].beautypro_id) {
-      await pool.query(
-        `UPDATE appointments SET status='cancelled', manual_override=true, updated_at=NOW() WHERE id=$1`, [id]
+    // Возврат кассы + удаление/отмена записи — АТОМАРНО. Иначе при падении между ними
+    // деньги вернулись, а запись осталась (или наоборот) → рассинхрон кассы.
+    const soft = !!chk.rows[0].beautypro_id;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      // прибрати привʼязані касові операції лише з відкритих змін (минулі не чіпаємо)
+      await client.query(
+        `DELETE FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1
+           AND shift_id IN (SELECT id FROM cash_shifts WHERE status='open')`, [id]
       );
-      return res.json({ ok: true, deleted: id, soft: true });
+      // BeautyPro-запис не можна видаляти жорстко: автосинк побачить його в BP і
+      // відтворить знову. Тому мʼяке видалення: cancelled + manual_override.
+      if (soft) {
+        await client.query(
+          `UPDATE appointments SET status='cancelled', manual_override=true, updated_at=NOW() WHERE id=$1`, [id]
+        );
+      } else {
+        await client.query(`DELETE FROM appointments WHERE id=$1`, [id]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
     }
-    await pool.query(`DELETE FROM appointments WHERE id=$1`, [id]);
-    res.json({ ok: true, deleted: id });
+    res.json({ ok: true, deleted: id, soft });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

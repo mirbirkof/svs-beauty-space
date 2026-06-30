@@ -392,6 +392,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     if (process.env.MONO_TOKEN) monoPayRoutes.startCron();
     // INF: суточный offsite-бэкап БД (выгрузка в S3/Spaces, если заданы BACKUP_S3_*)
     try { require('./lib/backup-core').startCron(); } catch (e) { console.error('[backup] cron start failed:', e.message); }
+    // INF: суточная очистка растущих таблиц (outbox, логи, коды) — данные не растут бесконтрольно
+    try { require('./lib/retention').startRetentionCron(); } catch (e) { console.error('[retention] cron start failed:', e.message); }
   }
 });
 
