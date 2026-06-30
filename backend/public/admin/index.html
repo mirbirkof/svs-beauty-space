@@ -2455,6 +2455,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Beauty: редактор медкарты -->
+  <div id="medCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMedCard()">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <h3 id="medCardTitle">Медична карта</h3>
+        <button class="modal-close" onclick="closeMedCard()">✕</button>
+      </div>
+      <div class="modal-body" id="medCardBody"></div>
+    </div>
+  </div>
+
   <!-- Глибокий AI-розбір теми (drill-down) -->
   <div id="drillModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeDrill()">
     <div class="modal" style="max-width:880px;width:94vw;max-height:92vh;display:flex;flex-direction:column">
@@ -8415,8 +8426,59 @@ async function loadClientMedical(id){
       }).join('');
       html += '</tbody></table></div>';
     }
+    html += `<div style="margin-top:6px"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button></div>`;
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
+}
+// Редактор медкарты (Beauty Core). Аллергии/противопоказания — построчно.
+let _medCardId = null, _medClientId = null;
+function closeMedCard(){ document.getElementById('medCardModal').style.display='none'; }
+async function openMedCard(clientId){
+  _medClientId = clientId; _medCardId = null;
+  const m=document.getElementById('medCardModal'); const body=document.getElementById('medCardBody');
+  body.innerHTML='<div class="empty">Завантаження…</div>'; m.style.display='flex';
+  let card=null;
+  try{ const r=await api('/api/medical/cards/'+clientId); card=r.card; _medCardId=card?card.id:null; }catch(_){ card=null; }
+  const arr=v=>{ try{ const a=typeof v==='string'?JSON.parse(v):v; return Array.isArray(a)?a:[]; }catch(_){ return []; } };
+  const allerg=arr(card&&card.allergies).map(a=>a.allergen||a.name||'').filter(Boolean).join('\n');
+  const contra=arr(card&&card.contraindications).map(c=>c.condition||c.name||'').filter(Boolean).join('\n');
+  const E=s=>String(s==null?'':s).replace(/"/g,'&quot;');
+  const L='font-size:12px;color:var(--text-secondary)';
+  body.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="${L}">Фототип шкіри (1-6)</label><input id="mcPhoto" type="number" min="1" max="6" class="input" value="${E(card&&card.skin_phototype)}"></div>
+      <div><label style="${L}">Тип шкіри</label><input id="mcSkin" class="input" value="${E(card&&card.skin_type)}"></div>
+      <div><label style="${L}">Стан волосся</label><input id="mcHair" class="input" value="${E(card&&card.hair_condition)}"></div>
+      <div><label style="${L}">Екстрений контакт (тел.)</label><input id="mcEmerg" class="input" value="${E(card&&card.emergency_contact_phone)}"></div>
+    </div>
+    <div style="margin-bottom:10px"><label style="${L}">⛔ Протипоказання (по рядку)</label>
+      <textarea id="mcContra" class="input" rows="3" placeholder="Вагітність&#10;Дерматит шкіри голови">${E(contra)}</textarea></div>
+    <div style="margin-bottom:10px"><label style="${L}">⚠️ Алергії (по рядку)</label>
+      <textarea id="mcAllerg" class="input" rows="3" placeholder="Аміак&#10;ПФД (фарба)">${E(allerg)}</textarea></div>
+    <div style="margin-bottom:10px"><label style="${L}">Анамнез / нотатки косметолога</label>
+      <textarea id="mcAnam" class="input" rows="2"></textarea></div>
+    <div style="margin-bottom:12px"><label style="${L}">Домашній догляд</label>
+      <textarea id="mcHome" class="input" rows="2">${E(card&&card.home_care_notes)}</textarea></div>
+    <button class="btn btn-primary btn-sm" onclick="saveMedCard()">Зберегти медкарту</button>`;
+}
+async function saveMedCard(){
+  const lines=id=>document.getElementById(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const body={
+    client_id:_medClientId,
+    skin_phototype:document.getElementById('mcPhoto').value||null,
+    skin_type:document.getElementById('mcSkin').value||null,
+    hair_condition:document.getElementById('mcHair').value||null,
+    emergency_contact_phone:document.getElementById('mcEmerg').value||null,
+    contraindications:lines('mcContra').map(condition=>({condition,active:true})),
+    allergies:lines('mcAllerg').map(allergen=>({allergen,severity:'moderate'})),
+    cosmetology_anamnesis:document.getElementById('mcAnam').value||null,
+    home_care_notes:document.getElementById('mcHome').value||null,
+  };
+  try{
+    if(_medCardId){ await api('/api/medical/cards/'+_medCardId,{method:'PATCH',body:JSON.stringify(body)}); }
+    else { await api('/api/medical/cards',{method:'POST',body:JSON.stringify(body)}); }
+    closeMedCard(); loadClientMedical(_medClientId);
+  }catch(e){ alert('Помилка збереження: '+(e.message||e)); }
 }
 // AI-07: персональні рекомендації в картці клієнта
 async function loadClientRecs(id){

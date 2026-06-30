@@ -118,7 +118,7 @@ router.post('/cards', async (req, res) => {
       `INSERT INTO medical_cards (client_id, blood_type, skin_phototype, skin_type, hair_condition, allergies, contraindications,
         chronic_conditions, current_medications, emergency_contact_name, emergency_contact_phone, cosmetology_anamnesis, treatment_plan,
         home_care_notes, created_by, last_reviewed_at, reviewed_by, reviewed_by_name)
-       VALUES ($1,$2,$3,$4,$5,COALESCE($6,'[]'),COALESCE($7,'[]'),COALESCE($8,'[]'),COALESCE($9,'[]'),$10,$11,$12,$13,$14,$15,NOW(),$15,$16) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,COALESCE($6::jsonb,'[]'),COALESCE($7::jsonb,'[]'),COALESCE($8::jsonb,'[]'),COALESCE($9::jsonb,'[]'),$10,$11,$12::jsonb,$13::jsonb,$14,$15,NOW(),$15,$16) RETURNING *`,
       [Number(b.client_id), b.blood_type || null, num(b.skin_phototype), b.skin_type || null, b.hair_condition || null,
        jb(b.allergies), jb(b.contraindications), jb(b.chronic_conditions), jb(b.current_medications),
        b.emergency_contact_name || null, b.emergency_contact_phone || null, jb(b.cosmetology_anamnesis), jb(b.treatment_plan),
@@ -134,18 +134,19 @@ router.patch('/cards/:id(\\d+)', async (req, res) => {
     const b = req.body || {};
     const sets = ['updated_at=NOW()']; const p = [];
     const set = (col, v) => { p.push(v); sets.push(`${col}=$${p.length}`); };
+    const setJ = (col, v) => { p.push(jb(v) || '[]'); sets.push(`${col}=$${p.length}::jsonb`); }; // jsonb-поля
     if (b.blood_type !== undefined) set('blood_type', b.blood_type);
     if (b.skin_phototype !== undefined) set('skin_phototype', num(b.skin_phototype));
     if (b.skin_type !== undefined) set('skin_type', b.skin_type);
     if (b.hair_condition !== undefined) set('hair_condition', b.hair_condition);
-    if (b.allergies !== undefined) set('allergies', jb(b.allergies) || '[]');
-    if (b.contraindications !== undefined) set('contraindications', jb(b.contraindications) || '[]');
-    if (b.chronic_conditions !== undefined) set('chronic_conditions', jb(b.chronic_conditions) || '[]');
-    if (b.current_medications !== undefined) set('current_medications', jb(b.current_medications) || '[]');
+    if (b.allergies !== undefined) setJ('allergies', b.allergies);
+    if (b.contraindications !== undefined) setJ('contraindications', b.contraindications);
+    if (b.chronic_conditions !== undefined) setJ('chronic_conditions', b.chronic_conditions);
+    if (b.current_medications !== undefined) setJ('current_medications', b.current_medications);
     if (b.emergency_contact_name !== undefined) set('emergency_contact_name', b.emergency_contact_name);
     if (b.emergency_contact_phone !== undefined) set('emergency_contact_phone', b.emergency_contact_phone);
-    if (b.cosmetology_anamnesis !== undefined) set('cosmetology_anamnesis', jb(b.cosmetology_anamnesis));
-    if (b.treatment_plan !== undefined) set('treatment_plan', jb(b.treatment_plan));
+    if (b.cosmetology_anamnesis !== undefined) setJ('cosmetology_anamnesis', b.cosmetology_anamnesis);
+    if (b.treatment_plan !== undefined) setJ('treatment_plan', b.treatment_plan);
     if (b.home_care_notes !== undefined) set('home_care_notes', b.home_care_notes);
     if (b.status && ['active', 'needs_update', 'archived'].includes(b.status)) set('status', b.status);
     p.push(req.params.id);
