@@ -9,7 +9,7 @@ const reg = require('./registry');
 // Реестр агентов. Деструктивные (load/security-mutating) подключаются ТОЛЬКО в full-режиме.
 function loadAgents() {
   const dir = path.join(__dirname, '../agents');
-  const safe = ['finance-reconciler', 'data-integrity', 'eventbus-checker', 'api-contract', 'security-probe'];
+  const safe = ['finance-reconciler', 'data-integrity', 'eventbus-checker', 'api-contract', 'security-probe', 'workflow-trail'];
   const agents = [];
   for (const name of safe) {
     const f = path.join(dir, name + '.js');
