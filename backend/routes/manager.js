@@ -8,6 +8,7 @@ const { shiftDaysByMaster } = require('../lib/schedule-month');
 const llm = require('../lib/llm');
 const { TOOLS } = require('../lib/agent-tools');
 const { getSetting, setSetting } = require('../lib/settings');
+const { liveFinance } = require('../lib/live-finance');
 
 const router = express.Router();
 const pool = getPool();
@@ -293,13 +294,10 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
     const ym = kyiv().slice(0, 7);
     const [year, month] = ym.split('-').map(Number);
 
-    // 1) Оборот місяця (каса: послуги+товари)
-    const revRow = (await q(
-      `SELECT COALESCE(SUM(amount),0)::numeric v
-         FROM cash_operations
-        WHERE type='in' AND category IN ('sale_service','sale_product')
-          AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`))[0] || { v: 0 };
-    const revenue = Number(revRow.v);
+    // 1) Оборот місяця — з ЄДИНОГО фінконтуру (lib/live-finance), щоб KPI збігався
+    //    з Дашбордом і Фінцентром. Межі періоду — як у financial/cashbox (+03, повний день).
+    const _fin = await liveFinance(pool, `${ym}-01 00:00:00+03`, `${kyiv()} 23:59:59+03`);
+    const revenue = Number(_fin.revenue.total) || 0;
 
     // 2) План місяця = Σ(plan_per_shift × змін у графіку) по активних майстрах
     let plan = 0;
