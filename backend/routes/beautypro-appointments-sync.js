@@ -388,7 +388,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchSalesDay(token, day) {
   const nd = new Date(day + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1);
   const next = nd.toISOString().slice(0, 10);
-  const fields = encodeURIComponent('sale_date,calendar_date,type,sum,cancel,payments,professional_name,name,client');
+  const fields = encodeURIComponent('sale_date,calendar_date,type,sum,cancel,payments,professional_name,name,client,receptionist');
   const path = `/sales?fields=${fields}&sale_date_from=${day}&sale_date_to=${next}` +
     `&location=${encodeURIComponent(process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499')}&limit=1000`;
   for (let i = 0; i < 5; i++) {
@@ -410,7 +410,7 @@ async function syncSales(from, to) {
   const pool = getPool();
   const token = await getToken();
   // имя мастера → id (для привязки операции)
-  const mres = await pool.query('SELECT id, name FROM masters');
+  const mres = await pool.query('SELECT id, name, beautypro_id FROM masters');
   const mmap = new Map(mres.rows.map((r) => [String(r.name).trim(), r.id]));
   // Алиасы: в /sales BeautyPro мастер может фигурировать под другим именем,
   // чем в карточке. Иначе продажи падают в "ничьи" (master_id=null).
@@ -442,6 +442,11 @@ async function syncSales(from, to) {
     const n = normMap.get(normName(name));
     return n || null; // null якщо колізія або не знайдено
   };
+  // GUID BeautyPro → master_id (для прив'язки ТОВАРІВ за тим, ХТО ПРОБИВ продаж — receptionist).
+  // Рішення власника: товар вішаємо на касира/адміна, що оформив продаж (поле receptionist),
+  // а не на майстра візиту. Послуги лишаються за professional_name (майстер, що виконав).
+  const guid2master = new Map(mres.rows.filter((r) => r.beautypro_id).map((r) => [String(r.beautypro_id).toLowerCase(), r.id]));
+  const resolveSeller = (guid) => (guid ? (guid2master.get(String(guid).toLowerCase()) || null) : null);
 
   let posted = 0, skipped = 0, shifts = 0, removed = 0;
   const days = [];
@@ -499,7 +504,11 @@ async function syncSales(from, to) {
 
     for (const o of ops) {
       const s = o.s;
-      const masterId = resolveMaster(s.professional_name);
+      // ТОВАР → на того, хто пробив (receptionist); ПОСЛУГА → на майстра, що виконав.
+      // Якщо receptionist не визначився — лишаємо прив'язку за professional_name (краще ніж нічого).
+      const masterId = s.type === 'Product'
+        ? (resolveSeller(s.receptionist) ?? resolveMaster(s.professional_name))
+        : resolveMaster(s.professional_name);
       const bpClient = s.client ? String(s.client) : null;
       const bpCalendar = s.calendar_date || null; // час запису в BP (для матчингу з appointments)
       // ON CONFLICT DO UPDATE: на повторному синку оновлюємо суму/спосіб (раптом чек
@@ -508,7 +517,7 @@ async function syncSales(from, to) {
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, created_at, ext_ref, bp_client, bp_calendar)
          VALUES ($1,'in',$2,$3,$4,'bp_sale',$5,$6,$7,$8,$9,$10)
          ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO UPDATE SET
-           amount=EXCLUDED.amount, method=EXCLUDED.method,
+           amount=EXCLUDED.amount, method=EXCLUDED.method, master_id=EXCLUDED.master_id,
            bp_client=COALESCE(EXCLUDED.bp_client, cash_operations.bp_client),
            bp_calendar=COALESCE(EXCLUDED.bp_calendar, cash_operations.bp_calendar)
          RETURNING (xmax = 0) AS inserted`,
