@@ -109,9 +109,11 @@ async function aggregate(start, end, branchId) {
       WHERE co.type='in' AND co.category='sale_service'
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
   // Товари: orders(paid) + cash_operations sale_product (роздріб без замовлення)
+  // Товары-заказы: только 'paid' — как в едином cash-эталоне (lib/live-finance):
+  // выручка = фактически полученные деньги. Гарантирует идентичность P&L и Dashboard.
   const ordRev = await safeRows(
     `SELECT COALESCE(SUM(total),0)::numeric s FROM orders
-      WHERE status IN ('paid','delivered') AND created_at >= $1 AND created_at < $2`, [start, end]);
+      WHERE status = 'paid' AND created_at >= $1 AND created_at < $2`, [start, end]);
   const prodCash = await safeRows(
     `SELECT COALESCE(SUM(co.amount),0)::numeric s
        FROM cash_operations co ${cb.join}
