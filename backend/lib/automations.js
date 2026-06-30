@@ -6,21 +6,23 @@
 const { getPool } = require('../db-pg');
 
 // Создать задачу администратору, если такой ещё нет (идемпотентно по tag+client за сегодня).
-async function createAdminTask({ tenant_id, title, description, priority = 'normal', client_id = null, appointment_id = null, tag }) {
+async function createAdminTask({ tenant_id, title, description, priority = 'medium', client_id = null, appointment_id = null, tag, cooldownDays = 1 }) {
   const pool = getPool();
   try {
-    // дубль: открытая задача с тем же тегом и клиентом за сегодня — пропускаем
+    // дубль: задача с тем же тегом и клиентом за окно cooldownDays — пропускаем.
+    // cooldownDays=1 → только сегодня (для событийных: noshow, ДР). Больше — для отток-задач,
+    // чтобы один клиент не получал задачу каждый день, пока он в окне детекции.
     const dup = await pool.query(
       `SELECT 1 FROM tasks
         WHERE tags @> ARRAY[$1]::text[] AND COALESCE(client_id,0)=COALESCE($2,0)
-          AND status NOT IN ('done','cancelled')
-          AND created_at::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date LIMIT 1`,
-      [tag, client_id]
+          AND status NOT IN ('cancelled')
+          AND created_at > NOW() - ($3 || ' days')::interval LIMIT 1`,
+      [tag, client_id, String(cooldownDays)]
     ).catch(() => ({ rowCount: 0 }));
     if (dup.rowCount) return null;
     const r = await pool.query(
       `INSERT INTO tasks (tenant_id, title, description, priority, status, client_id, appointment_id, tags, creator_name, due_date)
-       VALUES ($1,$2,$3,$4,'open',$5,$6,ARRAY['auto',$7]::text[],'Автоматизація', (NOW() AT TIME ZONE 'Europe/Kiev')::date)
+       VALUES ($1,$2,$3,$4,'todo',$5,$6,ARRAY['auto',$7]::text[],'Автоматизація', (NOW() AT TIME ZONE 'Europe/Kiev')::date)
        RETURNING id`,
       [tenant_id || null, title, description || null, priority, client_id, appointment_id, tag]
     );
@@ -57,14 +59,16 @@ async function runDailyAutomations() {
         WHERE a.status IN ('done','completed') AND c.deleted_at IS NULL
         GROUP BY c.id, c.tenant_id, c.name
        HAVING MAX(a.starts_at) BETWEEN NOW() - INTERVAL '63 days' AND NOW() - INTERVAL '60 days'`)).rows;
+    let churnMade = 0;
     for (const c of churn) {
-      await createAdminTask({
-        tenant_id: c.tenant_id, client_id: c.id, priority: 'normal', tag: 'winback',
+      const id = await createAdminTask({
+        tenant_id: c.tenant_id, client_id: c.id, priority: 'medium', tag: 'winback', cooldownDays: 45,
         title: `Повернути клієнта: ${c.name || 'клієнт'} (60 днів без візиту)`,
         description: `Клієнт не був 60 днів. Зателефонувати, запропонувати акцію/запис.`,
       });
+      if (id) churnMade++;
     }
-    if (churn.length) console.log(`[automations] отток 60д: создано задач ${churn.length}`);
+    if (churnMade) console.log(`[automations] отток 60д: создано задач ${churnMade}`);
   } catch (e) { console.error('[automations] churn:', e.message); }
   // день рождения сегодня
   try {
@@ -72,14 +76,16 @@ async function runDailyAutomations() {
       `SELECT id, tenant_id, name FROM clients
         WHERE deleted_at IS NULL AND birthday IS NOT NULL
           AND to_char(birthday,'MM-DD') = to_char((NOW() AT TIME ZONE 'Europe/Kiev'),'MM-DD')`)).rows;
+    let bdayMade = 0;
     for (const c of bdays) {
-      await createAdminTask({
-        tenant_id: c.tenant_id, client_id: c.id, priority: 'normal', tag: 'birthday',
+      const id = await createAdminTask({
+        tenant_id: c.tenant_id, client_id: c.id, priority: 'medium', tag: 'birthday', cooldownDays: 300,
         title: `День народження: ${c.name || 'клієнт'} — привітати`,
         description: `Сьогодні день народження клієнта. Привітати, можна запропонувати подарунок/знижку.`,
       });
+      if (id) bdayMade++;
     }
-    if (bdays.length) console.log(`[automations] ДР сегодня: создано задач ${bdays.length}`);
+    if (bdayMade) console.log(`[automations] ДР сегодня: создано задач ${bdayMade}`);
   } catch (e) { console.error('[automations] birthday:', e.message); }
 }
 

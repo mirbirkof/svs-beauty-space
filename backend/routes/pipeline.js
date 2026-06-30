@@ -206,6 +206,13 @@ router.post('/transition', async (req, res) => {
       client_id: appt.client_id, service_id: appt.service_id, reason: reason || null,
     }, { entityType: 'appointment', entityId: +appointment_id, actor: String(req.user?.id || 'system') }).catch(() => {});
 
+    // Перехід у noshow через канбан → те саме доменне подію, що й у schedule.js,
+    // щоб автоматизація (задача адміну) спрацювала однаково з обох шляхів.
+    if (newStatus === 'noshow' && appt.status !== 'noshow') {
+      emit('appointment.noshow', { appointment_id: +appointment_id, client_id: appt.client_id },
+        { entityType: 'appointment', entityId: +appointment_id, actor: String(req.user?.id || 'system') }).catch(() => {});
+    }
+
     const triggered = await fireTriggers(appt, stageCode, 'enter');
     logAction({ user: req.user, action: 'pipeline.transition', entity: 'appointment', entity_id: +appointment_id, ip: req.ip, meta: { stage: stageCode } }).catch(()=>{});
     res.json({ ok: true, stage: stageCode, status: newStatus, log, triggers_fired: triggered });
