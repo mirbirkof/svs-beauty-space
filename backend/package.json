@@ -5,7 +5,8 @@
   "main": "shop-api.js",
   "scripts": {
     "start": "node shop-api.js",
-    "dev": "node --watch shop-api.js"
+    "dev": "node --watch shop-api.js",
+    "test": "node --test -r dotenv/config test/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
