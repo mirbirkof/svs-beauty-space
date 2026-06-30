@@ -8501,7 +8501,9 @@ async function loadClientMedical(id){
       html += '</tbody></table>';
     }
     html += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openMedCard(${id})">${(w&&w.has_card)?'✏️ Редагувати медкарту':'➕ Створити медкарту'}</button>`
-      + ((w&&w.has_card)?`<button class="btn btn-sm" onclick="printMedCard(${id})">📄 Друк / Експорт</button>`:'')
+      + ((w&&w.has_card)?`<button class="btn btn-sm" onclick="printMedCard(${id})">📄 Друк / Експорт</button>`
+        + `<button class="btn btn-sm" onclick="reviewMedCard(${w.card_id},${id})" title="Підтвердити перевірку картки">✅ Ревізія</button>`
+        + `<button class="btn btn-sm" onclick="showMedAudit(${w.card_id})" title="Хто переглядав/змінював картку">🔍 Журнал доступу</button>`:'')
       + `</div>`;
     box.innerHTML = html;
   } catch(_){ box.innerHTML=''; }
@@ -8718,6 +8720,34 @@ async function printMedCard(clientId){
   const w=window.open('','_blank');
   if(!w){ alert('Дозвольте спливаючі вікна для друку'); return; }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Медкарта</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#222}h2{margin:0}@media print{button{display:none}}</style></head><body>${html}<div style="margin-top:24px"><button onclick="window.print()" style="padding:8px 16px;font-size:14px;cursor:pointer">🖨 Друкувати</button></div></body></html>`);
+  w.document.close();
+}
+// Ревізія медкарти: старший спеціаліст підтверджує що картка перевірена й актуальна.
+async function reviewMedCard(cardId, clientId){
+  if(!confirm('Підтвердити, що медкарту перевірено й вона актуальна?')) return;
+  try{ const r=await api('/api/medical/cards/'+cardId+'/review',{method:'POST',body:'{}'});
+    alert('Ревізію зафіксовано'+(r.reviewed_by_name?' ('+r.reviewed_by_name+')':''));
+    loadClientMedical(clientId);
+  }catch(e){ alert('Не вдалося: '+(e.message||e)); }
+}
+// Журнал доступу до медкарти: хто і коли переглядав/змінював (для комплаєнсу).
+async function showMedAudit(cardId){
+  let d;
+  try{ d=await api('/api/medical/cards/'+cardId+'/audit-log?limit=100'); }
+  catch(e){ alert('Не вдалося отримати журнал: '+(e.message||e)); return; }
+  const E=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const ACT={view:'Перегляд',edit:'Зміна',export:'Експорт',delete:'Видалення'};
+  const items=d.items||[];
+  const rows=items.map(a=>`<tr><td style="padding:4px;border-bottom:1px solid #eee">${a.created_at?new Date(a.created_at).toLocaleString('uk-UA'):'—'}</td>`
+    +`<td style="padding:4px;border-bottom:1px solid #eee">${ACT[a.action]||E(a.action)}</td>`
+    +`<td style="padding:4px;border-bottom:1px solid #eee">${E(a.accessed_by_name||'—')}</td>`
+    +`<td style="padding:4px;border-bottom:1px solid #eee;color:#777">${E((a.fields_accessed||[]).join(', '))}</td></tr>`).join('');
+  const w=window.open('','_blank','width=720,height=600');
+  if(!w){ alert('Дозвольте спливаючі вікна'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Журнал доступу до медкарти</title>
+    <style>body{font-family:Arial,sans-serif;max-width:700px;margin:24px auto;padding:0 16px;color:#222}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;border-bottom:2px solid #999;padding:4px}</style></head>
+    <body><h2>Журнал доступу до медкарти</h2><div style="color:#666;font-size:12px;margin-bottom:10px">Всього записів: ${d.total||items.length}</div>
+    <table><thead><tr><th>Час</th><th>Дія</th><th>Хто</th><th>Поля</th></tr></thead><tbody>${rows||'<tr><td colspan=4 style="padding:8px">Записів немає</td></tr>'}</tbody></table></body></html>`);
   w.document.close();
 }
 // AI-07: персональні рекомендації в картці клієнта
