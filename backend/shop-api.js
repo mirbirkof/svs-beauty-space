@@ -394,6 +394,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     try { require('./lib/backup-core').startCron(); } catch (e) { console.error('[backup] cron start failed:', e.message); }
     // INF: суточная очистка растущих таблиц (outbox, логи, коды) — данные не растут бесконтрольно
     try { require('./lib/retention').startRetentionCron(); } catch (e) { console.error('[retention] cron start failed:', e.message); }
+    // Бизнес-автоматизации: неявка→задача, отток 60д→задача, ДР клиента→задача администратору
+    try { require('./lib/automations').startAutomations(); } catch (e) { console.error('[automations] start failed:', e.message); }
   }
 });
 
