@@ -729,6 +729,10 @@ select.input { background:var(--card); }
             <span class="material-icons-round">checklist</span> Задачі
             <span class="sidebar-badge" id="badge-tasks" style="display:none">0</span>
           </a>
+          <a class="sidebar-item" data-page="incidents" onclick="go('incidents')">
+            <span class="material-icons-round">report_problem</span> Інциденти
+            <span class="sidebar-badge" id="badge-incidents" style="display:none">0</span>
+          </a>
           <a class="sidebar-item" data-page="services" onclick="go('services')">
             <span class="material-icons-round">content_cut</span> Послуги
           </a>
@@ -1432,6 +1436,30 @@ select.input { background:var(--card); }
         </div>
         <p class="set-p" style="margin:0 0 12px">Операційні задачі команди. Частина створюється автоматично (неявка, відтік 60 днів, день народження клієнта). Змінюйте статус кнопками на картці.</p>
         <div id="tasksBoard" class="pipeline-board"><div class="empty"><span class="material-icons-round">checklist</span>Завантаження…</div></div>
+      </div>
+
+      <!-- ═══ ІНЦИДЕНТИ (MGT-04) ═══ -->
+      <div class="page" id="page-incidents">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-primary btn-sm" onclick="openIncidentNew()"><span class="material-icons-round" style="font-size:16px">add</span> Новий інцидент</button>
+          <select id="incFilterStatus" class="input btn-sm" style="max-width:170px" onchange="loadIncidents()">
+            <option value="">Усі статуси</option><option value="open">Відкриті</option><option value="investigating">Розслідування</option>
+            <option value="pending_action">Очікує дії</option><option value="resolved">Вирішені</option><option value="closed">Закриті</option>
+          </select>
+          <select id="incFilterPrio" class="input btn-sm" style="max-width:150px" onchange="loadIncidents()">
+            <option value="">Усі пріоритети</option><option value="critical">Критичні</option><option value="high">Високі</option><option value="medium">Середні</option><option value="low">Низькі</option>
+          </select>
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="incOverdue" onchange="loadIncidents()"> Прострочені SLA</label>
+          <button class="btn btn-sm" onclick="loadIncidents()"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <div id="incStats" style="margin-left:auto;font-size:13px;color:var(--text-secondary)"></div>
+        </div>
+        <p class="set-p" style="margin:0 0 12px">Реєстр нештатних ситуацій: скарги, конфлікти, обладнання, санітарія, безпека. SLA-індикатор показує дедлайн реакції. Кружок зліва: 🔴 прострочено · 🟡 менше години · 🟢 в нормі.</p>
+        <div class="card"><div class="card-body" style="padding:0">
+          <table class="tbl">
+            <thead><tr><th></th><th>№</th><th>Заголовок</th><th>Тип</th><th>Пріоритет</th><th>Статус</th><th>Дії</th></tr></thead>
+            <tbody id="incBody"><tr><td colspan="7" style="padding:14px;color:var(--text-secondary)">Завантаження…</td></tr></tbody>
+          </table>
+        </div></div>
       </div>
 
       <!-- ═══ SHIFTS / ТАБЕЛЬ (SAL-05) ═══ -->
@@ -2538,6 +2566,17 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- Інцидент (MGT-04) -->
+  <div id="incidentModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeIncident()">
+    <div class="modal" style="max-width:540px">
+      <div class="modal-header">
+        <h3 id="incidentTitle">Новий інцидент</h3>
+        <button class="modal-close" onclick="closeIncident()">✕</button>
+      </div>
+      <div class="modal-body" id="incidentBody"></div>
+    </div>
+  </div>
+
   <!-- Beauty: інформована згода на процедуру -->
   <div id="consentModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeConsent()">
     <div class="modal" style="max-width:520px">
@@ -3240,7 +3279,7 @@ function showInfo(ev, text){
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
-  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', tasks:'Задачі', shifts:'Зміни / Табель', clients:'Клієнти',
+  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', tasks:'Задачі', incidents:'Інциденти', shifts:'Зміни / Табель', clients:'Клієнти',
   fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', purchasing:'Закупівлі', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
@@ -3494,7 +3533,7 @@ function go(page) {
   // меню не перемальовується і не «стрибає» при кожному кліку.
   document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
-  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, shifts:loadShifts, clients:loadClients,
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
@@ -8741,6 +8780,67 @@ async function saveTask(){
     priority:document.getElementById('tkPrio').value, due_date:document.getElementById('tkDue').value||null, status:'todo' };
   try{ await api('/api/tasks',{method:'POST',body:JSON.stringify(body)});
     closeTask(); loadTasksBoard();
+  }catch(e){ alert('Помилка: '+(e.message||e)); }
+}
+// ═══ ІНЦИДЕНТИ (MGT-04) ═══════════════════════════════
+const INC_TYPES={complaint:'Скарга',equipment:'Обладнання',conflict:'Конфлікт',safety:'Безпека',sanitary:'Санітарія',it:'IT',theft:'Крадіжка',other:'Інше'};
+const INC_STATUS={open:['Відкритий','#3b82f6'],investigating:['Розслідування','#f59e0b'],pending_action:['Очікує дії','#8b5cf6'],resolved:['Вирішений','#22c55e'],closed:['Закритий','#6b7280'],reopened:['Перевідкритий','#dc2626']};
+const INC_PRIO={critical:['Критичний','#dc2626'],high:['Високий','#ea580c'],medium:['Середній','#0ea5e9'],low:['Низький','#6b7280']};
+const INC_SLA_DOT={red:'🔴',yellow:'🟡',green:'🟢'};
+async function loadIncidents(){
+  const tb=document.getElementById('incBody'); if(!tb) return;
+  const qs=[];
+  const st=document.getElementById('incFilterStatus').value; if(st) qs.push('status='+st);
+  const pr=document.getElementById('incFilterPrio').value; if(pr) qs.push('priority='+pr);
+  if(document.getElementById('incOverdue').checked) qs.push('overdue=1');
+  let d;
+  try{ d=await api('/api/incidents'+(qs.length?'?'+qs.join('&'):'')); }
+  catch(e){ tb.innerHTML='<tr><td colspan="7" style="padding:14px;color:#c0392b">Помилка: '+(e.message||e)+'</td></tr>'; return; }
+  const items=d.incidents||[];
+  const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+  if(!items.length){ tb.innerHTML='<tr><td colspan="7" style="padding:14px;color:var(--text-secondary)">Інцидентів немає</td></tr>'; document.getElementById('incStats').textContent=''; return; }
+  let open=0;
+  tb.innerHTML=items.map(i=>{
+    const stt=INC_STATUS[i.status]||[i.status,'#6b7280'];
+    const pr=INC_PRIO[i.priority]||[i.priority,'#6b7280'];
+    if(!['resolved','closed'].includes(i.status)) open++;
+    const sel=`<select class="input btn-sm" style="max-width:150px;font-size:12px" onchange="setIncidentStatus(${i.id},this.value)">`
+      +Object.keys(INC_STATUS).map(k=>`<option value="${k}"${k===i.status?' selected':''}>${INC_STATUS[k][0]}</option>`).join('')+`</select>`;
+    return `<tr><td style="text-align:center">${INC_SLA_DOT[i.sla_color]||''}</td>`
+      +`<td style="font-family:monospace;font-size:12px">${E(i.incident_number)}</td>`
+      +`<td>${E(i.title)}</td><td>${INC_TYPES[i.incident_type]||E(i.incident_type)}</td>`
+      +`<td><span style="color:${pr[1]};font-weight:600">${pr[0]}</span></td>`
+      +`<td><span style="color:${stt[1]};font-weight:600">${stt[0]}</span></td>`
+      +`<td>${sel}</td></tr>`;
+  }).join('');
+  document.getElementById('incStats').textContent=`Активних: ${open} з ${items.length}`;
+  const badge=document.getElementById('badge-incidents'); if(badge){ badge.textContent=open; badge.style.display=open?'inline-block':'none'; }
+}
+async function setIncidentStatus(id,status){
+  try{ await api('/api/incidents/'+id+'/status',{method:'PATCH',body:JSON.stringify({status})}); loadIncidents(); }
+  catch(e){ alert('Не вдалося змінити статус: '+(e.message||e)); }
+}
+function closeIncident(){ document.getElementById('incidentModal').style.display='none'; }
+function openIncidentNew(){
+  document.getElementById('incidentTitle').textContent='Новий інцидент';
+  const L='font-size:12px;color:var(--text-secondary)';
+  document.getElementById('incidentBody').innerHTML=`
+    <div style="margin-bottom:10px"><label style="${L}">Заголовок *</label><input id="inTitle" class="input" placeholder="Коротко суть інциденту"></div>
+    <div style="margin-bottom:10px"><label style="${L}">Опис</label><textarea id="inDesc" class="input" rows="3"></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div><label style="${L}">Тип</label><select id="inType" class="input">${Object.keys(INC_TYPES).map(k=>`<option value="${k}">${INC_TYPES[k]}</option>`).join('')}</select></div>
+      <div><label style="${L}">Пріоритет</label><select id="inPrio" class="input"><option value="medium">Середній</option><option value="high">Високий</option><option value="critical">Критичний</option><option value="low">Низький</option></select></div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveIncident()">Створити</button>`;
+  document.getElementById('incidentModal').style.display='flex';
+}
+async function saveIncident(){
+  const title=document.getElementById('inTitle').value.trim();
+  if(!title){ alert('Вкажіть заголовок'); return; }
+  const body={ title, description:document.getElementById('inDesc').value||null,
+    incident_type:document.getElementById('inType').value, priority:document.getElementById('inPrio').value };
+  try{ await api('/api/incidents',{method:'POST',body:JSON.stringify(body)});
+    closeIncident(); loadIncidents();
   }catch(e){ alert('Помилка: '+(e.message||e)); }
 }
 // Алергопроба: створення проби та внесення результату (24/48 год).
