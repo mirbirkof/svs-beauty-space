@@ -1002,6 +1002,9 @@ router.patch('/appointments/:id', async (req, res) => {
         stock = await writeOffForAppointment(Number(req.params.id));
       } catch (e) { stock = { written: false, error: e.message }; }
       await emitAppointmentCompleted(req.params.id, r.rows[0] && r.rows[0].master_id);
+    } else if (status === 'confirmed' || status === 'noshow') {
+      // в журнал событий + вебхуки. noshow → база для авто-тега/переслота (подписчик — отдельно)
+      await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
