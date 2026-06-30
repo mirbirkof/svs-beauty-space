@@ -751,6 +751,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="repeat" onclick="go('repeat')">
             <span class="material-icons-round">replay</span> Повторні візити
           </a>
+          <a class="sidebar-item" data-page="formulas" onclick="go('formulas')">
+            <span class="material-icons-round">palette</span> Пошук формул
+          </a>
           <a class="sidebar-item" data-page="blacklist" onclick="go('blacklist')">
             <span class="material-icons-round">block</span> Чорний список
           </a>
@@ -2071,6 +2074,26 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- ═══ ПОШУК ФОРМУЛ ФАРБУВАННЯ ═══ -->
+      <div class="page" id="page-formulas">
+        <div class="card">
+          <div class="card-header"><h3>Пошук формул фарбування <button type="button" class="info-i" data-t="<b>Пошук формул по всіх клієнтах.</b> Знайдіть формулу за брендом, лінійкою, тоном чи оксидом — щоб підібрати перевірений рецепт. Натисніть на рядок, щоб перейти до картки клієнта." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+          <div class="card-body">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <input id="fsBrand" class="input" style="max-width:160px" placeholder="Бренд (Estel…)">
+              <input id="fsLine" class="input" style="max-width:160px" placeholder="Лінійка">
+              <input id="fsShade" class="input" style="max-width:140px" placeholder="Тон (8.1)">
+              <input id="fsOxidant" class="input" style="max-width:130px" placeholder="Оксид (6%)">
+              <button class="btn btn-primary btn-sm" onclick="searchFormulas()"><span class="material-icons-round" style="font-size:16px">search</span> Знайти</button>
+            </div>
+            <table class="tbl">
+              <thead><tr><th>Дата</th><th>Клієнт</th><th>Майстер</th><th>Зони / формула</th><th>Оцінка</th></tr></thead>
+              <tbody id="fsBody"><tr><td colspan="5" style="padding:14px;color:var(--text-secondary)">Введіть критерій і натисніть «Знайти»</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- ═══ SYNC ═══ -->
       <div class="page" id="page-sync">
         <div class="kpi-grid" id="syncStats" style="max-width:600px"></div>
@@ -3195,7 +3218,7 @@ const pageTitles = {
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
-  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити',
+  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити', formulas:'Пошук формул фарбування',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
   saas:'SaaS / Платформа',
   mysub:'Моя підписка',
@@ -8600,6 +8623,32 @@ async function saveFormula(){
 async function repeatFormula(clientId, formulaId){
   try{ const r=await api('/api/medical/formulas/'+formulaId); openFormula(clientId, r.formula); }
   catch(e){ alert('Не вдалося завантажити формулу: '+(e.message||e)); }
+}
+// Глобальний пошук формул по всіх клієнтах (бренд/лінійка/тон/оксид).
+async function searchFormulas(){
+  const tb=document.getElementById('fsBody');
+  const qs=[];
+  const g=id=>document.getElementById(id).value.trim();
+  if(g('fsBrand')) qs.push('brand='+encodeURIComponent(g('fsBrand')));
+  if(g('fsLine')) qs.push('line='+encodeURIComponent(g('fsLine')));
+  if(g('fsShade')) qs.push('shade='+encodeURIComponent(g('fsShade')));
+  if(g('fsOxidant')) qs.push('oxidant='+encodeURIComponent(g('fsOxidant')));
+  if(!qs.length){ tb.innerHTML='<tr><td colspan="5" style="padding:14px;color:var(--text-secondary)">Вкажіть хоча б один критерій</td></tr>'; return; }
+  tb.innerHTML='<tr><td colspan="5" style="padding:14px">Пошук…</td></tr>';
+  let d;
+  try{ d=await api('/api/medical/formulas/search?'+qs.join('&')+'&limit=100'); }
+  catch(e){ tb.innerHTML='<tr><td colspan="5" style="padding:14px;color:#c0392b">Помилка: '+(e.message||e)+'</td></tr>'; return; }
+  const items=d.items||[];
+  if(!items.length){ tb.innerHTML='<tr><td colspan="5" style="padding:14px;color:var(--text-secondary)">Нічого не знайдено</td></tr>'; return; }
+  const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
+  tb.innerHTML=items.map(f=>{
+    const dt=f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
+    let z='';
+    try{ const a=typeof f.zones==='string'?JSON.parse(f.zones):f.zones; if(Array.isArray(a)) z=a.map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('; '); }catch(_){}
+    const rating=f.result_rating?'★'.repeat(Number(f.result_rating)):'—';
+    const cl=f.client_id?`onclick="openClientCard(${f.client_id})" style="cursor:pointer"`:'';
+    return `<tr ${cl}><td>${dt}</td><td>${E(f.client_name||'—')}</td><td>${E(f.employee_name)}</td><td>${E(z||f.result_notes||'—')}</td><td>${rating}</td></tr>`;
+  }).join('');
 }
 // Алергопроба: створення проби та внесення результату (24/48 год).
 let _allClientId=null, _allTestId=null;
