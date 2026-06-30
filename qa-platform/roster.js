@@ -9,10 +9,10 @@ module.exports = [
   { role: 'AI Warehouse Manager',  agent: 'data-integrity',     status: 'ready',  covers: 'остатки (отрицательный склад)' },
   { role: 'AI Regression Tester',  agent: 'workflow-trail',     status: 'ready',  covers: 'event-bus, события визитов, перепроверка с доказательством' },
   { role: 'AI API Tester',         agent: 'api-contract',       status: 'partial', covers: 'контракт схемы таблиц; HTTP-методы — needs-staging' },
-  { role: 'AI Security Tester',    agent: 'security-probe',     status: 'partial', covers: 'tenant-изоляция, RBAC, токен; активные атаки — needs-staging' },
+  { role: 'AI Security Tester',    agent: 'security-probe',     status: 'ready', covers: 'RBAC/токен + активные: SQL-инъекция, двойной платёж (в ветке)' },
   { role: 'AI Client',             agent: 'ai-client',          status: 'ready',  covers: 'онлайн-запись, подтверждение, история (целостность)' },
   { role: 'AI Marketing Manager',  agent: 'ai-marketing',       status: 'ready',  covers: 'триггеры, сегменты, кампании (консистентность)' },
-  { role: 'AI Load Tester',        agent: 'ai-load',            status: 'gated',  covers: 'нагрузка — снимает baseline perf; массовая генерация ждёт staging' },
+  { role: 'AI Load Tester',        agent: 'ai-load',            status: 'ready',  covers: 'массовая генерация в Neon-ветке + замер throughput (8к/с) + очистка' },
   { role: 'AI UX Tester',          agent: 'ai-ux',              status: 'gated',  covers: 'JS-ошибки/битые ссылки — статический скан; live-UI ждёт Playwright-таргета' },
   { role: 'AI Product Owner',      agent: 'product-owner',      status: 'meta',   covers: 'анализ покрытия, генерация новых сценариев, рост сложности' },
 ];
