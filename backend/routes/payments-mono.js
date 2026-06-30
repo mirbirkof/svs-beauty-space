@@ -15,6 +15,11 @@ const { getPool, applyTenant } = require('../db-pg');
 const mono = require('../lib/mono');
 const { recordCashIn } = require('../lib/cash-ledger');
 const { getSetting } = require('../lib/settings');
+const { emit: emitEvent } = require('../lib/event-bus');
+// payment.completed → журнал событий + вебхуки. В try/catch: не влияет на проведение денег.
+const emitPaymentCompleted = (invoiceId, amount, kind) =>
+  emitEvent('payment.completed', { invoice_id: invoiceId, amount, kind }, { entityType: 'payment', entityId: invoiceId })
+    .catch(e => console.error('[mono] emit payment.completed failed:', e.message));
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
 
@@ -98,6 +103,7 @@ async function applyInvoiceStatus(data) {
             ref_type: 'online_booking', ref_id: b.id, description: b.service_name || 'Послуга (онлайн)',
             ext_ref: `mono:visit:${invoiceId}` });
         } catch (e) { console.error('[mono:visit:cash]', e.message); }
+        emitPaymentCompleted(invoiceId, paid, 'visit');
       }
       // телефон в уведомлении = телефон владельца кабинета (clients.phone), не телефон из карточки BP
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
@@ -137,6 +143,7 @@ async function applyInvoiceStatus(data) {
           ref_type: 'online_booking', ref_id: b.id, description: `Передоплата: ${b.service_name || 'запис'}`,
           ext_ref: `mono:prepay:${invoiceId}` });
       } catch (e) { console.error('[mono:prepay:cash]', e.message); }
+      emitPaymentCompleted(invoiceId, paid, 'prepayment');
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
       const when = b.date_from ? new Date(b.date_from).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
       // клиенту — через booking-бот (он точно с ним общался)
