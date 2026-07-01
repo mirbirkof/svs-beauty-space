@@ -55,6 +55,18 @@ function cleanupWorktree(dir, branch) {
   try { sh(`git branch -D ${branch}`); } catch (_) {}
 }
 
+// OAuth-токен claude берём из окружения живого Jarvis (own-engine) — там он авторизован.
+function resolveClaudeToken() {
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  try {
+    const pid = execSync("pgrep -f 'own-engine/src/index.js'", { encoding: 'utf8' }).split('\n')[0].trim();
+    const env = fs.readFileSync(`/proc/${pid}/environ`, 'utf8');
+    const line = env.split('\0').find((l) => l.startsWith('CLAUDE_CODE_OAUTH_TOKEN='));
+    return line ? line.slice('CLAUDE_CODE_OAUTH_TOKEN='.length) : null;
+  } catch (_) { return null; }
+}
+const CLI_BIN = '/home/client/workspace/.npm-local/node_modules/.bin/claude';
+
 // Claude CLI чинит код в worktree (автономно, точечно).
 function runClaudeFix(dir, bug) {
   const prompt = `Ты чинишь баг в CRM салона. Внеси ТОЧЕЧНЫЙ фикс, не рефакторь лишнего.
@@ -68,12 +80,14 @@ function runClaudeFix(dir, bug) {
 
 Задача: найди корневую причину в коде (backend/ или backend/public/admin/) и исправь минимальным изменением.
 Не трогай тесты и qa-platform/. После правки коротко напиши что изменил.`;
+  const token = resolveClaudeToken();
   return new Promise((resolve) => {
+    if (!token) return resolve({ code: -1, out: 'нет CLAUDE_CODE_OAUTH_TOKEN (Jarvis не найден)' });
     const out = [];
-    const p = spawn('claude', ['-p', prompt,
+    const p = spawn(CLI_BIN, ['-p', prompt,
       '--permission-mode', 'bypassPermissions', '--dangerously-skip-permissions',
       '--model', 'sonnet', '--add-dir', dir],
-      { cwd: dir, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+      { cwd: dir, env: { ...process.env, HOME: '/home/client', CI: '1', CLAUDE_CODE_OAUTH_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
     const to = setTimeout(() => { try { p.kill('SIGTERM'); } catch (_) {} }, 10 * 60 * 1000);
     p.stdout.on('data', (d) => out.push(d.toString()));
     p.stderr.on('data', (d) => out.push(d.toString()));
@@ -130,7 +144,10 @@ async function processBug(bug) {
 
     const fix = await runClaudeFix(wt.dir, bug);
     const syn = syntaxCheck(wt.dir);
-    if (!syn.ok) { await setStage(sig, 'failed', syn.reason); cleanupWorktree(wt.dir, wt.branch); return; }
+    if (!syn.ok) {
+      const detail = fix.code !== 0 ? ` | claude(${fix.code}): ${(fix.out || '').slice(-300)}` : '';
+      await setStage(sig, 'failed', syn.reason + detail); cleanupWorktree(wt.dir, wt.branch); return;
+    }
     await setStage(sig, 'sandbox_testing', `правки: ${syn.changed.join(', ')} — тестирую в песочнице`);
 
     const ver = await verifyOnSandbox(wt.dir, bug);
