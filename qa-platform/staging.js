@@ -50,12 +50,12 @@ async function start() {
   const child = spawn('node', [BACKEND], { env, detached: true, stdio: ['ignore', out, out] });
   child.unref();
   fs.writeFileSync(PIDFILE, String(child.pid));
-  // ждём готовности до 30с
-  for (let i = 0; i < 30; i++) {
+  // ждём готовности до 90с (первый запуск на песочнице накатывает миграции)
+  for (let i = 0; i < 90; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     if (await isUp()) { console.log('[staging] поднят на', BASE, 'pid', child.pid); return; }
   }
-  console.error('[staging] не поднялся за 30с — смотри', LOG); process.exit(1);
+  console.error('[staging] не поднялся за 90с — смотри', LOG); process.exit(1);
 }
 
 function stop() {

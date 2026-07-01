@@ -73,4 +73,23 @@ router.post('/:cmd(pause|resume)', requirePerm(), async (req, res) => {
   } catch (e) { console.error('[qa-api] ctrl', e.message); res.status(500).json({ error: 'internal' }); }
 });
 
+// Прогнать тесты немедленно (будит loop из cooldown).
+router.post('/run-now', requirePerm(), async (req, res) => {
+  try {
+    await pool().query(`INSERT INTO qa_control (id,run_requested,run_requested_at) VALUES (1,true,now())
+                        ON CONFLICT (id) DO UPDATE SET run_requested=true, run_requested_at=now()`);
+    res.json({ ok: true });
+  } catch (e) { console.error('[qa-api] run-now', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
+// Отправить в работу ВСЕ открытые баги (массовый фикс).
+router.post('/fix-all', requirePerm(), async (req, res) => {
+  try {
+    const r = await pool().query(
+      `UPDATE qa_bugs SET fix_requested=true, fix_requested_at=now(), fix_stage='queued', updated_at=now()
+        WHERE status IN ('open','reopened') AND fix_requested=false RETURNING signature`);
+    res.json({ ok: true, queued: r.rowCount });
+  } catch (e) { console.error('[qa-api] fix-all', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
 module.exports = router;

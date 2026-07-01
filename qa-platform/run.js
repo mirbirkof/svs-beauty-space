@@ -55,7 +55,15 @@ async function main() {
       console.log(`[qa] цикл #${n}: ${r.scenarios} сценариев, +${r.newBugs} новых, ${r.closed} закрыто, открыто ${r.openBugs} (${r.ms}мс)`);
       // Само-перезапуск без kill: если кто-то положил reload.flag — выходим, keepalive поднимет свежий код.
       if (fs.existsSync(reloadFlag)) { fs.unlinkSync(reloadFlag); console.log('[qa] reload.flag → перезапуск на свежий код'); await pool.end(); process.exit(0); }
-      if (cfg.cycleCooldownMs > 0) await new Promise((res) => setTimeout(res, cfg.cycleCooldownMs));
+      // Cooldown с прерыванием: кнопка «Прогнать сейчас» из панели или reload.flag будят раньше.
+      if (cfg.cycleCooldownMs > 0) {
+        const until = Date.now() + cfg.cycleCooldownMs;
+        while (Date.now() < until) {
+          await new Promise((res) => setTimeout(res, 5000));
+          if (fs.existsSync(reloadFlag)) break;
+          try { if (await require('./lib/db-sync').consumeRunNow()) { console.log('[qa] внеочередной прогон по кнопке из панели'); break; } } catch (_) {}
+        }
+      }
     }
   }
 

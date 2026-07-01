@@ -35,8 +35,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}td{padding:6px 4px;bord
 <div class="sub" id="sub">загрузка…</div>
 <div id="errbox"></div>
 <div class="bar" id="kpi"></div>
-<div style="margin-bottom:14px"><button class="btn pausebtn" id="pauseBtn" onclick="togglePause()">⏸ Пауза</button>
-<button class="btn more" onclick="load()">🔄 Обновить</button></div>
+<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn pausebtn" id="pauseBtn" onclick="togglePause()">⏸ Пауза</button>
+<button class="btn fix" onclick="runNow()">🔄 Прогнать тесты сейчас</button>
+<button class="btn fix" onclick="fixAll()">🔧 Починить все открытые</button>
+<button class="btn more" onclick="load()">↻ Обновить</button></div>
+<div id="msg" style="margin-bottom:10px;color:var(--ok);font-size:13px"></div>
 <div class="tabs" id="tabs"></div>
 <div id="list"></div>
 <script>
@@ -52,6 +56,9 @@ async function load(){
  }catch(e){document.getElementById('errbox').innerHTML='<div class="err">Ошибка связи: '+e.message+'</div>';}
 }
 function togglePause(){fetch(API+'/api/qa/'+(S&&S.paused?'resume':'pause'),{method:'POST',headers:H()}).then(()=>load());}
+function flash(t){const m=document.getElementById('msg');if(m){m.textContent=t;setTimeout(()=>{if(m.textContent===t)m.textContent='';},5000);}}
+function runNow(){fetch(API+'/api/qa/run-now',{method:'POST',headers:H()}).then(r=>r.json()).then(()=>{flash('✅ Запущен внеочередной прогон тестов — результат появится через минуту');load();});}
+function fixAll(){if(!confirm('Отправить в работу ВСЕ открытые баги? Каждый пройдёт песочницу, деплой всё равно по твоей кнопке.'))return;fetch(API+'/api/qa/fix-all',{method:'POST',headers:H()}).then(r=>r.json()).then(d=>{flash('✅ В очередь на фикс: '+(d.queued||0)+' багов');load();});}
 function act(sig,a){fetch(API+'/api/qa/bug/'+sig+'/'+a,{method:'POST',headers:H()}).then(()=>load());}
 function tgl(id){document.getElementById(id).classList.toggle('show');}
 function esc(s){return(s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}

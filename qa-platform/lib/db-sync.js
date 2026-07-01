@@ -52,4 +52,12 @@ async function isPaused() {
   catch (_) { return false; }
 }
 
-module.exports = { pushStatus, pushBugs, isPaused };
+// Кнопка «Прогнать тесты сейчас» из панели: если флаг взведён — снимаем и сообщаем true (прервать ожидание).
+async function consumeRunNow() {
+  try {
+    const r = await pool().query(`UPDATE qa_control SET run_requested=false WHERE id=1 AND run_requested=true RETURNING id`);
+    return r.rowCount > 0;
+  } catch (_) { return false; }
+}
+
+module.exports = { pushStatus, pushBugs, isPaused, consumeRunNow };

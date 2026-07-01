@@ -122,9 +122,15 @@ function syntaxCheck(dir) {
 async function verifyOnSandbox(dir, bug) {
   if (!cfg.qaDbUrl) return { ok: false, reason: 'нет песочницы (qaDbUrl)' };
   const backend = path.join(dir, 'backend', 'shop-api.js');
+  // git worktree не содержит node_modules (gitignored) — симлинкуем из основного репо, иначе backend не стартует.
+  for (const sub of ['backend', '']) {
+    const nm = path.join(dir, sub, 'node_modules');
+    const src = path.join(REPO, sub, 'node_modules');
+    try { if (!fs.existsSync(nm) && fs.existsSync(src)) fs.symlinkSync(src, nm); } catch (_) {}
+  }
   // 1) поднять staging из worktree
   try {
-    execSync(`node staging.js start`, { cwd: __dirname, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'],
+    execSync(`node staging.js start`, { cwd: __dirname, timeout: 100000, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, QA_STAGING_BACKEND: backend, QA_STAGING_PORT: String(STAGING_PORT) } });
   } catch (e) { return { ok: false, reason: 'staging не поднялся: ' + (e.message || '').slice(0, 150) }; }
   // 2) прогон QA против песочницы (агенты читают sandbox БД + бьют staging HTTP)
