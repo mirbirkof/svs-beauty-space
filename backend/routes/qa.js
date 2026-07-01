@@ -51,7 +51,7 @@ router.post('/bug/:sig/:action', requirePerm(), async (req, res) => {
     if (action === 'ignore') {
       await pool().query(`UPDATE qa_bugs SET status='ignored', ignored_at=now(), updated_at=now() WHERE signature=$1`, [sig]);
     } else if (action === 'fix') {
-      await pool().query(`UPDATE qa_bugs SET fix_requested=true, fix_requested_at=now(), fix_stage='queued', updated_at=now() WHERE signature=$1`, [sig]);
+      await pool().query(`UPDATE qa_bugs SET fix_requested=true, fix_requested_at=now(), fix_stage='queued', fix_attempts=0, updated_at=now() WHERE signature=$1`, [sig]);
     } else if (action === 'promote') {
       // Босс подтвердил деплой: только из стадии «ждёт подтверждения»
       await pool().query(`UPDATE qa_bugs SET fix_stage='approved', fix_updated_at=now() WHERE signature=$1 AND fix_stage='awaiting_approval'`, [sig]);

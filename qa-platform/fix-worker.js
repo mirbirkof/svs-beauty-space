@@ -30,10 +30,12 @@ async function setStage(sig, stage, log) {
 
 // Очередь: баги, помеченные «Исправить», ещё не в процессе и не ждут аппрува.
 async function fixQueue() {
+  // Берём только КОД-баги (не ручные — их нельзя починить кодом) и не больше 2 попыток,
+  // чтобы не молотить вечно один и тот же неподдающийся баг.
   const r = await pool().query(
     `SELECT * FROM qa_bugs
-      WHERE fix_requested=true AND status NOT IN ('closed','ignored')
-        AND (fix_stage IS NULL OR fix_stage IN ('failed','queued'))
+      WHERE fix_requested=true AND status NOT IN ('closed','ignored') AND needs_manual=false
+        AND (fix_stage IS NULL OR fix_stage IN ('queued') OR (fix_stage='failed' AND COALESCE(fix_attempts,0) < 2))
       ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
       LIMIT 1`);
   return r.rows[0] || null;
@@ -154,6 +156,7 @@ async function processBug(bug) {
   const sig = bug.signature;
   let wt = null;
   try {
+    await pool().query('UPDATE qa_bugs SET fix_attempts=COALESCE(fix_attempts,0)+1 WHERE signature=$1', [sig]);
     await setStage(sig, 'fixing', 'готовлю изолированную копию и правлю код');
     wt = makeWorktree(sig);
     await pool().query(`UPDATE qa_bugs SET fix_branch=$2 WHERE signature=$1`, [sig, wt.branch]);
@@ -167,7 +170,16 @@ async function processBug(bug) {
     await setStage(sig, 'sandbox_testing', `правки: ${syn.changed.join(', ')} — тестирую в песочнице`);
 
     const ver = await verifyOnSandbox(wt.dir, bug);
-    if (!ver.ok) { await setStage(sig, 'failed', ver.reason); cleanupWorktree(wt.dir, wt.branch); return; }
+    if (!ver.ok) {
+      // Исчерпаны попытки → баг не поддаётся авто-фиксу (частый случай — баг ДАННЫХ, а не кода).
+      const a = await pool().query('SELECT COALESCE(fix_attempts,0) n FROM qa_bugs WHERE signature=$1', [sig]);
+      const last = (a.rows[0] && a.rows[0].n) >= 2;
+      const msg = last
+        ? `не поддаётся авто-фиксу за 2 попытки (${ver.reason}). Вероятно баг в существующих ДАННЫХ, а не в коде — нужна ручная проверка.`
+        : ver.reason;
+      await setStage(sig, 'failed', msg);
+      cleanupWorktree(wt.dir, wt.branch); return;
+    }
 
     // Зелено в песочнице → ждём подтверждения Босса в панели (кнопка «Деплоить»).
     await setStage(sig, 'awaiting_approval', `в песочнице чисто. Ветка ${wt.branch} готова к деплою — подтвердите в панели`);
