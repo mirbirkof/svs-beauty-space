@@ -38,6 +38,9 @@ async function start() {
   const env = { ...process.env,
     DATABASE_URL: cfg.qaDbUrl,     // ← только песочница
     PORT: String(PORT),
+    SHOP_API_PORT: String(PORT),   // backend отдаёт приоритет SHOP_API_PORT (из .env) — переопределяем
+    ADMIN_TG_CHAT: '',             // глушим telegram-уведомления staging (кроны на node-cron)
+    BOT_TOKEN: '', WIFE_BOT_TOKEN: '', // никаких внешних отправок из песочницы
     NODE_ENV: 'staging',
     QA_STAGING: '1',               // флаг: backend глушит кроны/внешние синки (см. shop-api.js guard)
     ADMIN_TOKEN_BOOTSTRAP_ONLY: '0',

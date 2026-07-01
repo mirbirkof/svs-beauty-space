@@ -7,6 +7,16 @@
    ═══════════════════════════════════════════════════════ */
 require('dotenv').config();
 
+// STAGING-режим (QA safe-fix пайплайн): backend поднят на песочнице-ветке Neon для тестов.
+// Глушим фоновые планировщики (кроны/синки/уведомления) — у них интервалы/задержки >=20с,
+// тогда как короткие служебные таймеры (<20с) остаются. Прод не затрагивается: там QA_STAGING не задан.
+if (process.env.QA_STAGING === '1') {
+  const realSI = global.setInterval, realST = global.setTimeout;
+  global.setInterval = (fn, ms, ...a) => (ms >= 20000 ? { unref() {}, close() {} } : realSI(fn, ms, ...a));
+  global.setTimeout = (fn, ms, ...a) => (ms >= 20000 ? { unref() {}, close() {} } : realST(fn, ms, ...a));
+  console.log('[staging] QA_STAGING=1 — фоновые планировщики (>=20с) заглушены, только HTTP');
+}
+
 // Sentry — мониторинг ошибок прода. No-op без SENTRY_DSN. Инициализируем до express.
 const sentry = require('./lib/sentry');
 sentry.init();
