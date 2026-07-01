@@ -32,6 +32,7 @@ async function runCycle(cycleNo) {
   const started = Date.now();
   const agents = shuffle(loadAgents(), cycleNo || 1);
   const summary = { cycle: cycleNo, agents: agents.length, scenarios: 0, newBugs: 0, reBugs: 0, closed: 0, coverageItems: 0, byAgent: {} };
+  const freshBugs = []; // новые реальные баги этого цикла (для уведомления инженеру)
 
   for (const agent of agents) {
     let res;
@@ -42,7 +43,7 @@ async function runCycle(cycleNo) {
     for (const s of scenarios) reg.recordScenario(`${agent.name}:${s}`, 'run');
     for (const c of coverage) { reg.markCoverage(c[0], c[1], c[2]); summary.coverageItems++; }
     let nw = 0, rb = 0;
-    for (const b of bugs) { const existed = reg.allBugs().some((x) => x.signature === reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`)); const saved = reg.reportBug(b); existed ? rb++ : nw++; }
+    for (const b of bugs) { const existed = reg.allBugs().some((x) => x.signature === reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`)); const saved = reg.reportBug(b); if (existed) { rb++; } else { nw++; if (saved && !saved.needsManual) freshBugs.push(saved); } }
     summary.newBugs += nw; summary.reBugs += rb;
     summary.byAgent[agent.name] = { scenarios: scenarios.length, bugs: bugs.length, coverage: coverage.length };
   }
@@ -50,6 +51,13 @@ async function runCycle(cycleNo) {
   // РЕГРЕССИЯ: перепроверяем открытые баги. Если детектор больше НЕ находит нарушение —
   // закрываем с доказательством (proof = повторный прогон того же правила = 0).
   summary.closed = await regressionVerify(agents);
+
+  // Замыкаем петлю: новые реальные баги → уведомление инженеру (Jarvis/Босс).
+  // Критичные сразу, medium/low дайджестом. Best-effort — не роняет цикл.
+  if (freshBugs.length) {
+    try { const { notifyNewBugs } = require('./notify'); await notifyNewBugs(freshBugs); }
+    catch (e) { console.error('[qa] notify не сработал:', e.message); }
+  }
 
   // Отчёт цикла
   const report = { ...summary, ms: Date.now() - started, at: new Date().toISOString(),
