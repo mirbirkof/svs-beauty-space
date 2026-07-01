@@ -5,10 +5,17 @@
 # Запуск: setsid bash qa-daemon.sh >/dev/null 2>&1 </dev/null & disown
 QA="$HOME/workspace/svs-beauty-space/qa-platform"
 while true; do
+  # 1) тест-цикл (loop)
   c=$(ps -eo comm,args | awk '$1=="node" && /run\.js --loop/{n++} END{print n+0}')
   if [ "${c:-0}" -eq 0 ]; then
     cd "$QA" && bash keepalive.sh >>/tmp/qa-platform.log 2>&1
     echo "[qa-daemon $(date '+%F %T')] loop поднят" >> /tmp/qa-daemon.log
+  fi
+  # 2) fix-worker (разбирает очередь «Исправить» / «Деплоить» из панели)
+  w=$(ps -eo comm,args | awk '$1=="node" && /fix-worker\.js loop/{n++} END{print n+0}')
+  if [ "${w:-0}" -eq 0 ]; then
+    cd "$QA" && setsid bash -c 'exec node fix-worker.js loop' >>/tmp/qa-fix-worker.log 2>&1 </dev/null &
+    echo "[qa-daemon $(date '+%F %T')] fix-worker поднят" >> /tmp/qa-daemon.log
   fi
   sleep 30
 done
