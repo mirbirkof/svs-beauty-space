@@ -15,6 +15,7 @@ const norm = (b) => ({
   status: b.status, needsManual: b.needs_manual, manualReason: b.manual_reason, seenCount: b.seen_count,
   firstSeen: b.first_seen, lastSeen: b.last_seen, fixRequested: b.fix_requested,
   fixStage: b.fix_stage, fixLog: b.fix_log, fixBranch: b.fix_branch, fixUpdatedAt: b.fix_updated_at,
+  fixType: b.fix_type, fixSql: b.fix_sql, fixHuman: b.fix_human,
 });
 // Активные стадии пайплайна фикса (для отдельной вкладки «В работе»).
 const PIPE_STAGES = ['fixing', 'sandbox_testing', 'awaiting_approval', 'approved', 'promoting'];

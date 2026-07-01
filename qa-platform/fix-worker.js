@@ -153,6 +153,44 @@ async function verifyOnSandbox(dir, bug) {
   return gone ? { ok: true, out: out.slice(-500) } : { ok: false, reason: 'после фикса баг всё ещё воспроизводится', out: out.slice(-500) };
 }
 
+// Claude отвечает текстом (без правки файлов) — для генерации SQL-фикса данных.
+function runClaudeRaw(prompt) {
+  const token = resolveClaudeToken();
+  return new Promise((resolve) => {
+    if (!token) return resolve('');
+    const out = [];
+    const p = spawn(CLI_BIN, ['-p', prompt, '--model', 'sonnet'],
+      { cwd: REPO, env: { ...process.env, HOME: '/home/client', CI: '1', CLAUDE_CODE_OAUTH_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const to = setTimeout(() => { try { p.kill('SIGTERM'); } catch (_) {} }, 5 * 60 * 1000);
+    p.stdout.on('data', (d) => out.push(d.toString()));
+    p.on('close', () => { clearTimeout(to); resolve(out.join('')); });
+    p.on('error', () => { clearTimeout(to); resolve(''); });
+  });
+}
+
+// Автопочинка ДАННЫХ: Claude генерит безопасный SQL, проверяем в ПЕСОЧНИЦЕ. Прод — только по кнопке.
+async function dataFix(bug) {
+  const prompt = `Это баг ДАННЫХ в PostgreSQL базе CRM салона (НЕ баг кода, а кривая запись в таблице).
+Баг: ${bug.title}
+Детали: ${bug.actual || '—'}
+Причина: ${bug.cause || '—'}
+Сгенерируй ОДИН безопасный SQL-запрос (UPDATE или DELETE) с ТОЧНЫМ WHERE, который исправит только кривые записи.
+СТРОГО ЗАПРЕЩЕНО: DROP, TRUNCATE, ALTER, DELETE/UPDATE без WHERE.
+Ответь РОВНО в таком формате, без markdown:
+SQL: <один запрос в одну строку>
+ПОНЯТНО: <объясни простыми словами для НЕ-технаря, что этот фикс делает и почему это безопасно>`;
+  const raw = await runClaudeRaw(prompt);
+  const sql = ((raw.match(/SQL:\s*([\s\S]+?)(?:\nПОНЯТНО:|$)/) || [])[1] || '').trim().replace(/^```\w*|```$/g, '').trim();
+  const human = ((raw.match(/ПОНЯТНО:\s*([\s\S]+)/) || [])[1] || '').trim().slice(0, 400);
+  if (!sql || !/^(update|delete)\s/i.test(sql)) return { ok: false, reason: 'не удалось сгенерировать безопасный SQL-фикс' };
+  if (/\b(drop|truncate|alter|create)\b/i.test(sql)) return { ok: false, reason: 'SQL содержит запрещённую операцию' };
+  if (!/\bwhere\b/i.test(sql)) return { ok: false, reason: 'SQL без WHERE — небезопасно' };
+  // применяем в ПЕСОЧНИЦЕ (не в проде!)
+  try { const { qaQ } = require('./lib/crm'); await qaQ(sql); }
+  catch (e) { return { ok: false, reason: 'SQL не прошёл в песочнице: ' + String(e.message).slice(0, 150) }; }
+  return { ok: true, sql, human: human || 'Система исправит кривую запись в базе.' };
+}
+
 async function processBug(bug) {
   const sig = bug.signature;
   let wt = null;
@@ -165,6 +203,26 @@ async function processBug(bug) {
     const fix = await runClaudeFix(wt.dir, bug);
     const syn = syntaxCheck(wt.dir);
     if (!syn.ok) {
+      // Код не изменился → это, скорее всего, баг ДАННЫХ. Пробуем автопочинку данных (SQL в песочнице).
+      if (/не изменил ни одного файла/.test(syn.reason)) {
+        await setStage(sig, 'sandbox_testing', 'код чинить нечего — похоже баг в данных, готовлю авто-исправление записи');
+        const df = await dataFix(bug);
+        if (df.ok) {
+          await pool().query(
+            `UPDATE qa_bugs SET fix_type='data', fix_sql=$2, fix_human=$3, fix_stage='awaiting_approval', fix_updated_at=now(),
+                    fix_log=$4 WHERE signature=$1`,
+            [sig, df.sql, df.human, `✅ Проверено в песочнице: ${df.human} Жми «Применить», чтобы поправить боевую базу.`]);
+          console.log(`[fix] ${short(sig)} → awaiting_approval (data-fix)`);
+          cleanupWorktree(wt.dir, wt.branch); return;
+        }
+        // не смогли починить данные автоматически — честно в ручную
+        await pool().query(
+          `UPDATE qa_bugs SET status='manual', needs_manual=true, fix_requested=false,
+                  manual_reason=$2 WHERE signature=$1`,
+          [sig, `Автопочинка не удалась: ${df.reason}. Нужен человек — данные неоднозначные.`]);
+        await setStage(sig, 'failed', `авто-исправление данных не удалось: ${df.reason}`);
+        cleanupWorktree(wt.dir, wt.branch); return;
+      }
       const detail = fix.code !== 0 ? ` | claude(${fix.code}): ${(fix.out || '').slice(-300)}` : '';
       await setStage(sig, 'failed', syn.reason + detail); cleanupWorktree(wt.dir, wt.branch); return;
     }
@@ -204,11 +262,25 @@ async function processBug(bug) {
 
 // Одобренные Боссом в панели фиксы (кнопка «Деплоить») → merge в main → деплой Render.
 async function promoteQueue() {
-  const r = await pool().query(`SELECT * FROM qa_bugs WHERE fix_stage='approved' AND fix_branch IS NOT NULL LIMIT 1`);
+  const r = await pool().query(`SELECT * FROM qa_bugs WHERE fix_stage='approved' AND (fix_branch IS NOT NULL OR fix_type='data') LIMIT 1`);
   return r.rows[0] || null;
 }
 async function promoteBug(bug) {
   const sig = bug.signature, branch = bug.fix_branch;
+  // Data-фикс: применяем проверенный SQL к БОЕВОЙ базе (не git). SQL уже прошёл песочницу.
+  if (bug.fix_type === 'data' && bug.fix_sql) {
+    try {
+      await setStage(sig, 'promoting', 'применяю исправление данных к боевой базе');
+      await pool().query(bug.fix_sql);
+      await pool().query(
+        `UPDATE qa_bugs SET status='closed', fix_stage='done', fix_requested=false, closed_at=now(), fix_updated_at=now(),
+                fix_log='✔ Данные исправлены в боевой базе' WHERE signature=$1`, [sig]);
+      console.log(`[fix] ${short(sig)} → done (данные исправлены в проде)`);
+    } catch (e) {
+      await setStage(sig, 'failed', 'не удалось применить SQL к боевой: ' + String(e.message).slice(0, 150));
+    }
+    return;
+  }
   try {
     await setStage(sig, 'promoting', `переношу ветку ${branch} на боевую`);
     sh('git checkout main');

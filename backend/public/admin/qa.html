@@ -124,14 +124,15 @@ function card(x,i,t){
  const ready=x.fixStage==='awaiting_approval';
  let acts='<button class="btn more" onclick="tgl(\''+id+'\')">Подробно</button>';
  if(t==='inProgress'){
-   if(ready) acts+='<button class="btn fix" onclick="if(confirm(\'Задеплоить этот фикс на БОЕВУЮ базу? Он уже проверен в песочнице.\'))act(\''+x.sig+'\',\'promote\')">🚀 Деплоить на боевую</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Отклонить</button>';
+   if(ready){const isData=x.fixType==='data';const lbl=isData?'✅ Применить к базе':'🚀 Деплоить на боевую';const q=isData?'Применить исправление данных к БОЕВОЙ базе? Уже проверено в песочнице.':'Задеплоить этот фикс на БОЕВУЮ базу? Он уже проверен в песочнице.';acts+='<button class="btn fix" onclick="if(confirm(\''+q+'\'))act(\''+x.sig+'\',\'promote\')">'+lbl+'</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Отклонить</button>';}
    else if(x.fixStage==='failed') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">↻ Повторить</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Снять</button>';
  } else {
    if(t==='open') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">🔧 '+(x.fixRequested?'В работе ✓':'Чинить')+'</button>';
    if(t!=='ignored'&&t!=='closed') acts+='<button class="btn ign" onclick="act(\''+x.sig+'\',\'ignore\')">🙈 Не баг</button>';
  }
  // Крупное предупреждение перед деплоем — что именно уйдёт в боевую.
- const deployWarn=ready?'<div style="background:#0e2a1e;border:1px solid var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>⚠️ Перед деплоем:</b> фикс проверен в песочнице (баг ушёл, новых нет). '+(x.fixLog?esc(x.fixLog):'')+'</div>':'';
+ const isData=x.fixType==='data';
+ const deployWarn=ready?'<div style="background:#0e2a1e;border:1px solid var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>⚠️ Перед '+(isData?'применением':'деплоем')+':</b> '+(isData?'система нашла кривую запись и подготовила исправление. ':'фикс проверен в песочнице (баг ушёл, новых нет). ')+(isData&&x.fixHuman?esc(x.fixHuman):esc(x.fixLog||''))+(isData&&x.fixSql?'<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--mut)">показать техническую команду</summary><code style="font-size:11px;word-break:break-all">'+esc(x.fixSql)+'</code></details>':'')+'</div>':'';
  const manualNote=(manual&&x.manualReason)?'<div style="background:#2a2410;border:1px solid var(--high);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>✋ Почему вручную:</b> '+esc(x.manualReason)+'</div>':'';
  return '<div class="card"><div class="h"><div><span class="mod">'+esc(x.module)+'</span> <span class="tag">'+esc(x.role)+'</span>'+
   '<div class="ttl">'+esc(x.title)+'</div>'+
