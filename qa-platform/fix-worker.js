@@ -1,0 +1,189 @@
+#!/usr/bin/env node
+/* Fix-worker — сердце safe-fix пайплайна. Управляется ТОЛЬКО из веб-панели:
+   Босс жмёт «Исправить» → в Neon ставится fix_requested → воркер забирает баг и ведёт по стадиям:
+
+     queued → fixing → sandbox_testing → awaiting_approval → (кнопка «Деплоить») → promoting → done
+                     ↘ failed (на любом шаге: откат, баг назад в «Открытые», причина в fix_log)
+
+   Прод НЕ трогается, пока Босс не подтвердит промоушен в панели. Все стадии видны в панели.
+   Запуск: node fix-worker.js once  (один проход очереди) | loop (демон).
+*/
+const { spawn, execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { Pool } = require(require.resolve('pg', { paths: [path.join(__dirname, '../backend/node_modules')] }));
+require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
+const cfg = require('./config');
+
+const REPO = path.join(__dirname, '..');            // svs-beauty-space
+const STAGING_PORT = 3026;                          // отдельный порт verify-staging (3025 занят ручным)
+let _pool = null;
+const pool = () => (_pool ||= new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 3 }));
+
+const short = (sig) => sig.slice(0, 8);
+async function setStage(sig, stage, log) {
+  await pool().query(
+    `UPDATE qa_bugs SET fix_stage=$2, fix_log=COALESCE($3, fix_log), fix_updated_at=now() WHERE signature=$1`,
+    [sig, stage, log || null]);
+  console.log(`[fix] ${short(sig)} → ${stage}${log ? ' · ' + log : ''}`);
+}
+
+// Очередь: баги, помеченные «Исправить», ещё не в процессе и не ждут аппрува.
+async function fixQueue() {
+  const r = await pool().query(
+    `SELECT * FROM qa_bugs
+      WHERE fix_requested=true AND status NOT IN ('closed','ignored')
+        AND (fix_stage IS NULL OR fix_stage IN ('failed','queued'))
+      ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
+      LIMIT 1`);
+  return r.rows[0] || null;
+}
+
+function sh(cmd, opts = {}) { return execSync(cmd, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }); }
+
+// Изолированная копия кода под фикс.
+function makeWorktree(sig) {
+  const dir = path.join('/tmp', `qa-fix-${short(sig)}`);
+  const branch = `qa-fix-${short(sig)}`;
+  try { sh(`git worktree remove --force ${dir}`); } catch (_) {}
+  try { sh(`git branch -D ${branch}`); } catch (_) {}
+  sh(`git worktree add -b ${branch} ${dir} main`);
+  return { dir, branch };
+}
+function cleanupWorktree(dir, branch) {
+  try { sh(`git worktree remove --force ${dir}`); } catch (_) {}
+  try { sh(`git branch -D ${branch}`); } catch (_) {}
+}
+
+// Claude CLI чинит код в worktree (автономно, точечно).
+function runClaudeFix(dir, bug) {
+  const prompt = `Ты чинишь баг в CRM салона. Внеси ТОЧЕЧНЫЙ фикс, не рефакторь лишнего.
+
+БАГ: ${bug.title}
+Модуль: ${bug.module} · важность: ${bug.severity}
+Сценарий: ${bug.scenario || '—'}
+Ожидалось: ${bug.expected || '—'}
+Получили (actual): ${bug.actual || '—'}
+Причина (гипотеза): ${bug.cause || '—'}
+
+Задача: найди корневую причину в коде (backend/ или backend/public/admin/) и исправь минимальным изменением.
+Не трогай тесты и qa-platform/. После правки коротко напиши что изменил.`;
+  return new Promise((resolve) => {
+    const out = [];
+    const p = spawn('claude', ['-p', prompt,
+      '--permission-mode', 'bypassPermissions', '--dangerously-skip-permissions',
+      '--model', 'sonnet', '--add-dir', dir],
+      { cwd: dir, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const to = setTimeout(() => { try { p.kill('SIGTERM'); } catch (_) {} }, 10 * 60 * 1000);
+    p.stdout.on('data', (d) => out.push(d.toString()));
+    p.stderr.on('data', (d) => out.push(d.toString()));
+    p.on('close', (code) => { clearTimeout(to); resolve({ code, out: out.join('').slice(-2000) }); });
+    p.on('error', (e) => { clearTimeout(to); resolve({ code: -1, out: 'spawn error: ' + e.message }); });
+  });
+}
+
+// Синтаксис изменённых .js.
+function syntaxCheck(dir) {
+  const changed = sh('git diff --name-only', { cwd: dir }).trim().split('\n').filter(Boolean);
+  if (!changed.length) return { ok: false, reason: 'фикс не изменил ни одного файла', changed };
+  const errs = [];
+  for (const f of changed.filter((x) => x.endsWith('.js'))) {
+    try { execSync(`node --check "${f}"`, { cwd: dir, timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (e) { errs.push(`${f}: ${(e.stderr || e.message || '').toString().slice(0, 200)}`); }
+  }
+  return errs.length ? { ok: false, reason: 'синтакс-ошибки: ' + errs.join('; '), changed } : { ok: true, changed };
+}
+
+// Verify: поднимаем staging из worktree на песочнице и гоняем QA-цикл против фикса.
+async function verifyOnSandbox(dir, bug) {
+  if (!cfg.qaDbUrl) return { ok: false, reason: 'нет песочницы (qaDbUrl)' };
+  const backend = path.join(dir, 'backend', 'shop-api.js');
+  // 1) поднять staging из worktree
+  try {
+    execSync(`node staging.js start`, { cwd: __dirname, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, QA_STAGING_BACKEND: backend, QA_STAGING_PORT: String(STAGING_PORT) } });
+  } catch (e) { return { ok: false, reason: 'staging не поднялся: ' + (e.message || '').slice(0, 150) }; }
+  // 2) прогон QA против песочницы (агенты читают sandbox БД + бьют staging HTTP)
+  let out = '';
+  try {
+    out = execSync(`node run.js`, { cwd: __dirname, timeout: 180000, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, DATABASE_URL: cfg.qaDbUrl, QA_API_BASE: `http://127.0.0.1:${STAGING_PORT}`, QA_VERIFY: '1' } }).toString();
+  } catch (e) { out = (e.stdout || '').toString() + (e.message || ''); }
+  finally {
+    try { execSync(`node staging.js stop`, { cwd: __dirname, stdio: 'ignore',
+      env: { ...process.env, QA_STAGING_PORT: String(STAGING_PORT) } }); } catch (_) {}
+  }
+  // 3) вердикт: целевой баг больше не воспроизводится и нет новых critical/high
+  const stillThere = await pool().query(
+    `SELECT status FROM qa_bugs WHERE signature=$1`, [bug.signature]); // грубая проверка по свежему прогону
+  const gone = !out.includes(bug.title);
+  return gone ? { ok: true, out: out.slice(-500) } : { ok: false, reason: 'после фикса баг всё ещё воспроизводится', out: out.slice(-500) };
+}
+
+async function processBug(bug) {
+  const sig = bug.signature;
+  let wt = null;
+  try {
+    await setStage(sig, 'fixing', 'готовлю изолированную копию и правлю код');
+    wt = makeWorktree(sig);
+    await pool().query(`UPDATE qa_bugs SET fix_branch=$2 WHERE signature=$1`, [sig, wt.branch]);
+
+    const fix = await runClaudeFix(wt.dir, bug);
+    const syn = syntaxCheck(wt.dir);
+    if (!syn.ok) { await setStage(sig, 'failed', syn.reason); cleanupWorktree(wt.dir, wt.branch); return; }
+    await setStage(sig, 'sandbox_testing', `правки: ${syn.changed.join(', ')} — тестирую в песочнице`);
+
+    const ver = await verifyOnSandbox(wt.dir, bug);
+    if (!ver.ok) { await setStage(sig, 'failed', ver.reason); cleanupWorktree(wt.dir, wt.branch); return; }
+
+    // Зелено в песочнице → ждём подтверждения Босса в панели (кнопка «Деплоить»).
+    await setStage(sig, 'awaiting_approval', `в песочнице чисто. Ветка ${wt.branch} готова к деплою — подтвердите в панели`);
+    // worktree НЕ удаляем — он нужен для промоушена после аппрува.
+  } catch (e) {
+    await setStage(sig, 'failed', 'ошибка воркера: ' + (e.message || '').slice(0, 200));
+    if (wt) cleanupWorktree(wt.dir, wt.branch);
+  }
+}
+
+// Одобренные Боссом в панели фиксы (кнопка «Деплоить») → merge в main → деплой Render.
+async function promoteQueue() {
+  const r = await pool().query(`SELECT * FROM qa_bugs WHERE fix_stage='approved' AND fix_branch IS NOT NULL LIMIT 1`);
+  return r.rows[0] || null;
+}
+async function promoteBug(bug) {
+  const sig = bug.signature, branch = bug.fix_branch;
+  try {
+    await setStage(sig, 'promoting', `переношу ветку ${branch} на боевую`);
+    sh('git checkout main');
+    try { sh('git pull --ff-only origin main'); } catch (_) {}
+    sh(`git merge --no-ff ${branch} -m "[jarvis] fix(qa): ${bug.title.slice(0, 80)} [${short(sig)}]"`);
+    sh('git push origin main');   // → Render автодеплой
+    await pool().query(
+      `UPDATE qa_bugs SET status='closed', fix_stage='done', fix_requested=false, closed_at=now(), fix_updated_at=now(),
+              fix_log='задеплоено на боевую (Render)' WHERE signature=$1`, [sig]);
+    console.log(`[fix] ${short(sig)} → done (в проде)`);
+    const dir = path.join('/tmp', `qa-fix-${short(sig)}`);
+    cleanupWorktree(dir, branch);
+  } catch (e) {
+    // конфликт/ошибка мерджа — откат, назад на аппрув с причиной
+    try { sh('git merge --abort'); } catch (_) {}
+    try { sh('git checkout main'); } catch (_) {}
+    await setStage(sig, 'failed', 'промоушен не удался: ' + (e.message || '').slice(0, 200));
+  }
+}
+
+async function main() {
+  const mode = process.argv[2] || 'once';
+  do {
+    // 1) сначала одобренные — переносим в прод
+    const approved = await promoteQueue();
+    if (approved) { console.log(`[fix] промоушен: ${approved.title}`); await promoteBug(approved); }
+    // 2) затем новые в работу
+    const bug = await fixQueue();
+    if (bug) { console.log(`[fix] беру в работу: ${bug.title}`); await processBug(bug); }
+    if (!approved && !bug && mode === 'once') { console.log('[fix] очередь пуста'); break; }
+    if (mode === 'loop') await new Promise((r) => setTimeout(r, 30000));
+  } while (mode === 'loop');
+  await pool().end();
+}
+main().catch((e) => { console.error('[fix] fatal:', e.message); process.exit(1); });

@@ -60,10 +60,11 @@ function render(){
  document.getElementById('pz').innerHTML=S.paused?'<span class="tag" style="color:#ff9f43">на паузе</span>':'';
  document.getElementById('sub').textContent='Цикл '+(st.cycle||'?')+' · режим '+(st.mode||'?')+' · '+(st.modules||0)+' модулей, '+(st.checks||0)+' проверок';
  const pb=document.getElementById('pauseBtn');pb.textContent=S.paused?'▶️ Запустить':'⏸ Пауза';pb.classList.toggle('paused',!!S.paused);
+ const ip=S.inProgress||S.fixQueue||[];
  document.getElementById('kpi').innerHTML=
-  kpi(S.open.length,'открыто','var(--crit)')+kpi(S.fixQueue.length,'в работе','var(--ok)')+
+  kpi(S.open.length,'открыто','var(--crit)')+kpi(ip.length,'в работе','var(--ok)')+
   kpi(S.manual.length,'ручных','var(--high)')+kpi(S.closed.length,'закрыто','var(--mut)');
- const tabs=[['open','Открытые',S.open.length],['fixQueue','В работе',S.fixQueue.length],['manual','Ручные',S.manual.length],['ignored','Игнор',S.ignored.length],['closed','Закрытые',S.closed.length],['agents','Агенты',(st.agents||[]).length]];
+ const tabs=[['open','Открытые',S.open.length],['inProgress','В работе',ip.length],['manual','Ручные',S.manual.length],['ignored','Игнор',S.ignored.length],['closed','Закрытые',S.closed.length],['agents','Агенты',(st.agents||[]).length]];
  document.getElementById('tabs').innerHTML=tabs.map(t=>'<div class="tab'+(tab===t[0]?' on':'')+'" onclick="tab=\''+t[0]+'\';render()">'+t[1]+' '+t[2]+'</div>').join('');
  const L=document.getElementById('list');
  if(tab==='agents'){L.innerHTML=agents(st.agents||[]);return;}
@@ -72,22 +73,31 @@ function render(){
  L.innerHTML=arr.map((x,i)=>card(x,i,tab)).join('');
 }
 function kpi(v,l,c){return '<div class="kpi"><b style="color:'+c+'">'+v+'</b><span>'+l+'</span></div>';}
+const STAGE={queued:['⏳ в очереди','var(--mut)'],fixing:['✏️ пишу фикс','var(--acc)'],sandbox_testing:['🧪 тест в песочнице','var(--high)'],awaiting_approval:['✅ песочница чиста — жду решения','var(--ok)'],approved:['⏳ деплой одобрен','var(--ok)'],promoting:['🚀 переношу на боевую','var(--acc)'],failed:['❌ не удалось','var(--crit)'],done:['✔ в проде','var(--ok)']};
 function card(x,i,t){
  const id='d'+t+i,manual=t==='manual';
+ const st=STAGE[x.fixStage]||null;
+ let acts='<button class="btn more" onclick="tgl(\''+id+'\')">Детали</button>';
+ if(t==='inProgress'){
+   if(x.fixStage==='awaiting_approval') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'promote\')">🚀 Деплоить на боевую</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Отклонить</button>';
+   else if(x.fixStage==='failed') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">↻ Повторить</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Снять</button>';
+ } else {
+   if(t==='open'||t==='manual') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">🔧 '+(x.fixRequested?'В работе ✓':'Исправить')+'</button>';
+   if(t!=='ignored'&&t!=='closed') acts+='<button class="btn ign" onclick="act(\''+x.sig+'\',\'ignore\')">🙈 Игнорировать</button>';
+ }
  return '<div class="card"><div class="h"><div><span class="mod">'+esc(x.module)+'</span> <span class="tag">'+esc(x.role)+'</span>'+
-  '<div class="ttl">'+esc(x.title)+'</div>'+(x.actual?'<div class="meta">'+esc(x.actual)+'</div>':'')+'</div>'+
+  '<div class="ttl">'+esc(x.title)+'</div>'+(x.actual?'<div class="meta">'+esc(x.actual)+'</div>':'')+
+  (st?'<div style="margin-top:6px"><span class="tag" style="color:'+st[1]+';border-color:'+st[1]+'">'+st[0]+'</span>'+(x.fixLog?' <span class="meta">'+esc(x.fixLog)+'</span>':'')+'</div>':'')+'</div>'+
   '<span class="sev '+x.sev+'">'+x.sev+'</span></div>'+
   '<div class="det" id="'+id+'">'+
    (x.scenario?'<div><span class="lbl">Сценарий:</span> '+esc(x.scenario)+'</div>':'')+
    (x.expected?'<div><span class="lbl">Ожидалось:</span> '+esc(x.expected)+'</div>':'')+
    (x.actual?'<div><span class="lbl">Получили:</span> '+esc(x.actual)+'</div>':'')+
    (x.cause?'<div><span class="lbl">Причина:</span> '+esc(x.cause)+'</div>':'')+
+   (x.fixBranch?'<div><span class="lbl">Ветка фикса:</span> '+esc(x.fixBranch)+'</div>':'')+
    (manual&&x.manualReason?'<div><span class="lbl">Почему вручную:</span> '+esc(x.manualReason)+'</div>':'')+
    '<div class="lbl">Замечен '+(x.seenCount||1)+'× · с '+((x.firstSeen||'')+'').slice(0,10)+'</div></div>'+
-  '<div class="acts"><button class="btn more" onclick="tgl(\''+id+'\')">Детали</button>'+
-   (t==='open'||t==='manual'?'<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">🔧 '+(x.fixRequested?'В работе ✓':'Исправить')+'</button>':'')+
-   (t!=='ignored'&&t!=='closed'?'<button class="btn ign" onclick="act(\''+x.sig+'\',\'ignore\')">🙈 Игнорировать</button>':'')+
-  '</div></div>';
+  '<div class="acts">'+acts+'</div></div>';
 }
 function agents(a){if(!a.length)return '<div class="empty">нет данных</div>';
  const ic={ready:'#33d69f',partial:'#ffd93d',gated:'#8a92a0',meta:'#6c8cff'};

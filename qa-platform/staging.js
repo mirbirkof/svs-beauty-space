@@ -18,7 +18,8 @@ const path = require('path');
 const cfg = require('./config');
 
 const PORT = Number(process.env.QA_STAGING_PORT || 3025);
-const BACKEND = path.join(__dirname, '../backend/shop-api.js');
+// backend можно поднять из любой копии кода (worktree с фиксом) — задаётся QA_STAGING_BACKEND
+const BACKEND = process.env.QA_STAGING_BACKEND || path.join(__dirname, '../backend/shop-api.js');
 const PIDFILE = path.join(cfg.dataDir, 'staging.pid');
 const LOG = '/tmp/qa-staging.log';
 const BASE = `http://127.0.0.1:${PORT}`;

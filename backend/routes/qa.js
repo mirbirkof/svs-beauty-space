@@ -14,7 +14,10 @@ const norm = (b) => ({
   scenario: b.scenario, expected: b.expected, actual: b.actual, cause: b.cause, fix: b.fix, steps: b.steps || [],
   status: b.status, needsManual: b.needs_manual, manualReason: b.manual_reason, seenCount: b.seen_count,
   firstSeen: b.first_seen, lastSeen: b.last_seen, fixRequested: b.fix_requested,
+  fixStage: b.fix_stage, fixLog: b.fix_log, fixBranch: b.fix_branch, fixUpdatedAt: b.fix_updated_at,
 });
+// Активные стадии пайплайна фикса (для отдельной вкладки «В работе»).
+const PIPE_STAGES = ['fixing', 'sandbox_testing', 'awaiting_approval', 'approved', 'promoting'];
 
 // Всё состояние для панели одним запросом.
 router.get('/state', requirePerm(), async (req, res) => {
@@ -32,9 +35,9 @@ router.get('/state', requirePerm(), async (req, res) => {
     res.json({
       status,
       paused: !!(ctrlR.rows[0] && ctrlR.rows[0].paused),
-      open: all.filter((b) => ['open', 'reopened'].includes(b.status)),
-      manual: all.filter((b) => b.status === 'manual'),
-      fixQueue: all.filter((b) => b.fixRequested && !['closed', 'ignored'].includes(b.status)),
+      open: all.filter((b) => ['open', 'reopened'].includes(b.status) && !PIPE_STAGES.includes(b.fixStage)),
+      manual: all.filter((b) => b.status === 'manual' && !PIPE_STAGES.includes(b.fixStage)),
+      inProgress: all.filter((b) => PIPE_STAGES.includes(b.fixStage)),
       closed: all.filter((b) => b.status === 'closed'),
       ignored: all.filter((b) => b.status === 'ignored'),
     });
@@ -48,7 +51,13 @@ router.post('/bug/:sig/:action', requirePerm(), async (req, res) => {
     if (action === 'ignore') {
       await pool().query(`UPDATE qa_bugs SET status='ignored', ignored_at=now(), updated_at=now() WHERE signature=$1`, [sig]);
     } else if (action === 'fix') {
-      await pool().query(`UPDATE qa_bugs SET fix_requested=true, fix_requested_at=now(), updated_at=now() WHERE signature=$1`, [sig]);
+      await pool().query(`UPDATE qa_bugs SET fix_requested=true, fix_requested_at=now(), fix_stage='queued', updated_at=now() WHERE signature=$1`, [sig]);
+    } else if (action === 'promote') {
+      // Босс подтвердил деплой: только из стадии «ждёт подтверждения»
+      await pool().query(`UPDATE qa_bugs SET fix_stage='approved', fix_updated_at=now() WHERE signature=$1 AND fix_stage='awaiting_approval'`, [sig]);
+    } else if (action === 'reject') {
+      // Отклонить фикс: снять из пайплайна, вернуть в открытые
+      await pool().query(`UPDATE qa_bugs SET fix_requested=false, fix_stage=NULL, fix_updated_at=now() WHERE signature=$1`, [sig]);
     } else return res.status(400).json({ error: 'bad-action' });
     res.json({ ok: true });
   } catch (e) { console.error('[qa-api] action', e.message); res.status(500).json({ error: 'internal' }); }
