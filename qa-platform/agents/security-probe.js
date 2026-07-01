@@ -200,9 +200,7 @@ module.exports = {
       } finally {
         try { await qaQ(`DELETE FROM clients WHERE name LIKE $1`, [tag + '%']); await qaQ(`DELETE FROM cash_operations WHERE ext_ref=$1`, [tag]); } catch (_) {}
       }
-      // XSS/CSRF/IDOR через HTTP — нужен достижимый API (прод за CF). Остаётся needs-manual.
-      bugs.push({ severity: 'low', module: 'security', role: 'security', title: 'HTTP-атаки (XSS/CSRF/IDOR) не автоматизированы',
-        needsManual: true, manualReason: 'Нужен достижимый API-таргет. SQL-инъекция и двойной платёж проверены в ветке.' });
+      // HTTP-атаки (XSS/CSRF/IDOR/RBAC) уже выполнены реально против staging выше — заглушка не нужна.
     } else if (!regression && !cfg.allowDestructive) {
       bugs.push({ severity: 'low', module: 'security', role: 'security', title: 'Активные атаки не выполнены (нет QA-ветки)',
         needsManual: true, manualReason: 'Требует QA_DB_URL. Против боевой БД салона деструктив запрещён.' });
