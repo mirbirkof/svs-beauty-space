@@ -3,7 +3,9 @@
 # Переживает рестарт машины (cron поднимет), не плодит дублей (проверка pgrep).
 QA_DIR="$HOME/workspace/svs-beauty-space/qa-platform"
 LOG="/tmp/qa-platform.log"
-if pgrep -f "run.js --loop" >/dev/null 2>&1; then
+# Точный шаблон именно node-процесса, чтобы не спутать с watcher'ом/эхом bash,
+# в чьей командной строке тоже встречается "run.js --loop".
+if pgrep -f "node run.js --loop" >/dev/null 2>&1; then
   exit 0   # уже работает
 fi
 cd "$QA_DIR" || exit 1
