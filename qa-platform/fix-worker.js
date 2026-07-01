@@ -56,14 +56,24 @@ function cleanupWorktree(dir, branch) {
 }
 
 // OAuth-токен claude берём из окружения живого Jarvis (own-engine) — там он авторизован.
+// Ищем node-процесс с cmdline «src/index.js» и cwd внутри own-engine (pgrep -f ненадёжен:
+// цепляет наш собственный claude-процесс, в аргументах которого встречается этот путь).
 function resolveClaudeToken() {
   if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return process.env.CLAUDE_CODE_OAUTH_TOKEN;
   try {
-    const pid = execSync("pgrep -f 'own-engine/src/index.js'", { encoding: 'utf8' }).split('\n')[0].trim();
-    const env = fs.readFileSync(`/proc/${pid}/environ`, 'utf8');
-    const line = env.split('\0').find((l) => l.startsWith('CLAUDE_CODE_OAUTH_TOKEN='));
-    return line ? line.slice('CLAUDE_CODE_OAUTH_TOKEN='.length) : null;
-  } catch (_) { return null; }
+    for (const pid of fs.readdirSync('/proc').filter((p) => /^\d+$/.test(p))) {
+      try {
+        const cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+        if (!cmd.includes('src/index.js')) continue;
+        const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+        if (!cwd.includes('own-engine')) continue;
+        const env = fs.readFileSync(`/proc/${pid}/environ`, 'utf8');
+        const line = env.split('\0').find((l) => l.startsWith('CLAUDE_CODE_OAUTH_TOKEN='));
+        if (line) return line.slice('CLAUDE_CODE_OAUTH_TOKEN='.length);
+      } catch (_) { /* процесс исчез/нет прав — пропускаем */ }
+    }
+  } catch (_) {}
+  return null;
 }
 const CLI_BIN = '/home/client/workspace/.npm-local/node_modules/.bin/claude';
 
