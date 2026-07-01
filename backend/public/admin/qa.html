@@ -34,6 +34,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td{padding:6px 4px;bord
 <h1>🧪 QA-панель <span id="pz"></span></h1>
 <div class="sub" id="sub">загрузка…</div>
 <div id="errbox"></div>
+<div id="human" style="background:var(--card);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:14px;line-height:1.5"></div>
 <div class="bar" id="kpi"></div>
 <div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap">
 <button class="btn pausebtn" id="pauseBtn" onclick="togglePause()">⏸ Пауза</button>
@@ -68,10 +69,23 @@ function render(){
  document.getElementById('sub').textContent='Цикл '+(st.cycle||'?')+' · режим '+(st.mode||'?')+' · '+(st.modules||0)+' модулей, '+(st.checks||0)+' проверок';
  const pb=document.getElementById('pauseBtn');pb.textContent=S.paused?'▶️ Запустить':'⏸ Пауза';pb.classList.toggle('paused',!!S.paused);
  const ip=S.inProgress||S.fixQueue||[];
+ const _await=ip.filter(x=>x.fixStage==='awaiting_approval').length;
  document.getElementById('kpi').innerHTML=
-  kpi(S.open.length,'открыто','var(--crit)')+kpi(ip.length,'в работе','var(--ok)')+
-  kpi(S.manual.length,'ручных','var(--high)')+kpi(S.closed.length,'закрыто','var(--mut)');
- const tabs=[['open','Открытые',S.open.length],['inProgress','В работе',ip.length],['manual','Ручные',S.manual.length],['ignored','Игнор',S.ignored.length],['closed','Закрытые',S.closed.length],['agents','Агенты',(st.agents||[]).length]];
+  kpi(S.open.length,'найдено','var(--crit)')+kpi(ip.length,'чинится','var(--acc)')+
+  kpi(_await,'ждёт деплоя','var(--ok)')+kpi(S.closed.length,'исправлено','var(--mut)');
+ // Человеческая сводка простым языком
+ const ago=st.at?Math.round((Date.now()-new Date(st.at).getTime())/60000):null;
+ const readyAgents=(st.agents||[]).filter(a=>a.status==='ready').length;
+ const awaiting=ip.filter(x=>x.fixStage==='awaiting_approval').length;
+ const working=ip.filter(x=>['fixing','sandbox_testing','queued'].includes(x.fixStage)).length;
+ let human='🤖 <b>Система тестирует CRM сама, круглосуточно.</b> '+(S.paused?'<span style="color:var(--high)">Сейчас на паузе.</span>':'Работает.')+'<br>';
+ human+='За последний прогон ('+(ago!=null?ago+' мин назад':'—')+'): '+readyAgents+' тестеров проверяют '+(st.modules||0)+' модулей ('+(st.checks||0)+' проверок).<br>';
+ if(S.open.length) human+='🔴 Нашла <b>'+S.open.length+'</b> '+(S.open.length===1?'проблему':'проблем')+' — '+(working?'<b>'+working+'</b> уже чинит в песочнице сама. ':'разбирает. ');
+ else human+='✅ Открытых проблем нет. ';
+ if(awaiting) human+='<br>🚀 <b>'+awaiting+'</b> уже проверено в песочнице и <b>ждёт твоей кнопки «Деплоить»</b> (вкладка «В работе»).';
+ else human+='<br>Как что-то будет готово к деплою — появится кнопка тут.';
+ document.getElementById('human').innerHTML=human;
+ const tabs=[['open','Найдено',S.open.length],['inProgress','Чинится / готово',ip.length],['ignored','Отклонено',S.ignored.length],['closed','Исправлено',S.closed.length],['agents','Тестеры',(st.agents||[]).length]];
  document.getElementById('tabs').innerHTML=tabs.map(t=>'<div class="tab'+(tab===t[0]?' on':'')+'" onclick="tab=\''+t[0]+'\';render()">'+t[1]+' '+t[2]+'</div>').join('');
  const L=document.getElementById('list');
  if(tab==='agents'){L.innerHTML=agents(st.agents||[]);return;}
