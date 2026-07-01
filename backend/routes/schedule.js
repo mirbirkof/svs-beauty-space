@@ -565,6 +565,7 @@ router.get('/journal', async (req, res) => {
               ) AS service_name,
               (SELECT COUNT(*)::int FROM appointment_services aps WHERE aps.appointment_id = a.id) AS services_count,
               (SELECT COALESCE(json_agg(json_build_object(
+                        'id', aps.id,
                         'name', s2.name, 'price', aps.price, 'duration', aps.duration_min,
                         'master_id', aps.master_id, 'start', aps.starts_at) ORDER BY aps.starts_at, aps.id), '[]')
                    FROM appointment_services aps
@@ -1007,6 +1008,88 @@ router.patch('/appointments/:id', async (req, res) => {
       await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── POST /api/schedule/appointments/:id/services — додати послугу до складу візиту (заметка #90) ──
+// Дозволяє «доукомплектувати» вже створений запис ще однією послугою: сума й час перераховуються.
+// Якщо у записі ще немає рядків appointment_services — спершу переносимо базову послугу запису
+// у склад (щоб перелік візиту був повним), потім додаємо нову.
+router.post('/appointments/:id/services', async (req, res) => {
+  try {
+    const pool = getPool();
+    const apptId = Number(req.params.id);
+    const { service_id } = req.body || {};
+    if (!service_id) return res.status(400).json({ error: 'service_id обовʼязковий' });
+
+    const aRes = await pool.query(
+      `SELECT id, master_id, service_id, starts_at, ends_at, price,
+              EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur
+         FROM appointments WHERE id=$1`, [apptId]);
+    if (!aRes.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    const a = aRes.rows[0];
+    // майстер може правити лише власний запис
+    if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(a.master_id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const sv = await pool.query('SELECT price, duration_min, name FROM services WHERE id=$1', [Number(service_id)]);
+    if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
+    const newDur = Number(sv.rows[0].duration_min) > 0 ? Number(sv.rows[0].duration_min) : 30;
+    const newPrice = Number(sv.rows[0].price) || 0;
+
+    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM appointment_services WHERE appointment_id=$1', [apptId]);
+    // Якщо складу ще нема — заносимо базову послугу запису першим рядком (щоб перелік був повним)
+    if (cnt.rows[0].n === 0 && a.service_id) {
+      await pool.query(
+        `INSERT INTO appointment_services (appointment_id, service_id, master_id, starts_at, duration_min, price)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [apptId, a.service_id, a.master_id, a.starts_at, Math.round(Number(a.dur) || 30), Number(a.price) || 0]);
+    }
+    // Нова послуга стартує після завершення поточного складу
+    await pool.query(
+      `INSERT INTO appointment_services (appointment_id, service_id, master_id, starts_at, duration_min, price)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [apptId, Number(service_id), a.master_id, a.ends_at, newDur, newPrice]);
+
+    // Перерахунок підсумків запису зі складу
+    const sum = await pool.query(
+      `SELECT COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
+         FROM appointment_services WHERE appointment_id=$1`, [apptId]);
+    const totalPrice = Number(sum.rows[0].total_price) || 0;
+    const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(a.dur) || 30);
+    const newEnd = new Date(new Date(a.starts_at).getTime() + totalDur * 60000).toISOString();
+    const upd = await pool.query(
+      `UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW()
+        WHERE id=$1 RETURNING id, price, starts_at, ends_at`, [apptId, totalPrice, newEnd]);
+    res.json({ ok: true, appointment: upd.rows[0], added: sv.rows[0].name });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── DELETE /api/schedule/appointments/:id/services/:rowId — прибрати послугу зі складу візиту ──
+router.delete('/appointments/:id/services/:rowId', async (req, res) => {
+  try {
+    const pool = getPool();
+    const apptId = Number(req.params.id);
+    const rowId = Number(req.params.rowId);
+    const aRes = await pool.query('SELECT master_id, starts_at, price, EXTRACT(EPOCH FROM (ends_at - starts_at))/60 AS dur FROM appointments WHERE id=$1', [apptId]);
+    if (!aRes.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(aRes.rows[0].master_id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    const del = await pool.query('DELETE FROM appointment_services WHERE id=$1 AND appointment_id=$2 RETURNING id', [rowId, apptId]);
+    if (!del.rows[0]) return res.status(404).json({ error: 'row-not-found' });
+    // Перерахунок підсумків (якщо склад спорожнів — лишаємо суму/час як є)
+    const sum = await pool.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
+         FROM appointment_services WHERE appointment_id=$1`, [apptId]);
+    if (sum.rows[0].n > 0) {
+      const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(aRes.rows[0].dur) || 30);
+      const newEnd = new Date(new Date(aRes.rows[0].starts_at).getTime() + totalDur * 60000).toISOString();
+      await pool.query('UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW() WHERE id=$1',
+        [apptId, Number(sum.rows[0].total_price) || 0, newEnd]);
+    }
+    res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

@@ -7840,10 +7840,12 @@ async function openAppt(id, masterId) {
   document.getElementById('apptTitle').innerHTML = `<span onclick="apptQuickTime(${a.id})" title="Натисніть, щоб змінити час" style="cursor:pointer;border-bottom:1px dashed currentColor">${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))}</span> · ${escapeHtml(a.master_name||'')}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
-      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7)">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span> · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}</div></div>
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7)">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span> · ${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)}
+        <button type="button" class="btn btn-sm" style="margin-left:8px;background:#eef2ff;color:#4f46e5;font-weight:700;padding:3px 10px;border:1px solid #c7d2fe;vertical-align:1px" onclick="apptAddService(${a.id})" title="Додати ще послугу до цього запису"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">add</span> послугу</button>
+      </div></div>
       ${(a.services_count>1 && Array.isArray(a.services_list) && a.services_list.length) ? `<div style="background:var(--bg-secondary,#f7f7fb);border-radius:10px;padding:8px 12px">
         <span style="color:var(--text-secondary);font-size:12px">Склад візиту · ${a.services_count} послуги</span>
-        ${a.services_list.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px"><span>${escapeHtml(s.name||'—')}${s.duration?` <span style="color:var(--text-secondary);font-size:11px">· ${_humanDur(Math.round(s.duration))}</span>`:''}</span><span style="font-weight:600;white-space:nowrap">${s.price!=null?_money(s.price):'—'}</span></div>`).join('')}
+        ${a.services_list.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px;align-items:center"><span>${escapeHtml(s.name||'—')}${s.duration?` <span style="color:var(--text-secondary);font-size:11px">· ${_humanDur(Math.round(s.duration))}</span>`:''}</span><span style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span style="font-weight:600">${s.price!=null?_money(s.price):'—'}</span>${s.id?`<span onclick="apptDelService(${a.id},${s.id})" title="Прибрати послугу" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`:''}</span></div>`).join('')}
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border,#e5e5ef);font-weight:700"><span>Разом план</span><span>${_money(a.price)}</span></div>
       </div>` : ''}
       <div>
@@ -8076,6 +8078,32 @@ async function apptChangeService(id) {
     if (r && r.ok) { toast('Послугу змінено', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
     else { toast((r && r.error) || 'Не вдалося змінити послугу', 'error'); throw new Error('save-failed'); }
   });
+}
+
+// Додати ще одну послугу до існуючого запису (заметка #90) — сума й час перерахуються на бекенді
+async function apptAddService(id) {
+  const services = await getServices();
+  if (!services.length) { toast('Список послуг порожній', 'error'); return; }
+  const opts = services.map(s =>
+    `<option value="${s.id}">${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
+  ).join('');
+  showModal('Додати послугу до запису', `
+    <select id="svcAddPick" class="input">${opts}</select>
+    <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Послуга додасться до складу візиту. Планова сума й час завершення оновляться автоматично.</div>`, async () => {
+    const sid = Number(document.getElementById('svcAddPick').value);
+    if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
+    const r = await api('/api/schedule/appointments/' + id + '/services', { method:'POST', body: JSON.stringify({ service_id: sid }) });
+    if (r && r.ok) { toast('Послугу додано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
+    else { toast((r && r.error) || 'Не вдалося додати послугу', 'error'); throw new Error('save-failed'); }
+  });
+}
+
+// Прибрати послугу зі складу візиту
+async function apptDelService(id, rowId) {
+  if (!confirm('Прибрати цю послугу з запису?')) return;
+  const r = await api('/api/schedule/appointments/' + id + '/services/' + rowId, { method:'DELETE' });
+  if (r && r.ok) { toast('Послугу прибрано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
+  else { toast((r && r.error) || 'Не вдалося прибрати', 'error'); }
 }
 
 function closeAppt() { document.getElementById('apptModal').style.display = 'none'; document.body.style.overflow = ''; }
