@@ -109,7 +109,8 @@ function card(x,i,t){
 function agents(a){if(!a.length)return '<div class="empty">нет данных</div>';
  const ic={ready:'#33d69f',partial:'#ffd93d',gated:'#8a92a0',meta:'#6c8cff'};
  return '<div class="card"><table>'+a.map(x=>'<tr><td><span class="dot" style="background:'+(ic[x.status]||'#888')+'"></span>'+esc(x.role)+'</td>'+
-  '<td class="meta">'+esc(x.covers||'')+'</td><td style="text-align:right;white-space:nowrap">циклов '+((x.stats&&x.stats.cycles)||0)+'<br>багов '+((x.stats&&x.stats.bugs)||0)+'</td></tr>').join('')+'</table></div>';
+  '<td class="meta">'+esc(x.covers||'')+'</td><td style="text-align:right;white-space:nowrap">циклов '+((x.stats&&x.stats.cycles)||0)+'<br>сработок '+((x.stats&&x.stats.bugs)||0)+'</td></tr>').join('')+'</table></div>'+
+  '<div class="meta" style="margin-top:8px">«сработок» = сколько раз агент отметил проблему за все циклы (одна и та же считается каждый раз). Реальные <b>уникальные</b> баги — в счётчиках сверху.</div>';
 }
 load();setInterval(load,15000);
 </script></body></html>
