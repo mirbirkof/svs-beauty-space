@@ -28,14 +28,15 @@ async function setStage(sig, stage, log) {
   console.log(`[fix] ${short(sig)} → ${stage}${log ? ' · ' + log : ''}`);
 }
 
-// Очередь: баги, помеченные «Исправить», ещё не в процессе и не ждут аппрува.
+// Очередь: АВТОНОМНО берём все открытые КОД-баги (не ждём кнопки «Исправить»).
+// Тестеры сами чинят в песочнице; вручную остаётся только финальный деплой (стадия approved).
 async function fixQueue() {
-  // Берём только КОД-баги (не ручные — их нельзя починить кодом) и не больше 2 попыток,
-  // чтобы не молотить вечно один и тот же неподдающийся баг.
+  // Только КОД-баги (не ручные — их нельзя починить кодом), не в процессе/аппруве, не больше 2 попыток.
+  // Игнорированные (Босс отклонил) и уже одобренные/деплоящиеся не трогаем.
   const r = await pool().query(
     `SELECT * FROM qa_bugs
-      WHERE fix_requested=true AND status NOT IN ('closed','ignored') AND needs_manual=false
-        AND (fix_stage IS NULL OR fix_stage IN ('queued') OR (fix_stage='failed' AND COALESCE(fix_attempts,0) < 2))
+      WHERE status IN ('open','reopened') AND needs_manual=false
+        AND (fix_stage IS NULL OR fix_stage='queued' OR (fix_stage='failed' AND COALESCE(fix_attempts,0) < 2))
       ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
       LIMIT 1`);
   return r.rows[0] || null;
@@ -178,6 +179,13 @@ async function processBug(bug) {
         ? `не поддаётся авто-фиксу за 2 попытки (${ver.reason}). Вероятно баг в существующих ДАННЫХ, а не в коде — нужна ручная проверка.`
         : ver.reason;
       await setStage(sig, 'failed', msg);
+      // Если исчерпаны попытки — помечаем как "нужна ручная правка" и снимаем флаг авто-фикса,
+      // чтобы кнопка «Исправить» в UI не запускала бесконечный цикл заново.
+      if (last) {
+        await pool().query(
+          `UPDATE qa_bugs SET needs_manual=true, fix_requested=false, manual_reason='авто-фикс не справился за 2 попытки — требуется ручная правка данных или кода' WHERE signature=$1`,
+          [sig]);
+      }
       cleanupWorktree(wt.dir, wt.branch); return;
     }
 
