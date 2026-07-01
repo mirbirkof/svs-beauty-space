@@ -220,6 +220,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/schedule', scheduleRoutes);
+try { app.use('/api/qa', require('./routes/qa')); } catch(e) { console.error('[qa] mount failed:', e.message); }
 app.use('/api/reminders', remindersRoutes);
 app.use('/api/repeat-visits', repeatVisitsRoutes);
 app.use('/api/branches', require('./routes/branches'));

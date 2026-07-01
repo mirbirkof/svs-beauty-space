@@ -38,9 +38,18 @@ async function main() {
   if (arg === '--loop') {
     console.log('[qa] LOOP MODE — Ctrl+C для остановки');
     const reloadFlag = require('path').join(cfg.dataDir, 'reload.flag');
+    const pauseFlag = require('path').join(cfg.dataDir, 'pause.flag');
     const fs = require('fs');
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      // Пауза из панели: флаг в Neon (qa_control) или локальный pause.flag. Не гоняем циклы, ждём снятия.
+      let paused = fs.existsSync(pauseFlag);
+      if (!paused) { try { paused = await require('./lib/db-sync').isPaused(); } catch (_) {} }
+      if (paused) {
+        console.log('[qa] на паузе — жду снятия');
+        await new Promise((res) => setTimeout(res, 15000));
+        continue;
+      }
       const n = nextCycleNo();
       const r = await runCycle(n);
       console.log(`[qa] цикл #${n}: ${r.scenarios} сценариев, +${r.newBugs} новых, ${r.closed} закрыто, открыто ${r.openBugs} (${r.ms}мс)`);

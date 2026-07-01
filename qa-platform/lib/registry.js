@@ -82,4 +82,30 @@ function recordScenario(key, result) {
   save(SCENARIOS, h);
 }
 
-module.exports = { reportBug, closeBug, openBugs, manualBugs, allBugs, markCoverage, coverage, scenarioRecentlyRun, recordScenario, sig };
+// Один баг по сигнатуре/id — для карточки в панели.
+function getBug(idOrSig) {
+  return load(BUGS, []).find((b) => b.signature === idOrSig || b.id === idOrSig) || null;
+}
+
+// Пометить «игнорировать» (осознанное решение владельца — не баг / не чинить).
+// Такой баг не будет всплывать в открытых и не шлётся в уведомления.
+function ignoreBug(idOrSig, by) {
+  const bugs = load(BUGS, []);
+  const b = bugs.find((x) => x.signature === idOrSig || x.id === idOrSig);
+  if (!b) return null;
+  b.status = 'ignored'; b.ignoredAt = new Date().toISOString(); b.ignoredBy = by || 'owner';
+  save(BUGS, bugs); return b;
+}
+
+// Владелец нажал «Исправить» — ставим флаг запроса на фикс (инженер/Jarvis берёт в работу).
+function requestFix(idOrSig, by) {
+  const bugs = load(BUGS, []);
+  const b = bugs.find((x) => x.signature === idOrSig || x.id === idOrSig);
+  if (!b) return null;
+  b.fixRequested = true; b.fixRequestedAt = new Date().toISOString(); b.fixRequestedBy = by || 'owner';
+  save(BUGS, bugs); return b;
+}
+
+function fixRequestedBugs() { return load(BUGS, []).filter((b) => b.fixRequested && b.status !== 'closed' && b.status !== 'ignored'); }
+
+module.exports = { reportBug, closeBug, openBugs, manualBugs, allBugs, markCoverage, coverage, scenarioRecentlyRun, recordScenario, sig, getBug, ignoreBug, requestFix, fixRequestedBugs };

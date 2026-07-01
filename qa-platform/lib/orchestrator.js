@@ -79,6 +79,15 @@ async function runCycle(cycleNo) {
     fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
     writeStatus(cycleNo, report, stats);
   } catch (_) { /* статистика не критична */ }
+
+  // Синк состояния в Neon → панель на Render читает оттуда (стабильный домен, без туннелей).
+  try {
+    const dbSync = require('./db-sync');
+    const st = JSON.parse(fs.readFileSync(path.join(cfg.dataDir, 'status.json'), 'utf8'));
+    await dbSync.pushStatus(st);
+    await dbSync.pushBugs(reg.allBugs());
+  } catch (e) { console.error('[qa] db-sync не сработал:', e.message); }
+
   return report;
 }
 
