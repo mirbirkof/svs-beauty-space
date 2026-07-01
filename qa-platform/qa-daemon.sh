@@ -17,5 +17,10 @@ while true; do
     cd "$QA" && setsid bash -c 'exec node fix-worker.js loop' >>/tmp/qa-fix-worker.log 2>&1 </dev/null &
     echo "[qa-daemon $(date '+%F %T')] fix-worker поднят" >> /tmp/qa-daemon.log
   fi
+  # 3) постоянный staging на песочнице (порт 3025) — достижимый API для активных тестов (API/Security/UI)
+  if ! curl -sf http://127.0.0.1:3025/health >/dev/null 2>&1; then
+    cd "$QA" && setsid node staging.js start >>/tmp/qa-staging.log 2>&1 </dev/null &
+    echo "[qa-daemon $(date '+%F %T')] staging поднимается" >> /tmp/qa-daemon.log
+  fi
   sleep 30
 done
