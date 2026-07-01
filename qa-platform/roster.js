@@ -13,6 +13,6 @@ module.exports = [
   { role: 'AI Client',             agent: 'ai-client',          status: 'ready',  covers: 'онлайн-запись, подтверждение, история (целостность)' },
   { role: 'AI Marketing Manager',  agent: 'ai-marketing',       status: 'ready',  covers: 'триггеры, сегменты, кампании (консистентность)' },
   { role: 'AI Load Tester',        agent: 'ai-load',            status: 'ready',  covers: 'массовая генерация в Neon-ветке + замер throughput (8к/с) + очистка' },
-  { role: 'AI UX Tester',          agent: 'ai-ux',              status: 'gated',  covers: 'JS-ошибки/битые ссылки — статический скан; live-UI ждёт Playwright-таргета' },
+  { role: 'AI UX Tester',          agent: 'ai-ux-live',         status: 'ready',  covers: 'живой браузер (Playwright): страницы, клики, JS-ошибки + артефакты (скриншоты, HAR)' },
   { role: 'AI Product Owner',      agent: 'product-owner',      status: 'meta',   covers: 'анализ покрытия, генерация новых сценариев, рост сложности' },
 ];
