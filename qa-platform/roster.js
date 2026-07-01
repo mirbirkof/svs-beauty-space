@@ -16,4 +16,5 @@ module.exports = [
   { role: 'AI UX Tester',          agent: 'ai-ux-live',         status: 'ready',  covers: 'живой браузер (Playwright): страницы, клики, JS-ошибки + артефакты (скриншоты, HAR)' },
   { role: 'AI Product Owner',      agent: 'product-owner',      status: 'meta',   covers: 'анализ покрытия, генерация новых сценариев, рост сложности' },
   { role: 'AI Modules Integrity',  agent: 'modules-integrity',  status: 'ready',  covers: 'целостность данных: касса, выплаты, абонементы, отзывы' },
+  { role: 'AI Visual Tester',      agent: 'visual-check',       status: 'ready',  covers: 'визуальные нестыковки: съехавшая вёрстка, пустые кнопки, битые картинки, невидимый текст, адаптив (десктоп+телефон)' },
 ];

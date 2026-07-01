@@ -46,7 +46,7 @@ module.exports = {
 
     let browser;
     try {
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] });
       const harPath = path.join(artDir, 'session.har');
       const context = await browser.newContext({ recordHar: { path: harPath }, viewport: { width: 1280, height: 900 } });
 
