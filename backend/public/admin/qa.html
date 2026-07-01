@@ -97,6 +97,26 @@ function kpi(v,l,c){return '<div class="kpi"><b style="color:'+c+'">'+v+'</b><sp
 const STAGE={queued:['⏳ в очереди','var(--mut)'],fixing:['✏️ пишу фикс','var(--acc)'],sandbox_testing:['🧪 тест в песочнице','var(--high)'],awaiting_approval:['✅ песочница чиста — жду решения','var(--ok)'],approved:['⏳ деплой одобрен','var(--ok)'],promoting:['🚀 переношу на боевую','var(--acc)'],failed:['❌ не удалось','var(--crit)'],done:['✔ в проде','var(--ok)']};
 // Человеческое описание: за что отвечает модуль (чтобы понимать что и зачем).
 const MOD_DESC={schedule:'Запись клиентов, календарь, перенос/отмена, длительность визитов',api:'HTTP-эндпоинты CRM: методы, авторизация, валидация данных',security:'Защита: доступы, SQL-инъекции, обход прав, чужие данные',ux:'Страницы админки: открытие, кнопки, формы, ошибки JavaScript',load:'Нагрузка: массовые данные, скорость, деградация под нагрузкой',cash:'Касса: приходы и расходы, корректность сумм',payouts:'Зарплаты и выплаты мастерам',subscriptions:'Абонементы: остатки, сроки, статусы',reviews:'Отзывы клиентов: рейтинги',finance:'Финансы: сверка кассы, KPI, отчёты',clients:'Клиентская база, карточки',masters:'Мастера, расписание, зарплатные схемы',warehouse:'Склад: остатки, списания',eventbus:'Автоматизации и события системы'};
+// Перевод технического бага на ОЧЕНЬ простой язык (для не-технаря).
+function humanize(x){
+ const t=((x.title||'')+' '+(x.actual||'')).toLowerCase();
+ if(t.includes('500')||t.includes('5xx')) return 'Если в систему приходят кривые данные — сервер падает с грубой ошибкой вместо того, чтобы спокойно ответить «неверные данные». Клиент увидит поломку.';
+ if(t.includes('длительн')||t.includes('конец')&&t.includes('начал')) return 'В базе есть запись визита, где время окончания РАНЬШЕ времени начала — как будто визит закончился до того, как начался. Это кривые данные, их надо поправить.';
+ if(t.includes('rbac')||t.includes('401')||t.includes('доступ')||t.includes('токен')) return 'Есть риск, что чужой человек увидит данные без пароля/прав. Это дыра в безопасности.';
+ if(t.includes('sql')) return 'Через поле ввода можно попробовать залезть в базу данных напрямую. Проверяем, что защита держит.';
+ if(t.includes('картин')||t.includes('img')) return 'На странице картинки не загрузились — вместо них пустые квадраты. Выглядит сломано.';
+ if(t.includes('невидим')) return 'На странице есть текст того же цвета, что и фон — его просто не видно.';
+ if(t.includes('кнопк')&&t.includes('пуст')) return 'Есть кнопки без подписи и без значка — непонятно, что они делают.';
+ if(t.includes('вылеза')||t.includes('за край')||t.includes('overflow')) return 'Вёрстка не помещается в экран, «разъезжается» — появляется кривой боковой скролл, особенно на телефоне.';
+ if(t.includes('мелкие')||t.includes('пальц')) return 'Кнопки слишком мелкие для телефона — тяжело попасть пальцем.';
+ if(t.includes('js-ошибк')||t.includes('javascript')) return 'На странице ломается скрипт — часть кнопок/функций может не работать у пользователя.';
+ if(t.includes('отрицат')&&t.includes('касс')) return 'В кассе есть приход с нулём или минусом — так быть не должно, деньги посчитаны неверно.';
+ if(t.includes('отрицат')&&(t.includes('выплат')||t.includes('зарплат'))) return 'Есть выплата мастеру с отрицательной суммой — ошибка в расчёте зарплаты.';
+ if(t.includes('абонемент')||t.includes('остаток')) return 'У абонемента кривой остаток или он «активен» с истёкшим сроком — клиент может получить не то, что оплатил.';
+ if(t.includes('рейтинг')) return 'Есть отзыв с оценкой вне шкалы 1–5 — портит статистику.';
+ if(t.includes('нагрузк')||t.includes('медленн')) return 'При большом количестве данных система работает медленно — при росте салона будет тормозить.';
+ return 'Тестер нашёл отклонение от нормы в этом модуле. Подробности — в разделе «Подробно» ниже.';
+}
 function card(x,i,t){
  const id='d'+t+i,manual=t==='manual';
  const st=STAGE[x.fixStage]||null;
@@ -114,7 +134,9 @@ function card(x,i,t){
  const deployWarn=ready?'<div style="background:#0e2a1e;border:1px solid var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>⚠️ Перед деплоем:</b> фикс проверен в песочнице (баг ушёл, новых нет). '+(x.fixLog?esc(x.fixLog):'')+'</div>':'';
  const manualNote=(manual&&x.manualReason)?'<div style="background:#2a2410;border:1px solid var(--high);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>✋ Почему вручную:</b> '+esc(x.manualReason)+'</div>':'';
  return '<div class="card"><div class="h"><div><span class="mod">'+esc(x.module)+'</span> <span class="tag">'+esc(x.role)+'</span>'+
-  '<div class="ttl">'+esc(x.title)+'</div>'+(x.actual?'<div class="meta">'+esc(x.actual)+'</div>':'')+
+  '<div class="ttl">'+esc(x.title)+'</div>'+
+  '<div style="background:#12202e;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:13.5px;line-height:1.45">💬 <b>Простыми словами:</b> '+esc(humanize(x))+'</div>'+
+  (x.actual?'<div class="meta" style="margin-top:4px">'+esc(x.actual)+'</div>':'')+
   '<div class="meta" style="color:var(--acc);margin-top:3px">🔍 За что отвечает: '+desc+'</div>'+
   (st?'<div style="margin-top:6px"><span class="tag" style="color:'+st[1]+';border-color:'+st[1]+'">'+st[0]+'</span></div>':'')+'</div>'+
   '<span class="sev '+x.sev+'">'+x.sev+'</span></div>'+
