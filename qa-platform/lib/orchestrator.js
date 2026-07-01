@@ -101,11 +101,19 @@ async function regressionVerify(agents) {
     let res; try { res = await agent.run({ regression: true }); } catch (_) { continue; }
     for (const b of (res?.bugs || [])) stillBroken.add(reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`));
   }
+  // ТЗ: не закрывать баг без множественного доказательства. Закрываем ТОЛЬКО после
+  // серии из STREAK чистых прогонов подряд (по умолчанию 3; можно поднять до 10 через env).
+  const STREAK = Number(process.env.QA_REGRESSION_STREAK || 3);
   let closed = 0;
   for (const bug of open) {
     if (!stillBroken.has(bug.signature)) {
-      reg.closeBug(bug.signature, { passed: true, method: 'regression-recheck', at: new Date().toISOString() });
-      closed++;
+      const s = reg.recordRegressionPass(bug.signature);
+      if (s >= STREAK) {
+        reg.closeBug(bug.signature, { passed: true, method: `regression-recheck ×${s}`, streak: s, at: new Date().toISOString() });
+        closed++;
+      }
+    } else {
+      reg.recordRegressionFail(bug.signature); // снова воспроизвёлся — серия обнулена
     }
   }
   return closed;

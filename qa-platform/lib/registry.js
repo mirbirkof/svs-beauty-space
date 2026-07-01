@@ -54,6 +54,20 @@ function closeBug(signature, proof) {
   save(BUGS, bugs); return bug;
 }
 
+// Регрессия по ТЗ: не закрывать без серии чистых прогонов. Возвращает новое значение streak.
+function recordRegressionPass(signature) {
+  const bugs = load(BUGS, []);
+  const b = bugs.find((x) => x.signature === signature);
+  if (!b) return 0;
+  b.cleanStreak = (b.cleanStreak || 0) + 1;
+  save(BUGS, bugs); return b.cleanStreak;
+}
+function recordRegressionFail(signature) {
+  const bugs = load(BUGS, []);
+  const b = bugs.find((x) => x.signature === signature);
+  if (!b) return; b.cleanStreak = 0; save(BUGS, bugs);
+}
+
 function openBugs() { return load(BUGS, []).filter((b) => ['open', 'reopened'].includes(b.status)); }
 function manualBugs() { return load(BUGS, []).filter((b) => b.status === 'manual'); }
 function allBugs() { return load(BUGS, []); }
@@ -108,4 +122,4 @@ function requestFix(idOrSig, by) {
 
 function fixRequestedBugs() { return load(BUGS, []).filter((b) => b.fixRequested && b.status !== 'closed' && b.status !== 'ignored'); }
 
-module.exports = { reportBug, closeBug, openBugs, manualBugs, allBugs, markCoverage, coverage, scenarioRecentlyRun, recordScenario, sig, getBug, ignoreBug, requestFix, fixRequestedBugs };
+module.exports = { reportBug, closeBug, openBugs, manualBugs, allBugs, markCoverage, coverage, scenarioRecentlyRun, recordScenario, sig, getBug, ignoreBug, requestFix, fixRequestedBugs, recordRegressionPass, recordRegressionFail };
