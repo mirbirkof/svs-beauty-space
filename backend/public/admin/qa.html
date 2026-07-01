@@ -85,7 +85,7 @@ function render(){
  if(awaiting) human+='<br>🚀 <b>'+awaiting+'</b> уже проверено в песочнице и <b>ждёт твоей кнопки «Деплоить»</b> (вкладка «В работе»).';
  else human+='<br>Как что-то будет готово к деплою — появится кнопка тут.';
  document.getElementById('human').innerHTML=human;
- const tabs=[['open','Найдено',S.open.length],['inProgress','Чинится / готово',ip.length],['ignored','Отклонено',S.ignored.length],['closed','Исправлено',S.closed.length],['agents','Тестеры',(st.agents||[]).length]];
+ const tabs=[['open','Найдено',S.open.length],['inProgress','Чинится / готово',ip.length],['manual','Ручная правка',(S.manual||[]).length],['ignored','Отклонено',S.ignored.length],['closed','Исправлено',S.closed.length],['agents','Тестеры',(st.agents||[]).length]];
  document.getElementById('tabs').innerHTML=tabs.map(t=>'<div class="tab'+(tab===t[0]?' on':'')+'" onclick="tab=\''+t[0]+'\';render()">'+t[1]+' '+t[2]+'</div>').join('');
  const L=document.getElementById('list');
  if(tab==='agents'){L.innerHTML=agents(st.agents||[]);return;}
@@ -95,28 +95,37 @@ function render(){
 }
 function kpi(v,l,c){return '<div class="kpi"><b style="color:'+c+'">'+v+'</b><span>'+l+'</span></div>';}
 const STAGE={queued:['⏳ в очереди','var(--mut)'],fixing:['✏️ пишу фикс','var(--acc)'],sandbox_testing:['🧪 тест в песочнице','var(--high)'],awaiting_approval:['✅ песочница чиста — жду решения','var(--ok)'],approved:['⏳ деплой одобрен','var(--ok)'],promoting:['🚀 переношу на боевую','var(--acc)'],failed:['❌ не удалось','var(--crit)'],done:['✔ в проде','var(--ok)']};
+// Человеческое описание: за что отвечает модуль (чтобы понимать что и зачем).
+const MOD_DESC={schedule:'Запись клиентов, календарь, перенос/отмена, длительность визитов',api:'HTTP-эндпоинты CRM: методы, авторизация, валидация данных',security:'Защита: доступы, SQL-инъекции, обход прав, чужие данные',ux:'Страницы админки: открытие, кнопки, формы, ошибки JavaScript',load:'Нагрузка: массовые данные, скорость, деградация под нагрузкой',cash:'Касса: приходы и расходы, корректность сумм',payouts:'Зарплаты и выплаты мастерам',subscriptions:'Абонементы: остатки, сроки, статусы',reviews:'Отзывы клиентов: рейтинги',finance:'Финансы: сверка кассы, KPI, отчёты',clients:'Клиентская база, карточки',masters:'Мастера, расписание, зарплатные схемы',warehouse:'Склад: остатки, списания',eventbus:'Автоматизации и события системы'};
 function card(x,i,t){
  const id='d'+t+i,manual=t==='manual';
  const st=STAGE[x.fixStage]||null;
- let acts='<button class="btn more" onclick="tgl(\''+id+'\')">Детали</button>';
+ const desc=MOD_DESC[x.module]||('модуль «'+esc(x.module)+'»');
+ const ready=x.fixStage==='awaiting_approval';
+ let acts='<button class="btn more" onclick="tgl(\''+id+'\')">Подробно</button>';
  if(t==='inProgress'){
-   if(x.fixStage==='awaiting_approval') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'promote\')">🚀 Деплоить на боевую</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Отклонить</button>';
+   if(ready) acts+='<button class="btn fix" onclick="if(confirm(\'Задеплоить этот фикс на БОЕВУЮ базу? Он уже проверен в песочнице.\'))act(\''+x.sig+'\',\'promote\')">🚀 Деплоить на боевую</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Отклонить</button>';
    else if(x.fixStage==='failed') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">↻ Повторить</button><button class="btn ign" onclick="act(\''+x.sig+'\',\'reject\')">✖ Снять</button>';
  } else {
-   if(t==='open'||t==='manual') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">🔧 '+(x.fixRequested?'В работе ✓':'Исправить')+'</button>';
-   if(t!=='ignored'&&t!=='closed') acts+='<button class="btn ign" onclick="act(\''+x.sig+'\',\'ignore\')">🙈 Игнорировать</button>';
+   if(t==='open') acts+='<button class="btn fix" onclick="act(\''+x.sig+'\',\'fix\')">🔧 '+(x.fixRequested?'В работе ✓':'Чинить')+'</button>';
+   if(t!=='ignored'&&t!=='closed') acts+='<button class="btn ign" onclick="act(\''+x.sig+'\',\'ignore\')">🙈 Не баг</button>';
  }
+ // Крупное предупреждение перед деплоем — что именно уйдёт в боевую.
+ const deployWarn=ready?'<div style="background:#0e2a1e;border:1px solid var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>⚠️ Перед деплоем:</b> фикс проверен в песочнице (баг ушёл, новых нет). '+(x.fixLog?esc(x.fixLog):'')+'</div>':'';
+ const manualNote=(manual&&x.manualReason)?'<div style="background:#2a2410;border:1px solid var(--high);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px"><b>✋ Почему вручную:</b> '+esc(x.manualReason)+'</div>':'';
  return '<div class="card"><div class="h"><div><span class="mod">'+esc(x.module)+'</span> <span class="tag">'+esc(x.role)+'</span>'+
   '<div class="ttl">'+esc(x.title)+'</div>'+(x.actual?'<div class="meta">'+esc(x.actual)+'</div>':'')+
-  (st?'<div style="margin-top:6px"><span class="tag" style="color:'+st[1]+';border-color:'+st[1]+'">'+st[0]+'</span>'+(x.fixLog?' <span class="meta">'+esc(x.fixLog)+'</span>':'')+'</div>':'')+'</div>'+
+  '<div class="meta" style="color:var(--acc);margin-top:3px">🔍 За что отвечает: '+desc+'</div>'+
+  (st?'<div style="margin-top:6px"><span class="tag" style="color:'+st[1]+';border-color:'+st[1]+'">'+st[0]+'</span></div>':'')+'</div>'+
   '<span class="sev '+x.sev+'">'+x.sev+'</span></div>'+
+  deployWarn+manualNote+
   '<div class="det" id="'+id+'">'+
-   (x.scenario?'<div><span class="lbl">Сценарий:</span> '+esc(x.scenario)+'</div>':'')+
+   (x.scenario?'<div><span class="lbl">Что проверяли:</span> '+esc(x.scenario)+'</div>':'')+
    (x.expected?'<div><span class="lbl">Ожидалось:</span> '+esc(x.expected)+'</div>':'')+
    (x.actual?'<div><span class="lbl">Получили:</span> '+esc(x.actual)+'</div>':'')+
    (x.cause?'<div><span class="lbl">Причина:</span> '+esc(x.cause)+'</div>':'')+
+   (x.fixLog&&!ready?'<div><span class="lbl">Что делает система:</span> '+esc(x.fixLog)+'</div>':'')+
    (x.fixBranch?'<div><span class="lbl">Ветка фикса:</span> '+esc(x.fixBranch)+'</div>':'')+
-   (manual&&x.manualReason?'<div><span class="lbl">Почему вручную:</span> '+esc(x.manualReason)+'</div>':'')+
    '<div class="lbl">Замечен '+(x.seenCount||1)+'× · с '+((x.firstSeen||'')+'').slice(0,10)+'</div></div>'+
   '<div class="acts">'+acts+'</div></div>';
 }

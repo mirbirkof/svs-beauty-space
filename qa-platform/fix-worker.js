@@ -182,15 +182,19 @@ async function processBug(bug) {
       // Если исчерпаны попытки — помечаем как "нужна ручная правка" и снимаем флаг авто-фикса,
       // чтобы кнопка «Исправить» в UI не запускала бесконечный цикл заново.
       if (last) {
+        // уводим из «открытых» в «требует ручной правки» (иначе баг вечно висит в open)
         await pool().query(
-          `UPDATE qa_bugs SET needs_manual=true, fix_requested=false, manual_reason='авто-фикс не справился за 2 попытки — требуется ручная правка данных или кода' WHERE signature=$1`,
+          `UPDATE qa_bugs SET status='manual', needs_manual=true, fix_requested=false,
+                  manual_reason='Авто-фикс не справился за 2 попытки. Обычно это баг в ДАННЫХ (кривая запись), а не в коде — правится вручную в базе, деплой кода не нужен.' WHERE signature=$1`,
           [sig]);
       }
       cleanupWorktree(wt.dir, wt.branch); return;
     }
 
-    // Зелено в песочнице → ждём подтверждения Босса в панели (кнопка «Деплоить»).
-    await setStage(sig, 'awaiting_approval', `в песочнице чисто. Ветка ${wt.branch} готова к деплою — подтвердите в панели`);
+    // Зелено в песочнице → ждём подтверждения Босса. В лог — ЧТО именно деплоим (файлы), чтобы Босс видел.
+    const files = syn.changed.join(', ');
+    await setStage(sig, 'awaiting_approval',
+      `✅ Проверено в песочнице: баг ушёл, новых не появилось. При деплое изменится: ${files}. Ветка ${wt.branch}. Жми «Деплоить» когда готов.`);
     // worktree НЕ удаляем — он нужен для промоушена после аппрува.
   } catch (e) {
     await setStage(sig, 'failed', 'ошибка воркера: ' + (e.message || '').slice(0, 200));
