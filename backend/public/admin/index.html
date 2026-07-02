@@ -7857,7 +7857,7 @@ async function openAppt(id, masterId) {
         </div>
       </div>
       <div><span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
-        <div style="font-weight:600">${a.client_name||'—'} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div>
+        <div style="font-weight:600">${a.client_id?`<span onclick="openClientCard(${a.client_id})" title="Відкрити картку клієнта" style="cursor:pointer;color:var(--primary,#6c5ce7);text-decoration:underline">${escapeHtml(a.client_name||'—')}</span>`:escapeHtml(a.client_name||'—')} ${a.client_phone?'· '+fmtPhone(a.client_phone):''}</div>
         ${apptClientFlags(a)}
         ${apptContactRow(a)}
       </div>
