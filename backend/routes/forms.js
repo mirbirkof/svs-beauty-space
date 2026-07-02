@@ -359,7 +359,7 @@ async function runOnSubmitActions(f, submissionId, data) {
           const cl = await one(
             `INSERT INTO clients (name, phone, email, source)
              VALUES ($1,$2,$3,'form')
-             ON CONFLICT (phone) DO UPDATE SET name=COALESCE(clients.name, EXCLUDED.name)
+             ON CONFLICT (tenant_id, phone) DO UPDATE SET name=COALESCE(clients.name, EXCLUDED.name)
              RETURNING id`, [name, phone, email]).catch(() => null);
           if (cl) {
             await pool.query(`UPDATE form_submissions SET client_id=$1 WHERE id=$2 AND client_id IS NULL`, [cl.id, submissionId]);

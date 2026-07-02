@@ -89,8 +89,11 @@ function yoyBounds(b) {
 function cashBranchJoin(branchId) {
   if (!branchId) return { join: '', cond: '', params: [] };
   return {
-    join: 'JOIN cash_shifts cs ON cs.id = co.shift_id',
-    cond: ' AND cs.branch_id = $3',
+    // LEFT JOIN + OR shift_id IS NULL: операції без зміни (require_open_shift=false, #103)
+    // не губляться з філіального звіту. При кількох філіях безсменні операції
+    // потраплять у кожну — прийнятно, зараз філія одна.
+    join: 'LEFT JOIN cash_shifts cs ON cs.id = co.shift_id',
+    cond: ' AND (cs.branch_id = $3 OR co.shift_id IS NULL)',
     params: [branchId],
   };
 }
@@ -452,10 +455,10 @@ router.get('/margins', requirePerm('pnl.margins.read'), async (req, res) => {
       });
     } else if (groupBy === 'branch') {
       const rows = await safeRows(
-        `SELECT cs.branch_id AS key, COALESCE(b.name,'філія #'||cs.branch_id) AS name,
+        `SELECT cs.branch_id AS key, COALESCE(b.name, CASE WHEN cs.branch_id IS NOT NULL THEN 'філія #'||cs.branch_id ELSE 'Без зміни' END) AS name,
                 COALESCE(SUM(co.amount) FILTER (WHERE co.type='in'),0)::numeric revenue,
                 COALESCE(SUM(co.amount) FILTER (WHERE co.type='out'),0)::numeric costs
-           FROM cash_operations co JOIN cash_shifts cs ON cs.id=co.shift_id
+           FROM cash_operations co LEFT JOIN cash_shifts cs ON cs.id=co.shift_id
            LEFT JOIN branches b ON b.id=cs.branch_id
           WHERE co.created_at >= $1 AND co.created_at < $2
           GROUP BY cs.branch_id, b.name`, [from, to]);
