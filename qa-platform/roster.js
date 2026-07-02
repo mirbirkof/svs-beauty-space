@@ -8,7 +8,7 @@ module.exports = [
   { role: 'AI Accountant',         agent: 'finance-reconciler', status: 'ready',  covers: 'касса, сироты платежей, лояльность, сертификаты, зарплата' },
   { role: 'AI Warehouse Manager',  agent: 'data-integrity',     status: 'ready',  covers: 'остатки (отрицательный склад)' },
   { role: 'AI Regression Tester',  agent: 'workflow-trail',     status: 'ready',  covers: 'event-bus, события визитов, перепроверка с доказательством' },
-  { role: 'AI API Tester',         agent: 'api-contract',       status: 'partial', covers: 'контракт схемы таблиц; HTTP-методы — needs-staging' },
+  { role: 'AI API Tester',         agent: 'api-contract',       status: 'ready',   covers: 'контракт схемы + HTTP на staging: коды ответов, валидация тел, утечки ошибок' },
   { role: 'AI Security Tester',    agent: 'security-probe',     status: 'ready', covers: 'RBAC/токен + активные: SQL-инъекция, двойной платёж (в ветке)' },
   { role: 'AI Client',             agent: 'ai-client',          status: 'ready',  covers: 'онлайн-запись, подтверждение, история (целостность)' },
   { role: 'AI Marketing Manager',  agent: 'ai-marketing',       status: 'ready',  covers: 'триггеры, сегменты, кампании (консистентность)' },
