@@ -94,6 +94,23 @@ router.post('/rules', async (req, res) => {
 router.put('/rules/:id', async (req, res) => {
   try {
     const { rule_type, scope, scope_ref, percentage, fixed_amount, priority, is_active, notes } = req.body || {};
+    // та же валидация, что и в POST /rules: whitelist rule_type/scope + числовые поля
+    if (rule_type !== undefined) {
+      const validRT = ['percent_services', 'percent_products', 'fixed', 'percent_category', 'percent_service'];
+      if (!validRT.includes(rule_type)) return res.status(400).json({ error: 'bad rule_type' });
+    }
+    if (scope !== undefined && !['all', 'category', 'service', 'branch'].includes(scope)) {
+      return res.status(400).json({ error: 'bad scope' });
+    }
+    if (percentage !== undefined && percentage !== null && !(num(percentage) > 0)) {
+      return res.status(400).json({ error: 'percentage must be a number > 0' });
+    }
+    if (fixed_amount !== undefined && fixed_amount !== null && !(num(fixed_amount) > 0)) {
+      return res.status(400).json({ error: 'fixed_amount must be a number > 0' });
+    }
+    if (priority !== undefined && !Number.isFinite(Number(priority))) {
+      return res.status(400).json({ error: 'priority must be a number' });
+    }
     const sets = [], args = [];
     const set = (col, val) => { args.push(val); sets.push(`${col}=$${args.length}`); };
     if (rule_type !== undefined) set('rule_type', rule_type);

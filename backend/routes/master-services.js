@@ -66,9 +66,22 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
 // оновити ціну/тривалість/активність
 router.patch('/:id', requirePerm('users.write'), async (req, res) => {
   try {
+    const body = req.body || {};
     const fields = [], vals = [];
-    for (const k of ['price', 'duration_min', 'active']) {
-      if (k in (req.body || {})) { vals.push(req.body[k]); fields.push(`${k}=$${vals.length}`); }
+    // price/duration_min — число >= 0 або null (скидання на базове), active — boolean
+    for (const k of ['price', 'duration_min']) {
+      if (!(k in body)) continue;
+      let v = body[k];
+      if (v === null || v === '') v = null;
+      else {
+        v = Number(v);
+        if (!Number.isFinite(v) || v < 0) return res.status(400).json({ error: `${k} must be a number >= 0 or null` });
+      }
+      vals.push(v); fields.push(`${k}=$${vals.length}`);
+    }
+    if ('active' in body) {
+      if (typeof body.active !== 'boolean') return res.status(400).json({ error: 'active must be boolean' });
+      vals.push(body.active); fields.push(`active=$${vals.length}`);
     }
     if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(Number(req.params.id));

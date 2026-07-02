@@ -106,7 +106,7 @@ router.get('/search', async (req, res) => {
 });
 
 // Картка документа (версії + коментарі)
-router.get('/:id', async (req, res) => {
+router.get('/:id(\\d+)', async (req, res) => {
   try {
     const doc = await one(`SELECT * FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -150,7 +150,7 @@ router.post('/', async (req, res) => {
 });
 
 // Оновлення метаданих
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d+)', async (req, res) => {
   try {
     const doc = await one(`SELECT id, locked_by FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -180,7 +180,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // М'яке видалення
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d+)', async (req, res) => {
   try {
     const r = await one(`UPDATE documents SET deleted_at=NOW(), status='deleted' WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL RETURNING id`, [req.params.id]);
     if (!r) return res.status(404).json({ error: 'not-found' });
@@ -191,7 +191,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Завантаження нової версії
-router.post('/:id/upload-version', async (req, res) => {
+router.post('/:id(\\d+)/upload-version', async (req, res) => {
   try {
     const doc = await one(`SELECT * FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -213,7 +213,7 @@ router.post('/:id/upload-version', async (req, res) => {
 });
 
 // Список версій
-router.get('/:id/versions', async (req, res) => {
+router.get('/:id(\\d+)/versions', async (req, res) => {
   try {
     const rows = await q(`SELECT id, version_number, file_storage_id, file_name, file_size, mime_type, comment, created_by, created_at
                             FROM document_versions WHERE document_id=$1 ORDER BY version_number DESC`, [req.params.id]);
@@ -222,7 +222,7 @@ router.get('/:id/versions', async (req, res) => {
 });
 
 // Відкат до версії (створює нову версію-копію)
-router.post('/:id/revert', async (req, res) => {
+router.post('/:id(\\d+)/revert', async (req, res) => {
   try {
     const doc = await one(`SELECT * FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -242,7 +242,7 @@ router.post('/:id/revert', async (req, res) => {
 });
 
 // Блокування / розблокування
-router.post('/:id/lock', async (req, res) => {
+router.post('/:id(\\d+)/lock', async (req, res) => {
   try {
     const doc = await one(`SELECT locked_by FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -252,7 +252,7 @@ router.post('/:id/lock', async (req, res) => {
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
-router.post('/:id/unlock', async (req, res) => {
+router.post('/:id(\\d+)/unlock', async (req, res) => {
   try {
     const doc = await one(`SELECT locked_by FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -263,7 +263,7 @@ router.post('/:id/unlock', async (req, res) => {
 });
 
 // Відправка на підпис (-> MGT-07)
-router.post('/:id/send-to-sign', async (req, res) => {
+router.post('/:id(\\d+)/send-to-sign', async (req, res) => {
   try {
     const doc = await one(`SELECT id, title FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'not-found' });
@@ -275,13 +275,13 @@ router.post('/:id/send-to-sign', async (req, res) => {
 });
 
 // Коментарі
-router.get('/:id/comments', async (req, res) => {
+router.get('/:id(\\d+)/comments', async (req, res) => {
   try {
     const rows = await q(`SELECT id, author_id, author_name, body, created_at FROM document_comments WHERE document_id=$1 ORDER BY created_at DESC`, [req.params.id]);
     res.json({ items: rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
-router.post('/:id/comments', async (req, res) => {
+router.post('/:id(\\d+)/comments', async (req, res) => {
   try {
     if (!req.body?.body) return res.status(400).json({ error: 'body-required' });
     const doc = await one(`SELECT id FROM documents WHERE id=$1 AND tenant_id=current_tenant_id() AND deleted_at IS NULL`, [req.params.id]);

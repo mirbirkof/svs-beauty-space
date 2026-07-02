@@ -27,6 +27,12 @@ router.post('/payroll/schemes', async (req, res) => {
     const { master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes } = req.body || {};
     if (!master_id || !scheme_type) return res.status(400).json({ error: 'master_id, scheme_type required' });
     if (!['percent', 'fixed', 'hybrid'].includes(scheme_type)) return res.status(400).json({ error: 'bad scheme_type' });
+    // числові поля: якщо задані — мають бути коректними числами >= 0 (інакше NaN у numeric-колонки)
+    for (const [k, v] of Object.entries({ percent, fixed_per_day, fixed_per_month, sales_commission_pct })) {
+      if (v === undefined || v === null || v === '') continue;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: `${k} must be a number >= 0` });
+    }
     // деактивируем старые схемы для этого мастера
     await pool.query(`UPDATE payroll_schemes SET is_active=FALSE WHERE master_id=$1`, [master_id]);
     const r = await pool.query(
@@ -636,7 +642,33 @@ router.post('/stock/receipts', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'items array required' });
     }
-    const total = items.reduce((s, it) => s + (parseFloat(it.qty) * parseFloat(it.unit_cost)), 0);
+    // валідація позицій: qty — число > 0 (дробові легальні, склад NUMERIC(12,3)),
+    // unit_cost — null або число >= 0. Інакше NaN/сміття потрапляє в numeric-колонки і залишок складу.
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const label = `items[${i}]${it && (it.product_name || it.product_id) ? ` (${it.product_name || 'product_id=' + it.product_id})` : ''}`;
+      if (!it || typeof it !== 'object') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `${label}: must be an object` });
+      }
+      const qty = Number(it.qty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `${label}: qty must be a number > 0` });
+      }
+      it.qty = qty;
+      if (it.unit_cost === undefined || it.unit_cost === null || it.unit_cost === '') {
+        it.unit_cost = null;
+      } else {
+        const uc = Number(it.unit_cost);
+        if (!Number.isFinite(uc) || uc < 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `${label}: unit_cost must be null or a number >= 0` });
+        }
+        it.unit_cost = uc;
+      }
+    }
+    const total = items.reduce((s, it) => s + it.qty * (it.unit_cost || 0), 0);
     const rcp = await client.query(
       `INSERT INTO stock_receipts (supplier_id, invoice_no, total_cost, notes)
        VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -701,21 +733,31 @@ router.post('/stock/consumption', async (req, res) => {
   try {
     await client.query('BEGIN'); await applyTenant(client);
     const { appointment_id, master_id, product_id, product_name, qty, unit_cost } = req.body || {};
-    if (!qty || qty <= 0) {
+    // qty — число > 0 (дробові легальні, склад NUMERIC(12,3)); unit_cost — null або число >= 0
+    const qtyNum = Number(qty);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'qty > 0 required' });
+      return res.status(400).json({ error: 'qty must be a number > 0' });
+    }
+    let unitCost = null;
+    if (unit_cost !== undefined && unit_cost !== null && unit_cost !== '') {
+      unitCost = Number(unit_cost);
+      if (!Number.isFinite(unitCost) || unitCost < 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'unit_cost must be null or a number >= 0' });
+      }
     }
     const r = await client.query(
       `INSERT INTO material_consumption (appointment_id, master_id, product_id, product_name, qty, unit_cost)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, total_cost`,
-      [appointment_id || null, master_id || null, product_id || null, product_name || null, qty, unit_cost || null]
+      [appointment_id || null, master_id || null, product_id || null, product_name || null, qtyNum, unitCost]
     );
     if (product_id) {
-      await client.query(`UPDATE products SET stock = GREATEST(COALESCE(stock,0) - $1, 0) WHERE id=$2`, [qty, product_id]);
+      await client.query(`UPDATE products SET stock = GREATEST(COALESCE(stock,0) - $1, 0) WHERE id=$2`, [qtyNum, product_id]);
       await client.query(
         `INSERT INTO stock_movements (product_id, delta, reason, notes)
          VALUES ($1,$2,'consumption',$3)`,
-        [product_id, -qty, `master ${master_id || 'unknown'} appointment ${appointment_id || '?'}`]
+        [product_id, -qtyNum, `master ${master_id || 'unknown'} appointment ${appointment_id || '?'}`]
       );
     }
     await client.query('COMMIT');
