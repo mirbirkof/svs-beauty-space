@@ -3814,6 +3814,14 @@ async function svcEdit(id){
   let data = { service:{status:'active',price:0,duration_min:60}, variations:[], master_prices:[], price_history:[] };
   if(id){ data = await api('/api/services/'+id); if(data.error){ toast('Не знайдено','error'); return; } }
   const s = data.service;
+  // #100: довідник категорій для селекта (дерево з відступами по depth)
+  let svcCats=[]; try{ svcCats=(await api('/api/service-categories?flat=1')).items||[]; }catch(_){ svcCats=[]; }
+  let selCatId = s.category_id || null;
+  if(!selCatId && s.category){ const m=svcCats.find(c=>c.name===s.category||c.name_ua===s.category); if(m) selCatId=m.id; }
+  const legacyCat = !selCatId && s.category; // текстова категорія без відповідника у довіднику
+  const catOpts = '<option value="">— Без категорії —</option>'
+    + (legacyCat?'<option value="legacy" selected>'+escapeHtml(s.category)+' (стара, текстова)</option>':'')
+    + svcCats.map(c=>'<option value="'+c.id+'"'+(c.id===selCatId?' selected':'')+'>'+'　'.repeat(c.depth||0)+escapeHtml(c.name)+'</option>').join('');
   const ov=document.createElement('div'); ov.id='svcModal'; ov.className='modal-overlay'; ov.style.display='flex';
   ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
   const tabs = id ? ['Картка','Варіації','Ціни майстрів','Історія цін'] : ['Картка'];
@@ -3822,7 +3830,8 @@ async function svcEdit(id){
     '<div class="modal-body" style="max-height:62vh;overflow:auto">'+
       '<div class="svc-pane" data-t="0">'+
         _svcField('Назва *','svcf_name',s.name)+
-        _svcField('Категорія','svcf_category',s.category)+
+        '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Категорія</label>'+
+        '<select id="svcf_category" class="input">'+catOpts+'</select>'+
         '<div style="display:flex;gap:10px">'+
           '<div style="flex:1">'+_svcField('Ціна, ₴ *','svcf_price',s.price,'type="number" step="0.01"')+'</div>'+
           '<div style="flex:1">'+_svcField('Тривалість, хв *','svcf_duration',s.duration_min,'type="number"')+'</div>'+
@@ -3831,6 +3840,7 @@ async function svcEdit(id){
           '<div style="flex:1">'+_svcField('Буфер до, хв','svcf_bbefore',s.buffer_before,'type="number"')+'</div>'+
           '<div style="flex:1">'+_svcField('Буфер після, хв','svcf_bafter',s.buffer_after,'type="number"')+'</div>'+
         '</div>'+
+        _svcField('Інтервал повторного візиту (днів)','svcf_rebook',s.rebook_interval_days,'type="number" min="1" placeholder="напр. 30 — необовʼязково"')+
         '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Тип кабінету</label>'+
         '<select id="svcf_room" class="input"><option value="">Будь-який</option>'+['cabinet','hall','vip'].map(v=>'<option value="'+v+'" '+(s.required_room_type===v?'selected':'')+'>'+({cabinet:'Кабінет',hall:'Зал',vip:'VIP'})[v]+'</option>').join('')+'</select>'+
         '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Статус</label>'+
@@ -3864,7 +3874,6 @@ function svcTab(i){
 async function svcSave(id){
   const b={
     name:document.getElementById('svcf_name').value.trim(),
-    category:document.getElementById('svcf_category').value.trim()||null,
     price:Number(document.getElementById('svcf_price').value)||0,
     duration_min:parseInt(document.getElementById('svcf_duration').value)||0,
     buffer_before:parseInt(document.getElementById('svcf_bbefore').value)||0,
@@ -3877,6 +3886,15 @@ async function svcSave(id){
     description:document.getElementById('svcf_desc').value||null,
     contraindications:document.getElementById('svcf_contra').value||null,
   };
+  // #100: категорія через довідник (FK); "legacy" = не чіпати стару текстову
+  const catVal=document.getElementById('svcf_category').value;
+  if(catVal!=='legacy'){
+    b.category_id = catVal?Number(catVal):null;
+    if(!catVal) b.category=null;
+  }
+  // #102: інтервал повторного візиту
+  const rbVal=document.getElementById('svcf_rebook').value;
+  b.rebook_interval_days = rbVal?parseInt(rbVal):null;
   if(!b.name||!b.price||!b.duration_min){ toast('Заповніть назву, ціну і тривалість','error'); return; }
   const r = id ? await api('/api/services/'+id,{method:'PATCH',body:JSON.stringify(b)})
               : await api('/api/services',{method:'POST',body:JSON.stringify(b)});
