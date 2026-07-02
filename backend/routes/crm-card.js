@@ -103,7 +103,7 @@ router.get('/:id(\\d+)/timeline', async (req, res) => {
       for (const r of rows) events.push({ type: 'bonus', date: r.date, title: r.bt, details: { amount: Number(r.amount), description: r.description } });
     }
     if (!type || type === 'message') {
-      const rows = await safe(q(`SELECT id, channel, direction, body, created_at AS date FROM notification_log WHERE client_id=$1 ORDER BY created_at DESC LIMIT 100`, [id]), []);
+      const rows = await safe(q(`SELECT id, channel, 'out' AS direction, body, created_at AS date FROM notifications WHERE client_id=$1 ORDER BY created_at DESC LIMIT 100`, [id]), []);
       for (const r of rows) events.push({ type: 'message', date: r.date, title: `${r.channel || 'msg'} ${r.direction || ''}`.trim(), details: { body: r.body } });
     }
     if (!type || type === 'review') {
@@ -183,7 +183,7 @@ router.get('/:id(\\d+)/communications', async (req, res) => {
     const params = [id], wh = ['client_id=$1'];
     if (req.query.channel) { params.push(req.query.channel); wh.push(`channel=$${params.length}`); }
     const limit = Math.min(+req.query.limit || 50, 200);
-    const items = await safe(q(`SELECT * FROM notification_log WHERE ${wh.join(' AND ')} ORDER BY created_at DESC LIMIT ${limit}`, params), []);
+    const items = await safe(q(`SELECT id, channel, category, subject, body, status, created_at FROM notifications WHERE ${wh.join(' AND ')} ORDER BY created_at DESC LIMIT ${limit}`, params), []);
     res.json({ items });
   } catch (e) { err(res, e); }
 });

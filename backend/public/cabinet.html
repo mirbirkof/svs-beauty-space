@@ -261,19 +261,48 @@ async function loadLoyalty() {
 }
 
 function visitRow(v, future) {
-  const statusText = { confirmed:'Підтверджено', completed:'Завершено', pending:'Очікує', cancelled:'Скасовано', new:'Нова' }[v.status] || escapeHtml(v.status) || '';
+  const statusText = { confirmed:'Підтверджено', completed:'Завершено', pending:'Очікує', cancelled:'Скасовано', new:'Нова', booked:'Заброньовано', done:'Завершено', noshow:'Не з’явився' }[v.status] || escapeHtml(v.status) || '';
   const statusColor = future ? 'text-emerald-600' : 'text-slate-400';
+  // менять можно только будущие активные визиты (сервер проверит правило «за 2 години» сам)
+  const editable = future && ['booked', 'confirmed'].includes(v.status);
+  const actions = editable ? `
+      <div class="flex gap-3 mt-2 text-xs">
+        <button onclick="rescheduleVisit(${v.id})" class="text-slate-600 underline hover:text-slate-900">Перенести</button>
+        <button onclick="cancelVisit(${v.id})" class="text-red-500 underline hover:text-red-700">Скасувати</button>
+      </div>
+      <div id="resch-${v.id}" class="hidden mt-2 flex gap-2 items-center">
+        <input type="datetime-local" id="dt-${v.id}" class="border rounded-lg px-2 py-1 text-xs">
+        <button onclick="rescheduleConfirm(${v.id})" class="bg-slate-900 text-white rounded-lg px-3 py-1 text-xs">OK</button>
+      </div>` : '';
   return `
-    <div class="border rounded-xl p-3 flex justify-between items-start">
+    <div class="border rounded-xl p-3 flex justify-between items-start" id="visit-${v.id}">
       <div>
         <div class="font-medium">${escapeHtml(v.service) || 'Послуга'}</div>
         <div class="text-xs text-slate-500">${fmtDate(v.starts_at)}${v.master ? ' · ' + escapeHtml(v.master) : ''}</div>
+        ${actions}
       </div>
       <div class="text-right">
         ${v.price ? `<div class="font-semibold">${Number(v.price).toFixed(0)} ₴</div>` : ''}
         <div class="text-xs ${statusColor}">${statusText}</div>
       </div>
     </div>`;
+}
+
+async function cancelVisit(id) {
+  if (!confirm('Скасувати цей візит?')) return;
+  const r = await api(`/api/cabinet/visits/${id}/cancel`, { method: 'POST' });
+  if (r.ok) { loadVisits(); } else { alert(r.error || 'Не вдалося скасувати'); }
+}
+
+function rescheduleVisit(id) {
+  document.getElementById(`resch-${id}`).classList.toggle('hidden');
+}
+
+async function rescheduleConfirm(id) {
+  const val = document.getElementById(`dt-${id}`).value;
+  if (!val) { alert('Оберіть новий час'); return; }
+  const r = await api(`/api/cabinet/visits/${id}/reschedule`, { method: 'POST', body: JSON.stringify({ starts_at: new Date(val).toISOString() }) });
+  if (r.ok) { loadVisits(); } else { alert(r.error || 'Не вдалося перенести'); }
 }
 
 async function loadVisits() {

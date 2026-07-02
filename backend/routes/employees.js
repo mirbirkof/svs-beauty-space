@@ -145,7 +145,21 @@ router.get('/:id(\\d+)', async (req, res) => {
 });
 
 // ── СТВОРИТИ співробітника ──
-router.post('/', async (req, res) => {
+const { validateBody, t } = require('../lib/validate');
+const DATE_RE = /^\d{4}-\d{2}-\d{2}/; // YYYY-MM-DD (допускаем и полный ISO)
+const employeeSchema = (required) => ({
+  name:  t.string({ min: 1, max: 200, required }),
+  phone: t.phone({ required }),
+  email: t.email({ required: false }),
+  birth_date: t.string({ required: false, pattern: DATE_RE, max: 30 }),
+  hire_date:  t.string({ required: false, pattern: DATE_RE, max: 30 }),
+  position_id: t.id({ required: false }),
+  department_id: t.id({ required: false }),
+  manager_id: t.id({ required: false }),
+  branch_id: t.id({ required: false }),
+});
+
+router.post('/', validateBody(employeeSchema(true)), async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name || !b.phone) return res.status(400).json({ error: 'name, phone required' });
@@ -169,7 +183,7 @@ router.post('/', async (req, res) => {
 });
 
 // ── РЕДАГУВАТИ ──
-router.patch('/:id(\\d+)', async (req, res) => {
+router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res) => {
   try {
     const allowed = ['name', 'phone', 'email', 'specialty', 'avatar', 'birth_date', 'gender', 'hire_date',
       'fire_date', 'position_id', 'department_id', 'manager_id', 'branch_id', 'mastery_level', 'status',

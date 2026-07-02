@@ -309,12 +309,20 @@ router.get('/plan-fact', requirePerm('pnl.read'), async (req, res) => {
     const branchId = req.query.branch_id ? +req.query.branch_id : null;
     const cur = await buildReport(b, branchId);
 
-    // План: безпечно тягнемо з можливих таблиць бюджету FIN-05 (нема — план=null)
+    // План: реальні таблиці бюджету FIN-05 (budgets/budget_items/budget_categories).
+    // Категорію бюджету розгортаємо в кассові категорії через bc.cashbox_categories (нема мапінгу — беремо name).
     const budget = await safeRows(
-      `SELECT category, COALESCE(SUM(amount),0)::numeric plan
-         FROM budget_line_items
-        WHERE period_start <= $1 AND period_end >= $1
-        GROUP BY category`, [b.start], []);
+      `SELECT cc AS category, COALESCE(SUM(bi.plan_amount),0)::numeric plan
+         FROM budget_items bi
+         JOIN budgets bg ON bg.id = bi.budget_id
+              AND bg.status <> 'archived'
+              AND bg.period_start <= $1 AND bg.period_end >= $1
+         JOIN budget_categories bc ON bc.id = bi.category_id
+         CROSS JOIN LATERAL unnest(
+           CASE WHEN COALESCE(array_length(bc.cashbox_categories,1),0) = 0
+                THEN ARRAY[bc.name] ELSE bc.cashbox_categories END) cc
+        WHERE bi.month = date_trunc('month', $1::date)::date
+        GROUP BY cc`, [b.start], []);
     const budgetMap = {};
     for (const r of budget) budgetMap[r.category] = num(r.plan);
 

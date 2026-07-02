@@ -83,7 +83,9 @@ router.post('/products', async (req, res) => {
 
 router.patch('/products/:id', async (req, res) => {
   try {
-    const { name, brand_id, category_id, photo, description, featured, active } = req.body || {};
+    const { name, brand_id, category_id, photo, description, featured, active, meta_title, meta_description, attrs } = req.body || {};
+    if (attrs !== undefined && (typeof attrs !== 'object' || Array.isArray(attrs) || attrs === null))
+      return res.status(400).json({ error: 'attrs-must-be-object' });
     const pool = getPool();
     const r = await pool.query(
       `UPDATE products SET
@@ -94,9 +96,13 @@ router.patch('/products/:id', async (req, res) => {
          description = COALESCE($6, description),
          featured = COALESCE($7, featured),
          active = COALESCE($8, active),
+         meta_title = COALESCE($9, meta_title),
+         meta_description = COALESCE($10, meta_description),
+         attrs = COALESCE($11::jsonb, attrs),
          updated_at = NOW()
        WHERE id = $1 RETURNING *`,
-      [req.params.id, name, brand_id, category_id, photo, description, featured, active]
+      [req.params.id, name, brand_id, category_id, photo, description, featured, active,
+       meta_title, meta_description, attrs === undefined ? null : JSON.stringify(attrs)]
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, product: r.rows[0] });
@@ -371,6 +377,33 @@ router.get('/clients/duplicates', async (req, res) => {
     const groups = await findDuplicateClients(pool, { limit });
     res.json({ ok: true, groups, count: groups.length });
   } catch (e) { console.error('[admin:client:duplicates]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── POST /api/admin/clients — создать клиента вручную (кнопка «Добавить клиента») ──
+// Раньше клиента можно было завести только CSV-импортом или неявно при записи (пробел, найден 02.07).
+router.post('/clients', async (req, res) => {
+  try {
+    const pool = getPool();
+    const { name, phone, email } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Ім’я обов’язкове' });
+    if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'Телефон обов’язковий' });
+    const normPhone = normalizePhoneDb(phone);
+    if (!normPhone) return res.status(400).json({ error: 'Невірний формат телефону' });
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim()))
+      return res.status(400).json({ error: 'Невірний email' });
+    // защита от дубля по телефону
+    const dup = await pool.query('SELECT id, name FROM clients WHERE phone = $1 AND deleted_at IS NULL LIMIT 1', [normPhone]);
+    if (dup.rowCount) return res.status(409).json({ error: 'Клієнт з таким телефоном вже існує', existing_id: dup.rows[0].id });
+    const r = await pool.query(
+      `INSERT INTO clients (name, phone, email, created_at) VALUES ($1, $2, $3, NOW())
+       RETURNING id, name, phone, email`,
+      [String(name).trim(), normPhone, email ? String(email).trim() : null]);
+    logAction({ user: req.user, action: 'client.create', entity: 'client', entity_id: r.rows[0].id, ip: req.ip }).catch(() => {});
+    res.status(201).json({ ok: true, client: r.rows[0] });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Клієнт з таким телефоном вже існує' });
+    console.error('[admin:create-client]', e); res.status(500).json({ error: 'internal' });
+  }
 });
 
 router.get('/clients', async (req, res) => {

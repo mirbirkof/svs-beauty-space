@@ -88,6 +88,15 @@ router.get('/products', async (req, res) => {
       params.push(priceMax);
       conds.push(`EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.active=TRUE AND pv.price <= $${params.length})`);
     }
+    // фільтр по атрибутах: ?attr=ключ:значення (можна кілька attr=) — по products.attrs JSONB
+    const attrFilters = [].concat(req.query.attr || []).slice(0, 5);
+    for (const af of attrFilters) {
+      const idx = String(af).indexOf(':');
+      if (idx < 1) continue;
+      params.push(String(af).slice(0, idx)); const kp = params.length;
+      params.push(String(af).slice(idx + 1)); const vp = params.length;
+      conds.push(`p.attrs->>$${kp} = $${vp}`);
+    }
 
     // Сортування — лише з білого списку (захист від інʼєкції в ORDER BY).
     const sortMap = {
@@ -102,7 +111,7 @@ router.get('/products', async (req, res) => {
     params.push(offset); const op = params.length;
 
     const sql = `
-      SELECT p.id, p.name, p.brand_id, p.category_id, p.photo,
+      SELECT p.id, p.name, p.brand_id, p.category_id, p.photo, p.attrs,
              MIN(v.price) AS price_from,
              MAX(v.price) AS price_to,
              COUNT(v.id)::int AS variants_count
@@ -144,8 +153,9 @@ router.get('/products/:id', async (req, res) => {
       [req.params.id]
     );
     if (!p.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+    // ПУБЛИЧНЫЙ каталог — НЕ отдаём wholesale (закупочную цену). Утечка маржи клиенту (фикс 02.07).
     const v = await pg.query(
-      `SELECT id, volume, price, wholesale, sku, stock_qty
+      `SELECT id, volume, price, sku, stock_qty
        FROM product_variants
        WHERE product_id = $1 AND active = TRUE
        ORDER BY price`,

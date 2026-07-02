@@ -62,6 +62,7 @@ router.post('/', async (req, res) => {
     const { type, service_id, amount, buyer_name, buyer_phone, buyer_client_id, recipient_name, recipient_phone, recipient_email, recipient_client_id, valid_days, series_id, service_restriction, deferred_activation, notes } = req.body || {};
     const amt = Number(amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'amount required (> 0)' });
+    if (amt > 1000000) return res.status(400).json({ error: 'amount too large (max 1 000 000)' });
     const days = Number(valid_days) > 0 ? Number(valid_days) : 365;
     const validUntil = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
     // deferred_activation=true → статус 'issued', активується при першому використанні.

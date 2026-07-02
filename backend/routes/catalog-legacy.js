@@ -22,7 +22,7 @@ async function build() {
     pg.query("SELECT id, name, icon, group_name FROM categories ORDER BY group_name, name"),
     pg.query(`SELECT id, name, brand_id, category_id, photo, description
               FROM products WHERE active = TRUE ORDER BY name`),
-    pg.query(`SELECT id, product_id, volume, price, wholesale, stock_qty
+    pg.query(`SELECT id, product_id, volume, price, stock_qty
               FROM product_variants WHERE active = TRUE ORDER BY price`),
   ]);
 
@@ -34,7 +34,7 @@ async function build() {
       vid: v.id, // variant_id — нужен витрине для POST /api/orders
       v: v.volume || 'стандарт',
       price: Number(v.price),
-      wholesale: Number(v.wholesale),
+      // wholesale (закупка) НЕ отдаём — публичная витрина, утечка маржи (фикс 02.07)
       stock: v.stock_qty == null ? null : Number(v.stock_qty),
     });
   }

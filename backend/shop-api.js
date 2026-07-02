@@ -81,6 +81,14 @@ app.use('/api/migrate', express.json({ limit: '12mb' }));
 // rawBody нужен для верификации X-Sign вебхука Mono (подпись считается от байтов как есть)
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
+// Ловим SyntaxError от express.json (невалидный JSON в теле) → 400 вместо 500
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'invalid-json', message: 'Request body is not valid JSON' });
+  }
+  next(err);
+});
+
 // ── Rate limiting ───────────────────────────────────────
 // За туннелем/Render реальный IP приходит в X-Forwarded-For (1 hop)
 app.set('trust proxy', 1);

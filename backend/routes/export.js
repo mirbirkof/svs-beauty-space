@@ -225,9 +225,61 @@ router.get('/gdpr/client/:id(\\d+)', async (req, res) => {
    гранулярный requirePerm на чтение конкретной сущности.
    ═══════════════════════════════════════════════════════ */
 
+// Excel без внешних библиотек: SpreadsheetML (XML Spreadsheet 2003) — родной формат
+// Excel/LibreOffice, кириллица и числа работают из коробки.
+function toXls(rows, columns, sheetName) {
+  const esc = (v) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const cell = (v) => {
+    const isNum = typeof v === 'number' || (v != null && v !== '' && !isNaN(v) && !/^0\d/.test(String(v)));
+    return `<Cell><Data ss:Type="${isNum ? 'Number' : 'String'}">${esc(v)}</Data></Cell>`;
+  };
+  const head = `<Row>${columns.map(c => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(c.label)}</Data></Cell>`).join('')}</Row>`;
+  const body = rows.map(r => `<Row>${columns.map(c => cell(r[c.key])).join('')}</Row>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles><Style ss:ID="h"><Font ss:Bold="1"/></Style></Styles>
+<Worksheet ss:Name="${esc((sheetName || 'Export').slice(0, 30))}"><Table>
+${head}
+${body}
+</Table></Worksheet></Workbook>`;
+}
+
+// PDF без внешних библиотек: печатная HTML-страница — открывается, кнопка
+// «Зберегти як PDF» одним кликом (или ?autoprint=1). Без 5МБ зависимостей.
+function toPrintHtml(rows, columns, title) {
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+ body{font:12px/1.4 -apple-system,Segoe UI,Arial,sans-serif;color:#111;margin:24px}
+ h1{font-size:16px;margin:0 0 4px} .meta{color:#666;font-size:11px;margin-bottom:12px}
+ table{border-collapse:collapse;width:100%} th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}
+ th{background:#f3f3f3} tr:nth-child(even) td{background:#fafafa}
+ .noprint{margin-bottom:12px} @media print{.noprint{display:none}}
+</style></head><body>
+<div class="noprint"><button onclick="window.print()" style="padding:6px 14px">🖨 Друк / Зберегти як PDF</button></div>
+<h1>${esc(title)}</h1><div class="meta">Сформовано ${new Date().toLocaleString('uk-UA')} · рядків: ${rows.length}</div>
+<table><thead><tr>${columns.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
+<tbody>${rows.map(r => `<tr>${columns.map(c => `<td>${esc(r[c.key])}</td>`).join('')}</tr>`).join('')}</tbody></table>
+<script>if(location.search.includes('autoprint=1'))window.print()</script>
+</body></html>`;
+}
+
 // Отдать набор строк в выбранном формате. format: 'json' → JSON-массив,
+// 'xls'/'excel' → Excel, 'pdf'/'print' → печатная страница (Зберегти як PDF),
 // иначе CSV (с BOM, запятая-разделитель, экранирование кавычек как в toCsv).
 function sendExport(res, { rows, columns, filename, format, meta }) {
+  const fmt = String(format || '').toLowerCase();
+  if (fmt === 'xls' || fmt === 'excel' || fmt === 'xlsx') {
+    res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}-${Date.now()}.xls"`);
+    return res.send(toXls(rows, columns, meta?.entity || filename));
+  }
+  if (fmt === 'pdf' || fmt === 'print') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(toPrintHtml(rows, columns, meta?.entity || filename));
+  }
   if (String(format).toLowerCase() === 'json') {
     // В JSON отдаём только колонки экспорта (стабильный контракт), плюс мета.
     const items = rows.map(r => {
@@ -485,10 +537,14 @@ router.get('/consumption', requirePerm('stock.read'), async (req, res) => {
 
 // ── ЗАРПЛАТИ (payroll_records) — CSV/JSON ────────────────
 router.get('/payroll', requirePerm('reports.finance'), async (req, res) => {
+  try {
   const pool = getPool();
   const args = [];
   const cond = dateRange(req, 'pr.period_start', args);
   const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
+  // master_id в payroll_records — TEXT (числа строками «20»), masters.id — INTEGER.
+  // Приводим id к тексту, иначе JOIN падает «operator does not exist: integer = text»
+  // и без try/catch запрос висит вечно (unhandledRejection не доходит до ответа). Фикс 02.07.
   const r = await pool.query(`
     SELECT pr.id, pr.master_id,
            COALESCE(pr.master_name, m.name, '') AS master_name,
@@ -496,7 +552,7 @@ router.get('/payroll', requirePerm('reports.finance'), async (req, res) => {
            pr.services_count, pr.services_revenue,
            pr.bonus, pr.deduction, pr.total, pr.status
     FROM payroll_records pr
-    LEFT JOIN masters m ON m.id = pr.master_id
+    LEFT JOIN masters m ON m.id::text = pr.master_id
     ${where}
     ORDER BY pr.period_start DESC, pr.master_id LIMIT 20000`, args);
   sendExport(res, {
@@ -515,6 +571,10 @@ router.get('/payroll', requirePerm('reports.finance'), async (req, res) => {
       { key: 'status', label: 'Статус' },
     ],
   });
+  } catch (e) {
+    console.error('[export:payroll]', e.message);
+    res.status(500).json({ error: 'Не вдалося сформувати експорт зарплат' });
+  }
 });
 
 module.exports = router;

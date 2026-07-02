@@ -1108,6 +1108,9 @@ router.post('/appointments', async (req, res) => {
     const startDate = new Date(starts_at);
     if (isNaN(startDate)) return res.status(400).json({ error: 'bad-starts_at' });
     const endDate = ends_at ? new Date(ends_at) : new Date(startDate.getTime() + dur * 60000);
+    if (isNaN(endDate) || endDate <= startDate) {
+      return res.status(400).json({ error: 'ends_at має бути пізніше starts_at' });
+    }
 
     // защита от двойного бронирования: слот мастера не должен пересекаться
     const conflict = await findOverlap({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });

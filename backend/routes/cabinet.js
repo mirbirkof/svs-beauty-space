@@ -157,4 +157,80 @@ router.get('/summary', authClient(), async (req, res) => {
   }
 });
 
+// ── Отмена и перенос визита клиентом ─────────────────────────────────────────
+// Правила: только свой визит, только будущий, только booked/confirmed.
+// Окно «не позднее чем за N минут» настраивается в booking_settings.cancel_notice_minutes (дефолт 120).
+let _noticeCache = { ms: 120 * 60000, at: 0 };
+async function cancelNoticeMs(pool) {
+  if (Date.now() - _noticeCache.at < 60000) return _noticeCache.ms; // кэш на минуту
+  try {
+    const r = await pool.query(`SELECT cancel_notice_minutes FROM booking_settings WHERE id = 1`);
+    if (r.rows[0]) _noticeCache = { ms: Number(r.rows[0].cancel_notice_minutes) * 60000, at: Date.now() };
+  } catch (_) { /* колонки ещё нет — работаем на дефолте 120 мин */ }
+  return _noticeCache.ms;
+}
+
+async function ownFutureVisit(pool, clientId, visitId) {
+  const r = await pool.query(
+    `SELECT a.*, s.name AS service, m.name AS master
+       FROM appointments a
+       LEFT JOIN services s ON s.id = a.service_id
+       LEFT JOIN masters m ON m.id = a.master_id
+      WHERE a.id = $1 AND a.client_id = $2`, [visitId, clientId]);
+  const v = r.rows[0];
+  if (!v) return { err: { code: 404, msg: 'Візит не знайдено' } };
+  if (!['booked', 'confirmed'].includes(v.status)) return { err: { code: 409, msg: 'Цей візит вже не можна змінити' } };
+  const noticeMs = await cancelNoticeMs(pool);
+  if (new Date(v.starts_at).getTime() - Date.now() < noticeMs)
+    return { err: { code: 409, msg: `Змінити візит можна не пізніше ніж за ${Math.round(noticeMs / 3600000 * 10) / 10} год. Зателефонуйте в салон` } };
+  return { v };
+}
+
+function notifySalon(html) {
+  if (!process.env.ADMIN_TG_CHAT) return;
+  try { const { tgSend } = require('./telegram-notify'); tgSend(process.env.ADMIN_TG_CHAT, html).catch(() => {}); }
+  catch (_) {}
+}
+
+router.post('/visits/:id(\\d+)/cancel', authClient(), async (req, res) => {
+  try {
+    const pool = getPool();
+    const { v, err } = await ownFutureVisit(pool, req.client.id, +req.params.id);
+    if (err) return res.status(err.code).json({ error: err.msg });
+    await pool.query(
+      `UPDATE appointments SET status='cancelled', updated_at=NOW(),
+              notes = COALESCE(notes,'') || ' [скасовано клієнтом ' || to_char(NOW(),'DD.MM HH24:MI') || ']'
+        WHERE id = $1`, [v.id]);
+    notifySalon(`🚫 <b>Клієнт скасував запис</b>\n${v.service || 'послуга'} · ${v.master || 'майстер'}\n${new Date(v.starts_at).toLocaleString('uk-UA')}\nКлієнт #${req.client.id}`);
+    res.json({ ok: true });
+  } catch (e) { console.error('[cabinet:cancel]', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
+router.post('/visits/:id(\\d+)/reschedule', authClient(), async (req, res) => {
+  try {
+    const pool = getPool();
+    const newStart = new Date(req.body?.starts_at || '');
+    if (isNaN(newStart)) return res.status(400).json({ error: 'Невірна дата (starts_at)' });
+    if (newStart.getTime() - Date.now() < await cancelNoticeMs(pool))
+      return res.status(409).json({ error: 'Новий час занадто близько — оберіть пізніший' });
+    const { v, err } = await ownFutureVisit(pool, req.client.id, +req.params.id);
+    if (err) return res.status(err.code).json({ error: err.msg });
+    const durMs = new Date(v.ends_at) - new Date(v.starts_at);
+    const newEnd = new Date(newStart.getTime() + durMs);
+    // мастер не должен быть занят в новое время (пересечение интервалов, кроме отменённых)
+    const busy = await pool.query(
+      `SELECT 1 FROM appointments
+        WHERE master_id = $1 AND id <> $2 AND status NOT IN ('cancelled','noshow')
+          AND starts_at < $4 AND ends_at > $3 LIMIT 1`,
+      [v.master_id, v.id, newStart.toISOString(), newEnd.toISOString()]);
+    if (busy.rowCount) return res.status(409).json({ error: 'Цей час вже зайнято — оберіть інший' });
+    await pool.query(
+      `UPDATE appointments SET starts_at=$2, ends_at=$3, status='booked', updated_at=NOW(),
+              notes = COALESCE(notes,'') || ' [перенесено клієнтом ' || to_char(NOW(),'DD.MM HH24:MI') || ']'
+        WHERE id = $1`, [v.id, newStart.toISOString(), newEnd.toISOString()]);
+    notifySalon(`🔁 <b>Клієнт переніс запис</b>\n${v.service || 'послуга'} · ${v.master || 'майстер'}\nБуло: ${new Date(v.starts_at).toLocaleString('uk-UA')}\nСтало: ${newStart.toLocaleString('uk-UA')}\nКлієнт #${req.client.id}`);
+    res.json({ ok: true, starts_at: newStart.toISOString(), ends_at: newEnd.toISOString() });
+  } catch (e) { console.error('[cabinet:reschedule]', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
 module.exports = router;

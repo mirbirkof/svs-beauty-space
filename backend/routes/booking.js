@@ -391,19 +391,25 @@ router.post('/telegram', async (req, res) => {
 });
 
 // === Catalog endpoints ==================================
+// Ошибки апстрима BeautyPro (401 без ключа, 5xx, таймаут) НЕ протекают клиенту:
+// логируем полностью, наружу — аккуратный 503 без внутренних деталей (фикс 02.07).
+function upstreamFail(res, e, where) {
+  console.error(`[booking:${where}]`, e.message);
+  res.status(503).json({ error: 'Сервіс онлайн-запису тимчасово недоступний. Спробуйте пізніше або зателефонуйте в салон.' });
+}
 router.get('/services', async (req, res) => {
   try { res.json(await bp.listServices()); }
-  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  catch (e) { upstreamFail(res, e, 'services'); }
 });
 router.get('/masters', async (req, res) => {
   try { res.json(await bp.listEmployees()); }
-  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  catch (e) { upstreamFail(res, e, 'masters'); }
 });
 router.get('/slots', async (req, res) => {
   try {
     const { duration, professional, from, to } = req.query;
     res.json(await bp.freeTime({ duration, professional, from, to }));
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) { upstreamFail(res, e, 'slots'); }
 });
 
 // === GET /catalog — нормализованный каталог из НАШЕЙ БД ==========

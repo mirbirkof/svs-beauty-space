@@ -41,13 +41,17 @@
     </a>
   </div>
 
+  <h3 style="margin:28px 0 12px">Розширений експорт — CSV, Excel, PDF</h3>
+  <p class="muted" style="margin-bottom:12px; font-size:13px">Excel відкривається одразу. PDF — відкриється сторінка друку: натисни «Зберегти як PDF».</p>
+  <div class="grid grid-4" id="extGrid"></div>
+
   <div class="hint-box">
     <b>Підказка:</b> файли формуються на льоту з актуального стану БД. Завантажуй коли потрібно — звіт за поточний момент.
   </div>
 
 </div>
 
-<script src="/admin/assets/admin-shell.js" data-title="Експорт CSV"></script>
+<script src="/admin/assets/admin-shell.js" data-title="Експорт даних"></script>
 <script>
 const TOKEN = adminToken() || prompt('ADMIN_TOKEN');
 if (TOKEN) localStorage.setItem('svs_admin_token', TOKEN);
@@ -55,6 +59,30 @@ if (TOKEN) localStorage.setItem('svs_admin_token', TOKEN);
   document.getElementById(kind).href = `/api/export/${kind}.csv?token=${encodeURIComponent(TOKEN)}`;
   document.getElementById(kind).setAttribute('download', `${kind}-${new Date().toISOString().slice(0,10)}.csv`);
 });
+
+// расширенный экспорт: 8 сущностей × 3 формата
+const EXT = [
+  ['appointments', '📅', 'Візити / записи'],
+  ['orders', '🛒', 'Продажі (розширено)'],
+  ['order-items', '📋', 'Позиції замовлень'],
+  ['cash-operations', '💰', 'Рух грошей'],
+  ['inventory', '📦', 'Склад / залишки'],
+  ['stock-movements', '🔄', 'Рух товару'],
+  ['consumption', '🧪', 'Витрата матеріалів'],
+  ['payroll', '💵', 'Зарплати майстрів'],
+];
+document.getElementById('extGrid').innerHTML = EXT.map(([key, emoji, label]) => {
+  const base = `/api/export/${key}?token=${encodeURIComponent(TOKEN)}`;
+  return `<div class="card" style="padding:14px">
+    <div style="font-size:22px">${emoji}</div>
+    <div style="font-weight:600; margin:4px 0 8px; font-size:14px">${label}</div>
+    <div style="display:flex; gap:10px; font-size:13px">
+      <a href="${base}&format=csv">CSV</a>
+      <a href="${base}&format=xls">Excel</a>
+      <a href="${base}&format=pdf" target="_blank">PDF</a>
+    </div>
+  </div>`;
+}).join('');
 </script>
 </body>
 </html>
