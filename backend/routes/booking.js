@@ -58,6 +58,25 @@ function genToken() {
   return crypto.randomBytes(16).toString('hex');
 }
 
+// Резолв id онлайн-записи (BeautyPro GUID / 'svc-N'/'mst-N' / наш numeric) → внутренние
+// masters.id, services.id + цена/длительность. Нужен чтобы писать запись в НАШУ таблицу
+// appointments (журнал мастера) без BeautyPro. Урок 02.07 — самостоятельность от BP.
+async function resolveBookingIds(pool, serviceRef, masterRef) {
+  const digits = (s) => String(s || '').replace(/^svc-|^mst-/, '');
+  const svcRef = digits(serviceRef), mstRef = digits(masterRef);
+  const svc = await pool.query(
+    `SELECT id, price, COALESCE(duration_min, 60) AS dur FROM services
+      WHERE beautypro_id::text = $1 OR id::text = $1 LIMIT 1`, [svcRef]).catch(() => ({ rows: [] }));
+  const mst = await pool.query(
+    `SELECT id FROM masters WHERE beautypro_id::text = $1 OR id::text = $1 LIMIT 1`, [mstRef])
+    .catch(() => ({ rows: [] }));
+  return {
+    serviceId: svc.rows[0]?.id || null,
+    masterId: mst.rows[0]?.id || null,
+    price: svc.rows[0]?.price ?? null,
+  };
+}
+
 function tg(method, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -296,15 +315,22 @@ router.post('/telegram', async (req, res) => {
           }
         } catch (slotErr) { console.error('[booking/slot-check]', slotErr.message); }
 
-        const client = await bp.createClient({ phone, name: row.client_name || msg.from.first_name });
-        const appt = await bp.createAppointment({
-          client_id: client.id || client.client_id,
-          service_id: row.service_id,
-          employee_id: row.employee_id,
-          date_from: row.date_from,
-          date_to: row.date_to,
-        });
-        const bp_id = String(appt.id || appt.appointment_id || '');
+        // BeautyPro — НЕОБЯЗАТЕЛЬНЫЙ синк (нас могли отключить). Источник правды —
+        // наша БД online_bookings ниже. BP-запись best-effort: получилось — хорошо, нет — не рушим запись.
+        let bp_id = '';
+        try {
+          const client = await bp.createClient({ phone, name: row.client_name || msg.from.first_name });
+          const appt = await bp.createAppointment({
+            client_id: client.id || client.client_id,
+            service_id: row.service_id,
+            employee_id: row.employee_id,
+            date_from: row.date_from,
+            date_to: row.date_to,
+          });
+          bp_id = String(appt.id || appt.appointment_id || '');
+        } catch (bpErr) {
+          console.warn('[booking/bp-optional] BeautyPro недоступен, запись только в нашей БД:', bpErr.message);
+        }
         await db.update(row.token, { status: 'confirmed', phone, appointment_id: bp_id, verified_at: new Date().toISOString() });
 
         // Запись в общий журнал online_bookings — для unified history по телефону
@@ -349,6 +375,27 @@ router.post('/telegram', async (req, res) => {
              row.channel || 'bot', bp_id, row.token, msg.from.id]
           );
           bookingId = ob.rows[0].id;
+
+          // САМОСТОЯТЕЛЬНОСТЬ ОТ BEAUTYPRO (02.07): пишем визит в НАШ журнал appointments,
+          // иначе без BP-синка мастер не увидит онлайн-запись в расписании дня.
+          // best-effort: не роняем подтверждение, если резолв не удался (запись всё равно в online_bookings).
+          try {
+            const ids = await resolveBookingIds(getPool(), row.service_id, row.employee_id);
+            if (ids.masterId && ids.serviceId) {
+              const dup = await getPool().query(
+                `SELECT 1 FROM appointments WHERE master_id=$1 AND starts_at=$2 AND client_id=$3 LIMIT 1`,
+                [ids.masterId, row.date_from, cl.rows[0].id]);
+              if (!dup.rowCount) {
+                await getPool().query(
+                  `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, notes)
+                   VALUES ($1,$2,$3,$4,$5,'booked',$6,'online',$7)`,
+                  [cl.rows[0].id, ids.masterId, ids.serviceId, row.date_from, row.date_to,
+                   ids.price, `Онлайн-запис #${bookingId}${bp_id ? ' / BP ' + bp_id : ''}`]);
+              }
+            } else {
+              console.warn('[booking/appt] не резолвнулись id услуги/мастера — запись только в online_bookings');
+            }
+          } catch (apptErr) { console.error('[booking/appt]', apptErr.message); }
         } catch (logErr) {
           console.error('[booking/log]', logErr.message);
         }
