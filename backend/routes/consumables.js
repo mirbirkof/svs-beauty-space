@@ -7,7 +7,7 @@ const router = express.Router();
 const pool = getPool();
 
 // плоский список вариантов товаров для пикера расходников
-router.get('/_variants', async (req, res) => {
+router.get('/_variants', requirePerm(), async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     const vals = [];
@@ -30,7 +30,7 @@ router.get('/_variants', async (req, res) => {
 // зʼїсть "appointment" як serviceId і нові ендпоінти ніколи не спрацюють.
 
 // список матеріалів запису (з назвами товарів і залишком на складі)
-router.get('/appointment/:apptId', async (req, res) => {
+router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
   try {
     const aid = Number(req.params.apptId);
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
@@ -114,7 +114,7 @@ router.delete('/appointment/:apptId/:variantId', requirePerm('stock.write'), asy
 });
 
 // список расходников услуги (с названиями товаров и остатком)
-router.get('/:serviceId', async (req, res) => {
+router.get('/:serviceId', requirePerm(), async (req, res) => {
   try {
     const sid = Number(req.params.serviceId);
     const r = await pool.query(
