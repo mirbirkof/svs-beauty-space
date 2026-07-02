@@ -219,11 +219,21 @@ router.post('/loyalty/birthday/credit', async (req, res) => {
       try {
         const clientId = await clientIdByPhone(row.client_phone);
         if (clientId) {
+          // sourceId = год: accrue идемпотентен по (client, birthday, год) —
+          // ретрай воркера не задвоит подарок (ux_bonus_tx_accrual_source, миграция 198)
           await bonus.accrue({ clientId, amount: gift, type: 'accrual',
-            sourceType: 'birthday', sourceId: null, description: `Подарунок до дня народження ${y}` });
+            sourceType: 'birthday', sourceId: y, description: `Подарунок до дня народження ${y}` });
           walletCredited = true;
         }
-      } catch (e) { console.error('[loyalty] birthday wallet credit failed:', row.client_phone, e.message); }
+      } catch (e) {
+        console.error('[loyalty] birthday wallet credit failed:', row.client_phone, e.message);
+        // guard-строка без денег в кошельке = клиент навсегда без подарка.
+        // Снимаем guard, чтобы следующий прогон воркера повторил начисление
+        // (само начисление идемпотентно по source, дубля не будет).
+        await pool.query(`DELETE FROM birthday_bonuses WHERE client_phone=$1 AND year=$2`,
+          [row.client_phone, y]).catch(() => {});
+        continue;
+      }
       credited.push({ phone: row.client_phone, bonus: gift, wallet_credited: walletCredited });
     }
     res.json({ ok: true, credited_count: credited.length, items: credited });
