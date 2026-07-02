@@ -63,11 +63,18 @@ module.exports = {
               document.querySelectorAll('img').forEach((im) => {
                 if (im.complete && im.naturalWidth === 0) { out.brokenImgs++; if (out.where.brokenImgs.length < 3) out.where.brokenImgs.push(addr(im)); }
               });
-              // 4) невидимый текст (цвет совпадает с фоном)
-              document.querySelectorAll('p,span,div,td,label,h1,h2,h3').forEach((el) => {
-                if (!(el.innerText || '').trim()) return;
+              // 4) невидимый текст (цвет совпадает с фоном).
+              // ВАЖНО (02.07): проверяем только СОБСТВЕННЫЙ текст элемента (прямые текстовые узлы),
+              // не текст детей — иначе контейнер с тёмным фоном ложно флагается, хотя видимый
+              // текст рисуют дочерние элементы своим цветом (было: экран входа div#login).
+              // 'div' убран — почти всегда контейнер. Прозрачный фон (rgba…,0) не считаем.
+              document.querySelectorAll('p,span,td,label,h1,h2,h3,a,button').forEach((el) => {
+                const ownText = Array.from(el.childNodes)
+                  .filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
+                if (!ownText) return; // текст только у детей → это контейнер, пропускаем
                 const s = getComputedStyle(el);
-                if (s.color && s.backgroundColor && s.color === s.backgroundColor) {
+                const transparent = !s.backgroundColor || /rgba?\([^)]*,\s*0\s*\)$/.test(s.backgroundColor);
+                if (s.color && s.backgroundColor && s.color === s.backgroundColor && !transparent) {
                   out.invisibleText++;
                   if (out.where.invisibleText.length < 3) out.where.invisibleText.push(`${addr(el)} [цвет=${s.color}]`);
                 }
