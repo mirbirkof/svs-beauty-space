@@ -1279,10 +1279,11 @@ router.post('/appointments/:id/pay', async (req, res) => {
       }
     }
 
-    // відкрита зміна каси
+    // відкрита зміна каси (обовʼязкова лише при require_open_shift='true' — заметка #103)
     const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
-    if (!sh.rows[0]) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
-    const shiftId = sh.rows[0].id;
+    const requireShift = String(await getSetting('require_open_shift', false)) === 'true';
+    if (!sh.rows[0] && requireShift) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
+    const shiftId = sh.rows[0]?.id || null;
 
     // Приход в кассу + статус «выполнено» — АТОМАРНО в одной транзакции.
     // Иначе при падении между ними возможен рассинхрон (деньги есть, статус нет — или наоборот).
