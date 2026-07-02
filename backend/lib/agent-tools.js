@@ -227,16 +227,27 @@ const TOOLS = {
 
   get_clients_to_rebook: {
     category: 'manager',
-    description: 'Клієнти «під загрозою» для обдзвону (були 2+ рази, немає 75-180 днів). Повертає імена і телефони. Параметри: {limit?: number}.',
+    description: 'Клієнти «під загрозою» для обдзвону (були 2+ рази і прострочили рекомендований інтервал своєї останньої послуги; якщо інтервал не задано — 75-180 днів). Повертає імена і телефони. Параметри: {limit?: number}.',
     parameters_schema: { type: 'object', properties: { limit: { type: 'number' } } },
     is_destructive: false,
     async impl(args) {
       const lim = Math.min(Math.max(parseInt(args.limit, 10) || 10, 1), 50);
+      // #102: персональний поріг = rebook_interval_days останньої послуги клієнта
+      // (вікно li.iv .. li.iv+105 днів — та сама ширина, що й дефолтна 75..180);
+      // без інтервалу — колишні пороги 75-180.
       const rows = await q(
         `WITH base AS (SELECT c.id, c.name, c.phone, MAX(a.starts_at) last, COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow')) freq
            FROM clients c JOIN appointments a ON a.client_id=c.id WHERE c.phone IS NOT NULL GROUP BY c.id, c.name, c.phone)
-         SELECT name, phone FROM base WHERE freq >= 2 AND last < NOW()-INTERVAL '75 days' AND last > NOW()-INTERVAL '180 days'
-          ORDER BY last DESC LIMIT ${lim}`).catch(() => []);
+         SELECT b.name, b.phone FROM base b
+           LEFT JOIN LATERAL (
+             SELECT s.rebook_interval_days AS iv
+               FROM appointments a2 LEFT JOIN services s ON s.id=a2.service_id
+              WHERE a2.client_id=b.id AND a2.status NOT IN ('cancelled','noshow') AND a2.starts_at <= NOW()
+              ORDER BY a2.starts_at DESC LIMIT 1) li ON TRUE
+          WHERE b.freq >= 2 AND (
+            (li.iv IS NOT NULL AND b.last < NOW() - make_interval(days => li.iv) AND b.last > NOW() - make_interval(days => li.iv + 105))
+            OR (li.iv IS NULL AND b.last < NOW()-INTERVAL '75 days' AND b.last > NOW()-INTERVAL '180 days'))
+          ORDER BY b.last DESC LIMIT ${lim}`).catch(() => []);
       return { count: rows.length, clients: rows.map(r => ({ name: r.name, phone: r.phone })) };
     },
   },
