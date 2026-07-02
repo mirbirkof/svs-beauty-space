@@ -894,15 +894,19 @@ router.delete('/blocks/:id', async (req, res) => {
 router.patch('/appointments/:id', async (req, res) => {
   try {
     const pool = getPool();
-    const { notes, status, room_id, starts_at, master_id, duration_min, service_id } = req.body || {};
+    const { notes, status, room_id, starts_at, master_id, duration_min, service_id, price } = req.body || {};
     if (notes === undefined && status === undefined && room_id === undefined
         && starts_at === undefined && master_id === undefined && duration_min === undefined
-        && service_id === undefined) {
+        && service_id === undefined && price === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
     const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
     if (status !== undefined && !allowed.includes(status)) {
       return res.status(400).json({ error: 'bad-status' });
+    }
+    // Ручна зміна планової суми (заметки #94/#96): пишемо число в нашу БД, вона головна
+    if (price !== undefined && (!Number.isFinite(Number(price)) || Number(price) < 0)) {
+      return res.status(400).json({ error: 'bad-price' });
     }
 
     // Поточний стан запису (тривалість, старт, майстер) — потрібен для переносу/зміни тривалості/перевірки професії
@@ -957,8 +961,9 @@ router.patch('/appointments/:id', async (req, res) => {
       newEnd = new Date(baseStart.getTime() + dur * 60000).toISOString();
     }
 
-    // Планова сума запису при зміні послуги (фактичні оплати в продажах не чіпаємо)
-    const newPrice = svcRow ? Number(svcRow.price) : null;
+    // Планова сума запису: явна ручна ціна (заметки #94/#96) має пріоритет над ціною нової послуги.
+    // Фактичні оплати в продажах не чіпаємо.
+    const newPrice = price !== undefined ? Number(price) : (svcRow ? Number(svcRow.price) : null);
 
     // защита от двойного бронирования при переносе времени/смене мастера
     if (newStart || newEnd || master_id != null) {
@@ -972,9 +977,9 @@ router.patch('/appointments/:id', async (req, res) => {
       }
     }
 
-    // Ручний перенос (час/майстер/тривалість/послуга) → позначаємо manual_override,
+    // Ручний перенос (час/майстер/тривалість/послуга/сума) → позначаємо manual_override,
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
-    const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined);
+    const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined || price !== undefined);
     const r = await pool.query(
       `UPDATE appointments
           SET notes = COALESCE($2, notes),
@@ -1090,6 +1095,34 @@ router.delete('/appointments/:id/services/:rowId', async (req, res) => {
         [apptId, Number(sum.rows[0].total_price) || 0, newEnd]);
     }
     res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── PATCH /api/schedule/appointments/:id/services/:rowId — змінити ціну послуги у складі візиту (заметки #94/#96) ──
+// Ціна пишеться в нашу БД (вона головна), планова сума запису перераховується,
+// manual_override=true — щоб синхронізація BeautyPro не перетерла правку.
+router.patch('/appointments/:id/services/:rowId', async (req, res) => {
+  try {
+    const pool = getPool();
+    const apptId = Number(req.params.id);
+    const rowId = Number(req.params.rowId);
+    const { price } = req.body || {};
+    const p = Number(price);
+    if (price === undefined || !Number.isFinite(p) || p < 0) return res.status(400).json({ error: 'bad-price' });
+    const aRes = await pool.query('SELECT master_id FROM appointments WHERE id=$1', [apptId]);
+    if (!aRes.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    // майстер може правити лише власний запис
+    if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(aRes.rows[0].master_id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    const upd = await pool.query('UPDATE appointment_services SET price=$3 WHERE id=$2 AND appointment_id=$1 RETURNING id',
+      [apptId, rowId, p]);
+    if (!upd.rows[0]) return res.status(404).json({ error: 'row-not-found' });
+    // Перерахунок планової суми запису зі складу візиту
+    const sum = await pool.query('SELECT COALESCE(SUM(price),0) AS total_price FROM appointment_services WHERE appointment_id=$1', [apptId]);
+    const r2 = await pool.query('UPDATE appointments SET price=$2, manual_override=true, updated_at=NOW() WHERE id=$1 RETURNING id, price',
+      [apptId, Number(sum.rows[0].total_price) || 0]);
+    res.json({ ok: true, appointment: r2.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
