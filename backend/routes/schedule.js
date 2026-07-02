@@ -22,6 +22,22 @@ async function emitAppt(eventType, apptId, masterId) {
 }
 const emitAppointmentCompleted = (id, m) => emitAppt('appointment.completed', id, m);
 
+// ── #95: замок на редагування минулих днів журналу ──
+// Адмін/менеджер можуть правити записи минулих днів лише коли увімкнено налаштування
+// allow_edit_past (Налаштування → Графік змін). Власник може завжди.
+// «Минулий день» = календарний день (за Києвом) раніше сьогоднішнього.
+const PAST_LOCKED = { error: 'past-locked', message: 'Редагування минулих днів вимкнено. Власник може увімкнути це в Налаштуваннях → Графік змін.' };
+const _kyivYmd = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
+async function pastEditDenied(req, dateLike) {
+  try {
+    if (!dateLike) return false;
+    if (((req.user && req.user.role) || '') === 'owner') return false;
+    const day = _kyivYmd(dateLike);
+    if (day === 'Invalid Date' || day >= _kyivYmd(new Date())) return false;
+    return (await getSetting('allow_edit_past', false)) !== true;
+  } catch { return false; } // збій перевірки не має блокувати роботу журналу
+}
+
 // GET = schedule.read, мутации = schedule.write
 router.use((req, res, next) => {
   const perm = req.method === 'GET' ? 'schedule.read' : 'schedule.write';
@@ -917,6 +933,17 @@ router.patch('/appointments/:id', async (req, res) => {
       curRow = cur.rows[0];
     }
 
+    // #95: запис у минулому дні (або перенос у минулий день) — лише коли увімкнено allow_edit_past
+    let _psStart = curRow && curRow.starts_at;
+    if (!_psStart) {
+      const c95 = await pool.query('SELECT starts_at FROM appointments WHERE id=$1', [req.params.id]);
+      if (!c95.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+      _psStart = c95.rows[0].starts_at;
+    }
+    if (await pastEditDenied(req, _psStart) || (starts_at !== undefined && await pastEditDenied(req, starts_at))) {
+      return res.status(403).json(PAST_LOCKED);
+    }
+
     // Зміна послуги → підтягуємо планову ціну й тривалість нової послуги.
     // Фактичну оплату (поле price тут = планова сума запису) оновлюємо на ціну послуги.
     let svcRow = null;
@@ -1032,6 +1059,8 @@ router.post('/appointments/:id/services', async (req, res) => {
     if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(a.master_id)) {
       return res.status(403).json({ error: 'forbidden' });
     }
+    // #95: склад візиту минулого дня — лише коли увімкнено allow_edit_past
+    if (await pastEditDenied(req, a.starts_at)) return res.status(403).json(PAST_LOCKED);
 
     const sv = await pool.query('SELECT price, duration_min, name FROM services WHERE id=$1', [Number(service_id)]);
     if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
@@ -1077,6 +1106,8 @@ router.delete('/appointments/:id/services/:rowId', async (req, res) => {
     if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(aRes.rows[0].master_id)) {
       return res.status(403).json({ error: 'forbidden' });
     }
+    // #95: склад візиту минулого дня — лише коли увімкнено allow_edit_past
+    if (await pastEditDenied(req, aRes.rows[0].starts_at)) return res.status(403).json(PAST_LOCKED);
     const del = await pool.query('DELETE FROM appointment_services WHERE id=$1 AND appointment_id=$2 RETURNING id', [rowId, apptId]);
     if (!del.rows[0]) return res.status(404).json({ error: 'row-not-found' });
     // Перерахунок підсумків (якщо склад спорожнів — лишаємо суму/час як є)
@@ -1107,6 +1138,8 @@ router.post('/appointments', async (req, res) => {
     const dur = Number(sv.rows[0].duration_min) || 30;
     const startDate = new Date(starts_at);
     if (isNaN(startDate)) return res.status(400).json({ error: 'bad-starts_at' });
+    // #95: створення записів заднім числом — лише коли увімкнено allow_edit_past
+    if (await pastEditDenied(req, startDate)) return res.status(403).json(PAST_LOCKED);
     const endDate = ends_at ? new Date(ends_at) : new Date(startDate.getTime() + dur * 60000);
     if (isNaN(endDate) || endDate <= startDate) {
       return res.status(400).json({ error: 'ends_at має бути пізніше starts_at' });
@@ -1258,8 +1291,10 @@ router.delete('/appointments/:id', async (req, res) => {
     const pool = getPool();
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
-    const chk = await pool.query(`SELECT id, beautypro_id FROM appointments WHERE id=$1`, [id]);
+    const chk = await pool.query(`SELECT id, beautypro_id, starts_at FROM appointments WHERE id=$1`, [id]);
     if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    // #95: видалення записів минулих днів — лише коли увімкнено allow_edit_past
+    if (await pastEditDenied(req, chk.rows[0].starts_at)) return res.status(403).json(PAST_LOCKED);
     // Возврат кассы + удаление/отмена записи — АТОМАРНО. Иначе при падении между ними
     // деньги вернулись, а запись осталась (или наоборот) → рассинхрон кассы.
     const soft = !!chk.rows[0].beautypro_id;

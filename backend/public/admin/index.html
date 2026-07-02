@@ -2411,6 +2411,13 @@ select.input { background:var(--card); }
                   <span id="schMsg" class="set-msg"></span>
                 </div>
                 <div id="schGrid"></div>
+                <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-edit-past" onchange="saveEditPast()">
+                    <span><b>Редагування минулих днів адміністратором</b><i>Коли увімкнено — адміністратор може створювати, змінювати й видаляти записи журналу за минулі дні. Коли вимкнено — минулі дні лише для перегляду (власник може редагувати завжди).</i></span>
+                  </label>
+                  <p id="editPastMsg" class="set-msg"></p>
+                </div>
               </div></div>
             </div>
 
@@ -4315,6 +4322,7 @@ async function loadSettings() {
     const s = r.settings || {};
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
     { const mb = document.getElementById('set-masters-block'); if (mb) mb.checked = s.masters_can_block_time === true; }
+    { const ep = document.getElementById('set-edit-past'); if (ep) ep.checked = s.allow_edit_past === true; }
     // Профіль салону
     const p = s.salon_profile || {};
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
@@ -4790,6 +4798,18 @@ async function addCons(variantId) {
 async function delCons(sid, variantId) {
   await api(`/api/consumables/${sid}/${variantId}`, { method:'DELETE' });
   loadCons();
+}
+// #95: перемикач «Редагування минулих днів адміністратором» (Налаштування → Графік змін)
+async function saveEditPast() {
+  const el = document.getElementById('set-edit-past');
+  const msg = document.getElementById('editPastMsg');
+  if (!el || !msg) return;
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ allow_edit_past: el.checked }) });
+    if (r.ok) { _aepExp = 0; msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(()=>msg.textContent='', 2000); }
+    else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; el.checked = !el.checked; }
+  } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; el.checked = !el.checked; }
 }
 async function saveSettings() {
   const msg = document.getElementById('settingsMsg');
@@ -8001,6 +8021,8 @@ async function payAppt(id) {
 
 // Видалити запис (з підтвердженням)
 async function deleteAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   if (!confirm('Видалити цей запис? Дію не можна скасувати.')) return;
   const msg = document.getElementById('apptMsg');
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Видалення…';
@@ -8012,6 +8034,8 @@ async function deleteAppt(id) {
 }
 // Перенести запис на іншу дату/час/майстра (працює на тач-пристроях, де drag&drop недоступний)
 async function transferAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   const date = (document.getElementById('trfDate')||{}).value;
   const time = (document.getElementById('trfTime')||{}).value;
   const masterId = Number((document.getElementById('trfMaster')||{}).value);
@@ -8043,6 +8067,7 @@ function _humanDur(min) {
 async function apptQuickTime(id) {
   const a = (journalData?.appointments||[]).find(x => x.id === id);
   if (!a) return;
+  if (await pastEditBlockedUI(a.starts_at)) return; // #95
   showModal('Змінити час запису', `
     <div style="display:grid;gap:10px">
       <div><span style="color:var(--text-secondary);font-size:12px">Дата</span>
@@ -8064,6 +8089,7 @@ async function apptQuickTime(id) {
 async function apptChangeService(id) {
   const a = (journalData?.appointments||[]).find(x => x.id === id);
   if (!a) return;
+  if (await pastEditBlockedUI(a.starts_at)) return; // #95
   const services = await getServices();
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
   // #99: показуємо лише послуги майстра цього запису (поточна послуга завжди в списку)
@@ -8087,6 +8113,7 @@ async function apptAddService(id) {
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
   // #99: фільтр за майстром запису (звʼязки master_services); нема звʼязок — показуємо всі
   const _a = (journalData?.appointments||[]).find(x => x.id === id);
+  if (_a && await pastEditBlockedUI(_a.starts_at)) return; // #95
   const _mid = _a ? _a.master_id : null;
   window._svcPickState = { services, ids: await getMasterServiceIds(_mid), keepId: null };
   showModal('Додати послугу до запису', `
@@ -8104,6 +8131,8 @@ async function apptAddService(id) {
 
 // Прибрати послугу зі складу візиту
 async function apptDelService(id, rowId) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   if (!confirm('Прибрати цю послугу з запису?')) return;
   const r = await api('/api/schedule/appointments/' + id + '/services/' + rowId, { method:'DELETE' });
   if (r && r.ok) { toast('Послугу прибрано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
@@ -8221,8 +8250,29 @@ function svcPickFilter(inputId, selectId) {
 function _svcSearchInput(inputId, selectId) {
   return `<input id="${inputId}" class="input" placeholder="Пошук послуги: почніть вводити назву…" autocomplete="off" oninput="svcPickFilter('${inputId}','${selectId}')" style="margin-bottom:6px">`;
 }
+// ── #95: замок на редагування минулих днів (UI-перевірка; бекенд дублює її сам) ──
+let _aepVal = null, _aepExp = 0;
+async function _getAllowEditPast() {
+  if (Date.now() < _aepExp) return _aepVal;
+  try { const r = await api('/api/settings'); _aepVal = !!(r.settings && r.settings.allow_edit_past === true); }
+  catch { _aepVal = true; } // збій запиту не блокує роботу — бекенд перевірить сам
+  _aepExp = Date.now() + 60000;
+  return _aepVal;
+}
+async function pastEditBlockedUI(dateLike) {
+  try {
+    if (!dateLike) return false;
+    if (USER && USER.role === 'owner') return false; // власник може завжди
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(dateLike)) ? String(dateLike) : _ymd(new Date(dateLike));
+    if (day >= _ymd(new Date())) return false; // сьогодні й майбутнє — без обмежень
+    if (await _getAllowEditPast()) return false;
+    toast('Редагування минулих днів вимкнено. Власник може увімкнути це в Налаштуваннях → Графік змін', 'error');
+    return true;
+  } catch { return false; }
+}
 let _createCtx = null;
 async function openCreate(masterId, dateStr, minutes) {
+  if (await pastEditBlockedUI(dateStr)) return; // #95
   const master = (journalData?.masters||[]).find(m=>m.id===masterId);
   const services = await getServices();
   const hh = String(Math.floor(minutes/60)).padStart(2,'0'), mm = String(minutes%60).padStart(2,'0');
@@ -8396,6 +8446,8 @@ async function apptQuickStatus(id, status){
   await saveAppt(id);
 }
 async function saveAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   const notes = document.getElementById('apptNote').value;
   const status = document.getElementById('apptStatus').value;
   const roomSel = document.getElementById('apptRoom');
