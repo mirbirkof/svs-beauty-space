@@ -313,11 +313,11 @@ router.post('/:id/duplicate', WRITE, async (req, res) => {
     const slug = await uniqueSlug(newName);
     const r = await pool.query(
       `INSERT INTO services
-        (name, name_ua, name_en, slug, category, description, internal_note, price, duration_min,
+        (name, name_ua, name_en, slug, category, category_id, rebook_interval_days, description, internal_note, price, duration_min,
          buffer_before, buffer_after, min_booking_interval, max_simultaneous, required_room_type,
          photo_urls, icon, color, status, active, age_restriction, contraindications,
          meta_title, meta_description, sort_order)
-       SELECT $1, name_ua, name_en, $2, category, description, internal_note, price, duration_min,
+       SELECT $1, name_ua, name_en, $2, category, category_id, rebook_interval_days, description, internal_note, price, duration_min,
               buffer_before, buffer_after, min_booking_interval, max_simultaneous, required_room_type,
               photo_urls, icon, color, 'draft', FALSE, age_restriction, contraindications,
               meta_title, meta_description, sort_order
@@ -514,7 +514,12 @@ router.post('/bulk', WRITE, async (req, res) => {
     } else if (action === 'activate') {
       r = await pool.query(`UPDATE services SET active=TRUE, status='active', updated_at=NOW() WHERE id=ANY($1) AND deleted_at IS NULL RETURNING id`, [ids]);
     } else if (action === 'set_category') {
-      r = await pool.query(`UPDATE services SET category=$2, updated_at=NOW() WHERE id=ANY($1) AND deleted_at IS NULL RETURNING id`, [ids, category || null]);
+      // #100: синхронизируем и FK — если имя есть в справочнике, привязываем по id
+      r = await pool.query(
+        `UPDATE services SET category=$2,
+                category_id=(SELECT sc.id FROM service_categories sc WHERE sc.deleted_at IS NULL AND (sc.name=$2 OR sc.name_ua=$2) ORDER BY (sc.name=$2) DESC LIMIT 1),
+                updated_at=NOW()
+          WHERE id=ANY($1) AND deleted_at IS NULL RETURNING id`, [ids, category || null]);
     } else if (action === 'price_pct') {
       const k = 1 + (Number(pct) || 0) / 100;
       r = await pool.query(`UPDATE services SET price=ROUND(price*$2,2), updated_at=NOW() WHERE id=ANY($1) AND deleted_at IS NULL RETURNING id`, [ids, k]);
