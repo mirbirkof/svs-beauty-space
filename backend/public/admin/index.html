@@ -1284,6 +1284,10 @@ select.input { background:var(--card); }
             <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів). Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся з BeautyPro.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="reactInfo" style="font-size:12px;color:var(--text-secondary)"></span>
+              <select id="reactMode" class="input btn-sm" style="max-width:190px" onchange="loadReactivation()" title="Розумний: порівнює «скільки днів не був» з рекомендованим інтервалом останньої послуги клієнта. Простий: усі, хто зник довше за обраний поріг днів.">
+                <option value="smart" selected>Розумний (за послугами)</option>
+                <option value="simple">Простий (днів)</option>
+              </select>
               <select id="reactDays" class="input btn-sm" style="max-width:150px" onchange="loadReactivation()">
                 <option value="45">зникли 45+ днів</option>
                 <option value="60" selected>зникли 60+ днів</option>
@@ -5296,34 +5300,91 @@ async function loadTopMasters() {
   }
 }
 // ═══ AI-07: повернення клієнтів ════════════════
+let _reactClients = []; // #102: кеш рядків віджета для кнопок «Записати»/«Нагадати»
 async function loadReactivation(){
   const body = document.getElementById('reactBody');
   const days = document.getElementById('reactDays')?.value || '60';
+  const mode = document.getElementById('reactMode')?.value || 'smart';
   body.innerHTML = '<div class="empty"><span class="material-icons-round">replay</span>Шукаю клієнтів...</div>';
   try {
-    const d = await api('/api/recommendations/reactivation?days='+days+'&limit=30');
+    const d = await api('/api/recommendations/reactivation?days='+days+'&limit=30'+(mode==='smart'?'&mode=smart':''));
     const cl = d.clients || [];
+    _reactClients = cl;
     const info = document.getElementById('reactInfo');
     if (info) info.textContent = cl.length ? `${d.count} клієнтів · потенціал ${_money2(d.total_value)}` : '';
     if (!cl.length){ body.innerHTML = '<div class="empty" style="padding:20px">Немає клієнтів, що зникли — усі активні.</div>'; return; }
-    const rows = cl.map(c=>{
+    const rows = cl.map((c,i)=>{
       const phone = (c.phone||'').replace(/[^\d+]/g,'');
       const tel = phone ? `<a href="tel:${phone}" style="color:var(--primary,#6c5ce7);text-decoration:none">${escapeHtml(c.phone)}</a>` : '—';
-      return `<tr>
+      // #102: просрочка = днів без візиту мінус рекомендований інтервал останньої послуги
+      const overdue = c.overdue_days != null && c.overdue_days > 0;
+      const ivCell = c.rebook_interval_days != null
+        ? `${c.rebook_interval_days} дн.${overdue ? ` <span style="color:#dc2626;font-weight:700" title="Прострочено на ${c.overdue_days} дн.">+${c.overdue_days}</span>` : ''}`
+        : '—';
+      return `<tr${overdue ? ' style="background:rgba(220,38,38,.07)"' : ''}>
         <td style="padding:8px 10px"><a href="#" onclick="openClientCard(${c.client_id});return false" style="color:var(--primary,#6c5ce7);font-weight:600;text-decoration:none">${escapeHtml(c.name||'—')}</a></td>
         <td style="padding:8px 10px">${tel}</td>
-        <td style="padding:8px 10px;text-align:center">${c.days_since} дн.</td>
+        <td style="padding:8px 10px;text-align:center${overdue ? ';color:#dc2626;font-weight:700' : ''}">${c.days_since} дн.</td>
+        <td style="padding:8px 10px;text-align:center">${ivCell}</td>
         <td style="padding:8px 10px">${escapeHtml(c.last_service||'—')}</td>
         <td style="padding:8px 10px">${escapeHtml(c.last_master||'—')}</td>
         <td style="padding:8px 10px;text-align:center">${c.visits}</td>
         <td style="padding:8px 10px;text-align:right;font-weight:600">${_money2(c.total_spent)}</td>
+        <td style="padding:8px 6px;text-align:center;white-space:nowrap">
+          <button type="button" class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="rbBook(${i})" title="Відкрити журнал на сьогодні й створити запис для цього клієнта">📅 Записати</button>
+          <button type="button" class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="rbRemind(${i},this)" title="Створити задачу «подзвонити клієнту» на дошці задач">Нагадати</button>
+        </td>
       </tr>`;
     }).join('');
     body.innerHTML = `<div style="overflow-x:auto"><table class="tbl" style="font-size:13px"><thead><tr>
-      <th>Клієнт</th><th>Телефон</th><th style="text-align:center">Не був</th><th>Остання послуга</th><th>Майстер</th><th style="text-align:center">Візитів</th><th style="text-align:right">Витратив</th>
+      <th>Клієнт</th><th>Телефон</th><th style="text-align:center">Не був</th><th style="text-align:center">Рекоменд. інтервал</th><th>Остання послуга</th><th>Майстер</th><th style="text-align:center">Візитів</th><th style="text-align:right">Витратив</th><th style="text-align:center">Дії</th>
     </tr></thead><tbody>${rows}</tbody></table></div>
-    <p style="font-size:11px;color:var(--text-secondary);padding:8px 14px;margin:0">Клієнти з 2+ візитами, які давно не приходили — відсортовані за сумою витрат. Подзвоніть або запустіть кампанію через «Маркетинг».</p>`;
+    <p style="font-size:11px;color:var(--text-secondary);padding:8px 14px;margin:0">${mode==='smart'
+      ? 'Розумний режим: клієнти, що перевищили рекомендований інтервал своєї останньої послуги (без інтервалу — загальний поріг днів). Червоним — на скільки днів прострочено.'
+      : 'Клієнти з 2+ візитами, які давно не приходили — відсортовані за сумою витрат.'} Подзвоніть, запишіть або створіть нагадування.</p>`;
   } catch(e){ body.innerHTML = '<div class="empty" style="padding:20px">Не вдалося завантажити список.</div>'; }
+}
+// #102: «📅 Записати» — журнал на сьогодні + модалка нового запису з предзаповненим клієнтом.
+// Модалка створення (openCreate/ncPickClient) живе в журналі й потребує journalData.masters —
+// тому спершу відкриваємо журнал і чекаємо на завантаження.
+async function rbBook(i){
+  const c = _reactClients[i];
+  if (!c) return;
+  const today = _ymd(new Date());
+  const dEl = document.getElementById('journalDate');
+  if (dEl) dEl.value = today;
+  go('journal');
+  for (let t = 0; t < 40 && !(journalData && (journalData.masters||[]).length); t++)
+    await new Promise(r => setTimeout(r, 150));
+  if (!(journalData && (journalData.masters||[]).length)) { toast('Журнал ще завантажується — спробуйте ще раз', 'error'); return; }
+  const now = new Date();
+  let mins = now.getHours()*60 + (now.getMinutes() > 30 ? 60 : 30); // найближчі півгодини
+  if (mins < 9*60 || mins > 20*60) mins = 12*60;
+  await openCreate(null, today, mins);
+  if (c.client_id) ncPickClient(c.client_id, c.name || '', c.phone || '');
+}
+// #102: «Нагадати» — задача на дошці задач через штатний POST /api/tasks.
+// Дедуп: якщо по клієнту вже є ВІДКРИТА задача-нагадування — нову не створюємо.
+async function rbRemind(i, btn){
+  const c = _reactClients[i];
+  if (!c) return;
+  const title = `Подзвонити клієнту ${c.name || 'без імені'} — пора на повторний візит`;
+  if (btn) btn.disabled = true;
+  try {
+    const ex = await api('/api/tasks?limit=200&q=' + encodeURIComponent('пора на повторний візит')).catch(() => ({ tasks: [] }));
+    const dup = (ex.tasks || []).find(t => !['done','cancelled'].includes(t.status)
+      && (Number(t.client_id) === Number(c.client_id) || t.title === title));
+    if (dup) { toast('Відкрита задача по цьому клієнту вже є на дошці', 'error'); return; }
+    const r = await api('/api/tasks', { method: 'POST', body: JSON.stringify({
+      title, priority: 'medium', client_id: c.client_id, tags: ['повернення'], due_date: _ymd(new Date()),
+      description: `Телефон: ${c.phone || '—'}\nНе був(ла): ${c.days_since} дн.`
+        + (c.rebook_interval_days != null ? ` (рекомендований інтервал ${c.rebook_interval_days} дн., прострочено на ${c.overdue_days})` : '')
+        + `\nОстання послуга: ${c.last_service || '—'} · майстер ${c.last_master || '—'}\nВитратив(ла): ${_money2(c.total_spent)}`,
+    })});
+    if (r && r.ok) toast('Задачу створено — дивіться дошку «Задачі»');
+    else toast((r && r.error) || 'Не вдалося створити задачу', 'error');
+  } catch { toast('Не вдалося створити задачу', 'error'); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 // ═══ AI-10: контроль якості ════════════════════
