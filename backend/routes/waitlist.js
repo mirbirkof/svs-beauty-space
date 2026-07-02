@@ -14,16 +14,15 @@ const { getPool } = require('../db-pg');
 const bp = require('../beautyproClient');
 const { requirePerm } = require('../lib/rbac');
 const { authClient } = require('./cabinet-auth');
+const { normalizePhoneDb } = require('../lib/phone');
 
 const pool = getPool();
 
+// Канон БД = '380XXXXXXXXX' БЕЗ '+' (lib/phone.js, аудит #31). Локальная версия
+// с '+380' плодила второй формат в waitlist/online_bookings и дубли клиентов.
+// Существующие '+380...' строки waitlist приведены к канону миграцией 198.
 function normalizePhone(p) {
-  if (!p) return null;
-  const digits = String(p).replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('380')) return '+' + digits;
-  if (digits.length === 10 && digits.startsWith('0')) return '+38' + digits;
-  if (digits.length === 9) return '+380' + digits;
-  return '+' + digits;
+  return normalizePhoneDb(p);
 }
 
 async function getOrCreateClient(phone, name, telegram_id) {
@@ -181,8 +180,11 @@ router.post('/booking/confirm', async (req, res) => {
     const ph = normalizePhone(phone);
 
     // Чорний список: якщо номер заблокований для запису — не дозволяємо бронювання.
+    // Порівнюємо по цифрах: у blacklist історично лежать номери з '+', канон — без.
     const blk = await pool.query(
-      `SELECT reason FROM blacklist WHERE client_phone=$1 AND COALESCE(blocks_booking,true)=true LIMIT 1`, [ph]);
+      `SELECT reason FROM blacklist
+        WHERE regexp_replace(client_phone, '\\D', '', 'g') = regexp_replace($1, '\\D', '', 'g')
+          AND COALESCE(blocks_booking,true)=true LIMIT 1`, [ph]);
     if (blk.rows[0]) return res.status(403).json({ error: 'client-blocked', message: 'Запис неможливий: номер у чорному списку' + (blk.rows[0].reason ? ' (' + blk.rows[0].reason + ')' : '') });
 
     const client_id = await getOrCreateClient(ph, name, telegram_id);
