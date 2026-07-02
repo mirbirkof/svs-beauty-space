@@ -122,6 +122,9 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 30), 365);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    // #102: mode=smart — персональний поріг за rebook_interval_days останньої послуги клієнта;
+    // у кого інтервал не задано — загальний поріг days (як у звичайному режимі).
+    const smart = req.query.mode === 'smart';
     // «Останній візит» = максимум з ДВОХ джерел:
     //   1) last_visit_at — заморожений знімок вигрузки MyClients (24.05.2026);
     //   2) жива синхронізація appointments (status не cancelled/noshow, включно з майбутніми записами).
@@ -139,7 +142,10 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
                   WHERE a2.client_id=c.id AND a2.status NOT IN ('cancelled','noshow') AND a2.starts_at <= NOW() ORDER BY a2.starts_at DESC LIMIT 1) AS last_master,
                 (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
                    FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
-                  WHERE a3.client_id=c.id AND a3.status NOT IN ('cancelled','noshow') AND a3.starts_at <= NOW() ORDER BY a3.starts_at DESC LIMIT 1) AS last_service
+                  WHERE a3.client_id=c.id AND a3.status NOT IN ('cancelled','noshow') AND a3.starts_at <= NOW() ORDER BY a3.starts_at DESC LIMIT 1) AS last_service,
+                (SELECT s4.rebook_interval_days
+                   FROM appointments a4 LEFT JOIN services s4 ON s4.id=a4.service_id
+                  WHERE a4.client_id=c.id AND a4.status NOT IN ('cancelled','noshow') AND a4.starts_at <= NOW() ORDER BY a4.starts_at DESC LIMIT 1) AS rebook_interval
            FROM clients c
            LEFT JOIN LATERAL (
              SELECT MAX(a.starts_at)::date AS live_last
@@ -150,7 +156,10 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
           WHERE c.last_visit_at IS NOT NULL
             AND COALESCE(c.total_visits,0) >= 2
        ) t
-       WHERE t.last_visit < CURRENT_DATE - ($1)::int
+       WHERE ${smart
+         ? `((t.rebook_interval IS NOT NULL AND t.days_since > t.rebook_interval)
+             OR (t.rebook_interval IS NULL AND t.last_visit < CURRENT_DATE - ($1)::int))`
+         : `t.last_visit < CURRENT_DATE - ($1)::int`}
        ORDER BY t.total_spent DESC NULLS LAST, t.days_since ASC
        LIMIT $2`, [days, limit]).then(r => r.rows).catch((e) => { console.error('[rec:reactivation:q]', e.message); return []; });
     const out = rows.map(r => ({
@@ -158,9 +167,11 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
       total_spent: Math.round(Number(r.total_spent || 0)),
       visits: r.visits, days_since: r.days_since,
       last_visit: r.last_visit, last_master: r.last_master, last_service: r.last_service,
+      rebook_interval_days: r.rebook_interval != null ? Number(r.rebook_interval) : null,
+      overdue_days: r.rebook_interval != null ? r.days_since - Number(r.rebook_interval) : null,
     }));
     const totalValue = out.reduce((s, x) => s + x.total_spent, 0);
-    res.json({ ok: true, threshold_days: days, count: out.length, total_value: totalValue, clients: out });
+    res.json({ ok: true, mode: smart ? 'smart' : 'simple', threshold_days: days, count: out.length, total_value: totalValue, clients: out });
   } catch (e) {
     console.error('[rec:reactivation]', e); res.status(500).json({ error: 'internal' });
   }
