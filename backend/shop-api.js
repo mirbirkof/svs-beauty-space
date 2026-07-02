@@ -144,10 +144,13 @@ app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
 
 // Render health check (root + /health)
 app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
-app.get('/health', (req, res) => res.json({
-  ok: true, service: 'svs-shop-api', time: new Date().toISOString(),
-  rev: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),  // какой код реально задеплоен
-}));
+app.get('/health', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*'); // ворота zvetlacrm.onrender.com пингуют /health с другого origin
+  res.json({
+    ok: true, service: 'svs-shop-api', time: new Date().toISOString(),
+    rev: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),  // какой код реально задеплоен
+  });
+});
 
 // health + readiness map
 app.get('/api/shop/health', (req, res) => {
