@@ -7920,6 +7920,7 @@ async function openAppt(id, masterId) {
         </div>
       </div>
       <div id="apptProducts"></div>
+      <div id="apptMaterials"></div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
       ${a.paid ? `
         <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
@@ -7971,6 +7972,7 @@ async function openAppt(id, masterId) {
   loadApptPhotos(a.id, 'before');
   loadApptPhotos(a.id, 'after');
   loadApptProducts(a.id);
+  loadApptMaterials(a.id);
 }
 
 // Товари / розхідники візиту — підтягуємо реальні продажі товарів цього клієнта того дня
@@ -7997,6 +7999,97 @@ async function loadApptProducts(id) {
         </div>
       </div>`;
   } catch (_) { box.innerHTML = ''; }
+}
+
+// ── 🧴 Матеріали візиту (заметка #105): фактичний розхід зі складу ──
+// Показуємо для БУДЬ-ЯКОЇ послуги. Списання відбувається при статусі «Виконано»
+// (writeOffForAppointment бере саме ці рядки; норми — лише fallback).
+async function loadApptMaterials(id) {
+  const box = document.getElementById('apptMaterials');
+  if (!box) return;
+  try {
+    const d = await api('/api/consumables/appointment/' + id);
+    const items = (d && d.items) || [];
+    const locked = !!(d && d.stock_written_off);
+    box.innerHTML = `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="color:var(--text-secondary);font-size:12px">🧴 Матеріали (списання зі складу)</span>
+          ${locked ? '<span style="font-size:11px;color:#047857;font-weight:700">✓ списано зі складу</span>' : ''}
+        </div>
+        ${items.length ? `<div style="display:grid;gap:6px">${items.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
+            <span style="flex:1;min-width:0">${escapeHtml(m.product_name||'Товар')}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}
+              <span style="display:block;color:var(--text-secondary);font-size:11px">на складі: ${m.stock_qty!=null?m.stock_qty:'—'}${Number(m.stock_qty)<0?' ⚠':''}</span></span>
+            <span style="display:flex;align-items:center;gap:10px;white-space:nowrap">
+              ${locked
+                ? `<span style="font-weight:700">×${Number(m.qty_used)}</span>`
+                : `<span onclick="apptMatQty(${id},${m.variant_id},${Number(m.qty_used)})" title="Змінити кількість" style="font-weight:700;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">×${Number(m.qty_used)}</span>
+                   <span onclick="apptMatDel(${id},${m.variant_id})" title="Прибрати матеріал" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`}
+            </span>
+          </div>`).join('')}</div>` : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
+        ${locked ? '' : `
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button type="button" class="btn btn-outline" style="flex:1;font-weight:600" onclick="apptMatAddToggle(${id})">+ матеріал</button>
+          <button type="button" class="btn btn-outline" style="flex:1;font-weight:600" onclick="apptMatPrefill(${id})" title="Підтягнути розхідники з норм послуг цього запису">Заповнити за нормами</button>
+        </div>
+        <div id="apptMatPicker" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:8px">
+          <div style="display:flex;gap:8px">
+            <input id="apptMatSearch" class="input" style="flex:1" placeholder="Пошук товару (назва або артикул)…" oninput="apptMatSearchRun(${id})">
+            <input id="apptMatQtyInp" class="input" type="number" min="0.1" step="0.1" value="1" style="width:80px" title="Кількість">
+          </div>
+          <div id="apptMatResults" style="margin-top:6px;max-height:180px;overflow:auto"></div>
+        </div>`}
+      </div>`;
+  } catch (_) { box.innerHTML = ''; }
+}
+function apptMatAddToggle(id) {
+  const p = document.getElementById('apptMatPicker');
+  if (!p) return;
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') { document.getElementById('apptMatSearch')?.focus(); apptMatSearchRun(id); }
+}
+let _apptMatT = null;
+function apptMatSearchRun(id) {
+  clearTimeout(_apptMatT);
+  _apptMatT = setTimeout(async () => {
+    const q = (document.getElementById('apptMatSearch')?.value || '').trim();
+    const rbox = document.getElementById('apptMatResults');
+    if (!rbox) return;
+    try {
+      const d = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
+      const items = (d && d.items) || [];
+      rbox.innerHTML = items.slice(0, 20).map(v => `
+        <div onclick="apptMatPick(${id},${v.id})" style="display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg-secondary,#f8fafc)'" onmouseout="this.style.background=''">
+          <span>${escapeHtml(v.product_name||'Товар')}${v.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(v.volume)}</span>`:''}</span>
+          <span style="color:var(--text-secondary);white-space:nowrap">склад: ${v.stock_qty!=null?v.stock_qty:'—'}</span>
+        </div>`).join('') || '<div style="font-size:12px;color:var(--text-secondary);padding:6px">Нічого не знайдено</div>';
+    } catch (_) { rbox.innerHTML = ''; }
+  }, 250);
+}
+async function apptMatPick(id, variantId) {
+  const qty = Number(document.getElementById('apptMatQtyInp')?.value) || 1;
+  const r = await api('/api/consumables/appointment/' + id, { method: 'POST', body: JSON.stringify({ variant_id: variantId, qty_used: qty }) });
+  if (r && r.ok) { toast('Матеріал додано'); loadApptMaterials(id); }
+  else toast((r && (r.message || r.error)) || 'Не вдалося додати матеріал', 'error');
+}
+async function apptMatQty(id, variantId, cur) {
+  const v = prompt('Кількість (шт/уп):', cur);
+  if (v == null) return;
+  const qty = Number(String(v).replace(',', '.'));
+  if (!Number.isFinite(qty) || qty <= 0) { toast('Некоректна кількість', 'error'); return; }
+  const r = await api('/api/consumables/appointment/' + id, { method: 'POST', body: JSON.stringify({ variant_id: variantId, qty_used: qty }) });
+  if (r && r.ok) loadApptMaterials(id); else toast((r && (r.message || r.error)) || 'Помилка збереження', 'error');
+}
+async function apptMatDel(id, variantId) {
+  if (!confirm('Прибрати матеріал із запису?')) return;
+  const r = await api('/api/consumables/appointment/' + id + '/' + variantId, { method: 'DELETE' });
+  if (r && r.ok) loadApptMaterials(id); else toast((r && (r.message || r.error)) || 'Помилка видалення', 'error');
+}
+async function apptMatPrefill(id) {
+  const r = await api('/api/consumables/appointment/' + id + '/prefill', { method: 'POST' });
+  if (r && r.ok) { toast(r.added ? ('Додано за нормами: ' + r.added) : 'Нових матеріалів немає (норми порожні або все вже додано)'); loadApptMaterials(id); }
+  else toast((r && (r.message || r.error)) || 'Помилка заповнення', 'error');
 }
 
 // Провести оплату: запис → виконано + прихід у касу (готівка/картка)
