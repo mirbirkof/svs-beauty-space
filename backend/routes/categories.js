@@ -213,8 +213,8 @@ router.patch('/:id', WRITE, async (req, res) => {
       const dup = await pool.query(`SELECT 1 FROM service_categories WHERE LOWER(name)=LOWER($1) AND id<>$2 AND deleted_at IS NULL`, [b.name, id]);
       if (dup.rowCount) return res.status(409).json({ error: 'name_exists' });
       setCol('name', b.name);
-      // каскад: услуги, привязанные по старому имени → новое имя
-      const rn = await pool.query(`UPDATE services SET category=$1, updated_at=NOW() WHERE category=$2 AND deleted_at IS NULL`, [b.name, old.name]);
+      // каскад: услуги, привязанные по старому имени ИЛИ по FK (#100) → новое имя
+      const rn = await pool.query(`UPDATE services SET category=$1, updated_at=NOW() WHERE (category=$2 OR category_id=$3) AND deleted_at IS NULL`, [b.name, old.name, id]);
       renamed = rn.rowCount;
     }
     if (sets.length) {
@@ -268,7 +268,9 @@ router.post('/:id/move', WRITE, async (req, res) => {
   }
 });
 
-/* ─────────────── DELETE /:id — soft, с проверками ─────────────── */
+/* ─────────────── DELETE /:id — soft, с проверками ───────────────
+   #100: опциональный параметр move_to (query или body) — id другой категории,
+   куда перенести услуги перед удалением. Без move_to поведение прежнее. */
 router.delete('/:id', WRITE, async (req, res) => {
   try {
     const id = req.params.id;
@@ -276,11 +278,29 @@ router.delete('/:id', WRITE, async (req, res) => {
     if (!cur.rowCount) return res.status(404).json({ error: 'not_found' });
     const ch = await pool.query(`SELECT COUNT(*)::int c FROM service_categories WHERE parent_id=$1 AND deleted_at IS NULL`, [id]);
     if (ch.rows[0].c > 0) return res.status(409).json({ error: 'has_children', count: ch.rows[0].c });
-    const svc = await pool.query(`SELECT COUNT(*)::int c FROM services WHERE category=$1 AND deleted_at IS NULL`, [cur.rows[0].name]);
+
+    const moveToRaw = (req.body && req.body.move_to != null) ? req.body.move_to : req.query.move_to;
+    let moved = 0;
+    if (moveToRaw != null && moveToRaw !== '') {
+      const targetId = parseInt(moveToRaw);
+      if (!Number.isInteger(targetId) || targetId === Number(id)) return res.status(400).json({ error: 'invalid_move_to' });
+      const t = await pool.query(`SELECT id, name FROM service_categories WHERE id=$1 AND deleted_at IS NULL`, [targetId]);
+      if (!t.rowCount) return res.status(400).json({ error: 'move_to_not_found' });
+      // перенос: и по FK, и по старому текстовому полю
+      const mv = await pool.query(
+        `UPDATE services SET category_id=$1, category=$2, updated_at=NOW()
+          WHERE deleted_at IS NULL AND (category_id=$3 OR (category_id IS NULL AND category=$4))`,
+        [t.rows[0].id, t.rows[0].name, id, cur.rows[0].name]);
+      moved = mv.rowCount;
+    }
+
+    const svc = await pool.query(
+      `SELECT COUNT(*)::int c FROM services WHERE (category=$1 OR category_id=$2) AND deleted_at IS NULL`,
+      [cur.rows[0].name, id]);
     if (svc.rows[0].c > 0) return res.status(409).json({ error: 'has_services', count: svc.rows[0].c });
     await pool.query(`UPDATE service_categories SET deleted_at=NOW(), status='hidden', updated_at=NOW() WHERE id=$1`, [id]);
-    await logAction({ user: req.user, action: 'category.delete', entity: 'service_category', entity_id: id });
-    res.json({ ok: true });
+    await logAction({ user: req.user, action: 'category.delete', entity: 'service_category', entity_id: id, meta: { moved_services: moved } });
+    res.json({ ok: true, moved_services: moved });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
