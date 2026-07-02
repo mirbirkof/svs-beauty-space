@@ -404,10 +404,16 @@ router.post('/operations', async (req, res) => {
       // (фінансовий огляд /finance не залежить від зміни), тому витрату/дохід можна
       // провести і поза зміною — shift_id лишається NULL (колонка nullable, міграція 139).
       // POS-чекаут і Z-звіт це не зачіпає: вони завжди передають shift_id або відкриту зміну.
-      if (!shiftRow && allow_no_shift) {
-        shiftRow = { id: null, status: 'none' };
-      } else if (!shiftRow) {
-        await client.query('ROLLBACK'); return res.status(400).json({ error: 'no-open-shift' });
+      // #103: зміна тепер НЕобов'язкова за замовчуванням — каса магазину і салону
+      // спільна, і вимога відкритої зміни блокувала оплати. Хто хоче суворий режим —
+      // вмикає app_settings.require_open_shift = 'true' (тоді як раніше: 400 без зміни).
+      if (!shiftRow) {
+        const requireShift = String(await getSetting('require_open_shift', false)) === 'true';
+        if (allow_no_shift || !requireShift) {
+          shiftRow = { id: null, status: 'none' };
+        } else {
+          await client.query('ROLLBACK'); return res.status(400).json({ error: 'no-open-shift' });
+        }
       }
     } else {
       const chk = await client.query(`SELECT id, status FROM cash_shifts WHERE id=$1 FOR UPDATE`, [shift_id]);
