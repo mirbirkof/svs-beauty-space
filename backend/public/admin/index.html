@@ -335,6 +335,7 @@ select.input { background:var(--card); }
   border:1px solid rgba(90,90,110,.45); border-radius:5px; color:#444; font-size:11px; font-weight:600;
   display:flex; align-items:center; gap:3px; padding:2px 5px; box-sizing:border-box; }
 .jblock:hover { filter:brightness(.94); }
+.jblock .jbl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } /* довга причина блокування → «…», повний текст у title */
 .jappt { position:absolute; left:4px; right:4px; border-radius:8px; padding:6px 8px; font-size:12px; color:#fff; overflow:hidden; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); z-index:2; transition:transform .08s; -webkit-touch-callout:none; -webkit-user-select:none; -moz-user-select:none; user-select:none; }
 .jappt.dragging { opacity:.4; }
 .jappt:hover { transform:scale(1.015); z-index:5; }
@@ -538,11 +539,11 @@ select.input { background:var(--card); }
 .schb-av { width:30px; height:30px; border-radius:50%; flex:0 0 30px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:12px; overflow:hidden; }
 .schb-av img { width:100%; height:100%; object-fit:cover; }
 .schb-nm { display:block; font-weight:600; font-size:13.5px; line-height:1.2; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.schb-meta { display:block; font-size:11px; color:var(--text-secondary); margin-top:2px; line-height:1.25; }
+.schb-meta { display:block; font-size:11px; color:var(--text-secondary); margin-top:2px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .schb-day { text-align:center; align-items:center; }
 .schb-day.wknd { background:#fdf6f6; }
 .schb-day.today { background:#f0f1fc; }
-.schb-pill { display:inline-block; max-width:100%; padding:3px 6px; border-radius:7px; font-size:11px; font-weight:600; background:rgba(16,185,129,.12); color:#0a8f5f; white-space:nowrap; line-height:1.35; }
+.schb-pill { display:inline-block; max-width:100%; padding:3px 6px; border-radius:7px; font-size:11px; font-weight:600; background:rgba(16,185,129,.12); color:#0a8f5f; white-space:nowrap; line-height:1.35; overflow:hidden; text-overflow:ellipsis; }
 .schb-pill .brk { display:block; font-size:9.5px; font-weight:500; color:#9a8a3a; }
 .schb-off { color:#cfd2e0; font-size:14px; }
 .schb-row-off .schb-name { background:#fff5f5; }
@@ -3172,18 +3173,18 @@ function showModal(title, bodyHtml, onOk) {
   document.getElementById('genModal')?.remove();
   const ov = document.createElement('div');
   ov.id = 'genModal'; ov.className = 'modal-overlay'; ov.style.display = 'flex';
-  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  ov.onclick = e => { if (e.target === ov) { ov.remove(); _unlockScroll(); } };
   ov.innerHTML = `<div class="modal" style="max-width:480px">
-    <div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="document.getElementById('genModal').remove()">✕</button></div>
+    <div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="document.getElementById('genModal').remove();_unlockScroll()">✕</button></div>
     <div class="modal-body">${bodyHtml}</div>
     <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border,#eee)">
-      <button class="btn btn-outline" onclick="document.getElementById('genModal').remove()">${onOk ? 'Скасувати' : 'Закрити'}</button>
+      <button class="btn btn-outline" onclick="document.getElementById('genModal').remove();_unlockScroll()">${onOk ? 'Скасувати' : 'Закрити'}</button>
       ${onOk ? '<button class="btn btn-primary" id="genModalOk">Зберегти</button>' : ''}
     </div></div>`;
   document.body.appendChild(ov);
   // #108: якщо onOk кинув помилку (валідація/збій збереження) — вікно лишається відкритим,
   // toast уже показав причину; закриваємо тільки після успішного збереження
-  if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } catch (_) { return; } document.getElementById('genModal')?.remove(); };
+  if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } catch (_) { return; } document.getElementById('genModal')?.remove(); _unlockScroll(); };
 }
 function toast(msg, type = 'ok') {
   let t = document.getElementById('genToast');
@@ -3193,6 +3194,25 @@ function toast(msg, type = 'ok') {
   t.style.background = type === 'error' ? '#d9534f' : '#0a8f5f';
   t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+}
+// Українське склонення після числа: plUk(1,'послуга','послуги','послуг') → 'послуга'
+// (2-4 → few, але 12-14 → many; 21 → one, 11 → many)
+function plUk(n, one, few, many) {
+  n = Math.abs(Number(n)) || 0;
+  const n10 = n % 10, n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return one;
+  if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+  return many;
+}
+// Відновлення скролу фону. Блок тримають: apptModal (openAppt/openCreate) та
+// повноекранний графік (schToggleFs). Розблоковуємо лише коли обидва неактивні —
+// виклик безпечний на будь-якому шляху закриття будь-якої модалки.
+function _unlockScroll() {
+  const am = document.getElementById('apptModal');
+  if (am && am.style.display && am.style.display !== 'none') return; // вікно запису ще відкрите
+  const sw = document.getElementById('schWrap');
+  if (sw && sw.classList.contains('fs')) return; // графік у повноекранному режимі
+  document.body.style.overflow = '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -3635,6 +3655,7 @@ function go(page) {
   // зупиняємо авто-оновлення воронки при переході на іншу сторінку
   if (page !== 'pipeline' && window._pipelineTimer) { clearInterval(window._pipelineTimer); window._pipelineTimer = null; }
   currentPage = page;
+  _unlockScroll(); // страховка: навігація не повинна лишати фон заблокованим
   if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -4644,7 +4665,7 @@ function schEditDay(mid, date){
 }
 async function schRevertDay(mid, date){
   await api('/api/schedule/day?master_id='+mid+'&date='+date, { method:'DELETE' });
-  document.getElementById('genModal')?.remove();
+  document.getElementById('genModal')?.remove(); _unlockScroll();
   toast('Повернуто до графіка BeautyPro');
   renderScheduleOverview(document.getElementById('schGrid'));
 }
@@ -5313,7 +5334,7 @@ async function loadReactivation(){
     const cl = d.clients || [];
     _reactClients = cl;
     const info = document.getElementById('reactInfo');
-    if (info) info.textContent = cl.length ? `${d.count} клієнтів · потенціал ${_money2(d.total_value)}` : '';
+    if (info) info.textContent = cl.length ? `${d.count} ${plUk(d.count,'клієнт','клієнти','клієнтів')} · потенціал ${_money2(d.total_value)}` : '';
     if (!cl.length){ body.innerHTML = '<div class="empty" style="padding:20px">Немає клієнтів, що зникли — усі активні.</div>'; return; }
     const rows = cl.map((c,i)=>{
       const phone = (c.phone||'').replace(/[^\d+]/g,'');
@@ -5459,7 +5480,7 @@ async function loadQuality(){
           <td style="padding:8px 10px;text-align:right;font-weight:600">${_money2(c.total_spent)}</td>
         </tr>`;
       }).join('');
-      html += `<div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Рання діагностика відтоку · ${ar.count} клієнтів (${ar.high} критичних)</div>
+      html += `<div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Рання діагностика відтоку · ${ar.count} ${plUk(ar.count,'клієнт','клієнти','клієнтів')} (${ar.high} ${plUk(ar.high,'критичний','критичні','критичних')})</div>
       <div style="overflow-x:auto"><table class="tbl" style="font-size:13px"><thead><tr>
         <th>Клієнт</th><th>Телефон</th><th style="text-align:center">Ризик</th><th style="text-align:center">Без візиту / звично</th><th style="text-align:center">Візитів</th><th style="text-align:right">Витратив</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
@@ -5478,7 +5499,7 @@ async function loadSales(){
     if (!d || !d.overall || !d.overall.visits){ body.innerHTML = '<div class="empty" style="padding:20px">Замало даних про продажі.</div>'; return; }
     const o = d.overall, op = d.cross_sell_opportunity || {};
     const info = document.getElementById('salesInfo');
-    if (info) info.textContent = `за ${d.window_days} днів · ${o.visits} візитів`;
+    if (info) info.textContent = `за ${d.window_days} ${plUk(d.window_days,'день','дні','днів')} · ${o.visits} ${plUk(o.visits,'візит','візити','візитів')}`;
     let html = '';
     // KPI
     html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
@@ -5491,7 +5512,7 @@ async function loadSales(){
     if (op.potential_revenue > 0){
       html += `<div style="display:flex;gap:10px;padding:12px 14px;border-left:3px solid #16a34a;background:#16a34a14;border-radius:6px;margin-bottom:18px;font-size:13px;line-height:1.5">
         <span class="material-icons-round" style="color:#16a34a;font-size:20px;flex-shrink:0">savings</span>
-        <div>${escapeHtml(op.hint)}<br><span style="color:var(--text-secondary)">${op.single_service_visits} візитів з однією послугою · мультисервіс ${op.current_multi_pct}%</span></div>
+        <div>${escapeHtml(op.hint)}<br><span style="color:var(--text-secondary)">${op.single_service_visits} ${plUk(op.single_service_visits,'візит','візити','візитів')} з однією послугою · мультисервіс ${op.current_multi_pct}%</span></div>
       </div>`;
     }
     // по майстрах
@@ -7439,12 +7460,12 @@ async function puOpen(id){
 }
 async function puAct(id,action){
   const r=await api('/api/purchasing/orders/'+id+'/'+action,{method:'POST',body:'{}'});
-  if(r&&r.ok){ toast('Готово'); document.getElementById('genModal')?.remove(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Готово'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function puReject(id){
   const c=prompt('Причина відхилення:'); if(c===null) return;
   const r=await api('/api/purchasing/orders/'+id+'/reject',{method:'POST',body:JSON.stringify({comment:c})});
-  if(r&&r.ok){ toast('Відхилено'); document.getElementById('genModal')?.remove(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Відхилено'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function puReceiveModal(id){
   const d=await api('/api/purchasing/orders/'+id);
@@ -7611,7 +7632,7 @@ function renderJournalDay(container, data) {
       const top=Math.max((bs-minM)*J_PX_PER_MIN,0), h=Math.max((Math.min(be,maxM)-Math.max(bs,minM))*J_PX_PER_MIN, 18);
       const lbl = BLOCK_LABELS[b.block_type]||'Зайнято';
       body += `<div class="jblock" style="top:${top}px;height:${h}px" title="${lbl}${b.reason?': '+String(b.reason).replace(/"/g,'&quot;'):''} — клік щоб зняти" onclick="jRemoveBlock(${b.id})">
-        <span class="material-icons-round" style="font-size:13px">lock</span> ${lbl}${b.reason?' · '+b.reason:''}</div>`;
+        <span class="material-icons-round" style="font-size:13px">lock</span> <span class="jbl">${lbl}${b.reason?' · '+b.reason:''}</span></div>`;
     });
     // картки записів (draggable — перенос на інший час/майстра)
     mAppts.forEach(a => {
@@ -7949,12 +7970,12 @@ async function openAppt(id, masterId) {
   document.getElementById('apptTitle').innerHTML = `<span onclick="apptQuickTime(${a.id})" title="Натисніть, щоб змінити час" style="cursor:pointer;border-bottom:1px dashed currentColor">${_toHHMM(_hm(a.starts_at))}–${_toHHMM(_hm(a.ends_at))}</span> · ${escapeHtml(a.master_name||'')}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
-      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7)">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span> · <span onclick="apptEditPrice(${a.id})" title="Натисніть, щоб змінити суму" style="cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;color:var(--primary,#6c5ce7)">edit</span></span>
+      <div><span style="color:var(--text-secondary);font-size:12px">Послуга</span><div style="font-weight:600"><span onclick="apptChangeService(${a.id})" title="Натисніть, щоб змінити послугу" style="cursor:pointer;color:var(--primary,#6c5ce7);border-bottom:1px dashed var(--primary,#6c5ce7);display:inline-block;padding:4px 2px">${escapeHtml(a.service_name||'—')} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px">edit</span></span><span style="margin:0 8px;color:var(--text-secondary)">·</span><span onclick="apptEditPrice(${a.id})" title="Натисніть, щоб змінити суму" style="cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7);display:inline-block;padding:4px 2px">${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `<span style="color:#047857">${_money(a.real_amount)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:12px;text-decoration:line-through">${_money(a.price)}</span> <span style="color:var(--text-secondary);font-weight:400;font-size:11px">факт</span>` : _money(a.real_amount!=null?a.real_amount:a.price)} <span class="material-icons-round" style="font-size:14px;vertical-align:-2px;color:var(--primary,#6c5ce7)">edit</span></span>
         <button type="button" class="btn btn-sm" style="margin-left:8px;background:#eef2ff;color:#4f46e5;font-weight:700;padding:3px 10px;border:1px solid #c7d2fe;vertical-align:1px" onclick="apptAddService(${a.id})" title="Додати ще послугу до цього запису"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">add</span> послугу</button>
       </div></div>
       ${(a.services_count>1 && Array.isArray(a.services_list) && a.services_list.length) ? `<div style="background:var(--bg-secondary,#f7f7fb);border-radius:10px;padding:8px 12px">
-        <span style="color:var(--text-secondary);font-size:12px">Склад візиту · ${a.services_count} послуги</span>
-        ${a.services_list.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px;align-items:center"><span>${escapeHtml(s.name||'—')}${s.duration?` <span style="color:var(--text-secondary);font-size:11px">· ${_humanDur(Math.round(s.duration))}</span>`:''}</span><span style="display:flex;align-items:center;gap:8px;white-space:nowrap">${s.id?`<span onclick="apptEditSvcPrice(${a.id},${s.id},${s.price!=null?Number(s.price):0})" title="Натисніть, щоб змінити ціну послуги" style="font-weight:600;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">${s.price!=null?_money(s.price):'—'}</span>`:`<span style="font-weight:600">${s.price!=null?_money(s.price):'—'}</span>`}${s.id?`<span onclick="apptDelService(${a.id},${s.id})" title="Прибрати послугу" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`:''}</span></div>`).join('')}
+        <span style="color:var(--text-secondary);font-size:12px">Склад візиту · ${a.services_count} ${plUk(a.services_count,'послуга','послуги','послуг')}</span>
+        ${a.services_list.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:4px;align-items:center"><span>${escapeHtml(s.name||'—')}${s.duration?` <span style="color:var(--text-secondary);font-size:11px">· ${_humanDur(Math.round(s.duration))}</span>`:''}</span><span style="display:flex;align-items:center;gap:8px;white-space:nowrap">${s.id?`<span onclick="apptEditSvcPrice(${a.id},${s.id},${s.price!=null?Number(s.price):0})" title="Натисніть, щоб змінити ціну послуги" style="font-weight:600;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">${s.price!=null?_money(s.price):'—'}</span>`:`<span style="font-weight:600">${s.price!=null?_money(s.price):'—'}</span>`}${s.id?`<span onclick="apptDelService(${a.id},${s.id})" title="Прибрати послугу" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1;padding:6px 8px;margin:0 -8px">×</span>`:''}</span></div>`).join('')}
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border,#e5e5ef);font-weight:700"><span>Разом план</span><span>${_money(a.price)}</span></div>
       </div>` : ''}
       <div>
@@ -8350,7 +8371,7 @@ async function apptEditSvcPrice(id, rowId, current) {
   });
 }
 
-function closeAppt() { document.getElementById('apptModal').style.display = 'none'; document.body.style.overflow = ''; }
+function closeAppt() { document.getElementById('apptModal').style.display = 'none'; _unlockScroll(); }
 
 // ── Фото до/після (через files.js, entity_type=appt_before/appt_after) ──
 async function imgBlobUrl(fileId) {
@@ -8626,7 +8647,7 @@ function ncSvcTotal() {
     const s = (st.services||[]).find(x => Number(x.id) === id);
     if (s) { price += Number(s.price)||0; dur += Number(s.duration_min)||0; }
   });
-  el.textContent = `Разом: ${ids.length} послуги · ${_money(price)} · ${_humanDur(dur)}`;
+  el.textContent = `Разом: ${ids.length} ${plUk(ids.length,'послуга','послуги','послуг')} · ${_money(price)} · ${_humanDur(dur)}`;
 }
 let _ncTimer = null;
 function ncSearchClient() {
@@ -8679,9 +8700,14 @@ async function saveCreate() {
           if (!ar || !ar.ok) warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну';
         } catch { warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну'; }
       }
-      msg.style.color = warn ? '#d9863b' : '#10b981';
-      msg.textContent = warn || (svcIds.length > 1 ? `Записано ✓ (${svcIds.length} послуги)` : 'Записано ✓');
-      setTimeout(()=>{ closeAppt(); loadJournal(); }, warn ? 1800 : 600);
+      // Часткова помилка доп.послуг — помітніше (жирний текст на плашці) і довше на екрані,
+      // щоб адмін встиг прочитати, перш ніж вікно закриється (#UX-аудит 02.07)
+      msg.style.color = warn ? '#b45309' : '#10b981';
+      msg.style.fontWeight = warn ? '700' : '';
+      msg.style.cssText += warn ? ';background:#fff7e6;border:1px solid #f59e0b;border-radius:8px;padding:8px 10px' : '';
+      msg.textContent = warn || (svcIds.length > 1 ? `Записано ✓ (${svcIds.length} ${plUk(svcIds.length,'послуга','послуги','послуг')})` : 'Записано ✓');
+      if (warn) toast(warn, 'error'); // дубль у toast — переживе закриття модалки
+      setTimeout(()=>{ closeAppt(); loadJournal(); }, warn ? 4500 : 600);
     }
     else { msg.style.color='#ef4444'; msg.textContent = r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
@@ -8918,7 +8944,7 @@ async function ccAddTagMenu(ev){
 async function ccAddTag(tagId){
   const r = await api('/api/client-tags/assign', { method:'POST', body: JSON.stringify({ client_id:_ccId, tag_id:tagId }) });
   if (r.error){ toast(r.error,'error'); return; }
-  document.getElementById('genModal')?.remove();
+  document.getElementById('genModal')?.remove(); _unlockScroll();
   await _ccReloadTags();
   toast('Тег додано','success');
   const sel=document.getElementById('clientTagFilter'); if(sel) sel.options.length=1; // оновити лічильники
@@ -11236,13 +11262,13 @@ async function saasMarkPaid(invoiceId, tenantId){
   const ok=await jConfirm('Позначити рахунок як оплачений (офлайн-переказ)? Це активує підписку й врахується у виручці.',{okText:'Так, оплачено',cancelText:'Скасувати'});
   if(!ok) return;
   const r=await api('/api/billing/admin/invoices/'+invoiceId+'/pay',{method:'POST',body:JSON.stringify({})});
-  if(r&&r.ok){ toast('Оплату зафіксовано'); document.getElementById('genModal')?.remove(); loadSaasAnalytics&&loadSaasAnalytics(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Оплату зафіксовано'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadSaasAnalytics&&loadSaasAnalytics(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function saasCancelSub(id){
   const ok=await jConfirm('Скасувати підписку салону наприкінці поточного періоду? Доступ збережеться до кінця оплаченого терміну.',{okText:'Так, скасувати',cancelText:'Ні'});
   if(!ok) return;
   const r=await api('/api/billing/admin/subscriptions/'+id+'/cancel',{method:'POST',body:JSON.stringify({})}).catch(()=>null);
-  if(r&&r.ok){ toast('Підписку скасовано (до кінця періоду)'); document.getElementById('genModal')?.remove(); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Підписку скасовано (до кінця періоду)'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function saasTenant(id, action){
   const ok = await jConfirm(action==='block'?'Призупинити цей салон? Він втратить доступ до CRM.':'Відновити доступ салону до CRM?',{okText:'Так',cancelText:'Скасувати'});
