@@ -20,6 +20,36 @@ async function writeOffForAppointment(apptId) {
     );
     if (!a.rows[0]) { await client.query('ROLLBACK'); return { written: false, items: 0, reason: 'not-found' }; }
     if (a.rows[0].stock_written_off) { await client.query('ROLLBACK'); return { written: false, items: 0, reason: 'already' }; }
+
+    // Заметка #105: фактичні матеріали візиту (appointment_materials) мають
+    // пріоритет над нормами service_consumables — списуємо саме їх.
+    const mats = await client.query(
+      `SELECT variant_id, qty_used FROM appointment_materials WHERE appointment_id=$1`,
+      [apptId]
+    );
+    if (mats.rows.length) {
+      let written = 0;
+      for (const m of mats.rows) {
+        const qty = Math.ceil(Number(m.qty_used)); // stock_qty/delta — цілі числа, округляємо вгору
+        if (qty <= 0) continue;
+        // мінус БЕЗ обмеження нулем: склад може відставати від факту,
+        // відʼємний залишок сигналізує про недооблік, а не блокує списання
+        await client.query(
+          `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) - $1 WHERE id=$2`,
+          [qty, m.variant_id]
+        );
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [m.variant_id, -qty, 'service:' + apptId, apptId, 'списання матеріалів візиту (#105)']
+        );
+        written++;
+      }
+      await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [apptId]);
+      await client.query('COMMIT');
+      return { written: true, items: written, source: 'materials' };
+    }
+
     const serviceId = a.rows[0].service_id;
     if (!serviceId) { await client.query('ROLLBACK'); return { written: false, items: 0, reason: 'no-service' }; }
 
