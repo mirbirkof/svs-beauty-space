@@ -11,11 +11,22 @@
 -- Захист унікальних індексів: рядок пропускається, якщо канонічний двійник вже існує
 -- (на проді 2026-07-02 дублів не знайдено — SELECT-перевірка перед міграцією).
 
+-- pg_temp: живе лише в сесії міграційного раннера (один client на весь файл)
+CREATE FUNCTION pg_temp.svs_norm_ua_phone(p text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT CASE
+           WHEN d ~ '^380[0-9]{9}$' THEN d
+           WHEN d ~ '^80[0-9]{9}$'  THEN '3'  || d
+           WHEN d ~ '^0[0-9]{9}$'   THEN '38' || d
+         END
+    FROM (SELECT regexp_replace(coalesce(p, ''), '\D', '', 'g') AS d) s
+$fn$;
+
 DO $mig$
 DECLARE
   t RECORD;
-  skipped integer;
   updated integer;
+  dup_cond text;
 BEGIN
   FOR t IN
     SELECT * FROM (VALUES
@@ -46,35 +57,26 @@ BEGIN
 
     IF t.uniq_keys IS NULL THEN
       EXECUTE format($q$
-        UPDATE %1$I SET %2$I = n.norm
-          FROM LATERAL (SELECT CASE
-                 WHEN d ~ '^380[0-9]{9}$' THEN d
-                 WHEN d ~ '^80[0-9]{9}$'  THEN '3'  || d
-                 WHEN d ~ '^0[0-9]{9}$'   THEN '38' || d
-               END AS norm
-               FROM (SELECT regexp_replace(coalesce(%1$I.%2$I,''), '\D', '', 'g') AS d) s) n
-         WHERE n.norm IS NOT NULL AND n.norm IS DISTINCT FROM %1$I.%2$I
+        UPDATE %1$I SET %2$I = pg_temp.svs_norm_ua_phone(%2$I)
+         WHERE pg_temp.svs_norm_ua_phone(%2$I) IS NOT NULL
+           AND pg_temp.svs_norm_ua_phone(%2$I) IS DISTINCT FROM %2$I
       $q$, t.tbl, t.col);
     ELSE
       -- унікальний індекс включає phone-колонку: не оновлюємо рядок, якщо
       -- канонічний двійник з тими ж ключами вже існує (лишаємо як є — злиття вручну)
+      SELECT string_agg(format('dup.%1$I IS NOT DISTINCT FROM tgt.%1$I', trim(k)), ' AND ')
+        INTO dup_cond
+        FROM unnest(string_to_array(t.uniq_keys, ',')) k;
       EXECUTE format($q$
-        UPDATE %1$I AS tgt SET %2$I = n.norm
-          FROM LATERAL (SELECT CASE
-                 WHEN d ~ '^380[0-9]{9}$' THEN d
-                 WHEN d ~ '^80[0-9]{9}$'  THEN '3'  || d
-                 WHEN d ~ '^0[0-9]{9}$'   THEN '38' || d
-               END AS norm
-               FROM (SELECT regexp_replace(coalesce(tgt.%2$I,''), '\D', '', 'g') AS d) s) n
-         WHERE n.norm IS NOT NULL AND n.norm IS DISTINCT FROM tgt.%2$I
+        UPDATE %1$I AS tgt SET %2$I = pg_temp.svs_norm_ua_phone(tgt.%2$I)
+         WHERE pg_temp.svs_norm_ua_phone(tgt.%2$I) IS NOT NULL
+           AND pg_temp.svs_norm_ua_phone(tgt.%2$I) IS DISTINCT FROM tgt.%2$I
            AND NOT EXISTS (
              SELECT 1 FROM %1$I dup
-              WHERE dup.%2$I = n.norm
+              WHERE dup.%2$I = pg_temp.svs_norm_ua_phone(tgt.%2$I)
                 AND %3$s
            )
-      $q$, t.tbl, t.col,
-           (SELECT string_agg(format('dup.%1$s IS NOT DISTINCT FROM tgt.%1$s', k), ' AND ')
-              FROM unnest(string_to_array(t.uniq_keys, ', ')) k));
+      $q$, t.tbl, t.col, dup_cond);
     END IF;
 
     GET DIAGNOSTICS updated = ROW_COUNT;
