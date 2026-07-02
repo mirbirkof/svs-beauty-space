@@ -133,7 +133,12 @@ async function syncServicesCatalog() {
     const cat = (s.category && s.category.name) || (typeof s.category === 'string' ? s.category : null);
     const ex = await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.id]);
     if (ex.rows.length) {
-      await pool.query('UPDATE services SET name=$1, category=$2, duration_min=$3, price=$4 WHERE beautypro_id=$5',
+      // Заметка #96: ціна в нашій БД головна — адмін може її редагувати в каталозі,
+      // BP заповнює ціну лише коли в нас порожньо/0, ручні правки не перетираються синком
+      await pool.query(
+        `UPDATE services SET name=$1, category=$2, duration_min=$3,
+                price=CASE WHEN COALESCE(price,0)=0 THEN $4 ELSE price END
+          WHERE beautypro_id=$5`,
         [s.name, cat, s.duration || null, numPrice(s.price) ?? 0, s.id]);
     } else {
       await pool.query('INSERT INTO services (name, category, duration_min, price, beautypro_id, active) VALUES ($1,$2,$3,$4,$5,TRUE)',
@@ -176,14 +181,14 @@ async function syncAppointments(from, to) {
     const firstMasterId = await resolveMasterId(pool, firstSvc.professional);
     const sv = firstSvc.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [firstSvc.service]) : { rows: [] };
 
-    let ex = await pool.query('SELECT id FROM appointments WHERE beautypro_id = $1', [a.id]);
+    let ex = await pool.query('SELECT id, manual_override FROM appointments WHERE beautypro_id = $1', [a.id]);
     // Захист від дублів: BP інколи переоформлює запис з НОВИМ id (GUID) →
     // пошук за beautypro_id не знаходить, створюється дубль (стара лишається 'done').
     // Якщо є повний натуральний ключ (клієнт+майстер+послуга+точний час) — адаптуємо
     // існуючий не-скасований запис під новий GUID замість створення копії.
     if (!ex.rows.length && a.client && firstMasterId && sv.rows[0]?.id) {
       ex = await pool.query(
-        `SELECT id FROM appointments
+        `SELECT id, manual_override FROM appointments
           WHERE beautypro_id IS DISTINCT FROM $1
             AND bp_client = $2 AND master_id = $3 AND service_id = $4
             AND starts_at = ($5::timestamp AT TIME ZONE 'Europe/Kyiv')
@@ -212,7 +217,9 @@ async function syncAppointments(from, to) {
                        WHEN $6 IN ('cancelled','noshow') THEN $6
                        WHEN status='done' THEN 'done'
                        ELSE $6 END,
-           bp_state=$7, price=$8, bp_client=$9, beautypro_id=$11, synced_at=NOW(), updated_at=NOW()
+           bp_state=$7,
+           price=CASE WHEN manual_override THEN price ELSE $8 END,
+           bp_client=$9, beautypro_id=$11, synced_at=NOW(), updated_at=NOW()
          WHERE id=$10`,
         [cl.rows[0]?.id || null, firstMasterId, sv.rows[0]?.id || null,
          startsLocal, endsLocal, status, a.state || null, totalPrice || null, a.client || null, apptId, a.id]
@@ -233,7 +240,11 @@ async function syncAppointments(from, to) {
       created++;
     }
 
-    // мульти-услуги: полная перезапись строк услуг записи
+    // мульти-услуги: полная перезапись строк услуг записи.
+    // Заметки #94/#96: якщо запис правили вручну в нашій CRM (manual_override) —
+    // склад візиту (ціни/додані послуги) НЕ перезаписуємо, наша БД головна.
+    const manualOv = ex.rows.length && !!ex.rows[0].manual_override;
+    if (!manualOv) {
     await pool.query('DELETE FROM appointment_services WHERE appointment_id = $1', [apptId]);
     for (const s of services) {
       const svcRow = s.service ? await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.service]) : { rows: [] };
@@ -254,6 +265,7 @@ async function syncAppointments(from, to) {
          startLocal, Number(s.duration) || null, Number(s.price) || null]
       );
     }
+    } // if (!manualOv)
   }
 
   // Реконсиляція: записи, видалені в BeautyPro вже після синку, гасимо
