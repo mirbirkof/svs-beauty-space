@@ -216,7 +216,9 @@ router.post('/:id/sell', async (req, res) => {
     const b = req.body || {};
     const gc = (await pool.query(`SELECT * FROM gift_certificates WHERE id=$1`, [+req.params.id])).rows[0];
     if (!gc) return res.status(404).json({ error: 'not found' });
-    if (['cancelled', 'expired', 'fully_used'].includes(gc.status)) return res.status(409).json({ error: 'not-sellable', status: gc.status });
+    // Продати можна лише випущений (issued) сертифікат. active/partially_used вже
+    // продані — повторний /sell перезаписував покупця і дублював транзакцію 'sale'.
+    if (gc.status !== 'issued') return res.status(409).json({ error: 'not-sellable', status: gc.status, message: 'Продати можна лише сертифікат у статусі issued' });
     // активувати при продажу (за замовч.), або лишити issued при deferred_activation.
     const deferred = b.deferred_activation === true;
     const newStatus = deferred ? 'issued' : 'active';
@@ -443,19 +445,44 @@ router.post('/:id/use', async (req, res) => {
 });
 
 // ── POST /:id/refund — повернення коштів на сертифікат ──
+// Повернення = відкат usage (послугу скасували, гроші вертаються НА сертифікат).
+// Тому воно привʼязане до фактичних usage: не можна повернути більше, ніж
+// реально списано (за мінусом уже повернутого), і не можна «оживити» expired.
+// Каса не рухається: usage касу не чіпав, тож і сторно каси тут немає.
 router.post('/:id/refund', async (req, res) => {
   try {
     const amt = Number(req.body?.amount);
     if (!amt || amt <= 0) return res.status(400).json({ error: 'amount required (> 0)' });
-    const gc = (await pool.query(`SELECT * FROM gift_certificates WHERE id=$1`, [+req.params.id])).rows[0];
-    if (!gc) return res.status(404).json({ error: 'not found' });
-    if (gc.status === 'cancelled') return res.status(409).json({ error: 'cancelled' });
-    const balance = Math.min(Number(gc.remaining_amount) + amt, Number(gc.original_amount));
-    const newStatus = balance >= Number(gc.original_amount) ? 'active' : 'partially_used';
-    const upd = await pool.query(`UPDATE gift_certificates SET remaining_amount=$1, status=$2, updated_at=NOW() WHERE id=$3 RETURNING *`, [balance, newStatus, gc.id]);
-    await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'refund',$2,$3,$4,$5)`,
-      [gc.id, amt, balance, req.user?.display_name || null, req.body?.reason || null]);
-    res.json({ ok: true, certificate: upd.rows[0], balance });
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      const gc = (await client.query(`SELECT * FROM gift_certificates WHERE id=$1 FOR UPDATE`, [+req.params.id])).rows[0];
+      if (!gc) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
+      if (gc.status === 'cancelled') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'cancelled' }); }
+      if (gc.status === 'expired') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'expired', message: 'Повернення на протермінований сертифікат заборонено' }); }
+      const u = (await client.query(
+        `SELECT COALESCE(SUM(amount) FILTER (WHERE type='usage'),0)
+              - COALESCE(SUM(amount) FILTER (WHERE type='refund'),0) AS net_used
+           FROM gift_certificate_transactions WHERE gc_id=$1`, [gc.id])).rows[0];
+      const refundable = Math.max(0, Number(u.net_used));
+      if (amt > refundable + 0.001) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'refund-exceeds-usage', refundable, message: 'Не можна повернути більше, ніж фактично використано' });
+      }
+      const balance = Math.min(Number(gc.remaining_amount) + amt, Number(gc.original_amount));
+      const newStatus = balance >= Number(gc.original_amount) ? 'active' : 'partially_used';
+      const upd = await client.query(`UPDATE gift_certificates SET remaining_amount=$1, status=$2, updated_at=NOW() WHERE id=$3 RETURNING *`, [balance, newStatus, gc.id]);
+      await client.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'refund',$2,$3,$4,$5)`,
+        [gc.id, amt, balance, req.user?.display_name || null, req.body?.reason || null]);
+      await client.query('COMMIT');
+      result = { certificate: upd.rows[0], balance };
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { client.release(); }
+    logAction({ user: req.user, action: 'gc.refund', entity: 'gift_certificate', entity_id: +req.params.id, ip: req.ip, meta: { amount: amt } }).catch(() => {});
+    res.json({ ok: true, ...result });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -468,6 +495,19 @@ router.post('/:id/cancel', async (req, res) => {
     const upd = await pool.query(`UPDATE gift_certificates SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING *`, [gc.id]);
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'cancellation',$2,$2,$3,$4)`,
       [gc.id, gc.remaining_amount, req.user?.display_name || null, req.body?.reason || 'анульовано']);
+    // Сторно каси: при випуску гроші зайшли (recordCashIn ext_ref 'gc:issue:<id>').
+    // Анулювання повертає покупцю невикористаний залишок — компенсуюча операція
+    // type='out', ідемпотентна по ext_ref 'gc:cancel:<id>' (повторний /cancel не задвоїть).
+    // Якщо продаж каси не торкався (тираж серії без оплати) — сторнувати нічого.
+    try {
+      const issueOp = (await pool.query(`SELECT method, amount FROM cash_operations WHERE ext_ref=$1 LIMIT 1`, [`gc:issue:${gc.id}`])).rows[0];
+      const back = Math.min(Number(gc.remaining_amount) || 0, issueOp ? Number(issueOp.amount) : 0);
+      if (issueOp && back > 0) {
+        await recordCashOut({ category: 'refund', amount: back, method: issueOp.method,
+          ref_type: 'gift_certificate', ref_id: gc.id,
+          description: `Повернення за анульований сертифікат ${gc.code}`, ext_ref: `gc:cancel:${gc.id}` });
+      }
+    } catch (e) { console.error('cash-ledger gc cancel:', e.message); }
     logAction({ user: req.user, action: 'gc.cancel', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, certificate: upd.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
