@@ -15,6 +15,7 @@ module.exports = [
   { role: 'AI Load Tester',        agent: 'ai-load',            status: 'ready',  covers: 'массовая генерация в Neon-ветке + замер throughput (8к/с) + очистка' },
   { role: 'AI UX Tester',          agent: 'ai-ux-live',         status: 'ready',  covers: 'живой браузер (Playwright): страницы, клики, JS-ошибки + артефакты (скриншоты, HAR)' },
   { role: 'AI Product Owner',      agent: 'product-owner',      status: 'meta',   covers: 'анализ покрытия, генерация новых сценариев, рост сложности' },
+  { role: 'AI Owner Expectations', agent: 'owner-expectations', status: 'ready',  covers: 'ожидания владельца из заметок #94-#107: канон телефонов, категории, связки мастер↔услуга, цены, откаты синка, списания' },
   { role: 'AI Modules Integrity',  agent: 'modules-integrity',  status: 'ready',  covers: 'целостность данных: касса, выплаты, абонементы, отзывы' },
   { role: 'AI Visual Tester',      agent: 'visual-check',       status: 'ready',  covers: 'визуальные нестыковки: съехавшая вёрстка, пустые кнопки, битые картинки, невидимый текст, адаптив (десктоп+телефон)' },
   { role: 'AI Booking Guard',      agent: 'booking-independence', status: 'ready', covers: 'самостоятельность записи без BeautyPro: подтверждённая запись видна мастеру, каталог из нашей БД, нет утечек ошибок' },
