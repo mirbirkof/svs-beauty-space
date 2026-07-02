@@ -14,11 +14,13 @@ const router = express.Router();
 const { getPool } = require('../db-pg');
 const bp = require('../beautyproClient');
 const { requirePerm } = require('../lib/rbac');
+const { normalizePhoneDb } = require('../lib/phone');
 
 // ── один клиент по телефону ─────────────────────────────
 async function syncOneClient(phone, fallbackName) {
   const pool = getPool();
-  const normalized = String(phone).replace(/\D/g, '');
+  // канон БД 380XXXXXXXXX (#107): '0...' с сайта магазина больше не пишем как есть
+  const normalized = normalizePhoneDb(phone) || String(phone).replace(/\D/g, '');
 
   // 1. найти / создать в нашей БД
   const localR = await pool.query(`SELECT * FROM clients WHERE phone = $1`, [normalized]);

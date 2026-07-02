@@ -7,17 +7,19 @@
    Возвращает:
    - канон '380XXXXXXXXX' (12 цифр) для валидного украинского номера
    - null, если телефон пустой
-   - очищенные цифры как есть, если формат нераспознан (не теряем ввод)
+   - нераспознанный (иностранный/другая длина) — как есть, только без
+     пробелов/скобок/дефисов; '+' сохраняем, чтобы НЕ калечить номер (#107)
    ─────────────────────────────────────────────────────────────── */
 function normalizePhoneDb(p) {
   if (p == null) return null;
   const d = String(p).replace(/\D/g, '');
   if (!d) return null;
-  if (d.length === 12 && d.startsWith('380')) return d;       // 380XXXXXXXXX
+  if (d.length === 12 && d.startsWith('380')) return d;       // 380XXXXXXXXX и +380XXXXXXXXX
   if (d.length === 11 && d.startsWith('80')) return '3' + d;  // 80XXXXXXXXX → 380...
   if (d.length === 10 && d.startsWith('0')) return '38' + d;  // 0XXXXXXXXX → 380...
   if (d.length === 9) return '380' + d;                       // XXXXXXXXX → 380...
-  return d; // нераспознанный (иностранный/короткий) — сохраняем цифры, не ломаем ввод
+  // неоднозначный формат: чистим только разделители, ввод не теряем и не «украинизируем»
+  return String(p).trim().replace(/[\s()\-.]/g, '');
 }
 
 module.exports = { normalizePhoneDb };

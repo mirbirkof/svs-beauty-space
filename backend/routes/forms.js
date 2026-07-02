@@ -29,6 +29,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { normalizePhoneDb } = require('../lib/phone');
 
 let emit = () => {};
 try { ({ emit } = require('../lib/event-bus')); } catch (_) { /* event-bus optional */ }
@@ -352,7 +353,7 @@ async function runOnSubmitActions(f, submissionId, data) {
     try {
       if (a.type === 'create_client') {
         const name = data.name || data.full_name || data.client_name || null;
-        const phone = data.phone || data.tel || null;
+        const phone = normalizePhoneDb(data.phone || data.tel || null); // канон 380... (#107)
         const email = data.email || null;
         if (name || phone || email) {
           const cl = await one(

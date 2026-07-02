@@ -15,6 +15,7 @@ const bp = require('../beautyproClient');
 const { getPool } = require('../db-pg');
 const bookingBot = require('../lib/booking-bot');
 const { t, validateBody } = require('../lib/validate');
+const { normalizePhoneDb } = require('../lib/phone');
 
 const db = {
   async insert(token, row) {
@@ -267,7 +268,7 @@ router.post('/telegram', async (req, res) => {
                tg_first_name = COALESCE(EXCLUDED.tg_first_name, clients.tg_first_name),
                tg_last_name  = COALESCE(EXCLUDED.tg_last_name, clients.tg_last_name),
                tg_username   = COALESCE(EXCLUDED.tg_username, clients.tg_username)`,
-            [phoneDigits, tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
+            [normalizePhoneDb(phoneDigits), tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
           );
           return tg('sendMessage', {
             chat_id: msg.chat.id,
@@ -360,7 +361,7 @@ router.post('/telegram', async (req, res) => {
                  tg_last_name  = COALESCE(EXCLUDED.tg_last_name, clients.tg_last_name),
                  tg_username   = COALESCE(EXCLUDED.tg_username, clients.tg_username)
                RETURNING id`,
-              [phoneDigits, row.client_name || tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
+              [normalizePhoneDb(phoneDigits), row.client_name || tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
             );
           }
           const ob = await getPool().query(

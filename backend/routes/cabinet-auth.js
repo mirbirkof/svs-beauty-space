@@ -18,7 +18,10 @@ const DEV_CODE = '0000';
 const TOKEN_TTL_DAYS = 30;
 
 function normalizePhone(p) {
-  return String(p || '').replace(/\D/g, '');
+  // Канон БД 380XXXXXXXXX (#107): '0...', '80...', '+380...' приводим к одному виду,
+  // иначе апсёрт клиента в /verify плодил карточки с телефоном «с нуля».
+  const { normalizePhoneDb } = require('../lib/phone');
+  return normalizePhoneDb(p) || '';
 }
 
 function genCode() {

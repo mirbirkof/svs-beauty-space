@@ -371,7 +371,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
       cl = await ctx.pool.query(
         `INSERT INTO clients (phone, name, telegram_id, source) VALUES ($1,$2,$3,'bot-chat')
          ON CONFLICT (tenant_id, phone) DO UPDATE SET telegram_id=COALESCE(clients.telegram_id,EXCLUDED.telegram_id)
-         RETURNING id`, [phoneDigits, name, uid]);
+         RETURNING id`, [require('./phone').normalizePhoneDb(phoneDigits), name, uid]); // канон 380... (#107)
     }
     const ob = await ctx.pool.query(
       `INSERT INTO online_bookings

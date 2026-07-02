@@ -238,9 +238,10 @@ async function leadToClient(leadId) {
     const lead = (await client.query('SELECT * FROM meta_leads WHERE id=$1 FOR UPDATE', [leadId])).rows[0];
     if (!lead) throw new Error('lead-not-found');
     if (lead.client_id) return { client_id: lead.client_id, existed: true };
-    const phone = lead.phone;
+    // канон БД 380XXXXXXXXX (#107): Meta віддає '+380...' — без нормалізації плодились дублі
+    const phone = require('./phone').normalizePhoneDb(lead.phone);
     let cid = null;
-    if (phone) cid = (await client.query('SELECT id FROM clients WHERE phone=$1', [phone])).rows[0]?.id || null;
+    if (phone) cid = (await client.query(`SELECT id FROM clients WHERE regexp_replace(phone,'\\D','','g') = regexp_replace($1,'\\D','','g') LIMIT 1`, [phone])).rows[0]?.id || null;
     if (!cid) {
       cid = (await client.query(
         `INSERT INTO clients (phone, name, source) VALUES ($1,$2,'meta-lead') RETURNING id`,
