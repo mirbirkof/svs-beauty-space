@@ -4,9 +4,9 @@
    Доступ: GET = cashbox.read, мутації = cashbox.write (касова функція). */
 const express = require('express');
 const crypto = require('crypto');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
-const { recordCashIn } = require('../lib/cash-ledger');
+const { recordCashIn, recordCashOut } = require('../lib/cash-ledger');
 
 const router = express.Router();
 const pool = getPool();
@@ -404,13 +404,41 @@ router.post('/:id/use', async (req, res) => {
         return res.status(409).json({ error: 'service-not-allowed', allowed: restr });
     }
     if (amt > Number(gc.remaining_amount)) return res.status(409).json({ error: 'insufficient-balance', remaining: Number(gc.remaining_amount) });
-    const balance = Number(gc.remaining_amount) - amt;
-    const newStatus = balance <= 0.001 ? 'fully_used' : 'partially_used';
-    const upd = await pool.query(`UPDATE gift_certificates SET remaining_amount=$1, status=$2, updated_at=NOW() WHERE id=$3 RETURNING *`, [balance, newStatus, gc.id]);
-    await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,appointment_id,order_id,performed_by,notes) VALUES ($1,'usage',$2,$3,$4,$5,$6,$7)`,
-      [gc.id, amt, balance, req.body?.appointment_id || null, req.body?.order_id || null, req.user?.display_name || null, req.body?.notes || null]);
+    // Атомарне списання: умовний UPDATE закриває lost update при гонці двох /use
+    // (раніше read-modify-write перезаписував баланс — сертифікат «дарував» гроші).
+    // Списання + журнал usage — в одній транзакції, щоб не втратити слід операції.
+    const client = await pool.connect();
+    let updRow;
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      const upd = await client.query(
+        `UPDATE gift_certificates
+            SET remaining_amount = remaining_amount - $1,
+                status = CASE WHEN remaining_amount - $1 <= 0.001 THEN 'fully_used' ELSE 'partially_used' END,
+                updated_at = NOW()
+          WHERE id = $2 AND status IN ('active','partially_used') AND remaining_amount >= $1
+          RETURNING *`, [amt, gc.id]);
+      updRow = upd.rows[0];
+      if (!updRow) {
+        await client.query('ROLLBACK');
+      } else {
+        await client.query(
+          `INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,appointment_id,order_id,performed_by,notes) VALUES ($1,'usage',$2,$3,$4,$5,$6,$7)`,
+          [gc.id, amt, Number(updRow.remaining_amount), req.body?.appointment_id || null, req.body?.order_id || null, req.user?.display_name || null, req.body?.notes || null]);
+        await client.query('COMMIT');
+      }
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { client.release(); }
+    if (!updRow) {
+      // програли гонку паралельному /use — залишку вже не вистачає
+      const cur = (await pool.query(`SELECT remaining_amount, status FROM gift_certificates WHERE id=$1`, [gc.id])).rows[0];
+      return res.status(409).json({ error: 'insufficient-balance', remaining: Number(cur?.remaining_amount ?? 0), status: cur?.status });
+    }
+    const balance = Number(updRow.remaining_amount);
     logAction({ user: req.user, action: 'gc.use', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip, meta: { amount: amt, balance } }).catch(() => {});
-    res.json({ ok: true, certificate: upd.rows[0], used: amt, balance });
+    res.json({ ok: true, certificate: updRow, used: amt, balance });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
