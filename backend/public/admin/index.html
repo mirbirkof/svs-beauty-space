@@ -8245,9 +8245,12 @@ async function openCreate(masterId, dateStr, minutes) {
         <input id="ncTime" type="time" class="input" value="${hh}:${mm}">
       </div>
       <div>
-        <span style="color:var(--text-secondary);font-size:12px">Послуга</span>
-        ${_svcSearchInput('ncSvcSearch','ncSvc')}
-        <select id="ncSvc" class="input">${_svcPickOptions('', null)}</select>
+        <span style="color:var(--text-secondary);font-size:12px">Послуги</span>
+        <div id="ncSvcRows" style="display:grid;gap:10px;margin-top:4px">${_ncSvcRowHtml(true)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px">
+          <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px" onclick="ncAddSvcRow()" title="Записати клієнта одразу на кілька послуг поспіль"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">add</span> послуга</button>
+          <span id="ncSvcTotal" style="font-size:12px;font-weight:600"></span>
+        </div>
         <div id="ncSvcHint" style="font-size:11px;color:var(--text-secondary);margin-top:3px">${_svcPickHint(_effMaster)}</div>
       </div>
       <div>
@@ -8277,15 +8280,55 @@ async function openCreate(masterId, dateStr, minutes) {
   document.body.style.overflow = 'hidden'; // фон не рухається поки відкрите вікно запису
   _createCtx.clientId = null;
 }
-// #99: при зміні майстра у вікні створення — оновлюємо список послуг під нового майстра
+// #99: при зміні майстра у вікні створення — оновлюємо списки послуг у всіх рядках під нового майстра
 async function ncMasterChanged() {
   const mid = Number((document.getElementById('ncMaster')||{}).value) || null;
   if (window._svcPickState) window._svcPickState.ids = await getMasterServiceIds(mid);
-  const sel = document.getElementById('ncSvc');
-  const q = (document.getElementById('ncSvcSearch')||{}).value || '';
-  if (sel) { const cur = sel.value; sel.innerHTML = _svcPickOptions(q, cur); }
+  document.querySelectorAll('#ncSvcRows .nc-svc-row').forEach(row => {
+    const sel = row.querySelector('.ncSvcSel');
+    const inp = row.querySelector('input');
+    if (sel) sel.innerHTML = _svcPickOptions((inp && inp.value) || '', sel.value);
+  });
   const hint = document.getElementById('ncSvcHint');
   if (hint) hint.textContent = _svcPickHint(mid);
+  ncSvcTotal();
+}
+// ── #104: кілька послуг в одному записі при створенні ──
+// Перша послуга йде в POST /appointments, решта — у склад візиту (appointment_services),
+// бекенд сам перераховує загальну суму й час завершення (послуги йдуть поспіль).
+let _ncSvcRowSeq = 0;
+function _ncSvcRowHtml(first) {
+  const n = ++_ncSvcRowSeq;
+  return `<div class="nc-svc-row">
+    ${_svcSearchInput('ncSvcSearch'+n, 'ncSvc'+n)}
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="ncSvc${n}" class="input ncSvcSel" style="flex:1" onchange="ncSvcTotal()">${_svcPickOptions('', null)}</select>
+      ${first ? '' : `<button type="button" class="btn" title="Прибрати цю послугу" style="background:#fee2e2;color:#dc2626;padding:6px 12px" onclick="this.closest('.nc-svc-row').remove();ncSvcTotal()">×</button>`}
+    </div>
+  </div>`;
+}
+function ncAddSvcRow() {
+  const box = document.getElementById('ncSvcRows');
+  if (!box) return;
+  box.insertAdjacentHTML('beforeend', _ncSvcRowHtml(false));
+  ncSvcTotal();
+  const rows = box.querySelectorAll('.nc-svc-row');
+  const inp = rows[rows.length-1] && rows[rows.length-1].querySelector('input');
+  if (inp) inp.focus();
+}
+// Підсумок: скільки послуг обрано, планова сума й загальна тривалість
+function ncSvcTotal() {
+  const el = document.getElementById('ncSvcTotal');
+  if (!el) return;
+  const st = window._svcPickState || {};
+  const ids = Array.from(document.querySelectorAll('#ncSvcRows .ncSvcSel')).map(s=>Number(s.value)).filter(Boolean);
+  if (ids.length < 2) { el.textContent = ''; return; }
+  let price = 0, dur = 0;
+  ids.forEach(id => {
+    const s = (st.services||[]).find(x => Number(x.id) === id);
+    if (s) { price += Number(s.price)||0; dur += Number(s.duration_min)||0; }
+  });
+  el.textContent = `Разом: ${ids.length} послуги · ${_money(price)} · ${_humanDur(dur)}`;
 }
 let _ncTimer = null;
 function ncSearchClient() {
@@ -8309,7 +8352,9 @@ function ncPickClient(id, name, phone) {
 }
 async function saveCreate() {
   const msg = document.getElementById('ncMsg');
-  const svc = Number(document.getElementById('ncSvc').value);
+  // #104: усі обрані послуги (може бути кілька рядків)
+  const svcIds = Array.from(document.querySelectorAll('#ncSvcRows .ncSvcSel')).map(s=>Number(s.value)).filter(Boolean);
+  const svc = svcIds[0];
   const time = document.getElementById('ncTime').value;
   const note = document.getElementById('ncNote').value;
   const newName = document.getElementById('ncNewName').value.trim();
@@ -8327,7 +8372,19 @@ async function saveCreate() {
   else { body.client_name = newName; body.client_phone = newPhone; }
   try {
     const r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify(body) });
-    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Записано ✓'; setTimeout(()=>{ closeAppt(); loadJournal(); }, 600); }
+    if (r.ok) {
+      // #104: додаткові послуги — у склад візиту одна за одною (час/сума перерахуються на бекенді)
+      let warn = '';
+      for (const sid of svcIds.slice(1)) {
+        try {
+          const ar = await api(`/api/schedule/appointments/${r.id}/services`, { method:'POST', body: JSON.stringify({ service_id: sid }) });
+          if (!ar || !ar.ok) warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну';
+        } catch { warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну'; }
+      }
+      msg.style.color = warn ? '#d9863b' : '#10b981';
+      msg.textContent = warn || (svcIds.length > 1 ? `Записано ✓ (${svcIds.length} послуги)` : 'Записано ✓');
+      setTimeout(()=>{ closeAppt(); loadJournal(); }, warn ? 1800 : 600);
+    }
     else { msg.style.color='#ef4444'; msg.textContent = r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
