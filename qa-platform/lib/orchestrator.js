@@ -93,7 +93,9 @@ async function runCycle(cycleNo) {
 
 // Перезапуск детекторов и закрытие подтверждённых исправлений.
 async function regressionVerify(agents) {
-  const open = reg.openBugs();
+  // Перепроверяем и «ручные»: если детектор 3 цикла подряд их не находит — закрываем с доказательством.
+  // Иначе устаревшие ручные (например «staging недоступен» за минуты простоя) висят вечно.
+  const open = [...reg.openBugs(), ...reg.manualBugs()];
   if (!open.length) return 0;
   // Собираем все обнаруженные сейчас сигнатуры
   const stillBroken = new Set();

@@ -27,7 +27,7 @@ const cfg = {
   artifactsDir: require('path').join(__dirname, 'artifacts'),
 
   // Loop
-  cycleCooldownMs: Number(process.env.QA_COOLDOWN_MS || 0), // пауза между циклами
+  cycleCooldownMs: Number(process.env.QA_COOLDOWN_MS || 180000), // пауза между циклами: 3 мин — без неё циклы молотят нон-стоп и сервер дважды падал от исчерпания процессов (02.07)
   scenarioDedupWindowH: 12, // не повторять идентичный сценарий чаще, чем раз в N часов
 };
 

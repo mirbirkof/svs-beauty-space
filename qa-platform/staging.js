@@ -38,6 +38,9 @@ async function start() {
   if (await isUp()) { console.log('[staging] уже поднят на', BASE); return; }
   const env = { ...process.env,
     DATABASE_URL: cfg.qaDbUrl,     // ← только песочница
+    // КРИТИЧНО (урок 02.07): db-pg.js берёт DATABASE_URL_APP ПРИОРИТЕТНЕЕ DATABASE_URL.
+    // Без этой строки staging молча работал с БОЕВОЙ базой. Обе переменные — на песочницу.
+    DATABASE_URL_APP: cfg.qaDbUrl,
     PORT: String(PORT),
     SHOP_API_PORT: String(PORT),   // backend отдаёт приоритет SHOP_API_PORT (из .env) — переопределяем
     ADMIN_TG_CHAT: '',             // глушим telegram-уведомления staging (кроны на node-cron)

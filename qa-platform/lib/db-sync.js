@@ -45,6 +45,13 @@ async function pushBugs(bugs) {
          b.firstSeen || null, b.lastSeen || null]);
     } catch (e) { console.error('[qa-sync] bug', b.signature, e.message); }
   }
+  // Гигиена панели: у закрытых багов не должно висеть «пишу фикс»/«в очереди» —
+  // Босс видит зависшие этикетки и думает что ничего не происходит (урок 02.07).
+  // 'done' оставляем (история деплоя), 'awaiting_approval' у закрытых тоже гасим.
+  try {
+    await c.query(`UPDATE qa_bugs SET fix_stage=NULL, fix_requested=false
+                    WHERE status='closed' AND fix_stage IS NOT NULL AND fix_stage <> 'done'`);
+  } catch (e) { console.error('[qa-sync] stage-hygiene:', e.message); }
 }
 
 async function isPaused() {

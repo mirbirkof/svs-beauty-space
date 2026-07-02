@@ -228,8 +228,23 @@ async function processBug(bug) {
     }
     await setStage(sig, 'sandbox_testing', `правки: ${syn.changed.join(', ')} — тестирую в песочнице`);
 
-    const ver = await verifyOnSandbox(wt.dir, bug);
+    let ver = await verifyOnSandbox(wt.dir, bug);
     if (!ver.ok) {
+      // Код изменился, но баг жив → частый случай: причина в СУЩЕСТВУЮЩИХ данных (кривые записи),
+      // а код-фикс лишь предотвращает новые. Чиним и данные, потом перепроверяем.
+      await setStage(sig, 'sandbox_testing', 'код поправлен, но баг ещё жив — похоже, кривые записи уже в базе. Чиню и данные');
+      const df = await dataFix(bug);
+      if (df.ok) {
+        // SQL уже проверен применением в песочнице. Перепроверять детектором нельзя:
+        // детекторы читают ПРОД, а кривые записи там исправятся только после «Деплоить».
+        await pool().query(
+          `UPDATE qa_bugs SET fix_type='data', fix_sql=$2, fix_human=$3, fix_stage='awaiting_approval', fix_updated_at=now(),
+                  fix_log=$4 WHERE signature=$1`,
+          [sig, df.sql, df.human,
+           `✅ Готово к деплою. Фикс двойной — (1) ${df.human} (2) код теперь не даст создать такую запись снова (${syn.changed.join(', ')}). SQL проверен на копии базы. Жми «Деплоить» — применится и то, и другое, баг закроется регрессией после деплоя.`]);
+        console.log(`[fix] ${short(sig)} → awaiting_approval (data+code)`);
+        return; // worktree оставляем — ветка нужна для промоушена кода
+      }
       // Исчерпаны попытки → баг не поддаётся авто-фиксу (частый случай — баг ДАННЫХ, а не кода).
       const a = await pool().query('SELECT COALESCE(fix_attempts,0) n FROM qa_bugs WHERE signature=$1', [sig]);
       const last = (a.rows[0] && a.rows[0].n) >= 2;
@@ -272,14 +287,19 @@ async function promoteBug(bug) {
     try {
       await setStage(sig, 'promoting', 'применяю исправление данных к боевой базе');
       await pool().query(bug.fix_sql);
-      await pool().query(
-        `UPDATE qa_bugs SET status='closed', fix_stage='done', fix_requested=false, closed_at=now(), fix_updated_at=now(),
-                fix_log='✔ Данные исправлены в боевой базе' WHERE signature=$1`, [sig]);
-      console.log(`[fix] ${short(sig)} → done (данные исправлены в проде)`);
+      if (!branch) { // чисто данные — код не менялся
+        await pool().query(
+          `UPDATE qa_bugs SET status='closed', fix_stage='done', fix_requested=false, closed_at=now(), fix_updated_at=now(),
+                  fix_log='✔ Данные исправлены в боевой базе' WHERE signature=$1`, [sig]);
+        console.log(`[fix] ${short(sig)} → done (данные исправлены в проде)`);
+        return;
+      }
+      // двойной фикс: данные применены, дальше деплоим и код-ветку (защита от повторения)
+      console.log(`[fix] ${short(sig)} → данные в проде, деплою код-ветку`);
     } catch (e) {
       await setStage(sig, 'failed', 'не удалось применить SQL к боевой: ' + String(e.message).slice(0, 150));
+      return;
     }
-    return;
   }
   try {
     await setStage(sig, 'promoting', `переношу ветку ${branch} на боевую`);
@@ -303,7 +323,14 @@ async function promoteBug(bug) {
 
 async function main() {
   const mode = process.argv[2] || 'once';
+  const restartFlag = '/tmp/qa-fix-worker-restart';
   do {
+    // Мягкий рестарт без kill: тронуть /tmp/qa-fix-worker-restart → воркер выходит, qa-daemon поднимает свежий код за 30с.
+    if (fs.existsSync(restartFlag)) {
+      try { fs.unlinkSync(restartFlag); } catch (_) {}
+      console.log('[fix] рестарт по флагу — выхожу, сторож поднимет новую версию');
+      break;
+    }
     // 1) сначала одобренные — переносим в прод
     const approved = await promoteQueue();
     if (approved) { console.log(`[fix] промоушен: ${approved.title}`); await promoteBug(approved); }
