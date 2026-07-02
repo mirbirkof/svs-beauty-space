@@ -133,7 +133,12 @@ async function syncServicesCatalog() {
     const cat = (s.category && s.category.name) || (typeof s.category === 'string' ? s.category : null);
     const ex = await pool.query('SELECT id FROM services WHERE beautypro_id = $1', [s.id]);
     if (ex.rows.length) {
-      await pool.query('UPDATE services SET name=$1, category=$2, duration_min=$3, price=$4 WHERE beautypro_id=$5',
+      // Заметка #96: ціна в нашій БД головна — адмін може її редагувати в каталозі,
+      // BP заповнює ціну лише коли в нас порожньо/0, ручні правки не перетираються синком
+      await pool.query(
+        `UPDATE services SET name=$1, category=$2, duration_min=$3,
+                price=CASE WHEN COALESCE(price,0)=0 THEN $4 ELSE price END
+          WHERE beautypro_id=$5`,
         [s.name, cat, s.duration || null, numPrice(s.price) ?? 0, s.id]);
     } else {
       await pool.query('INSERT INTO services (name, category, duration_min, price, beautypro_id, active) VALUES ($1,$2,$3,$4,$5,TRUE)',
