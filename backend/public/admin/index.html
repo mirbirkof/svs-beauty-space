@@ -8066,11 +8066,11 @@ async function apptChangeService(id) {
   if (!a) return;
   const services = await getServices();
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
-  const opts = services.map(s =>
-    `<option value="${s.id}"${Number(s.id)===Number(a.service_id)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
-  ).join('');
+  // #99: показуємо лише послуги майстра цього запису (поточна послуга завжди в списку)
+  window._svcPickState = { services, ids: await getMasterServiceIds(a.master_id), keepId: a.service_id };
   showModal('Змінити послугу', `
-    <select id="svcPick" class="input">${opts}</select>
+    <select id="svcPick" class="input">${_svcPickOptions('', a.service_id)}</select>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(a.master_id)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Планова сума й тривалість оновляться за новою послугою. Уже проведені оплати не змінюються.</div>`, async () => {
     const sid = Number(document.getElementById('svcPick').value);
     if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
@@ -8084,11 +8084,13 @@ async function apptChangeService(id) {
 async function apptAddService(id) {
   const services = await getServices();
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
-  const opts = services.map(s =>
-    `<option value="${s.id}">${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
-  ).join('');
+  // #99: фільтр за майстром запису (звʼязки master_services); нема звʼязок — показуємо всі
+  const _a = (journalData?.appointments||[]).find(x => x.id === id);
+  const _mid = _a ? _a.master_id : null;
+  window._svcPickState = { services, ids: await getMasterServiceIds(_mid), keepId: null };
   showModal('Додати послугу до запису', `
-    <select id="svcAddPick" class="input">${opts}</select>
+    <select id="svcAddPick" class="input">${_svcPickOptions('', null)}</select>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(_mid)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Послуга додасться до складу візиту. Планова сума й час завершення оновляться автоматично.</div>`, async () => {
     const sid = Number(document.getElementById('svcAddPick').value);
     if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
@@ -8159,6 +8161,43 @@ async function getServices() {
   catch { _svcCache = []; }
   return _svcCache;
 }
+// ── #99: послуги конкретного майстра (master_services) ──
+// Повертає Set(service_id) активних звʼязок майстра, або null якщо звʼязки не
+// налаштовані / недоступні — тоді показуємо ВСІ послуги (не блокуємо роботу).
+const _msIdsCache = {};
+async function getMasterServiceIds(masterId) {
+  const key = Number(masterId);
+  if (!key) return null;
+  if (_msIdsCache[key] !== undefined) return _msIdsCache[key];
+  try {
+    const r = await api('/api/master-services/by-master/' + key);
+    const ids = new Set((r.items || []).filter(x => x.active !== false).map(x => Number(x.service_id)));
+    _msIdsCache[key] = ids.size ? ids : null;
+  } catch { _msIdsCache[key] = null; }
+  return _msIdsCache[key];
+}
+// Стан відкритого пікера послуг (один модал за раз): повний список + фільтр майстра
+window._svcPickState = null;
+// Опції <select> послуг: фільтр за майстром (ids) + збереження вибраної (keepId завжди в списку)
+function _svcPickOptions(query, selectedId) {
+  const st = window._svcPickState || {};
+  const services = st.services || [];
+  let list = services;
+  if (st.ids && st.ids.size) {
+    const f = services.filter(s => st.ids.has(Number(s.id)) || (st.keepId && Number(s.id) === Number(st.keepId)));
+    if (f.length) list = f; // якщо фільтр спорожнив список — показуємо всі (не блокуємо роботу)
+  }
+  if (!list.length) return `<option value="">— нічого не знайдено —</option>`;
+  return list.map(s =>
+    `<option value="${s.id}"${Number(s.id)===Number(selectedId)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
+  ).join('');
+}
+// Пояснення під пікером: чи відфільтровано за майстром
+function _svcPickHint(masterId) {
+  const st = window._svcPickState || {};
+  if (st.ids && st.ids.size) return `Показано послуги майстра (${st.ids.size})`;
+  return masterId ? 'Майстру не призначені послуги — показано всі' : '';
+}
 let _createCtx = null;
 async function openCreate(masterId, dateStr, minutes) {
   const master = (journalData?.masters||[]).find(m=>m.id===masterId);
@@ -8166,12 +8205,15 @@ async function openCreate(masterId, dateStr, minutes) {
   const hh = String(Math.floor(minutes/60)).padStart(2,'0'), mm = String(minutes%60).padStart(2,'0');
   _createCtx = { masterId, dateStr };
   const allMasters = (journalData?.masters||[]).filter(m=>m.working || true);
+  // #99: фільтруємо послуги за обраним майстром (якщо майстра ще не обрано — беремо першого зі списку)
+  const _effMaster = masterId || (allMasters[0] && allMasters[0].id) || null;
+  window._svcPickState = { services, ids: await getMasterServiceIds(_effMaster), keepId: null };
   document.getElementById('apptTitle').textContent = `Новий запис${master?' · '+master.name:''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
       ${!masterId ? `<div>
         <span style="color:var(--text-secondary);font-size:12px">Майстер</span>
-        <select id="ncMaster" class="input">
+        <select id="ncMaster" class="input" onchange="ncMasterChanged()">
           ${allMasters.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}
         </select>
       </div>` : ''}
@@ -8181,9 +8223,8 @@ async function openCreate(masterId, dateStr, minutes) {
       </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Послуга</span>
-        <select id="ncSvc" class="input">
-          ${services.map(s=>`<option value="${s.id}">${s.name} · ${s.duration_min}хв · ${_money(s.price)}</option>`).join('')}
-        </select>
+        <select id="ncSvc" class="input">${_svcPickOptions('', null)}</select>
+        <div id="ncSvcHint" style="font-size:11px;color:var(--text-secondary);margin-top:3px">${_svcPickHint(_effMaster)}</div>
       </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
@@ -8211,6 +8252,15 @@ async function openCreate(masterId, dateStr, minutes) {
   document.getElementById('apptModal').style.display = 'flex';
   document.body.style.overflow = 'hidden'; // фон не рухається поки відкрите вікно запису
   _createCtx.clientId = null;
+}
+// #99: при зміні майстра у вікні створення — оновлюємо список послуг під нового майстра
+async function ncMasterChanged() {
+  const mid = Number((document.getElementById('ncMaster')||{}).value) || null;
+  if (window._svcPickState) window._svcPickState.ids = await getMasterServiceIds(mid);
+  const sel = document.getElementById('ncSvc');
+  if (sel) { const cur = sel.value; sel.innerHTML = _svcPickOptions('', cur); }
+  const hint = document.getElementById('ncSvcHint');
+  if (hint) hint.textContent = _svcPickHint(mid);
 }
 let _ncTimer = null;
 function ncSearchClient() {
