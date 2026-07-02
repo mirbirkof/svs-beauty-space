@@ -2411,6 +2411,13 @@ select.input { background:var(--card); }
                   <span id="schMsg" class="set-msg"></span>
                 </div>
                 <div id="schGrid"></div>
+                <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-edit-past" onchange="saveEditPast()">
+                    <span><b>Редагування минулих днів адміністратором</b><i>Коли увімкнено — адміністратор може створювати, змінювати й видаляти записи журналу за минулі дні. Коли вимкнено — минулі дні лише для перегляду (власник може редагувати завжди).</i></span>
+                  </label>
+                  <p id="editPastMsg" class="set-msg"></p>
+                </div>
               </div></div>
             </div>
 
@@ -4315,6 +4322,7 @@ async function loadSettings() {
     const s = r.settings || {};
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
     { const mb = document.getElementById('set-masters-block'); if (mb) mb.checked = s.masters_can_block_time === true; }
+    { const ep = document.getElementById('set-edit-past'); if (ep) ep.checked = s.allow_edit_past === true; }
     // Профіль салону
     const p = s.salon_profile || {};
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
@@ -4790,6 +4798,18 @@ async function addCons(variantId) {
 async function delCons(sid, variantId) {
   await api(`/api/consumables/${sid}/${variantId}`, { method:'DELETE' });
   loadCons();
+}
+// #95: перемикач «Редагування минулих днів адміністратором» (Налаштування → Графік змін)
+async function saveEditPast() {
+  const el = document.getElementById('set-edit-past');
+  const msg = document.getElementById('editPastMsg');
+  if (!el || !msg) return;
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  try {
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ allow_edit_past: el.checked }) });
+    if (r.ok) { _aepExp = 0; msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(()=>msg.textContent='', 2000); }
+    else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; el.checked = !el.checked; }
+  } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; el.checked = !el.checked; }
 }
 async function saveSettings() {
   const msg = document.getElementById('settingsMsg');
@@ -8001,6 +8021,8 @@ async function payAppt(id) {
 
 // Видалити запис (з підтвердженням)
 async function deleteAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   if (!confirm('Видалити цей запис? Дію не можна скасувати.')) return;
   const msg = document.getElementById('apptMsg');
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Видалення…';
@@ -8012,6 +8034,8 @@ async function deleteAppt(id) {
 }
 // Перенести запис на іншу дату/час/майстра (працює на тач-пристроях, де drag&drop недоступний)
 async function transferAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   const date = (document.getElementById('trfDate')||{}).value;
   const time = (document.getElementById('trfTime')||{}).value;
   const masterId = Number((document.getElementById('trfMaster')||{}).value);
@@ -8043,6 +8067,7 @@ function _humanDur(min) {
 async function apptQuickTime(id) {
   const a = (journalData?.appointments||[]).find(x => x.id === id);
   if (!a) return;
+  if (await pastEditBlockedUI(a.starts_at)) return; // #95
   showModal('Змінити час запису', `
     <div style="display:grid;gap:10px">
       <div><span style="color:var(--text-secondary);font-size:12px">Дата</span>
@@ -8064,13 +8089,15 @@ async function apptQuickTime(id) {
 async function apptChangeService(id) {
   const a = (journalData?.appointments||[]).find(x => x.id === id);
   if (!a) return;
+  if (await pastEditBlockedUI(a.starts_at)) return; // #95
   const services = await getServices();
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
-  const opts = services.map(s =>
-    `<option value="${s.id}"${Number(s.id)===Number(a.service_id)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
-  ).join('');
+  // #99: показуємо лише послуги майстра цього запису (поточна послуга завжди в списку)
+  window._svcPickState = { services, ids: await getMasterServiceIds(a.master_id), keepId: a.service_id };
   showModal('Змінити послугу', `
-    <select id="svcPick" class="input">${opts}</select>
+    ${_svcSearchInput('svcPickSearch','svcPick')}
+    <select id="svcPick" class="input">${_svcPickOptions('', a.service_id)}</select>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(a.master_id)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Планова сума й тривалість оновляться за новою послугою. Уже проведені оплати не змінюються.</div>`, async () => {
     const sid = Number(document.getElementById('svcPick').value);
     if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
@@ -8084,11 +8111,15 @@ async function apptChangeService(id) {
 async function apptAddService(id) {
   const services = await getServices();
   if (!services.length) { toast('Список послуг порожній', 'error'); return; }
-  const opts = services.map(s =>
-    `<option value="${s.id}">${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
-  ).join('');
+  // #99: фільтр за майстром запису (звʼязки master_services); нема звʼязок — показуємо всі
+  const _a = (journalData?.appointments||[]).find(x => x.id === id);
+  if (_a && await pastEditBlockedUI(_a.starts_at)) return; // #95
+  const _mid = _a ? _a.master_id : null;
+  window._svcPickState = { services, ids: await getMasterServiceIds(_mid), keepId: null };
   showModal('Додати послугу до запису', `
-    <select id="svcAddPick" class="input">${opts}</select>
+    ${_svcSearchInput('svcAddSearch','svcAddPick')}
+    <select id="svcAddPick" class="input">${_svcPickOptions('', null)}</select>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(_mid)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Послуга додасться до складу візиту. Планова сума й час завершення оновляться автоматично.</div>`, async () => {
     const sid = Number(document.getElementById('svcAddPick').value);
     if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
@@ -8100,6 +8131,8 @@ async function apptAddService(id) {
 
 // Прибрати послугу зі складу візиту
 async function apptDelService(id, rowId) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   if (!confirm('Прибрати цю послугу з запису?')) return;
   const r = await api('/api/schedule/appointments/' + id + '/services/' + rowId, { method:'DELETE' });
   if (r && r.ok) { toast('Послугу прибрано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
@@ -8159,19 +8192,101 @@ async function getServices() {
   catch { _svcCache = []; }
   return _svcCache;
 }
+// ── #99: послуги конкретного майстра (master_services) ──
+// Повертає Set(service_id) активних звʼязок майстра, або null якщо звʼязки не
+// налаштовані / недоступні — тоді показуємо ВСІ послуги (не блокуємо роботу).
+const _msIdsCache = {};
+async function getMasterServiceIds(masterId) {
+  const key = Number(masterId);
+  if (!key) return null;
+  if (_msIdsCache[key] !== undefined) return _msIdsCache[key];
+  try {
+    const r = await api('/api/master-services/by-master/' + key);
+    const ids = new Set((r.items || []).filter(x => x.active !== false).map(x => Number(x.service_id)));
+    _msIdsCache[key] = ids.size ? ids : null;
+  } catch { _msIdsCache[key] = null; }
+  return _msIdsCache[key];
+}
+// Стан відкритого пікера послуг (один модал за раз): повний список + фільтр майстра
+window._svcPickState = null;
+// Опції <select> послуг: фільтр за майстром (ids) + збереження вибраної (keepId завжди в списку)
+function _svcPickOptions(query, selectedId) {
+  const st = window._svcPickState || {};
+  const services = st.services || [];
+  let list = services;
+  if (st.ids && st.ids.size) {
+    const f = services.filter(s => st.ids.has(Number(s.id)) || (st.keepId && Number(s.id) === Number(st.keepId)));
+    if (f.length) list = f; // якщо фільтр спорожнив список — показуємо всі (не блокуємо роботу)
+  }
+  // #101: текстовий пошук — спершу збіги з початку назви, потім будь-яке входження (без регістру, укр/рос)
+  const q = String(query || '').trim().toLowerCase();
+  if (q) {
+    const starts = [], incl = [];
+    list.forEach(s => {
+      const n = String(s.name || '').toLowerCase();
+      if (n.startsWith(q)) starts.push(s);
+      else if (n.includes(q)) incl.push(s);
+    });
+    list = starts.concat(incl);
+  }
+  if (!list.length) return `<option value="">— нічого не знайдено —</option>`;
+  return list.map(s =>
+    `<option value="${s.id}"${Number(s.id)===Number(selectedId)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
+  ).join('');
+}
+// Пояснення під пікером: чи відфільтровано за майстром
+function _svcPickHint(masterId) {
+  const st = window._svcPickState || {};
+  if (st.ids && st.ids.size) return `Показано послуги майстра (${st.ids.size})`;
+  return masterId ? 'Майстру не призначені послуги — показано всі' : '';
+}
+// #101: живий фільтр списку послуг за введеним текстом (вибір зберігається, якщо лишився у списку)
+function svcPickFilter(inputId, selectId) {
+  const inp = document.getElementById(inputId), sel = document.getElementById(selectId);
+  if (!inp || !sel) return;
+  sel.innerHTML = _svcPickOptions(inp.value, sel.value);
+}
+// Поле пошуку над пікером послуг (спільна розмітка для всіх модалок)
+function _svcSearchInput(inputId, selectId) {
+  return `<input id="${inputId}" class="input" placeholder="Пошук послуги: почніть вводити назву…" autocomplete="off" oninput="svcPickFilter('${inputId}','${selectId}')" style="margin-bottom:6px">`;
+}
+// ── #95: замок на редагування минулих днів (UI-перевірка; бекенд дублює її сам) ──
+let _aepVal = null, _aepExp = 0;
+async function _getAllowEditPast() {
+  if (Date.now() < _aepExp) return _aepVal;
+  try { const r = await api('/api/settings'); _aepVal = !!(r.settings && r.settings.allow_edit_past === true); }
+  catch { _aepVal = true; } // збій запиту не блокує роботу — бекенд перевірить сам
+  _aepExp = Date.now() + 60000;
+  return _aepVal;
+}
+async function pastEditBlockedUI(dateLike) {
+  try {
+    if (!dateLike) return false;
+    if (USER && USER.role === 'owner') return false; // власник може завжди
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(dateLike)) ? String(dateLike) : _ymd(new Date(dateLike));
+    if (day >= _ymd(new Date())) return false; // сьогодні й майбутнє — без обмежень
+    if (await _getAllowEditPast()) return false;
+    toast('Редагування минулих днів вимкнено. Власник може увімкнути це в Налаштуваннях → Графік змін', 'error');
+    return true;
+  } catch { return false; }
+}
 let _createCtx = null;
 async function openCreate(masterId, dateStr, minutes) {
+  if (await pastEditBlockedUI(dateStr)) return; // #95
   const master = (journalData?.masters||[]).find(m=>m.id===masterId);
   const services = await getServices();
   const hh = String(Math.floor(minutes/60)).padStart(2,'0'), mm = String(minutes%60).padStart(2,'0');
   _createCtx = { masterId, dateStr };
   const allMasters = (journalData?.masters||[]).filter(m=>m.working || true);
+  // #99: фільтруємо послуги за обраним майстром (якщо майстра ще не обрано — беремо першого зі списку)
+  const _effMaster = masterId || (allMasters[0] && allMasters[0].id) || null;
+  window._svcPickState = { services, ids: await getMasterServiceIds(_effMaster), keepId: null };
   document.getElementById('apptTitle').textContent = `Новий запис${master?' · '+master.name:''}`;
   document.getElementById('apptDetail').innerHTML = `
     <div style="display:grid;gap:10px">
       ${!masterId ? `<div>
         <span style="color:var(--text-secondary);font-size:12px">Майстер</span>
-        <select id="ncMaster" class="input">
+        <select id="ncMaster" class="input" onchange="ncMasterChanged()">
           ${allMasters.map(m=>`<option value="${m.id}">${m.name}</option>`).join('')}
         </select>
       </div>` : ''}
@@ -8180,10 +8295,13 @@ async function openCreate(masterId, dateStr, minutes) {
         <input id="ncTime" type="time" class="input" value="${hh}:${mm}">
       </div>
       <div>
-        <span style="color:var(--text-secondary);font-size:12px">Послуга</span>
-        <select id="ncSvc" class="input">
-          ${services.map(s=>`<option value="${s.id}">${s.name} · ${s.duration_min}хв · ${_money(s.price)}</option>`).join('')}
-        </select>
+        <span style="color:var(--text-secondary);font-size:12px">Послуги</span>
+        <div id="ncSvcRows" style="display:grid;gap:10px;margin-top:4px">${_ncSvcRowHtml(true)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px">
+          <button type="button" class="btn btn-outline" style="padding:6px 12px;font-size:13px" onclick="ncAddSvcRow()" title="Записати клієнта одразу на кілька послуг поспіль"><span class="material-icons-round" style="font-size:15px;vertical-align:-3px">add</span> послуга</button>
+          <span id="ncSvcTotal" style="font-size:12px;font-weight:600"></span>
+        </div>
+        <div id="ncSvcHint" style="font-size:11px;color:var(--text-secondary);margin-top:3px">${_svcPickHint(_effMaster)}</div>
       </div>
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Клієнт</span>
@@ -8212,6 +8330,56 @@ async function openCreate(masterId, dateStr, minutes) {
   document.body.style.overflow = 'hidden'; // фон не рухається поки відкрите вікно запису
   _createCtx.clientId = null;
 }
+// #99: при зміні майстра у вікні створення — оновлюємо списки послуг у всіх рядках під нового майстра
+async function ncMasterChanged() {
+  const mid = Number((document.getElementById('ncMaster')||{}).value) || null;
+  if (window._svcPickState) window._svcPickState.ids = await getMasterServiceIds(mid);
+  document.querySelectorAll('#ncSvcRows .nc-svc-row').forEach(row => {
+    const sel = row.querySelector('.ncSvcSel');
+    const inp = row.querySelector('input');
+    if (sel) sel.innerHTML = _svcPickOptions((inp && inp.value) || '', sel.value);
+  });
+  const hint = document.getElementById('ncSvcHint');
+  if (hint) hint.textContent = _svcPickHint(mid);
+  ncSvcTotal();
+}
+// ── #104: кілька послуг в одному записі при створенні ──
+// Перша послуга йде в POST /appointments, решта — у склад візиту (appointment_services),
+// бекенд сам перераховує загальну суму й час завершення (послуги йдуть поспіль).
+let _ncSvcRowSeq = 0;
+function _ncSvcRowHtml(first) {
+  const n = ++_ncSvcRowSeq;
+  return `<div class="nc-svc-row">
+    ${_svcSearchInput('ncSvcSearch'+n, 'ncSvc'+n)}
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="ncSvc${n}" class="input ncSvcSel" style="flex:1" onchange="ncSvcTotal()">${_svcPickOptions('', null)}</select>
+      ${first ? '' : `<button type="button" class="btn" title="Прибрати цю послугу" style="background:#fee2e2;color:#dc2626;padding:6px 12px" onclick="this.closest('.nc-svc-row').remove();ncSvcTotal()">×</button>`}
+    </div>
+  </div>`;
+}
+function ncAddSvcRow() {
+  const box = document.getElementById('ncSvcRows');
+  if (!box) return;
+  box.insertAdjacentHTML('beforeend', _ncSvcRowHtml(false));
+  ncSvcTotal();
+  const rows = box.querySelectorAll('.nc-svc-row');
+  const inp = rows[rows.length-1] && rows[rows.length-1].querySelector('input');
+  if (inp) inp.focus();
+}
+// Підсумок: скільки послуг обрано, планова сума й загальна тривалість
+function ncSvcTotal() {
+  const el = document.getElementById('ncSvcTotal');
+  if (!el) return;
+  const st = window._svcPickState || {};
+  const ids = Array.from(document.querySelectorAll('#ncSvcRows .ncSvcSel')).map(s=>Number(s.value)).filter(Boolean);
+  if (ids.length < 2) { el.textContent = ''; return; }
+  let price = 0, dur = 0;
+  ids.forEach(id => {
+    const s = (st.services||[]).find(x => Number(x.id) === id);
+    if (s) { price += Number(s.price)||0; dur += Number(s.duration_min)||0; }
+  });
+  el.textContent = `Разом: ${ids.length} послуги · ${_money(price)} · ${_humanDur(dur)}`;
+}
 let _ncTimer = null;
 function ncSearchClient() {
   clearTimeout(_ncTimer);
@@ -8234,7 +8402,9 @@ function ncPickClient(id, name, phone) {
 }
 async function saveCreate() {
   const msg = document.getElementById('ncMsg');
-  const svc = Number(document.getElementById('ncSvc').value);
+  // #104: усі обрані послуги (може бути кілька рядків)
+  const svcIds = Array.from(document.querySelectorAll('#ncSvcRows .ncSvcSel')).map(s=>Number(s.value)).filter(Boolean);
+  const svc = svcIds[0];
   const time = document.getElementById('ncTime').value;
   const note = document.getElementById('ncNote').value;
   const newName = document.getElementById('ncNewName').value.trim();
@@ -8252,7 +8422,19 @@ async function saveCreate() {
   else { body.client_name = newName; body.client_phone = newPhone; }
   try {
     const r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify(body) });
-    if (r.ok) { msg.style.color='#10b981'; msg.textContent='Записано ✓'; setTimeout(()=>{ closeAppt(); loadJournal(); }, 600); }
+    if (r.ok) {
+      // #104: додаткові послуги — у склад візиту одна за одною (час/сума перерахуються на бекенді)
+      let warn = '';
+      for (const sid of svcIds.slice(1)) {
+        try {
+          const ar = await api(`/api/schedule/appointments/${r.id}/services`, { method:'POST', body: JSON.stringify({ service_id: sid }) });
+          if (!ar || !ar.ok) warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну';
+        } catch { warn = 'Запис створено, але не всі послуги додались — відкрийте запис і додайте вручну'; }
+      }
+      msg.style.color = warn ? '#d9863b' : '#10b981';
+      msg.textContent = warn || (svcIds.length > 1 ? `Записано ✓ (${svcIds.length} послуги)` : 'Записано ✓');
+      setTimeout(()=>{ closeAppt(); loadJournal(); }, warn ? 1800 : 600);
+    }
     else { msg.style.color='#ef4444'; msg.textContent = r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
@@ -8264,6 +8446,8 @@ async function apptQuickStatus(id, status){
   await saveAppt(id);
 }
 async function saveAppt(id) {
+  { const _pa = (journalData?.appointments||[]).find(x => x.id === id);
+    if (_pa && await pastEditBlockedUI(_pa.starts_at)) return; } // #95
   const notes = document.getElementById('apptNote').value;
   const status = document.getElementById('apptStatus').value;
   const roomSel = document.getElementById('apptRoom');
