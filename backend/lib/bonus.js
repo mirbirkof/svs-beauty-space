@@ -87,6 +87,8 @@ async function accrue(opts = {}) {
       if (!rule) return null;
       ruleId = rule.id;
       const check = round2(opts.checkAmount);
+      // нульовий/відʼємний чек не дає бонусів — інакше fixed-правило нараховує «з повітря»
+      if (check <= 0) return null;
       if (check < Number(rule.min_check_amount)) return null;
       if (rule.type === 'percent_check') amount = round2(check * Number(rule.percent) / 100);
       else amount = round2(Number(rule.fixed_amount));
@@ -103,15 +105,41 @@ async function accrue(opts = {}) {
     const expiresAt = days && days > 0 ? `now() + interval '${days} days'` : 'NULL';
 
     await _ensureBalanceRow(client, clientId);
+    // FOR UPDATE на балансі серіалізує конкурентні accrue одного клієнта
     const bal = (await client.query('SELECT balance FROM bonus_balances WHERE client_id=$1 FOR UPDATE', [clientId])).rows[0];
+
+    // Ідемпотентність за джерелом: повторний виклик з тим самим (sourceType, sourceId)
+    // повертає вже існуюче нарахування і НЕ подвоює баланс. DB-гарантія —
+    // ux_bonus_tx_accrual_source (міграція 198), тут швидкий шлях під локом балансу.
+    if (opts.sourceId != null) {
+      const dupe = await client.query(
+        `SELECT * FROM bonus_transactions
+          WHERE client_id=$1 AND type=$2 AND source_type IS NOT DISTINCT FROM $3 AND source_id=$4
+          LIMIT 1`,
+        [clientId, type, opts.sourceType || null, opts.sourceId]);
+      if (dupe.rows[0]) return dupe.rows[0];
+    }
+
     const newBal = round2(Number(bal.balance) + amount);
 
-    const tx = (await client.query(
+    const ins = await client.query(
       `INSERT INTO bonus_transactions
         (client_id, branch_id, type, amount, balance_after, remaining, rule_id, source_type, source_id, description, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, ${expiresAt}) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, ${expiresAt})
+       ON CONFLICT (tenant_id, client_id, source_type, source_id)
+         WHERE source_id IS NOT NULL AND type='accrual' DO NOTHING
+       RETURNING *`,
       [clientId, opts.branchId || null, type, amount, newBal, amount, ruleId,
-        opts.sourceType || null, opts.sourceId || null, opts.description || null])).rows[0];
+        opts.sourceType || null, opts.sourceId || null, opts.description || null]);
+    if (!ins.rows[0]) {
+      // програли гонку унікальному індексу — віддаємо існуючу транзакцію без зміни балансу
+      const ex = await client.query(
+        `SELECT * FROM bonus_transactions
+          WHERE client_id=$1 AND type=$2 AND source_type IS NOT DISTINCT FROM $3 AND source_id=$4 LIMIT 1`,
+        [clientId, type, opts.sourceType || null, opts.sourceId]);
+      return ex.rows[0] || null;
+    }
+    const tx = ins.rows[0];
 
     await client.query(
       `UPDATE bonus_balances SET balance=$1, total_accrued=total_accrued+$2,
@@ -203,9 +231,10 @@ async function manualAdjust(opts = {}) {
     const newBal = round2(Number(bal.balance) - take);
     const tx = (await client.query(
       `INSERT INTO bonus_transactions
-        (client_id, branch_id, type, amount, balance_after, remaining, source_type, description, adjusted_by)
-       VALUES ($1,$2,'manual_deduct',$3,$4,0,'manual',$5,$6) RETURNING *`,
+        (client_id, branch_id, type, amount, balance_after, remaining, source_type, source_id, description, adjusted_by)
+       VALUES ($1,$2,'manual_deduct',$3,$4,0,$5,$6,$7,$8) RETURNING *`,
       [clientId, opts.branchId || null, -take, newBal,
+        opts.sourceType || 'manual', opts.sourceId || null,
         opts.description || 'Ручне списання', opts.adjustedBy || null])).rows[0];
     await client.query(
       `UPDATE bonus_balances SET balance=$1, updated_at=now() WHERE client_id=$2`, [newBal, clientId]);
