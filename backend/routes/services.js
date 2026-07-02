@@ -21,6 +21,22 @@ function slugify(s) {
     .slice(0, 180);
 }
 
+// #100: валидация category_id — категория должна существовать и не быть удалённой.
+// Возвращает строку категории или null.
+async function findCategory(categoryId) {
+  const r = await pool.query(
+    `SELECT id, name FROM service_categories WHERE id=$1 AND deleted_at IS NULL`, [categoryId]);
+  return r.rowCount ? r.rows[0] : null;
+}
+
+// #102: rebook_interval_days — целое >= 1 или null
+function normalizeRebookInterval(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) return undefined; // undefined = невалидно
+  return n;
+}
+
 async function uniqueSlug(base, table = 'services', excludeId = null) {
   let slug = slugify(base) || 'service';
   let n = 1;
@@ -49,7 +65,21 @@ router.get('/', async (req, res) => {
 
     const conds = ['deleted_at IS NULL'];
     const params = [];
-    if (category) { params.push(category); conds.push(`category = $${params.length}`); }
+    // #100: фильтр по FK-категории; переходный период — учитываем и старое текстовое поле
+    if (req.query.category_id) {
+      const cid = parseInt(req.query.category_id);
+      if (Number.isInteger(cid)) {
+        const cat = await findCategory(cid);
+        params.push(cid);
+        const p1 = params.length;
+        if (cat) {
+          params.push(cat.name);
+          conds.push(`(category_id = $${p1} OR (category_id IS NULL AND category = $${params.length}))`);
+        } else {
+          conds.push(`category_id = $${p1}`);
+        }
+      }
+    } else if (category) { params.push(category); conds.push(`category = $${params.length}`); }
     if (status) { params.push(status); conds.push(`status = $${params.length}`); }
     if (search) { params.push('%' + String(search).toLowerCase() + '%'); conds.push(`LOWER(name) LIKE $${params.length}`); }
     if (min_price) { params.push(min_price); conds.push(`price >= $${params.length}`); }
@@ -61,7 +91,7 @@ router.get('/', async (req, res) => {
     params.push(limit); const lp = params.length;
     params.push(offset); const op = params.length;
     const r = await pool.query(
-      `SELECT id, name, category, price, duration_min, status, active, photo_urls,
+      `SELECT id, name, category, category_id, price, duration_min, status, active, photo_urls,
               is_new, is_hit, is_discounted, sort_order,
               (SELECT COUNT(*)::int FROM service_variations v WHERE v.service_id=s.id AND v.active) AS variations_count
          FROM services s
@@ -153,21 +183,33 @@ router.post('/', WRITE, async (req, res) => {
     if (price == null || duration == null) return res.status(400).json({ error: 'price and duration required' });
     if (!Number.isFinite(Number(price)) || Number(price) < 0) return res.status(400).json({ error: 'price-must-be-non-negative' });
     if (!Number.isFinite(Number(duration)) || Number(duration) <= 0) return res.status(400).json({ error: 'duration-must-be-positive' });
+    // #100: FK-категория (текстовое category остаётся для совместимости)
+    let categoryId = null;
+    let categoryText = b.category || null;
+    if (b.category_id != null && b.category_id !== '') {
+      const cat = await findCategory(b.category_id);
+      if (!cat) return res.status(400).json({ error: 'category_not_found' });
+      categoryId = cat.id;
+      if (!categoryText) categoryText = cat.name; // синхронизируем текстовое поле
+    }
+    // #102: интервал повторного визита
+    const rebook = normalizeRebookInterval(b.rebook_interval_days);
+    if (rebook === undefined) return res.status(400).json({ error: 'rebook_interval_days-must-be-positive-integer' });
     const slug = await uniqueSlug(b.slug || b.name);
     const photoUrls = JSON.stringify(Array.isArray(b.photo_urls) ? b.photo_urls : []);
     const status = b.status || 'active';
     const r = await pool.query(
       `INSERT INTO services
-        (name, name_ua, name_en, slug, category, description, internal_note, price, duration_min,
+        (name, name_ua, name_en, slug, category, category_id, rebook_interval_days, description, internal_note, price, duration_min,
          buffer_before, buffer_after, min_booking_interval, max_simultaneous, required_room_type,
          photo_urls, icon, color, status, active, is_new, is_hit, is_discounted, age_restriction,
          contraindications, meta_title, meta_description, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
-               COALESCE($10,0),COALESCE($11,0),COALESCE($12,30),COALESCE($13,1),$14,
-               $15::jsonb,$16,$17,$18,$19,COALESCE($20,FALSE),COALESCE($21,FALSE),COALESCE($22,FALSE),$23,
-               $24,$25,$26,COALESCE($27,0))
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
+               COALESCE($12,0),COALESCE($13,0),COALESCE($14,30),COALESCE($15,1),$16,
+               $17::jsonb,$18,$19,$20,$21,COALESCE($22,FALSE),COALESCE($23,FALSE),COALESCE($24,FALSE),$25,
+               $26,$27,$28,COALESCE($29,0))
        RETURNING *`,
-      [b.name, b.name_ua || null, b.name_en || null, slug, b.category || null, b.description || null,
+      [b.name, b.name_ua || null, b.name_en || null, slug, categoryText, categoryId, rebook, b.description || null,
        b.internal_note || null, price, duration, b.buffer_before, b.buffer_after, b.min_booking_interval,
        b.max_simultaneous, b.required_room_type || null, photoUrls, b.icon || null, b.color || null,
        status, status === 'active', b.is_new, b.is_hit, b.is_discounted, b.age_restriction || null,
@@ -199,6 +241,23 @@ router.patch('/:id', WRITE, async (req, res) => {
 
     for (const f of CARD_FIELDS) {
       if (b[f] !== undefined) setCol(f, b[f]);
+    }
+    // #100: FK-категория (валидация существования; текстовое category синхронизируем)
+    if (b.category_id !== undefined) {
+      if (b.category_id === null || b.category_id === '') {
+        setCol('category_id', null);
+      } else {
+        const cat = await findCategory(b.category_id);
+        if (!cat) return res.status(400).json({ error: 'category_not_found' });
+        setCol('category_id', cat.id);
+        if (b.category === undefined) setCol('category', cat.name);
+      }
+    }
+    // #102: интервал повторного визита (целое >= 1 или null)
+    if (b.rebook_interval_days !== undefined) {
+      const rebook = normalizeRebookInterval(b.rebook_interval_days);
+      if (rebook === undefined) return res.status(400).json({ error: 'rebook_interval_days-must-be-positive-integer' });
+      setCol('rebook_interval_days', rebook);
     }
     if (b.price !== undefined || b.base_price !== undefined) setCol('price', b.price !== undefined ? b.price : b.base_price);
     if (b.duration_min !== undefined || b.base_duration !== undefined) setCol('duration_min', b.duration_min !== undefined ? b.duration_min : b.base_duration);
