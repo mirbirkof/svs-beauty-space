@@ -7,6 +7,7 @@ const { getSetting, maskPhone } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid } = require('../lib/schedule-month');
 const { findOverlap } = require('../lib/booking-guard');
+const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
 const router = express.Router();
 
@@ -1188,14 +1189,18 @@ router.post('/appointments', async (req, res) => {
     // клієнт: за id, або за телефоном (знайти/створити), або тільки імʼя
     let cid = client_id ? Number(client_id) : null;
     if (!cid && client_phone) {
-      const digits = String(client_phone).replace(/\D/g, '');
-      if (digits) {
-        const ex = await pool.query('SELECT id FROM clients WHERE phone=$1', [digits]);
+      // канон БД = '380XXXXXXXXX' (lib/phone.js) — сырой replace создавал дубли
+      // клиентов для '0XX...' / '+380...' вводов (регресс аудита #31)
+      const canon = normalizePhoneDb(client_phone);
+      if (canon) {
+        const ex = await pool.query('SELECT id FROM clients WHERE phone=$1', [canon]);
         if (ex.rows[0]) cid = ex.rows[0].id;
         else {
           const nc = await pool.query(
-            `INSERT INTO clients (phone, name, source) VALUES ($1,$2,'salon') RETURNING id`,
-            [digits, client_name || null]
+            `INSERT INTO clients (phone, name, source) VALUES ($1,$2,'salon')
+             ON CONFLICT (tenant_id, phone) DO UPDATE SET name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
+             RETURNING id`,
+            [canon, client_name || null]
           );
           cid = nc.rows[0].id;
         }
@@ -1287,13 +1292,18 @@ router.post('/appointments/:id/pay', async (req, res) => {
 
     // Приход в кассу + статус «выполнено» — АТОМАРНО в одной транзакции.
     // Иначе при падении между ними возможен рассинхрон (деньги есть, статус нет — или наоборот).
+    // Гонка двух параллельных /pay: SELECT-then-INSERT выше дырявый, поэтому дубль
+    // добивает partial UNIQUE ux_cash_ops_appt_payment (миграция 198) + ON CONFLICT
+    // DO NOTHING — проигравший запрос получает идемпотентный 200 already_paid, не вторую оплату.
     const client = await pool.connect();
     let op;
     try {
       await client.query('BEGIN'); await applyTenant(client);
       op = await client.query(
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6) RETURNING id`,
+         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6)
+         ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
+         RETURNING id`,
         [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга']
       );
       await client.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
@@ -1303,6 +1313,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
       throw e;
     } finally {
       client.release();
+    }
+    if (!op.rows[0]) {
+      // проиграли гонку: оплату уже провёл параллельный запрос — отвечаем как dup
+      const race = await pool.query(
+        `SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
+      await emitAppointmentCompleted(id, appt.master_id);
+      return res.json({ ok: true, already_paid: true, operation_id: race.rows[0]?.id || null });
     }
 
     // После COMMIT: списание расходников (идемпотентно) и эмит события — best-effort,
@@ -1340,6 +1357,18 @@ router.delete('/appointments/:id', async (req, res) => {
         `DELETE FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1
            AND shift_id IN (SELECT id FROM cash_shifts WHERE status='open')`, [id]
       );
+      // Оплати із ЗАКРИТИХ змін і безсменні (shift_id NULL, онлайн) НЕ видаляємо —
+      // історію каси не переписуємо. Сторнуємо компенсуючою операцією type='out'.
+      // Ідемпотентно: ext_ref 'appt:<id>:storno:<op_id>' + ux_cash_operations_ext_ref,
+      // повторний DELETE (soft-cancel BP-запису) не задвоїть сторно.
+      await client.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, ext_ref)
+         SELECT NULL, 'out', 'refund', co.amount, co.method, 'appointment', co.ref_id, co.master_id,
+                'Сторно оплати: видалення запису #' || co.ref_id, 'appt:' || co.ref_id || ':storno:' || co.id
+           FROM cash_operations co
+          WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
+         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`, [id]
+      );
       // BeautyPro-запис не можна видаляти жорстко: автосинк побачить його в BP і
       // відтворить знову. Тому мʼяке видалення: cancelled + manual_override.
       if (soft) {
@@ -1356,6 +1385,27 @@ router.delete('/appointments/:id', async (req, res) => {
     } finally {
       client.release();
     }
+    // Відкат бонусів, якщо за цю запис нараховували (source_type='appointment',
+    // source_id — див. lib/bonus.js + міграція 198). Best-effort після COMMIT:
+    // збій відкату не блокує видалення, ідемпотентно по source 'appointment_delete'.
+    try {
+      const acc = await pool.query(
+        `SELECT client_id, SUM(amount)::numeric AS amt FROM bonus_transactions
+          WHERE type='accrual' AND source_type='appointment' AND source_id=$1
+          GROUP BY client_id`, [id]);
+      for (const a of acc.rows) {
+        const done = await pool.query(
+          `SELECT 1 FROM bonus_transactions
+            WHERE type='manual_deduct' AND source_type='appointment_delete' AND source_id=$1 AND client_id=$2 LIMIT 1`,
+          [id, a.client_id]);
+        if (done.rows[0]) continue;
+        await require('../lib/bonus').manualAdjust({
+          clientId: a.client_id, amount: -Number(a.amt),
+          sourceType: 'appointment_delete', sourceId: id,
+          description: `Сторно бонусів: видалення запису #${id}`,
+        }).catch(e => console.error('[schedule] bonus storno:', e.message));
+      }
+    } catch (e) { console.error('[schedule] bonus storno lookup:', e.message); }
     await emitAppt('appointment.cancelled', id, null); // в журнал событий + вебхуки
     res.json({ ok: true, deleted: id, soft });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
