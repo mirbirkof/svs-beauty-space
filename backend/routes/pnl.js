@@ -123,7 +123,10 @@ async function aggregate(start, end, branchId) {
       WHERE co.type='in' AND co.category='sale_product'
         AND co.ref_type IS DISTINCT FROM 'order'
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
-  // Сертифікати: gift_certificate_transactions issue (продаж/випуск)
+  // Сертифікати: gift_certificate_transactions issue (продаж/випуск).
+  // НЕ виручка, а аванс (зобовʼязання салону): виручка визнається при погашенні,
+  // коли послуга пробивається в касу повною ціною (sale_service). Інакше подвійний
+  // рахунок: issue + оплата послуги (аудит 02.07 #8). Показуємо довідковим рядком.
   const cert = await safeRows(
     `SELECT COALESCE(SUM(amount),0)::numeric s FROM gift_certificate_transactions
       WHERE type='issue' AND created_at >= $1 AND created_at < $2`, [start, end]);
@@ -133,12 +136,15 @@ async function aggregate(start, end, branchId) {
        FROM subscriptions su JOIN subscription_plans sp ON sp.id = su.plan_id
       WHERE su.status <> 'cancelled'
         AND su.sold_at >= $1 AND su.sold_at < $2`, [start, end]);
-  // Інші доходи: cash_operations type=in решта категорій
+  // Інші доходи: cash_operations type=in решта категорій.
+  // sale_certificate виключено: продаж сертифіката вже врахований довідковим рядком
+  // «Сертифікати (аванси)» з gift_certificate_transactions — інакше та сама сума
+  // потрапляла у звіт двічі (і в «Інші доходи», і в рядок сертифікатів).
   const otherIn = await safeRows(
     `SELECT COALESCE(SUM(co.amount),0)::numeric s
        FROM cash_operations co ${cb.join}
       WHERE co.type='in'
-        AND co.category NOT IN ('sale_service','sale_product')
+        AND co.category NOT IN ('sale_service','sale_product','sale_certificate')
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
 
   // ── COGS ──────────────────────────────────────────────────────────────────
@@ -189,7 +195,9 @@ async function aggregate(start, end, branchId) {
   // revenue
   add('revenue', 'services', 'Виручка від послуг', num(svc[0]?.s), 10, { source: 'cash_operations', type: 'in', category: 'sale_service' });
   add('revenue', 'products', 'Виручка від товарів', num(ordRev[0]?.s) + num(prodCash[0]?.s), 20, { source: 'orders+cash_operations', category: 'sale_product' });
-  add('revenue', 'certificates', 'Виручка від сертифікатів', num(cert[0]?.s), 30, { source: 'gift_certificate_transactions', type: 'issue' });
+  // Сертифікати — довідкова секція 'memo': НЕ входить у total_revenue (summarize
+  // рахує лише revenue/cogs/opex/other). Каса не змінюється — це лише подання звіту.
+  add('memo', 'certificates', 'Сертифікати (аванси, не входять у виручку)', num(cert[0]?.s), 60, { source: 'gift_certificate_transactions', type: 'issue' });
   add('revenue', 'subscriptions', 'Виручка від абонементів', num(subs[0]?.s), 40, { source: 'subscriptions' });
   add('revenue', 'other_income', 'Інші доходи', num(otherIn[0]?.s), 50, { source: 'cash_operations', type: 'in', category: 'other_in' });
   // cogs
@@ -378,7 +386,7 @@ router.get('/drilldown', requirePerm('pnl.drilldown'), async (req, res) => {
         `SELECT created_at AS date, ('Замовлення #'||id) AS description, total AS amount, payment_method AS method, 'orders' AS source
            FROM orders WHERE status IN ('paid','delivered') AND created_at >= $1 AND created_at < $2
           ORDER BY created_at DESC LIMIT $3 OFFSET $4`, [start, end, limit, offset]);
-    } else if (section === 'revenue' && category === 'certificates') {
+    } else if (category === 'certificates') { // секція 'memo' (раніше revenue)
       transactions = await safeRows(
         `SELECT created_at AS date, ('Сертифікат GC#'||gc_id) AS description, amount, 'gift' AS method, 'gift_certificate_transactions' AS source
            FROM gift_certificate_transactions WHERE type='issue' AND created_at >= $1 AND created_at < $2
