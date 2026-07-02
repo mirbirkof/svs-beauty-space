@@ -136,7 +136,11 @@ function publish(active) {
 }
 
 async function checkOnce() {
-  const [pHealthy, bHealthy] = await Promise.all([health(PRIMARY), health(BACKUP)]);
+  // ЭКОНОМИЯ ЛИМИТОВ (02.07): резерв НЕ пингуем каждый тик. Пинг будит free-tier сервис,
+  // он не засыпает и жжёт часы круглосуточно → к концу месяца выгорают ОБА аккаунта.
+  // Резерв проверяем ТОЛЬКО когда основной упал (тогда он и должен проснуться).
+  const pHealthy = await health(PRIMARY);
+  const bHealthy = pHealthy ? false : await health(BACKUP);
 
   // choose active: primary preferred, else backup
   let active = pHealthy ? PRIMARY : bHealthy ? BACKUP : null;
@@ -152,8 +156,23 @@ async function checkOnce() {
     if (healthy) { prev[fkey] = 0; return; }
     const st = await suspendState(svc);
     if (st === 'suspended') {
+      // Skip resume if previously blocked (400 — Render won't allow it for 6h)
+      const blockedKey = 'resumeBlocked_' + svc.name;
+      const blockedUntil = prev[blockedKey] ? new Date(prev[blockedKey]).getTime() : 0;
+      if (Date.now() < blockedUntil) {
+        log(`${svc.name}: resume skipped (blocked until ${new Date(blockedUntil).toISOString()})`);
+        return;
+      }
       const ok = await resume(svc);
-      if (ok) log(`${svc.name}: resume requested (was suspended)`);
+      if (ok) {
+        log(`${svc.name}: resume requested (was suspended)`);
+        delete prev[blockedKey];
+      } else {
+        // 400 = Render won't allow resume (force-suspended). Back off 6 hours.
+        prev[blockedKey] = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+        log(`${svc.name}: resume blocked by Render (400) — skipping for 6h`);
+        writeState(prev);
+      }
       return;
     }
     // not_suspended але нездоровий → завис. Рахуємо поспіль і рестартимо з тротлінгом.
@@ -167,9 +186,10 @@ async function checkOnce() {
     }
   }
 
-  // recovery actions
+  // recovery actions. Резерв «восстанавливаем» (resume/restart) ТОЛЬКО когда основной упал —
+  // иначе разбудим спящий резерв и снова начнём жечь его лимиты (экономия 02.07).
   await recover(PRIMARY, pHealthy);
-  await recover(BACKUP, bHealthy);
+  if (!pHealthy) await recover(BACKUP, bHealthy);
 
   if (!active) {
     log('BOTH DOWN — primary & backup unhealthy');
