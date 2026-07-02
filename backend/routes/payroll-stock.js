@@ -4,6 +4,7 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
+const { normalizePhoneDb } = require('../lib/phone');
 const router = express.Router();
 const pool = getPool();
 
@@ -599,7 +600,7 @@ router.post('/suppliers', async (req, res) => {
     if (!name) return res.status(400).json({ error: 'name required' });
     const r = await pool.query(
       `INSERT INTO suppliers (name, phone, email, notes) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [name, phone || null, email || null, notes || null]
+      [name, normalizePhoneDb(phone), email || null, notes || null]
     );
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -617,7 +618,7 @@ router.patch('/suppliers/:id', async (req, res) => {
     const { name, phone, email, notes } = req.body || {};
     const r = await pool.query(
       `UPDATE suppliers SET name=COALESCE($2,name), phone=$3, email=$4, notes=$5 WHERE id=$1 RETURNING id`,
-      [req.params.id, name || null, phone || null, email || null, notes || null]
+      [req.params.id, name || null, normalizePhoneDb(phone), email || null, notes || null]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true });

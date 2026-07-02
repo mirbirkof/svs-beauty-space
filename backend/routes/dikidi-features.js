@@ -7,12 +7,11 @@ const { authClient } = require('./cabinet-auth');
 const router = express.Router();
 const pool = getPool();
 
+const { normalizePhoneDb } = require('../lib/phone');
+// Канон хранения = 380XXXXXXXXX БЕЗ '+' (аудит #107, миграция 200 нормализовала старые '+380')
 function normPhone(p) {
   if (!p) return null;
-  const d = String(p).replace(/\D/g, '');
-  if (d.length === 12 && d.startsWith('380')) return '+' + d;
-  if (d.length === 10 && d.startsWith('0')) return '+38' + d;
-  return '+' + d;
+  return normalizePhoneDb(p);
 }
 
 /* ═══════════════ REVIEWS ═══════════════ */
