@@ -146,13 +146,19 @@ function clientIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
 }
 
+// Канон системи = clients.phone: '380XXXXXXXXX' БЕЗ '+' (lib/phone.js, аудит #31).
+// Раніше тут повертався '+380…' → users/masters накопичували другий формат.
+// Існуючі рядки нормалізовано міграцією 200; логін-lookup (auth.js) шукає
+// телефон у кількох виглядах, тож зміна формату вхід не ламає.
 function normalizePhone(p) {
   const digits = String(p || '').replace(/\D/g, '');
   if (!digits) return '';
-  if (digits.length === 12 && digits.startsWith('380')) return '+' + digits;
-  if (digits.length === 10 && digits.startsWith('0')) return '+38' + digits;
-  if (digits.length === 9) return '+380' + digits;
-  return '+' + digits;
+  if (digits.length === 12 && digits.startsWith('380')) return digits;
+  if (digits.length === 11 && digits.startsWith('80')) return '3' + digits;
+  if (digits.length === 10 && digits.startsWith('0')) return '38' + digits;
+  if (digits.length === 9) return '380' + digits;
+  // іноземний/нестандартний: зберігаємо '+', щоб не калічити номер (#107)
+  return String(p).trim().startsWith('+') ? '+' + digits : digits;
 }
 
 function normalizeEmail(e) {

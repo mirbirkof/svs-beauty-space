@@ -6,6 +6,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { normalizePhoneDb } = require('../lib/phone'); // канон 380... (міграція 200)
 const router = express.Router();
 const pool = getPool();
 
@@ -215,7 +216,7 @@ router.post('/', requirePerm('supplier.write'), async (req, res) => {
       [
         String(name).trim(), legal_name || null, tax_id || null,
         legal_address || null, actual_address || null, warehouse_address || null,
-        phone || null, email || null, website || null,
+        normalizePhoneDb(phone) || null, email || null, website || null,
         bank_name || null, bank_account || null, bank_mfo || null,
         parseInt(payment_terms_days, 10) || 0,
         parseFloat(min_order_amount) || 0,
@@ -258,7 +259,7 @@ router.patch('/:id', requirePerm('supplier.write'), async (req, res) => {
     const vals = [];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        vals.push(req.body[key]);
+        vals.push(key === 'phone' ? normalizePhoneDb(req.body[key]) : req.body[key]);
         sets.push(`${key} = $${vals.length}`);
       }
     }

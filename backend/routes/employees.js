@@ -7,6 +7,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { normalizePhoneDb } = require('../lib/phone'); // канон 380... (міграція 200)
 
 const router = express.Router();
 const pool = getPool();
@@ -168,7 +169,7 @@ router.post('/', validateBody(employeeSchema(true)), async (req, res) => {
                             position_id, department_id, manager_id, branch_id, mastery_level, status,
                             public_profile, bio, social_instagram, social_tiktok, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,true) RETURNING *`,
-      [b.name, b.phone, b.email || null, b.specialty || null, b.avatar || null, b.birth_date || null,
+      [b.name, normalizePhoneDb(b.phone), b.email || null, b.specialty || null, b.avatar || null, b.birth_date || null,
        b.gender || null, b.hire_date || null, b.position_id || null, b.department_id || null,
        b.manager_id || null, b.branch_id || null, b.mastery_level || 'junior', b.status || 'active',
        b.public_profile !== false, b.bio || null, b.social_instagram || null, b.social_tiktok || null]);
@@ -196,6 +197,7 @@ router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res)
     for (const k of allowed) if (k in (req.body || {})) {
       let v = req.body[k];
       if (nullIfEmpty.has(k) && typeof v === 'string' && v.trim() === '') v = null;
+      if (k === 'phone' && v != null) v = normalizePhoneDb(v); // канон 380... (міграція 200)
       vals.push(v); sets.push(`${k}=$${vals.length}`);
     }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });

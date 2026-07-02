@@ -18,6 +18,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const llm = require('../lib/llm');
+const { normalizePhoneDb } = require('../lib/phone'); // канон 380... = clients.phone (міграція 200)
 
 const router = express.Router();
 const pool = getPool();
@@ -118,7 +119,7 @@ router.post('/transcribe', canManage, async (req, res) => {
     const rec = (await q(
       `INSERT INTO ai_call_recordings (call_id, branch_id, operator_id, operator_name, client_id, client_phone, direction, audio_url, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'analyzing') RETURNING id`,
-      [call_id || null, branch_id || null, operator_id || null, operator_name || null, client_id || null, client_phone || null, direction, audio_url || null]
+      [call_id || null, branch_id || null, operator_id || null, operator_name || null, client_id || null, normalizePhoneDb(client_phone) || null, direction, audio_url || null]
     ))[0];
 
     const turns = parseTranscript(transcript_text);

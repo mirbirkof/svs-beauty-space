@@ -4,6 +4,7 @@ const router = express.Router();
 const { requirePerm } = require('../lib/rbac');
 const { getPool } = require('../db-pg');
 const bonus = require('../lib/bonus');
+const { normalizePhoneDb } = require('../lib/phone');
 
 const pool = getPool();
 
@@ -30,12 +31,14 @@ router.use((req, res, next) => {
   return requirePerm(perm)(req, res, next);
 });
 
+// Канон = clients.phone: '380XXXXXXXXX' БЕЗ '+' (lib/phone.js). Раніше тут був
+// локальний формат '+380...' → client_loyalty/referrals/birthday_bonuses писались
+// з плюсом і JOIN cl.client_phone = clients.phone (bonus.js _tierMultiplier,
+// profile total_spent) ніколи не матчився. Існуючі рядки нормалізувала міграція 200.
+// null для не-канонізованого входу — контракт роутів (400 bad phone) збережено.
 function normalizePhone(p) {
-  if (!p) return null;
-  let d = String(p).replace(/\D/g, '');
-  if (d.startsWith('80') && d.length === 11) d = '3' + d;
-  if (d.length === 10) d = '38' + d;
-  return d.length === 12 ? '+' + d : null;
+  const n = normalizePhoneDb(p);
+  return n && /^380\d{9}$/.test(n) ? n : null;
 }
 
 // === ТАРИФЫ ===

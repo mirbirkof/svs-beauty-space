@@ -93,15 +93,16 @@ async function findUserByIdentifier(client, identifier) {
     return r.rows[0] || null;
   }
   if (/^[\+\d\s\-\(\)]+$/.test(id)) {
-    const phone = normalizePhone(id);          // канонічний +380…
-    const digits = phone.replace(/\D/g, '');   // голі цифри 380… (legacy-формат)
+    const phone = normalizePhone(id);          // канон 380… без '+' (міграція 200)
+    const digits = phone.replace(/\D/g, '');   // голі цифри
     // Історично телефони зберігались у двох виглядах (+380… та 380…).
-    // Шукаємо обидва, щоб вхід працював незалежно від формату запису.
+    // Шукаємо канон, голі цифри та legacy '+цифри', щоб вхід працював
+    // незалежно від формату запису (в т.ч. іноземні номери зі збереженим '+').
     const r = await client.query(
       `SELECT u.*, r.code AS role_code, r.permissions AS role_permissions
          FROM users u LEFT JOIN roles r ON r.id=u.role_id
-        WHERE u.phone IN ($1,$2) LIMIT 1`,
-      [phone, digits]
+        WHERE u.phone IN ($1,$2,$3) LIMIT 1`,
+      [phone, digits, '+' + digits]
     );
     return r.rows[0] || null;
   }

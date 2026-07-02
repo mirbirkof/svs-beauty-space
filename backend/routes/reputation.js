@@ -17,6 +17,7 @@ const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const hub = require('../lib/notification-hub');
+const { normalizePhoneDb } = require('../lib/phone'); // канон 380... = clients.phone (міграція 200)
 
 const TENANT = '00000000-0000-0000-0000-000000000000';
 
@@ -211,7 +212,7 @@ router.post('/feedback', async (req, res) => {
       `INSERT INTO reviews (client_id, client_phone, appointment_id, master_id, master_name,
                             service_name, rating, text, sentiment, status, source, is_anonymous)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'internal',$11) RETURNING id`,
-      [b.client_id || null, b.client_phone || null, b.appointment_id || null, b.master_id || null,
+      [b.client_id || null, normalizePhoneDb(b.client_phone) || null, b.appointment_id || null, b.master_id || null,
        b.master_name || null, b.service_name || null, rating, String(b.text || '').slice(0, 2000) || null,
        sentiment, status, !!b.is_anonymous]);
     // отметить шаг в журнале запроса

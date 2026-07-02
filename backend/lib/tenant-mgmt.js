@@ -46,7 +46,7 @@ async function uniqueSlug(name) {
 async function createTenant(name, opts = {}, actor = null) {
   if (!name || !String(name).trim()) throw new Error('name-required');
   const phoneDigits = String(opts.phone || '').replace(/\D/g, '');
-  // Зберігаємо телефон у канонічному вигляді +380…, який очікує логін (auth-core.normalizePhone).
+  // Зберігаємо телефон у каноні 380… без '+' (auth-core.normalizePhone, міграція 200) — логін шукає всі формати.
   const phone = phoneDigits ? normalizePhone(phoneDigits) : '';
   const password = opts.password ? String(opts.password) : null;
   if (!phone) throw new Error('owner-phone-required');
