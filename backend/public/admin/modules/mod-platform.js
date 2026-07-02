@@ -204,7 +204,7 @@
   /* ════════════════════════════════════════════════════════════
      3. FEATURE FLAGS
         флаги         /api/v2/admin/flags
-        kill-switches /api/v2/admin/kill-switches
+        kill-switches /api/v2/admin/flags/kill-switches
   ════════════════════════════════════════════════════════════ */
   window.registerModule({
     page: 'featflags',
@@ -224,7 +224,7 @@
       // kill-switch dashboard (необов'язковий — не валимо сторінку)
       var killCount = 0;
       try {
-        var kdata = await window.modApi('/api/v2/admin/kill-switches');
+        var kdata = await window.modApi('/api/v2/admin/flags/kill-switches');
         var krows = (kdata && kdata.rows) || [];
         killCount = (kdata && kdata.total) != null ? kdata.total : krows.length;
         if (kill) {

@@ -3181,7 +3181,9 @@ function showModal(title, bodyHtml, onOk) {
       ${onOk ? '<button class="btn btn-primary" id="genModalOk">Зберегти</button>' : ''}
     </div></div>`;
   document.body.appendChild(ov);
-  if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } finally { document.getElementById('genModal')?.remove(); } };
+  // #108: якщо onOk кинув помилку (валідація/збій збереження) — вікно лишається відкритим,
+  // toast уже показав причину; закриваємо тільки після успішного збереження
+  if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } catch (_) { return; } document.getElementById('genModal')?.remove(); };
 }
 function toast(msg, type = 'ok') {
   let t = document.getElementById('genToast');
@@ -8123,7 +8125,7 @@ async function loadApptMaterials(id) {
         <div id="apptMatPicker" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:8px">
           <div style="display:flex;gap:8px">
             <input id="apptMatSearch" class="input" style="flex:1" placeholder="Пошук товару (назва або артикул)…" oninput="apptMatSearchRun(${id})">
-            <input id="apptMatQtyInp" class="input" type="number" min="0.1" step="0.1" value="1" style="width:80px" title="Кількість">
+            <input id="apptMatQtyInp" class="input" type="number" min="0.1" step="0.1" value="1" style="width:80px" title="Кількість, у од. обліку (шт/г/мл)">
           </div>
           <div id="apptMatResults" style="margin-top:6px;max-height:180px;overflow:auto"></div>
         </div>`}
@@ -8161,7 +8163,7 @@ async function apptMatPick(id, variantId) {
   else toast((r && (r.message || r.error)) || 'Не вдалося додати матеріал', 'error');
 }
 async function apptMatQty(id, variantId, cur) {
-  const v = prompt('Кількість (шт/уп):', cur);
+  const v = prompt('Кількість, у од. обліку (шт/г/мл):', cur);
   if (v == null) return;
   const qty = Number(String(v).replace(',', '.'));
   if (!Number.isFinite(qty) || qty <= 0) { toast('Некоректна кількість', 'error'); return; }
@@ -8275,8 +8277,7 @@ async function apptChangeService(id) {
   // #99: показуємо лише послуги майстра цього запису (поточна послуга завжди в списку)
   window._svcPickState = { services, ids: await getMasterServiceIds(a.master_id), keepId: a.service_id };
   showModal('Змінити послугу', `
-    ${_svcSearchInput('svcPickSearch','svcPick')}
-    <select id="svcPick" class="input">${_svcPickOptions('', a.service_id)}</select>
+    ${_svcPickBox('svcPick', a.service_id)}
     <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(a.master_id)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Планова сума й тривалість оновляться за новою послугою. Уже проведені оплати не змінюються.</div>`, async () => {
     const sid = Number(document.getElementById('svcPick').value);
@@ -8297,12 +8298,11 @@ async function apptAddService(id) {
   const _mid = _a ? _a.master_id : null;
   window._svcPickState = { services, ids: await getMasterServiceIds(_mid), keepId: null };
   showModal('Додати послугу до запису', `
-    ${_svcSearchInput('svcAddSearch','svcAddPick')}
-    <select id="svcAddPick" class="input">${_svcPickOptions('', null)}</select>
+    ${_svcPickBox('svcAddPick', null)}
     <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">${_svcPickHint(_mid)}</div>
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Послуга додасться до складу візиту. Планова сума й час завершення оновляться автоматично.</div>`, async () => {
     const sid = Number(document.getElementById('svcAddPick').value);
-    if (!sid) { toast('Оберіть послугу', 'error'); throw new Error('no-svc'); }
+    if (!sid) { toast('Оберіть послугу — клікніть по рядку в списку', 'error'); throw new Error('no-svc'); }
     const r = await api('/api/schedule/appointments/' + id + '/services', { method:'POST', body: JSON.stringify({ service_id: sid }) });
     if (r && r.ok) { toast('Послугу додано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
     else { toast((r && r.error) || 'Не вдалося додати послугу', 'error'); throw new Error('save-failed'); }
@@ -8420,8 +8420,8 @@ async function getMasterServiceIds(masterId) {
 }
 // Стан відкритого пікера послуг (один модал за раз): повний список + фільтр майстра
 window._svcPickState = null;
-// Опції <select> послуг: фільтр за майстром (ids) + збереження вибраної (keepId завжди в списку)
-function _svcPickOptions(query, selectedId) {
+// Фільтрація списку послуг: за майстром (ids, keepId завжди в списку) + текстовий пошук (#101)
+function _svcPickFiltered(query) {
   const st = window._svcPickState || {};
   const services = st.services || [];
   let list = services;
@@ -8440,10 +8440,34 @@ function _svcPickOptions(query, selectedId) {
     });
     list = starts.concat(incl);
   }
-  if (!list.length) return `<option value="">— нічого не знайдено —</option>`;
-  return list.map(s =>
-    `<option value="${s.id}"${Number(s.id)===Number(selectedId)?' selected':''}>${escapeHtml(s.name)}${s.price!=null?' · '+_money(s.price):''}${s.duration_min?' · '+_humanDur(s.duration_min):''}</option>`
-  ).join('');
+  return list;
+}
+// #108: замість згорнутого <select> (куди нічого не влазило і було видно один рядок) —
+// ЗАВЖДИ видимий список результатів. Рядок: назва (ellipsis) + ціна + тривалість.
+const _SVC_SEL_BG = 'var(--primary-light,#ede9fe)';
+function _svcPickListHtml(prefix, query, selectedId) {
+  const st = window._svcPickState || {};
+  const list = _svcPickFiltered(query);
+  if (!list.length) return '<div style="padding:10px;font-size:13px;color:var(--text-secondary)">Нічого не знайдено</div>';
+  return list.map(s => {
+    const sel = selectedId != null && selectedId !== '' && Number(s.id) === Number(selectedId);
+    const foreign = st.ids && st.ids.size && !st.ids.has(Number(s.id)); // напр. поточна послуга, якої нема у майстра
+    const meta = [s.price != null ? _money(s.price) : '', s.duration_min ? _humanDur(s.duration_min) : ''].filter(Boolean).join(' · ');
+    return `<div data-id="${s.id}"${sel ? ' data-sel="1"' : ''} onclick="svcPickChoose('${prefix}',${s.id})" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border,#f1f5f9);${sel ? `background:${_SVC_SEL_BG};` : ''}" onmouseover="if(!this.dataset.sel)this.style.background='var(--bg-secondary,#f8fafc)'" onmouseout="if(!this.dataset.sel)this.style.background=''">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}${foreign ? ' <span style="font-size:11px;color:var(--text-secondary)">(не цього майстра)</span>' : ''}</span>
+      ${meta ? `<span style="color:var(--text-secondary);white-space:nowrap;font-size:12px">${meta}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+// #108: повний блок пікера: пошук + видимий список + приховане поле зі значенням.
+// Приховане поле має id = prefix, тому код збереження, що читає
+// document.getElementById(prefix).value, працює без змін.
+function _svcPickBox(prefix, selectedId, extra) {
+  const cls = extra && extra.cls ? ` class="${extra.cls}"` : '';
+  const oc = extra && extra.onchange ? ` onchange="${extra.onchange}"` : '';
+  return `<input id="${prefix}Search" class="input" placeholder="Пошук послуги: почніть вводити назву…" autocomplete="off" oninput="svcPickFilter('${prefix}')" style="margin-bottom:6px;width:100%;box-sizing:border-box">
+    <div id="${prefix}List" style="max-height:240px;overflow-y:auto;width:100%;box-sizing:border-box;border:1px solid var(--border,#e5e7eb);border-radius:10px">${_svcPickListHtml(prefix, '', selectedId)}</div>
+    <input type="hidden" id="${prefix}"${cls} value="${selectedId != null ? selectedId : ''}"${oc}>`;
 }
 // Пояснення під пікером: чи відфільтровано за майстром
 function _svcPickHint(masterId) {
@@ -8451,15 +8475,27 @@ function _svcPickHint(masterId) {
   if (st.ids && st.ids.size) return `Показано послуги майстра (${st.ids.size})`;
   return masterId ? 'Майстру не призначені послуги — показано всі' : '';
 }
-// #101: живий фільтр списку послуг за введеним текстом (вибір зберігається, якщо лишився у списку)
-function svcPickFilter(inputId, selectId) {
-  const inp = document.getElementById(inputId), sel = document.getElementById(selectId);
-  if (!inp || !sel) return;
-  sel.innerHTML = _svcPickOptions(inp.value, sel.value);
+// #101/#108: живий фільтр — перемальовує ЛИШЕ список; вибір (приховане поле) сам по собі
+// НЕ змінюється, тож фільтрація більше не підміняє послугу мовчки при збереженні
+function svcPickFilter(prefix) {
+  const inp = document.getElementById(prefix + 'Search');
+  const box = document.getElementById(prefix + 'List');
+  const hid = document.getElementById(prefix);
+  if (!inp || !box || !hid) return;
+  box.innerHTML = _svcPickListHtml(prefix, inp.value, hid.value);
 }
-// Поле пошуку над пікером послуг (спільна розмітка для всіх модалок)
-function _svcSearchInput(inputId, selectId) {
-  return `<input id="${inputId}" class="input" placeholder="Пошук послуги: почніть вводити назву…" autocomplete="off" oninput="svcPickFilter('${inputId}','${selectId}')" style="margin-bottom:6px">`;
+// #108: вибір послуги — ТІЛЬКИ явним кліком по рядку списку (рядок підсвічується)
+function svcPickChoose(prefix, id) {
+  const hid = document.getElementById(prefix);
+  if (!hid) return;
+  hid.value = String(id);
+  const box = document.getElementById(prefix + 'List');
+  if (box) box.querySelectorAll('[data-id]').forEach(r => {
+    const on = Number(r.dataset.id) === Number(id);
+    if (on) r.dataset.sel = '1'; else delete r.dataset.sel;
+    r.style.background = on ? _SVC_SEL_BG : '';
+  });
+  hid.dispatchEvent(new Event('change')); // тригерить onchange прихованого поля (напр. ncSvcTotal)
 }
 // ── #95: замок на редагування минулих днів (UI-перевірка; бекенд дублює її сам) ──
 let _aepVal = null, _aepExp = 0;
@@ -8545,10 +8581,12 @@ async function openCreate(masterId, dateStr, minutes) {
 async function ncMasterChanged() {
   const mid = Number((document.getElementById('ncMaster')||{}).value) || null;
   if (window._svcPickState) window._svcPickState.ids = await getMasterServiceIds(mid);
-  document.querySelectorAll('#ncSvcRows .nc-svc-row').forEach(row => {
-    const sel = row.querySelector('.ncSvcSel');
-    const inp = row.querySelector('input');
-    if (sel) sel.innerHTML = _svcPickOptions((inp && inp.value) || '', sel.value);
+  const _st = window._svcPickState || {};
+  document.querySelectorAll('#ncSvcRows .ncSvcSel').forEach(hid => {
+    // #108: якщо обрана послуга не входить до послуг нового майстра — скидаємо вибір
+    // явно (раніше <select> мовчки підставляв першу опцію — зберігалась не та послуга)
+    if (hid.value && _st.ids && _st.ids.size && !_st.ids.has(Number(hid.value))) hid.value = '';
+    svcPickFilter(hid.id); // перемалювати видимий список під нового майстра
   });
   const hint = document.getElementById('ncSvcHint');
   if (hint) hint.textContent = _svcPickHint(mid);
@@ -8561,9 +8599,8 @@ let _ncSvcRowSeq = 0;
 function _ncSvcRowHtml(first) {
   const n = ++_ncSvcRowSeq;
   return `<div class="nc-svc-row">
-    ${_svcSearchInput('ncSvcSearch'+n, 'ncSvc'+n)}
-    <div style="display:flex;gap:6px;align-items:center">
-      <select id="ncSvc${n}" class="input ncSvcSel" style="flex:1" onchange="ncSvcTotal()">${_svcPickOptions('', null)}</select>
+    <div style="display:flex;gap:6px;align-items:flex-start">
+      <div style="flex:1;min-width:0">${_svcPickBox('ncSvc'+n, null, { cls:'ncSvcSel', onchange:'ncSvcTotal()' })}</div>
       ${first ? '' : `<button type="button" class="btn" title="Прибрати цю послугу" style="background:#fee2e2;color:#dc2626;padding:6px 12px" onclick="this.closest('.nc-svc-row').remove();ncSvcTotal()">×</button>`}
     </div>
   </div>`;

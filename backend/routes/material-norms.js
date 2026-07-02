@@ -3,7 +3,9 @@
    расхода с отклонениями факт-vs-норма, расчёт себестоимости и маржинальности услуг,
    прогноз закупки. Себестоимость = wholesale (опт) товара пропорционально расходу.
    Базовый service_consumables (027) остаётся для простой привязки; здесь — полный слой.
-   Доступ: GET — settings.read нет, оставляю открытым для master-UI; мутации — settings.write. */
+   Доступ: GET — stock.read (тут wholesale/себестоимость/маржа, анониму нельзя;
+   master-UI эти GET не зовёт — только админ-SPA mod-platform.js, у admin есть stock.*,
+   у manager — stock.read); мутации — settings.write. */
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
@@ -12,6 +14,7 @@ const router = express.Router();
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
 const W = requirePerm('settings.write');
+const R = requirePerm('stock.read');
 
 const parseVol = (v) => { const m = String(v || '').match(/[\d.]+/); return m ? parseFloat(m[0]) : null; };
 function lengthCoeff(m, len) {
@@ -31,7 +34,7 @@ function unitCost(variant, qty) {
 // ═══ НОРМАТИВНЫЕ КАРТЫ ═══════════════════════════════════════════════════════
 
 // GET / — список карт
-router.get('/', async (req, res) => {
+router.get('/', R, async (req, res) => {
   try {
     const where = []; const vals = [];
     if (req.query.service_id) { vals.push(req.query.service_id); where.push(`n.service_id=$${vals.length}`); }
@@ -51,14 +54,14 @@ router.get('/', async (req, res) => {
 });
 
 // GET /by-service/:serviceId
-router.get('/by-service/:serviceId(\\d+)', async (req, res) => {
+router.get('/by-service/:serviceId(\\d+)', R, async (req, res) => {
   try {
     res.json({ items: await q(`SELECT * FROM material_norms WHERE service_id=$1 ORDER BY status, name`, [req.params.serviceId]) });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
 // GET /:id — карта с материалами
-router.get('/:id(\\d+)', async (req, res) => {
+router.get('/:id(\\d+)', R, async (req, res) => {
   try {
     const norm = (await q(`SELECT * FROM material_norms WHERE id=$1`, [req.params.id]))[0];
     if (!norm) return res.status(404).json({ error: 'not-found' });
@@ -86,6 +89,7 @@ router.post('/', W, async (req, res) => {
     )).rows[0];
     for (const m of (b.materials || [])) {
       if (!m.variant_id || m.quantity == null) continue;
+      if (!(Number(m.quantity) > 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'quantity має бути > 0', variant_id: m.variant_id }); }
       await client.query(
         `INSERT INTO procedure_materials (norm_id,variant_id,quantity,unit,coeff_short,coeff_medium,coeff_long,coeff_extra_long,coeff_thin,coeff_normal,coeff_thick,is_required,sort_order)
          VALUES ($1,$2,$3,COALESCE($4,'g'),COALESCE($5,0.70),COALESCE($6,1.00),COALESCE($7,1.50),COALESCE($8,2.00),COALESCE($9,0.80),COALESCE($10,1.00),COALESCE($11,1.30),COALESCE($12,TRUE),COALESCE($13,0))
@@ -119,6 +123,7 @@ router.patch('/:id(\\d+)', W, async (req, res) => {
       await client.query(`DELETE FROM procedure_materials WHERE norm_id=$1`, [id]);
       for (const m of b.materials) {
         if (!m.variant_id || m.quantity == null) continue;
+      if (!(Number(m.quantity) > 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'quantity має бути > 0', variant_id: m.variant_id }); }
         await client.query(
           `INSERT INTO procedure_materials (norm_id,variant_id,quantity,unit,coeff_short,coeff_medium,coeff_long,coeff_extra_long,coeff_thin,coeff_normal,coeff_thick,is_required,sort_order)
            VALUES ($1,$2,$3,COALESCE($4,'g'),COALESCE($5,0.70),COALESCE($6,1.00),COALESCE($7,1.50),COALESCE($8,2.00),COALESCE($9,0.80),COALESCE($10,1.00),COALESCE($11,1.30),COALESCE($12,TRUE),COALESCE($13,0))`,
@@ -169,7 +174,7 @@ router.post('/:id(\\d+)/duplicate', W, async (req, res) => {
 // ═══ ФАКТИЧЕСКИЙ РАСХОД (ЖУРНАЛ) ═════════════════════════════════════════════
 
 // GET /consumption — лог расхода
-router.get('/consumption', async (req, res) => {
+router.get('/consumption', R, async (req, res) => {
   try {
     const where = ['mcl.reversed=FALSE']; const vals = [];
     for (const [k, col] of [['branch_id', 'mcl.branch_id'], ['employee_id', 'mcl.employee_id'], ['variant_id', 'mcl.variant_id'], ['product_id', 'p.id']]) {
@@ -199,9 +204,21 @@ router.post('/consumption/write-off', W, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.appointment_id) return res.status(400).json({ error: 'appointment_id обовʼязковий' });
+    // валидация: отрицательный/нулевой фактический расход = скрытый приход на склад — запрещено
+    for (const it of (b.items || [])) {
+      if (it.actual_quantity != null && !(Number(it.actual_quantity) > 0)) {
+        return res.status(400).json({ error: 'actual_quantity має бути > 0', variant_id: it.variant_id });
+      }
+    }
     await client.query('BEGIN');
-    // контекст визита
-    const ap = (await client.query(`SELECT id, service_id, master_id, client_id FROM appointments WHERE id=$1`, [b.appointment_id])).rows[0];
+    // контекст визита + guard от двойного списания: тот же флаг stock_written_off,
+    // что и в lib/consumables.js — один визит списывается ровно одним механизмом.
+    // FOR UPDATE сериализует конкурентные write-off по одной записи.
+    const ap = (await client.query(`SELECT id, service_id, master_id, client_id, stock_written_off FROM appointments WHERE id=$1 FOR UPDATE`, [b.appointment_id])).rows[0];
+    if (ap && ap.stock_written_off) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'already-written-off', hint: 'запис уже списано (consumables або norms)' });
+    }
     const serviceId = b.service_id || ap?.service_id;
     // активная норма услуги
     const norm = (await client.query(
@@ -236,6 +253,11 @@ router.post('/consumption/write-off', W, async (req, res) => {
         logged.push(row);
       }
     }
+    // ставим флаг только если реально что-то списали/залогировали — пустой прогон
+    // (нет нормы/материалов) не должен блокировать другой механизм списания
+    if (ap && logged.length) {
+      await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [b.appointment_id]);
+    }
     await client.query('COMMIT');
     await logAction({ user: req.user, action: 'material.writeoff', entity: 'appointment', entity_id: b.appointment_id, meta: { items: logged.length } });
     res.json({ ok: true, written: logged.length, items: logged, norm_found: !!norm });
@@ -250,8 +272,10 @@ router.post('/consumption/reverse', W, async (req, res) => {
     const b = req.body || {};
     if (!b.appointment_id) return res.status(400).json({ error: 'appointment_id обовʼязковий' });
     await client.query('BEGIN');
+    // FOR UPDATE: два конкурентных reverse не вернут товар на склад дважды —
+    // второй дождётся коммита первого и увидит reversed=TRUE (0 строк)
     const rows = (await client.query(
-      `SELECT * FROM material_consumption_log WHERE appointment_id=$1 AND reversed=FALSE`, [b.appointment_id])).rows;
+      `SELECT * FROM material_consumption_log WHERE appointment_id=$1 AND reversed=FALSE FOR UPDATE`, [b.appointment_id])).rows;
     for (const r of rows) {
       if ((r.unit === 'pcs' || r.unit === 'pair')) {
         const back = Math.round(Number(r.actual_quantity ?? r.norm_quantity));
@@ -259,6 +283,10 @@ router.post('/consumption/reverse', W, async (req, res) => {
       }
     }
     await client.query(`UPDATE material_consumption_log SET reversed=TRUE WHERE appointment_id=$1 AND reversed=FALSE`, [b.appointment_id]);
+    // снимаем guard-флаг: визит снова можно списать (флаг ставил write-off выше)
+    if (rows.length) {
+      await client.query(`UPDATE appointments SET stock_written_off=FALSE WHERE id=$1`, [b.appointment_id]);
+    }
     await client.query('COMMIT');
     res.json({ ok: true, reversed: rows.length });
   } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: e.message }); }
@@ -266,7 +294,7 @@ router.post('/consumption/reverse', W, async (req, res) => {
 });
 
 // GET /consumption/report?group_by=product|service|employee
-router.get('/consumption/report', async (req, res) => {
+router.get('/consumption/report', R, async (req, res) => {
   try {
     const gb = { product: 'mcl.variant_id', service: 'mcl.service_id', employee: 'mcl.employee_id' }[req.query.group_by] || 'mcl.variant_id';
     const where = ['mcl.reversed=FALSE']; const vals = [];
@@ -289,7 +317,7 @@ router.get('/consumption/report', async (req, res) => {
 });
 
 // GET /consumption/forecast?days_ahead=14 — прогноз расхода по будущим записям
-router.get('/consumption/forecast', async (req, res) => {
+router.get('/consumption/forecast', R, async (req, res) => {
   try {
     const days = parseInt(req.query.days_ahead, 10) || 14;
     // средний дневной расход по факту за прошлые 30 дней на вариант
@@ -316,7 +344,7 @@ router.get('/consumption/forecast', async (req, res) => {
 // ═══ СЕБЕСТОИМОСТЬ И МАРЖА ═══════════════════════════════════════════════════
 
 // GET /service/:id/cost — себестоимость услуги по активной норме
-router.get('/service/:id(\\d+)/cost', async (req, res) => {
+router.get('/service/:id(\\d+)/cost', R, async (req, res) => {
   try {
     const sid = Number(req.params.id);
     const service = (await q(`SELECT id, name, price FROM services WHERE id=$1`, [sid]))[0];
@@ -344,7 +372,7 @@ router.get('/service/:id(\\d+)/cost', async (req, res) => {
 });
 
 // GET /reports/profitability — маржинальность всех услуг с нормами
-router.get('/reports/profitability', async (req, res) => {
+router.get('/reports/profitability', R, async (req, res) => {
   try {
     const norms = await q(
       `SELECT DISTINCT n.service_id, s.name, s.price FROM material_norms n

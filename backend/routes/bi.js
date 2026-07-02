@@ -343,8 +343,8 @@ router.post('/', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Получить + выполнить
-router.get('/:id', async (req, res) => {
+// Получить + выполнить (только числовой id — иначе 404, а не 500 с текстом SQL)
+router.get('/:id(\\d+)', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM bi_reports WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
@@ -356,7 +356,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Обновить
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d+)', async (req, res) => {
   try {
     const b = req.body || {};
     const fields = [], vals = []; let i = 1;
@@ -374,7 +374,7 @@ router.put('/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.patch('/:id/favorite', async (req, res) => {
+router.patch('/:id(\\d+)/favorite', async (req, res) => {
   try {
     const { rows } = await pool.query('UPDATE bi_reports SET is_favorite = NOT is_favorite, updated_at=NOW() WHERE id=$1 RETURNING id, is_favorite', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'not found' });
@@ -382,7 +382,7 @@ router.patch('/:id/favorite', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d+)', async (req, res) => {
   try {
     const { rowCount } = await pool.query('DELETE FROM bi_reports WHERE id=$1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'not found' });
@@ -407,6 +407,9 @@ router.post('/export.csv', async (req, res) => {
     res.send(toCsv(out.columns, out.rows));
   } catch (e) { res.status(e.code === 400 ? 400 : 500).json({ error: e.message }); }
 });
+
+// Fallback: невалидный id / неизвестный путь → чистый JSON 404 (не 500 с текстом SQL)
+router.use((req, res) => res.status(404).json({ error: 'not_found' }));
 
 module.exports = router;
 // Тест-доступ к внутренностям (без HTTP/RBAC) — для smoke-тестов и переиспользования.

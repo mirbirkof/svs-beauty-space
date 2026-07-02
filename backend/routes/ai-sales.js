@@ -20,8 +20,8 @@
      POST   /winback/run                   згенерувати win-back offer'и (graceful-стаб розсилки)
      GET    /analytics                     дашборд: live-метрики + воронка offer→accepted→paid
 
-   Зовнішня розсилка (COM-01 Notification Hub) — graceful-стаб: offer пишемо у БД зі
-   status='sent', реальну доставку делегує Notification Hub (правило проєкту дозволяє стаб).
+   Зовнішня розсилка (COM-01 Notification Hub) — graceful-стаб: winback-offer пишемо у БД зі
+   status='queued' (sent_at=NULL), 'sent' проставить Notification Hub при реальній відправці.
 
    Права (спека §RBAC, через requirePerm; owner '*' матчить усе):
      перегляд/рекомендації  ai.sales.read  (fallback reports.read)
@@ -101,6 +101,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
     const [funnel, byType, topOffers] = await Promise.all([
       q(`SELECT COUNT(*)::int total,
                 COUNT(*) FILTER (WHERE status='sent')::int sent,
+                COUNT(*) FILTER (WHERE status='queued')::int queued,
                 COUNT(*) FILTER (WHERE status='accepted')::int accepted,
                 COUNT(*) FILTER (WHERE status='declined')::int declined,
                 COALESCE(SUM(result_revenue) FILTER (WHERE status='accepted'),0)::numeric revenue
@@ -388,7 +389,7 @@ router.get('/winback/candidates', requirePerm('reports.read'), async (req, res) 
 });
 
 // ── POST /winback/run — згенерувати win-back offer'и (graceful-стаб розсилки) ─
-// Створює рядки в ai_sales_offers (status='sent'); реальну доставку робить COM-01.
+// Створює рядки в ai_sales_offers (status='queued'); реальну доставку робить COM-01.
 router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => {
   try {
     const minDays = Math.max(parseInt((req.body || {}).min_days, 10) || 35, 1);
@@ -420,16 +421,18 @@ router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => 
       const step = pickStep(c.days_since);
       const text = step && step.template ? step.template.replace('{name}', c.name || 'клієнте')
         : `${c.name || 'Клієнт'}, давно вас не бачили. Запрошуємо назад!`;
+      // Доставки поки немає (stub) → 'queued', НЕ 'sent' — щоб статистика не брехала.
+      // sent_at проставить Notification Hub при реальній відправці.
       await q(`
         INSERT INTO ai_sales_offers (client_id, type, offer_type, chain_id, chain_step, offer_text, channel, status, sent_at, ab_variant)
-        VALUES ($1,'win_back',$2,$3,$4,$5,$6,'sent',now(),$7)`,
+        VALUES ($1,'win_back',$2,$3,$4,$5,$6,'queued',NULL,$7)`,
         [c.client_id, step && step.offer_type === 'discount' ? 'discount' : 'service',
          chain ? chain.id : null, step ? step.index : null, text, pickChannel(c), Math.random() < 0.5 ? 'A' : 'B']);
       created++;
     }
     // graceful-стаб: фактична доставка делегується COM-01 Notification Hub
     logAction({ user: req.user, action: 'ai_sales.winback.run', entity: 'ai_sales_winback_chain', entity_id: chain ? chain.id : null, meta: { created } }).catch(() => {});
-    res.json({ ok: true, created, delivery: 'queued_to_notification_hub_stub', chain_id: chain ? chain.id : null });
+    res.json({ ok: true, created, delivery: 'not_connected', chain_id: chain ? chain.id : null });
   } catch (e) { ERR(res, e, 'winback:run'); }
 });
 

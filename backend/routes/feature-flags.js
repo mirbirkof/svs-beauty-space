@@ -258,6 +258,28 @@ adminRouter.post('/', async (req, res) => {
   } catch (e) { return err500(res, e); }
 });
 
+/* ── Статические GET (ДО '/:id', иначе перехватываются) ────────── */
+
+// GET /admin/flags/kill-switches  — все активные kill switches
+adminRouter.get('/kill-switches', async (req, res) => {
+  try {
+    const rows = await q(
+      `SELECT id,key,name,module_code,kill_switch_reason,kill_switch_at
+       FROM feature_flags WHERE kill_switch=true ORDER BY kill_switch_at DESC`
+    );
+    res.json({ rows, total: rows.length });
+  } catch (e) { return err500(res, e); }
+});
+
+// GET /admin/flags/export
+adminRouter.get('/export', async (req, res) => {
+  try {
+    const flags = await q(`SELECT * FROM feature_flags WHERE status != 'archived' ORDER BY key`);
+    const rules = await q(`SELECT * FROM feature_flag_rules ORDER BY flag_id, priority`);
+    res.json({ exported_at: new Date().toISOString(), flags, rules });
+  } catch (e) { return err500(res, e); }
+});
+
 // GET /admin/flags/:id
 adminRouter.get('/:id', async (req, res) => {
   try {
@@ -561,29 +583,7 @@ adminRouter.get('/:id/audit', async (req, res) => {
   } catch (e) { return err500(res, e); }
 });
 
-/* ── Kill Switch Dashboard ─────────────────────────────────────── */
-
-// GET /admin/kill-switches  — все активные kill switches
-adminRouter.get('/kill-switches', async (req, res) => {
-  try {
-    const rows = await q(
-      `SELECT id,key,name,module_code,kill_switch_reason,kill_switch_at
-       FROM feature_flags WHERE kill_switch=true ORDER BY kill_switch_at DESC`
-    );
-    res.json({ rows, total: rows.length });
-  } catch (e) { return err500(res, e); }
-});
-
-/* ── Import / Export ───────────────────────────────────────────── */
-
-// GET /admin/flags/export
-adminRouter.get('/export', async (req, res) => {
-  try {
-    const flags = await q(`SELECT * FROM feature_flags WHERE status != 'archived' ORDER BY key`);
-    const rules = await q(`SELECT * FROM feature_flag_rules ORDER BY flag_id, priority`);
-    res.json({ exported_at: new Date().toISOString(), flags, rules });
-  } catch (e) { return err500(res, e); }
-});
+/* ── Import ────────────────────────────────────────────────────── */
 
 // POST /admin/flags/import  { flags: [...] }  (upsert)
 adminRouter.post('/import', async (req, res) => {

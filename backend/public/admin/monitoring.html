@@ -67,7 +67,7 @@ function saveTok(){ localStorage.setItem('svs_admin_token', document.getElementB
 function showErr(e){ document.getElementById('err').textContent = e || ''; }
 const esc = s => String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-async function af(path){ return adminFetch(API + path); }
+async function af(path, opts = {}){ return adminFetch(API + path, opts); }
 
 async function loadHealth(){
   const r = await af('/api/monitoring/health');
@@ -120,7 +120,7 @@ async function loadMetrics(){
 
 async function runNow(){
   showErr('');
-  const r = await af('/api/monitoring/run');
+  const r = await af('/api/monitoring/run', { method: 'POST' });
   if(!r.ok){ showErr('run: '+r.status); return; }
   loadAll();
 }

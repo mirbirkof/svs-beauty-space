@@ -176,8 +176,9 @@ router.post('/variants/:id/stock', async (req, res) => {
   const client = await pool.connect();
   try {
     const { qty, note } = req.body || {};
-    const delta = parseInt(qty, 10);
-    if (!delta) return res.status(400).json({ error: 'qty-required' });
+    // #109: склад у грамах — дробові кількості дозволені (parseInt різав "45.5")
+    const delta = Number(qty);
+    if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: 'qty-required' });
     await client.query('BEGIN'); await applyTenant(client);
     const r = await client.query(
       `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2 RETURNING *`,

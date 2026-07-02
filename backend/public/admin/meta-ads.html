@@ -114,6 +114,8 @@
 <script src="/admin/assets/admin-shell.js" data-title="Реклама Meta"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+// adminFetch возвращает сырой Response — для чтения данных используем adminJson (парсит JSON)
+const adminJson = (path, opts) => adminFetch(path, opts).then(r => r.json());
 const money = (n) => (Number(n)||0).toLocaleString('uk-UA',{maximumFractionDigits:0}) + ' ₴';
 const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const stLabel = {new:'Новий',contacted:'В роботі',booked:'Записаний',visited:'Прийшов',lost:'Втрачений'};
@@ -122,7 +124,7 @@ async function loadAll(){ await Promise.all([loadKpi(), loadAccounts(), loadCamp
 
 async function loadKpi(){
   try{
-    const r = await adminFetch('/api/meta-ads/roi');
+    const r = await adminJson('/api/meta-ads/roi');
     const roas = r.conversions>0 && r.spend>0 ? '—' : '—';
     $('kpis').innerHTML = [
       ['Витрати (30 дн)', money(r.spend)],
@@ -137,7 +139,7 @@ async function loadKpi(){
 
 async function loadAccounts(){
   try{
-    const r = await adminFetch('/api/meta-ads/accounts'); const items = r.items||[];
+    const r = await adminJson('/api/meta-ads/accounts'); const items = r.items||[];
     const tb = $('accTbl').querySelector('tbody');
     if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Кабінетів немає. Підключіть перший.</td></tr>'; return; }
     tb.innerHTML = items.map(a=>{
@@ -154,7 +156,7 @@ async function loadAccounts(){
 
 async function loadCampaigns(){
   try{
-    const r = await adminFetch('/api/meta-ads/campaigns'); const items = r.items||[];
+    const r = await adminJson('/api/meta-ads/campaigns'); const items = r.items||[];
     const tb = $('campTbl').querySelector('tbody');
     if(!items.length){ tb.innerHTML = '<tr><td colspan="10" class="muted">Немає кампаній. Дочекайтесь синку після підключення кабінета.</td></tr>'; return; }
     tb.innerHTML = items.map(c=>{
@@ -173,7 +175,7 @@ async function loadCampaigns(){
 async function loadLeads(){
   try{
     const f = $('leadFilter').value;
-    const r = await adminFetch('/api/meta-ads/leads'+(f?`?status=${f}`:'')); const items = r.items||[];
+    const r = await adminJson('/api/meta-ads/leads'+(f?`?status=${f}`:'')); const items = r.items||[];
     const tb = $('leadTbl').querySelector('tbody');
     if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Лідів немає.</td></tr>'; return; }
     tb.innerHTML = items.map(l=>{
@@ -205,8 +207,8 @@ async function doConnect(){
     closeConnect(); await loadAccounts(); syncAccSilent();
   }catch(e){ $('connectMsg').textContent = 'Помилка: '+e.message; }
 }
-async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminFetch(`/api/meta-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('Graph: '+r.error):(`Синхронізовано кампаній: ${r.synced||0}`); await loadCampaigns(); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
-async function syncAccSilent(){ try{ const a=await adminFetch('/api/meta-ads/accounts'); const last=(a.items||[]).slice(-1)[0]; if(last) await adminFetch(`/api/meta-ads/accounts/${last.id}/sync`,{method:'POST'}); await loadAll(); }catch(e){} }
+async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminJson(`/api/meta-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('Graph: '+r.error):(`Синхронізовано кампаній: ${r.synced||0}`); await loadCampaigns(); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+async function syncAccSilent(){ try{ const a=await adminJson('/api/meta-ads/accounts'); const last=(a.items||[]).slice(-1)[0]; if(last) await adminFetch(`/api/meta-ads/accounts/${last.id}/sync`,{method:'POST'}); await loadAll(); }catch(e){} }
 async function disconnectAcc(id){ if(!confirm('Відключити кабінет? Статистика залишиться, синк припиниться.'))return; try{ await adminFetch(`/api/meta-ads/accounts/${id}`,{method:'DELETE'}); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
 
 // ── Кампанії ──
@@ -214,7 +216,7 @@ async function toggleCamp(id,status){ try{ await adminFetch(`/api/meta-ads/campa
 
 // ── Ліди ──
 async function setLead(id,status){ try{ await adminFetch(`/api/meta-ads/leads/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await Promise.all([loadLeads(),loadKpi()]); }catch(e){ $('leadMsg').textContent='Помилка: '+e.message; } }
-async function toClient(id){ $('leadMsg').textContent='Створення клієнта…'; try{ const r=await adminFetch(`/api/meta-ads/leads/${id}/create-client`,{method:'POST'}); $('leadMsg').textContent = r.existed?'Клієнт уже існував, привʼязано.':'Клієнта створено.'; await loadLeads(); }catch(e){ $('leadMsg').textContent='Помилка: '+e.message; } }
+async function toClient(id){ $('leadMsg').textContent='Створення клієнта…'; try{ const r=await adminJson(`/api/meta-ads/leads/${id}/create-client`,{method:'POST'}); $('leadMsg').textContent = r.existed?'Клієнт уже існував, привʼязано.':'Клієнта створено.'; await loadLeads(); }catch(e){ $('leadMsg').textContent='Помилка: '+e.message; } }
 let apptLead=null;
 function openAppt(id){ apptLead=id; $('apptMsg').textContent=''; $('apptBg').classList.add('show'); }
 function closeAppt(){ $('apptBg').classList.remove('show'); }

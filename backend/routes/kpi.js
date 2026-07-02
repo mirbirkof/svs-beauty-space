@@ -42,7 +42,7 @@ async function computePeriod(masterId, from, to) {
        COUNT(*) FILTER (WHERE status='noshow')::int AS noshow,
        COUNT(*)::int AS total_appts,
        COUNT(DISTINCT client_id) FILTER (WHERE (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL)) AND client_id IS NOT NULL)::int AS distinct_clients,
-       COALESCE(SUM(duration_min) FILTER (WHERE status IN ('done','confirmed','booked')),0)::int AS busy_min,
+       COALESCE(SUM(GREATEST(EXTRACT(EPOCH FROM (COALESCE(ends_at, starts_at) - starts_at))/60, 0)) FILTER (WHERE status IN ('done','confirmed','booked')),0)::int AS busy_min,
        COUNT(DISTINCT date(starts_at)) FILTER (WHERE status IN ('done','confirmed','booked'))::int AS work_days
      FROM appointments WHERE master_id=$1 AND starts_at >= $2 AND starts_at < $3`,
     [masterId, from, to]))[0];

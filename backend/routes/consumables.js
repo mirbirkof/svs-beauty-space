@@ -59,7 +59,9 @@ router.post('/appointment/:apptId', requirePerm('stock.write'), async (req, res)
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
     const { variant_id, qty_used, note } = req.body || {};
     if (!variant_id) return res.status(400).json({ error: 'variant_id required' });
-    const qty = Number(qty_used) > 0 ? Number(qty_used) : 1;
+    // qty<=0 запрещено: отрицательное "списание" увеличило бы склад
+    const qty = qty_used == null ? 1 : Number(qty_used);
+    if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'qty_used must be > 0' });
     const a = await pool.query(`SELECT id FROM appointments WHERE id=$1`, [aid]);
     if (!a.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const r = await pool.query(
@@ -105,10 +107,11 @@ router.post('/appointment/:apptId/prefill', requirePerm('stock.write'), async (r
 // видалити матеріал запису
 router.delete('/appointment/:apptId/:variantId', requirePerm('stock.write'), async (req, res) => {
   try {
-    await pool.query(
+    const r = await pool.query(
       `DELETE FROM appointment_materials WHERE appointment_id=$1 AND variant_id=$2`,
       [Number(req.params.apptId), Number(req.params.variantId)]
     );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -137,7 +140,9 @@ router.post('/:serviceId', requirePerm('settings.write'), async (req, res) => {
     const sid = Number(req.params.serviceId);
     const { variant_id, qty_per_use } = req.body || {};
     if (!variant_id) return res.status(400).json({ error: 'variant_id required' });
-    const qty = Number(qty_per_use) > 0 ? Number(qty_per_use) : 1;
+    // qty<=0 запрещено: отрицательная норма = скрытый приход при списании
+    const qty = qty_per_use == null ? 1 : Number(qty_per_use);
+    if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'qty_per_use must be > 0' });
     const r = await pool.query(
       `INSERT INTO service_consumables (service_id, variant_id, qty_per_use)
        VALUES ($1,$2,$3)
@@ -152,10 +157,11 @@ router.post('/:serviceId', requirePerm('settings.write'), async (req, res) => {
 
 router.delete('/:serviceId/:variantId', requirePerm('settings.write'), async (req, res) => {
   try {
-    await pool.query(
+    const r = await pool.query(
       `DELETE FROM service_consumables WHERE service_id=$1 AND variant_id=$2`,
       [Number(req.params.serviceId), Number(req.params.variantId)]
     );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

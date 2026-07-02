@@ -111,12 +111,14 @@
 <script src="/admin/assets/admin-shell.js" data-title="Безпека"></script>
 <script>
 const $ = id => document.getElementById(id);
+// adminFetch возвращает сырой Response — для чтения данных используем adminJson (парсит JSON)
+const adminJson = (path, opts) => adminFetch(path, opts).then(r => r.json());
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtT = t => t ? new Date(t).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 
 async function loadDash(){
   try{
-    const d = await adminFetch('/api/security/dashboard');
+    const d = await adminJson('/api/security/dashboard');
     const sev = (d.events_by_severity||[]).reduce((a,x)=>(a[x.severity]=x.n,a),{});
     $('cards').innerHTML = [
       ['Активні сесії', d.active_sessions||0],
@@ -146,7 +148,7 @@ async function loadDash(){
 async function loadEvents(){
   try{
     const f = $('evFilter').value;
-    const r = await adminFetch('/api/security/events?resolved='+encodeURIComponent(f)+'&limit=100');
+    const r = await adminJson('/api/security/events?resolved='+encodeURIComponent(f)+'&limit=100');
     const rows = r.rows||[];
     $('evBody').innerHTML = rows.length ? rows.map(e=>`<tr>
       <td>${fmtT(e.created_at)}</td><td>${esc(e.event_type)}</td>
@@ -157,11 +159,11 @@ async function loadEvents(){
   }catch(e){ $('evBody').innerHTML='<tr><td colspan="6" class="muted">Помилка: '+esc(e.message)+'</td></tr>'; }
 }
 async function resolveEv(id){ try{ await adminFetch('/api/security/events/'+id+'/resolve',{method:'POST'}); loadEvents(); loadDash(); }catch(e){ $('evMsg').textContent='Помилка: '+e.message; } }
-async function runDetect(){ $('evMsg').textContent='Скан…'; try{ const r=await adminFetch('/api/security/events/detect',{method:'POST'}); $('evMsg').textContent=`Кластерів: ${r.clusters||0}, нових подій: ${r.created||0}`; loadEvents(); loadDash(); }catch(e){ $('evMsg').textContent='Помилка: '+e.message; } }
+async function runDetect(){ $('evMsg').textContent='Скан…'; try{ const r=await adminJson('/api/security/events/detect',{method:'POST'}); $('evMsg').textContent=`Кластерів: ${r.clusters||0}, нових подій: ${r.created||0}`; loadEvents(); loadDash(); }catch(e){ $('evMsg').textContent='Помилка: '+e.message; } }
 
 async function loadWl(){
   try{
-    const r = await adminFetch('/api/security/ip-whitelist');
+    const r = await adminJson('/api/security/ip-whitelist');
     const rows = r.rows||[];
     $('wlBody').innerHTML = rows.length ? rows.map(w=>`<tr>
       <td>${esc(w.ip_address||w.cidr_range||'—')}</td><td>${esc(w.description||'—')}</td>

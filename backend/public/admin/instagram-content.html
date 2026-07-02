@@ -80,6 +80,8 @@
 <script src="/admin/assets/admin-shell.js" data-title="Instagram-контент"></script>
 <script>
 const $ = id => document.getElementById(id);
+// adminFetch возвращает сырой Response — для чтения данных используем adminJson (парсит JSON)
+const adminJson = (path, opts) => adminFetch(path, opts).then(r => r.json());
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtT = t => t ? new Date(t).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 const cut = (s,n=40) => { s=String(s||''); return s.length>n ? s.slice(0,n)+'…' : (s||'—'); };
@@ -93,7 +95,7 @@ function onTypeChange(){
 
 async function loadSummary(){
   try{
-    const d = await adminFetch('/api/instagram-content/summary');
+    const d = await adminJson('/api/instagram-content/summary');
     const ins = d.insights||{};
     if(ins.skipped==='not-connected'){ $('connNote').style.display='block'; }
     const v = x => (x==null?'—':x);
@@ -109,7 +111,7 @@ async function loadSummary(){
 
 async function loadMedia(){
   try{
-    const r = await adminFetch('/api/instagram-content/media?limit=8');
+    const r = await adminJson('/api/instagram-content/media?limit=8');
     const items = r.items||[];
     $('mediaBody').innerHTML = items.length ? items.map(m=>`<tr>
       <td><img class="thumb" src="${esc(m.thumbnail_url||m.media_url||'')}" onerror="this.style.visibility='hidden'"></td>
@@ -121,7 +123,7 @@ async function loadMedia(){
 
 async function loadScheduled(){
   try{
-    const r = await adminFetch('/api/instagram-content/scheduled?limit=50');
+    const r = await adminJson('/api/instagram-content/scheduled?limit=50');
     const rows = r.rows||[];
     $('schedBody').innerHTML = rows.length ? rows.map(p=>`<tr>
       <td>${fmtT(p.scheduled_at||p.published_at||p.created_at)}</td><td>${esc(p.media_type)}</td>
@@ -141,7 +143,7 @@ async function publish(){
     if(t==='IMAGE') body.image_url=$('imgUrl').value.trim()||null;
     if(t==='CAROUSEL') body.children=$('children').value.split('\n').map(s=>s.trim()).filter(Boolean);
     if(t==='REELS') body.video_url=$('videoUrl').value.trim()||null;
-    const r = await adminFetch('/api/instagram-content/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r = await adminJson('/api/instagram-content/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = r.data||{};
     const res = d._result||{};
     if(d.status==='published') $('pubMsg').textContent='Опубліковано ✓';

@@ -30,18 +30,27 @@ async function writeOffForAppointment(apptId) {
     if (mats.rows.length) {
       let written = 0;
       for (const m of mats.rows) {
-        const qty = Math.ceil(Number(m.qty_used)); // stock_qty/delta — цілі числа, округляємо вгору
-        if (qty <= 0) continue;
-        // мінус БЕЗ обмеження нулем: склад може відставати від факту,
-        // відʼємний залишок сигналізує про недооблік, а не блокує списання
-        await client.query(
-          `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) - $1 WHERE id=$2`,
+        // #109: qty_used у грамах/мл — списуємо ТОЧНЕ дробове значення (stock_qty NUMERIC з міграції 199)
+        const qty = Number(m.qty_used);
+        if (!Number.isFinite(qty) || qty <= 0) continue; // від'ємне/нульове списання заборонено
+        // кламп нулем (уніфіковано з гілкою нижче): склад не йде в мінус,
+        // а фактичну нестачу фіксуємо приміткою в stock_movements — правда про розхід не губиться
+        const upd = await client.query(
+          `UPDATE product_variants pv
+              SET stock_qty = GREATEST(COALESCE(pv.stock_qty,0) - $1, 0)
+             FROM (SELECT id, COALESCE(stock_qty,0) AS before_qty
+                     FROM product_variants WHERE id=$2 FOR UPDATE) old
+            WHERE pv.id = old.id
+            RETURNING old.before_qty`,
           [qty, m.variant_id]
         );
+        const before = Number(upd.rows[0]?.before_qty ?? 0);
+        const shortage = qty > before ? +(qty - before).toFixed(3) : 0;
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
            VALUES ($1, $2, $3, $4, $5)`,
-          [m.variant_id, -qty, 'service:' + apptId, apptId, 'списання матеріалів візиту (#105)']
+          [m.variant_id, -qty, 'service:' + apptId, apptId,
+           'списання матеріалів візиту (#105/#109)' + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
         );
         written++;
       }
@@ -59,16 +68,25 @@ async function writeOffForAppointment(apptId) {
     );
     let written = 0;
     for (const c of cons.rows) {
-      const qty = Math.ceil(Number(c.qty_per_use)); // склад в штуках — округляем вверх
-      if (qty <= 0) continue;
-      await client.query(
-        `UPDATE product_variants SET stock_qty = GREATEST(stock_qty - $1, 0) WHERE id=$2`,
+      // #109: qty_per_use — дробові грами/мл, списуємо точно без округлення
+      const qty = Number(c.qty_per_use);
+      if (!Number.isFinite(qty) || qty <= 0) continue; // від'ємне/нульове списання заборонено
+      const upd = await client.query(
+        `UPDATE product_variants pv
+            SET stock_qty = GREATEST(COALESCE(pv.stock_qty,0) - $1, 0)
+           FROM (SELECT id, COALESCE(stock_qty,0) AS before_qty
+                   FROM product_variants WHERE id=$2 FOR UPDATE) old
+          WHERE pv.id = old.id
+          RETURNING old.before_qty`,
         [qty, c.variant_id]
       );
+      const before = Number(upd.rows[0]?.before_qty ?? 0);
+      const shortage = qty > before ? +(qty - before).toFixed(3) : 0;
       await client.query(
         `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
          VALUES ($1, $2, $3, $4, $5)`,
-        [c.variant_id, -qty, 'service:' + apptId, apptId, 'списание расходника по услуге']
+        [c.variant_id, -qty, 'service:' + apptId, apptId,
+         'списание расходника по услуге' + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
       );
       written++;
     }

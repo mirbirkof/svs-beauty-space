@@ -108,14 +108,14 @@ router.put('/channels/:channel', async (req, res) => {
 router.get('/conversations', async (req, res) => {
   try {
     const params = [];
-    let where = 'tenant_id=current_tenant_id()';
-    if (req.query.status) { params.push(req.query.status); where += ` AND status=$${params.length}`; }
-    if (req.query.channel) { params.push(req.query.channel); where += ` AND channel=$${params.length}`; }
+    let where = 'c.tenant_id=current_tenant_id()';
+    if (req.query.status) { params.push(req.query.status); where += ` AND c.status=$${params.length}`; }
+    if (req.query.channel) { params.push(req.query.channel); where += ` AND c.channel=$${params.length}`; }
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const rows = await q(
       `SELECT c.*, cl.name AS client_name
        FROM omni_conversations c LEFT JOIN clients cl ON cl.id=c.client_id
-       WHERE ${where} ORDER BY last_message_at DESC NULLS LAST LIMIT ${limit}`, params);
+       WHERE ${where} ORDER BY c.last_message_at DESC NULLS LAST LIMIT ${limit}`, params);
     res.json({ rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

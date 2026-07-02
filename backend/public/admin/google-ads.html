@@ -101,6 +101,8 @@
 <script src="/admin/assets/admin-shell.js" data-title="Реклама Google"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+// adminFetch возвращает сырой Response — для чтения данных используем adminJson (парсит JSON)
+const adminJson = (path, opts) => adminFetch(path, opts).then(r => r.json());
 const money = (n) => (Number(n)||0).toLocaleString('uk-UA',{maximumFractionDigits:0}) + ' ₴';
 const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cTypeLabel = {SEARCH:'Пошук',DISPLAY:'Медійна',PMAX:'PMax',LOCAL:'Локальна'};
@@ -110,7 +112,7 @@ async function loadAll(){ await Promise.all([loadKpi(), loadAccounts(), loadCamp
 
 async function loadKpi(){
   try{
-    const r = await adminFetch('/api/google-ads/roi');
+    const r = await adminJson('/api/google-ads/roi');
     $('kpis').innerHTML = [
       ['Витрати (30 дн)', money(r.total_spend)],
       ['Кліки', r.clicks||0],
@@ -128,7 +130,7 @@ async function loadKpi(){
 
 async function loadAccounts(){
   try{
-    const r = await adminFetch('/api/google-ads/accounts'); const items = r.items||[];
+    const r = await adminJson('/api/google-ads/accounts'); const items = r.items||[];
     const tb = $('accTbl').querySelector('tbody');
     const sel = $('kwAcc'); sel.innerHTML = '<option value="">—</option>';
     if(!items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Акаунтів немає. Підключіть перший.</td></tr>'; return; }
@@ -149,7 +151,7 @@ async function loadAccounts(){
 
 async function loadCampaigns(){
   try{
-    const r = await adminFetch('/api/google-ads/campaigns'); const items = r.items||[];
+    const r = await adminJson('/api/google-ads/campaigns'); const items = r.items||[];
     const tb = $('campTbl').querySelector('tbody');
     if(!items.length){ tb.innerHTML = '<tr><td colspan="10" class="muted">Немає кампаній. Дочекайтесь синку після підключення акаунта.</td></tr>'; return; }
     tb.innerHTML = items.map(c=>{
@@ -167,7 +169,7 @@ async function loadCampaigns(){
 
 async function loadConversions(){
   try{
-    const r = await adminFetch('/api/google-ads/conversions?limit=100'); const items = r.items||[];
+    const r = await adminJson('/api/google-ads/conversions?limit=100'); const items = r.items||[];
     const tb = $('convTbl').querySelector('tbody');
     if(!items.length){ tb.innerHTML = '<tr><td colspan="5" class="muted">Конверсій ще немає. Зʼявляться коли клієнт з gclid зробить запис/візит.</td></tr>'; return; }
     let pending=false;
@@ -187,7 +189,7 @@ async function loadKeywords(){
   const tb = $('kwTbl').querySelector('tbody');
   if(!accId){ tb.innerHTML = '<tr><td colspan="6" class="muted">Оберіть акаунт.</td></tr>'; return; }
   try{
-    const r = await adminFetch(`/api/google-ads/keywords?account_id=${accId}`); const items = r.items||[];
+    const r = await adminJson(`/api/google-ads/keywords?account_id=${accId}`); const items = r.items||[];
     if(r.note==='live-only' || !items.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">Доступно лише при підключеному Google Ads API (developer-token + OAuth).</td></tr>'; return; }
     tb.innerHTML = items.map(k=>{
       const qs = k.quality_score!=null ? `<span class="${k.quality_score<5?'qs-bad':(k.quality_score<8?'qs-mid':'qs-good')}">${k.quality_score}</span>` : '—';
@@ -215,14 +217,14 @@ async function doConnect(){
     closeConnect(); await loadAccounts();
   }catch(e){ $('connectMsg').textContent = 'Помилка: '+e.message; }
 }
-async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminFetch(`/api/google-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('API: '+r.error):(r.skipped?'Live-синк вимкнено (немає API-доступу).':`Синхронізовано кампаній: ${r.synced||0}`); await Promise.all([loadCampaigns(),loadAccounts()]); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
+async function syncAcc(id){ $('accMsg').textContent='Синк…'; try{ const r=await adminJson(`/api/google-ads/accounts/${id}/sync`,{method:'POST'}); $('accMsg').textContent = r.error?('API: '+r.error):(r.skipped?'Live-синк вимкнено (немає API-доступу).':`Синхронізовано кампаній: ${r.synced||0}`); await Promise.all([loadCampaigns(),loadAccounts()]); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
 async function disconnectAcc(id){ if(!confirm('Відключити акаунт? Статистика залишиться, синк припиниться.'))return; try{ await adminFetch(`/api/google-ads/accounts/${id}`,{method:'DELETE'}); await loadAccounts(); }catch(e){ $('accMsg').textContent='Помилка: '+e.message; } }
 
 // ── Кампанії ──
 async function toggleCamp(id,status){ try{ await adminFetch(`/api/google-ads/campaigns/${id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}); await loadCampaigns(); }catch(e){ alert('Помилка: '+e.message); } }
 
 // ── Конверсії ──
-async function uploadConv(){ $('convMsg').textContent='Вивантаження…'; try{ const r=await adminFetch('/api/google-ads/conversions/upload',{method:'POST'}); $('convMsg').textContent = r.skipped?`${r.pending} конверсій очікують (немає API-доступу).`:`Вивантажено: ${r.uploaded}, лишилось: ${r.pending}`; await loadConversions(); }catch(e){ $('convMsg').textContent='Помилка: '+e.message; } }
+async function uploadConv(){ $('convMsg').textContent='Вивантаження…'; try{ const r=await adminJson('/api/google-ads/conversions/upload',{method:'POST'}); $('convMsg').textContent = r.skipped?`${r.pending} конверсій очікують (немає API-доступу).`:`Вивантажено: ${r.uploaded}, лишилось: ${r.pending}`; await loadConversions(); }catch(e){ $('convMsg').textContent='Помилка: '+e.message; } }
 
 loadAll();
 </script>
