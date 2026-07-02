@@ -3749,15 +3749,23 @@ async function loadServices(){
   const body = document.getElementById('svcBody');
   body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;opacity:.6">Завантаження...</td></tr>';
   const qs = new URLSearchParams();
-  if(cat) qs.set('category',cat); if(st) qs.set('status',st); if(q) qs.set('search',q);
+  // #100: значення фільтра — id категорії з довідника або 'txt:Назва' для старих текстових
+  if(cat){ if(cat.indexOf('txt:')===0) qs.set('category',cat.slice(4)); else qs.set('category_id',cat); }
+  if(st) qs.set('status',st); if(q) qs.set('search',q);
   qs.set('sort','name'); qs.set('limit','500');
   const r = await api('/api/services?'+qs.toString());
   _svcList = r.items || [];
-  // фільтр категорій (тільки коли порожній)
+  // фільтр категорій (тільки коли порожній) — з довідника категорій
   const sel = document.getElementById('svcCatFilter');
   if(sel.options.length<=1){
-    const cr = await api('/api/services/categories');
-    for(const c of (cr.items||[])){ const o=document.createElement('option'); o.value=c.category; o.textContent=c.category+' ('+c.count+')'; sel.appendChild(o); }
+    let cats=[]; try{ cats=(await api('/api/service-categories?flat=1')).items||[]; }catch(_){ cats=[]; }
+    for(const c of cats){ const o=document.createElement('option'); o.value=String(c.id); o.textContent='　'.repeat(c.depth||0)+c.name+(c.services_count_total?' ('+c.services_count_total+')':''); sel.appendChild(o); }
+    // перехідний період: старі текстові категорії, яких немає в довіднику
+    try{
+      const known=new Set(); cats.forEach(c=>{ known.add(c.name); if(c.name_ua) known.add(c.name_ua); });
+      const cr = await api('/api/services/categories');
+      for(const c of (cr.items||[])){ if(!c.category||known.has(c.category)) continue; const o=document.createElement('option'); o.value='txt:'+c.category; o.textContent=c.category+' ('+c.count+', стара)'; sel.appendChild(o); }
+    }catch(_){}
     sel.value = cat;
   }
   if(!_svcList.length){ body.innerHTML='<tr><td colspan="8" style="padding:24px;text-align:center;opacity:.6">Послуг не знайдено</td></tr>'; _svcUpdateBulk(); return; }
