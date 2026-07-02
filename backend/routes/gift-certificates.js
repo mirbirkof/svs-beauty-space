@@ -236,7 +236,18 @@ router.post('/:id/sell', async (req, res) => {
     )).rows[0];
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'sale',$2,$2,$3,$4)`,
       [gc.id, gc.original_amount, req.user?.display_name || null, deferred ? 'продаж (відкладена активація)' : 'продаж']);
-    // гроші в касу — лише якщо при випуску не записано (issue вже пише). Тут sale без дублю каси.
+    // Гроші в касу (аудит 2026-07-02): тиражні сертифікати (/series/:id/issue) каси не
+    // торкались — для них оплата = момент /sell. Звичайний випуск (POST /) касу вже
+    // записав (ext_ref gc:issue:<id>) — тоді тут НЕ дублюємо. Ідемпотентно: повторний
+    // /sell не задвоїть завдяки ext_ref gc:sell:<id> (та й status='issued' вже не пройде).
+    try {
+      const issueOp = (await pool.query(`SELECT 1 FROM cash_operations WHERE ext_ref=$1 LIMIT 1`, [`gc:issue:${gc.id}`])).rows[0];
+      if (!issueOp) {
+        await recordCashIn({ category: 'sale_certificate', amount: Number(gc.original_amount),
+          method: b.payment_method || b.method || 'cash', ref_type: 'gift_certificate', ref_id: gc.id,
+          description: `Продаж сертифіката ${gc.code}`, ext_ref: `gc:sell:${gc.id}` });
+      }
+    } catch (e) { console.error('cash-ledger gc sell:', e.message); }
     logAction({ user: req.user, action: 'gc.sell', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip, meta: { payment_method: b.payment_method } }).catch(() => {});
     res.json({ ok: true, certificate: upd });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -495,12 +506,13 @@ router.post('/:id/cancel', async (req, res) => {
     const upd = await pool.query(`UPDATE gift_certificates SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING *`, [gc.id]);
     await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'cancellation',$2,$2,$3,$4)`,
       [gc.id, gc.remaining_amount, req.user?.display_name || null, req.body?.reason || 'анульовано']);
-    // Сторно каси: при випуску гроші зайшли (recordCashIn ext_ref 'gc:issue:<id>').
-    // Анулювання повертає покупцю невикористаний залишок — компенсуюча операція
-    // type='out', ідемпотентна по ext_ref 'gc:cancel:<id>' (повторний /cancel не задвоїть).
-    // Якщо продаж каси не торкався (тираж серії без оплати) — сторнувати нічого.
+    // Сторно каси: гроші зайшли або при випуску (recordCashIn ext_ref 'gc:issue:<id>'),
+    // або при продажу тиражного (ext_ref 'gc:sell:<id>'). Анулювання повертає покупцю
+    // невикористаний залишок — компенсуюча операція type='out', ідемпотентна по
+    // ext_ref 'gc:cancel:<id>' (повторний /cancel не задвоїть).
+    // Якщо каси не торкались (непроданий тираж серії) — сторнувати нічого.
     try {
-      const issueOp = (await pool.query(`SELECT method, amount FROM cash_operations WHERE ext_ref=$1 LIMIT 1`, [`gc:issue:${gc.id}`])).rows[0];
+      const issueOp = (await pool.query(`SELECT method, amount FROM cash_operations WHERE ext_ref IN ($1,$2) LIMIT 1`, [`gc:issue:${gc.id}`, `gc:sell:${gc.id}`])).rows[0];
       const back = Math.min(Number(gc.remaining_amount) || 0, issueOp ? Number(issueOp.amount) : 0);
       if (issueOp && back > 0) {
         await recordCashOut({ category: 'refund', amount: back, method: issueOp.method,
