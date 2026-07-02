@@ -53,6 +53,17 @@ function log(msg) {
   if (!QUIET) console.log(line);
 }
 
+// Ротация лога: держим последние 2000 строк чтобы файл не рос бесконечно
+function rotateLog() {
+  try {
+    const content = fs.readFileSync(LOG_FILE, 'utf8');
+    const lines = content.split('\n');
+    if (lines.length > 2500) {
+      fs.writeFileSync(LOG_FILE, lines.slice(-2000).join('\n') + '\n');
+    }
+  } catch (_) {}
+}
+
 function newClient(url) {
   return new Client({ connectionString: url, ssl: { rejectUnauthorized: false }, statement_timeout: 0 });
 }
@@ -220,6 +231,7 @@ async function fixSequences(primary, backup) {
 }
 
 async function main() {
+  rotateLog();
   if (!PRIMARY_URL || !BACKUP_URL) { log('FATAL: DATABASE_URL or NEON_BACKUP_URL missing'); process.exit(1); }
   const t0 = Date.now();
   const primary = newClient(PRIMARY_URL);

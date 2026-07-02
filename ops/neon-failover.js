@@ -67,7 +67,6 @@ const HEALTH_TIMEOUT_MS = 8000;
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
   try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (_) {}
-  console.log(line);
 }
 function readState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { return {}; } }
 function writeState(s) { try { fs.writeFileSync(STATE_FILE, JSON.stringify(s, null, 2)); } catch (_) {} }
