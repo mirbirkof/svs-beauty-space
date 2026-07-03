@@ -18,12 +18,18 @@ let _started = false, _tableReady = false;
 
 async function ensureTable(pool) {
   if (_tableReady) return;
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS booking_reminders (
-       appointment_id INTEGER NOT NULL,
-       kind TEXT NOT NULL,
-       sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-       PRIMARY KEY (appointment_id, kind))`);
+  // на проді app_tenant не має CREATE у public — таблицю створює міграція 201.
+  // CREATE тут лише страховка для dev; якщо прав нема — перевіряємо, що таблиця вже є.
+  try {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS booking_reminders (
+         appointment_id INTEGER NOT NULL,
+         kind TEXT NOT NULL,
+         sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+         PRIMARY KEY (appointment_id, kind))`);
+  } catch (e) {
+    await pool.query(`SELECT 1 FROM booking_reminders LIMIT 1`); // немає таблиці/прав → кинеться далі
+  }
   _tableReady = true;
 }
 
