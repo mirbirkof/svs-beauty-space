@@ -1098,6 +1098,12 @@ router.post('/v2/webhooks/register', requirePerm('sync.write'), async (req, res)
 
 function startCron() {
   if (fastRef) return;
+  // BP_SYNC_DISABLED=1 — ключі BeautyPro протухли (401 з 07.2026), салон повністю на власній CRM.
+  // Кожен tick = марний HTTP-виклик + 401-шум у логах. Вмикається назад видаленням env-змінної.
+  if (process.env.BP_SYNC_DISABLED === '1') {
+    console.warn('[bp-appt-sync] cron NOT started — BP_SYNC_DISABLED=1 (салон на власній CRM)');
+    return;
+  }
   if (!process.env.BEAUTYPRO_ID_KEY || !process.env.BEAUTYPRO_SECRET_KEY) {
     console.warn('[bp-appt-sync] cron NOT started — BeautyPro keys missing in env');
     return;
