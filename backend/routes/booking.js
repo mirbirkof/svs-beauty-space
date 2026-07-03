@@ -169,11 +169,8 @@ router.post('/telegram', async (req, res) => {
           );
           if (known.rowCount) {
             const nm = known.rows[0].name || known.rows[0].tg_first_name || '';
-            return tg('sendMessage', {
-              chat_id: msg.chat.id,
-              text: `З поверненням${nm ? ', ' + nm : ''}! 👋\nЩоб записатись — просто напишіть послугу (напр. «манікюр», «стрижка і фарбування»), і я підберу час.`,
-              reply_markup: { remove_keyboard: true },
-            });
+            // привітання з кнопкою «⚡ як минулого разу» (якщо є історія візитів)
+            return bookingBot.onStartKnown(msg, botCtx, nm);
           }
         } catch (e) { console.error('[booking/cold-start]', e.message); }
         // Новий користувач → пропонуємо підвʼязати номер

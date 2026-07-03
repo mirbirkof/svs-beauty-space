@@ -77,6 +77,34 @@ async function eligibleMasters(pool, serviceIds) {
   return r.rows.map(m => ({ id: Number(m.id), name: m.name }));
 }
 
+// останній візит клієнта за telegram_id → послуга + майстер (для «⚡ як минулого разу»)
+async function lastVisit(pool, uid) {
+  const r = await pool.query(
+    `SELECT a.service_id, a.master_id
+       FROM appointments a JOIN clients c ON c.id = a.client_id
+      WHERE c.telegram_id = $1 AND a.service_id IS NOT NULL
+        AND a.status IN ('done','arrived','confirmed','booked')
+      ORDER BY a.starts_at DESC LIMIT 1`, [uid]);
+  return r.rows[0] || null;
+}
+
+// Привітання відомого клієнта на /start: кнопка повтору минулого візиту (2 кліки до запису)
+async function onStartKnown(msg, ctx, nm) {
+  const uid = msg.from.id;
+  let svcName = null;
+  try {
+    const lv = await lastVisit(ctx.pool, uid);
+    if (lv) { const cat = await loadCatalog(ctx.pool); const s = cat.byId.get(lv.service_id); svcName = s && s.name; }
+  } catch (e) { console.error('[bookbot/last-visit]', e.message); }
+  return ctx.tg('sendMessage', {
+    chat_id: msg.chat.id, parse_mode: 'HTML',
+    text: `З поверненням${nm ? ', ' + nm : ''}! 💛\nНапишіть послугу (напр. «манікюр») — одразу покажу найближчий вільний час.${svcName ? '\n\nАбо повторіть минулий візит одним дотиком:' : ''}`,
+    reply_markup: svcName
+      ? { inline_keyboard: [[{ text: `⚡ Як минулого разу: ${svcName.slice(0, 40)}`, callback_data: 'bk:again' }]] }
+      : { remove_keyboard: true },
+  });
+}
+
 // телефон уже привʼязаного клієнта (digits) + імʼя
 async function getClient(pool, uid) {
   const r = await pool.query(
@@ -182,9 +210,23 @@ async function showQuick(ctx, uid, target, session) {
   const masterIds = selectedMasterIds(session);
   if (!masterIds.length) return restart(ctx, uid, target, 'Немає майстрів, що надають цю послугу онлайн.');
 
+  // побажання з тексту («в суботу», «після обіду», «о 15») звужують пошук
+  const pref = session.data.pref || {};
   let quick = [];
-  try { quick = await slotEngine.nearestSlots(ctx.pool, { masterIds, durationMin: dur || 60, days: MAX_DAYS, limit: QUICK_LIMIT }); }
-  catch (e) { console.error('[bookbot/quick]', e.message); }
+  try {
+    quick = await slotEngine.nearestSlots(ctx.pool, {
+      masterIds, durationMin: dur || 60, limit: QUICK_LIMIT,
+      days: pref.date ? 1 : MAX_DAYS,
+      fromDate: pref.date || null,
+      window: pref.win || null,
+      perDay: pref.date ? QUICK_LIMIT : 3,
+    });
+    // на бажаний день/вікно нічого немає → чесно кажемо і показуємо без обмежень
+    if (!quick.length && (pref.date || pref.win)) {
+      session.data.prefMiss = true; session.data.pref = null;
+      quick = await slotEngine.nearestSlots(ctx.pool, { masterIds, durationMin: dur || 60, days: MAX_DAYS, limit: QUICK_LIMIT });
+    } else session.data.prefMiss = false;
+  } catch (e) { console.error('[bookbot/quick]', e.message); }
   session.data.quick = quick;
 
   const lines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
@@ -206,8 +248,13 @@ async function showQuick(ctx, uid, target, session) {
   kb.push([{ text: '✏️ Інша послуга', callback_data: 'bk:retry' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }]);
 
   await saveSession(ctx.pool, uid, target.chat_id, 'quick', session.data);
+  const prefNote = session.data.prefMiss
+    ? '\n\n😔 На бажаний час вільних вікон немає — ось найближчі:' : '';
+  const whenTitle = (!session.data.prefMiss && pref.date)
+    ? `⚡ <b>Вільні вікна на ${fmtDateKey(pref.date)}</b> — оберіть час:`
+    : `⚡ <b>Найближчі вільні вікна</b> — оберіть час:`;
   const body = quick.length
-    ? `${head}${mName ? `\n💇 Майстер: <b>${mName}</b>` : ''}\n\n⚡ <b>Найближчі вільні вікна</b> — оберіть час:`
+    ? `${head}${mName ? `\n💇 Майстер: <b>${mName}</b>` : ''}${prefNote}\n\n${whenTitle}`
     : `${head}${mName ? `\n💇 Майстер: <b>${mName}</b>` : ''}\n\n😔 Найближчим часом вільних вікон немає. Спробуйте «Інший день» або іншого майстра.`;
   return respond(ctx.tg, target, body, kb);
 }
@@ -457,8 +504,13 @@ async function onText(msg, ctx) {
   const faq = await tryFaq(text, ctx);
   if (faq) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq }); return true; }
 
+  // «хочу в суботу пофарбуватись після обіду» → дата/вікно окремо, послуга окремо.
+  // Парсер детермінований (без ШІ): що не розпізнав на 100% — клієнт обере кнопками.
+  const intent = require('./date-intent').parse(text);
+  const svcText = intent.cleaned || text;
+
   const cat = await loadCatalog(ctx.pool);
-  const result = matcher.match(text, cat.indexed);
+  const result = matcher.match(svcText, cat.indexed);
   const parts = result.parts
     .map(p => ({
       query: p.query,
@@ -481,6 +533,7 @@ async function onText(msg, ctx) {
   // авто-вибір однозначних частин
   parts.forEach(p => { if (p.candidates.length === 1) p.pick = p.candidates[0]; });
   const session = { data: { parts, date: null, master: null } };
+  if (intent.date || intent.win) session.data.pref = { date: intent.date, win: intent.win };
   await advance(ctx, uid, { chat_id: chatId }, session);
   return true;
 }
@@ -505,6 +558,25 @@ async function onCallback(cq, ctx) {
       const session = { data: { parts: [{ query: catName, candidates: list }], date: null, master: null } };
       await ack();
       await advance(ctx, uid, target, session);
+      return true;
+    }
+
+    // повтор минулого візиту — працює БЕЗ сесії (кнопка з привітання /start)
+    if (data === 'bk:again') {
+      await ack();
+      const lv = await lastVisit(ctx.pool, uid).catch(() => null);
+      const cat = await loadCatalog(ctx.pool);
+      const svc = lv && cat.byId.get(lv.service_id);
+      if (!svc) { await respond(ctx.tg, target, 'Напишіть послугу — підберу вільний час.'); return true; }
+      const session = { data: { parts: [{ query: svc.name, candidates: [svc], pick: svc }], master: null } };
+      try {
+        session.data.masters = await eligibleMasters(ctx.pool, [svc.id]);
+        // той самий майстер, якщо він досі надає цю послугу онлайн
+        if (lv.master_id && session.data.masters.some(m => Number(m.id) === Number(lv.master_id))) {
+          session.data.master = Number(lv.master_id);
+        }
+      } catch (e) { console.error('[bookbot/again]', e.message); }
+      await showQuick(ctx, uid, target, session);
       return true;
     }
 
@@ -634,4 +706,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact };
+module.exports = { onText, onCallback, onContact, onStartKnown };

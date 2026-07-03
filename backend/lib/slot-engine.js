@@ -52,7 +52,7 @@ async function getSettings(pool) {
  * masterIds — внутрішні id майстрів у порядку пріоритету (online_rank).
  * Дедуп по часу: один час = одна кнопка, майстер — перший вільний за пріоритетом.
  */
-async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = true }) {
+async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = true, window = null }) {
   if (!masterIds || !masterIds.length) return [];
   const st = await getSettings(pool);
   const today = kyivToday();
@@ -109,9 +109,13 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
     }
   }
   out.sort((a, b) => a.startMin - b.startMin || prio.get(a.masterId) - prio.get(b.masterId));
-  if (!dedupe) return out;
+  // побажання клієнта «після обіду / зранку / о 15» — фільтр по вікну
+  const winFiltered = Array.isArray(window) && window.length === 2
+    ? out.filter(s => s.startMin >= window[0] && s.startMin <= window[1])
+    : out;
+  if (!dedupe) return winFiltered;
   const seen = new Set(), uniq = [];
-  for (const s of out) { if (!seen.has(s.label)) { seen.add(s.label); uniq.push(s); } }
+  for (const s of winFiltered) { if (!seen.has(s.label)) { seen.add(s.label); uniq.push(s); } }
   return uniq;
 }
 
@@ -119,12 +123,12 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
  * Найближчі вільні вікна по днях уперед (для «запису в 2 кліки»).
  * Повертає до `limit` слотів, максимум `perDay` на день — щоб клієнт бачив вибір днів.
  */
-async function nearestSlots(pool, { masterIds, durationMin, days = 14, limit = 6, perDay = 3 }) {
+async function nearestSlots(pool, { masterIds, durationMin, days = 14, limit = 6, perDay = 3, window = null, fromDate = null }) {
   const out = [];
-  const today = kyivToday();
+  const today = fromDate || kyivToday();
   for (let i = 0; i < days && out.length < limit; i++) {
     const date = addDays(today, i);
-    const slots = await freeSlotsForDate(pool, { date, masterIds, durationMin });
+    const slots = await freeSlotsForDate(pool, { date, masterIds, durationMin, window });
     // рівномірно: ранок/день/вечір, а не 3 підряд зранку
     const picked = [];
     if (slots.length <= perDay) picked.push(...slots);
