@@ -8126,12 +8126,29 @@ async function openAppt(id, masterId) {
           </div>
         </div>
         <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})">↩ Скасувати оплату</button>` : `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--bg-secondary,#f8fafc)">
+          <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">💸 Знижки та лояльність</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;width:56px">Знижка</span>
+            <input id="payDiscVal" type="number" min="0" step="1" placeholder="0" class="input" style="flex:1;padding:5px" oninput="payRecalc(${a.id})">
+            <select id="payDiscType" class="input" style="width:70px;padding:5px" onchange="payRecalc(${a.id})"><option value="percent">%</option><option value="fixed">грн</option></select>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;width:56px">Сертиф.</span>
+            <input id="payCertCode" placeholder="GC-XXXX-XXXX" class="input" style="flex:1;padding:5px;text-transform:uppercase" oninput="payRecalc(${a.id})">
+          </div>
+          <label id="payBonusRow" style="display:none;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" id="payBonusUse" onchange="payRecalc(${a.id})">
+            <span id="payBonusLabel">Списати бонуси</span>
+          </label>
+          <div id="payCalcNote" style="font-size:11px;color:var(--text-secondary);margin-top:6px"></div>
+        </div>
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
         <div style="display:flex;gap:6px;margin-top:6px">
           <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
           <label class="payway"><input type="radio" name="apptPayWay" value="card"> Картка</label>
         </div>
-        <button id="apptPayBtn" data-base="${Number(a.price)||0}" class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
+        <button id="apptPayBtn" data-service="${Number(a.price)||0}" class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
                 onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
       </div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
@@ -8170,6 +8187,7 @@ async function openAppt(id, masterId) {
   loadApptPhotos(a.id, 'after');
   loadApptProducts(a.id);
   loadApptMaterials(a.id);
+  if (!a.paid) loadPayOptions(a.id);
 }
 
 // Товари / розхідники візиту — підтягуємо реальні продажі товарів цього клієнта того дня
@@ -8213,7 +8231,9 @@ async function loadApptMaterials(id) {
     const rowSum = m => m.price_per_gram!=null ? Number(m.qty_used||0)*Number(m.price_per_gram)
       : (m.billable ? Number(m.qty_used||0)*Number(m.price||0) : null);
     const grand = items.reduce((s,m)=>s+(rowSum(m)||0),0);
-    const billable = Number(d.billable_total)||0; // тільки позиції з ціною за грам — ДОДАЄТЬСЯ ДО ЧЕКА
+    const billable = Number(d.billable_total)||0; // позиції у продаж клієнту (грам + пляшки) — ДОДАЄТЬСЯ ДО ЧЕКА
+    // освіжаємо базу оплати (послуга + платні матеріали), щоб знижки/бонуси рахувались від повного чека
+    { const btn=document.getElementById('apptPayBtn'); if(btn){ _payOpts.base = Math.round(((Number(btn.dataset.service)||0)+billable)*100)/100; if(typeof payRecalc==='function') payRecalc(id); } }
     const noPrice = items.some(m=>rowSum(m)==null);
     // кнопка оплати показує повну суму: послуга + платні матеріали
     const payBtn = document.getElementById('apptPayBtn');
@@ -8333,16 +8353,67 @@ async function apptMatPrefill(id) {
   else toast((r && (r.message || r.error)) || 'Помилка заповнення', 'error');
 }
 
-// Провести оплату: запис → виконано + прихід у касу (готівка/картка)
+// Знижки/бонуси при оплаті: підвантажуємо баланс бонусів + рахуємо превʼю чека
+let _payOpts = { base: 0, bonus_balance: 0, bonus: {} };
+async function loadPayOptions(id) {
+  const btn = document.getElementById('apptPayBtn');
+  const service = Number(btn?.dataset.service) || 0;
+  // база = ціна послуги + платні матеріали (продаж клієнту)
+  let billable = 0;
+  try { billable = Number((await api('/api/consumables/appointment/' + id)).billable_total) || 0; } catch (_) {}
+  _payOpts.base = Math.round((service + billable) * 100) / 100;
+  try {
+    const o = await api('/api/schedule/appointments/' + id + '/pay-options');
+    _payOpts.bonus_balance = Number(o.bonus_balance) || 0;
+    _payOpts.bonus = o.bonus || {};
+    const row = document.getElementById('payBonusRow');
+    if (row && _payOpts.bonus_balance > 0 && _payOpts.bonus.enabled) {
+      row.style.display = 'flex';
+      document.getElementById('payBonusLabel').textContent = `Списати бонуси (є ${_payOpts.bonus_balance}, макс ${_payOpts.bonus.max_pay_percent}% чека)`;
+    }
+  } catch (_) {}
+  payRecalc(id);
+}
+function payRecalc(id) {
+  const base = Number(_payOpts.base) || 0;
+  const dType = document.getElementById('payDiscType')?.value || 'percent';
+  const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
+  const r2 = n => Math.round(n * 100) / 100;
+  let remaining = base, disc = 0;
+  if (dType === 'percent' && dVal > 0) disc = r2(base * Math.min(dVal, 100) / 100);
+  else if (dType === 'fixed' && dVal > 0) disc = Math.min(r2(dVal), base);
+  remaining = r2(remaining - disc);
+  // бонуси (превʼю з лімітом %)
+  let bonusMoney = 0;
+  if (document.getElementById('payBonusUse')?.checked && _payOpts.bonus_balance > 0) {
+    const rate = Number(_payOpts.bonus.rate) || 1;
+    const maxMoney = r2(remaining * (Number(_payOpts.bonus.max_pay_percent) || 30) / 100);
+    bonusMoney = Math.min(_payOpts.bonus_balance * rate, maxMoney, remaining);
+  }
+  const cert = (document.getElementById('payCertCode')?.value || '').trim();
+  const note = document.getElementById('payCalcNote');
+  const finalApprox = r2(remaining - bonusMoney);
+  if (note) note.innerHTML = `Повна: <b>${_money(base)}</b>${disc>0?` · знижка −${_money(disc)}`:''}${cert?` · сертифікат (при оплаті)`:''}${bonusMoney>0?` · бонуси −${_money(bonusMoney)}`:''}<br>До сплати${cert?' (мінус сертифікат)':''}: <b style="color:#10b981">${_money(finalApprox)}</b>`;
+  const btn = document.getElementById('apptPayBtn');
+  if (btn) btn.textContent = `💳 Провести оплату · ${_money(finalApprox)}`;
+}
+// Провести оплату: запис → виконано + прихід у касу (готівка/картка) + знижки/сертифікат/бонуси
 async function payAppt(id) {
   const msg = document.getElementById('apptMsg');
   const way = (document.querySelector('input[name="apptPayWay"]:checked')||{}).value || 'cash';
+  const body = { method: way };
+  const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
+  if (dVal > 0) { body.discount_type = document.getElementById('payDiscType')?.value || 'percent'; body.discount_value = dVal; }
+  const cert = (document.getElementById('payCertCode')?.value || '').trim();
+  if (cert) body.certificate_code = cert;
+  if (document.getElementById('payBonusUse')?.checked && _payOpts.bonus_balance > 0) body.bonus_amount = _payOpts.bonus_balance;
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Проводжу оплату…';
   try {
-    const r = await api('/api/schedule/appointments/' + id + '/pay', { method:'POST', body: JSON.stringify({ method: way }) });
+    const r = await api('/api/schedule/appointments/' + id + '/pay', { method:'POST', body: JSON.stringify(body) });
     if (r.ok) {
       msg.style.color = '#10b981';
-      msg.textContent = r.already_paid ? 'Цей запис вже оплачено ✓' : `Оплату проведено ✓ ${_money(r.amount)} (${way==='card'?'картка':'готівка'})`;
+      const dsc = r.discount && r.discount.total > 0 ? ` (знижка ${_money(r.discount.total)})` : '';
+      msg.textContent = r.already_paid ? 'Цей запис вже оплачено ✓' : `Оплату проведено ✓ ${_money(r.final!=null?r.final:r.amount)}${dsc}${r.bonus_accrued?` · +${r.bonus_accrued} бонусів`:''}`;
       const a = (journalData?.appointments||[]).find(x => x.id===id); if (a) a.status='done';
       setTimeout(() => { closeAppt(); loadJournal(); if (typeof loadCashGauge==='function') loadCashGauge(); }, 900);
     } else if (r.error === 'no-open-shift') {

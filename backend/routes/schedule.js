@@ -1263,6 +1263,22 @@ router.post('/appointments', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── GET /api/schedule/appointments/:id/pay-options — дані для екрана оплати ──
+// Баланс бонусів клієнта + налаштування списання (макс %, курс, мінімум).
+router.get('/appointments/:id/pay-options', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.params.id);
+    const a = await pool.query(`SELECT client_id FROM appointments WHERE id=$1`, [id]);
+    if (!a.rows[0]) return res.status(404).json({ error: 'not-found' });
+    const bonusLib = require('../lib/bonus');
+    let balance = 0, settings = {};
+    try { if (a.rows[0].client_id) balance = Number((await bonusLib.getBalance(a.rows[0].client_id)).balance) || 0; } catch (_) {}
+    try { const s = await bonusLib.getSettings(); settings = { enabled: s.enabled !== false, max_pay_percent: Number(s.max_pay_percent) || 30, min_redeem: Number(s.min_redeem_amount) || 0, rate: Number(s.exchange_rate) || 1 }; } catch (_) {}
+    res.json({ ok: true, client_id: a.rows[0].client_id, bonus_balance: balance, bonus: settings });
+  } catch (e) { res.status(500).json({ error: 'internal' }); }
+});
+
 // ── POST /api/schedule/appointments/:id/unpay — скасувати оплату (заметка #114) ──
 // Прибирає прихід із каси по цьому запису, повертає статус «підтверджено» і
 // списані матеріали на склад. Після цього оплату можна провести заново (іншим
@@ -1272,28 +1288,54 @@ router.post('/appointments/:id/unpay', async (req, res) => {
     const pool = getPool();
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
+    const bonusLib = require('../lib/bonus');
     const client = await pool.connect();
-    let removed;
+    let removed, appt;
     try {
       await client.query('BEGIN'); await applyTenant(client);
+      // застосовані знижки/бонуси/сертифікат — для точного відкату
+      const a = await client.query(
+        `SELECT client_id, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
+           FROM appointments WHERE id=$1 FOR UPDATE`, [id]);
+      appt = a.rows[0] || {};
       removed = await client.query(
         `DELETE FROM cash_operations
           WHERE ref_type='appointment' AND ref_id=$1 AND type='in'
           RETURNING id, amount, method`, [id]);
-      await client.query(`UPDATE appointments SET status='confirmed', updated_at=NOW() WHERE id=$1`, [id]);
+      // сертифікат назад: повертаємо суму + журнал refund
+      if (appt.pay_cert_code && Number(appt.pay_cert_amount) > 0) {
+        const gc = await client.query(
+          `UPDATE gift_certificates SET remaining_amount = remaining_amount + $2,
+                  status = CASE WHEN status='fully_used' THEN 'partially_used' ELSE status END, updated_at=NOW()
+            WHERE UPPER(code)=UPPER($1) RETURNING id, remaining_amount`, [appt.pay_cert_code, appt.pay_cert_amount]);
+        if (gc.rows[0]) await client.query(
+          `INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,appointment_id,notes)
+           VALUES ($1,'refund',$2,$3,$4,$5)`,
+          [gc.rows[0].id, appt.pay_cert_amount, gc.rows[0].remaining_amount, id, `Скасування оплати візиту #${id}`]);
+      }
+      await client.query(
+        `UPDATE appointments SET status='confirmed', updated_at=NOW(),
+                discount_amount=NULL, pay_cert_code=NULL, pay_cert_amount=NULL,
+                pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL
+          WHERE id=$1`, [id]);
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
       throw e;
     } finally { client.release(); }
-    if (!removed.rows[0]) return res.json({ ok: true, nothing_to_cancel: true });
-    // повертаємо матеріали на склад (best-effort, ідемпотентно — всередині перевіряється флаг)
+    if (!removed.rows[0] && !appt.pay_settled_at) return res.json({ ok: true, nothing_to_cancel: true });
+    // бонуси: повертаємо списані, знімаємо нараховані (поза транзакцією — власні tx у lib/bonus)
+    if (appt.client_id) {
+      if (Number(appt.pay_bonus_redeemed) > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: Number(appt.pay_bonus_redeemed), description: `Повернення бонусів: скасування оплати візиту #${id}` }).catch(() => {});
+      if (Number(appt.pay_bonus_accrued) > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: -Number(appt.pay_bonus_accrued), description: `Зняття нарахування: скасування оплати візиту #${id}` }).catch(() => {});
+    }
+    // повертаємо матеріали на склад (best-effort, ідемпотентно)
     let stock = null;
     try {
       const { reverseWriteOffForAppointment } = require('../lib/consumables');
       stock = await reverseWriteOffForAppointment(id);
     } catch (_) {}
-    res.json({ ok: true, cancelled: removed.rows.map(r => ({ id: r.id, amount: Number(r.amount), method: r.method })), stock });
+    res.json({ ok: true, cancelled: removed.rows.map(r => ({ id: r.id, amount: Number(r.amount), method: r.method })), reverted_cert: appt.pay_cert_amount || 0, reverted_bonus: appt.pay_bonus_redeemed || 0, stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -1329,18 +1371,66 @@ router.post('/appointments/:id/pay', async (req, res) => {
          JOIN products p ON p.id = pv.product_id
         WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
     const matTotal = Number(mat.rows[0].total) || 0;
-    const amount = (Number(appt.price) || 0) + matTotal;
-    if (amount <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
+    const base = (Number(appt.price) || 0) + matTotal;   // повна вартість візиту до знижок
+    if (base <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
 
-    // вже оплачено вручну? (ідемпотентність)
+    // вже оплачено? (ідемпотентність): каса АБО маркер pay_settled_at (для випадку 0 готівки — все закрито сертифікатом/бонусами)
     const dup = await pool.query(
-      `SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]
+      `SELECT (SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1) AS op_id,
+              (SELECT pay_settled_at FROM appointments WHERE id=$1) AS settled`, [id]
     );
-    if (dup.rows[0]) {
+    if (dup.rows[0].op_id || dup.rows[0].settled) {
       await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
       await emitAppointmentCompleted(id, appt.master_id);
-      return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].id });
+      return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].op_id || null });
     }
+
+    // ── ЗНИЖКИ: ручна знижка → сертифікат → бонуси. Каса отримує РЕШТУ (реальні гроші). ──
+    const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    const bonusLib = require('../lib/bonus');
+    const dType = req.body?.discount_type;         // 'percent' | 'fixed'
+    const dVal = Number(req.body?.discount_value) || 0;
+    const certCode = String(req.body?.certificate_code || '').trim().toUpperCase();
+    const bonusReq = Number(req.body?.bonus_amount) || 0;
+
+    let remaining = base;
+    // 1) ручна знижка
+    let discountMoney = 0;
+    if (dType === 'percent' && dVal > 0) discountMoney = round2(base * Math.min(dVal, 100) / 100);
+    else if (dType === 'fixed' && dVal > 0) discountMoney = Math.min(round2(dVal), base);
+    remaining = round2(remaining - discountMoney);
+
+    // 2) сертифікат (валідуємо зараз, списуємо в транзакції)
+    let certRow = null, certMoney = 0;
+    if (certCode && remaining > 0) {
+      const gc = await pool.query(
+        `SELECT id, code, remaining_amount, status, valid_until FROM gift_certificates WHERE UPPER(code)=$1`, [certCode]);
+      if (!gc.rows[0]) return res.status(400).json({ error: 'cert-not-found', message: 'Сертифікат не знайдено' });
+      certRow = gc.rows[0];
+      if (!['active', 'partially_used', 'issued', 'sold'].includes(certRow.status))
+        return res.status(400).json({ error: 'cert-not-usable', message: `Сертифікат недоступний (${certRow.status})` });
+      if (certRow.valid_until && String(certRow.valid_until).slice(0, 10) < new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date()))
+        return res.status(400).json({ error: 'cert-expired', message: 'Термін дії сертифіката минув' });
+      certMoney = Math.min(round2(certRow.remaining_amount), remaining);
+      remaining = round2(remaining - certMoney);
+    }
+
+    // 3) бонуси (redeem керує власною транзакцією — робимо ДО каси; при dup-гонці нижче повертаємо)
+    let bonusMoney = 0, bonusRedeemed = 0;
+    if (bonusReq > 0 && appt.client_id && remaining > 0) {
+      try {
+        const r = await bonusLib.redeem({ clientId: appt.client_id, amount: bonusReq, checkAmount: remaining,
+          sourceType: 'appointment-pay', sourceId: id, description: `Оплата візиту #${id}` });
+        bonusMoney = round2(r.money); bonusRedeemed = round2(r.redeemed);
+        remaining = round2(remaining - bonusMoney);
+      } catch (e) {
+        return res.status(400).json({ error: 'bonus-redeem-failed', message: 'Не вдалося списати бонуси: ' + e.message });
+      }
+    }
+    const finalCash = Math.max(0, round2(remaining));
+    const totalDiscount = round2(discountMoney + certMoney + bonusMoney);
+    // сумісність зі старим кодом нижче: amount = скільки реально в касу
+    const amount = finalCash;
     // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
     // майстром того ж дня (точна привʼязка по GUID) — гроші вже в касі. Не дублюємо.
     if (appt.master_id && appt.bp_client) {
@@ -1378,44 +1468,83 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // Гонка двух параллельных /pay: SELECT-then-INSERT выше дырявый, поэтому дубль
     // добивает partial UNIQUE ux_cash_ops_appt_payment (миграция 198) + ON CONFLICT
     // DO NOTHING — проигравший запрос получает идемпотентный 200 already_paid, не вторую оплату.
+    const descr = (appt.service_name || 'Послуга')
+      + (matTotal > 0 ? ` + матеріали ${matTotal} грн` : '')
+      + (totalDiscount > 0 ? ` (знижка ${totalDiscount} грн)` : '');
     const client = await pool.connect();
-    let op;
+    let op = { rows: [{ id: null }] }, raceLost = false;
     try {
       await client.query('BEGIN'); await applyTenant(client);
-      op = await client.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
-         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
-         ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
-         RETURNING id`,
-        [shiftId, amount, method, id, appt.master_id || null,
-         (appt.service_name || 'Послуга') + (matTotal > 0 ? ` + матеріали ${matTotal} грн` : ''), opCreatedAt]
-      );
-      await client.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
-      await client.query('COMMIT');
+      // каса отримує реальні гроші лише якщо finalCash > 0 (0 → все закрито сертифікатом/бонусами)
+      if (finalCash > 0) {
+        op = await client.query(
+          `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+           VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
+           ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
+           RETURNING id`,
+          [shiftId, finalCash, method, id, appt.master_id || null, descr, opCreatedAt]
+        );
+        if (!op.rows[0]) raceLost = true;
+      }
+      if (!raceLost) {
+        // списання сертифіката (атомарно з касою)
+        if (certRow && certMoney > 0) {
+          await client.query(
+            `UPDATE gift_certificates
+                SET remaining_amount = remaining_amount - $2,
+                    status = CASE WHEN remaining_amount - $2 <= 0.001 THEN 'fully_used' ELSE 'partially_used' END,
+                    updated_at = NOW()
+              WHERE id = $1`, [certRow.id, certMoney]);
+          await client.query(
+            `INSERT INTO gift_certificate_transactions (gc_id, type, amount, balance_after, appointment_id, notes)
+             VALUES ($1,'usage',$2,$3,$4,$5)`,
+            [certRow.id, certMoney, round2(Number(certRow.remaining_amount) - certMoney), id, `Оплата візиту #${id}`]);
+        }
+        await client.query(
+          `UPDATE appointments SET status='done', updated_at=NOW(),
+                  discount_amount=$2, pay_cert_code=$3, pay_cert_amount=$4,
+                  pay_bonus_redeemed=$5, pay_bonus_money=$6, pay_settled_at=NOW()
+            WHERE id=$1`,
+          [id, discountMoney || null, certMoney > 0 ? certRow.code : null, certMoney || null,
+           bonusRedeemed || null, bonusMoney || null]);
+      }
+      await client.query(raceLost ? 'ROLLBACK' : 'COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
+      // повертаємо вже списані бонуси (redeem був до транзакції)
+      if (bonusRedeemed > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed, description: `Відкат: помилка оплати візиту #${id}` }).catch(() => {});
       throw e;
     } finally {
       client.release();
     }
-    if (!op.rows[0]) {
-      // проиграли гонку: оплату уже провёл параллельный запрос — отвечаем как dup
-      const race = await pool.query(
-        `SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
+    if (raceLost) {
+      // проиграли гонку: оплату уже провёл параллельный запрос — повертаємо бонуси, відповідаємо як dup
+      if (bonusRedeemed > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed, description: `Відкат гонки оплати візиту #${id}` }).catch(() => {});
+      const race = await pool.query(`SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
       await emitAppointmentCompleted(id, appt.master_id);
       return res.json({ ok: true, already_paid: true, operation_id: race.rows[0]?.id || null });
     }
 
-    // После COMMIT: списание расходников (идемпотентно) и эмит события — best-effort,
-    // не влияют на зафиксированные деньги/статус. Их сбой не откатывает оплату.
+    // После COMMIT: списание расходников + начисление бонусов от реально оплаченной суммы + эмит — best-effort.
     let stock = null;
     try {
       const { writeOffForAppointment } = require('../lib/consumables');
       stock = await writeOffForAppointment(id);
     } catch (e) { stock = { written: false, error: e.message }; }
+    // нарахування бонусів за візит (від суми, сплаченої грошима; ідемпотентно по source)
+    let accrued = 0;
+    if (appt.client_id && finalCash > 0) {
+      try {
+        const acc = await bonusLib.accrue({ clientId: appt.client_id, checkAmount: finalCash, autoRule: 'payment',
+          sourceType: 'appointment', sourceId: id, description: `Візит #${id}` });
+        accrued = acc ? Number(acc.amount || 0) : 0;
+        if (accrued > 0) await pool.query(`UPDATE appointments SET pay_bonus_accrued=$2 WHERE id=$1`, [id, accrued]).catch(() => {});
+      } catch (_) {}
+    }
     await emitAppointmentCompleted(id, appt.master_id);
 
-    res.json({ ok: true, operation_id: op.rows[0].id, amount, method, stock });
+    res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
+      discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount }, bonus_accrued: accrued });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
