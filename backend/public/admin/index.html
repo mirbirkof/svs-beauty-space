@@ -4633,7 +4633,8 @@ async function renderScheduleOverview(grid) {
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
        <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
-       <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одним кліком"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
+       <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одному майстру"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
+       <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — заміна автосинку BeautyPro"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
        <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
        <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
@@ -4666,6 +4667,48 @@ function schCopyWeek(){
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('copy'); }
   });
 }
+// Генератор графіка на кілька місяців уперед для ВСІХ (або обраних) майстрів — заміна BeautyPro-синку
+function schGenBatch(){
+  const items = (_schMonthData && _schMonthData.items) || _schMastersCache || [];
+  const mopts = items.map(m=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0"><input type="checkbox" class="gbMaster" value="${m.id}" checked> ${escapeHtml(m.name)}</label>`).join('') || '<i>Немає майстрів</i>';
+  const presets = [['2','2','2/2 — два через два'],['3','2','3/2'],['5','2','5/2 — пн-пт'],['6','1','6/1'],['1','1','1/1'],['custom','','Своя схема…']];
+  const presetOpts = presets.map(p=>`<option value="${p[0]}/${p[1]}">${p[2]}</option>`).join('');
+  const nextMonth = (()=>{ const d=new Date(); d.setDate(1); const ym=new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit'}).format(d); return ym+'-01'; })();
+  showModal('Генерувати графік на місяці вперед', `
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Заповнює графік за схемою на кілька місяців уперед — щоб онлайн-запис завжди мала вільні вікна. Замінює автосинк BeautyPro.</div>
+    <label class="set-p" style="display:block;margin-bottom:4px">Схема</label>
+    <select id="gbPreset" class="inp" style="margin-bottom:12px" onchange="document.getElementById('gbCustom').style.display=this.value==='custom/'?'flex':'none'">${presetOpts}</select>
+    <div id="gbCustom" style="display:none;gap:10px;margin-bottom:12px">
+      <label style="flex:1">Робочих<br><input type="number" id="gbWork" class="inp" value="2" min="1" max="30" style="width:100%"></label>
+      <label style="flex:1">Вихідних<br><input type="number" id="gbOff" class="inp" value="2" min="0" max="30" style="width:100%"></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <label style="flex:1">Перший робочий день<br><input type="date" id="gbAnchor" class="inp" value="${nextMonth}" style="width:100%"></label>
+      <label style="flex:1">Місяців уперед<br><input type="number" id="gbMonths" class="inp" value="3" min="1" max="6" style="width:100%"></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <label style="flex:1">Початок зміни<br><input type="time" id="gbStart" class="inp" value="09:00" style="width:100%"></label>
+      <label style="flex:1">Кінець зміни<br><input type="time" id="gbEnd" class="inp" value="18:00" style="width:100%"></label>
+    </div>
+    <label class="set-p" style="display:block;margin-bottom:4px">Майстри</label>
+    <div style="max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:4px">${mopts}</div>
+  `, async ()=>{
+    const master_ids = [...document.querySelectorAll('.gbMaster:checked')].map(c=>+c.value);
+    if(!master_ids.length){ toast('Оберіть хоча б одного майстра','error'); throw new Error('m'); }
+    let wd,od; const pv=document.getElementById('gbPreset').value;
+    if(pv==='custom/'){ wd=+document.getElementById('gbWork').value; od=+document.getElementById('gbOff').value; }
+    else { const p=pv.split('/'); wd=+p[0]; od=+p[1]; }
+    const anchor=document.getElementById('gbAnchor').value, start=document.getElementById('gbStart').value, end=document.getElementById('gbEnd').value;
+    const months_ahead=+document.getElementById('gbMonths').value||3;
+    if(!anchor){ toast('Вкажіть перший робочий день','error'); throw new Error('a'); }
+    if(end<=start){ toast('Кінець має бути пізніше початку','error'); throw new Error('t'); }
+    const fromYm = anchor.slice(0,7);
+    const r=await api('/api/schedule/apply-pattern-batch',{method:'POST',body:JSON.stringify({master_ids,months_ahead,work_days:wd,off_days:od,anchor,start,end,from_ym:fromYm})});
+    if(r&&r.ok){ toast(`Готово: ${r.masters} майстрів, ${r.months} міс. — ${r.work_days} робочих змін`); renderScheduleOverview(document.getElementById('schGrid')); }
+    else { toast((r&&r.error)||'Помилка','error'); throw new Error('gen'); }
+  });
+}
+
 // SAL-04 — швидке виставлення схеми графіка (2/2, 3/2, 5/2…) на весь місяць
 function schApplyPattern(){
   const ym = _schMonth || _ymNow();

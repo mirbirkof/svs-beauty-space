@@ -333,6 +333,70 @@ router.post('/day', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── POST /api/schedule/apply-pattern-batch — згенерувати графік на N місяців для КІЛЬКОХ майстрів ──
+// Замінює BeautyPro-синк: салон сам тримає графік на місяці вперед.
+// Body: { master_ids:[Int] | 'all', months_ahead:Int(1..6), work_days, off_days, anchor:"YYYY-MM-DD",
+//         start:"09:00", end:"18:00", from_ym?:"YYYY-MM" (default поточний місяць) }
+router.post('/apply-pattern-batch', async (req, res) => {
+  try {
+    const pool = getPool();
+    let { master_ids, months_ahead, work_days, off_days, anchor, start, end } = req.body || {};
+    work_days = parseInt(work_days, 10); off_days = parseInt(off_days, 10);
+    months_ahead = Math.min(Math.max(parseInt(months_ahead, 10) || 1, 1), 6);
+    if (!(work_days >= 1) || !(off_days >= 0)) return res.status(400).json({ error: 'work_days/off_days invalid' });
+    if (!/^\d{2}:\d{2}$/.test(start || '') || !/^\d{2}:\d{2}$/.test(end || '') || end <= start)
+      return res.status(400).json({ error: 'bad-time' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor || '')) return res.status(400).json({ error: 'anchor YYYY-MM-DD required' });
+
+    // список майстрів
+    let ids = master_ids;
+    if (ids === 'all' || !Array.isArray(ids) || !ids.length) {
+      const m = await pool.query(`SELECT id FROM masters WHERE active IS NOT FALSE AND COALESCE(online_booking_enabled,true) IS NOT FALSE`);
+      ids = m.rows.map(r => r.id);
+    } else ids = ids.map(Number).filter(Boolean);
+    if (!ids.length) return res.status(400).json({ error: 'no-masters' });
+
+    // місяці від поточного (або from_ym) на months_ahead уперед
+    const fromYm = /^\d{4}-\d{2}$/.test(req.body?.from_ym || '') ? req.body.from_ym
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+    const [FY, FM] = fromYm.split('-').map(Number);
+    const cycle = work_days + off_days;
+    const anchorD = new Date(anchor + 'T00:00:00Z');
+    const dayMs = 86400000;
+    let totalWork = 0, totalOff = 0, mastersDone = 0;
+
+    for (const mid of ids) {
+      for (let mo = 0; mo < months_ahead; mo++) {
+        const Y = FY + Math.floor((FM - 1 + mo) / 12);
+        const M = ((FM - 1 + mo) % 12) + 1;
+        const daysInMonth = new Date(Date.UTC(Y, M, 0)).getUTCDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          const cur = new Date(Date.UTC(Y, M - 1, d));
+          const iso = cur.toISOString().slice(0, 10);
+          let idx = Math.round((cur - anchorD) / dayMs) % cycle; if (idx < 0) idx += cycle;
+          if (idx < work_days) {
+            await pool.query(
+              `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+                 VALUES ($1,$2,$3,$4,'manual',NOW())
+               ON CONFLICT (master_id, work_date) DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
+              [mid, iso, start, end]);
+            totalWork++;
+          } else {
+            await pool.query(
+              `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+                 VALUES ($1,$2,NULL,NULL,'manual',NOW())
+               ON CONFLICT (master_id, work_date) DO UPDATE SET start_time=NULL, end_time=NULL, source='manual', synced_at=NOW()`,
+              [mid, iso]);
+            totalOff++;
+          }
+        }
+      }
+      mastersDone++;
+    }
+    res.json({ ok: true, masters: mastersDone, months: months_ahead, work_days: totalWork, off_days: totalOff });
+  } catch (e) { console.error('[schedule/batch]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
+});
+
 // ── POST /api/schedule/apply-pattern — застосувати схему графіка (2/2, 3/2, 5/2…) на весь місяць ──
 // Body: { master_id, ym:"YYYY-MM", work_days:Int, off_days:Int, anchor:"YYYY-MM-DD" (перший робочий день циклу),
 //         start:"09:00", end:"18:00", overwrite_offs:true }
