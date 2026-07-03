@@ -97,6 +97,13 @@ function tg(method, body) {
   });
 }
 
+// Нагадування про візити 24г/2г з кнопками «Буду/Перенести/Скасувати» (Етап 5).
+// Дедуп усередині (booking_reminders) — безпечно навіть якщо процесів два.
+if (BOT_TOKEN) {
+  try { require('../lib/booking-reminders').start(getPool, tg); }
+  catch (e) { console.error('[booking/reminders-init]', e.message); }
+}
+
 // In-memory schema — no init needed
 
 // === POST /init =========================================

@@ -440,11 +440,23 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
     bookingId = ob.rows[0].id;
   } catch (e) { console.error('[bookbot/log]', e.message); }
 
+  // перенос: нова бронь створена → старі записи скасовуємо
+  let moved = false;
+  if (Array.isArray(session.data.moveIds) && session.data.moveIds.length) {
+    try {
+      await ctx.pool.query(
+        `UPDATE appointments SET status='cancelled', updated_at=NOW()
+          WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
+        [session.data.moveIds]);
+      moved = true;
+    } catch (e) { console.error('[bookbot/move-cancel]', e.message); }
+  }
+
   await clearSession(ctx.pool, uid);
   const masterName = masterNameOf(session, masterId);
   await ctx.tg('sendMessage', {
     chat_id: chatId, parse_mode: 'HTML',
-    text: `✅ <b>Запис підтверджено!</b>\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${fmtPrice(total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
+    text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${fmtPrice(total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
     reply_markup: { remove_keyboard: true },
   });
 
@@ -577,6 +589,50 @@ async function onCallback(cq, ctx) {
         }
       } catch (e) { console.error('[bookbot/again]', e.message); }
       await showQuick(ctx, uid, target, session);
+      return true;
+    }
+
+    // кнопки з нагадувань (bk:r:ok|mv|cn:<id.id>) — працюють без сесії
+    if (data.startsWith('bk:r:')) {
+      const [, , act, idsKey] = data.split(':');
+      const ids = String(idsKey || '').split('.').map(Number).filter(Boolean);
+      await ack();
+      if (!ids.length) return true;
+      // безпека: керувати можна ТІЛЬКИ власними записами
+      const own = await ctx.pool.query(
+        `SELECT a.id, a.master_id, a.service_id FROM appointments a
+          JOIN clients c ON c.id = a.client_id
+         WHERE a.id = ANY($1::int[]) AND c.telegram_id = $2
+           AND a.status IN ('booked','confirmed')`, [ids, uid]);
+      if (!own.rows.length) { await respond(ctx.tg, target, 'Цей запис вже неактуальний.'); return true; }
+
+      if (act === 'ok') {
+        await respond(ctx.tg, target, '✅ Дякуємо за підтвердження! Чекаємо вас 💛');
+        return true;
+      }
+      if (act === 'cn') {
+        await ctx.pool.query(
+          `UPDATE appointments SET status='cancelled', updated_at=NOW()
+            WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
+          [own.rows.map(r => r.id)]);
+        await respond(ctx.tg, target,
+          '✖ Запис скасовано. Будемо раді бачити вас іншим разом 💛\nЩоб записатись знову — просто напишіть послугу.');
+        return true;
+      }
+      if (act === 'mv') {
+        const cat = await loadCatalog(ctx.pool);
+        const parts = own.rows.map(r => cat.byId.get(r.service_id)).filter(Boolean)
+          .map(s => ({ query: s.name, candidates: [s], pick: s }));
+        if (!parts.length) { await respond(ctx.tg, target, 'Напишіть послугу — підберу новий час.'); return true; }
+        const session = { data: { parts, master: null, moveIds: own.rows.map(r => r.id) } };
+        try {
+          session.data.masters = await eligibleMasters(ctx.pool, parts.map(p => p.pick.id));
+          const mid = own.rows[0].master_id;
+          if (mid && session.data.masters.some(m => Number(m.id) === Number(mid))) session.data.master = Number(mid);
+        } catch (e) { console.error('[bookbot/mv]', e.message); }
+        await showQuick(ctx, uid, target, session);
+        return true;
+      }
       return true;
     }
 
