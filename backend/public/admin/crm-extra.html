@@ -117,7 +117,7 @@ main { padding:24px 0; }
     <h2>Швидка операція</h2>
     <div class="row">
       <select id="op-type"><option value="in">+ Прихід</option><option value="out">- Розхід</option></select>
-      <select id="op-cat">
+      <select id="op-cat" onchange="opCatChanged()">
         <option value="sale_service">Послуга</option>
         <option value="sale_product">Товар</option>
         <option value="prepayment">Передоплата</option>
@@ -136,6 +136,10 @@ main { padding:24px 0; }
       <input id="op-amount" type="number" placeholder="Сума, ₴" style="width:130px">
       <input id="op-desc" placeholder="Коментар" style="flex:1;min-width:200px">
       <button class="btn" onclick="addOp()">Додати</button>
+    </div>
+    <div id="op-prod" style="display:none;margin-top:10px">
+      <input id="op-prod-q" placeholder="Пошук товару (назва або артикул) — ціна підставиться сама" style="width:100%" oninput="opProdSearch()">
+      <div id="op-prod-res" style="margin-top:6px"></div>
     </div>
   </div>
   <div class="card">
@@ -421,6 +425,40 @@ async function closeShift(){
   const cash = prompt('Фактична готівка в касі (для звірки):');
   if(cash===null) return;
   try{ const r = await api('/api/cashbox/shifts/'+CURRENT_SHIFT+'/close',{method:'POST',body:JSON.stringify({closing_cash:+cash})}); alert('Z-звіт #'+r.z_report.report_no+' створений. Розбіжність: '+r.z_report.difference+' ₴'); loadCashbox(); }catch(e){ alert(e.message); }
+}
+// пікер товару для швидкої операції «Товар»: показує ціну й залишок, клік — підставляє суму
+function opCatChanged(){
+  const isProd = document.getElementById('op-cat').value === 'sale_product';
+  document.getElementById('op-prod').style.display = isProd ? 'block' : 'none';
+  if (isProd) document.getElementById('op-prod-q').focus();
+}
+let _opProdT;
+function opProdSearch(){
+  clearTimeout(_opProdT);
+  _opProdT = setTimeout(async () => {
+    const q = document.getElementById('op-prod-q').value.trim();
+    const box = document.getElementById('op-prod-res');
+    if (q.length < 2) { box.innerHTML=''; return; }
+    try {
+      const d = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
+      const items = (d.items||[]).slice(0,15);
+      box.innerHTML = items.map(v => {
+        const nm = (v.product_name||'Товар') + (v.volume ? ' ' + v.volume : '');
+        return `<div onclick='opProdPick(${JSON.stringify(nm)},${v.price!=null?Number(v.price):null})'
+          style="display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px"
+          onmouseover="this.style.background='#f4f1ea'" onmouseout="this.style.background=''">
+          <span>${nm.replace(/</g,'&lt;')}</span>
+          <span style="white-space:nowrap"><b>${v.price!=null?Number(v.price).toFixed(0)+' ₴':'ціна не задана'}</b> <span style="color:#888">· склад: ${v.stock_qty!=null?v.stock_qty:'—'}</span></span>
+        </div>`;
+      }).join('') || '<div style="color:#888;font-size:13px;padding:6px">Нічого не знайдено</div>';
+    } catch(e){ box.innerHTML=''; }
+  }, 250);
+}
+function opProdPick(name, price){
+  if (price != null) document.getElementById('op-amount').value = price;
+  document.getElementById('op-desc').value = name;
+  document.getElementById('op-prod-res').innerHTML = '';
+  document.getElementById('op-prod-q').value = name;
 }
 async function addOp(){
   const t = document.getElementById('op-type').value;

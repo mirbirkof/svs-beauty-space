@@ -86,7 +86,7 @@ function dayKey(iso){ try{ return new Date(iso).toLocaleDateString('en-CA',{time
 function statusPill(st){
   const done=['done','confirmed','completed'].includes(st);
   const cancel=['cancelled','canceled','noshow','no_show'].includes(st);
-  const lbl={done:'Виконано',confirmed:'Підтверджено',completed:'Виконано',booked:'Заплановано',
+  const lbl={done:'Виконано',confirmed:'Підтверджено',completed:'Виконано',booked:'Заплановано',arrived:'Клієнт у салоні',
     cancelled:'Скасовано',canceled:'Скасовано',noshow:'Не прийшов',no_show:'Не прийшов'}[st]||st||'';
   return `<span class="pill ${done?'done':cancel?'cancel':''}">${esc(lbl)}</span>`;
 }

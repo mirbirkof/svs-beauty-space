@@ -14,7 +14,7 @@ router.get('/_variants', requirePerm(), async (req, res) => {
     let where = 'pv.active=TRUE';
     if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1)`; }
     const r = await pool.query(
-      `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku, pv.stock_qty
+      `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price
          FROM product_variants pv
          LEFT JOIN products p ON p.id = pv.product_id
         WHERE ${where}

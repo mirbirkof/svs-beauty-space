@@ -920,7 +920,7 @@ router.patch('/appointments/:id', async (req, res) => {
         && service_id === undefined && price === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
-    const allowed = ['booked', 'confirmed', 'done', 'cancelled', 'noshow'];
+    const allowed = ['booked', 'confirmed', 'arrived', 'done', 'cancelled', 'noshow'];
     if (status !== undefined && !allowed.includes(status)) {
       return res.status(400).json({ error: 'bad-status' });
     }

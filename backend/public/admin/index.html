@@ -348,6 +348,7 @@ select.input { background:var(--card); }
 .jappt .wish-badge { position:absolute; top:3px; left:4px; font-size:11px; line-height:1; background:#f59e0b; color:#fff; border-radius:5px; padding:1px 3px; box-shadow:0 1px 3px rgba(0,0,0,.25); }
 .jst-booked   { background:#6366f1; }
 .jst-confirmed{ background:#0ea5e9; }
+.jst-arrived  { background:#f59e0b; }
 .jst-done     { background:#10b981; }
 .jst-noshow   { background:#9ca3af; }
 /* Оплачено (підтверджено продажем у касі) — зелена рамка + позначка */
@@ -6285,7 +6286,7 @@ const SALON_OPEN = 8*60;            // 08:00
 const SALON_CLOSE = 19*60;          // 19:00
 let journalFocusMaster = '';        // фокус на одному майстрі (зручно на мобільному)
 const J_PX_PER_MIN = 1.4;           // висота сітки: 1 хв = 1.4px → 30хв ≈ 42px
-const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
+const ST_LABEL = { booked:'Заплановано', confirmed:'Підтверджено', arrived:'Клієнт у салоні', done:'Виконано', noshow:'Не прийшов', cancelled:'Скасовано' };
 
 const _hm = (d) => { const x = new Date(d); return x.getHours()*60 + x.getMinutes(); };
 const _toHHMM = (m) => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
@@ -6495,7 +6496,7 @@ async function pipelineDrop(ev, targetStage) {
   try {
     const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ status: targetStage }) });
     if (r && (r.ok || r.appointment)) {
-      const names = { booked:'Заплановано', confirmed:'Підтверджено', done:'Завершено', noshow:'Не прийшов', cancelled:'Скасовано' };
+      const names = { booked:'Заплановано', confirmed:'Підтверджено', arrived:'Клієнт у салоні', done:'Завершено', noshow:'Не прийшов', cancelled:'Скасовано' };
       toast('Візит → ' + (names[targetStage] || targetStage));
       loadPipeline();
     } else { toast('Не вдалося змінити статус', 'error'); }
@@ -7994,10 +7995,10 @@ async function openAppt(id, masterId) {
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Статус</span>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0 8px">
-          ${[['confirmed','Підтверджено','#0ea5e9'],['done','Виконано','#10b981'],['noshow','Не прийшов','#9ca3af'],['cancelled','Скасовано','#ef4444']].map(([s,lbl,col])=>`<button type="button" class="btn" style="padding:9px 6px;font-size:13px;font-weight:600;border:1.5px solid ${col};background:${a.status===s?col:'#fff'};color:${a.status===s?'#fff':col}" onclick="apptQuickStatus(${a.id},'${s}')">${lbl}</button>`).join('')}
+          ${[['confirmed','Підтверджено','#0ea5e9'],['arrived','У салоні','#f59e0b'],['done','Виконано','#10b981'],['noshow','Не прийшов','#9ca3af'],['cancelled','Скасовано','#ef4444']].map(([s,lbl,col])=>`<button type="button" class="btn" style="padding:9px 6px;font-size:13px;font-weight:600;border:1.5px solid ${col};background:${a.status===s?col:'#fff'};color:${a.status===s?'#fff':col}" onclick="apptQuickStatus(${a.id},'${s}')">${lbl}</button>`).join('')}
         </div>
         <select id="apptStatus" class="input">
-          ${['booked','confirmed','done','noshow','cancelled'].map(s=>`<option value="${s}"${a.status===s?' selected':''}>${ST_LABEL[s]}</option>`).join('')}
+          ${['booked','confirmed','arrived','done','noshow','cancelled'].map(s=>`<option value="${s}"${a.status===s?' selected':''}>${ST_LABEL[s]}</option>`).join('')}
         </select>
       </div>
       <div>
@@ -8172,7 +8173,7 @@ function apptMatSearchRun(id) {
       rbox.innerHTML = items.slice(0, 20).map(v => `
         <div onclick="apptMatPick(${id},${v.id})" style="display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg-secondary,#f8fafc)'" onmouseout="this.style.background=''">
           <span>${escapeHtml(v.product_name||'Товар')}${v.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(v.volume)}</span>`:''}</span>
-          <span style="color:var(--text-secondary);white-space:nowrap">склад: ${v.stock_qty!=null?v.stock_qty:'—'}</span>
+          <span style="white-space:nowrap">${v.price!=null?`<b>${_money(v.price)}</b> · `:''}<span style="color:var(--text-secondary)">склад: ${v.stock_qty!=null?v.stock_qty:'—'}</span></span>
         </div>`).join('') || '<div style="font-size:12px;color:var(--text-secondary);padding:6px">Нічого не знайдено</div>';
     } catch (_) { rbox.innerHTML = ''; }
   }, 250);
