@@ -16,9 +16,14 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
-const { maskPhone, shouldMaskPhones } = require('../lib/settings');
+const { maskPhone, shouldMaskPhones, getSetting } = require('../lib/settings');
 const router = express.Router();
 const pool = getPool();
+
+// Салон (за замовчуванням) vs майстер-одиночка. У салоні клієнти належать салону,
+// тож найманий майстер НЕ бачить розділ «Клієнти» (це для соло-майстрів, що ведуть свою базу).
+// Вмикається налаштуванням solo_master_mode=true (окремий tenant-одиночка).
+async function isSoloMaster() { return String(await getSetting('solo_master_mode', false)) === 'true'; }
 
 // Тільки авторизований майстер зі своїм master_id.
 router.use(requirePerm());
@@ -36,7 +41,7 @@ router.get('/profile', async (req, res) => {
     const r = await pool.query(
       `SELECT m.id, m.name, m.surname, m.phone, m.avatar, m.specialty, m.active
          FROM masters m WHERE m.id = $1`, [req.mid]);
-    res.json({ ok: true, master: r.rows[0] || null });
+    res.json({ ok: true, master: r.rows[0] || null, solo: await isSoloMaster() });
   } catch (e) { console.error('me/profile', e); res.status(500).json({ error: 'internal' }); }
 });
 
@@ -45,6 +50,8 @@ router.get('/profile', async (req, res) => {
 // (COALESCE(real_amount, price)), а не плановій ціні.
 router.get('/clients', async (req, res) => {
   try {
+    // у салоні клієнти належать салону — найманий майстер не бачить базу (тільки соло-майстер)
+    if (!(await isSoloMaster())) return res.json({ ok: true, items: [], count: 0, disabled: true, reason: 'salon-clients-belong-to-salon' });
     const r = await pool.query(
       `SELECT
           COALESCE(c.id, 0)                                      AS client_id,

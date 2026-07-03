@@ -538,17 +538,35 @@ router.get('/payroll/my', async (req, res) => {
       pool.query(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE LIMIT 1`, [mid])
     ]);
 
-    // Живая оценка текущего месяца — чтобы мастер видел сколько уже наработал,
-    // даже если хозяин ещё не закрыл расчётный период. Формула = как в /calculate.
+    // Живая оценка за месяц. Виручка береться з КАСИ (cash_operations) — єдине джерело
+    // реально сплачених грошей по майстру (онлайн-оплати + історія). Раніше бралось з
+    // appointments за поточний місяць → показувало 0 (липень порожній, гроші в касі).
+    // Місяць вибирається (?ym=YYYY-MM); за замовчуванням поточний, якщо порожній — останній із заробітком.
     let current = null;
-    const s = scheme.rows[0];
+    // якщо схеми ЗП немає — беремо % з картки майстра (commission_pct), щоб майстер усе одно
+    // бачив свій заробіток, а не порожньо. Без схеми і без commission → все ж покажемо виручку.
+    let s = scheme.rows[0];
+    if (!s) {
+      const cp = await pool.query(`SELECT COALESCE(commission_pct, 0)::numeric AS pct FROM masters WHERE id=$1`, [mid]);
+      s = { scheme_type: 'percent', percent: parseFloat(cp.rows[0]?.pct || 0), fixed_per_day: null, fixed_per_month: null, _from_commission: true };
+    }
     if (s) {
-      const ob = await pool.query(
-        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
-           FROM appointments
-          WHERE master_id=$1::int AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))
-            AND starts_at >= date_trunc('month', NOW())
-            AND starts_at <  (date_trunc('month', NOW()) + INTERVAL '1 month')`, [mid]);
+      const kyivYm = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+      let ym = /^\d{4}-\d{2}$/.test(req.query.ym) ? req.query.ym : kyivYm;
+      const revOf = (yymm) => pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(amount),0)::numeric AS revenue
+           FROM cash_operations
+          WHERE master_id=$1::int AND type='in' AND category='sale_service'
+            AND (created_at AT TIME ZONE 'Europe/Kyiv') >= ($2||'-01')::date
+            AND (created_at AT TIME ZONE 'Europe/Kyiv') <  (($2||'-01')::date + INTERVAL '1 month')`, [mid, yymm]);
+      let ob = await revOf(ym);
+      if ((ob.rows[0]?.cnt || 0) === 0 && !req.query.ym) {
+        const last = await pool.query(
+          `SELECT to_char((created_at AT TIME ZONE 'Europe/Kyiv'),'YYYY-MM') AS ym
+             FROM cash_operations WHERE master_id=$1::int AND type='in' AND category='sale_service'
+            ORDER BY created_at DESC LIMIT 1`, [mid]);
+        if (last.rows[0]?.ym) { ym = last.rows[0].ym; ob = await revOf(ym); }
+      }
       const cnt = ob.rows[0]?.cnt || 0;
       const revenue = parseFloat(ob.rows[0]?.revenue || 0);
       let percent_part = 0, fixed_part = 0;
@@ -556,31 +574,32 @@ router.get('/payroll/my', async (req, res) => {
       if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
         if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
         else if (s.fixed_per_day) {
-          // оцінка за поточний місяць: робочі зміни з графіка від 1-го числа по сьогодні
-          // (раніше тут був баг — бралося число дня місяця через getDate()).
-          const now = new Date();
-          const fromStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
-          const toStr = now.toISOString().slice(0, 10);
+          // робочі зміни з графіка за ОБРАНИЙ місяць (1-е число → кінець місяця або сьогодні)
+          const fromStr = ym + '-01';
+          const monthEnd = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).toISOString().slice(0, 10);
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const toStr = (ym === kyivYm && todayStr < monthEnd) ? todayStr : monthEnd;
           let shifts = await shiftDaysForMasterInRange(pool, mid, fromStr, toStr).catch(() => 0);
           if (!shifts) {
             const wd = await pool.query(
               `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
                  FROM appointments WHERE master_id=$1::int AND status NOT IN ('cancelled','noshow')
-                  AND starts_at >= date_trunc('month',NOW()) AND starts_at < (NOW() + INTERVAL '1 day')`, [mid]);
+                  AND (starts_at AT TIME ZONE 'Europe/Kiev') >= $2::date AND (starts_at AT TIME ZONE 'Europe/Kiev') <= $3::date`, [mid, fromStr, toStr]);
             shifts = wd.rows[0]?.d || 0;
           }
           fixed_part = parseFloat(s.fixed_per_day) * shifts;
         }
       }
-      const bsum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_bonuses WHERE master_id=$1 AND applied_record_id IS NULL AND bonus_date >= date_trunc('month',NOW())`, [mid]);
-      const psum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_penalties WHERE master_id=$1 AND applied_record_id IS NULL AND penalty_date >= date_trunc('month',NOW())`, [mid]);
-      const asum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_advances WHERE master_id=$1 AND settled=FALSE AND issued_at >= date_trunc('month',NOW())`, [mid]);
+      const mStart = ym + '-01';
+      const bsum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_bonuses WHERE master_id=$1 AND applied_record_id IS NULL AND bonus_date >= $2::date AND bonus_date < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
+      const psum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_penalties WHERE master_id=$1 AND applied_record_id IS NULL AND penalty_date >= $2::date AND penalty_date < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
+      const asum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_advances WHERE master_id=$1 AND settled=FALSE AND issued_at >= $2::date AND issued_at < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
       const bonus = parseFloat(bsum.rows[0].s), penalty = parseFloat(psum.rows[0].s), advance = parseFloat(asum.rows[0].s);
       const earned = percent_part + fixed_part + bonus;
       current = {
-        period_start: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10),
+        period_start: ym + '-01', ym,
         services_count: cnt, services_revenue: revenue,
-        scheme_type: s.scheme_type, percent: parseFloat(s.percent || 0),
+        scheme_type: s.scheme_type, percent: parseFloat(s.percent || 0), scheme_from_commission: !!s._from_commission,
         percent_part: Math.round(percent_part), fixed_part: Math.round(fixed_part),
         bonus, penalty, advance,
         earned: Math.round(earned),
