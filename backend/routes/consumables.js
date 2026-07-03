@@ -36,7 +36,7 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
     const r = await pool.query(
       `SELECT am.id, am.variant_id, am.qty_used, am.note,
-              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty
+              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
