@@ -3142,10 +3142,14 @@ const MENU_PERM_EMBED = [
   ['#inventory','stock.write'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
   ['/integrations.html','integrations.read'], ['#audit','audit.read'],
 ];
-// Сторінки платформи/інфраструктури — ЛИШЕ власник, незалежно від прав ролі
-const OWNER_ONLY_PAGES = ['saasplans','licenses','featflags','dwh','eventbus','searchadmin'];
+// Сторінки платформи/інфраструктури/налаштувань — ЛИШЕ власник, незалежно від прав ролі
+const OWNER_ONLY_PAGES = ['saasplans','licenses','featflags','dwh','eventbus','searchadmin',
+  'settings','sync','branding','mobileapp'];
+// Цілі групи меню, які бачить лише власник (Система, Налаштування)
+const OWNER_ONLY_GROUPS = ['grp-settings','grp-system'];
 function applyMenuPerms(){
   if (!USER || USER.role === 'owner') return; // власник бачить усе — жодних змін
+  OWNER_ONLY_GROUPS.forEach(id => { const g = document.getElementById(id); if (g) g.style.display = 'none'; });
   document.querySelectorAll('.sidebar-item').forEach(it => {
     let req = null;
     const pg = it.dataset.page;
@@ -3636,6 +3640,14 @@ function restoreSidebarGroups() {
 }
 
 function openEmbed(url, title) {
+  // Замок: власницькі embed-модулі (Система/Налаштування) закриті для всіх, крім owner
+  if (USER && USER.role !== 'owner') {
+    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access'];
+    if (OWNER_ONLY_EMBEDS.some(f => url.includes(f))) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
+    for (const [frag, p] of (typeof MENU_PERM_EMBED !== 'undefined' ? MENU_PERM_EMBED : [])) {
+      if (url.includes(frag) && !userHasPerm(p)) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
+    }
+  }
   // Відкриваємо модуль ВСЕРЕДИНІ єдиного каркаса (iframe) — меню зліва лишається
   // на місці, не перемальовується і не зникає. Більше жодних «переходів на окрему сторінку».
   currentPage = 'embed';
@@ -3658,6 +3670,13 @@ function openEmbed(url, title) {
 }
 
 function go(page) {
+  // Замок навігації: приховане в меню не відкривається і напряму (hash/посилання).
+  // Власник — без обмежень; іншим ролям owner-only сторінки та сторінки без прав → дашборд.
+  if (USER && USER.role !== 'owner' && page !== 'dashboard') {
+    const noAccess = (typeof OWNER_ONLY_PAGES !== 'undefined' && OWNER_ONLY_PAGES.includes(page))
+      || (typeof MENU_PERM_PAGE !== 'undefined' && MENU_PERM_PAGE[page] && !userHasPerm(MENU_PERM_PAGE[page]));
+    if (noAccess) { page = 'dashboard'; try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} }
+  }
   // після перезавантаження на #embed адреса модуля не зберігається — повертаємо в журнал
   if (page === 'embed' && !document.getElementById('embedFrame').getAttribute('data-url')) page = 'journal';
   // зупиняємо авто-оновлення воронки при переході на іншу сторінку
