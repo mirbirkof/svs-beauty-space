@@ -10567,7 +10567,7 @@ async function loadStockList() {
     body.innerHTML = items.map(v => `<tr>
       <td>${escapeHtml(v.product_name||'')}<div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
       <td>${escapeHtml(v.volume||'')}</td>
-      <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${Number(v.stock_qty)}</td>
+      <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
       <td style="text-align:right">${v.price!=null?_money(v.price):'—'}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>

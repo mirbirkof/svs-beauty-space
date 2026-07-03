@@ -188,7 +188,8 @@ router.get('/stock/list', async (req, res) => {
     if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
     const r = await getPool().query(
       `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku,
-              COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale
+              COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale,
+              pv.unit_ml, p.price_per_gram
          FROM product_variants pv
          JOIN products p ON p.id = pv.product_id
         WHERE ${where}
