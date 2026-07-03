@@ -96,13 +96,20 @@ async function onStartKnown(msg, ctx, nm) {
     const lv = await lastVisit(ctx.pool, uid);
     if (lv) { const cat = await loadCatalog(ctx.pool); const s = cat.byId.get(lv.service_id); svcName = s && s.name; }
   } catch (e) { console.error('[bookbot/last-visit]', e.message); }
-  return ctx.tg('sendMessage', {
+  // спершу оновлюємо постійне меню (витісняє меню старого бота в чаті)
+  await ctx.tg('sendMessage', {
     chat_id: msg.chat.id, parse_mode: 'HTML',
-    text: `З поверненням${nm ? ', ' + nm : ''}! 💛\nНапишіть послугу (напр. «манікюр») — одразу покажу найближчий вільний час.${svcName ? '\n\nАбо повторіть минулий візит одним дотиком:' : ''}`,
-    reply_markup: svcName
-      ? { inline_keyboard: [[{ text: `⚡ Як минулого разу: ${svcName.slice(0, 40)}`, callback_data: 'bk:again' }]] }
-      : { remove_keyboard: true },
+    text: `З поверненням${nm ? ', ' + nm : ''}! 💛\nНапишіть послугу (напр. «манікюр» чи «фарбування в суботу після обіду») — одразу покажу найближчий вільний час.`,
+    reply_markup: mainMenu(),
   });
+  if (svcName) {
+    await ctx.tg('sendMessage', {
+      chat_id: msg.chat.id,
+      text: 'Або повторіть минулий візит одним дотиком:',
+      reply_markup: { inline_keyboard: [[{ text: `⚡ Як минулого разу: ${svcName.slice(0, 40)}`, callback_data: 'bk:again' }]] },
+    });
+  }
+  return true;
 }
 
 // телефон уже привʼязаного клієнта (digits) + імʼя
@@ -457,7 +464,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
   await ctx.tg('sendMessage', {
     chat_id: chatId, parse_mode: 'HTML',
     text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${fmtPrice(total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
-    reply_markup: { remove_keyboard: true },
+    reply_markup: mainMenu(),
   });
 
   // передоплата Mono — fire-and-forget
@@ -507,10 +514,104 @@ async function tryFaq(text, ctx) {
   return out.join('\n');
 }
 
+// ── постійне меню (замінює старе меню погашеного svs-booking-api в чатах клієнтів) ──
+function mainMenu() {
+  return {
+    keyboard: [
+      [{ text: '🗓 Записатись' }],
+      [{ text: 'ℹ️ Мої записи' }, { text: '🧚 Адміністратор' }],
+    ],
+    resize_keyboard: true, is_persistent: true,
+  };
+}
+
+// майбутні візити клієнта з кнопками перенести/скасувати (повторно використовує bk:r:*)
+async function showMyVisits(ctx, uid, chatId) {
+  const r = await ctx.pool.query(
+    `SELECT a.id,
+            to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv', 'DD.MM о HH24:MI') AS label,
+            s.name AS service_name,
+            COALESCE(NULLIF(m.online_title,''), m.name) AS master_name
+       FROM appointments a
+       JOIN clients c ON c.id = a.client_id
+       LEFT JOIN services s ON s.id = a.service_id
+       LEFT JOIN masters m ON m.id = a.master_id
+      WHERE c.telegram_id = $1 AND a.status IN ('booked','confirmed') AND a.starts_at > NOW()
+      ORDER BY a.starts_at LIMIT 6`, [uid]);
+  if (!r.rows.length) {
+    return ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: 'У вас немає майбутніх записів.\nНапишіть послугу (напр. «манікюр») — підберу найближчий вільний час 💛',
+      reply_markup: mainMenu(),
+    });
+  }
+  const kb = [];
+  const lines = r.rows.map((v, i) => {
+    kb.push([{ text: `🔁 Перенести №${i + 1}`, callback_data: `bk:r:mv:${v.id}` },
+             { text: `✖ Скасувати №${i + 1}`, callback_data: `bk:r:cn:${v.id}` }]);
+    return `${i + 1}. <b>${v.label}</b> — ${v.service_name || 'візит'}${v.master_name ? ` (${v.master_name})` : ''}`;
+  });
+  return ctx.tg('sendMessage', {
+    chat_id: chatId, parse_mode: 'HTML',
+    text: `<b>Ваші майбутні записи:</b>\n\n${lines.join('\n')}`,
+    reply_markup: { inline_keyboard: kb },
+  });
+}
+
+// контакти адміністратора з профілю салону
+async function showAdminContact(ctx, chatId) {
+  let sp = {};
+  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'`)).rows[0]?.value || {}; } catch (_) {}
+  const out = ['🧚 <b>Адміністратор салону</b>'];
+  if (sp.phones) out.push(`📞 ${sp.phones}`);
+  if (sp.address) out.push(`📍 ${sp.address}`);
+  if (sp.hours) out.push(`🕐 ${sp.hours}`);
+  if (out.length === 1) out.push('Напишіть ваше питання тут — адміністратор відповість найближчим часом.');
+  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: mainMenu() });
+}
+
+// кнопки старого меню (лишились у чатах клієнтів) + нашого нового — обробка ДО матчера послуг
+async function tryMenuButton(text, msg, ctx) {
+  const uid = msg.from.id, chatId = msg.chat.id;
+  // лишаємо ТІЛЬКИ кирилицю/латиницю/цифри (ℹ та інші емодзі Unicode вважає «буквами» — \p{L} не годиться)
+  const t = text.toLowerCase().replace(/[^а-яёіїєґa-z0-9 ']/g, '').replace(/\s+/g, ' ').trim();
+  if (!t) return false;
+
+  if (/^записатись( на візит)?$|^запис(атися)?$/.test(t)) {
+    await onStartKnown(msg, ctx, msg.from.first_name || '');
+    return true;
+  }
+  if (/^мої записи$/.test(t)) { await showMyVisits(ctx, uid, chatId); return true; }
+  if (/адміністратор/.test(t)) { await showAdminContact(ctx, chatId); return true; }
+  if (/^прайс( ?лист)?$/.test(t)) {
+    const cat = await loadCatalog(ctx.pool);
+    const cats = [...new Set(cat.services.map(s => s.category).filter(Boolean))];
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: 'Оберіть напрям — покажу послуги з цінами:',
+      reply_markup: { inline_keyboard: cats.map(c => [{ text: c, callback_data: `bk:cat:${c.slice(0, 40)}` }]) },
+    });
+    return true;
+  }
+  // функції старого бота, що переїхали/вимкнені — мʼякий фолбек, а не «не впізнав послугу»
+  if (/^магазин косметики$|^отримати знижку$|^запросити подругу$|^мій графік$|^назад$/.test(t)) {
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: 'Цей розділ оновлюється 🛠\nЩоб записатись — напишіть послугу (напр. «манікюр»). З інших питань — 🧚 Адміністратор.',
+      reply_markup: mainMenu(),
+    });
+    return true;
+  }
+  return false;
+}
+
 async function onText(msg, ctx) {
   const uid = msg.from.id, chatId = msg.chat.id;
   const text = (msg.text || '').trim();
   if (!text || text.startsWith('/')) return false; // команди — не сюди
+
+  // кнопки меню (старого і нового) — ДО матчера, інакше «Не впізнав послугу "📝 Записатись"»
+  if (await tryMenuButton(text, msg, ctx)) return true;
 
   // FAQ перед розпізнаванням послуги: графік/адреса/телефон
   const faq = await tryFaq(text, ctx);
