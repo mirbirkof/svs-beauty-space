@@ -8208,10 +8208,10 @@ async function loadApptMaterials(id) {
     const d = await api('/api/consumables/appointment/' + id);
     const items = (d && d.items) || [];
     const locked = !!(d && d.stock_written_off);
-    // сума рядка: якщо у товару є ціна ЗА ГРАМ (фарба) — грами × грн/г (це йде в чек клієнта);
-    // інакше — роздрібна ціна × кількість (довідково)
+    // сума рядка, що ЙДЕ В ЧЕК: фарба за грам (грами × грн/г) АБО пляшка/шт у продаж (кількість × роздріб).
+    // Витрата салону (не billable, не за грам) — суми в чек нема (показуємо роздріб довідково нижче).
     const rowSum = m => m.price_per_gram!=null ? Number(m.qty_used||0)*Number(m.price_per_gram)
-      : ((m.price!=null && Number.isFinite(Number(m.price))) ? Number(m.price)*Number(m.qty_used||0) : null);
+      : (m.billable ? Number(m.qty_used||0)*Number(m.price||0) : null);
     const grand = items.reduce((s,m)=>s+(rowSum(m)||0),0);
     const billable = Number(d.billable_total)||0; // тільки позиції з ціною за грам — ДОДАЄТЬСЯ ДО ЧЕКА
     const noPrice = items.some(m=>rowSum(m)==null);
@@ -8226,13 +8226,13 @@ async function loadApptMaterials(id) {
         </div>
         ${items.length ? `<div style="display:grid;gap:6px">${items.map(m => `
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
-            <span style="flex:1;min-width:0">${escapeHtml(m.product_name||'Товар')}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}
+            <span style="flex:1;min-width:0">${escapeHtml(m.product_name||'Товар')}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}${m.price_per_gram!=null?' <span style="font-size:10px;color:#7c3aed;font-weight:700">за грам</span>':(m.billable?' <span style="font-size:10px;color:#6d28d9;font-weight:700">🛍 продаж</span>':'')}
               <span style="display:block;color:var(--text-secondary);font-size:11px">${m.price!=null?`ціна: ${_money(m.price)} · `:''}на складі: ${m.stock_qty!=null?m.stock_qty:'—'}${Number(m.stock_qty)<0?' ⚠':''}</span></span>
             <span style="display:flex;align-items:center;gap:10px;white-space:nowrap">
               ${locked
                 ? `<span style="font-weight:700">×${Number(m.qty_used)}</span>`
                 : `<span onclick="apptMatQty(${id},${m.variant_id},${Number(m.qty_used)})" title="Змінити кількість" style="font-weight:700;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">×${Number(m.qty_used)}</span>`}
-              <span style="font-weight:700;min-width:70px;text-align:right">${m.price_per_gram!=null?`<span title="${Number(m.qty_used)} г × ${Number(m.price_per_gram)} грн/г — у чек клієнта" style="color:#7c3aed">${_money(rowSum(m))}</span>`:(rowSum(m)!=null?_money(rowSum(m)):'—')}</span>
+              <span style="font-weight:700;min-width:70px;text-align:right">${m.price_per_gram!=null?`<span title="${Number(m.qty_used)} г × ${Number(m.price_per_gram)} грн/г — у чек клієнта" style="color:#7c3aed">${_money(rowSum(m))}</span>`:(m.billable?`<span title="продаж клієнту: ${Number(m.qty_used)} × роздріб — у чек" style="color:#6d28d9">${_money(rowSum(m))}</span>`:(rowSum(m)!=null?_money(rowSum(m)):'—'))}</span>
               ${locked ? '' : `<span onclick="apptMatDel(${id},${m.variant_id})" title="Прибрати матеріал" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`}
             </span>
           </div>`).join('')}
@@ -8258,6 +8258,9 @@ async function loadApptMaterials(id) {
               <option value="pack">упаковок</option>
             </select>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--text-secondary);cursor:pointer" title="Продаж товару клієнту цілою одиницею (пляшка/шт) за роздрібною ціною — додається до чека. Фарба за грам продається завжди автоматично.">
+            <input type="checkbox" id="apptMatBillable"> 🛍 Продаж клієнту (пляшка/шт за роздрібною ціною → в чек)
+          </label>
           <div id="apptMatResults" style="margin-top:6px;max-height:180px;overflow:auto"></div>
         </div>`}
       </div>`;
@@ -8301,13 +8304,14 @@ function apptMatPackSize(variantId) {
 async function apptMatPick(id, variantId) {
   let qty = Number(document.getElementById('apptMatQtyInp')?.value) || 1;
   const unit = document.getElementById('apptMatUnit')?.value || 'unit';
+  const billable = !!document.getElementById('apptMatBillable')?.checked;
   if (unit === 'pack') {
     const pack = apptMatPackSize(variantId);
     qty = qty * pack;
     if (pack > 1) toast(`${Number(document.getElementById('apptMatQtyInp').value)} упак. × ${pack} = ${qty} г/мл`);
   }
-  const r = await api('/api/consumables/appointment/' + id, { method: 'POST', body: JSON.stringify({ variant_id: variantId, qty_used: qty }) });
-  if (r && r.ok) { toast('Матеріал додано'); loadApptMaterials(id); }
+  const r = await api('/api/consumables/appointment/' + id, { method: 'POST', body: JSON.stringify({ variant_id: variantId, qty_used: qty, billable }) });
+  if (r && r.ok) { toast(billable ? 'Додано у продаж клієнту' : 'Матеріал додано'); loadApptMaterials(id); if (document.getElementById('apptMatBillable')) document.getElementById('apptMatBillable').checked = false; }
   else toast((r && (r.message || r.error)) || 'Не вдалося додати матеріал', 'error');
 }
 async function apptMatQty(id, variantId, cur) {

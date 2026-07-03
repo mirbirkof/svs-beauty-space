@@ -1036,10 +1036,12 @@ router.patch('/appointments/:id', async (req, res) => {
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
       await pool.query(
         `UPDATE cash_operations co SET amount = $2 + COALESCE((
-            SELECT SUM(ROUND(am.qty_used * p.price_per_gram, 2))
+            SELECT SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                            WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                            ELSE 0 END)
               FROM appointment_materials am
               JOIN product_variants pv ON pv.id = am.variant_id
-              JOIN products p ON p.id = pv.product_id AND p.price_per_gram IS NOT NULL
+              JOIN products p ON p.id = pv.product_id
              WHERE am.appointment_id = $1), 0)
           WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in' AND co.category='sale_service'`,
         [Number(req.params.id), newPrice]
@@ -1314,12 +1316,17 @@ router.post('/appointments/:id/pay', async (req, res) => {
     );
     if (!ap.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const appt = ap.rows[0];
-    // матеріали з ціною за грам (фарба 12 грн/г тощо) — продаються клієнту, додаються до чека
+    // матеріали, що продаються клієнту, додаються до чека:
+    //  - фарба за грам (price_per_gram) → грами × ціна/г, продається завжди
+    //  - пляшка/шт з прапорцем billable → кількість × роздрібна ціна варіанта
     const mat = await pool.query(
-      `SELECT COALESCE(SUM(ROUND(am.qty_used * p.price_per_gram, 2)),0)::float AS total
+      `SELECT COALESCE(SUM(
+                CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                     WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                     ELSE 0 END),0)::float AS total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
-         JOIN products p ON p.id = pv.product_id AND p.price_per_gram IS NOT NULL
+         JOIN products p ON p.id = pv.product_id
         WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
     const matTotal = Number(mat.rows[0].total) || 0;
     const amount = (Number(appt.price) || 0) + matTotal;

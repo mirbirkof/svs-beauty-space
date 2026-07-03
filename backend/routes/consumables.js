@@ -35,11 +35,12 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
     const aid = Number(req.params.apptId);
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
     const r = await pool.query(
-      `SELECT am.id, am.variant_id, am.qty_used, am.note,
+      `SELECT am.id, am.variant_id, am.qty_used, am.note, am.billable,
               p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price,
               p.price_per_gram,
-              CASE WHEN p.price_per_gram IS NOT NULL
-                   THEN ROUND(am.qty_used * p.price_per_gram, 2) END AS line_total
+              CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                   WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                   END AS line_total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
@@ -62,20 +63,22 @@ router.post('/appointment/:apptId', requirePerm('stock.write'), async (req, res)
   try {
     const aid = Number(req.params.apptId);
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
-    const { variant_id, qty_used, note } = req.body || {};
+    const { variant_id, qty_used, note, billable } = req.body || {};
     if (!variant_id) return res.status(400).json({ error: 'variant_id required' });
     // qty<=0 запрещено: отрицательное "списание" увеличило бы склад
     const qty = qty_used == null ? 1 : Number(qty_used);
     if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'qty_used must be > 0' });
+    const bill = billable === true || billable === 'true' || billable === 1;
     const a = await pool.query(`SELECT id FROM appointments WHERE id=$1`, [aid]);
     if (!a.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const r = await pool.query(
-      `INSERT INTO appointment_materials (appointment_id, variant_id, qty_used, note, created_by)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO appointment_materials (appointment_id, variant_id, qty_used, note, billable, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (appointment_id, variant_id)
-       DO UPDATE SET qty_used=EXCLUDED.qty_used, note=COALESCE(EXCLUDED.note, appointment_materials.note)
+       DO UPDATE SET qty_used=EXCLUDED.qty_used, note=COALESCE(EXCLUDED.note, appointment_materials.note),
+                     billable=EXCLUDED.billable
        RETURNING *`,
-      [aid, Number(variant_id), qty, note || null, (req.user && req.user.display_name) || null]
+      [aid, Number(variant_id), qty, note || null, bill, (req.user && req.user.display_name) || null]
     );
     await logAction({ user: req.user, action: 'material.set', entity: 'appointment', entity_id: aid, meta: { variant_id, qty } });
     res.json({ ok: true, item: r.rows[0] });
