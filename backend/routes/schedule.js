@@ -52,9 +52,14 @@ router.get('/masters', async (req, res) => {
     const pool = getPool();
     const all = req.query.all === '1' || req.query.all === 'true';
     const r = await pool.query(
-      `SELECT id, name, specialty, avatar, schedule_json, active, beautypro_id,
-              COALESCE(provides_services, true) AS provides_services, staff_role
-         FROM masters ${all ? '' : 'WHERE active = true'} ORDER BY active DESC, name`
+      `SELECT m.id, m.name, m.specialty, m.avatar, m.schedule_json, m.active, m.beautypro_id,
+              COALESCE(m.provides_services, true) AS provides_services, m.staff_role,
+              u.id AS user_id, rr.code AS login_role, rr.name AS login_role_name,
+              (u.id IS NOT NULL) AS has_login
+         FROM masters m
+         LEFT JOIN users u ON u.master_id = m.id AND u.is_active
+         LEFT JOIN roles rr ON rr.id = u.role_id
+        ${all ? '' : 'WHERE m.active = true'} ORDER BY m.active DESC, m.name`
     );
     // Типовий тижневий графік: агрегуємо реальні зміни з BeautyPro (master_schedule_days)
     // за вікно [-7..+35 днів] по днях тижня — найчастіша зміна per день стає шаблоном.

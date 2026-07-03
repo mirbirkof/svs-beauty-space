@@ -262,11 +262,11 @@ main { padding:24px 0; }
       <button class="btn ghost sm" id="m-filter-active" onclick="MASTERS_ALL=false;loadMasters()">Працюючі</button>
       <button class="btn ghost sm" id="m-filter-all" onclick="MASTERS_ALL=true;loadMasters()">Усі (вкл. звільнених)</button>
     </div>
-    <table><thead><tr><th>Ім'я</th><th>Спеціальність</th><th>Статус</th><th>Дії</th></tr></thead><tbody id="m-list"></tbody></table>
+    <table><thead><tr><th>Ім'я</th><th>Спеціальність</th><th>Доступ до CRM</th><th>Статус</th><th>Дії</th></tr></thead><tbody id="m-list"></tbody></table>
   </div>
   <div class="card" id="access-section">
-    <h2>Доступи до системи (логіни)</h2>
-    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Тут лише ті, хто має пароль/токен для входу в адмінку. Майстру логін не обов'язковий.</div>
+    <h2>Керування доступом до CRM</h2>
+    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Хто може заходити в систему і з якою роллю (власник, адміни, майстри з логіном). Це не окремий список людей — керування паролями/токенами. У майстра логін не обов'язковий: він працює у графіку і звітах без входу.</div>
     <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Логін/Тел</th><th>Email</th><th>Пароль</th><th>Активний</th><th>Дії</th></tr></thead><tbody id="u-list"></tbody></table>
   </div>
 </section>
@@ -689,6 +689,7 @@ async function loadMasters(){
       <tr>
         <td><a href="#" class="lnk" onclick="openMasterCard(${m.id});return false">${m.name}</a></td>
         <td>${m.specialty||'<span style="color:#bbb">—</span>'}</td>
+        <td>${m.has_login?`<span class="pill info" title="Заходить в адмінку">${m.login_role_name||m.login_role||'логін'}</span>`:'<span style="color:#bbb" title="Працює у графіку/звітах без входу в систему">без логіна</span>'}</td>
         <td><span class="pill ${m.active?'ok':'gray'}">${m.active?'працює':'звільнений'}</span></td>
         <td style="white-space:nowrap">
           ${m.active
