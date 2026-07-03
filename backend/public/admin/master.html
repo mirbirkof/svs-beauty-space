@@ -169,18 +169,36 @@ async function loadClients(){
 }
 
 // ── Зарплата ──
+let _payrollYm = null; // обраний календарний місяць (YYYY-MM); null = поточний/автофолбек
+function _ymShift(ym, delta){ const [y,m]=ym.split('-').map(Number); const d=new Date(Date.UTC(y,m-1+delta,1)); return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0'); }
+function payrollMonth(delta){
+  const nowYm=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);
+  const base=_payrollYm||nowYm;
+  const next=_ymShift(base,delta);
+  if(next>nowYm) return;              // не заглядаємо в майбутнє
+  _payrollYm=next; loadPayroll();
+}
 async function loadPayroll(){
   const el=document.getElementById('sec-payroll');
   try{
-    const d=await api('/api/payroll/my');
+    const d=await api('/api/payroll/my'+(_payrollYm?('?ym='+_payrollYm):''));
     const recs=d.records||[], bons=d.bonuses||[], pens=d.penalties||[], pays=d.payments||[];
     const lastPaid=pays.reduce((s,p)=>s+Number(p.amount||0),0);
     const totalAccr=recs.reduce((s,r)=>s+Number(r.total||0),0);
     let html='';
     const cur=d.current;
+    // навігація по календарних місяцях
+    const nowYm=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);
+    const shownYm=(cur&&cur.ym)|| _payrollYm || nowYm;
+    const navName=new Date(shownYm+'-01').toLocaleDateString('uk-UA',{month:'long',year:'numeric'});
+    const atNow=shownYm>=nowYm;
+    html+=`<div class="row" style="justify-content:center;align-items:center;gap:14px;margin-bottom:12px">
+      <button class="btn" onclick="payrollMonth(-1)" style="padding:6px 12px">‹</button>
+      <b style="text-transform:capitalize;min-width:150px;text-align:center">${esc(navName)}</b>
+      <button class="btn" onclick="payrollMonth(1)" ${atNow?'disabled style="opacity:.4;padding:6px 12px"':'style="padding:6px 12px"'}>›</button>
+    </div>`;
     if(cur){
       const mName=new Date(cur.period_start).toLocaleDateString('uk-UA',{month:'long',year:'numeric'});
-      const nowYm=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);
       const isCur=(cur.ym||'')===nowYm;
       html+=`<div class="card" style="background:linear-gradient(135deg,#1a1a1a,#2a2416);border:1px solid var(--gold)">
         <div class="s" style="text-transform:capitalize">${esc(mName)} · ${isCur?'наразі':'останній місяць із заробітком'}</div>
