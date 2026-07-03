@@ -11,8 +11,12 @@ const pool = getPool();
 const err = (res, e) => { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); };
 
 // послуги конкретного майстра (з базовою/персональною ціною)
-router.get('/by-master/:masterId', requirePerm('users.read'), async (req, res) => {
+router.get('/by-master/:masterId', requirePerm('booking.read'), async (req, res) => {
   try {
+    // майстер бачить лише ВЛАСНІ звʼязки (чужі персональні ціни закриті)
+    if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(req.params.masterId)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
     const r = await pool.query(
       `SELECT ms.id, ms.service_id, ms.price, ms.duration_min, ms.active, ms.source,
               s.name AS service_name, s.category,

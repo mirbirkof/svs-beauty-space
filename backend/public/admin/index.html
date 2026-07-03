@@ -8452,8 +8452,9 @@ async function getMasterServiceIds(masterId) {
   try {
     const r = await api('/api/master-services/by-master/' + key);
     const ids = new Set((r.items || []).filter(x => x.active !== false).map(x => Number(x.service_id)));
-    _msIdsCache[key] = ids.size ? ids : null;
-  } catch { _msIdsCache[key] = null; }
+    // майстер БЕЗ налаштованих звʼязок не бачить весь каталог з цінами — порожній набір
+    _msIdsCache[key] = ids.size ? ids : ((USER && USER.role === 'master') ? new Set([-1]) : null);
+  } catch { _msIdsCache[key] = (USER && USER.role === 'master') ? new Set([-1]) : null; }
   return _msIdsCache[key];
 }
 // Стан відкритого пікера послуг (один модал за раз): повний список + фільтр майстра
@@ -8465,7 +8466,8 @@ function _svcPickFiltered(query) {
   let list = services;
   if (st.ids && st.ids.size) {
     const f = services.filter(s => st.ids.has(Number(s.id)) || (st.keepId && Number(s.id) === Number(st.keepId)));
-    if (f.length) list = f; // якщо фільтр спорожнив список — показуємо всі (не блокуємо роботу)
+    // майстру порожній фільтр НЕ відкриває весь каталог (чужі ціни закриті); іншим ролям — старий фолбек
+    if (f.length || (USER && USER.role === 'master')) list = f;
   }
   // #101: текстовий пошук — спершу збіги з початку назви, потім будь-яке входження (без регістру, укр/рос)
   const q = String(query || '').trim().toLowerCase();
