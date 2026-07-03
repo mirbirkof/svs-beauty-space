@@ -3088,7 +3088,8 @@ function applyRoleUI(){
     // ?tenant=<slug> → TENANT_SLUG порожній (бекенд так само трактує: немає slug =
     // is_platform). Покупець завжди має slug → панель прихована (бекенд теж дає 403).
     const isPlatformUser = !TENANT_SLUG;
-    const canSaaS = isPlatformUser && !!USER && (USER.role === 'owner' || USER.role === 'admin');
+    // Тільки власник. Роль admin — найманий працівник салону, панель платформи не для нього.
+    const canSaaS = isPlatformUser && !!USER && USER.role === 'owner';
     saasGrp.style.display = canSaaS ? '' : 'none';
     if (!canSaaS && currentPage === 'saas') { try { go('dashboard'); } catch {} }
   }
@@ -3127,22 +3128,28 @@ const MENU_PERM_PAGE = {
   orders:'order.write', giftcerts:'order.write', subscriptions:'order.write',
   finance:'reports.finance', fincenter:'reports.finance', cashflow:'reports.finance',
   budgets:'reports.finance', contractors:'reports.finance', payroll:'reports.finance', plan:'reports.finance',
+  // модульні фінансові сторінки — ті самі гроші, той самий замок
+  pnl:'reports.finance', payouts:'reports.finance', budgeting:'reports.finance',
+  kpiemp:'reports.finance', kpibranches:'reports.finance',
   reminders:'reminders.manage', promos:'promo.write', reviews:'reviews.write',
   products:'stock.read', stock:'stock.read', purchasing:'stock.write', sync:'sync.write',
 };
 const MENU_PERM_EMBED = [
-  ['#cashbox','order.write'], ['#reports','reports.read'], ['/bi.html','reports.read'],
+  ['#cashbox','order.write'], ['#reports','reports.finance'], ['/bi.html','reports.finance'],
   ['/export.html','export.read'], ['#center','marketing.read'], ['#segments','marketing.read'],
   ['#campaigns','marketing.read'], ['#triggers','marketing.read'], ['/video-studio.html','marketing.read'],
   ['/dikidi.html','reviews.write'], ['#users-access','users.write'], ['#users','users.read'],
   ['#inventory','stock.write'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
   ['/integrations.html','integrations.read'], ['#audit','audit.read'],
 ];
+// Сторінки платформи/інфраструктури — ЛИШЕ власник, незалежно від прав ролі
+const OWNER_ONLY_PAGES = ['saasplans','licenses','featflags','dwh','eventbus','searchadmin'];
 function applyMenuPerms(){
   if (!USER || USER.role === 'owner') return; // власник бачить усе — жодних змін
   document.querySelectorAll('.sidebar-item').forEach(it => {
     let req = null;
     const pg = it.dataset.page;
+    if (pg && OWNER_ONLY_PAGES.includes(pg)) { it.style.display = 'none'; return; }
     if (pg && MENU_PERM_PAGE[pg]) req = MENU_PERM_PAGE[pg];
     const emb = it.dataset.embed;
     if (!req && emb) { for (const [frag, p] of MENU_PERM_EMBED) { if (emb.includes(frag)) { req = p; break; } } }
@@ -11431,7 +11438,9 @@ function saasFlagEdit(flag){
 <script src="/admin/modules/mod-marketing.js"></script>
 <script src="/admin/modules/mod-platform.js"></script>
 <script src="/admin/modules/mod-infra.js"></script>
-<script>if(window.__bootModules)window.__bootModules();</script>
+<script>if(window.__bootModules)window.__bootModules();
+// модулі щойно додали пункти меню — повторно застосовуємо права ролі (checkSession міг завершитись раніше)
+try { if (typeof applyMenuPerms === 'function') applyMenuPerms(); } catch(_) {}</script>
 
 <!-- ═══ AI-помічник: плаваюча голова (FAB) поверх усього ═══ -->
 <style>
