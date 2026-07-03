@@ -59,7 +59,8 @@ router.get('/masters', async (req, res) => {
          FROM masters m
          LEFT JOIN users u ON u.master_id = m.id AND u.is_active
          LEFT JOIN roles rr ON rr.id = u.role_id
-        ${all ? '' : 'WHERE m.active = true'} ORDER BY m.active DESC, m.name`
+        WHERE COALESCE(m.provides_services, true) = true ${all ? '' : 'AND m.active = true'}
+        ORDER BY m.active DESC, m.name`
     );
     // Типовий тижневий графік: агрегуємо реальні зміни з BeautyPro (master_schedule_days)
     // за вікно [-7..+35 днів] по днях тижня — найчастіша зміна per день стає шаблоном.
