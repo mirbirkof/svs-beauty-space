@@ -18,7 +18,8 @@ const pool = getPool();
 router.use(requirePerm());
 router.use((req, res, next) => {
   const role = req.user && req.user.role;
-  if (role === 'master' || role === 'client') {
+  // Заметки CRM — інструмент власника (прямий канал до Jarvis). Іншим ролям закрито.
+  if (role !== 'owner') {
     return res.status(403).json({ error: 'forbidden' });
   }
   next();

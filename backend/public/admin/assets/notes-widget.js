@@ -14,6 +14,11 @@
   if (!TOKEN) return;                              // не залогинен — кнопку не показываем
   var API = location.origin;
 
+  // Кнопка заметок — лише для власника (бекенд /api/notes теж віддає 403 іншим ролям)
+  var cachedUser = null;
+  try { cachedUser = JSON.parse(localStorage.getItem('svs_user') || 'null'); } catch (e) {}
+  if (cachedUser && cachedUser.role && cachedUser.role !== 'owner') return;
+
   function api(path, opts) {
     opts = opts || {};
     return fetch(API + '/api/notes' + path, {

@@ -3144,9 +3144,9 @@ const MENU_PERM_EMBED = [
 ];
 // Сторінки платформи/інфраструктури/налаштувань — ЛИШЕ власник, незалежно від прав ролі
 const OWNER_ONLY_PAGES = ['saasplans','licenses','featflags','dwh','eventbus','searchadmin',
-  'settings','sync','branding','mobileapp'];
-// Цілі групи меню, які бачить лише власник (Система, Налаштування)
-const OWNER_ONLY_GROUPS = ['grp-settings','grp-system'];
+  'settings','sync','branding','mobileapp','shifts','payroll','plan'];
+// Цілі групи меню, які бачить лише власник (Система, Налаштування, Команда)
+const OWNER_ONLY_GROUPS = ['grp-settings','grp-system','grp-team'];
 function applyMenuPerms(){
   if (!USER || USER.role === 'owner') return; // власник бачить усе — жодних змін
   OWNER_ONLY_GROUPS.forEach(id => { const g = document.getElementById(id); if (g) g.style.display = 'none'; });
@@ -3642,7 +3642,7 @@ function restoreSidebarGroups() {
 function openEmbed(url, title) {
   // Замок: власницькі embed-модулі (Система/Налаштування) закриті для всіх, крім owner
   if (USER && USER.role !== 'owner') {
-    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access'];
+    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access','#users','/shift-checklist.html'];
     if (OWNER_ONLY_EMBEDS.some(f => url.includes(f))) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
     for (const [frag, p] of (typeof MENU_PERM_EMBED !== 'undefined' ? MENU_PERM_EMBED : [])) {
       if (url.includes(frag) && !userHasPerm(p)) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
