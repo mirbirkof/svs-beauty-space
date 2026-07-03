@@ -21,6 +21,31 @@ router.get('/', requirePerm('users.read'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// GET /api/users/online — хто зараз онлайн + останній вхід. ТІЛЬКИ ВЛАСНИК.
+// Джерело активності: user_tokens.last_used (оновлюється на кожному запиті адмінки).
+// Онлайн = активність за останні 5 хв. Оголошено ДО параметричних /:id.
+router.get('/online', requirePerm(), async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'owner') return res.status(403).json({ error: 'forbidden', message: 'Доступно лише власнику' });
+    const r = await pool.query(
+      `SELECT u.id, u.display_name, rr.code AS role, rr.name AS role_name, u.is_active,
+              t.last_seen, u.last_login_at
+         FROM users u
+         JOIN roles rr ON rr.id = u.role_id
+         LEFT JOIN (SELECT user_id, MAX(last_used) AS last_seen FROM user_tokens GROUP BY user_id) t ON t.user_id = u.id
+        WHERE u.is_active
+        ORDER BY t.last_seen DESC NULLS LAST, u.display_name`);
+    const now = Date.now();
+    const items = r.rows.map(x => {
+      const seenMs = x.last_seen ? new Date(x.last_seen).getTime() : 0;
+      return { id: x.id, display_name: x.display_name, role: x.role, role_name: x.role_name,
+        last_seen: x.last_seen, last_login_at: x.last_login_at,
+        online: !!seenMs && (now - seenMs) < 5 * 60 * 1000 };
+    });
+    res.json({ ok: true, items, online_count: items.filter(i => i.online).length, generated_at: new Date(now).toISOString() });
+  } catch (e) { console.error('[users/online]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 // POST /api/users — создать сотрудника (с паролем/логином, опц. авто-мастер)
 router.post('/', requirePerm('users.write'), async (req, res) => {
   const client = await pool.connect();

@@ -891,6 +891,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
             <span class="material-icons-round">badge</span> Майстри / Співробітники
           </a>
+          <a class="sidebar-item" data-page="online" onclick="go('online')">
+            <span class="material-icons-round">wifi</span> Хто онлайн
+          </a>
           <a class="sidebar-item" onclick="go('settings');setTab('schedule')">
             <span class="material-icons-round">calendar_month</span> Графіки роботи
           </a>
@@ -1722,6 +1725,22 @@ select.input { background:var(--card); }
       </div>
 
       <!-- ═══ PRODUCTS ═══ -->
+      <!-- ═══ ХТО ОНЛАЙН (тільки власник) ═══ -->
+      <div class="page" id="page-online">
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <h3>Хто онлайн <button type="button" class="info-i" data-t="<b>Присутність команди.</b> Хто зараз у CRM (активність за останні 5 хв) і коли кожен заходив востаннє. Бачить лише власник. Оновлюється автоматично." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <span id="onlineSummary" style="font-size:13px;color:var(--text-secondary)"></span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead><tr><th>Співробітник</th><th>Роль</th><th>Статус</th><th>Останній вхід</th></tr></thead>
+              <tbody id="onlineBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary)">Завантаження…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="page" id="page-products">
         <div style="display:flex;gap:8px;margin-bottom:16px">
           <input id="productSearch" placeholder="Пошук товару..." class="input" style="flex:1" oninput="debounce(loadProducts,400)">
@@ -3200,7 +3219,7 @@ const MENU_PERM_EMBED = [
   ['/integrations.html','integrations.read'], ['#audit','audit.read'],
 ];
 // Сторінки платформи/інфраструктури/налаштувань — ЛИШЕ власник, незалежно від прав ролі
-const OWNER_ONLY_PAGES = ['saasplans','licenses','featflags','dwh','eventbus','searchadmin',
+const OWNER_ONLY_PAGES = ['online','saasplans','licenses','featflags','dwh','eventbus','searchadmin',
   'settings','sync','branding','mobileapp','shifts','payroll','plan'];
 // Цілі групи меню, які бачить лише власник (Система, Налаштування, Команда)
 const OWNER_ONLY_GROUPS = ['grp-settings','grp-system','grp-team'];
@@ -3751,7 +3770,7 @@ function go(page) {
   document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
-    orders:loadOrders, products:loadProducts, stock:loadStockPage, reviews:loadReviews,
+    orders:loadOrders, products:loadProducts, stock:loadStockPage, online:loadOnlinePage, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
     finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
@@ -10567,7 +10586,7 @@ async function loadStockList() {
     body.innerHTML = items.map(v => `<tr>
       <td>${escapeHtml(v.product_name||'')}<div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
       <td>${escapeHtml(v.volume||'')}</td>
-      <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
+      <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${(v.price_per_gram!=null && Number(v.unit_ml)>1)?`${Number(v.stock_qty)} <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">мл/г</span>`:Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
       <td style="text-align:right">${v.price!=null?_money(v.price):'—'}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>
@@ -10722,6 +10741,38 @@ async function loadStockMoves() {
   } catch (_) { body.innerHTML = ''; }
 }
 function loadStockPage() { loadStockList(); loadStockMoves(); stImpLoadDocs(); }
+
+// ── Хто онлайн (тільки власник) ──
+let _onlineTimer = null;
+function _agoText(iso) {
+  if (!iso) return 'ніколи';
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'щойно';
+  if (s < 3600) return Math.floor(s/60) + ' хв тому';
+  if (s < 86400) return Math.floor(s/3600) + ' год тому';
+  return new Date(iso).toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+async function loadOnline() {
+  const body = document.getElementById('onlineBody');
+  if (!body) return;
+  try {
+    const d = await api('/api/users/online');
+    if (d.error) { body.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger)">${d.message||'Немає доступу'}</td></tr>`; return; }
+    const items = d.items || [];
+    document.getElementById('onlineSummary').textContent = `🟢 Онлайн зараз: ${d.online_count} з ${items.length}`;
+    body.innerHTML = items.map(u => `<tr>
+      <td style="font-weight:600">${escapeHtml(u.display_name||'—')}</td>
+      <td>${escapeHtml(u.role_name||u.role||'')}</td>
+      <td>${u.online ? '<span style="color:#10b981;font-weight:700">🟢 Онлайн</span>' : `<span style="color:var(--text-secondary)">був ${_agoText(u.last_seen)}</span>`}</td>
+      <td style="color:var(--text-secondary)">${u.last_login_at ? new Date(u.last_login_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-secondary)">Немає співробітників</td></tr>';
+  } catch (_) { body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+}
+function loadOnlinePage() {
+  loadOnline();
+  if (_onlineTimer) clearInterval(_onlineTimer);
+  _onlineTimer = setInterval(() => { const p = document.getElementById('page-online'); if (p && p.classList.contains('active')) loadOnline(); else { clearInterval(_onlineTimer); _onlineTimer = null; } }, 30000);
+}
 // ── Створення товару з першим варіантом (раніше — лише через API/синк) ──
 async function newProductModal() {
   let brands = [];
