@@ -8095,7 +8095,8 @@ async function openAppt(id, masterId) {
           <div style="flex:1">Оплачено · ${_money(a.real_amount!=null?a.real_amount:a.price)} ${_payBadge(a.pay_method)}
             <div style="font-size:11px;font-weight:400;color:#059669">${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `Факт оплати (план ${_money(a.price)}) · у касі враховано` : 'У касі вже враховано'}</div>
           </div>
-        </div>` : `
+        </div>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})">↩ Скасувати оплату</button>` : `
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
         <div style="display:flex;gap:6px;margin-top:6px">
           <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
@@ -8284,6 +8285,22 @@ async function payAppt(id) {
       msg.style.color = '#ef4444'; msg.textContent = r.message || 'Немає відкритої зміни каси';
     } else if (r.error === 'no-price') {
       msg.style.color = '#ef4444'; msg.textContent = 'У запису не вказана ціна — додайте послугу з ціною';
+    } else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
+  } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
+}
+
+// Скасувати оплату (заметка #114): прибирає прихід із каси, повертає статус «підтверджено» + матеріали на склад
+async function unpayAppt(id) {
+  if (!confirm('Скасувати оплату? Прихід буде прибрано з каси, запис повернеться у статус «Підтверджено», списані матеріали — на склад.')) return;
+  const msg = document.getElementById('apptMsg');
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Скасовую оплату…';
+  try {
+    const r = await api('/api/schedule/appointments/' + id + '/unpay', { method:'POST', body: JSON.stringify({}) });
+    if (r.ok) {
+      msg.style.color = '#10b981';
+      msg.textContent = r.nothing_to_cancel ? 'Оплати по цьому запису не знайдено' : 'Оплату скасовано ✓';
+      const a = (journalData?.appointments||[]).find(x => x.id===id); if (a) { a.status='confirmed'; a.paid=false; }
+      setTimeout(() => { closeAppt(); loadJournal(); if (typeof loadCashGauge==='function') loadCashGauge(); }, 900);
     } else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
   } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
 }

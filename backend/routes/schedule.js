@@ -1031,6 +1031,16 @@ router.patch('/appointments/:id', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 
+    // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
+    // Стосується лише операцій, створених нашим /pay (ref_type='appointment'); продажі BP не чіпаємо.
+    if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
+      await pool.query(
+        `UPDATE cash_operations SET amount=$2
+          WHERE ref_type='appointment' AND ref_id=$1 AND type='in' AND category='sale_service' AND amount<>$2`,
+        [Number(req.params.id), newPrice]
+      ).catch(e => console.error('[schedule] price→cash sync:', e.message));
+    }
+
     // услуга выполнена → списываем расходники со склада (идемпотентно)
     let stock = null;
     if (status === 'done') {
@@ -1243,6 +1253,40 @@ router.post('/appointments', async (req, res) => {
       }).catch(e => console.error('[schedule] confirm enqueue:', e.message));
     }
     res.json({ ok: true, id: r.rows[0].id });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── POST /api/schedule/appointments/:id/unpay — скасувати оплату (заметка #114) ──
+// Прибирає прихід із каси по цьому запису, повертає статус «підтверджено» і
+// списані матеріали на склад. Після цього оплату можна провести заново (іншим
+// способом/з іншою ціною) — унікальний індекс знову вільний.
+router.post('/appointments/:id/unpay', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'bad-id' });
+    const client = await pool.connect();
+    let removed;
+    try {
+      await client.query('BEGIN'); await applyTenant(client);
+      removed = await client.query(
+        `DELETE FROM cash_operations
+          WHERE ref_type='appointment' AND ref_id=$1 AND type='in'
+          RETURNING id, amount, method`, [id]);
+      await client.query(`UPDATE appointments SET status='confirmed', updated_at=NOW() WHERE id=$1`, [id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { client.release(); }
+    if (!removed.rows[0]) return res.json({ ok: true, nothing_to_cancel: true });
+    // повертаємо матеріали на склад (best-effort, ідемпотентно — всередині перевіряється флаг)
+    let stock = null;
+    try {
+      const { reverseWriteOffForAppointment } = require('../lib/consumables');
+      stock = await reverseWriteOffForAppointment(id);
+    } catch (_) {}
+    res.json({ ok: true, cancelled: removed.rows.map(r => ({ id: r.id, amount: Number(r.amount), method: r.method })), stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
