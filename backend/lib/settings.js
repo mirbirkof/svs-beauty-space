@@ -46,4 +46,25 @@ function maskPhone(phone) {
   return '••• ••' + d.slice(-2);
 }
 
-module.exports = { getSetting, setSetting, getAllSettings, maskPhone };
+/* Чи маскувати телефони клієнтів для цього юзера (вимога власника 03.07.2026):
+   - маскуємо ТІЛЬКИ роль master;
+   - майстер-одиночка (єдиний активний майстер у салоні) бачить номери завжди;
+   - салон може відкрити номери тумблером masters_see_phone. */
+let _mcCache = { n: null, exp: 0 };
+async function activeMastersCount() {
+  if (_mcCache.exp > Date.now() && _mcCache.n !== null) return _mcCache.n;
+  try {
+    const r = await getPool().query(`SELECT COUNT(*)::int AS n FROM masters WHERE active IS DISTINCT FROM false`);
+    _mcCache = { n: r.rows[0].n, exp: Date.now() + 60 * 1000 };
+    return _mcCache.n;
+  } catch { return 2; } // невідомо → консервативно вважаємо салоном (маскуємо)
+}
+
+async function shouldMaskPhones(user) {
+  if (!user || user.role !== 'master') return false;
+  if ((await getSetting('masters_see_phone', false)) === true) return false;
+  if ((await activeMastersCount()) <= 1) return false; // майстер-одиночка бачить
+  return true;
+}
+
+module.exports = { getSetting, setSetting, getAllSettings, maskPhone, shouldMaskPhones };

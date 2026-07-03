@@ -3,7 +3,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
-const { getSetting, maskPhone } = require('../lib/settings');
+const { getSetting, maskPhone, shouldMaskPhones } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid } = require('../lib/schedule-month');
 const { findOverlap } = require('../lib/booking-guard');
@@ -714,11 +714,10 @@ router.get('/journal', async (req, res) => {
     // майстер у власному кабінеті бачить лише свої сегменти (не чужі послуги візиту)
     if (masterOnly) aRes.rows = aRes.rows.filter((a) => Number(a.master_id) === Number(masterOnly));
 
-    // Майстер не бачить номери клієнтів, якщо опція вимкнена
+    // Майстер не бачить номери клієнтів (одиночка і салон з увімкненим тумблером — бачать)
     let appts = aRes.rows;
-    if (req.user && req.user.role === 'master') {
-      const see = await getSetting('masters_see_phone', false);
-      if (see !== true) appts = appts.map(a => ({ ...a, client_phone: maskPhone(a.client_phone), phone_hidden: true }));
+    if (await shouldMaskPhones(req.user)) {
+      appts = appts.map(a => ({ ...a, client_phone: maskPhone(a.client_phone), phone_hidden: true }));
     }
 
     // блокування часу на цей день (CRM-06 06.05)
@@ -789,7 +788,11 @@ router.get('/online-events', async (req, res) => {
     );
 
     const maxId = r.rows.reduce((mx, e) => (e.event_type === 'new' && e.id > mx ? e.id : mx), sinceId);
-    res.json({ server_now: new Date().toISOString(), max_id: maxId, events: r.rows });
+    let events = r.rows;
+    if (await shouldMaskPhones(req.user)) {
+      events = events.map(e => ({ ...e, client_phone: maskPhone(e.client_phone), phone_hidden: true }));
+    }
+    res.json({ server_now: new Date().toISOString(), max_id: maxId, events });
   } catch (e) {
     console.error('[online-events]', e.message);
     // Не валимо пулінг 500-кою — віддаємо порожньо, фронт просто чекає далі.

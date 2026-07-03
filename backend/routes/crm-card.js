@@ -6,6 +6,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { maskPhone, shouldMaskPhones } = require('../lib/settings');
 
 const router = express.Router();
 const pool = getPool();
@@ -24,6 +25,11 @@ router.get('/:id(\\d+)/card', async (req, res) => {
     const id = +req.params.id;
     const client = (await safe(q(`SELECT * FROM clients WHERE id=$1`, [id]), []))[0];
     if (!client) return res.status(404).json({ error: 'not found' });
+    // Майстер салону не бачить номер клієнта (одиночка/тумблер — бачать)
+    if (await shouldMaskPhones(req.user)) {
+      client.phone = maskPhone(client.phone);
+      client.phone_hidden = true;
+    }
 
     const [stats, bonus, recentVisits, recentOrders, loyalty, prefs] = await Promise.all([
       safe(q(

@@ -16,6 +16,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
+const { maskPhone, shouldMaskPhones } = require('../lib/settings');
 const router = express.Router();
 const pool = getPool();
 
@@ -61,7 +62,11 @@ router.get('/clients', async (req, res) => {
        GROUP BY COALESCE(c.id, 0), COALESCE(c.name, a.client_name, 'Без імені'), c.phone
        ORDER BY last_visit DESC NULLS LAST
        LIMIT 500`, [req.mid]);
-    res.json({ ok: true, items: r.rows, count: r.rows.length });
+    let items = r.rows;
+    if (await shouldMaskPhones(req.user)) {
+      items = items.map(c => ({ ...c, phone: maskPhone(c.phone), phone_hidden: true }));
+    }
+    res.json({ ok: true, items, count: items.length });
   } catch (e) { console.error('me/clients', e); res.status(500).json({ error: 'internal' }); }
 });
 
