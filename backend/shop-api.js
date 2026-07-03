@@ -376,6 +376,10 @@ try {
 } catch(e) { console.error('[virtual-manager] init failed:', e.message); }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
+// Повний booking-роутер: telegram-вебхук бота @Svs_beautybot + розмовна запис + нагадування.
+// З 03.07 вебхук вказує СЮДИ (svs-shop-api) — окремий сервіс svs-booking-api деплоївся
+// з іншого репо і застряг на червневому коді. /catalog перехоплює booking-catalog вище.
+try { app.use('/api/booking', require('./routes/booking')); } catch(e) { console.error('[booking] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }
 try { app.use('/api/bi', require('./routes/bi')); } catch(e) { console.error('[bi] mount failed:', e.message); }
 try { app.use('/api/google-business', require('./routes/google-business')); } catch(e) { console.error('[google-business] mount failed:', e.message); }
