@@ -54,9 +54,10 @@ async function writeOffForAppointment(apptId) {
         );
         written++;
       }
-      await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [apptId]);
+      // флаг лише коли реально щось списали — інакше запис назавжди блокується від списання
+      if (written > 0) await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [apptId]);
       await client.query('COMMIT');
-      return { written: true, items: written, source: 'materials' };
+      return { written: written > 0, items: written, source: 'materials' };
     }
 
     const serviceId = a.rows[0].service_id;
@@ -90,9 +91,10 @@ async function writeOffForAppointment(apptId) {
       );
       written++;
     }
-    await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [apptId]);
+    // флаг лише коли реально щось списали (нема норм → залишаємо можливість списати пізніше)
+    if (written > 0) await client.query(`UPDATE appointments SET stock_written_off=TRUE WHERE id=$1`, [apptId]);
     await client.query('COMMIT');
-    return { written: true, items: written };
+    return { written: written > 0, items: written };
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
@@ -101,4 +103,50 @@ async function writeOffForAppointment(apptId) {
   }
 }
 
-module.exports = { writeOffForAppointment };
+/**
+ * Повернути матеріали на склад при відкаті виконаної записи (done → інший статус).
+ * Ідемпотентно: повертає рівно те, що списали рухи 'service:<id>', і лише один раз
+ * (рухи повернення позначаються reason 'service-reverse:<id>', повторний виклик бачить їх суму 0).
+ */
+async function reverseWriteOffForAppointment(apptId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await applyTenant(client);
+    const a = await client.query(
+      `SELECT id, stock_written_off FROM appointments WHERE id=$1 FOR UPDATE`, [apptId]);
+    if (!a.rows[0]) { await client.query('ROLLBACK'); return { reversed: false, reason: 'not-found' }; }
+    if (!a.rows[0].stock_written_off) { await client.query('ROLLBACK'); return { reversed: false, reason: 'not-written' }; }
+
+    // нетто по варіанту: списано мінус вже повернуто
+    const mv = await client.query(
+      `SELECT variant_id, -SUM(delta) AS to_return
+         FROM stock_movements
+        WHERE reason IN ('service:' || $1::text, 'service-reverse:' || $1::text)
+        GROUP BY variant_id
+       HAVING SUM(delta) < 0`, [apptId]);
+    let items = 0;
+    for (const m of mv.rows) {
+      const qty = Number(m.to_return);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      await client.query(
+        `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`,
+        [qty, m.variant_id]);
+      await client.query(
+        `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+         VALUES ($1, $2, 'service-reverse:' || $3::text, $3, 'повернення матеріалів: відкат статусу «Виконано»')`,
+        [m.variant_id, qty, apptId]);
+      items++;
+    }
+    await client.query(`UPDATE appointments SET stock_written_off=FALSE WHERE id=$1`, [apptId]);
+    await client.query('COMMIT');
+    return { reversed: true, items };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { writeOffForAppointment, reverseWriteOffForAppointment };

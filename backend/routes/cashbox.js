@@ -428,9 +428,32 @@ router.post('/operations', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10::timestamptz, NOW())) RETURNING *`,
       [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null, createdAt]
     );
+
+    // Продаж товару через касу → списуємо зі складу в ТІЙ ЖЕ транзакції.
+    // Раніше каса писала лише гроші, а залишок не змінювався — розсинхрон обліку.
+    // variant_id/qty передає UI каси (пікер товару); без variant_id — поведінка як раніше.
+    let stockAfter = null;
+    const vId = Number(req.body.variant_id);
+    if (type === 'in' && category === 'sale_product' && Number.isFinite(vId) && vId > 0) {
+      const q = Number(req.body.qty) > 0 ? Number(req.body.qty) : 1;
+      const upd = await client.query(
+        `UPDATE product_variants
+            SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1)
+          WHERE id = $2
+        RETURNING id, stock_qty`, [q, vId]
+      );
+      if (upd.rows[0]) {
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, notes)
+           VALUES ($1, $2, 'sale', $3)`,
+          [vId, -q, 'каса: продаж товару, операція #' + r.rows[0].id]
+        );
+        stockAfter = upd.rows[0].stock_qty;
+      }
+    }
     await client.query('COMMIT');
     await rememberCustomCat(type, category); // запам'ятати «свою» статтю (#75)
-    res.json({ ok: true, operation: r.rows[0] });
+    res.json({ ok: true, operation: r.rows[0], stock_qty: stockAfter });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) {}
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });

@@ -32,15 +32,18 @@ router.get('/needs', requirePerm('stock.read'), async (req, res) => {
   try {
     const { priority } = req.query;
     const r = await getPool().query(
-      `SELECT p.id AS product_id, p.name, COALESCE(p.stock,0) AS current_stock,
+      `SELECT p.id AS product_id, p.name,
+              COALESCE(v.qty, COALESCE(p.stock,0)) AS current_stock,
               p.min_stock, p.max_stock,
-              GREATEST(COALESCE(p.max_stock, p.min_stock*2, 0) - COALESCE(p.stock,0), 0) AS suggested_qty,
+              GREATEST(COALESCE(p.max_stock, p.min_stock*2, 0) - COALESCE(v.qty, COALESCE(p.stock,0)), 0) AS suggested_qty,
               ar.preferred_supplier_id, s.name AS supplier_name
        FROM products p
+       LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty
+                    FROM product_variants WHERE active IS NOT FALSE GROUP BY product_id) v ON v.product_id = p.id
        LEFT JOIN auto_purchase_rules ar ON ar.product_id = p.id AND ar.active
        LEFT JOIN suppliers s ON s.id = ar.preferred_supplier_id
-       WHERE p.active AND p.min_stock IS NOT NULL AND COALESCE(p.stock,0) <= p.min_stock
-       ORDER BY (COALESCE(p.stock,0) = 0) DESC, p.name`);
+       WHERE p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock
+       ORDER BY (COALESCE(v.qty, COALESCE(p.stock,0)) = 0) DESC, p.name`);
     let items = r.rows.map(x => ({ ...x, priority: Number(x.current_stock) <= 0 ? 'critical' : 'normal' }));
     if (priority) items = items.filter(x => x.priority === priority);
     res.json({ items, count: items.length });
@@ -398,10 +401,13 @@ router.delete('/auto-rules/:id', requirePerm('stock.write'), async (req, res) =>
 async function runAutoPurchase() {
   const pool = getPool();
   const due = await pool.query(
-    `SELECT p.id AS product_id, p.name, COALESCE(p.stock,0) stock, p.min_stock, p.max_stock,
+    `SELECT p.id AS product_id, p.name,
+            COALESCE(v.qty, COALESCE(p.stock,0)) AS stock, p.min_stock, p.max_stock,
             ar.preferred_supplier_id, ar.max_auto_amount, ar.auto_approve
      FROM auto_purchase_rules ar JOIN products p ON p.id=ar.product_id
-     WHERE ar.active AND p.active AND p.min_stock IS NOT NULL AND COALESCE(p.stock,0) <= p.min_stock`);
+     LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty
+                  FROM product_variants WHERE active IS NOT FALSE GROUP BY product_id) v ON v.product_id = p.id
+     WHERE ar.active AND p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock`);
   // группируем по поставщику
   const bySupplier = {};
   for (const row of due.rows) {

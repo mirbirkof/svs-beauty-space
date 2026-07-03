@@ -246,9 +246,14 @@ router.post('/consumption/write-off', W, async (req, res) => {
           [b.appointment_id, serviceId, ap?.master_id || null, b.branch_id || null, ap?.client_id || null, m.variant_id,
            normQty, actualQty, m.unit, dev, mi?.deviation_reason || null, mi?.deviation_note || null, costNorm, costActual, actualQty == null]
         )).rows[0];
-        // склад: списываем целыми единицами только для pcs/pair
-        if ((m.unit === 'pcs' || m.unit === 'pair') && Number.isFinite(usedQty)) {
-          await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1) WHERE id=$2`, [Math.round(usedQty), m.variant_id]);
+        // склад: точна кількість без округлення (stock_qty NUMERIC з міграції 199;
+        // Math.round різав 0.33 pcs → 0 і списання губилось). Списуємо всі одиниці, і g/ml теж.
+        if (Number.isFinite(usedQty) && usedQty > 0) {
+          await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1) WHERE id=$2`, [usedQty, m.variant_id]);
+          await client.query(
+            `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+             VALUES ($1, $2, 'service:' || $3::text, $3, 'списання за нормами процедур (material-norms)')`,
+            [m.variant_id, -usedQty, b.appointment_id]);
         }
         logged.push(row);
       }

@@ -122,7 +122,7 @@ router.get('/:serviceId', requirePerm(), async (req, res) => {
     const sid = Number(req.params.serviceId);
     const r = await pool.query(
       `SELECT sc.id, sc.variant_id, sc.qty_per_use,
-              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty
+              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price, pv.wholesale
          FROM service_consumables sc
          JOIN product_variants pv ON pv.id = sc.variant_id
          LEFT JOIN products p ON p.id = pv.product_id

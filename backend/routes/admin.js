@@ -171,6 +171,43 @@ router.patch('/variants/:id', async (req, res) => {
 });
 
 // приход товара (склад)
+// Залишки на складі: плоский список варіантів з назвами, цінами і залишком
+router.get('/stock/list', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const vals = [];
+    let where = `pv.active IS NOT FALSE AND p.active IS NOT FALSE`;
+    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1)`; }
+    const r = await getPool().query(
+      `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku,
+              COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale
+         FROM product_variants pv
+         JOIN products p ON p.id = pv.product_id
+        WHERE ${where}
+        ORDER BY p.name, pv.volume LIMIT 400`, vals);
+    res.json({ items: r.rows, count: r.rows.length });
+  } catch (e) { console.error('[admin:stock-list]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// Історія руху товару: останні рухи з назвами (прихід/списання/продаж/послуги)
+router.get('/stock/movements', async (req, res) => {
+  try {
+    const lim = Math.min(Number(req.query.limit) || 40, 200);
+    const vals = [lim];
+    let where = '1=1';
+    if (Number(req.query.variant_id) > 0) { vals.push(Number(req.query.variant_id)); where = 'sm.variant_id = $2'; }
+    const r = await getPool().query(
+      `SELECT sm.id, sm.variant_id, sm.delta, sm.reason, sm.notes, sm.created_at,
+              p.name AS product_name, pv.volume
+         FROM stock_movements sm
+         LEFT JOIN product_variants pv ON pv.id = sm.variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+        WHERE ${where}
+        ORDER BY sm.created_at DESC, sm.id DESC LIMIT $1`, vals);
+    res.json({ items: r.rows });
+  } catch (e) { console.error('[admin:stock-movements]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 router.post('/variants/:id/stock', async (req, res) => {
   const pool = getPool();
   const client = await pool.connect();
@@ -180,8 +217,9 @@ router.post('/variants/:id/stock', async (req, res) => {
     const delta = Number(qty);
     if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: 'qty-required' });
     await client.query('BEGIN'); await applyTenant(client);
+    // списання не заганяє залишок у мінус (помилковий ввід -1000 замість +1000)
     const r = await client.query(
-      `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2 RETURNING *`,
+      `UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) + $1) WHERE id = $2 RETURNING *`,
       [delta, req.params.id]
     );
     if (r.rowCount === 0) {

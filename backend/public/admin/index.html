@@ -1725,6 +1725,7 @@ select.input { background:var(--card); }
       <div class="page" id="page-products">
         <div style="display:flex;gap:8px;margin-bottom:16px">
           <input id="productSearch" placeholder="Пошук товару..." class="input" style="flex:1" oninput="debounce(loadProducts,400)">
+          <button class="btn btn-primary" onclick="newProductModal()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Додати товар</button>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -1738,14 +1739,35 @@ select.input { background:var(--card); }
 
       <!-- ═══ STOCK ═══ -->
       <div class="page" id="page-stock">
-        <div class="card" style="max-width:500px">
-          <div class="card-header"><h3>Прихід / списання товару <button type="button" class="info-i" data-t="<b>Прихід / списання товару.</b> Тут оприбутковують нову поставку (+ на склад) або списують зіпсоване/використане (− зі складу). Кожна дія змінює залишок і фіксується в історії." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
-          <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
-            <input id="stockVariantId" type="number" placeholder="ID варіанту" class="input">
-            <input id="stockQty" type="number" placeholder="Кількість (+ прихід, − списання)" class="input">
-            <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="input">
-            <button onclick="addStock()" class="btn btn-primary">Внести</button>
-            <p id="stockResult" style="font-size:13px"></p>
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+          <div class="card">
+            <div class="card-header" style="gap:10px;flex-wrap:wrap"><h3>Залишки на складі <button type="button" class="info-i" data-t="<b>Залишки.</b> Всі товари з поточним залишком. Клік «+» — прихід, «−» — списання: форма справа заповниться сама." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+              <input id="stListSearch" class="input" placeholder="Пошук: назва або артикул…" style="flex:1;min-width:180px" oninput="clearTimeout(window._stT);window._stT=setTimeout(loadStockList,300)">
+            </div>
+            <div class="card-body" style="padding:0;max-height:520px;overflow:auto">
+              <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th style="text-align:right">Залишок</th><th style="text-align:right">Ціна</th><th></th></tr></thead>
+              <tbody id="stListBody"><tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Завантаження…</td></tr></tbody></table>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card">
+              <div class="card-header"><h3>Прихід / списання <button type="button" class="info-i" data-t="<b>Прихід / списання товару.</b> Оберіть товар зі списку зліва (кнопки + / −) або введіть ID вручну. Плюсова кількість — прихід, мінусова — списання. Кожна дія фіксується в історії." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+              <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                <div id="stPicked" style="font-size:13px;color:var(--text-secondary)">Товар не обрано — клікніть + або − у списку</div>
+                <input id="stockVariantId" type="number" placeholder="ID варіанту" class="input">
+                <input id="stockQty" type="number" step="0.001" placeholder="Кількість (+ прихід, − списання)" class="input">
+                <input id="stockNote" placeholder="Примітка (постачальник, причина...)" class="input">
+                <button onclick="addStock()" class="btn btn-primary">Внести</button>
+                <p id="stockResult" style="font-size:13px;margin:0"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3>Історія руху <button type="button" class="info-i" data-t="<b>Історія руху товару.</b> Останні операції: прихід, списання, продаж, витрата на послуги. Джерело — журнал складських рухів." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+          <div class="card-body" style="padding:0;max-height:380px;overflow:auto">
+            <table class="tbl"><thead><tr><th>Коли</th><th>Товар</th><th style="text-align:right">Зміна</th><th>Причина</th><th>Примітка</th></tr></thead>
+            <tbody id="stMovesBody"></tbody></table>
           </div>
         </div>
       </div>
@@ -3694,7 +3716,7 @@ function go(page) {
   document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
-    orders:loadOrders, products:loadProducts, reviews:loadReviews,
+    orders:loadOrders, products:loadProducts, stock:loadStockPage, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
     finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
@@ -4847,8 +4869,10 @@ async function loadCons() {
   for (const c of items) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px';
-    row.innerHTML = `<span style="flex:1">${c.product_name||'?'}${c.volume?' · '+c.volume:''} <span style="color:var(--text-secondary);font-size:12px">(на складі: ${c.stock_qty})</span></span>
-      <span style="font-weight:600">${c.qty_per_use} шт</span>
+    const costLine = (c.wholesale != null || c.price != null)
+      ? ` · собівартість ${_money((Number(c.wholesale != null ? c.wholesale : c.price) * Number(c.qty_per_use)) || 0)}` : '';
+    row.innerHTML = `<span style="flex:1">${c.product_name||'?'}${c.volume?' · '+c.volume:''} <span style="color:var(--text-secondary);font-size:12px">(на складі: ${c.stock_qty}${costLine})</span></span>
+      <span style="font-weight:600">${c.qty_per_use}</span>
       <button class="btn btn-outline" style="padding:4px 10px" onclick="delCons(${sid},${c.variant_id})">✕</button>`;
     box.appendChild(row);
   }
@@ -4863,7 +4887,7 @@ function searchVars() {
     const box = document.getElementById('consVarResults');
     box.innerHTML = (r.items||[]).map(v=>`<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px dashed var(--border);border-radius:8px;cursor:pointer" onclick="addCons(${v.id})">
       <span style="flex:1">${v.product_name||'?'}${v.volume?' · '+v.volume:''}</span>
-      <span style="color:var(--text-secondary);font-size:12px">скл: ${v.stock_qty}</span></div>`).join('')
+      <span style="font-size:12px;white-space:nowrap">${v.price!=null?`<b>${_money(v.price)}</b> · `:''}<span style="color:var(--text-secondary)">скл: ${v.stock_qty}</span></span></div>`).join('')
       || '<span style="font-size:12px;color:var(--text-secondary)">Нічого не знайдено</span>';
   }, 300);
 }
@@ -10327,13 +10351,104 @@ async function loadProducts() {
 // ═══ STOCK ═══════════════════════════════════
 async function addStock() {
   const variant_id = parseInt(document.getElementById('stockVariantId').value, 10);
-  const qty = parseInt(document.getElementById('stockQty').value, 10);
+  // #109: дробові грами/мл — Number, а не parseInt (він різав 45.5 → 45)
+  const qty = Number(String(document.getElementById('stockQty').value).replace(',', '.'));
   const note = document.getElementById('stockNote').value.trim();
-  if (!variant_id || !qty) { alert('Вкажіть ID та кількість'); return; }
+  if (!variant_id || !Number.isFinite(qty) || qty === 0) { alert('Вкажіть товар і кількість'); return; }
   const r = await api(`/api/admin/variants/${variant_id}/stock`, { method:'POST', body:JSON.stringify({qty,note}) });
   const el = document.getElementById('stockResult');
   el.style.color = r.ok ? 'var(--success)' : 'var(--danger)';
-  el.textContent = r.ok ? `Залишок: ${r.variant.stock_qty} шт` : 'Помилка: '+(r.error||'');
+  el.textContent = r.ok ? `Готово. Новий залишок: ${Number(r.variant.stock_qty)}` : 'Помилка: '+(r.error||'');
+  if (r.ok) { document.getElementById('stockQty').value=''; loadStockList(); loadStockMoves(); }
+}
+// ── Склад: список залишків + історія руху ──
+async function loadStockList() {
+  const body = document.getElementById('stListBody');
+  if (!body) return;
+  try {
+    const q = document.getElementById('stListSearch')?.value.trim() || '';
+    const d = await api('/api/admin/stock/list' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    const items = d.items || [];
+    body.innerHTML = items.map(v => `<tr>
+      <td>${escapeHtml(v.product_name||'')}<div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
+      <td>${escapeHtml(v.volume||'')}</td>
+      <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${Number(v.stock_qty)}</td>
+      <td style="text-align:right">${v.price!=null?_money(v.price):'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>
+        <button class="btn btn-sm btn-outline" title="Списання" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',-1)">−</button>
+      </td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Нічого не знайдено</td></tr>';
+  } catch (_) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+}
+function stPick(id, name, sign) {
+  document.getElementById('stockVariantId').value = id;
+  const lbl = document.getElementById('stPicked');
+  if (lbl) { lbl.innerHTML = '<b>' + name + '</b> — ' + (sign > 0 ? 'прихід (введіть +кількість)' : 'списання (введіть −кількість)'); }
+  const qtyEl = document.getElementById('stockQty');
+  qtyEl.value = sign > 0 ? '' : '-';
+  qtyEl.focus();
+}
+const _ST_REASON = { income:'Прихід', writeoff:'Списання', sale:'Продаж', inventory_audit:'Інвентаризація' };
+async function loadStockMoves() {
+  const body = document.getElementById('stMovesBody');
+  if (!body) return;
+  try {
+    const d = await api('/api/admin/stock/movements?limit=40');
+    body.innerHTML = (d.items || []).map(m => {
+      const reason = String(m.reason||'');
+      const label = _ST_REASON[reason] || (reason.startsWith('service-reverse') ? 'Повернення (відкат)' : reason.startsWith('service') ? 'Витрата на послугу' : reason);
+      const dlt = Number(m.delta);
+      return `<tr>
+        <td style="white-space:nowrap">${m.created_at ? new Date(m.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}</td>
+        <td>${escapeHtml(m.product_name||('варіант #'+m.variant_id))}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}</td>
+        <td style="text-align:right;font-weight:700;color:${dlt>0?'var(--success,#10b981)':'var(--danger,#ef4444)'}">${dlt>0?'+':''}${dlt}</td>
+        <td>${escapeHtml(label)}</td>
+        <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(m.notes||'')}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:20px">Рухів ще немає</td></tr>';
+  } catch (_) { body.innerHTML = ''; }
+}
+function loadStockPage() { loadStockList(); loadStockMoves(); }
+// ── Створення товару з першим варіантом (раніше — лише через API/синк) ──
+async function newProductModal() {
+  let brands = [];
+  try { const b = await api('/api/admin/brands'); brands = b.items || b.brands || []; } catch(_) {}
+  const brandOpts = brands.map(b => `<option value="${escapeHtml(String(b.id))}">${escapeHtml(b.name||String(b.id))}</option>`).join('');
+  showModal('Новий товар', `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input id="npName" class="input" placeholder="Назва товару *">
+      <select id="npBrand" class="input">${brandOpts || '<option value="">— бренд не знайдено —</option>'}</select>
+      <div style="display:flex;gap:8px">
+        <input id="npVolume" class="input" placeholder="Обʼєм/фасування (напр. 250ml) *" style="flex:1">
+        <input id="npSku" class="input" placeholder="Артикул (необов.)" style="flex:1">
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="npPrice" class="input" type="number" step="0.01" placeholder="Ціна продажу, ₴ *" style="flex:1">
+        <input id="npWholesale" class="input" type="number" step="0.01" placeholder="Закупівельна, ₴" style="flex:1">
+        <input id="npStock" class="input" type="number" step="0.001" placeholder="Початковий залишок" style="flex:1">
+      </div>
+    </div>`, async () => {
+    const name = document.getElementById('npName').value.trim();
+    const brand = document.getElementById('npBrand').value;
+    const volume = document.getElementById('npVolume').value.trim();
+    const price = Number(document.getElementById('npPrice').value);
+    if (!name || !brand || !volume || !(price > 0)) { toast('Заповніть назву, бренд, обʼєм і ціну (> 0)', 'error'); throw new Error('validation'); }
+    // slug-id: транслітерація назви + суфікс часу від колізій
+    const translit = { 'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ie','ж':'zh','з':'z','и':'y','і':'i','ї':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'iu','я':'ia','ы':'y','э':'e','ё':'e','ъ':'' };
+    const slug = name.toLowerCase().split('').map(c => translit[c] !== undefined ? translit[c] : c).join('')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'product';
+    const id = slug + '-' + Date.now().toString(36).slice(-4);
+    const p = await api('/api/admin/products', { method:'POST', body: JSON.stringify({ id, name, brand_id: brand }) });
+    if (!p.ok) { toast('Помилка створення товару: ' + (p.error||''), 'error'); throw new Error('create'); }
+    const wholesale = Number(document.getElementById('npWholesale').value) || undefined;
+    const stock_qty = Number(document.getElementById('npStock').value) || 0;
+    const sku = document.getElementById('npSku').value.trim() || undefined;
+    const v = await api(`/api/admin/products/${encodeURIComponent(id)}/variants`, { method:'POST',
+      body: JSON.stringify({ volume, price, wholesale, sku, stock_qty }) });
+    if (!v.ok && !v.variant && !v.id) { toast('Товар створено, але варіант не додався: ' + (v.error||''), 'error'); }
+    else toast('Товар додано' + (stock_qty ? `, залишок ${stock_qty}` : ''));
+    loadProducts(); loadStockList();
+  });
 }
 
 // ═══ REVIEWS / РЕПУТАЦІЯ ═════════════════════════════════

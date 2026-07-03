@@ -1039,9 +1039,17 @@ router.patch('/appointments/:id', async (req, res) => {
         stock = await writeOffForAppointment(Number(req.params.id));
       } catch (e) { stock = { written: false, error: e.message }; }
       await emitAppointmentCompleted(req.params.id, r.rows[0] && r.rows[0].master_id);
-    } else if (status === 'confirmed' || status === 'noshow') {
-      // в журнал событий + вебхуки. noshow → база для авто-тега/переслота (подписчик — отдельно)
-      await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
+    } else if (status !== undefined && status !== 'done') {
+      // відкат «Виконано» → повертаємо списані матеріали на склад (ідемпотентно, всередині перевіряється флаг)
+      try {
+        const { reverseWriteOffForAppointment } = require('../lib/consumables');
+        const rev = await reverseWriteOffForAppointment(Number(req.params.id));
+        if (rev && rev.reversed) stock = rev;
+      } catch (e) { /* best-effort: не блокуємо зміну статусу */ }
+      if (status === 'confirmed' || status === 'noshow') {
+        // в журнал событий + вебхуки. noshow → база для авто-тега/переслота (подписчик — отдельно)
+        await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
+      }
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

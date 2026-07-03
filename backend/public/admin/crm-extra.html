@@ -138,7 +138,11 @@ main { padding:24px 0; }
       <button class="btn" onclick="addOp()">Додати</button>
     </div>
     <div id="op-prod" style="display:none;margin-top:10px">
-      <input id="op-prod-q" placeholder="Пошук товару (назва або артикул) — ціна підставиться сама" style="width:100%" oninput="opProdSearch()">
+      <div class="row">
+        <input id="op-prod-q" placeholder="Пошук товару (назва або артикул) — ціна підставиться сама" style="flex:1;min-width:220px" oninput="opProdSearch()">
+        <input id="op-prod-qty" type="number" min="1" step="1" value="1" title="Кількість" style="width:80px" oninput="opProdQtyChanged()">
+      </div>
+      <div id="op-prod-picked" style="margin-top:6px;font-size:13px;color:#666"></div>
       <div id="op-prod-res" style="margin-top:6px"></div>
     </div>
   </div>
@@ -427,10 +431,17 @@ async function closeShift(){
   try{ const r = await api('/api/cashbox/shifts/'+CURRENT_SHIFT+'/close',{method:'POST',body:JSON.stringify({closing_cash:+cash})}); alert('Z-звіт #'+r.z_report.report_no+' створений. Розбіжність: '+r.z_report.difference+' ₴'); loadCashbox(); }catch(e){ alert(e.message); }
 }
 // пікер товару для швидкої операції «Товар»: показує ціну й залишок, клік — підставляє суму
+let _opPickedVariant = null; // {id, name, price} — обраний товар для продажу (спишеться зі складу)
 function opCatChanged(){
   const isProd = document.getElementById('op-cat').value === 'sale_product';
   document.getElementById('op-prod').style.display = isProd ? 'block' : 'none';
   if (isProd) document.getElementById('op-prod-q').focus();
+  else { _opPickedVariant = null; document.getElementById('op-prod-picked').textContent=''; }
+}
+function opProdQtyChanged(){
+  if (!_opPickedVariant || _opPickedVariant.price == null) return;
+  const q = Math.max(1, parseInt(document.getElementById('op-prod-qty').value, 10) || 1);
+  document.getElementById('op-amount').value = +(Number(_opPickedVariant.price) * q).toFixed(2);
 }
 let _opProdT;
 function opProdSearch(){
@@ -444,7 +455,7 @@ function opProdSearch(){
       const items = (d.items||[]).slice(0,15);
       box.innerHTML = items.map(v => {
         const nm = (v.product_name||'Товар') + (v.volume ? ' ' + v.volume : '');
-        return `<div onclick='opProdPick(${JSON.stringify(nm)},${v.price!=null?Number(v.price):null})'
+        return `<div onclick='opProdPick(${JSON.stringify(nm)},${v.price!=null?Number(v.price):null},${v.id})'
           style="display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px"
           onmouseover="this.style.background='#f4f1ea'" onmouseout="this.style.background=''">
           <span>${nm.replace(/</g,'&lt;')}</span>
@@ -454,11 +465,14 @@ function opProdSearch(){
     } catch(e){ box.innerHTML=''; }
   }, 250);
 }
-function opProdPick(name, price){
-  if (price != null) document.getElementById('op-amount').value = price;
+function opProdPick(name, price, variantId){
+  _opPickedVariant = { id: variantId || null, name: name, price: price };
   document.getElementById('op-desc').value = name;
   document.getElementById('op-prod-res').innerHTML = '';
   document.getElementById('op-prod-q').value = name;
+  document.getElementById('op-prod-picked').innerHTML = '&#10003; <b>' + name.replace(/</g,'&lt;') + '</b> — спишеться зі складу після «Додати»';
+  opProdQtyChanged();
+  if (price != null && !document.getElementById('op-amount').value) document.getElementById('op-amount').value = price;
 }
 async function addOp(){
   const t = document.getElementById('op-type').value;
@@ -467,7 +481,13 @@ async function addOp(){
   const a = +document.getElementById('op-amount').value;
   const d = document.getElementById('op-desc').value;
   if(!a) return alert('Сума > 0');
-  try{ await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type:t,category:c,method:m,amount:a,description:d})}); document.getElementById('op-amount').value=''; document.getElementById('op-desc').value=''; loadCashbox(); }catch(e){ alert(e.message); }
+  // продаж товару: передаємо variant_id + qty → бекенд списує зі складу в тій самій транзакції
+  const extra = {};
+  if (c === 'sale_product' && _opPickedVariant && _opPickedVariant.id) {
+    extra.variant_id = _opPickedVariant.id;
+    extra.qty = Math.max(1, parseInt(document.getElementById('op-prod-qty').value, 10) || 1);
+  }
+  try{ await api('/api/cashbox/operations',{method:'POST',body:JSON.stringify({type:t,category:c,method:m,amount:a,description:d,...extra})}); document.getElementById('op-amount').value=''; document.getElementById('op-desc').value=''; document.getElementById('op-prod-picked').textContent=''; _opPickedVariant=null; loadCashbox(); }catch(e){ alert(e.message); }
 }
 
 // ─────── REPORTS ───────
