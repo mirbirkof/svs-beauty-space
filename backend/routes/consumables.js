@@ -12,7 +12,7 @@ router.get('/_variants', requirePerm(), async (req, res) => {
     const q = (req.query.q || '').trim();
     const vals = [];
     let where = 'pv.active=TRUE';
-    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1)`; }
+    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
     const r = await pool.query(
       `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price
          FROM product_variants pv

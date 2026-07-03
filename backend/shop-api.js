@@ -251,6 +251,7 @@ app.use('/api/services', require('./routes/services'));
 app.use('/api/service-categories', require('./routes/categories'));
 app.use('/api/client-tags', require('./routes/client-tags'));
 app.use('/api/consumables', require('./routes/consumables'));
+app.use('/api/stock-import', require('./routes/stock-import')); // накладні + прайси → склад
 try { app.use('/api/master-services', require('./routes/master-services')); } catch(e) { console.error('[master-services] mount failed:', e.message); }
 app.use('/api/notes', require('./routes/notes'));
 try { app.use('/api/me', require('./routes/master-cabinet')); } catch(e) { console.error('[master-cabinet] mount failed:', e.message); }

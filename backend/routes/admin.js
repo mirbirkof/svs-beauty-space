@@ -177,7 +177,7 @@ router.get('/stock/list', async (req, res) => {
     const q = (req.query.q || '').trim();
     const vals = [];
     let where = `pv.active IS NOT FALSE AND p.active IS NOT FALSE`;
-    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1)`; }
+    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
     const r = await getPool().query(
       `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku,
               COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale

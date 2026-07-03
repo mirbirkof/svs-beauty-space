@@ -1761,6 +1761,35 @@ select.input { background:var(--card); }
                 <p id="stockResult" style="font-size:13px;margin:0"></p>
               </div>
             </div>
+            <div class="card">
+              <div class="card-header"><h3>Імпорт документом <button type="button" class="info-i" data-t="<b>Накладна.</b> Завантажте файл (Excel/CSV) або вставте текст накладної — система розпізнає товари й кількість, покаже передпросмотр, і склад поповниться одним натисканням.<br><b>Прайс.</b> Так само, але СТВОРЮЄ нові найменування в довіднику складу (залишок 0) — щоб завести номенклатуру без ручного вводу." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+              <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+                <button class="btn btn-primary" onclick="stImpOpen('invoice')">📄 Накладна — прихід</button>
+                <button class="btn btn-outline" onclick="stImpOpen('pricelist')">📋 Прайс — нові товари</button>
+                <div id="stImpLastDocs" style="font-size:12px;color:var(--text-secondary)"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка імпорту накладної/прайсу -->
+        <div id="stImpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) stImpClose()">
+          <div class="modal" style="max-width:900px;width:94vw">
+            <div class="modal-header"><h3 id="stImpTitle">Накладна — прихід</h3>
+              <button class="modal-close" onclick="stImpClose()">✕</button></div>
+            <div class="modal-body" style="max-height:72vh;overflow:auto">
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <input type="file" id="stImpFile" accept=".xlsx,.xls,.csv,.txt" class="input" style="flex:1;min-width:220px">
+                <span style="color:var(--text-secondary);font-size:12px">або вставте текст:</span>
+              </div>
+              <textarea id="stImpText" class="input" rows="4" placeholder="Фарба Eterna тон 8.1; 3; 473&#10;Окисник 20 VOL; 2; 380&#10;(назва; кількість; ціна — можна копіювати прямо з Excel/Viber)"></textarea>
+              <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="stImpParse()">🔍 Розібрати</button>
+              <div id="stImpPreview" style="margin-top:12px"></div>
+            </div>
+            <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <span id="stImpSummary" style="font-size:13px;color:var(--text-secondary)"></span>
+              <button id="stImpApplyBtn" class="btn btn-primary" style="display:none" onclick="stImpApply()">Застосувати</button>
+            </div>
           </div>
         </div>
         <div class="card" style="margin-top:16px">
@@ -8213,7 +8242,11 @@ async function loadApptMaterials(id) {
         <div id="apptMatPicker" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:8px">
           <div style="display:flex;gap:8px">
             <input id="apptMatSearch" class="input" style="flex:1" placeholder="Пошук товару (назва або артикул)…" oninput="apptMatSearchRun(${id})">
-            <input id="apptMatQtyInp" class="input" type="number" min="0.1" step="0.1" value="1" style="width:80px" title="Кількість, у од. обліку (шт/г/мл)">
+            <input id="apptMatQtyInp" class="input" type="number" min="0.1" step="0.1" value="1" style="width:70px" title="Кількість">
+            <select id="apptMatUnit" class="input" style="width:110px;font-size:12px" title="Як рахувати: грами/мл — як є; упаковка — кількість × обʼєм упаковки (тюбик фарби = 100 г)">
+              <option value="unit">г / мл / шт</option>
+              <option value="pack">упаковок</option>
+            </select>
           </div>
           <div id="apptMatResults" style="margin-top:6px;max-height:180px;overflow:auto"></div>
         </div>`}
@@ -8236,6 +8269,8 @@ function apptMatSearchRun(id) {
     try {
       const d = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
       const items = (d && d.items) || [];
+      window._apptMatVars = {};
+      items.forEach(v => { window._apptMatVars[v.id] = { volume: v.volume || '', name: v.product_name || '' }; });
       rbox.innerHTML = items.slice(0, 20).map(v => `
         <div onclick="apptMatPick(${id},${v.id})" style="display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg-secondary,#f8fafc)'" onmouseout="this.style.background=''">
           <span>${escapeHtml(v.product_name||'Товар')}${v.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(v.volume)}</span>`:''}</span>
@@ -8244,8 +8279,23 @@ function apptMatSearchRun(id) {
     } catch (_) { rbox.innerHTML = ''; }
   }, 250);
 }
+// обʼєм упаковки з тексту варіанта: "1000ml"→1000, "200ml"→200; фарба з тоном без обʼєму = тюбик 100 г
+function apptMatPackSize(variantId) {
+  const v = (window._apptMatVars || {})[variantId];
+  if (!v) return 1;
+  const m = String(v.volume).match(/(\d+)\s*(?:ml|мл|g|г)\b/i);
+  if (m) return Number(m[1]);
+  if (/тон /i.test(v.volume) || /фарб/i.test(v.name)) return 100;
+  return 1;
+}
 async function apptMatPick(id, variantId) {
-  const qty = Number(document.getElementById('apptMatQtyInp')?.value) || 1;
+  let qty = Number(document.getElementById('apptMatQtyInp')?.value) || 1;
+  const unit = document.getElementById('apptMatUnit')?.value || 'unit';
+  if (unit === 'pack') {
+    const pack = apptMatPackSize(variantId);
+    qty = qty * pack;
+    if (pack > 1) toast(`${Number(document.getElementById('apptMatQtyInp').value)} упак. × ${pack} = ${qty} г/мл`);
+  }
   const r = await api('/api/consumables/appointment/' + id, { method: 'POST', body: JSON.stringify({ variant_id: variantId, qty_used: qty }) });
   if (r && r.ok) { toast('Матеріал додано'); loadApptMaterials(id); }
   else toast((r && (r.message || r.error)) || 'Не вдалося додати матеріал', 'error');
@@ -10438,7 +10488,125 @@ function stPick(id, name, sign) {
   qtyEl.value = sign > 0 ? '' : '-';
   qtyEl.focus();
 }
-const _ST_REASON = { income:'Прихід', writeoff:'Списання', sale:'Продаж', inventory_audit:'Інвентаризація' };
+// ── Імпорт складу: накладна (прихід) / прайс (номенклатура) ──
+let _stImp = { kind: 'invoice', items: [], filename: null };
+function stImpOpen(kind) {
+  _stImp = { kind, items: [], filename: null };
+  document.getElementById('stImpTitle').textContent = kind === 'invoice' ? '📄 Накладна — прихід на склад' : '📋 Прайс — створення номенклатури';
+  document.getElementById('stImpFile').value = '';
+  document.getElementById('stImpText').value = '';
+  document.getElementById('stImpPreview').innerHTML = '';
+  document.getElementById('stImpSummary').textContent = '';
+  document.getElementById('stImpApplyBtn').style.display = 'none';
+  document.getElementById('stImpModal').style.display = 'flex';
+}
+function stImpClose() { document.getElementById('stImpModal').style.display = 'none'; }
+async function stImpParse() {
+  const file = document.getElementById('stImpFile').files[0];
+  const text = document.getElementById('stImpText').value.trim();
+  const box = document.getElementById('stImpPreview');
+  if (!file && !text) { box.innerHTML = '<span style="color:#dc2626">Оберіть файл або вставте текст</span>'; return; }
+  box.innerHTML = '⏳ Розбираю…';
+  try {
+    let d;
+    if (file) {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await fetch(API + '/api/stock-import/parse', { method: 'POST', headers: { 'X-Admin-Token': TOKEN, ...tenantHeader() }, body: fd });
+      d = await r.json();
+    } else {
+      d = await api('/api/stock-import/parse', { method: 'POST', body: JSON.stringify({ text }) });
+    }
+    if (!d.ok) { box.innerHTML = '<span style="color:#dc2626">' + (d.message || d.error || 'Помилка') + '</span>'; return; }
+    _stImp.items = d.items || []; _stImp.filename = d.filename || (file ? file.name : null);
+    // у прайсі кількості немає: одиноке число в рядку — це ЦІНА
+    if (_stImp.kind === 'pricelist') _stImp.items.forEach(it => { if (it.price == null && it.qty != null) { it.price = it.qty; it.qty = null; } });
+    stImpRender();
+  } catch (e) { box.innerHTML = '<span style="color:#dc2626">Помилка мережі</span>'; }
+}
+function stImpRender() {
+  const box = document.getElementById('stImpPreview');
+  const inv = _stImp.kind === 'invoice';
+  if (!_stImp.items.length) { box.innerHTML = 'Не знайшов рядків з товарами — перевірте формат.'; return; }
+  box.innerHTML = `<table class="tbl" style="font-size:13px"><thead><tr>
+      <th style="width:26px"><input type="checkbox" checked onchange="document.querySelectorAll('.stImpChk').forEach(c=>c.checked=this.checked);stImpCount()"></th>
+      <th>Рядок з документа</th><th>Зі складом</th>${inv ? '<th style="width:80px">К-сть</th>' : ''}<th style="width:90px">Ціна</th></tr></thead>
+    <tbody>${_stImp.items.map((it, i) => {
+      const opts = it.matches.map((m, j) => `<option value="${m.variant_id}" ${j === 0 ? 'selected' : ''}>${escapeHtml(m.label)} (залишок ${m.stock_qty})</option>`).join('');
+      const createSel = it.matches.length ? '' : 'selected';
+      // фарба з тоном: постачальник рахує тюбики, склад — грами → авто ×100
+      const label0 = it.matches[0] ? it.matches[0].label : it.name;
+      const packM = String(label0).match(/(\d+)\s*(?:ml|мл)\b/i);
+      const isTone = /тон /i.test(label0);
+      const pack = isTone ? 100 : (packM ? Number(packM[1]) : 1);
+      return `<tr>
+        <td><input type="checkbox" class="stImpChk" checked onchange="stImpCount()"></td>
+        <td>${escapeHtml(it.name)}</td>
+        <td><select id="stImpM${i}" class="input" style="max-width:270px;font-size:12px;padding:4px">${opts}
+          <option value="__create__" ${createSel}>➕ Створити новий товар</option></select>
+          ${it.matches.length ? '' : '<div style="font-size:11px;color:#d97706">збігів не знайдено</div>'}</td>
+        ${inv ? `<td style="white-space:nowrap"><input id="stImpQ${i}" type="number" step="0.001" class="input" style="width:64px;padding:4px" value="${it.qty ?? ''}">
+          <select id="stImpU${i}" class="input" style="width:96px;font-size:11px;padding:4px" title="Упаковка → грами/мл: кількість множиться на обʼєм упаковки (тюбик фарби = 100 г)">
+            <option value="1" ${!isTone ? 'selected' : ''}>як є</option>
+            <option value="${pack > 1 ? pack : 100}" ${isTone ? 'selected' : ''}>упак ×${pack > 1 ? pack : 100}</option>
+          </select></td>` : ''}
+        <td><input id="stImpP${i}" type="number" step="0.01" class="input" style="width:84px;padding:4px" value="${it.price ?? ''}"></td>
+      </tr>`;
+    }).join('')}</tbody></table>
+    <div style="font-size:12px;color:var(--text-secondary);margin-top:6px">💡 Фарби обліковуються в грамах: «упак ×100» перетворює тюбики з накладної на грами складу. Для звичайних товарів лишайте «як є».</div>`;
+  document.getElementById('stImpApplyBtn').style.display = '';
+  stImpCount();
+}
+function stImpCount() {
+  const n = [...document.querySelectorAll('.stImpChk')].filter(c => c.checked).length;
+  document.getElementById('stImpApplyBtn').textContent = (_stImp.kind === 'invoice' ? 'Провести прихід' : 'Створити товари') + ' (' + n + ')';
+  document.getElementById('stImpSummary').textContent = 'Рядків: ' + _stImp.items.length + ' · обрано: ' + n;
+}
+async function stImpApply() {
+  const checks = [...document.querySelectorAll('.stImpChk')];
+  const items = [];
+  _stImp.items.forEach((it, i) => {
+    if (!checks[i] || !checks[i].checked) return;
+    const sel = document.getElementById('stImpM' + i).value;
+    const qtyEl = document.getElementById('stImpQ' + i);
+    const unitEl = document.getElementById('stImpU' + i);
+    const mult = unitEl ? (Number(unitEl.value) || 1) : 1;
+    items.push({
+      name: it.name,
+      qty: qtyEl ? Number(qtyEl.value) * mult : null,
+      price: Number(document.getElementById('stImpP' + i).value) || null,
+      variant_id: sel === '__create__' ? null : Number(sel),
+      create: sel === '__create__',
+    });
+  });
+  if (!items.length) return;
+  const btn = document.getElementById('stImpApplyBtn');
+  btn.disabled = true; btn.textContent = '⏳ Застосовую…';
+  try {
+    const d = await api('/api/stock-import/apply', { method: 'POST', body: JSON.stringify({ kind: _stImp.kind, filename: _stImp.filename, items }) });
+    if (d.ok) {
+      toast(`Готово: прихід ${d.received}, створено ${d.created}, пропущено ${d.skipped}`);
+      document.getElementById('stImpSummary').innerHTML = `<b style="color:#10b981">✓ Документ №${d.doc_id}</b> — прихід: ${d.received}, створено: ${d.created}, пропущено: ${d.skipped}`;
+      document.getElementById('stImpPreview').innerHTML = '';
+      btn.style.display = 'none';
+      loadStockList(); loadStockMoves(); stImpLoadDocs();
+    } else {
+      toast(d.message || d.error || 'Помилка', 'error');
+    }
+  } catch (e) { toast('Помилка мережі', 'error'); }
+  btn.disabled = false;
+}
+async function stImpLoadDocs() {
+  const box = document.getElementById('stImpLastDocs');
+  if (!box) return;
+  try {
+    const d = await api('/api/stock-import/docs');
+    box.innerHTML = (d.items || []).slice(0, 5).map(x =>
+      `${x.kind === 'invoice' ? '📄' : '📋'} №${x.id} · ${new Date(x.created_at).toLocaleDateString('uk-UA')} · +${(x.totals || {}).received || 0}/${(x.totals || {}).created || 0}`
+    ).join('<br>') || 'Документів ще немає';
+  } catch (_) {}
+}
+
+const _ST_REASON = { income:'Прихід', writeoff:'Списання', sale:'Продаж', inventory_audit:'Інвентаризація', invoice:'Накладна' };
 async function loadStockMoves() {
   const body = document.getElementById('stMovesBody');
   if (!body) return;
@@ -10458,7 +10626,7 @@ async function loadStockMoves() {
     }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:20px">Рухів ще немає</td></tr>';
   } catch (_) { body.innerHTML = ''; }
 }
-function loadStockPage() { loadStockList(); loadStockMoves(); }
+function loadStockPage() { loadStockList(); loadStockMoves(); stImpLoadDocs(); }
 // ── Створення товару з першим варіантом (раніше — лише через API/синк) ──
 async function newProductModal() {
   let brands = [];
