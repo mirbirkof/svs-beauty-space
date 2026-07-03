@@ -12,12 +12,12 @@
    routes/booking.js делегує сюди callback_query і вільний текст.
    ═══════════════════════════════════════════════════════════════ */
 const matcher = require('./service-matcher');
+const slotEngine = require('./slot-engine');
 
-const LOCATION = process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7a296e9d6499';
 const SESSION_TTL_MIN = 30;
 const MAX_DAYS = 14;          // горизонт вибору дати
 const MAX_SLOT_BTN = 24;      // ліміт кнопок часу
-const MAX_ANY_MASTERS = 8;    // скільки майстрів опитати для "будь-хто"
+const QUICK_LIMIT = 6;        // «найближчі вікна» на першому екрані
 
 // ── дрібні утиліти ─────────────────────────────────────────────
 const pad = (n) => String(n).padStart(2, '0');
@@ -57,16 +57,15 @@ async function loadCatalog(pool) {
   return _catCache;
 }
 
-// майстри, що надають УСІ вибрані послуги (internal ids)
+// майстри, що надають УСІ вибрані послуги (внутрішні id — движок слотів працює по нашій CRM)
 async function eligibleMasters(pool, serviceIds) {
   const r = await pool.query(
-    `SELECT m.beautypro_id AS bp_id,
+    `SELECT m.id,
             COALESCE(NULLIF(m.online_title,''), m.name) AS name,
             m.online_rank
        FROM masters m
       WHERE m.active IS NOT FALSE
         AND m.online_booking_enabled IS NOT FALSE
-        AND m.beautypro_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM unnest($1::int[]) sid
            WHERE NOT EXISTS (
@@ -75,7 +74,7 @@ async function eligibleMasters(pool, serviceIds) {
       ORDER BY m.online_rank NULLS LAST, name`,
     [serviceIds]
   );
-  return r.rows;
+  return r.rows.map(m => ({ id: Number(m.id), name: m.name }));
 }
 
 // телефон уже привʼязаного клієнта (digits) + імʼя
@@ -112,55 +111,12 @@ async function clearSession(pool, uid) {
   await pool.query(`DELETE FROM booking_sessions WHERE tg_user_id = $1`, [uid]);
 }
 
-// ── нормалізація вільних годин BeautyPro → [{from,to,label,prof}] ──
-function normalizeSlots(data, date, durationMin, forceProf) {
-  const out = [];
-  const push = (iso, prof, time) => {
-    const d = new Date(iso); if (isNaN(d)) return;
-    const end = new Date(d.getTime() + durationMin * 60000);
-    out.push({ from: toLocalISO(d), to: toLocalISO(end), label: time || `${pad(d.getHours())}:${pad(d.getMinutes())}`, prof: prof || forceProf || '' });
-  };
-  const walk = (node, prof) => {
-    if (!node) return;
-    if (Array.isArray(node)) { node.forEach(x => walk(x, prof)); return; }
-    if (typeof node === 'string') { push(node, prof); return; }
-    if (typeof node === 'object') {
-      let p = node.professional || node.employee || node.master || prof;
-      if (Array.isArray(node.employees) && node.employees.length) {
-        p = forceProf && node.employees.includes(forceProf) ? forceProf : node.employees[0];
-      }
-      const startIso = node.from || node.start ||
-        (node.time ? `${date}T${node.time.length === 5 ? node.time + ':00' : node.time}` : null);
-      if (startIso) push(startIso, p, node.time);
-      if (node.slots) walk(node.slots, p);
-      if (node.free_time) walk(node.free_time, p);
-      if (node.times) walk(node.times, p);
-      if (node.data) walk(node.data, p);
-    }
-  };
-  walk(data);
-  // майбутнє + дедуп по підпису + сортування
-  const minTime = Date.now() + 10 * 60 * 1000;
-  const seen = {}, uniq = [];
-  out.filter(s => new Date(s.from).getTime() > minTime)
-    .sort((a, b) => a.from < b.from ? -1 : 1)
-    .forEach(s => { if (!seen[s.label]) { seen[s.label] = 1; uniq.push(s); } });
-  return uniq;
-}
-
-async function fetchSlots(bp, masters, date, durationMin) {
-  const from = `${date}T00:00:00`, to = `${date}T23:59:59`;
-  const all = [];
-  for (const mid of masters.slice(0, MAX_ANY_MASTERS)) {
-    try {
-      const data = await bp.freeTime({ duration: durationMin, professional: mid, from, to });
-      normalizeSlots(data, date, durationMin, mid).forEach(s => all.push(s));
-    } catch (e) { /* пропускаємо майстра без розкладу */ }
-  }
-  const seen = {}, uniq = [];
-  all.sort((a, b) => a.from < b.from ? -1 : 1)
-    .forEach(s => { if (!seen[s.label]) { seen[s.label] = 1; uniq.push(s); } });
-  return uniq.slice(0, MAX_SLOT_BTN);
+// ── вільні слоти: ВЛАСНИЙ движок по CRM (master_schedule_days − appointments) ──
+// BeautyPro тут більше не потрібен: графік і зайнятість живуть у нашій БД.
+function selectedMasterIds(session) {
+  const all = (session.data.masters || []).map(m => Number(m.id));
+  const sel = session.data.master;
+  return (sel && sel !== 'any') ? all.filter(id => id === Number(sel)) : all;
 }
 
 // ── chunk кнопок у рядки ───────────────────────────────────────
@@ -209,8 +165,51 @@ async function advance(ctx, uid, target, session) {
     return respond(ctx.tg, target,
       `Уточніть, що саме ви маєте на увазі під «<b>${part.query}</b>»:`, btns);
   }
-  // усі частини вирішені — показуємо дату
-  return showDates(ctx, uid, target, session);
+  // усі частини вирішені — одразу найближчі вільні вікна (мінімум кліків)
+  return showQuick(ctx, uid, target, session);
+}
+
+// ЕКРАН «НАЙБЛИЖЧІ ВІКНА»: послуга обрана → одразу конкретні часи по днях.
+// Дата/майстер — не обовʼязкові кроки, а опції («Інший день» / «Обрати майстра»).
+async function showQuick(ctx, uid, target, session) {
+  const { chosen, total, dur } = summarize(session);
+  if (!chosen.length) return restart(ctx, uid, target, 'Не вдалось визначити послугу.');
+  if (!session.data.masters || !session.data.masters.length) {
+    try { session.data.masters = await eligibleMasters(ctx.pool, chosen.map(s => s.id)); }
+    catch (e) { console.error('[bookbot/masters]', e.message); session.data.masters = []; }
+  }
+  if (!session.data.master) session.data.master = 'any';
+  const masterIds = selectedMasterIds(session);
+  if (!masterIds.length) return restart(ctx, uid, target, 'Немає майстрів, що надають цю послугу онлайн.');
+
+  let quick = [];
+  try { quick = await slotEngine.nearestSlots(ctx.pool, { masterIds, durationMin: dur || 60, days: MAX_DAYS, limit: QUICK_LIMIT }); }
+  catch (e) { console.error('[bookbot/quick]', e.message); }
+  session.data.quick = quick;
+
+  const lines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
+  const head = chosen.length > 1
+    ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${fmtPrice(total)}</b>, ~${fmtDur(dur)}`
+    : `${lines}\n~${fmtDur(dur)}`;
+  const mName = session.data.master !== 'any' ? masterNameOf(session, Number(session.data.master)) : null;
+
+  const kb = [];
+  if (quick.length) {
+    const today = slotEngine.kyivToday(), tomorrow = slotEngine.addDays(today, 1);
+    const btns = quick.map((s, i) => ({
+      text: `${s.date === today ? 'Сьогодні' : s.date === tomorrow ? 'Завтра' : fmtDateKey(s.date)} ${s.label}`,
+      callback_data: `bk:q:${i}`,
+    }));
+    rows(btns, 2).forEach(r => kb.push(r));
+  }
+  kb.push([{ text: '📅 Інший день', callback_data: 'bk:day' }, { text: '💇 Обрати майстра', callback_data: 'bk:pickmst' }]);
+  kb.push([{ text: '✏️ Інша послуга', callback_data: 'bk:retry' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }]);
+
+  await saveSession(ctx.pool, uid, target.chat_id, 'quick', session.data);
+  const body = quick.length
+    ? `${head}${mName ? `\n💇 Майстер: <b>${mName}</b>` : ''}\n\n⚡ <b>Найближчі вільні вікна</b> — оберіть час:`
+    : `${head}${mName ? `\n💇 Майстер: <b>${mName}</b>` : ''}\n\n😔 Найближчим часом вільних вікон немає. Спробуйте «Інший день» або іншого майстра.`;
+  return respond(ctx.tg, target, body, kb);
 }
 
 async function showDates(ctx, uid, target, session) {
@@ -230,24 +229,23 @@ async function showDates(ctx, uid, target, session) {
     btns.push({ text: label, callback_data: `bk:date:${key}` });
   }
   const kb = rows(btns, 2);
-  kb.push([{ text: '✏️ Інша послуга', callback_data: 'bk:retry' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }]);
+  kb.push([{ text: '‹ Найближчі вікна', callback_data: 'bk:back:quick' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }]);
   await saveSession(ctx.pool, uid, target.chat_id, 'date', session.data);
   return respond(ctx.tg, target, `${head}\n\n📅 Оберіть дату:`, kb);
 }
 
 async function showMasters(ctx, uid, target, session) {
   const { chosen } = summarize(session);
-  const ids = chosen.map(s => s.id);
-  let masters = [];
-  try { masters = await eligibleMasters(ctx.pool, ids); } catch (e) { console.error('[bookbot/masters]', e.message); }
-  session.data.masters = masters; // кеш для "будь-хто"
+  if (!session.data.masters || !session.data.masters.length) {
+    try { session.data.masters = await eligibleMasters(ctx.pool, chosen.map(s => s.id)); }
+    catch (e) { console.error('[bookbot/masters]', e.message); session.data.masters = []; }
+  }
   const btns = [{ text: '⭐ Будь-який вільний майстер', callback_data: 'bk:mst:any' }];
-  masters.forEach(m => btns.push({ text: m.name, callback_data: `bk:mst:${m.bp_id}` }));
+  session.data.masters.forEach(m => btns.push({ text: m.name, callback_data: `bk:mst:${m.id}` }));
   const kb = rows(btns, 1);
-  kb.push([{ text: '‹ Дата', callback_data: 'bk:back:date' }, { text: '✖', callback_data: 'bk:cancel' }]);
+  kb.push([{ text: '‹ Найближчі вікна', callback_data: 'bk:back:quick' }, { text: '✖', callback_data: 'bk:cancel' }]);
   await saveSession(ctx.pool, uid, target.chat_id, 'master', session.data);
-  const dateStr = fmtDateKey(session.data.date);
-  return respond(ctx.tg, target, `📅 ${dateStr}\n\n💇 Оберіть майстра:`, kb);
+  return respond(ctx.tg, target, `💇 Оберіть майстра — покажу його вільні вікна:`, kb);
 }
 
 function fmtDateKey(key) {
@@ -257,56 +255,51 @@ function fmtDateKey(key) {
 }
 
 async function showSlots(ctx, uid, target, session) {
-  const { chosen, dur } = summarize(session);
+  const { dur } = summarize(session);
   const date = session.data.date;
-  const masterSel = session.data.master; // bp_id | 'any'
-  const masterList = masterSel === 'any'
-    ? (session.data.masters || []).map(m => m.bp_id)
-    : [masterSel];
-  if (!masterList.length) return restart(ctx, uid, target, 'Немає доступних майстрів для цієї послуги.');
+  const masterIds = selectedMasterIds(session);
+  if (!masterIds.length) return restart(ctx, uid, target, 'Немає доступних майстрів для цієї послуги.');
 
-  await respond(ctx.tg, target, '⏳ Шукаю вільні години…');
   let slots = [];
-  try { slots = await fetchSlots(ctx.bp, masterList, date, dur); } catch (e) { console.error('[bookbot/slots]', e.message); }
+  try { slots = await slotEngine.freeSlotsForDate(ctx.pool, { date, masterIds, durationMin: dur || 60 }); }
+  catch (e) { console.error('[bookbot/slots]', e.message); }
+  slots = slots.slice(0, MAX_SLOT_BTN);
 
   if (!slots.length) {
     const kb = [[{ text: '‹ Інша дата', callback_data: 'bk:back:date' }], [{ text: '✖ Скасувати', callback_data: 'bk:cancel' }]];
-    await saveSession(ctx.pool, uid, target.chat_id, 'master', session.data);
-    return respond(ctx.tg, { chat_id: target.chat_id }, `😔 На <b>${fmtDateKey(date)}</b> вільних годин немає. Оберіть іншу дату.`, kb);
+    await saveSession(ctx.pool, uid, target.chat_id, 'date', session.data);
+    return respond(ctx.tg, target, `😔 На <b>${fmtDateKey(date)}</b> вільних годин немає. Оберіть іншу дату.`, kb);
   }
   session.data.slots = slots;
   const btns = slots.map((s, i) => ({ text: s.label, callback_data: `bk:slot:${i}` }));
   const kb = rows(btns, 4);
-  kb.push([{ text: '‹ Майстер', callback_data: 'bk:back:master' }, { text: '✖', callback_data: 'bk:cancel' }]);
+  kb.push([{ text: '‹ Інша дата', callback_data: 'bk:back:date' }, { text: '✖', callback_data: 'bk:cancel' }]);
   await saveSession(ctx.pool, uid, target.chat_id, 'slot', session.data);
-  return respond(ctx.tg, { chat_id: target.chat_id }, `📅 ${fmtDateKey(date)}\n\n🕐 Оберіть час:`, kb);
+  return respond(ctx.tg, target, `📅 ${fmtDateKey(date)}\n\n🕐 Оберіть час:`, kb);
 }
 
 async function showConfirm(ctx, uid, target, session) {
   const { chosen, total, dur } = summarize(session);
-  const slot = session.data.slots[session.data.slotIdx];
-  const masterName = masterNameOf(session, slot.prof);
+  const slot = session.data.sel;
+  if (!slot) return restart(ctx, uid, target, 'Слот не знайдено, почнімо спочатку.');
+  const masterName = masterNameOf(session, slot.masterId);
   const svcLines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
   const text =
     `<b>Перевірте запис:</b>\n\n${svcLines}\n\n` +
     `💇 Майстер: <b>${masterName}</b>\n` +
-    `📅 ${fmtDateKey(session.data.date)}, <b>${slot.label}</b>\n` +
+    `📅 ${fmtDateKey(slot.date)}, <b>${slot.label}</b>\n` +
     `💰 Разом: <b>${fmtPrice(total)}</b> · ~${fmtDur(dur)}`;
   const kb = [
     [{ text: '✅ Підтвердити запис', callback_data: 'bk:confirm' }],
-    [{ text: '‹ Час', callback_data: 'bk:back:slot' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }],
+    [{ text: '‹ Інший час', callback_data: 'bk:back:quick' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }],
   ];
   await saveSession(ctx.pool, uid, target.chat_id, 'confirm', session.data);
   return respond(ctx.tg, target, text, kb);
 }
 
-function masterNameOf(session, profBpId) {
-  if (session.data.master !== 'any') {
-    const m = (session.data.masters || []).find(x => x.bp_id === session.data.master);
-    return m ? m.name : 'Майстер салону';
-  }
-  const m = (session.data.masters || []).find(x => x.bp_id === profBpId);
-  return m ? m.name : 'Вільний майстер';
+function masterNameOf(session, masterId) {
+  const m = (session.data.masters || []).find(x => Number(x.id) === Number(masterId));
+  return m ? m.name : 'Майстер салону';
 }
 
 async function restart(ctx, uid, target, why) {
@@ -315,51 +308,35 @@ async function restart(ctx, uid, target, why) {
     `${why ? why + '\n\n' : ''}Напишіть послугу, на яку хочете записатись (напр. «манікюр», «стрижка і фарбування»).`);
 }
 
-// ── фінальне бронювання ────────────────────────────────────────
+// ── фінальне бронювання: CRM-first (журнал салону = наша БД) ──
 async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
-  const { chosen, total, dur } = summarize(session);
-  const slot = session.data.slots[session.data.slotIdx];
-  const professional = slot.prof || (session.data.master !== 'any' ? session.data.master : (session.data.masters[0] || {}).bp_id);
-  const date = session.data.date;
+  const { chosen, total } = summarize(session);
+  const slot = session.data.sel;
+  if (!slot) {
+    await clearSession(ctx.pool, uid);
+    return ctx.tg('sendMessage', { chat_id: chatId, text: '⌛ Сесія застаріла. Напишіть послугу ще раз.' });
+  }
+  const masterId = Number(slot.masterId);
+  const date = slot.date;
   const phone = '+' + phoneDigits;
   const name = clientName || 'Клієнт';
 
-  // перевірка перетину часу (слот могли зайняти)
-  const fromIso = slot.from, toIso = slot.to;
+  // фінальна перевірка: слот могли щойно зайняти (перетин по appointments)
   try {
     const busy = await ctx.pool.query(
-      `SELECT 1 FROM online_bookings WHERE master_id=$1 AND status='confirmed'
-         AND date_from < $3 AND date_to > $2 LIMIT 1`,
-      [professional, fromIso, toIso]);
+      `SELECT 1 FROM appointments
+        WHERE master_id=$1 AND status = ANY($4::text[])
+          AND starts_at < ${slotEngine.TS_EXPR(2, 5)} AND ends_at > ${slotEngine.TS_EXPR(2, 3)}
+        LIMIT 1`,
+      [masterId, date, slot.startMin, slotEngine.BUSY_STATUSES, slot.endMin]);
     if (busy.rowCount) {
       await ctx.tg('sendMessage', { chat_id: chatId, text: '😔 Цей час щойно зайняли. Оберіть інший.' });
-      return showSlots(ctx, uid, { chat_id: chatId }, session);
+      return showQuick(ctx, uid, { chat_id: chatId }, session);
     }
-  } catch (e) { /* не критично */ }
+  } catch (e) { console.error('[bookbot/recheck]', e.message); }
 
-  // BeautyPro: клієнт + запис (послідовні послуги одного майстра)
-  let bpId = '';
-  try {
-    const client = await ctx.bp.createClient({ phone, name });
-    const clientBp = client.id || client.client_id;
-    let cursor = new Date(`${date}T${slot.label.length === 5 ? slot.label + ':00' : slot.label}`);
-    const svcArr = chosen.map(s => {
-      const st = `${date}T${pad(cursor.getHours())}:${pad(cursor.getMinutes())}:00`;
-      cursor = new Date(cursor.getTime() + (Number(s.duration_min) || 60) * 60000);
-      return { service: s.bp_id, professional, start: st, duration: Number(s.duration_min) || 60 };
-    });
-    const appt = await ctx.bp.raw('POST', '/appointments',
-      { force: 'true', fields: 'date,client,services(start,service,professional,duration)' },
-      { client: clientBp, location: LOCATION, date, services: svcArr });
-    bpId = String(appt.id || appt.appointment_id || '');
-  } catch (e) {
-    console.error('[bookbot/bp-push]', e.message);
-    await clearSession(ctx.pool, uid);
-    return ctx.tg('sendMessage', { chat_id: chatId, text: '⚠️ Не вдалось створити запис у системі. Адміністратор звʼяжеться з вами.' });
-  }
-
-  // журнал online_bookings + клієнт
-  let bookingId = null;
+  // клієнт: знайти за номером або створити
+  let clientId = null;
   try {
     let cl = await ctx.pool.query(
       `SELECT id FROM clients WHERE regexp_replace(phone,'\\D','','g')=$1 LIMIT 1`, [phoneDigits]);
@@ -373,17 +350,51 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
          ON CONFLICT (tenant_id, phone) DO UPDATE SET telegram_id=COALESCE(clients.telegram_id,EXCLUDED.telegram_id)
          RETURNING id`, [require('./phone').normalizePhoneDb(phoneDigits), name, uid]); // канон 380... (#107)
     }
+    clientId = cl.rows[0].id;
+  } catch (e) {
+    console.error('[bookbot/client]', e.message);
+    await clearSession(ctx.pool, uid);
+    return ctx.tg('sendMessage', { chat_id: chatId, text: '⚠️ Не вдалось створити запис. Адміністратор звʼяжеться з вами.' });
+  }
+
+  // записи в журнал салону: послідовні послуги одного майстра
+  const apptIds = [];
+  try {
+    let cur = slot.startMin;
+    for (const s of chosen) {
+      const d = Number(s.duration_min) || 60;
+      const r = await ctx.pool.query(
+        `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, price, status, source, client_name)
+         VALUES ($1,$2,$3, ${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)}, $7, 'confirmed', 'bot-chat', $8)
+         RETURNING id`,
+        [clientId, masterId, s.id, date, cur, cur + d, Number(s.price) || null, name]);
+      apptIds.push(r.rows[0].id);
+      cur += d;
+    }
+  } catch (e) {
+    console.error('[bookbot/appt]', e.message);
+    await clearSession(ctx.pool, uid);
+    return ctx.tg('sendMessage', { chat_id: chatId, text: '⚠️ Не вдалось створити запис. Адміністратор звʼяжеться з вами.' });
+  }
+
+  // журнал online_bookings (історія онлайн-каналу)
+  let bookingId = null;
+  try {
     const ob = await ctx.pool.query(
       `INSERT INTO online_bookings
-         (client_id, client_phone, client_name, service_id, master_id, date_from, date_to,
-          channel, bp_appointment_id, status, telegram_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'bot-chat',$8,'confirmed',$9) RETURNING id`,
-      [cl.rows[0].id, phone, name, chosen[0].bp_id, professional, fromIso, toIso, bpId, uid]);
+         (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
+          date_from, date_to, channel, bp_appointment_id, status, telegram_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
+               'bot-chat',$11,'confirmed',$12) RETURNING id`,
+      [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
+       String(masterId), masterNameOf(session, masterId),
+       date, slot.startMin, slot.startMin + chosen.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
+       String(apptIds[0] || ''), uid]);
     bookingId = ob.rows[0].id;
   } catch (e) { console.error('[bookbot/log]', e.message); }
 
   await clearSession(ctx.pool, uid);
-  const masterName = masterNameOf(session, professional);
+  const masterName = masterNameOf(session, masterId);
   await ctx.tg('sendMessage', {
     chat_id: chatId, parse_mode: 'HTML',
     text: `✅ <b>Запис підтверджено!</b>\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${fmtPrice(total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
@@ -527,27 +538,41 @@ async function onCallback(cq, ctx) {
       await advance(ctx, uid, target, session);
       return true;
     }
-    if (data.startsWith('bk:date:')) {
-      session.data.date = data.slice(8);
+    // швидкий слот з екрана «найближчі вікна» → одразу підтвердження
+    if (data.startsWith('bk:q:')) {
+      const slot = (session.data.quick || [])[Number(data.slice(5))];
       await ack();
-      await showMasters(ctx, uid, target, session);
+      if (!slot) return showQuick(ctx, uid, target, session);
+      session.data.sel = slot;
+      await showConfirm(ctx, uid, target, session);
       return true;
     }
-    if (data.startsWith('bk:mst:')) {
-      session.data.master = data.slice(7); // bp_id | 'any'
+    if (data === 'bk:day') { await ack(); await showDates(ctx, uid, target, session); return true; }
+    if (data === 'bk:pickmst') { await ack(); await showMasters(ctx, uid, target, session); return true; }
+    if (data.startsWith('bk:date:')) {
+      session.data.date = data.slice(8);
       await ack();
       await showSlots(ctx, uid, target, session);
       return true;
     }
-    if (data.startsWith('bk:slot:')) {
-      session.data.slotIdx = Number(data.slice(8));
+    if (data.startsWith('bk:mst:')) {
+      session.data.master = data.slice(7); // внутрішній id | 'any'
       await ack();
+      await showQuick(ctx, uid, target, session);
+      return true;
+    }
+    if (data.startsWith('bk:slot:')) {
+      const slot = (session.data.slots || [])[Number(data.slice(8))];
+      await ack();
+      if (!slot) return showSlots(ctx, uid, target, session);
+      session.data.sel = slot;
       await showConfirm(ctx, uid, target, session);
       return true;
     }
     if (data.startsWith('bk:back:')) {
       const to = data.slice(8);
       await ack();
+      if (to === 'quick') return showQuick(ctx, uid, target, session);
       if (to === 'date') return showDates(ctx, uid, target, session);
       if (to === 'master') return showMasters(ctx, uid, target, session);
       if (to === 'slot') return showSlots(ctx, uid, target, session);
