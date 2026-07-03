@@ -288,9 +288,9 @@ function setSteps(){ for(let i=1;i<=4;i++){ document.getElementById('st'+i).clas
 function showCta(label, fn){ cta.style.display='block'; ctaBtn.textContent=label; ctaBtn.disabled=!fn; ctaBtn.onclick=fn||null; }
 function hideCta(){ cta.style.display='none'; }
 
-// booking API живе на окремому сервісі (там налаштовані ключі BeautyPro).
-// Якщо сторінку відкрито вже на booking-хості — використовуємо відносний шлях.
-const BOOKING_BASE = /booking-api/.test(location.host) ? '' : 'https://svs-booking-api.onrender.com';
+// booking API з 03.07.2026 живе на основному сервісі svs-shop-api (повний routes/booking).
+// Якщо сторінку відкрито вже на onrender-хості — використовуємо відносний шлях.
+const BOOKING_BASE = /onrender\.com/.test(location.host) ? '' : 'https://svs-shop-api.onrender.com';
 async function api(path, opts){
   const url = path.startsWith('/api/booking') ? BOOKING_BASE + path : path;
   const r = await fetch(url, opts);

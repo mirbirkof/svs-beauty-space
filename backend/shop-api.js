@@ -488,11 +488,10 @@ if (process.env.DATABASE_URL) {
 }
 
 // ── Render keep-alive: free tier засыпает после 15 мин простоя ──
-// Пингуем себя и booking-сервис каждые 10 мин. Пока жив хоть один — не спят оба.
+// Пингуем себя каждые 10 мин (svs-booking-api погашено 03.07 — бот тепер тут).
 if (process.env.RENDER_EXTERNAL_URL) {
   const KEEPALIVE_URLS = [
     process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/health',
-    'https://svs-booking-api.onrender.com/api/health',
   ];
   setInterval(() => {
     for (const url of KEEPALIVE_URLS) {

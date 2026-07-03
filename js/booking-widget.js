@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const API = window.SVS_BOOKING_API || 'https://svs-booking-api.onrender.com';
+  const API = window.SVS_BOOKING_API || 'https://svs-shop-api.onrender.com';
   // Каталог (послуги + реальна звʼязка майстер↔послуга) беремо з НАШОЇ CRM — джерело правди.
   // Слоти/доступність/створення запису лишаються на booking-api (там ключі BeautyPro).
   const CRM = window.SVS_CRM_API || 'https://svs-shop-api.onrender.com';
