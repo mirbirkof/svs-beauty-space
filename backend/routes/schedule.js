@@ -1032,11 +1032,16 @@ router.patch('/appointments/:id', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
-    // Стосується лише операцій, створених нашим /pay (ref_type='appointment'); продажі BP не чіпаємо.
+    // Сума в касі = ціна послуги + платні матеріали (фарба за грам). Продажі BP не чіпаємо.
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
       await pool.query(
-        `UPDATE cash_operations SET amount=$2
-          WHERE ref_type='appointment' AND ref_id=$1 AND type='in' AND category='sale_service' AND amount<>$2`,
+        `UPDATE cash_operations co SET amount = $2 + COALESCE((
+            SELECT SUM(ROUND(am.qty_used * p.price_per_gram, 2))
+              FROM appointment_materials am
+              JOIN product_variants pv ON pv.id = am.variant_id
+              JOIN products p ON p.id = pv.product_id AND p.price_per_gram IS NOT NULL
+             WHERE am.appointment_id = $1), 0)
+          WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in' AND co.category='sale_service'`,
         [Number(req.params.id), newPrice]
       ).catch(e => console.error('[schedule] price→cash sync:', e.message));
     }
@@ -1309,7 +1314,15 @@ router.post('/appointments/:id/pay', async (req, res) => {
     );
     if (!ap.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const appt = ap.rows[0];
-    const amount = Number(appt.price) || 0;
+    // матеріали з ціною за грам (фарба 12 грн/г тощо) — продаються клієнту, додаються до чека
+    const mat = await pool.query(
+      `SELECT COALESCE(SUM(ROUND(am.qty_used * p.price_per_gram, 2)),0)::float AS total
+         FROM appointment_materials am
+         JOIN product_variants pv ON pv.id = am.variant_id
+         JOIN products p ON p.id = pv.product_id AND p.price_per_gram IS NOT NULL
+        WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
+    const matTotal = Number(mat.rows[0].total) || 0;
+    const amount = (Number(appt.price) || 0) + matTotal;
     if (amount <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
 
     // вже оплачено вручну? (ідемпотентність)
@@ -1367,7 +1380,8 @@ router.post('/appointments/:id/pay', async (req, res) => {
          VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
          ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
          RETURNING id`,
-        [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга', opCreatedAt]
+        [shiftId, amount, method, id, appt.master_id || null,
+         (appt.service_name || 'Послуга') + (matTotal > 0 ? ` + матеріали ${matTotal} грн` : ''), opCreatedAt]
       );
       await client.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
       await client.query('COMMIT');

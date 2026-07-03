@@ -36,7 +36,10 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
     const r = await pool.query(
       `SELECT am.id, am.variant_id, am.qty_used, am.note,
-              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price
+              p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price,
+              p.price_per_gram,
+              CASE WHEN p.price_per_gram IS NOT NULL
+                   THEN ROUND(am.qty_used * p.price_per_gram, 2) END AS line_total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
@@ -45,8 +48,10 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
       [aid]
     );
     const w = await pool.query(`SELECT stock_written_off FROM appointments WHERE id=$1`, [aid]);
+    const billable = r.rows.reduce((a, x) => a + (Number(x.line_total) || 0), 0);
     res.json({
       items: r.rows, count: r.rows.length,
+      billable_total: Math.round(billable * 100) / 100, // до оплати клієнтом за матеріали
       stock_written_off: !!(w.rows[0] && w.rows[0].stock_written_off),
     });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

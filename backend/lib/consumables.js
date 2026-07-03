@@ -132,10 +132,12 @@ async function reverseWriteOffForAppointment(apptId) {
       await client.query(
         `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`,
         [qty, m.variant_id]);
+      // $3 як text (для reason) і $4 як int (ref_id) — ОКРЕМІ параметри:
+      // якщо один $3 в обох місцях, PG виводить тип text і падає на ref_id (баг: матеріали не поверталися)
       await client.query(
         `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
-         VALUES ($1, $2, 'service-reverse:' || $3::text, $3, 'повернення матеріалів: відкат статусу «Виконано»')`,
-        [m.variant_id, qty, apptId]);
+         VALUES ($1, $2, 'service-reverse:' || $3::text, $4, 'повернення матеріалів: відкат статусу «Виконано»')`,
+        [m.variant_id, qty, String(apptId), Number(apptId)]);
       items++;
     }
     await client.query(`UPDATE appointments SET stock_written_off=FALSE WHERE id=$1`, [apptId]);

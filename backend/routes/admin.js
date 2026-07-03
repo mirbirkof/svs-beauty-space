@@ -53,7 +53,7 @@ router.get('/products', async (req, res) => {
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     args.push(parseInt(limit, 10), parseInt(offset, 10));
     const r = await pool.query(
-      `SELECT p.id, p.name, p.brand_id, p.category_id, p.active, p.featured,
+      `SELECT p.id, p.name, p.brand_id, p.category_id, p.active, p.featured, p.price_per_gram,
               (SELECT COUNT(*) FROM product_variants WHERE product_id = p.id) AS variants_count,
               (SELECT SUM(stock_qty) FROM product_variants WHERE product_id = p.id) AS total_stock,
               (SELECT MIN(price) FROM product_variants WHERE product_id = p.id) AS price_from
@@ -83,9 +83,15 @@ router.post('/products', async (req, res) => {
 
 router.patch('/products/:id', async (req, res) => {
   try {
-    const { name, brand_id, category_id, photo, description, featured, active, meta_title, meta_description, attrs } = req.body || {};
+    const { name, brand_id, category_id, photo, description, featured, active, meta_title, meta_description, attrs, price_per_gram } = req.body || {};
     if (attrs !== undefined && (typeof attrs !== 'object' || Array.isArray(attrs) || attrs === null))
       return res.status(400).json({ error: 'attrs-must-be-object' });
+    // price_per_gram: число > 0 — встановити; 0/'' — прибрати (NULL); undefined — не чіпати
+    let ppg; // undefined = не чіпати
+    if (price_per_gram !== undefined) {
+      const n = Number(price_per_gram);
+      ppg = (Number.isFinite(n) && n > 0) ? n : null;
+    }
     const pool = getPool();
     const r = await pool.query(
       `UPDATE products SET
@@ -99,10 +105,12 @@ router.patch('/products/:id', async (req, res) => {
          meta_title = COALESCE($9, meta_title),
          meta_description = COALESCE($10, meta_description),
          attrs = COALESCE($11::jsonb, attrs),
+         price_per_gram = CASE WHEN $12::text IS NULL THEN price_per_gram ELSE NULLIF($12::text,'null')::numeric END,
          updated_at = NOW()
        WHERE id = $1 RETURNING *`,
       [req.params.id, name, brand_id, category_id, photo, description, featured, active,
-       meta_title, meta_description, attrs === undefined ? null : JSON.stringify(attrs)]
+       meta_title, meta_description, attrs === undefined ? null : JSON.stringify(attrs),
+       price_per_gram === undefined ? null : (ppg === null ? 'null' : String(ppg))]
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, product: r.rows[0] });

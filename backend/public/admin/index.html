@@ -1730,7 +1730,7 @@ select.input { background:var(--card); }
         <div class="card">
           <div class="card-body" style="padding:0">
             <table class="tbl">
-              <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>Активний</th></tr></thead>
+              <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>₴/грам <button type="button" class="info-i" data-t="<b>Продаж матеріалу за грам.</b> Якщо вказана ціна (напр. фарба 12 грн/г) — вартість використаних грамів автоматично додається до чека клієнта при оплаті візиту. Клікніть по значенню, щоб змінити. Порожньо = матеріал не продається окремо." onclick="showInfo(event,this.dataset.t)">i</button></th><th>Активний</th></tr></thead>
               <tbody id="productsBody"></tbody>
             </table>
           </div>
@@ -8131,7 +8131,7 @@ async function openAppt(id, masterId) {
           <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
           <label class="payway"><input type="radio" name="apptPayWay" value="card"> Картка</label>
         </div>
-        <button class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
+        <button id="apptPayBtn" data-base="${Number(a.price)||0}" class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
                 onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
       </div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
@@ -8208,10 +8208,16 @@ async function loadApptMaterials(id) {
     const d = await api('/api/consumables/appointment/' + id);
     const items = (d && d.items) || [];
     const locked = !!(d && d.stock_written_off);
-    // сума рядка = ціна × кількість; загальний підсумок — сума всіх рядків з відомою ціною
-    const rowSum = m => (m.price!=null && Number.isFinite(Number(m.price))) ? Number(m.price)*Number(m.qty_used||0) : null;
+    // сума рядка: якщо у товару є ціна ЗА ГРАМ (фарба) — грами × грн/г (це йде в чек клієнта);
+    // інакше — роздрібна ціна × кількість (довідково)
+    const rowSum = m => m.price_per_gram!=null ? Number(m.qty_used||0)*Number(m.price_per_gram)
+      : ((m.price!=null && Number.isFinite(Number(m.price))) ? Number(m.price)*Number(m.qty_used||0) : null);
     const grand = items.reduce((s,m)=>s+(rowSum(m)||0),0);
+    const billable = Number(d.billable_total)||0; // тільки позиції з ціною за грам — ДОДАЄТЬСЯ ДО ЧЕКА
     const noPrice = items.some(m=>rowSum(m)==null);
+    // кнопка оплати показує повну суму: послуга + платні матеріали
+    const payBtn = document.getElementById('apptPayBtn');
+    if (payBtn && billable > 0) payBtn.textContent = `💳 Провести оплату · ${_money((Number(payBtn.dataset.base)||0) + billable)}`;
     box.innerHTML = `
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -8226,14 +8232,18 @@ async function loadApptMaterials(id) {
               ${locked
                 ? `<span style="font-weight:700">×${Number(m.qty_used)}</span>`
                 : `<span onclick="apptMatQty(${id},${m.variant_id},${Number(m.qty_used)})" title="Змінити кількість" style="font-weight:700;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">×${Number(m.qty_used)}</span>`}
-              <span style="font-weight:700;min-width:70px;text-align:right">${rowSum(m)!=null?_money(rowSum(m)):'—'}</span>
+              <span style="font-weight:700;min-width:70px;text-align:right">${m.price_per_gram!=null?`<span title="${Number(m.qty_used)} г × ${Number(m.price_per_gram)} грн/г — у чек клієнта" style="color:#7c3aed">${_money(rowSum(m))}</span>`:(rowSum(m)!=null?_money(rowSum(m)):'—')}</span>
               ${locked ? '' : `<span onclick="apptMatDel(${id},${m.variant_id})" title="Прибрати матеріал" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`}
             </span>
           </div>`).join('')}
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:2px solid var(--border);font-size:14px">
             <span style="font-weight:600">Разом матеріали${noPrice?' <span style="color:var(--text-secondary);font-size:11px;font-weight:400">(частина без ціни)</span>':''}</span>
             <span style="font-weight:800">${_money(grand)}</span>
-          </div></div>` : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
+          </div>
+          ${billable>0?`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f5f3ff;border-radius:8px;font-size:13px">
+            <span style="font-weight:600;color:#6d28d9">💜 Продаж матеріалів клієнту (за грам) — увійде в оплату</span>
+            <span style="font-weight:800;color:#6d28d9">+${_money(billable)}</span>
+          </div>`:''}</div>` : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
         ${locked ? '' : `
         <div style="display:flex;gap:8px;margin-top:8px">
           <button type="button" class="btn btn-outline" style="flex:1;font-weight:600" onclick="apptMatAddToggle(${id})">+ матеріал</button>
@@ -10444,8 +10454,18 @@ async function loadProducts() {
     <tr><td>${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
     <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
     <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
+    <td style="cursor:pointer" title="Клік — змінити ціну продажу за грам" onclick="setPPG('${String(p.id).replace(/'/g,'&#39;')}','${String(p.name).replace(/'/g,'&#39;').slice(0,60)}',${p.price_per_gram??'null'})">${p.price_per_gram!=null?`<b style="color:#7c3aed">${Number(p.price_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
     <td>${p.active ? '✓':'—'}</td></tr>`).join('')
-    || '<tr><td colspan="7"><div class="empty">Нічого не знайдено</div></td></tr>';
+    || '<tr><td colspan="8"><div class="empty">Нічого не знайдено</div></td></tr>';
+}
+// ціна продажу за грам: клік по колонці ₴/грам (0 або порожньо = вимкнути продаж за грам)
+async function setPPG(id, name, cur) {
+  const v = prompt(`«${name}»\nЦіна продажу за грам, грн (порожньо або 0 — не продається за грам):`, cur ?? '');
+  if (v === null) return;
+  const n = Number(String(v).replace(',', '.'));
+  const r = await api('/api/admin/products/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ price_per_gram: Number.isFinite(n) ? n : 0 }) });
+  if (r.ok) { toast(n > 0 ? `Тепер ${n} грн/г — додається до чека клієнта` : 'Продаж за грам вимкнено'); loadProducts(); }
+  else toast(r.error || 'Помилка', 'error');
 }
 
 // ═══ STOCK ═══════════════════════════════════
