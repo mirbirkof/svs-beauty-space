@@ -1299,7 +1299,15 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
     const requireShift = String(await getSetting('require_open_shift', false)) === 'true';
     if (!sh.rows[0] && requireShift) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
-    const shiftId = sh.rows[0]?.id || null;
+    let shiftId = sh.rows[0]?.id || null;
+
+    // Ретро-оплата (заметка #112): якщо візит був у МИНУЛИЙ день, а «Виконано» натиснули
+    // сьогодні — гроші датуємо днем візиту, інакше вони хибно потрапляють у «Касу за день»
+    // сьогодні. До поточної зміни таку операцію теж не чіпляємо (щоб не псувати підсумок зміни).
+    const _kyivDay = ts => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date(ts));
+    const isRetro = appt.starts_at && _kyivDay(appt.starts_at) < _kyivDay(Date.now());
+    const opCreatedAt = isRetro ? appt.starts_at : null; // null → NOW() за замовчуванням
+    if (isRetro) shiftId = null;
 
     // Приход в кассу + статус «выполнено» — АТОМАРНО в одной транзакции.
     // Иначе при падении между ними возможен рассинхрон (деньги есть, статус нет — или наоборот).
@@ -1311,11 +1319,11 @@ router.post('/appointments/:id/pay', async (req, res) => {
     try {
       await client.query('BEGIN'); await applyTenant(client);
       op = await client.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6)
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+         VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
          ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
          RETURNING id`,
-        [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга']
+        [shiftId, amount, method, id, appt.master_id || null, appt.service_name || 'Послуга', opCreatedAt]
       );
       await client.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1`, [id]);
       await client.query('COMMIT');
