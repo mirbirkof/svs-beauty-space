@@ -966,9 +966,6 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="settings" data-tab="prepay" onclick="go('settings');setTab('prepay')">
             <span class="material-icons-round">payments</span> Передплата
           </a>
-          <a class="sidebar-item" data-page="settings" data-tab="privacy" onclick="go('settings');setTab('privacy')">
-            <span class="material-icons-round">visibility</span> Конфіденційність
-          </a>
           <a class="sidebar-item" data-page="settings" data-tab="business" onclick="go('settings');setTab('business')">
             <span class="material-icons-round">tune</span> Бізнес-налаштування
           </a>
@@ -2513,22 +2510,6 @@ select.input { background:var(--card); }
             </div>
 
             <!-- КОНФІДЕНЦІЙНІСТЬ -->
-            <div class="set-pane" id="tab-privacy">
-              <div class="card"><div class="card-body">
-                <h3 class="set-h">Приватність клієнтів <button type="button" class="info-i" data-t="<b>Приватність клієнтів.</b> Хто з персоналу бачить телефони й персональні дані клієнтів. Можна маскувати номери для майстрів." onclick="showInfo(event,this.dataset.t)">i</button></h3>
-                <p class="set-p">Керування тим, що бачать співробітники.</p>
-                <label class="set-toggle">
-                  <input type="checkbox" id="set-masters-phone" onchange="saveSettings()">
-                  <span><b>Майстри бачать номери телефонів клієнтів</b><i>Коли вимкнено — майстер бачить ім'я, але номер прихований (••• ••XX) скрізь: журнал, кабінет майстра, картка клієнта. Адміністратори й власник бачать завжди. Майстер-одиночка (єдиний активний майстер) бачить номери автоматично.</i></span>
-                </label>
-                <label class="set-toggle">
-                  <input type="checkbox" id="set-masters-block" onchange="saveSettings()">
-                  <span><b>Майстри можуть самі займати свій час</b><i>Коли увімкнено — майстер може у своєму кабінеті заблокувати відрізок часу (стає сірим, ніхто не запишеться). Власник і адміністратори займають час завжди.</i></span>
-                </label>
-                <p id="settingsMsg" class="set-msg" style="margin-top:12px"></p>
-              </div></div>
-            </div>
-
             <!-- БІЗНЕС-НАЛАШТУВАННЯ (власник) -->
             <div class="set-pane" id="tab-business">
               <div class="card"><div class="card-body">
@@ -2636,15 +2617,25 @@ select.input { background:var(--card); }
               </div></div>
 
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Видимість для майстрів <button type="button" class="info-i" data-t="<b>Видимість для майстрів.</b> Що бачить майстер у своєму кабінеті: лише свій графік і записи, без фінансів власника. Залежить від ролі." onclick="showInfo(event,this.dataset.t)">i</button></h3>
-                <p class="set-p">Що бачать майстри у своєму кабінеті.</p>
+                <h3 class="set-h">Видимість для майстрів <button type="button" class="info-i" data-t="<b>Видимість для майстрів.</b> Що бачить і що може майстер у своєму кабінеті. Все про приватність майстрів — в одному місці." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <p class="set-p">Що бачать і чим керують майстри у своєму кабінеті.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_vis_others"><span><b>Бачать чужі записи</b><i>Записи інших майстрів у журналі.</i></span></label>
                   <label class="set-toggle"><input type="checkbox" id="bz_vis_finance"><span><b>Бачать фінанси</b><i>Суми, виручку, звіти.</i></span></label>
-                  <label class="set-toggle"><input type="checkbox" id="bz_vis_contacts"><span><b>Бачать контакти клієнтів</b><i>Телефони та email.</i></span></label>
                 </div>
                 <button class="btn btn-primary" onclick="saveBusiness('masters_visibility')">Зберегти</button>
                 <p id="bzVisMsg" class="set-msg" style="margin-top:8px"></p>
+                <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-masters-phone" onchange="saveSettings()">
+                    <span><b>Майстри бачать номери телефонів клієнтів</b><i>Коли вимкнено — майстер бачить ім'я, але номер прихований (••• ••XX) скрізь: журнал, кабінет майстра, картка клієнта. Адміністратори й власник бачать завжди. Майстер-одиночка (єдиний активний майстер) бачить номери автоматично.</i></span>
+                  </label>
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-masters-block" onchange="saveSettings()">
+                    <span><b>Майстри можуть самі займати свій час</b><i>Коли увімкнено — майстер може у своєму кабінеті заблокувати відрізок часу (стає сірим, ніхто не запишеться). Власник і адміністратори займають час завжди.</i></span>
+                  </label>
+                  <p id="settingsMsg" class="set-msg" style="margin-top:12px"></p>
+                </div>
               </div></div>
             </div>
 
@@ -4617,7 +4608,7 @@ function loadBusiness(s) {
   const can=s.cancellation||{};
   val('bz_can_hours', can.min_hours ?? 24); val('bz_can_fee', can.noshow_fee ?? 0);
   const vis=s.masters_visibility||{};
-  chk('bz_vis_others', vis.see_others); chk('bz_vis_finance', vis.see_finance); chk('bz_vis_contacts', vis.see_contacts);
+  chk('bz_vis_others', vis.see_others); chk('bz_vis_finance', vis.see_finance);
 }
 async function saveBusiness(group) {
   const n=id=>Number(document.getElementById(id).value)||0;
@@ -4628,7 +4619,7 @@ async function saveBusiness(group) {
     payment_methods:{ msg:'bzPayMsg', payload:{ payment_methods:{ cash:c('bz_pay_cash'), card:c('bz_pay_card'), mono:c('bz_pay_mono'), apple:c('bz_pay_apple'), google:c('bz_pay_google') } } },
     finance:    { msg:'bzFinMsg', payload:{ finance:{ currency:document.getElementById('bz_fin_currency').value, commission_pct:n('bz_fin_commission'), material_pct:n('bz_fin_material'), tax_pct:n('bz_fin_tax'), fiscal:c('bz_fin_fiscal') } } },
     cancellation:{ msg:'bzCanMsg', payload:{ cancellation:{ min_hours:n('bz_can_hours'), noshow_fee:n('bz_can_fee') } } },
-    masters_visibility:{ msg:'bzVisMsg', payload:{ masters_visibility:{ see_others:c('bz_vis_others'), see_finance:c('bz_vis_finance'), see_contacts:c('bz_vis_contacts') } } },
+    masters_visibility:{ msg:'bzVisMsg', payload:{ masters_visibility:{ see_others:c('bz_vis_others'), see_finance:c('bz_vis_finance') } } },
   };
   const cfg=map[group]; if(!cfg) return;
   const msg=document.getElementById(cfg.msg);
