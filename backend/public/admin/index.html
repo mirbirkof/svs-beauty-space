@@ -2562,6 +2562,13 @@ select.input { background:var(--card); }
                 </div>
               </div></div>
 
+              <div class="card"><div class="card-body" id="adminPermsCard">
+                <h3 class="set-h">Дозволи адміністратора <button type="button" class="info-i" data-t="<b>Дозволи адміністратора.</b> Вмикайте/вимикайте доступ ролі «Адмін» до чутливих розділів у будь-який момент. Тонке налаштування по кожному співробітнику окремо — у розділі «Команда → Доступи до системи»." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <p class="set-p">Що адміністратор бачить і чим керує. Змінюється миттєво для всіх адмінів.</p>
+                <div class="set-form" id="adminPermsList"><p class="set-msg">Завантаження…</p></div>
+                <p id="adminPermsMsg" class="set-msg" style="margin-top:6px"></p>
+              </div></div>
+
               <div class="card"><div class="card-body">
                 <h3 class="set-h">Лояльність <button type="button" class="info-i" data-t="<b>Лояльність.</b> Бонусна програма: відсоток нарахування балів від суми покупки і правила їх списання. Бали клієнт може витрачати на наступні візити." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Кешбек балами за візити. 1 бал = 1 грн при списанні.</p>
@@ -4551,6 +4558,7 @@ async function loadSettings() {
         const w = document.getElementById('editPastDurWrap'); if (w) w.style.display = on ? 'block' : 'none';
         if (typeof _editPastShowStatus === 'function') _editPastShowStatus(on, on ? until : null);
       } }
+    if (typeof loadAdminPerms === 'function') loadAdminPerms();
     // Профіль салону
     const p = s.salon_profile || {};
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
@@ -5115,6 +5123,45 @@ async function saveEditPast() {
     if (r.ok) { _aepExp = 0; _editPastShowStatus(el.checked, until); }
     else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; el.checked = !el.checked; const w = document.getElementById('editPastDurWrap'); if (w) w.style.display = el.checked ? 'block' : 'none'; }
   } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; el.checked = !el.checked; }
+}
+
+// ── Дозволи адміністратора (роль admin) — вмикаються/вимикаються власником у будь-який момент ──
+let _adminRole = null;
+const ADMIN_CAPS = [
+  { p:'reports.finance', label:'💰 Фінансові звіти та аналітика', hint:'Доходи, витрати, прибуток салону, P&L.' },
+  { p:'payroll.read',    label:'💵 Перегляд зарплати майстрів',   hint:'Скільки нараховано кожному майстру.' },
+  { p:'schedule.write',  label:'📅 Керування графіками майстрів',  hint:'Ставити й міняти робочі зміни.' },
+  { p:'reports.read',    label:'📊 Базові звіти',                  hint:'Загальна статистика без грошових деталей.' },
+  { p:'audit.read',      label:'🕵 Журнал дій (аудит)',            hint:'Хто що змінював у системі.' },
+];
+async function loadAdminPerms() {
+  const list = document.getElementById('adminPermsList');
+  if (!list) return;
+  // лише власник керує ролями (бек теж owner-only)
+  if (USER && USER.role !== 'owner') { const card = document.getElementById('adminPermsCard'); if (card) card.closest('.card').style.display = 'none'; return; }
+  try {
+    const r = await api('/api/admin/roles');
+    _adminRole = (r.items || []).find(x => x.code === 'admin');
+    if (!_adminRole) { list.innerHTML = '<p class="set-msg">Роль «Адмін» не знайдено.</p>'; return; }
+    const perms = _adminRole.permissions || [];
+    const has = (p) => { const area = p.split('.')[0]; return perms.includes('*') || perms.includes(p) || perms.includes(area + '.*'); };
+    list.innerHTML = ADMIN_CAPS.map(c =>
+      `<label class="set-toggle"><input type="checkbox" ${has(c.p) ? 'checked' : ''} onchange="toggleAdminPerm('${c.p}', this.checked)"><span><b>${c.label}</b><i>${c.hint}</i></span></label>`
+    ).join('') + '<p class="set-p" style="margin-top:10px;font-size:12px">Тонше — по кожному співробітнику окремо — у розділі «Команда → Доступи до системи».</p>';
+  } catch (e) { list.innerHTML = '<p class="set-msg">Не вдалось завантажити дозволи.</p>'; }
+}
+async function toggleAdminPerm(perm, on) {
+  const msg = document.getElementById('adminPermsMsg');
+  if (!_adminRole) return;
+  let perms = (_adminRole.permissions || []).slice();
+  if (on) { if (!perms.includes(perm)) perms.push(perm); }
+  else { const area = perm.split('.')[0]; perms = perms.filter(x => x !== perm && x !== area + '.*'); } // прибираємо точний і покриваючий wildcard
+  if (msg) { msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…'; }
+  try {
+    const r = await api('/api/admin/roles/' + _adminRole.id, { method:'PATCH', body: JSON.stringify({ permissions: perms }) });
+    if (r.ok && r.role) { _adminRole = r.role; if (msg) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(() => msg.textContent = '', 2000); } }
+    else { if (msg) { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; } loadAdminPerms(); }
+  } catch { if (msg) { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; } loadAdminPerms(); }
 }
 async function saveSettings() {
   const msg = document.getElementById('settingsMsg');
