@@ -36,6 +36,7 @@ router.get('/needs', requirePerm('stock.read'), async (req, res) => {
               COALESCE(v.qty, COALESCE(p.stock,0)) AS current_stock,
               p.min_stock, p.max_stock,
               GREATEST(COALESCE(p.max_stock, p.min_stock*2, 0) - COALESCE(v.qty, COALESCE(p.stock,0)), 0) AS suggested_qty,
+              (SELECT COUNT(*)::int FROM product_variants pv2 WHERE pv2.product_id=p.id AND pv2.active IS NOT FALSE) AS variants_count,
               ar.preferred_supplier_id, s.name AS supplier_name
        FROM products p
        LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty
@@ -418,7 +419,10 @@ async function runAutoPurchase() {
      LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty
                   FROM product_variants WHERE active IS NOT FALSE GROUP BY product_id) v ON v.product_id = p.id
      LEFT JOIN auto_purchase_rules ar ON ar.product_id = p.id AND ar.active
-     WHERE p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock`);
+     WHERE p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock
+       AND (SELECT COUNT(*) FROM product_variants pv2 WHERE pv2.product_id=p.id AND pv2.active IS NOT FALSE) <= 1`);
+  // мультиваріантні товари (фарби у тонах) в авто-заказ НЕ потрапляють: приймання не знає,
+  // який тон приїхав (кейс 04.07 — 47 «незарахованих» позицій). Їх прихід — Склад → накладна.
   // группируем по поставщику
   const bySupplier = {};
   for (const row of due.rows) {
