@@ -475,7 +475,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
          (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
           date_from, date_to, channel, bp_appointment_id, status, telegram_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
-               'bot-chat',$11,'confirmed',$12) RETURNING id`,
+               'bot',$11,'confirmed',$12) RETURNING id`,
       [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
        String(masterId), masterNameOf(session, masterId),
        date, slot.startMin, slot.startMin + chosen.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),

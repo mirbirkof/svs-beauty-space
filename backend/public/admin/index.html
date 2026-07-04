@@ -354,6 +354,9 @@ select.input { background:var(--card); }
 /* Оплачено (підтверджено продажем у касі) — зелена рамка + позначка */
 .jappt.jpaid { box-shadow:0 0 0 2px #10b981 inset, 0 1px 3px rgba(0,0,0,.15); }
 .jappt .paid-ico { position:absolute; bottom:4px; right:5px; font-size:14px; color:#d1fae5; }
+/* Онлайн-запис (бот/сайт) — рожевий фон, щоб одразу видно що це через онлайн */
+.jappt.jonline { background:linear-gradient(135deg,#ec4899,#db2777); }
+.jonline-badge { position:absolute; top:3px; right:4px; font-size:9px; font-weight:700; background:rgba(255,255,255,.28); border-radius:6px; padding:1px 5px; letter-spacing:.2px; }
 .jappt .paid-tag { font-size:9px; font-weight:700; background:rgba(255,255,255,.25); padding:0 4px; border-radius:4px; margin-left:3px; vertical-align:middle; }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
@@ -3353,7 +3356,7 @@ function showBookingPopup(ev) {
   }
   const cancelled = ev.event_type === 'cancelled';
   const when = ev.date_from ? new Date(ev.date_from).toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
-  const chMap = { bot:'Telegram', site_salon:'сайт салону', site_shop:'сайт магазину' };
+  const chMap = { bot:'Telegram', 'bot-chat':'Telegram', site_salon:'сайт салону', site_shop:'сайт магазину' };
   const chan = chMap[ev.channel] || 'онлайн';
   const card = document.createElement('div');
   card.style.cssText = `pointer-events:auto;cursor:pointer;background:#fff;border-left:5px solid ${cancelled?'#d9534f':'#0a8f5f'};border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:13px 15px;animation:bkPopIn .22s ease-out;font-size:13px;color:#1f2433`;
@@ -7788,7 +7791,9 @@ function renderJournalDay(container, data) {
       const top=(s-minM)*J_PX_PER_MIN, h=Math.max((e-s)*J_PX_PER_MIN, 26);
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
       const tileFlag = a.client_id ? (Number(a.no_show_count)>0 ? '<span class="jflag warn" title="Є неявки">⚠</span>' : (Number(a.visit_count)===0 ? '<span class="jflag new" title="Новий клієнт">🆕</span>' : '')) : '';
-      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id},${a.master_id!=null?a.master_id:'null'})">
+      const _isOnline = /^(bot|site|online)/.test(a.source||'');
+      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}${_isOnline?' jonline':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id},${a.master_id!=null?a.master_id:'null'})">
+        ${_isOnline?'<span class="jonline-badge" title="Онлайн-запис">🌐 online</span>':''}
         ${a.client_wish?'<span class="wish-badge" title="Є повідомлення від клієнта">💬</span>':''}
         ${a.notes?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         ${tileFlag}
