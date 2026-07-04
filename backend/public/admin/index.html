@@ -4797,6 +4797,12 @@ async function renderScheduleOverview(grid) {
   catch { grid.innerHTML = '<p class="set-p">Графік недоступний.</p>'; return; }
   if (!data || !data.items) { grid.innerHTML = '<p class="set-p">'+((data&&data.error)||'Помилка')+'</p>'; return; }
   _schMonthData = data;
+  // фільтр за професією + адміністратори завжди суцільним блоком внизу (прохання Босса 04.07)
+  const _isAdm = m => /адмі?ністратор|admin/i.test(m.specialty||'');
+  const specs = [...new Set(data.items.map(m=>(m.specialty||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'uk'));
+  let items = data.items.slice();
+  if (window._schSpecFilter) items = items.filter(m=>(m.specialty||'').trim()===window._schSpecFilter);
+  items = items.filter(m=>!_isAdm(m)).concat(items.filter(_isAdm)); // стабільно: майстри → адміни
   const [Y,M] = ym.split('-').map(Number);
   const todayISO = new Date().toISOString().slice(0,10);
   const dates = data.dates;
@@ -4807,7 +4813,7 @@ async function renderScheduleOverview(grid) {
     const today = dt===todayISO ? ' today' : '';
     return `<div class="smc smc-h smc-day-h${wknd}${today}" data-col="${idx}" onclick="schSelCol(${idx})" title="Виділити стовпець дня"><b>${Number(dt.slice(8,10))}</b><i>${_SCH_WD[dow]}</i></div>`;
   }).join('');
-  const rows = data.items.map(m => {
+  const rows = items.map(m => {
     const av = m.avatar ? `<img src="${m.avatar}">` : (m.name||'?').trim()[0].toUpperCase();
     let workDays=0, totalMin=0;
     const cells = m.days.map((d,idx) => {
@@ -4836,6 +4842,10 @@ async function renderScheduleOverview(grid) {
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
        <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+       <select class="input btn-sm" style="width:auto;margin-left:8px;padding:4px 8px;font-size:12.5px" title="Показати лише одну професію" onchange="window._schSpecFilter=this.value;renderScheduleOverview(this.closest('#schGrid,#wschedGrid')||document.getElementById('wschedGrid'))">
+         <option value="">Усі професії</option>
+         ${specs.map(sp=>`<option value="${escapeHtml(sp)}"${window._schSpecFilter===sp?' selected':''}>${escapeHtml(sp)}</option>`).join('')}
+       </select>
        <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одному майстру"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
        <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — заміна автосинку BeautyPro"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
