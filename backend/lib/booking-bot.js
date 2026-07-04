@@ -215,7 +215,28 @@ async function showQuick(ctx, uid, target, session) {
   }
   if (!session.data.master) session.data.master = 'any';
   const masterIds = selectedMasterIds(session);
-  if (!masterIds.length) return restart(ctx, uid, target, 'Немає майстрів, що надають цю послугу онлайн.');
+  if (!masterIds.length) {
+    // Комбо з різних спеціалізацій (напр. «масаж + педикюр») — жоден майстер не робить усе разом.
+    // НЕ крутимо в коло: пропонуємо записатись на кожну послугу окремо.
+    if (chosen.length > 1) {
+      const bookable = [];
+      for (const s of chosen) {
+        const ms = await eligibleMasters(ctx.pool, [s.id]).catch(() => []);
+        if (ms.length) bookable.push(s);
+      }
+      if (bookable.length) {
+        const kb = bookable.map(s => [{ text: `Записатись: ${s.name.slice(0, 36)}`, callback_data: `bk:only:${s.id}` }]);
+        kb.push([{ text: '✏️ Інша послуга', callback_data: 'bk:retry' }]);
+        await saveSession(ctx.pool, uid, target.chat_id, 'quick', session.data);
+        return respond(ctx.tg, target,
+          'Ці послуги виконують <b>різні майстри</b>, тож разом онлайн не вийде.\nОберіть одну — запишу зараз, а другу додасте наступним записом:', kb);
+      }
+    }
+    // Одиночна послуга без онлайн-майстра — не в коло, а чесна підказка.
+    await clearSession(ctx.pool, uid);
+    return respond(ctx.tg, { chat_id: target.chat_id },
+      'На жаль, цю послугу поки не можна записати онлайн. Зателефонуйте, будь ласка, в салон — запишемо вручну. ☎️\n\nАбо напишіть іншу послугу.');
+  }
 
   // побажання з тексту («в суботу», «після обіду», «о 15») звужують пошук
   const pref = session.data.pref || {};
@@ -776,6 +797,18 @@ async function onCallback(cq, ctx) {
       if (part) part.pick = part.candidates.find(c => String(c.id) === sId) || part.candidates[0];
       await ack();
       await advance(ctx, uid, target, session);
+      return true;
+    }
+    // «Записатись: <послуга>» з комбо різних спеціалізацій → лишаємо одну послугу
+    if (data.startsWith('bk:only:')) {
+      const sId = Number(data.slice(8));
+      const cat = await loadCatalog(ctx.pool);
+      const svc = cat.byId.get(sId);
+      await ack();
+      if (!svc) return showQuick(ctx, uid, target, session);
+      session.data.parts = [{ query: svc.name, candidates: [svc], pick: svc }];
+      session.data.masters = null; session.data.master = null; session.data.quick = null;
+      await showQuick(ctx, uid, target, session);
       return true;
     }
     // швидкий слот з екрана «найближчі вікна» → одразу підтвердження
