@@ -2020,7 +2020,9 @@ select.input { background:var(--card); }
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">
             <h3 style="margin:0;display:flex;align-items:center;gap:8px">🔔 Підтвердження витрат <span id="ecPeriodLbl" style="font-size:13px;font-weight:500;color:var(--text-secondary)"></span> <button type="button" class="info-i" data-t="<b>Підтвердження витрат.</b> Витрати, які майстри чи система додали, але вони ще чекають дозволу власника перед тим, як потраплять у фінанси. Перевір суму → підтверди (піде в облік) або відхили." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center">
+              <button type="button" class="btn btn-sm" onclick="ecMonthNav(-1)" title="Попередній місяць">‹</button>
               <input type="month" id="ecMonth" class="inp" style="padding:6px 9px" onchange="loadExpenseConfirm()">
+              <button type="button" class="btn btn-sm" onclick="ecMonthNav(1)" title="Наступний місяць">›</button>
             </div>
           </div>
           <div class="muted" style="font-size:12.5px;margin-bottom:10px">Нараховані витрати за період (зарплата майстрам, оренда тощо). Перевірте суму й натисніть «Провести» — або скоригуйте. Проводиться у касу. Нагадування приходять 1-го, 15-го і в кінці місяця.</div>
@@ -2142,7 +2144,9 @@ select.input { background:var(--card); }
             <div class="card-header" style="flex-wrap:wrap;gap:10px">
               <h3>План обороту на місяць <button type="button" class="info-i" data-t="<b>План обороту.</b> Цільова виручка на місяць для кожного майстра. % показує виконання плану за фактичним оборотом (послуги + товари). План на місяць рахується з кількості змін у графіку." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
+                <button type="button" class="btn btn-sm" onclick="planMonthNav(-1)" title="Попередній місяць">‹</button>
                 <select id="planMonth" class="input btn-sm" style="max-width:140px" onchange="loadMonthlyPlan()"></select>
+                <button type="button" class="btn btn-sm" onclick="planMonthNav(1)" title="Наступний місяць">›</button>
                 <select id="planYear" class="input btn-sm" style="max-width:100px" onchange="loadMonthlyPlan()"></select>
                 <button class="btn btn-primary btn-sm" onclick="exportMonthlyPlan()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">download</span> Excel</button>
               </div>
@@ -11428,6 +11432,18 @@ const _pyKindLabel = k => ({ kpi: 'KPI', premium: 'Премія', onetime: 'Ра
 async function loadPayroll() {
   await loadPayrollMasters();
   payrollTab('schemes');
+  loadExpenseConfirm();
+}
+function planMonthNav(d){
+  const el=document.getElementById('planMonth'); if(!el||!el.options.length) return;
+  const i=Math.min(Math.max(el.selectedIndex - d, 0), el.options.length-1); // опції йдуть від нових до старих
+  if(i!==el.selectedIndex){ el.selectedIndex=i; loadMonthlyPlan(); }
+}
+function ecMonthNav(d){
+  const el=document.getElementById('ecMonth'); if(!el) return;
+  const ym=_ecYM(); let [y,m]=ym.split('-').map(Number);
+  m+=d; if(m<1){m=12;y--;} if(m>12){m=1;y++;}
+  el.value=y+'-'+String(m).padStart(2,'0');
   loadExpenseConfirm();
 }
 function _ecYM(){ const el=document.getElementById('ecMonth'); if(el&&!el.value){ el.value=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit'}).format(new Date()); } return el?el.value:''; }
