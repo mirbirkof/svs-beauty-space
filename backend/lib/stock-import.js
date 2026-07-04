@@ -191,10 +191,14 @@ function slugify(name) {
 // бренд/категорія з назви
 function detectBrand(name) {
   const n = norm(name);
-  if (n.includes('raywell')) return 'raywell';
+  if (n.includes('raywell') || n.includes('eterna') || n.includes('colorplex') || n.includes('color plex')) return 'raywell';
   if (n.includes('invidia')) return 'invidia';
   if (n.includes('envie')) return 'envie';
   if (n.includes('extremo')) return 'extremo';
+  // Matrix: SOCOLOR / Color Sync — лінійки бренду Matrix (заметка #127)
+  if (/socolor|соколор|colorsync|color sync|колорсинк|matrix|матрикс/.test(n)) return 'matrix';
+  // L'Oréal: INOA / Majirel / Dia Light|Richesse — лінійки L'Oréal Professionnel
+  if (/loreal|l ?or ?al|l oreal|лореаль|inoa|іноа|иноа|majirel|мажирель|dia ?light|dia ?richesse/.test(n)) return 'loreal';
   return null;
 }
 const CAT_MAP = [

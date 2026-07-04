@@ -176,9 +176,13 @@ async function createItem(client, name, price) {
     if (!dup.rows[0]) break;
     id = `${base}-${i}`;
   }
-  // бренд обовʼязковий у products → «Інше» для нерозпізнаних
+  // бренд обовʼязковий у products → «Інше» для нерозпізнаних;
+  // розпізнаний бренд створюємо на льоту (щоб detectBrand-новачки не падали на FK)
   if (!brand) {
     await client.query(`INSERT INTO brands (id, name) VALUES ('inshe','Інше') ON CONFLICT (id) DO NOTHING`);
+  } else {
+    const label = brand === 'loreal' ? "L'Oréal" : brand.charAt(0).toUpperCase() + brand.slice(1);
+    await client.query(`INSERT INTO brands (id, name) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`, [brand, label]);
   }
   await client.query(
     `INSERT INTO products (id, name, brand_id, category_id, active, min_stock) VALUES ($1,$2,$3,$4,true,2)`,
