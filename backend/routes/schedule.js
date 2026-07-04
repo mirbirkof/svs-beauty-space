@@ -35,7 +35,11 @@ async function pastEditDenied(req, dateLike) {
     if (((req.user && req.user.role) || '') === 'owner') return false;
     const day = _kyivYmd(dateLike);
     if (day === 'Invalid Date' || day >= _kyivYmd(new Date())) return false;
-    return (await getSetting('allow_edit_past', false)) !== true;
+    if ((await getSetting('allow_edit_past', false)) !== true) return true; // вимкнено
+    // строк дії: якщо заданий і вже минув — дозвіл не діє (авто-відключення за часом)
+    const until = await getSetting('allow_edit_past_until', null);
+    if (until && !isNaN(Date.parse(until)) && Date.parse(until) < Date.now()) return true;
+    return false; // дозволено
   } catch { return false; } // збій перевірки не має блокувати роботу журналу
 }
 

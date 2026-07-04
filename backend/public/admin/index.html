@@ -2544,10 +2544,21 @@ select.input { background:var(--card); }
                 <p class="set-p">Керування тим, чи можуть адміністратори правити записи заднім числом.</p>
                 <div class="set-form">
                   <label class="set-toggle">
-                    <input type="checkbox" id="set-edit-past" onchange="saveEditPast()">
-                    <span><b>Редагування минулих днів адміністратором</b><i>Коли увімкнено — адміністратор може створювати, змінювати й видаляти записи журналу за минулі дні. Коли вимкнено — минулі дні лише для перегляду (власник може редагувати завжди).</i></span>
+                    <input type="checkbox" id="set-edit-past" onchange="onEditPastToggle()">
+                    <span><b>Дозволити адміну редагувати минулі дні</b><i>Адмін зможе створювати, змінювати й видаляти записи журналу за минулі дати. Власник може завжди. Можна дати доступ на обмежений час — після спливання він вимкнеться автоматично.</i></span>
                   </label>
-                  <p id="editPastMsg" class="set-msg"></p>
+                  <div id="editPastDurWrap" style="display:none;margin:10px 0 0;padding-left:2px;font-size:13px">
+                    <span style="color:var(--text-secondary)">Діє протягом:</span>
+                    <select id="set-edit-past-dur" class="input" style="max-width:200px;margin-left:8px;height:32px;padding:2px 8px" onchange="saveEditPast()">
+                      <option value="60">1 година</option>
+                      <option value="180">3 години</option>
+                      <option value="480">8 годин</option>
+                      <option value="1440">1 день</option>
+                      <option value="4320">3 дні</option>
+                      <option value="0">Безстроково</option>
+                    </select>
+                  </div>
+                  <p id="editPastMsg" class="set-msg" style="margin-top:8px"></p>
                 </div>
               </div></div>
 
@@ -4531,7 +4542,15 @@ async function loadSettings() {
     const s = r.settings || {};
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
     { const mb = document.getElementById('set-masters-block'); if (mb) mb.checked = s.masters_can_block_time === true; }
-    { const ep = document.getElementById('set-edit-past'); if (ep) ep.checked = s.allow_edit_past === true; }
+    { const ep = document.getElementById('set-edit-past');
+      if (ep) {
+        const until = s.allow_edit_past_until || null;
+        const expired = until && !isNaN(Date.parse(until)) && Date.parse(until) < Date.now();
+        const on = s.allow_edit_past === true && !expired;
+        ep.checked = on;
+        const w = document.getElementById('editPastDurWrap'); if (w) w.style.display = on ? 'block' : 'none';
+        if (typeof _editPastShowStatus === 'function') _editPastShowStatus(on, on ? until : null);
+      } }
     // Профіль салону
     const p = s.salon_profile || {};
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
@@ -5061,15 +5080,40 @@ async function delCons(sid, variantId) {
   loadCons();
 }
 // #95: перемикач «Редагування минулих днів адміністратором» (Налаштування → Бізнес-налаштування)
+function onEditPastToggle() {
+  const el = document.getElementById('set-edit-past');
+  const wrap = document.getElementById('editPastDurWrap');
+  if (wrap) wrap.style.display = (el && el.checked) ? 'block' : 'none';
+  saveEditPast();
+}
+function _editPastShowStatus(on, until) {
+  const msg = document.getElementById('editPastMsg');
+  if (!msg) return;
+  if (!on) { msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Вимкнено — минулі дні лише для перегляду.'; return; }
+  if (until) {
+    const exp = new Date(until);
+    if (exp.getTime() < Date.now()) {
+      msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Строк дії минув — доступ вимкнено.';
+      const el = document.getElementById('set-edit-past'); if (el) el.checked = false;
+      const w = document.getElementById('editPastDurWrap'); if (w) w.style.display = 'none';
+      return;
+    }
+    msg.style.color = '#10b981';
+    msg.textContent = '✅ Дозволено до ' + exp.toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) + ' (потім вимкнеться саме)';
+  } else { msg.style.color = '#10b981'; msg.textContent = '✅ Дозволено безстроково.'; }
+}
 async function saveEditPast() {
   const el = document.getElementById('set-edit-past');
   const msg = document.getElementById('editPastMsg');
+  const durEl = document.getElementById('set-edit-past-dur');
   if (!el || !msg) return;
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  let until = null;
+  if (el.checked && durEl) { const m = parseInt(durEl.value, 10); if (m > 0) until = new Date(Date.now() + m * 60000).toISOString(); }
   try {
-    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ allow_edit_past: el.checked }) });
-    if (r.ok) { _aepExp = 0; msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(()=>msg.textContent='', 2000); }
-    else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; el.checked = !el.checked; }
+    const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ allow_edit_past: el.checked, allow_edit_past_until: el.checked ? until : null }) });
+    if (r.ok) { _aepExp = 0; _editPastShowStatus(el.checked, until); }
+    else { msg.style.color = '#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; el.checked = !el.checked; const w = document.getElementById('editPastDurWrap'); if (w) w.style.display = el.checked ? 'block' : 'none'; }
   } catch { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; el.checked = !el.checked; }
 }
 async function saveSettings() {
@@ -8866,7 +8910,13 @@ function svcPickChoose(prefix, id) {
 let _aepVal = null, _aepExp = 0;
 async function _getAllowEditPast() {
   if (Date.now() < _aepExp) return _aepVal;
-  try { const r = await api('/api/settings'); _aepVal = !!(r.settings && r.settings.allow_edit_past === true); }
+  try {
+    const r = await api('/api/settings');
+    let on = !!(r.settings && r.settings.allow_edit_past === true);
+    const until = r.settings && r.settings.allow_edit_past_until;
+    if (on && until && !isNaN(Date.parse(until)) && Date.parse(until) < Date.now()) on = false; // строк минув
+    _aepVal = on;
+  }
   catch { _aepVal = true; } // збій запиту не блокує роботу — бекенд перевірить сам
   _aepExp = Date.now() + 60000;
   return _aepVal;
