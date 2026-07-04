@@ -326,7 +326,7 @@ async function showMasters(ctx, uid, target, session) {
 // Кнопковий вхід у запис: категорія → послуги (щоб клієнт не друкував текст).
 // Далі веде через існуючий bk:cat → вибір послуги → слоти.
 const CAT_EMOJI = [
-  [/нігт|ногт/i, '💅'], [/волос/i, '💇'], [/бров|вії|вія/i, '👁'],
+  [/нігт|ногт/i, '💅'], [/волос/i, '💇'], [/бров/i, '👁'], [/вій|вії|вія/i, '👀'],
   [/макіяж|макия/i, '💄'], [/масаж|тіло/i, '💆'], [/депіл|епіл/i, '🪒'],
 ];
 const catEmoji = (c) => (CAT_EMOJI.find(([re]) => re.test(c)) || [, '✨'])[1];
@@ -598,11 +598,17 @@ async function showMyVisits(ctx, uid, chatId) {
 async function showAdminContact(ctx, chatId) {
   let sp = {};
   try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'`)).rows[0]?.value || {}; } catch (_) {}
+  // Telegram робить номер клікабельним лише у чистому форматі (без дужок).
+  // «+380 (99) 128 33 75» → «+380991283375» — тапаєш прямо по цифрах і дзвониш.
+  const firstPhoneRaw = String(sp.phones || '').split(/[,;/]/)[0].trim();
+  const phoneDigits = firstPhoneRaw.replace(/[^\d+]/g, '');
+  const phoneTap = phoneDigits.startsWith('+') ? phoneDigits : (phoneDigits ? '+' + phoneDigits.replace(/^\++/, '') : '');
   const out = ['🧚 <b>Адміністратор салону</b>'];
-  if (sp.phones) out.push(`📞 ${sp.phones}`);
+  if (phoneTap) out.push(`📞 ${phoneTap}`);
+  else if (sp.phones) out.push(`📞 ${sp.phones}`);
   if (sp.address) out.push(`📍 ${sp.address}`);
   if (sp.hours) out.push(`🕐 ${sp.hours}`);
-  out.push('\nНапишіть питання тут або зателефонуйте — тисніть «📞 Подзвонити в салон» нижче.');
+  out.push('\nТисніть на номер вище, щоб подзвонити, або напишіть питання прямо тут.');
   await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: mainMenu() });
 
   // Клікабельний номер: окрема картка контакту з кнопкою «Подзвонити» (заметка Босса).
