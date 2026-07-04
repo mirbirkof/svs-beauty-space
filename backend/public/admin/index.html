@@ -7776,7 +7776,7 @@ async function loadPurchasing(){
       <tr>
         <td>${x.priority==='critical'?'<span style="color:#e3342f">●</span> ':''}${escapeHtml(x.name)}</td>
         <td>залишок ${x.current_stock} / мін ${x.min_stock??'—'}</td>
-        <td>${x.variants_count>1?'<span style="font-size:11px;color:#b8860b;font-weight:700" title="Товар з кількома тонами/варіантами — автозакупка його не замовляє, бо приймання не знає який тон приїхав. Оприбуткуйте через Склад → накладна.">тони — через накладну</span>':escapeHtml(x.supplier_name||'—')}</td>
+        <td>${x.variants_count>1?'<span style="font-size:11px;color:#b8860b;font-weight:700" title="У товару кілька варіантів (обʼєми або тони) — автозакупка не знає, який саме замовляти і приймати. Оприбуткуйте потрібний варіант через Склад → накладна.">'+x.variants_count+' варіанти — через накладну</span>':escapeHtml(x.supplier_name||'—')}</td>
         <td style="text-align:right">потрібно ~${Math.round(x.suggested_qty)}</td>
       </tr>`).join('')||'<tr><td class="empty">Потреби немає — залишки в нормі</td></tr>';
   }catch(e){ document.getElementById('puNeeds').innerHTML='<tr><td class="empty">'+escapeHtml(e.message)+'</td></tr>'; }
