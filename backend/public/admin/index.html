@@ -1557,7 +1557,7 @@ select.input { background:var(--card); }
         </div>
         <p class="set-p" style="margin:0 0 12px">Плануйте робочі зміни майстрів, відмічайте прихід/вихід (clock-in/out). Табель рахує фактично відпрацьовані години за період.</p>
         <div id="shiftsTimesheet" style="margin-bottom:18px"></div>
-        <h3 style="margin:0 0 10px;font-size:15px">Зміни за період</h3>
+        <h3 style="margin:0 0 10px;font-size:15px">Зміни за період <button type="button" class="info-i" data-t="<b>Зміни за період.</b> Показує відпрацьовані зміни майстрів за обраний період — хто скільки годин був на роботі. З цих годин рахується зарплата за ставку/зміну. Години беруться з відміток приходу/виходу." onclick="showInfo(event,this.dataset.t)">i</button></h3>
         <div id="shiftsList"><div class="empty"><span class="material-icons-round">event_available</span>Завантаження...</div></div>
       </div>
 
@@ -2005,7 +2005,7 @@ select.input { background:var(--card); }
         </style>
         <div class="card" id="expConfirmCard" style="margin-bottom:18px;border:1px solid #f0c36d;background:#fffdf6">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-            <h3 style="margin:0;display:flex;align-items:center;gap:8px">🔔 Підтвердження витрат <span id="ecPeriodLbl" style="font-size:13px;font-weight:500;color:var(--text-secondary)"></span></h3>
+            <h3 style="margin:0;display:flex;align-items:center;gap:8px">🔔 Підтвердження витрат <span id="ecPeriodLbl" style="font-size:13px;font-weight:500;color:var(--text-secondary)"></span> <button type="button" class="info-i" data-t="<b>Підтвердження витрат.</b> Витрати, які майстри чи система додали, але вони ще чекають дозволу власника перед тим, як потраплять у фінанси. Перевір суму → підтверди (піде в облік) або відхили." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="month" id="ecMonth" class="inp" style="padding:6px 9px" onchange="loadExpenseConfirm()">
             </div>
@@ -2682,6 +2682,7 @@ select.input { background:var(--card); }
     <div class="modal">
       <div class="modal-header">
         <h3 id="orderTitle">Замовлення</h3>
+        <button type="button" class="info-i" data-t="<b>Замовлення.</b> Деталі онлайн-замовлення товарів: що замовили, кількість, сума, контакти клієнта. Обробляєш і рухаєш статус: нове → зібрано → відправлено → виконано." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeOrder()">✕</button>
       </div>
       <div class="modal-body" id="orderDetail"></div>
@@ -2692,6 +2693,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:920px;width:92vw;font-size:17px">
       <div class="modal-header">
         <h3 id="apptTitle">Запис</h3>
+        <button type="button" class="info-i" data-t="<b>Картка візиту.</b> Головне робоче вікно. Тут: 1) познач, що клієнт прийшов; 2) додай матеріали зі складу (списуються самі); 3) застосуй знижку/сертифікат/бонуси; 4) проведи оплату. Кнопки внизу — усі дії з візитом." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeAppt()">✕</button>
       </div>
       <div class="modal-body" id="apptDetail"></div>
@@ -2702,6 +2704,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:640px">
       <div class="modal-header">
         <h3 id="clientCardTitle">Картка клієнта</h3>
+        <button type="button" class="info-i" data-t="<b>Картка клієнта.</b> Все про людину: історія візитів, скільки витратив, накопичені бонуси, медкарта й формули фарбування. Звідси ж можна подзвонити або написати клієнту." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeClientCard()">✕</button>
       </div>
       <div class="modal-body" id="clientCardBody"></div>
@@ -2713,6 +2716,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:560px">
       <div class="modal-header">
         <h3 id="medCardTitle">Медична карта</h3>
+        <button type="button" class="info-i" data-t="<b>Медична карта.</b> Важливе про здоров’я клієнта: алергії, протипоказання, особливості шкіри й волосся. Заповни, щоб майстер випадково не нашкодив. Бачать лише співробітники салону." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeMedCard()">✕</button>
       </div>
       <div class="modal-body" id="medCardBody"></div>
@@ -2724,6 +2728,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:540px">
       <div class="modal-header">
         <h3 id="formulaTitle">Формула фарбування</h3>
+        <button type="button" class="info-i" data-t="<b>Формула фарбування.</b> Рецепт кольору для клієнта: які фарби, оксид і в яких пропорціях змішали. Збережи — і наступного разу повториш точно той самий відтінок без вгадування." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeFormula()">✕</button>
       </div>
       <div class="modal-body" id="formulaBody"></div>
@@ -2735,6 +2740,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:520px">
       <div class="modal-header">
         <h3 id="allergyTitle">Алергопроба</h3>
+        <button type="button" class="info-i" data-t="<b>Алергопроба.</b> Тест на алергію перед фарбуванням. Занеси дату проби й результат (позитивний = є реакція, фарбувати не можна / негативний = все добре). Захищає клієнта від опіку, а салон — від претензій." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeAllergy()">✕</button>
       </div>
       <div class="modal-body" id="allergyBody"></div>
@@ -2801,6 +2807,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:520px">
       <div class="modal-header">
         <h3 id="consentTitle">Інформована згода</h3>
+        <button type="button" class="info-i" data-t="<b>Інформована згода.</b> Документ, де клієнт підписом підтверджує, що ознайомлений з процедурою та її ризиками. Зберігається в системі — юридичний захист салону при спорах." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeConsent()">✕</button>
       </div>
       <div class="modal-body" id="consentBody"></div>
@@ -2825,6 +2832,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:1080px;width:97vw;max-height:94vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
+        <button type="button" class="info-i" data-t="<b>Профіль співробітника.</b> Все про одного майстра: контакти, які послуги надає, графік роботи, правила зарплати (відсоток/ставка) і доступи до системи. Звідси керуєш його роллю в салоні." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeMasterCard()">✕</button>
       </div>
       <div class="modal-body" id="masterCardBody" style="padding-top:0;flex:1;overflow-y:auto"></div>
@@ -2874,7 +2882,7 @@ select.input { background:var(--card); }
   <!-- Керування залами / напрямками (заметка #76) -->
   <div id="zonesModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) zonesClose()">
     <div class="modal" style="max-width:520px;max-height:84vh;display:flex;flex-direction:column">
-      <div class="modal-header"><h3>Зали / напрямки</h3><button class="modal-close" onclick="zonesClose()">✕</button></div>
+      <div class="modal-header"><h3>Зали / напрямки <button type="button" class="info-i" data-t="<b>Зали / напрямки.</b> Кабінети й робочі місця салону (напр. зал манікюру, кабінет косметолога, крісло майстра). Запис прив’язується до залу, щоб два майстри не опинились в одному місці одночасно." onclick="showInfo(event,this.dataset.t)">i</button></h3><button class="modal-close" onclick="zonesClose()">✕</button></div>
       <div class="muted" style="padding:0 4px 8px;font-size:12.5px">Зал = група майстрів. Перетягуйте майстрів між залами — дохід і витрати рахуються по кожному напрямку.</div>
       <div class="modal-body" id="zonesCfgBody" style="overflow:auto"></div>
     </div>
