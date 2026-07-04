@@ -8021,7 +8021,7 @@ function renderJournalDay(container, data) {
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
         ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
-        ${h>64?`<div class="p">${_money(a.real_amount!=null?a.real_amount:a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':'оплачено'}</span>`:''}</div>`:''}
+        ${h>64?`<div class="p">${_money(a.real_amount!=null?a.real_amount:a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':a.pay_method==='mixed'?'💵+💳 змішана':'оплачено'}</span>`:''}</div>`:''}
         ${a.paid?'<span class="paid-ico material-icons-round" title="Оплачено">paid</span>':okIcon}
       </div>`;
     });
@@ -8318,6 +8318,7 @@ function apptContactRow(a){
 function _payBadge(method) {
   if (method === 'cash') return `<span style="display:inline-block;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💵 Готівка</span>`;
   if (method === 'card') return `<span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💳 Безготівка</span>`;
+  if (method === 'mixed') return `<span style="display:inline-block;background:#fef3c7;color:#b45309;border:1px solid #fcd34d;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;vertical-align:1px">💵+💳 Змішана</span>`;
   return '';
 }
 async function openAppt(id, masterId) {
@@ -8432,8 +8433,16 @@ async function openAppt(id, masterId) {
         </div>
         <span style="color:var(--text-secondary);font-size:12px">Спосіб оплати</span>
         <div style="display:flex;gap:6px;margin-top:6px">
-          <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked> Готівка</label>
-          <label class="payway"><input type="radio" name="apptPayWay" value="card"> Картка</label>
+          <label class="payway"><input type="radio" name="apptPayWay" value="cash" checked onchange="payMixedToggle(${a.id})"> Готівка</label>
+          <label class="payway"><input type="radio" name="apptPayWay" value="card" onchange="payMixedToggle(${a.id})"> Картка</label>
+          <label class="payway" title="Частина готівкою, частина карткою"><input type="radio" name="apptPayWay" value="mixed" onchange="payMixedToggle(${a.id})"> Змішана</label>
+        </div>
+        <div id="payMixedRow" style="display:none;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;background:var(--bg-secondary,#f8fafc);border:1px solid var(--border);border-radius:8px;padding:8px">
+          <span style="font-size:12px">💵 Готівка</span>
+          <input id="payMixCash" type="number" min="0" step="0.01" class="input" style="width:96px;padding:5px" oninput="payMixedBalance(${a.id})">
+          <span style="font-size:12px">💳 Картка</span>
+          <input id="payMixCard" type="number" min="0" step="0.01" class="input" style="width:96px;padding:5px" oninput="payMixedCheck(${a.id})">
+          <span id="payMixNote" style="font-size:11px;color:var(--text-secondary);flex-basis:100%"></span>
         </div>
         <button id="apptPayBtn" data-service="${Number(a.price)||0}" class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
                 onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
@@ -8683,12 +8692,58 @@ function payRecalc(id) {
   if (note) note.innerHTML = `Повна: <b>${_money(base)}</b>${disc>0?` · знижка −${_money(disc)}`:''}${cert?` · сертифікат (при оплаті)`:''}${bonusMoney>0?` · бонуси −${_money(bonusMoney)}`:''}<br>До сплати${cert?' (мінус сертифікат)':''}: <b style="color:#10b981">${_money(finalApprox)}</b>`;
   const btn = document.getElementById('apptPayBtn');
   if (btn) btn.textContent = `💳 Провести оплату · ${_money(finalApprox)}`;
+  // змішана оплата: тримаємо актуальну «до сплати» і перебиваємо картку залишком
+  _payOpts._final = finalApprox;
+  const mixRow = document.getElementById('payMixedRow');
+  if (mixRow && mixRow.style.display !== 'none') payMixedBalance(id);
+}
+// ── Змішана оплата: показ полів + автозаповнення залишку карткою ──
+function payMixedToggle(id) {
+  const way = (document.querySelector('input[name="apptPayWay"]:checked')||{}).value;
+  const row = document.getElementById('payMixedRow');
+  if (!row) return;
+  row.style.display = way === 'mixed' ? 'flex' : 'none';
+  if (way === 'mixed') {
+    if (typeof payRecalc === 'function') payRecalc(id); // оновити _final
+    const total = Number(_payOpts._final) || 0;
+    const cashEl = document.getElementById('payMixCash');
+    if (cashEl && !cashEl.value) cashEl.value = total; // старт: все готівкою, далі оператор правит
+    payMixedBalance(id);
+  }
+}
+function payMixedBalance(id) { // ввели готівку → картка = залишок
+  const total = Number(_payOpts._final) || 0;
+  const r2 = n => Math.round(n * 100) / 100;
+  const cash = Number(document.getElementById('payMixCash')?.value) || 0;
+  const cardEl = document.getElementById('payMixCard');
+  if (cardEl) cardEl.value = r2(Math.max(0, total - cash));
+  payMixedCheck(id);
+}
+function payMixedCheck(id) { // живий контроль суми частин
+  const total = Number(_payOpts._final) || 0;
+  const r2 = n => Math.round(n * 100) / 100;
+  const cash = Number(document.getElementById('payMixCash')?.value) || 0;
+  const card = Number(document.getElementById('payMixCard')?.value) || 0;
+  const note = document.getElementById('payMixNote');
+  if (!note) return;
+  const sum = r2(cash + card);
+  if (sum === r2(total)) { note.style.color = '#059669'; note.textContent = `✓ ${_money(cash)} готівка + ${_money(card)} картка = ${_money(total)}`; }
+  else { note.style.color = '#dc2626'; note.textContent = `Сума частин ${_money(sum)} ≠ до сплати ${_money(total)} — поправте`; }
 }
 // Провести оплату: запис → виконано + прихід у касу (готівка/картка) + знижки/сертифікат/бонуси
 async function payAppt(id) {
   const msg = document.getElementById('apptMsg');
   const way = (document.querySelector('input[name="apptPayWay"]:checked')||{}).value || 'cash';
   const body = { method: way };
+  if (way === 'mixed') {
+    const r2 = n => Math.round(n * 100) / 100;
+    const mc = Number(document.getElementById('payMixCash')?.value) || 0;
+    const mk = Number(document.getElementById('payMixCard')?.value) || 0;
+    if (r2(mc + mk) !== r2(Number(_payOpts._final) || 0)) {
+      msg.style.color = '#ef4444'; msg.textContent = 'Змішана оплата: сума готівки + картки має дорівнювати сумі до сплати'; return;
+    }
+    body.mixed_cash = mc; body.mixed_card = mk;
+  }
   const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
   if (dVal > 0) { body.discount_type = document.getElementById('payDiscType')?.value || 'percent'; body.discount_value = dVal; }
   const cert = (document.getElementById('payCertCode')?.value || '').trim();

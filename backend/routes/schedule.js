@@ -677,9 +677,10 @@ router.get('/journal', async (req, res) => {
               ) AS paid,
               -- Спосіб оплати (cash/card) — той самий матчинг, що й «оплачено».
               COALESCE(
-                (SELECT co.method FROM cash_operations co
+                (SELECT CASE WHEN COUNT(DISTINCT co.method) > 1 THEN 'mixed' ELSE MIN(co.method) END
+                   FROM cash_operations co
                    WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id
-                   ORDER BY co.id DESC LIMIT 1),
+                   HAVING COUNT(*) > 0),
                 (SELECT co.method FROM cash_operations co
                    WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
                      AND a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
@@ -1422,7 +1423,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const pool = getPool();
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
-    const method = ['cash', 'card', 'transfer', 'mono'].includes(req.body?.method) ? req.body.method : 'cash';
+    const method = ['cash', 'card', 'transfer', 'mono', 'mixed'].includes(req.body?.method) ? req.body.method : 'cash';
 
     // запис + ціна + майстер + GUID клієнта (для точної перевірки оплати в BP)
     const ap = await pool.query(
@@ -1506,6 +1507,23 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const totalDiscount = round2(discountMoney + certMoney + bonusMoney);
     // сумісність зі старим кодом нижче: amount = скільки реально в касу
     const amount = finalCash;
+
+    // ── ЗМІШАНА ОПЛАТА: частина готівкою + частина карткою (побажання адміна 04.07) ──
+    // parts = [[method, sum], ...] — на кожну частину своя касова операція.
+    let payParts = [[method, finalCash]];
+    if (method === 'mixed') {
+      const mc = round2(Number(req.body?.mixed_cash) || 0);
+      const mk = round2(Number(req.body?.mixed_card) || 0);
+      if (mc < 0 || mk < 0)
+        return res.status(400).json({ error: 'mixed-bad', message: 'Суми не можуть бути відʼємні' });
+      if (round2(mc + mk) !== finalCash)
+        return res.status(400).json({ error: 'mixed-sum-mismatch',
+          message: `Готівка (${mc}) + картка (${mk}) = ${round2(mc + mk)} грн, а до сплати ${finalCash} грн. Поправте суми.`,
+          expected: finalCash });
+      payParts = [['cash', mc], ['card', mk]].filter(p => p[1] > 0);
+      if (!payParts.length && finalCash > 0)
+        return res.status(400).json({ error: 'mixed-empty', message: 'Вкажіть суми готівки та/або картки' });
+    }
     // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
     // майстром того ж дня (точна привʼязка по GUID) — гроші вже в касі. Не дублюємо.
     if (appt.master_id && appt.bp_client) {
@@ -1551,15 +1569,22 @@ router.post('/appointments/:id/pay', async (req, res) => {
     try {
       await client.query('BEGIN'); await applyTenant(client);
       // каса отримує реальні гроші лише якщо finalCash > 0 (0 → все закрито сертифікатом/бонусами)
+      // mixed → окрема операція на кожен метод (готівка/картка); unique-індекс тепер per-method.
       if (finalCash > 0) {
-        op = await client.query(
-          `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
-           VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
-           ON CONFLICT (tenant_id, ref_type, ref_id) WHERE type='in' AND ref_type='appointment' DO NOTHING
-           RETURNING id`,
-          [shiftId, finalCash, method, id, appt.master_id || null, descr, opCreatedAt]
-        );
-        if (!op.rows[0]) raceLost = true;
+        let inserted = 0;
+        for (const [pMethod, pSum] of payParts) {
+          const pDescr = payParts.length > 1
+            ? `${descr} [змішана: ${pMethod === 'cash' ? 'готівка' : 'картка'} ${pSum} грн]` : descr;
+          const r = await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+             VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
+             ON CONFLICT (tenant_id, ref_type, ref_id, method) WHERE type='in' AND ref_type='appointment' DO NOTHING
+             RETURNING id`,
+            [shiftId, pSum, pMethod, id, appt.master_id || null, pDescr, opCreatedAt]
+          );
+          if (r.rows[0]) { inserted++; if (!op.rows[0]?.id) op = r; }
+        }
+        if (!inserted) raceLost = true;
       }
       if (!raceLost) {
         // списання сертифіката (атомарно з касою)
