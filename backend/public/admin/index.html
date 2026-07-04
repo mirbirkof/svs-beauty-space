@@ -556,10 +556,10 @@ select.input { background:var(--card); }
 .schb-off { color:#cfd2e0; font-size:14px; }
 .schb-row-off .schb-name { background:#fff5f5; }
 /* Місячна матриця графіка (день-сітка) */
-.schmon-bar { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.schmon-bar { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; row-gap:6px; }
 .schmon-title { font-weight:700; font-size:15px; min-width:150px; text-align:center; text-transform:capitalize; }
 .schmon { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:#fff; }
-.schmon-grid { display:grid; }
+.schmon-grid { display:grid; width:100%; }
 .smc { border-bottom:1px solid var(--border); border-right:1px solid var(--border); min-height:46px; display:flex; align-items:center; justify-content:center; overflow:hidden; box-sizing:border-box; }
 .smc-h { background:#f6f7fb; flex-direction:column; gap:0; font-size:11px; color:var(--text-secondary); position:sticky; top:0; z-index:2; }
 .smc-h b { font-size:12px; color:var(--text); font-weight:700; }
@@ -4837,7 +4837,7 @@ async function renderScheduleOverview(grid) {
         <span style="min-width:0;overflow:hidden"><span class="schb-nm">${m.name}</span><span class="schb-meta">${m.specialty?m.specialty+' · ':''}${meta}</span></span>
       </div>${cells}`;
   }).join('');
-  const colW = `132px repeat(${dates.length}, 34px)`;
+  const colW = `132px repeat(${dates.length}, minmax(32px, 1fr))`; // резиново: вписується в екран, мінімум 32px на день
   grid.innerHTML =
     `<div class="schmon-wrap" id="schWrap">
      <div class="schmon-bar">
