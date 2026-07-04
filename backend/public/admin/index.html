@@ -7917,8 +7917,15 @@ async function puReceiveModal(id){
         const q=+inp.value||0; if(q>0||(+def.value>0)) items.push({po_item_id:+poi,quantity_received:q,quantity_defective:+def.value||0});
       });
       if(!items.length) return toast('Вкажи кількість','error');
-      const r=await api('/api/purchasing/orders/'+id+'/receive',{method:'POST',body:JSON.stringify({items,discrepancy_notes:document.getElementById('puDisc').value||null})});
-      if(r&&r.ok){ toast('Прийнято на склад'+(r.has_discrepancy?' (є розбіжності)':'')); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); return false; }
+      if(window._puRecvBusy) return false; window._puRecvBusy=true; // подвійний клік = подвійна приймання (кейс 04.07)
+      try{
+        const r=await api('/api/purchasing/orders/'+id+'/receive',{method:'POST',body:JSON.stringify({items,discrepancy_notes:document.getElementById('puDisc').value||null})});
+        if(r&&r.ok){
+          toast('Прийнято на склад'+(r.has_discrepancy?' (є розбіжності)':''));
+          if(r.unassigned_count>0) setTimeout(()=>toast(r.unassigned_count+' поз. (фарби у тонах) НЕ зараховано — оприбуткуйте через Склад → накладна, вказавши тон','error'),600);
+          loadPurchasing();
+        } else { toast((r&&r.error)||'Помилка','error'); return false; }
+      } finally { window._puRecvBusy=false; }
     });
 }
 async function puAutoRun(){

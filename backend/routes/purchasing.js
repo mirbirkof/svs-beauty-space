@@ -190,10 +190,12 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
   try {
     await client.query('BEGIN'); await applyTenant(client);
     const poId = req.params.id;
-    const po = await client.query(`SELECT * FROM purchase_orders WHERE id=$1`, [poId]);
+    // FOR UPDATE: подвійний клік «Прийняти» створював ДВІ приймання (гонка 04.07.2026,
+    // PO-2026-0001 ×2) — тепер друга транзакція чекає першу і бачить статус received → 409
+    const po = await client.query(`SELECT * FROM purchase_orders WHERE id=$1 FOR UPDATE`, [poId]);
     if (!po.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     if (!['ordered', 'in_transit', 'partially_received', 'approved'].includes(po.rows[0].status)) {
-      await client.query('ROLLBACK'); return res.status(409).json({ error: 'not-receivable' });
+      await client.query('ROLLBACK'); return res.status(409).json({ error: 'not-receivable', message: 'Заказ вже прийнято або він не в тому статусі' });
     }
     const { items, discrepancy_notes, discrepancy_photos } = req.body || {};
     if (!Array.isArray(items) || !items.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'items-required' }); }
@@ -206,7 +208,10 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
     for (const it of items) {
       const poi = byId[it.po_item_id];
       if (!poi) continue;
-      const q = parseFloat(it.quantity_received || 0);
+      // стеля: не можна прийняти більше, ніж лишилось по позиції (захист від повторів)
+      const remaining = Math.max(parseFloat(poi.quantity_ordered) - parseFloat(poi.quantity_received || 0), 0);
+      const q = Math.min(parseFloat(it.quantity_received || 0), remaining);
+      if (q <= 0 && !(parseFloat(it.quantity_defective || 0) > 0)) continue;
       recvTotal += q * parseFloat(poi.unit_price);
       recItems.push({ poi, q, def: parseFloat(it.quantity_defective || 0), wrong: parseFloat(it.quantity_wrong || 0), notes: it.notes });
     }
@@ -216,6 +221,7 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
       [po.rows[0].supplier_id, po.rows[0].po_number, recvTotal, discrepancy_notes || null]);
     const stockReceiptId = sr.rows[0].id;
 
+    const unassigned = []; // товари з кількома варіантами (тони) — прихід не розподілено
     const hasDisc = recItems.some(r => r.def > 0 || r.wrong > 0) || !!discrepancy_notes;
     const pr = await client.query(
       `INSERT INTO purchase_receipts(purchase_order_id, received_by, has_discrepancy, discrepancy_notes, discrepancy_photos, stock_receipt_id)
@@ -263,6 +269,7 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
             targetVariant = vrows[0].id;
             await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`, [good, targetVariant, cost]);
           } else if (vrows.length > 1) {
+            unassigned.push(r.poi.product_name);
             console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов без variant_id в позиции — приход ${good} не распределён (выберите вариант в форме закупки)`);
           }
         }
@@ -283,7 +290,7 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
 
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'purchase.receive', entity: 'purchase_order', entity_id: +poId, ip: req.ip, meta: { stockReceiptId, status: newStatus } });
-    res.json({ ok: true, receipt_id: prId, stock_receipt_id: stockReceiptId, status: newStatus, has_discrepancy: hasDisc });
+    res.json({ ok: true, receipt_id: prId, stock_receipt_id: stockReceiptId, status: newStatus, has_discrepancy: hasDisc, unassigned_count: unassigned.length, unassigned: unassigned.slice(0, 10) });
   } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
   finally { client.release(); }
 });
