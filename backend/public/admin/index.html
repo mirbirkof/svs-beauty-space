@@ -4802,7 +4802,10 @@ async function renderScheduleOverview(grid) {
   const specs = [...new Set(data.items.map(m=>(m.specialty||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'uk'));
   let items = data.items.slice();
   if (window._schSpecFilter) items = items.filter(m=>(m.specialty||'').trim()===window._schSpecFilter);
-  items = items.filter(m=>!_isAdm(m)).concat(items.filter(_isAdm)); // стабільно: майстри → адміни
+  // порядок рядків: групами за професією (алфавіт), усередині — за імʼям; без професії — передостанні; адміни — завжди внизу
+  items.sort((a,b)=> (_isAdm(a)-_isAdm(b))
+    || String(a.specialty||'\uffff').localeCompare(String(b.specialty||'\uffff'),'uk')
+    || String(a.name||'').localeCompare(String(b.name||''),'uk'));
   const [Y,M] = ym.split('-').map(Number);
   const todayISO = new Date().toISOString().slice(0,10);
   const dates = data.dates;
