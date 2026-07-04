@@ -2509,13 +2509,6 @@ select.input { background:var(--card); }
                   <span id="schMsg" class="set-msg"></span>
                 </div>
                 <div id="schGrid"></div>
-                <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
-                  <label class="set-toggle">
-                    <input type="checkbox" id="set-edit-past" onchange="saveEditPast()">
-                    <span><b>Редагування минулих днів адміністратором</b><i>Коли увімкнено — адміністратор може створювати, змінювати й видаляти записи журналу за минулі дні. Коли вимкнено — минулі дні лише для перегляду (власник може редагувати завжди).</i></span>
-                  </label>
-                  <p id="editPastMsg" class="set-msg"></p>
-                </div>
               </div></div>
             </div>
 
@@ -2543,6 +2536,18 @@ select.input { background:var(--card); }
                 <p class="set-p">Увімкнення / вимкнення необовʼязкових розділів. Вимкнений модуль зникає з меню, дані зберігаються.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_mod_shifts" onchange="toggleShiftsModule(this.checked)"><span><b>Зміни / Табель</b><i>Окремий облік змін і clock-in/out. Для плану обороту кількість змін береться з графіка незалежно від цього модуля.</i></span></label>
+                </div>
+              </div></div>
+
+              <div class="card"><div class="card-body">
+                <h3 class="set-h">Права редагування <button type="button" class="info-i" data-t="<b>Права редагування.</b> Хто і що може змінювати в журналі за минулі дати." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <p class="set-p">Керування тим, чи можуть адміністратори правити записи заднім числом.</p>
+                <div class="set-form">
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-edit-past" onchange="saveEditPast()">
+                    <span><b>Редагування минулих днів адміністратором</b><i>Коли увімкнено — адміністратор може створювати, змінювати й видаляти записи журналу за минулі дні. Коли вимкнено — минулі дні лише для перегляду (власник може редагувати завжди).</i></span>
+                  </label>
+                  <p id="editPastMsg" class="set-msg"></p>
                 </div>
               </div></div>
 
@@ -5055,7 +5060,7 @@ async function delCons(sid, variantId) {
   await api(`/api/consumables/${sid}/${variantId}`, { method:'DELETE' });
   loadCons();
 }
-// #95: перемикач «Редагування минулих днів адміністратором» (Налаштування → Графік змін)
+// #95: перемикач «Редагування минулих днів адміністратором» (Налаштування → Бізнес-налаштування)
 async function saveEditPast() {
   const el = document.getElementById('set-edit-past');
   const msg = document.getElementById('editPastMsg');
@@ -8873,7 +8878,7 @@ async function pastEditBlockedUI(dateLike) {
     const day = /^\d{4}-\d{2}-\d{2}$/.test(String(dateLike)) ? String(dateLike) : _ymd(new Date(dateLike));
     if (day >= _ymd(new Date())) return false; // сьогодні й майбутнє — без обмежень
     if (await _getAllowEditPast()) return false;
-    toast('Редагування минулих днів вимкнено. Власник може увімкнути це в Налаштуваннях → Графік змін', 'error');
+    toast('Редагування минулих днів вимкнено. Власник може увімкнути це в Налаштуваннях → Бізнес-налаштування', 'error');
     return true;
   } catch { return false; }
 }
