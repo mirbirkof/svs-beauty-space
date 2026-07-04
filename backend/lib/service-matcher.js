@@ -163,8 +163,15 @@ function match(query, indexedServices, { perPart = 5, minScore = 0.34 } = {}) {
   const rawParts = String(query || '').split(COMBO_SPLIT).map(p => p.trim()).filter(Boolean);
   const parts = (rawParts.length ? rawParts : [query]).map(p => {
     const qTokens = tokenize(p);
+    const qJoined = qTokens.join(' ');
     const scored = indexedServices
-      .map(s => ({ service: s, score: scoreService(qTokens, s) }))
+      .map(s => {
+        let score = scoreService(qTokens, s);
+        // мʼякий тай-брейк: дитячу стрижку не показуємо першою на загальний запит
+        // (клієнт майже завжди має на увазі дорослу; до того ж у неї часто немає слотів)
+        if (score > 0 && /дитяч/.test(s._norm) && !/дитяч|дит |дет/.test(qJoined)) score -= 0.15;
+        return { service: s, score };
+      })
       .filter(x => x.score >= minScore)
       .sort((a, b) => b.score - a.score);
     // дедуп майже однакових назв (залишаємо найдешевшу/першу за рангом)
