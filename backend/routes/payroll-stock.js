@@ -12,7 +12,7 @@ const pool = getPool();
 router.use((req, res, next) => {
   // Роутер смонтирован на общий '/api' — охраняем ТОЛЬКО свои пути,
   // иначе guard глушит все /api/* роуты, смонтированные ниже (логин и т.д.)
-  if (!/^\/(payroll|stock|suppliers)(\/|$)/.test(req.path)) return next();
+  if (!/^\/(payroll|stock)(\/|$)/.test(req.path)) return next();
   // /payroll/my — самопросмотр мастером: достаточно авторизации (фильтр по своему master_id)
   if (req.method === 'GET' && req.path === '/payroll/my') return requirePerm()(req, res, next);
   const area = req.path.startsWith('/stock') ? 'stock' : 'payroll';
@@ -611,45 +611,8 @@ router.get('/payroll/my', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-/* ═══════════════ SUPPLIERS ═══════════════ */
-
-router.post('/suppliers', async (req, res) => {
-  try {
-    const { name, phone, email, notes } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'name required' });
-    const r = await pool.query(
-      `INSERT INTO suppliers (name, phone, email, notes) VALUES ($1,$2,$3,$4) RETURNING id`,
-      [name, normalizePhoneDb(phone), email || null, notes || null]
-    );
-    res.json({ ok: true, id: r.rows[0].id });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
-});
-
-router.get('/suppliers', async (req, res) => {
-  try {
-    const r = await pool.query(`SELECT * FROM suppliers ORDER BY name`);
-    res.json({ items: r.rows, count: r.rows.length });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
-});
-
-router.patch('/suppliers/:id', async (req, res) => {
-  try {
-    const { name, phone, email, notes } = req.body || {};
-    const r = await pool.query(
-      `UPDATE suppliers SET name=COALESCE($2,name), phone=$3, email=$4, notes=$5 WHERE id=$1 RETURNING id`,
-      [req.params.id, name || null, normalizePhoneDb(phone), email || null, notes || null]
-    );
-    if (!r.rows[0]) return res.status(404).json({ error: 'not found' });
-    res.json({ ok: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
-});
-
-router.delete('/suppliers/:id', async (req, res) => {
-  try {
-    await pool.query(`DELETE FROM suppliers WHERE id=$1`, [req.params.id]);
-    res.json({ ok: true });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
-});
+/* SUPPLIERS: перенесено в routes/suppliers.js (SLS-05) — старі маршрути тут
+   ПЕРЕХОПЛЮВАЛИ /api/suppliers і глушили повноцінний модуль (заметка #124). */
 
 /* ═══════════════ STOCK RECEIPTS (поставки) ═══════════════ */
 

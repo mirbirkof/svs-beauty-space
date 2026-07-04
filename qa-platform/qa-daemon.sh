@@ -35,5 +35,9 @@ while true; do
   ps -eo pid,etimes,comm --no-headers | awk '$3 ~ /^chrom/ && $2 > 600 {print $1}' | while read zpid; do
     kill -9 "$zpid" 2>/dev/null && echo "[qa-daemon $(date '+%F %T')] убит зомби-chromium $zpid" >> /tmp/qa-daemon.log
   done
+  # 5) ротация логов: qa-staging.log > 3000 строк → оставляем 500 последних
+  if [ "$(wc -l < /tmp/qa-staging.log 2>/dev/null)" -gt 3000 ]; then
+    tail -500 /tmp/qa-staging.log > /tmp/qa-staging.log.tmp && mv /tmp/qa-staging.log.tmp /tmp/qa-staging.log
+  fi
   sleep 30
 done

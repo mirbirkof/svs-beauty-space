@@ -3942,7 +3942,7 @@ async function loadSuppliers(){
       rows.map(s=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:11px 14px;font-weight:600">'+_extEsc(s.name)+'</td>'+
         '<td style="padding:11px 14px">'+_extEsc(s.contact_person||s.email||'—')+'</td>'+
         '<td style="padding:11px 14px">'+_extEsc(s.phone||'—')+'</td>'+
-        '<td style="padding:11px 14px">'+(s.is_active===false?'<span style="color:#9aa0a6">Неактивний</span>':'<span style="color:#0a8f5f">Активний</span>')+'</td></tr>').join('')+
+        '<td style="padding:11px 14px">'+(s.status==='blocked'?'<span style="color:#d9534f">Заблокований</span>':s.status==='paused'?'<span style="color:#b8860b">На паузі</span>':'<span style="color:#0a8f5f">Активний</span>')+'</td></tr>').join('')+
       '</tbody></table>';
   }catch(e){ _extErr(el,e); } }
 function supplierCreate(){
@@ -4569,7 +4569,7 @@ async function loadContractors(){
   box.innerHTML='<div class="empty">Завантаження…</div>';
   try{
     const r=await api('/api/suppliers');
-    const items=r.suppliers||r.items||[];
+    const items=(r.suppliers||r.items||[]).filter(s=>s.status!=='blocked');
     window._contractors=items;
     box.innerHTML = items.length ? `<table class="tbl" style="width:100%"><thead><tr><th style="text-align:left">Назва</th><th style="text-align:left">Телефон</th><th style="text-align:left">Email</th><th style="text-align:left">Примітка</th><th></th></tr></thead><tbody>${
       items.map(s=>`<tr>
@@ -7755,7 +7755,7 @@ async function loadPurchasing(){
   }catch(e){ document.getElementById('puOrders').innerHTML='<tr><td class="empty">'+escapeHtml(e.message)+'</td></tr>'; }
 }
 async function _puLoadRefs(){
-  if(!_PU_SUPPLIERS.length){ try{ _PU_SUPPLIERS=(await api('/api/suppliers')).items||[]; }catch(_){} }
+  if(!_PU_SUPPLIERS.length){ try{ const _s=await api('/api/suppliers?status=active'); _PU_SUPPLIERS=_s.suppliers||_s.items||[]; }catch(_){} }
   if(!_PU_PRODUCTS.length){ try{ _PU_PRODUCTS=(await api('/api/admin/products?limit=200')).items||[]; }catch(_){} }
 }
 let _puLines=[];

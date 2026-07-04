@@ -400,14 +400,18 @@ router.delete('/auto-rules/:id', requirePerm('stock.write'), async (req, res) =>
 // Прогон автозакупки: по правилам создаёт draft-заказы для товаров ниже минимума
 async function runAutoPurchase() {
   const pool = getPool();
+  // Кандидати = ВСІ активні товари нижче мінімуму (та сама логіка, що в /needs).
+  // auto_purchase_rules — лише додаткове налаштування (бажаний постачальник),
+  // НЕ фільтр: раніше без жодного правила кнопка завжди давала «0 кандидатів» (заметка #125).
   const due = await pool.query(
     `SELECT p.id AS product_id, p.name,
             COALESCE(v.qty, COALESCE(p.stock,0)) AS stock, p.min_stock, p.max_stock,
             ar.preferred_supplier_id, ar.max_auto_amount, ar.auto_approve
-     FROM auto_purchase_rules ar JOIN products p ON p.id=ar.product_id
+     FROM products p
      LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty
                   FROM product_variants WHERE active IS NOT FALSE GROUP BY product_id) v ON v.product_id = p.id
-     WHERE ar.active AND p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock`);
+     LEFT JOIN auto_purchase_rules ar ON ar.product_id = p.id AND ar.active
+     WHERE p.active AND p.min_stock IS NOT NULL AND COALESCE(v.qty, COALESCE(p.stock,0)) <= p.min_stock`);
   // группируем по поставщику
   const bySupplier = {};
   for (const row of due.rows) {
