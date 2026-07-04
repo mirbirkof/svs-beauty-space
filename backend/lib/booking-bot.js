@@ -323,6 +323,21 @@ async function showMasters(ctx, uid, target, session) {
   return respond(ctx.tg, target, `💇 Оберіть майстра — покажу його вільні вікна:`, kb);
 }
 
+// Кнопковий вхід у запис: категорія → послуги (щоб клієнт не друкував текст).
+// Далі веде через існуючий bk:cat → вибір послуги → слоти.
+const CAT_EMOJI = [
+  [/нігт|ногт/i, '💅'], [/волос/i, '💇'], [/бров|вії|вія/i, '👁'],
+  [/макіяж|макия/i, '💄'], [/масаж|тіло/i, '💆'], [/депіл|епіл/i, '🪒'],
+];
+const catEmoji = (c) => (CAT_EMOJI.find(([re]) => re.test(c)) || [, '✨'])[1];
+async function showCategories(ctx, target) {
+  const cat = await loadCatalog(ctx.pool);
+  const cats = [...new Set(cat.services.map(s => s.category).filter(Boolean))];
+  if (!cats.length) return respond(ctx.tg, target, 'Напишіть послугу — підберу час.');
+  const kb = cats.map(c => [{ text: `${catEmoji(c)} ${c}`, callback_data: `bk:cat:${c.slice(0, 40)}` }]);
+  return respond(ctx.tg, target, 'Оберіть напрям — покажу послуги з цінами:', kb);
+}
+
 function fmtDateKey(key) {
   const [y, m, d] = key.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
@@ -599,7 +614,8 @@ async function tryMenuButton(text, msg, ctx) {
   if (!t) return false;
 
   if (/^записатись( на візит)?$|^запис(атися)?$/.test(t)) {
-    await onStartKnown(msg, ctx, msg.from.first_name || '');
+    // кнопковий вхід: одразу категорії, друкувати не треба
+    await showCategories(ctx, { chat_id: chatId });
     return true;
   }
   if (/^мої записи$/.test(t)) { await showMyVisits(ctx, uid, chatId); return true; }
