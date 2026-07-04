@@ -21,14 +21,18 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 
 router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (req, res) => {
   try {
-    let rows;
-    if (req.file) rows = imp.parseUpload(req.file.originalname, req.file.buffer);
-    else if (req.body && req.body.text) rows = imp.parseText(req.body.text);
+    let rows, rawText = '', fname = req.file ? req.file.originalname : null;
+    if (req.file) {
+      rows = imp.parseUpload(req.file.originalname, req.file.buffer);
+      if (!/\.(xlsx|xls)$/i.test(fname || '')) rawText = req.file.buffer.toString('utf8');
+    } else if (req.body && req.body.text) { rows = imp.parseText(req.body.text); rawText = req.body.text; }
     else return res.status(400).json({ error: 'no-input', message: 'Дайте файл або текст' });
     if (!rows.length) return res.json({ ok: true, items: [], message: 'Не знайшов жодного рядка з товаром' });
     if (rows.length > 500) rows = rows.slice(0, 500);
     const items = await imp.matchRows(getPool(), rows);
-    res.json({ ok: true, items, filename: req.file ? req.file.originalname : null });
+    // дата накладної: з тексту/імені файлу (підказка; оператор підтверджує в формі)
+    const doc_date = imp.extractDocDate(rawText, fname);
+    res.json({ ok: true, items, filename: fname, doc_date });
   } catch (e) {
     console.error('[stock-import/parse]', e.message);
     res.status(500).json({ error: 'parse-failed', message: 'Не вдалося розібрати документ: ' + e.message });
@@ -36,12 +40,34 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
 });
 
 router.post('/apply', requirePerm('stock.write'), async (req, res) => {
-  const { kind, filename, items } = req.body || {};
+  const { kind, filename, items, doc_date, force } = req.body || {};
   if (!['invoice', 'pricelist'].includes(kind)) return res.status(400).json({ error: 'bad-kind' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'no-items' });
   if (items.length > 500) return res.status(400).json({ error: 'too-many-items' });
 
   const pool = getPool();
+
+  // ── ДАТА НАКЛАДНОЇ — обовʼязкова і контрольована (вимога: завжди!) ──
+  let docDate = null;
+  if (kind === 'invoice') {
+    docDate = String(doc_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(docDate))
+      return res.status(400).json({ error: 'doc-date-required', message: 'Вкажіть дату накладної (обовʼязково)' });
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    if (docDate > today)
+      return res.status(400).json({ error: 'doc-date-future', message: `Дата накладної ${docDate} у майбутньому — перевірте документ` });
+    // захист від повторного проведення тієї ж накладної (та сама дата + файл/без файлу)
+    if (!force) {
+      const dup = await pool.query(
+        `SELECT id, created_at FROM stock_import_docs
+          WHERE kind='invoice' AND doc_date=$1 AND COALESCE(filename,'')=COALESCE($2,'')
+          ORDER BY id DESC LIMIT 1`, [docDate, filename || null]);
+      if (dup.rows[0])
+        return res.status(409).json({ error: 'duplicate-doc', doc_id: dup.rows[0].id,
+          message: `Накладна з датою ${docDate}${filename ? ` (${filename})` : ''} вже проводилась (док №${dup.rows[0].id}). Провести ще раз?` });
+    }
+  }
+
   const client = await pool.connect();
   const result = { received: 0, created: 0, skipped: 0, lines: [] };
   try {
@@ -61,18 +87,27 @@ router.post('/apply', requirePerm('stock.write'), async (req, res) => {
           result.created++;
         }
         if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'нема збігу' }); continue; }
-        const u = await client.query(
-          `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $2 WHERE id = $1 RETURNING id`,
-          [variantId, qty]);
-        if (!u.rows[0]) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'варіант зник' }); continue; }
+        // товар «за грам/мл» (unit_ml > 1): кількість у накладній — ПЛЯШКИ/УПАКОВКИ,
+        // а склад ведеться в мл/г → приход = qty × unit_ml. Інакше +5 замість +5000 мл.
+        const vinfo = await client.query(`SELECT unit_ml::float AS unit_ml FROM product_variants WHERE id=$1`, [variantId]);
+        if (!vinfo.rows[0]) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'варіант зник' }); continue; }
+        const unitMl = Number(vinfo.rows[0].unit_ml) || 0;
+        const asUnits = it.unit === 'ml' ? false : unitMl > 1; // накладна в штуках за замовч.; unit:'ml' — явно в мл
+        const delta = asUnits ? qty * unitMl : qty;
+        await client.query(
+          `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $2 WHERE id = $1`,
+          [variantId, delta]);
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, notes) VALUES ($1,$2,'invoice',$3)`,
-          [variantId, qty, `Накладна: ${name}`.slice(0, 200)]);
+          [variantId, delta,
+           `Накладна ${docDate}: ${name}${asUnits ? ` (${qty} уп × ${unitMl} мл)` : ''}`.slice(0, 200)]);
         if (it.price && Number(it.price) > 0) {
-          await client.query(`UPDATE product_variants SET wholesale = $2 WHERE id = $1`, [variantId, Number(it.price)]);
+          // закупівельна ціна: якщо прихід у мл — перерахувати ціну упаковки на одиницю обліку
+          const wholesale = asUnits ? Number(it.price) : Number(it.price);
+          await client.query(`UPDATE product_variants SET wholesale = $2 WHERE id = $1`, [variantId, wholesale]);
         }
         result.received++;
-        result.lines.push({ name, status: 'ok', qty, variant_id: variantId });
+        result.lines.push({ name, status: 'ok', qty, delta, converted: asUnits ? `${qty} уп × ${unitMl} мл` : null, variant_id: variantId });
       } else { // pricelist — тільки номенклатура
         if (it.variant_id) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'вже є' }); continue; }
         const variantId = await createItem(client, name, it.price);
@@ -82,11 +117,11 @@ router.post('/apply', requirePerm('stock.write'), async (req, res) => {
       }
     }
     const doc = await client.query(
-      `INSERT INTO stock_import_docs (kind, filename, items, totals, created_by)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      `INSERT INTO stock_import_docs (kind, filename, items, totals, created_by, doc_date)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
       [kind, filename || null, JSON.stringify(result.lines),
        JSON.stringify({ received: result.received, created: result.created, skipped: result.skipped }),
-       (req.user && (req.user.name || req.user.login)) || 'admin']);
+       (req.user && (req.user.name || req.user.login)) || 'admin', docDate]);
     docId = doc.rows[0].id;
     await client.query('COMMIT');
     res.json({ ok: true, doc_id: docId, ...result });
@@ -125,7 +160,7 @@ async function createItem(client, name, price) {
 router.get('/docs', requirePerm(), async (req, res) => {
   try {
     const r = await getPool().query(
-      `SELECT id, kind, filename, totals, created_by, created_at
+      `SELECT id, kind, filename, totals, created_by, created_at, doc_date
          FROM stock_import_docs ORDER BY id DESC LIMIT 20`);
     res.json({ ok: true, items: r.rows });
   } catch (e) { res.status(500).json({ error: 'internal' }); }

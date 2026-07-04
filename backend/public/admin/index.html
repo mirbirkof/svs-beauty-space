@@ -1812,6 +1812,11 @@ select.input { background:var(--card); }
             <button type="button" class="info-i" data-t="<b>Накладна — прихід.</b> Масове завезення товару на склад. Завантаж файл накладної (xlsx/csv/фото) або встав текст — система сама розпізнає позиції та кількість. Перевір список → «Провести прихід» → залишки поповняться. Кожен документ зберігається в історії." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
               <button class="modal-close" onclick="stImpClose()">✕</button></div>
             <div class="modal-body" style="max-height:72vh;overflow:auto">
+              <div id="stImpDateRow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:8px 10px;background:#fff8e6;border:1px solid #f0c36d;border-radius:8px">
+                <b style="font-size:13px">📅 Дата накладної (обовʼязково):</b>
+                <input type="date" id="stImpDate" class="input" style="width:170px">
+                <span id="stImpDateHint" style="font-size:12px;color:var(--text-secondary)">система підставить дату з документа — перевірте її</span>
+              </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
                 <input type="file" id="stImpFile" accept=".xlsx,.xls,.csv,.txt" class="input" style="flex:1;min-width:220px">
                 <span style="color:var(--text-secondary);font-size:12px">або вставте текст:</span>
@@ -10881,6 +10886,13 @@ function stImpOpen(kind) {
   document.getElementById('stImpPreview').innerHTML = '';
   document.getElementById('stImpSummary').textContent = '';
   document.getElementById('stImpApplyBtn').style.display = 'none';
+  // дата накладної: обовʼязкова для приходу, за замовчуванням — сьогодні (Київ)
+  const dateRow = document.getElementById('stImpDateRow');
+  if (dateRow) {
+    dateRow.style.display = kind === 'invoice' ? 'flex' : 'none';
+    document.getElementById('stImpDate').value = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
+    document.getElementById('stImpDateHint').textContent = 'перевірте: має збігатися з датою на документі';
+  }
   document.getElementById('stImpModal').style.display = 'flex';
 }
 function stImpClose() { document.getElementById('stImpModal').style.display = 'none'; }
@@ -10901,6 +10913,11 @@ async function stImpParse() {
     }
     if (!d.ok) { box.innerHTML = '<span style="color:#dc2626">' + (d.message || d.error || 'Помилка') + '</span>'; return; }
     _stImp.items = d.items || []; _stImp.filename = d.filename || (file ? file.name : null);
+    // дата з документа: підставляємо і ЯВНО кажемо звідки — оператор мусить перевірити
+    if (_stImp.kind === 'invoice' && d.doc_date) {
+      document.getElementById('stImpDate').value = d.doc_date;
+      document.getElementById('stImpDateHint').innerHTML = '<b style="color:#b45309">знайдено в документі: ' + d.doc_date.split('-').reverse().join('.') + '</b> — перевірте!';
+    }
     // у прайсі кількості немає: одиноке число в рядку — це ЦІНА
     if (_stImp.kind === 'pricelist') _stImp.items.forEach(it => { if (it.price == null && it.qty != null) { it.price = it.qty; it.qty = null; } });
     stImpRender();
@@ -10959,13 +10976,24 @@ async function stImpApply() {
       price: Number(document.getElementById('stImpP' + i).value) || null,
       variant_id: sel === '__create__' ? null : Number(sel),
       create: sel === '__create__',
+      unit: 'ml', // кількість вже приведена до облікових одиниць (множник «упак ×N» вище)
     });
   });
   if (!items.length) return;
+  // дата накладної — обовʼязкова для приходу
+  const docDate = _stImp.kind === 'invoice' ? document.getElementById('stImpDate').value : null;
+  if (_stImp.kind === 'invoice' && !docDate) { toast('Вкажіть дату накладної', 'error'); return; }
   const btn = document.getElementById('stImpApplyBtn');
   btn.disabled = true; btn.textContent = '⏳ Застосовую…';
   try {
-    const d = await api('/api/stock-import/apply', { method: 'POST', body: JSON.stringify({ kind: _stImp.kind, filename: _stImp.filename, items }) });
+    let d = await api('/api/stock-import/apply', { method: 'POST', body: JSON.stringify({ kind: _stImp.kind, filename: _stImp.filename, items, doc_date: docDate }) });
+    // та сама накладна вже проводилась → чесно спитати
+    if (d && d.error === 'duplicate-doc') {
+      if (!confirm(d.message + '\n\nУВАГА: повторне проведення додасть залишки ЩЕ РАЗ.')) {
+        btn.disabled = false; stImpCount(); return;
+      }
+      d = await api('/api/stock-import/apply', { method: 'POST', body: JSON.stringify({ kind: _stImp.kind, filename: _stImp.filename, items, doc_date: docDate, force: true }) });
+    }
     if (d.ok) {
       toast(`Готово: прихід ${d.received}, створено ${d.created}, пропущено ${d.skipped}`);
       document.getElementById('stImpSummary').innerHTML = `<b style="color:#10b981">✓ Документ №${d.doc_id}</b> — прихід: ${d.received}, створено: ${d.created}, пропущено: ${d.skipped}`;
@@ -10984,7 +11012,7 @@ async function stImpLoadDocs() {
   try {
     const d = await api('/api/stock-import/docs');
     box.innerHTML = (d.items || []).slice(0, 5).map(x =>
-      `${x.kind === 'invoice' ? '📄' : '📋'} №${x.id} · ${new Date(x.created_at).toLocaleDateString('uk-UA')} · +${(x.totals || {}).received || 0}/${(x.totals || {}).created || 0}`
+      `${x.kind === 'invoice' ? '📄' : '📋'} №${x.id}${x.doc_date ? ' · <b>накладна від ' + String(x.doc_date).slice(0, 10).split('-').reverse().join('.') + '</b>' : ''} · проведено ${new Date(x.created_at).toLocaleDateString('uk-UA')} · +${(x.totals || {}).received || 0}/${(x.totals || {}).created || 0}`
     ).join('<br>') || 'Документів ще немає';
   } catch (_) {}
 }

@@ -108,13 +108,36 @@ function parseUpload(filename, bufferOrText) {
   return parseText(text);
 }
 
+// ── Дата накладної: шукаємо в тексті документа та в імені файлу ──
+// Розуміє: 04.07.2026, 04/07/26, 2026-07-04, «від 4 липня 2026»
+const UA_MONTHS = { 'січ': 1, 'лют': 2, 'бер': 3, 'кві': 4, 'тра': 5, 'чер': 6, 'лип': 7, 'сер': 8, 'вер': 9, 'жов': 10, 'лис': 11, 'гру': 12 };
+function extractDocDate(text, filename) {
+  // підкреслення в іменах файлів (nakladna_28-06-2026.xlsx) ламають \b — замінюємо на пробіли
+  const src = `${String(filename || '')}\n${String(text || '').slice(0, 3000)}`.replace(/_/g, ' ');
+  const mk = (y, m, d) => {
+    y = Number(y); m = Number(m); d = Number(d);
+    if (y < 100) y += 2000;
+    if (y < 2015 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null; // 31.02 і подібне
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+  let m;
+  if ((m = src.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/))) { const r = mk(m[3], m[2], m[1]); if (r) return r; }
+  if ((m = src.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/))) { const r = mk(m[1], m[2], m[3]); if (r) return r; }
+  if ((m = src.match(/(\d{1,2})\s+(січ|лют|бер|кві|тра|чер|лип|сер|вер|жов|лис|гру)[а-яії]*\s+(20\d{2})/i))) {
+    const r = mk(m[3], UA_MONTHS[m[2].toLowerCase()], m[1]); if (r) return r;
+  }
+  return null;
+}
+
 // ── матчинг рядка до складу ──
 // Повертає до 3 кандидатів [{variant_id, label, stock_qty, score}]
 async function matchRows(pool, rows) {
   // весь довідник у памʼять (сотні позицій — дешевше одного запиту на рядок)
   const cat = await pool.query(
     `SELECT pv.id AS variant_id, pv.sku, pv.barcode, pv.volume, pv.stock_qty::float AS stock_qty,
-            pv.price::float AS price, p.name AS product_name
+            pv.price::float AS price, pv.unit_ml::float AS unit_ml, p.name AS product_name
        FROM product_variants pv JOIN products p ON p.id = pv.product_id
       WHERE pv.active IS NOT FALSE`);
   const index = cat.rows.map(v => ({
@@ -150,6 +173,7 @@ async function matchRows(pool, rows) {
       matches: scored.map(x => ({
         variant_id: x.v.variant_id, label: x.v.label,
         stock_qty: x.v.stock_qty, price: x.v.price,
+        unit_ml: x.v.unit_ml || null, // >1 → товар ведеться в мл/г, кількість у накладній = пляшки
         score: Math.round(x.score * 100) / 100,
       })),
     };
@@ -186,4 +210,4 @@ function detectCategory(name) {
   return null;
 }
 
-module.exports = { parseUpload, parseText, matchRows, slugify, detectBrand, detectCategory, norm };
+module.exports = { parseUpload, parseText, matchRows, slugify, detectBrand, detectCategory, norm, extractDocDate };
