@@ -7795,7 +7795,9 @@ async function loadPurchasing(){
         <td style="white-space:nowrap;text-align:right">
           <button class="btn btn-sm" onclick="puOpen(${o.id})">Відкрити</button>
         </td></tr>`;
-    }).join('')||'<tr><td class="empty">Заказів немає</td></tr>';
+    }).join('')||('<tr><td class="empty">'+(st
+      ?'Заказів зі статусом «'+escapeHtml(document.getElementById('puStatusFilter').selectedOptions[0].text)+'» немає — <a href="#" onclick="event.preventDefault();puGoOrders()">показати всі</a>'
+      :'Заказів ще немає — натисніть «Автозакупка» або «Новий заказ»')+'</td></tr>');
   }catch(e){ document.getElementById('puOrders').innerHTML='<tr><td class="empty">'+escapeHtml(e.message)+'</td></tr>'; }
 }
 async function _puLoadRefs(){
