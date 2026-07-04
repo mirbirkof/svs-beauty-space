@@ -602,8 +602,24 @@ async function showAdminContact(ctx, chatId) {
   if (sp.phones) out.push(`📞 ${sp.phones}`);
   if (sp.address) out.push(`📍 ${sp.address}`);
   if (sp.hours) out.push(`🕐 ${sp.hours}`);
-  if (out.length === 1) out.push('Напишіть ваше питання тут — адміністратор відповість найближчим часом.');
-  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: mainMenu() });
+  out.push('\nНапишіть питання тут або зателефонуйте — тисніть «📞 Подзвонити в салон» нижче.');
+  await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: mainMenu() });
+
+  // Клікабельний номер: окрема картка контакту з кнопкою «Подзвонити» (заметка Босса).
+  // Беремо перший номер, лишаємо цифри та провідний «+» — Telegram зробить його дзвінким.
+  const raw = String(sp.phones || '').split(/[,;/]/)[0].trim();
+  const digits = raw.replace(/[^\d+]/g, '');
+  const phone = digits.startsWith('+') ? digits : (digits ? '+' + digits.replace(/^\+*/, '') : '');
+  if (phone && phone.replace(/\D/g, '').length >= 10) {
+    try {
+      await ctx.tg('sendContact', {
+        chat_id: chatId,
+        phone_number: phone,
+        first_name: (sp.name || 'Салон') + ' — адміністратор',
+      });
+    } catch (e) { console.error('[bookbot/admin-contact]', e.message); }
+  }
+  return true;
 }
 
 // кнопки старого меню (лишились у чатах клієнтів) + нашого нового — обробка ДО матчера послуг
