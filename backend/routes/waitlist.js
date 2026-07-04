@@ -268,28 +268,8 @@ router.get('/booking/admin/all', requirePerm('booking.read'), async (req, res) =
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// Ошибку апстрима BeautyPro (401 без ключа, 5xx) НЕ отдаём клиенту — аккуратный 503 (фикс 02.07)
-function bpFail(res, e, where) {
-  console.error(`[booking:${where}]`, e.message);
-  res.status(503).json({ error: 'Дані онлайн-запису тимчасово недоступні. Спробуйте пізніше.' });
-}
-
-// GET /api/booking/services — из BeautyPro (для UI магазина и сайта)
-router.get('/booking/services', async (req, res) => {
-  try {
-    const data = await bp.listServices();
-    const list = data.data || data.items || data;
-    res.json({ items: Array.isArray(list) ? list : [], count: Array.isArray(list) ? list.length : 0 });
-  } catch (e) { bpFail(res, e, 'services'); }
-});
-
-// GET /api/booking/masters
-router.get('/booking/masters', async (req, res) => {
-  try {
-    const data = await bp.listEmployees();
-    const list = data.data || data.items || data;
-    res.json({ items: Array.isArray(list) ? list : [], count: Array.isArray(list) ? list.length : 0 });
-  } catch (e) { bpFail(res, e, 'masters'); }
-});
+// /booking/services и /booking/masters ПЕРЕНЕСЕНЫ в routes/booking.js
+// (там они читают из нашей БД, а не из отвязанного BeautyPro). Дубли убраны 04.07,
+// чтобы waitlist не перехватывал их раньше booking.js своими 503-заглушками.
 
 module.exports = router;

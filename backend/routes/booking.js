@@ -13,6 +13,7 @@ const https = require('https');
 const router = express.Router();
 const bp = require('../beautyproClient');
 const { getPool } = require('../db-pg');
+const slotEngine = require('./../lib/slot-engine');
 const bookingBot = require('../lib/booking-bot');
 const { t, validateBody } = require('../lib/validate');
 const { normalizePhoneDb } = require('../lib/phone');
@@ -449,18 +450,82 @@ function upstreamFail(res, e, where) {
   console.error(`[booking:${where}]`, e.message);
   res.status(503).json({ error: 'Сервіс онлайн-запису тимчасово недоступний. Спробуйте пізніше або зателефонуйте в салон.' });
 }
+// GUID-совместимый id как в /catalog: beautypro_id или 'svc-'/'mst-'+id
+const catId = (pref) => `COALESCE(beautypro_id::text, '${pref}-'||id)`;
+
+// Услуги из НАШЕЙ БД (BeautyPro отвязан 03.07). Формат совместим с book.html.
 router.get('/services', async (req, res) => {
-  try { res.json(await bp.listServices()); }
-  catch (e) { upstreamFail(res, e, 'services'); }
+  try {
+    const r = await getPool().query(
+      `SELECT ${catId('svc')} AS id, name, duration_min AS duration,
+              price::float AS price, category
+         FROM services WHERE active IS NOT FALSE AND deleted_at IS NULL
+        ORDER BY sort_order NULLS LAST, name`);
+    res.json(r.rows);
+  } catch (e) { upstreamFail(res, e, 'services'); }
 });
+
+// Мастера из НАШЕЙ БД с их услугами (book.html оставляет только тех, у кого services.length)
 router.get('/masters', async (req, res) => {
-  try { res.json(await bp.listEmployees()); }
-  catch (e) { upstreamFail(res, e, 'masters'); }
+  try {
+    const r = await getPool().query(
+      `SELECT ${catId('mst')} AS id,
+              COALESCE(NULLIF(online_title,''), name) AS name, specialty,
+              COALESCE((
+                SELECT json_agg(COALESCE(s.beautypro_id::text, 'svc-'||s.id))
+                  FROM services s JOIN master_services ms ON ms.service_id = s.id
+                 WHERE ms.master_id = m.id AND ms.active IS NOT FALSE
+                   AND s.active IS NOT FALSE AND s.deleted_at IS NULL
+              ), '[]'::json) AS services
+         FROM masters m
+        WHERE m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE
+          AND m.provides_services IS NOT FALSE
+        ORDER BY m.online_rank NULLS LAST, m.name`);
+    res.json(r.rows);
+  } catch (e) { upstreamFail(res, e, 'masters'); }
 });
+
+// Свободные слоты из НАШЕГО движка (lib/slot-engine) вместо BeautyPro.
 router.get('/slots', async (req, res) => {
   try {
-    const { duration, professional, from, to } = req.query;
-    res.json(await bp.freeTime({ duration, professional, from, to }));
+    const { service_id, date, duration, professional } = req.query;
+    if (!date) return res.json([]);
+    const pool = getPool();
+
+    // мастера: конкретный выбранный ИЛИ все, кто оказывает услугу
+    const mGid = `COALESCE(m.beautypro_id::text, 'mst-'||m.id)`;
+    let masters;
+    if (professional) {
+      masters = (await pool.query(
+        `SELECT m.id, ${mGid} AS gid FROM masters m
+          WHERE (m.beautypro_id::text = $1 OR ('mst-'||m.id) = $1 OR m.id::text = $1)
+            AND m.online_booking_enabled IS NOT FALSE`, [professional])).rows;
+    } else if (service_id) {
+      masters = (await pool.query(
+        `SELECT DISTINCT m.id, ${mGid} AS gid
+           FROM masters m JOIN master_services ms ON ms.master_id = m.id
+           JOIN services s ON s.id = ms.service_id
+          WHERE (s.beautypro_id::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
+            AND ms.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE
+            AND m.provides_services IS NOT FALSE`, [service_id])).rows;
+    } else {
+      masters = (await pool.query(
+        `SELECT m.id, ${mGid} AS gid FROM masters m
+          WHERE m.online_booking_enabled IS NOT FALSE AND m.provides_services IS NOT FALSE`)).rows;
+    }
+    if (!masters.length) return res.json([]);
+
+    const gidBy = new Map(masters.map(m => [Number(m.id), m.gid]));
+    const durationMin = Math.max(15, parseInt(duration, 10) || 60);
+    const slots = await slotEngine.freeSlotsForDate(pool, {
+      date, masterIds: masters.map(m => Number(m.id)), durationMin,
+    });
+    // формат, который понимает normalizeSlots в book.html: {time, from, employees:[gid]}
+    res.json(slots.map(s => ({
+      time: s.label,
+      from: `${date}T${s.label.length === 5 ? s.label + ':00' : s.label}`,
+      employees: gidBy.get(s.masterId) ? [gidBy.get(s.masterId)] : [],
+    })));
   } catch (e) { upstreamFail(res, e, 'slots'); }
 });
 
