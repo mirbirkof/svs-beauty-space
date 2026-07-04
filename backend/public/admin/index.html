@@ -11435,9 +11435,19 @@ async function loadPayroll() {
   loadExpenseConfirm();
 }
 function planMonthNav(d){
-  const el=document.getElementById('planMonth'); if(!el||!el.options.length) return;
-  const i=Math.min(Math.max(el.selectedIndex - d, 0), el.options.length-1); // опції йдуть від нових до старих
-  if(i!==el.selectedIndex){ el.selectedIndex=i; loadMonthlyPlan(); }
+  const mSel=document.getElementById('planMonth'), ySel=document.getElementById('planYear');
+  if(!mSel||!mSel.options.length) return;
+  let i=mSel.selectedIndex+d; // Січень..Грудень за зростанням
+  if(i<0){ // назад через Січень → Грудень попереднього року (якщо він є в списку)
+    const y=String(Number(ySel.value)-1);
+    if(![...ySel.options].some(o=>o.value===y)) return;
+    ySel.value=y; i=11;
+  } else if(i>11){ // вперед через Грудень → Січень наступного року
+    const y=String(Number(ySel.value)+1);
+    if(![...ySel.options].some(o=>o.value===y)) return;
+    ySel.value=y; i=0;
+  }
+  mSel.selectedIndex=i; loadMonthlyPlan();
 }
 function ecMonthNav(d){
   const el=document.getElementById('ecMonth'); if(!el) return;
