@@ -555,13 +555,89 @@ function mainMenu() {
   return {
     keyboard: [
       [{ text: '🗓 Записатись' }],
-      [{ text: 'ℹ️ Мої записи' }, { text: '🧚 Адміністратор' }],
+      [{ text: '👤 Мій кабінет' }, { text: '🧚 Адміністратор' }],
     ],
     resize_keyboard: true, is_persistent: true,
   };
 }
 
 // майбутні візити клієнта з кнопками перенести/скасувати (повторно використовує bk:r:*)
+// ── Особистий кабінет клієнта ──────────────────────────────────────────────
+async function showCabinet(ctx, uid, chatId) {
+  const cl = await getClient(ctx.pool, uid);
+  if (!cl) {
+    return ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: '👤 <b>Мій кабінет</b>\n\nЩоб відкрити кабінет — поділіться номером, і я підтягну ваші записи, бонуси та сертифікати 💛',
+      reply_markup: { keyboard: [[{ text: '📱 Поділитись номером', request_contact: true }]], one_time_keyboard: true, resize_keyboard: true },
+    });
+  }
+  const st = (await ctx.pool.query(
+    `SELECT COALESCE(total_visits,0) v, COALESCE(total_spent,0) sp, COALESCE(loyalty_points,0) pts FROM clients WHERE id=$1`, [cl.id])).rows[0] || {};
+  const head = `👤 <b>${cl.name || 'Мій кабінет'}</b>\n` +
+    `🎁 Бонусів: <b>${Math.round(st.pts)}</b> (= ${Math.round(st.pts)} ₴ знижки)\n` +
+    (Number(st.v) ? `💛 Візитів: ${st.v}${Number(st.sp) ? ` на ${Math.round(st.sp)} ₴` : ''}` : 'Раді вітати вас 💛');
+  const kb = [
+    [{ text: '📅 Мої записи', callback_data: 'bk:cab:visits' }],
+    [{ text: '🎁 Мої бонуси', callback_data: 'bk:cab:bonus' }],
+    [{ text: '🎟 Мої сертифікати', callback_data: 'bk:cab:certs' }],
+    [{ text: '👤 Профіль', callback_data: 'bk:cab:profile' }],
+    [{ text: '🗓 Записатись', callback_data: 'bk:cab:book' }],
+  ];
+  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: head, reply_markup: { inline_keyboard: kb } });
+}
+
+const cabBack = { inline_keyboard: [[{ text: '‹ Кабінет', callback_data: 'bk:cab:home' }]] };
+
+async function showBonuses(ctx, uid, chatId) {
+  const cl = await getClient(ctx.pool, uid);
+  if (!cl) return showCabinet(ctx, uid, chatId);
+  const pts = Math.round((await ctx.pool.query(`SELECT COALESCE(loyalty_points,0) p FROM clients WHERE id=$1`, [cl.id])).rows[0].p);
+  const out = [`🎁 <b>Ваші бонуси</b>\n\nБаланс: <b>${pts}</b> бонусів = <b>${pts} ₴</b> знижки`];
+  try {
+    const exp = (await ctx.pool.query(
+      `SELECT COALESCE(SUM(remaining),0) s, MIN(expires_at) e FROM bonus_transactions
+        WHERE client_id=$1 AND COALESCE(remaining,0)>0 AND expires_at IS NOT NULL AND expires_at>NOW()`, [cl.id])).rows[0];
+    if (exp && exp.e && Number(exp.s) > 0) out.push(`⏳ ${Math.round(exp.s)} бонусів згорять ${new Date(exp.e).toLocaleDateString('uk-UA')} — встигніть використати`);
+    const tx = (await ctx.pool.query(
+      `SELECT amount, description, to_char(created_at AT TIME ZONE 'Europe/Kyiv','DD.MM.YY') d
+         FROM bonus_transactions WHERE client_id=$1 ORDER BY created_at DESC LIMIT 6`, [cl.id])).rows;
+    if (tx.length) { out.push('\n<b>Останні операції:</b>'); tx.forEach(t => { const plus = Number(t.amount) >= 0; out.push(`${plus ? '➕' : '➖'} ${Math.abs(Math.round(t.amount))} — ${t.description || (plus ? 'нараховано' : 'списано')} · ${t.d}`); }); }
+    else out.push('\nБонуси нараховуються автоматично — 3% кешбек з кожної оплати 💛');
+  } catch (e) { console.error('[bookbot/bonus]', e.message); }
+  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: cabBack });
+}
+
+async function showCerts(ctx, uid, chatId) {
+  const cl = await getClient(ctx.pool, uid);
+  if (!cl) return showCabinet(ctx, uid, chatId);
+  let certs = [];
+  try {
+    certs = (await ctx.pool.query(
+      `SELECT code, remaining_amount, valid_until FROM gift_certificates
+        WHERE regexp_replace(COALESCE(recipient_phone,buyer_phone,''),'\\D','','g') = $1
+          AND COALESCE(status,'') NOT IN ('used','expired','cancelled') AND COALESCE(remaining_amount,0) > 0
+        ORDER BY valid_until NULLS LAST LIMIT 10`, [cl.digits])).rows;
+  } catch (e) { console.error('[bookbot/certs]', e.message); }
+  if (!certs.length) return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: '🎟 <b>Сертифікати</b>\n\nАктивних сертифікатів немає.\nПодарунковий сертифікат можна придбати в салоні 💛', reply_markup: cabBack });
+  const lines = certs.map(c => `🎟 <code>${c.code}</code> — <b>${Math.round(c.remaining_amount)} ₴</b>${c.valid_until ? ` (до ${new Date(c.valid_until).toLocaleDateString('uk-UA')})` : ''}`);
+  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `🎟 <b>Ваші сертифікати</b>\n\n${lines.join('\n')}\n\nНазвіть код адміністратору при оплаті.`, reply_markup: cabBack });
+}
+
+async function showProfile(ctx, uid, chatId) {
+  const cl = await getClient(ctx.pool, uid);
+  if (!cl) return showCabinet(ctx, uid, chatId);
+  const c = (await ctx.pool.query(
+    `SELECT name, phone, to_char(birthday,'DD.MM.YYYY') bday, COALESCE(total_visits,0) v,
+            COALESCE(total_spent,0) sp, to_char(first_visit_at,'DD.MM.YYYY') fv FROM clients WHERE id=$1`, [cl.id])).rows[0];
+  const out = ['👤 <b>Профіль</b>\n', `Імʼя: <b>${c.name || '—'}</b>`, `Телефон: ${c.phone || '—'}`, `День народження: ${c.bday || 'не вказано'}`];
+  if (Number(c.v)) out.push(`\n💛 З нами: ${c.v} візит(ів)${Number(c.sp) ? ` на ${Math.round(c.sp)} ₴` : ''}${c.fv ? ` з ${c.fv}` : ''}`);
+  const kb = [];
+  if (!c.bday) kb.push([{ text: '🎂 Вказати день народження', callback_data: 'bk:cab:setbday' }]);
+  kb.push([{ text: '‹ Кабінет', callback_data: 'bk:cab:home' }]);
+  return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: { inline_keyboard: kb } });
+}
+
 async function showMyVisits(ctx, uid, chatId) {
   const r = await ctx.pool.query(
     `SELECT a.id,
@@ -640,6 +716,7 @@ async function tryMenuButton(text, msg, ctx) {
     await showCategories(ctx, { chat_id: chatId });
     return true;
   }
+  if (/^мій кабінет$|^кабінет$|^особистий кабінет$/.test(t)) { await showCabinet(ctx, uid, chatId); return true; }
   if (/^мої записи$/.test(t)) { await showMyVisits(ctx, uid, chatId); return true; }
   if (/адміністратор/.test(t)) { await showAdminContact(ctx, chatId); return true; }
   if (/^прайс( ?лист)?$/.test(t)) {
@@ -675,6 +752,25 @@ async function onText(msg, ctx) {
   // FAQ перед розпізнаванням послуги: графік/адреса/телефон
   const faq = await tryFaq(text, ctx);
   if (faq) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq }); return true; }
+
+  // Введення дати народження з кабінету (стан сесії 'bday')
+  {
+    const bs = await loadSession(ctx.pool, uid);
+    if (bs && bs.state === 'bday') {
+      const m = text.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+      if (!m) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: 'Не впізнав дату. Напишіть у форматі <b>ДД.ММ.РРРР</b>, напр. 25.12.1990.' }); return true; }
+      const [_, dd, mm, yy] = m;
+      const iso = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+      const ok = !isNaN(Date.parse(iso)) && +mm >= 1 && +mm <= 12 && +dd >= 1 && +dd <= 31;
+      if (!ok) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: 'Дата виглядає некоректною. Спробуйте ще раз: <b>ДД.ММ.РРРР</b>.' }); return true; }
+      try {
+        await ctx.pool.query(`UPDATE clients SET birthday=$1, updated_at=NOW() WHERE telegram_id=$2`, [iso, uid]);
+        await clearSession(ctx.pool, uid);
+        await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: `✅ Дякуємо! День народження збережено (${dd}.${mm}.${yy}). Чекайте приємний сюрприз 🎂💛`, reply_markup: mainMenu() });
+      } catch (e) { console.error('[bookbot/bday]', e.message); await ctx.tg('sendMessage', { chat_id: chatId, text: 'Не вдалось зберегти зараз, спробуйте пізніше.' }); }
+      return true;
+    }
+  }
 
   // «комплекс/все разом/пакет» — це не окрема послуга, а набір. Підказуємо назвати конкретні,
   // бо матчер поверне «не впізнав». Одразу пояснюємо як записатись на кілька послуг разом.
@@ -741,6 +837,23 @@ async function onCallback(cq, ctx) {
       const session = { data: { parts: [{ query: catName, candidates: list }], date: null, master: null } };
       await ack();
       await advance(ctx, uid, target, session);
+      return true;
+    }
+
+    // Особистий кабінет — усі розділи працюють БЕЗ booking-сесії
+    if (data.startsWith('bk:cab:')) {
+      const sec = data.slice(7);
+      await ack();
+      if (sec === 'home') await showCabinet(ctx, uid, chatId);
+      else if (sec === 'visits') await showMyVisits(ctx, uid, chatId);
+      else if (sec === 'bonus') await showBonuses(ctx, uid, chatId);
+      else if (sec === 'certs') await showCerts(ctx, uid, chatId);
+      else if (sec === 'profile') await showProfile(ctx, uid, chatId);
+      else if (sec === 'book') await showCategories(ctx, { chat_id: chatId });
+      else if (sec === 'setbday') {
+        await saveSession(ctx.pool, uid, chatId, 'bday', {});
+        await respond(ctx.tg, target, '🎂 Напишіть вашу дату народження у форматі <b>ДД.ММ.РРРР</b> (напр. 25.12.1990) — і ми привітаємо вас та подаруємо бонус до дня народження 💛');
+      }
       return true;
     }
 
