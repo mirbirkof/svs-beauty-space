@@ -21,7 +21,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 
 router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (req, res) => {
   try {
-    let rows, rawText = '', fname = req.file ? req.file.originalname : null, ocrDate = null, viaOcr = false;
+    let rows, rawText = '', fname = req.file ? req.file.originalname : null, ocrDate = null, viaOcr = false, ocrMeta = null;
     if (req.file) {
       // Фото/скріншот/PDF → OCR через Gemini vision (вимога: формат не має значення).
       const buf = req.file.buffer;
@@ -37,7 +37,8 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
         try {
           const ocr = await ocrInvoice(buf, mime);
           rows = ocr.items; ocrDate = ocr.doc_date; viaOcr = true;
-          console.log(`[stock-import] OCR ${ocr.model}: ${rows.length} рядків, дата ${ocrDate || '—'}`);
+          ocrMeta = { doc_number: ocr.doc_number, supplier: ocr.supplier, total_sum: ocr.total_sum };
+          console.log(`[stock-import] OCR ${ocr.model}: ${rows.length} рядків, дата ${ocrDate || '—'}, №${ocr.doc_number || '—'}, підсумок ${ocr.total_sum ?? '—'}`);
         } catch (e) {
           return res.status(400).json({ error: 'ocr-failed', message: e.message });
         }
@@ -65,7 +66,7 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
     const items = await imp.matchRows(getPool(), rows);
     // дата накладної: OCR бачив сам документ → його дата головна; інакше з тексту/імені файлу
     const doc_date = ocrDate || imp.extractDocDate(rawText, fname);
-    res.json({ ok: true, items, filename: fname, doc_date, via_ocr: viaOcr || undefined });
+    res.json({ ok: true, items, filename: fname, doc_date, via_ocr: viaOcr || undefined, ocr: ocrMeta || undefined });
   } catch (e) {
     console.error('[stock-import/parse]', e.message);
     res.status(500).json({ error: 'parse-failed', message: 'Не вдалося розібрати документ: ' + e.message });

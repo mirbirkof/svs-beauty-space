@@ -10941,6 +10941,7 @@ function stImpOpen(kind) {
   document.getElementById('stImpPreview').innerHTML = '';
   document.getElementById('stImpSummary').textContent = '';
   document.getElementById('stImpApplyBtn').style.display = 'none';
+  document.getElementById('stImpOcrInfo')?.remove();
   // дата накладної: обовʼязкова для приходу, за замовчуванням — сьогодні (Київ)
   const dateRow = document.getElementById('stImpDateRow');
   if (dateRow) {
@@ -10969,11 +10970,29 @@ async function stImpParse() {
     }
     if (!d.ok) { box.innerHTML = '<span style="color:#dc2626">' + (d.message || d.error || 'Помилка') + '</span>'; return; }
     _stImp.items = d.items || []; _stImp.filename = d.filename || (file ? file.name : null);
-    // дата з документа: підставляємо і ЯВНО кажемо звідки — оператор мусить перевірити
+    // дата з документа: підставляється САМА (ручне введення не потрібне — вимога Босса)
     if (_stImp.kind === 'invoice' && d.doc_date) {
       document.getElementById('stImpDate').value = d.doc_date;
-      document.getElementById('stImpDateHint').innerHTML = '<b style="color:#b45309">знайдено в документі: ' + d.doc_date.split('-').reverse().join('.') + '</b> — перевірте!';
+      document.getElementById('stImpDateHint').innerHTML = '<b style="color:#059669">✓ дата з документа: ' + d.doc_date.split('-').reverse().join('.') + '</b>';
+    } else if (_stImp.kind === 'invoice') {
+      document.getElementById('stImpDateHint').innerHTML = '<b style="color:#dc2626">дату в документі не знайдено — стоїть сьогоднішня, поправте якщо треба</b>';
     }
+    // шапка з OCR: №, постачальник, підсумок + контроль суми рядків
+    _stImp.ocr = d.ocr || null;
+    if (d.via_ocr) {
+      const rowsSum = (d.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+      const ts = d.ocr && d.ocr.total_sum != null ? Number(d.ocr.total_sum) : null;
+      const diffPct = ts ? Math.abs(rowsSum - ts) / ts * 100 : null;
+      const sumLine = ts != null
+        ? (diffPct <= 2
+          ? `<span style="color:#059669">✓ сума рядків ${_money(rowsSum)} збігається з підсумком документа ${_money(ts)}</span>`
+          : `<span style="color:#dc2626">⚠ сума рядків ${_money(rowsSum)} ≠ підсумок документа ${_money(ts)} — перевірте кількості й ціни!</span>`)
+        : `сума розпізнаних рядків: ${_money(rowsSum)}`;
+      document.getElementById('stImpOcrInfo')?.remove(); // не дублювати при повторному розборі
+      document.getElementById('stImpPreview').insertAdjacentHTML('beforebegin',
+        `<div id="stImpOcrInfo" style="margin-top:10px;padding:8px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12.5px">
+          🤖 <b>Розпізнано ШІ:</b> ${d.ocr && d.ocr.doc_number ? '№ ' + escapeHtml(d.ocr.doc_number) + ' · ' : ''}${d.ocr && d.ocr.supplier ? escapeHtml(d.ocr.supplier) + ' · ' : ''}рядків: ${(d.items || []).length}<br>${sumLine}</div>`);
+    } else { document.getElementById('stImpOcrInfo')?.remove(); }
     // у прайсі кількості немає: одиноке число в рядку — це ЦІНА
     if (_stImp.kind === 'pricelist') _stImp.items.forEach(it => { if (it.price == null && it.qty != null) { it.price = it.qty; it.qty = null; } });
     stImpRender();

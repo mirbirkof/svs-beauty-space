@@ -1,25 +1,37 @@
 /* ═══════════════════════════════════════════════════════════════
    OCR накладних: фото/скріншот/PDF → рядки товарів через Gemini vision.
    Вимога Босса 04.07.2026: «для системи не повинно бути різниці,
-   з якого формату витягнути дані».
+   з якого формату витягнути дані». Дата/номер/постачальник/підсумок —
+   визначаються самі, ручне введення не потрібне.
 
-   ocrInvoice(buffer, mimeType) → { items:[{name, qty, price}], doc_date|null }
+   ocrInvoice(buffer, mimeType) →
+     { items:[{name,qty,price}], doc_date, doc_number, supplier, total_sum, model }
    Кидає Error з людським message при збої — /parse віддасть його оператору.
    ═══════════════════════════════════════════════════════════════ */
 
-const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']; // основна → запасна (у 2.0 нульова квота — перевірено 04.07)
-const TIMEOUT_MS = 60000;
+const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']; // у 2.0 нульова квота (перевірено 04.07)
+const TIMEOUT_MS = 75000;
+const ATTEMPTS_PER_MODEL = 2; // JSON інколи обривається — один повтор виправдан
 
-const PROMPT = `Це фото/скан накладної (документ постачання товарів салону краси, українською або російською).
-Витягни ВСІ рядки товарів. Поверни ЛИШЕ валідний JSON без пояснень і без markdown:
-{"doc_date":"YYYY-MM-DD або null якщо дати нема",
- "items":[{"name":"назва товару як в документі","qty":число_кількість_упаковок,"price":число_ціна_за_одиницю_або_null}]}
+const PROMPT = `Ти читаєш НАКЛАДНУ (видаткова/прибуткова, товарний документ, укр/рос мовою).
+Це може бути: чисте фото документа, скан, PDF, АБО СКРІНШОТ ЕКРАНА, де накладна відкрита у вікні програми/браузера.
+Якщо це скріншот екрана — знайди область самої накладної та читай ЛИШЕ її. Панелі, меню, кнопки, іконки, курсор — ІГНОРУЙ ПОВНІСТЮ.
+
+Поверни ЛИШЕ валідний JSON:
+{"doc_number":"номер документа (напр. 86702) або null",
+ "doc_date":"дата САМОЇ накладної YYYY-MM-DD або null",
+ "supplier":"продавець/постачальник або null",
+ "total_sum":число_підсумкова_сума_документа_або_null,
+ "items":[{"name":"назва товару ЯК У ДОКУМЕНТІ","qty":число,"price":число_або_null}]}
+
 Правила:
-- qty = кількість УПАКОВОК/штук з колонки кількості (не сума, не вага).
-- price = ціна за ОДНУ одиницю (не сума рядка). Якщо є лише сума рядка — подели суму на кількість.
-- Ігноруй підсумкові рядки (Разом, Всього, ПДВ), шапки таблиць, реквізити.
-- Назви НЕ перекладай і НЕ скорочуй.
-- doc_date — дата САМОЇ накладної з документа (не сьогодні).`;
+- items: КОЖЕН товарний рядок таблиці. Не пропускай рядки, навіть якщо частково видно.
+- qty = кількість УПАКОВОК/штук з колонки кількості (к-ть/кол-во/шт).
+- price = ціна за ОДНУ одиницю. Якщо в документі лише сума рядка — подели суму на кількість.
+- Підсумкові рядки (Разом/Всього/Итого/ПДВ), шапки таблиці, реквізити — НЕ товари, у items їх не клади.
+- total_sum — підсумок ІЗ ДОКУМЕНТА (рядок Разом/Всього), не рахуй сам.
+- Назви товарів НЕ перекладай, НЕ скорочуй.
+- doc_date — дата документа (біля номера, «від ...»), НЕ сьогоднішня.`;
 
 async function callGemini(model, base64, mimeType, apiKey) {
   const ctl = new AbortController();
@@ -33,7 +45,11 @@ async function callGemini(model, base64, mimeType, apiKey) {
         signal: ctl.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: mimeType, data: base64 } }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 32768,
+            responseMimeType: 'application/json', // Gemini повертає чистий JSON без ```фенсів
+          },
         }),
       });
     const body = await r.json().catch(() => ({}));
@@ -49,7 +65,6 @@ function parseJson(text) {
   let s = String(text || '').trim();
   const fence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fence) s = fence[1].trim();
-  // від першої { до останньої }
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
   if (a >= 0 && b > a) s = s.slice(a, b + 1);
   return JSON.parse(s);
@@ -61,26 +76,36 @@ async function ocrInvoice(buffer, mimeType) {
   const base64 = buffer.toString('base64');
   let lastErr = null;
   for (const model of MODELS) {
-    try {
-      const raw = await callGemini(model, base64, mimeType, apiKey);
-      const data = parseJson(raw);
-      const items = (Array.isArray(data.items) ? data.items : [])
-        .map(it => ({
-          name: String(it.name || '').trim().slice(0, 200),
-          qty: Number.isFinite(Number(it.qty)) ? Number(it.qty) : null,
-          price: Number.isFinite(Number(it.price)) ? Number(it.price) : null,
-        }))
-        .filter(it => it.name.length >= 3);
-      if (!items.length) throw new Error('не знайшов товарних рядків');
-      const doc_date = /^\d{4}-\d{2}-\d{2}$/.test(String(data.doc_date || '')) ? data.doc_date : null;
-      return { items, doc_date, model };
-    } catch (e) {
-      lastErr = e;
-      console.error(`[invoice-ocr] ${model}: ${e.message?.slice(0, 150)}`);
-      // 429/квота/недоступність → пробуємо наступну модель; інші помилки теж (одна спроба на модель)
+    for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
+      try {
+        const raw = await callGemini(model, base64, mimeType, apiKey);
+        const data = parseJson(raw);
+        const items = (Array.isArray(data.items) ? data.items : [])
+          .map(it => ({
+            name: String(it.name || '').trim().slice(0, 200),
+            qty: Number.isFinite(Number(it.qty)) ? Number(it.qty) : null,
+            price: Number.isFinite(Number(it.price)) ? Number(it.price) : null,
+          }))
+          .filter(it => it.name.length >= 3);
+        if (!items.length) { lastErr = new Error('не знайшов товарних рядків'); break; } // повтор не допоможе — далі інша модель
+        return {
+          items,
+          doc_date: /^\d{4}-\d{2}-\d{2}$/.test(String(data.doc_date || '')) ? data.doc_date : null,
+          doc_number: data.doc_number ? String(data.doc_number).slice(0, 40) : null,
+          supplier: data.supplier ? String(data.supplier).slice(0, 120) : null,
+          total_sum: Number.isFinite(Number(data.total_sum)) ? Number(data.total_sum) : null,
+          model,
+        };
+      } catch (e) {
+        lastErr = e;
+        console.error(`[invoice-ocr] ${model} (спроба ${attempt}): ${e.message?.slice(0, 150)}`);
+        // квота/ключ — повтор тією ж моделлю безглуздий, одразу наступна
+        if (e.status === 429 || e.status === 403 || /quota|api key/i.test(e.message || '')) break;
+      }
     }
   }
-  throw new Error('Не вдалося розпізнати фото накладної (' + (lastErr?.message?.slice(0, 100) || 'помилка AI') + '). Спробуйте чіткіше фото або надішліть текст/Excel.');
+  throw new Error('Не вдалося розпізнати накладну (' + (lastErr?.message?.slice(0, 100) || 'помилка AI') + '). ' +
+    'Спробуйте: обрізати скріншот до самої накладної, чіткіше фото без тіней, або надішліть текст/Excel.');
 }
 
 module.exports = { ocrInvoice };
