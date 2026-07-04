@@ -1390,7 +1390,8 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       await client.query(
         `UPDATE appointments SET status='confirmed', updated_at=NOW(),
                 discount_amount=NULL, pay_cert_code=NULL, pay_cert_amount=NULL,
-                pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL
+                pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL,
+                real_amount=NULL
           WHERE id=$1`, [id]);
       await client.query('COMMIT');
     } catch (e) {
@@ -1574,13 +1575,20 @@ router.post('/appointments/:id/pay', async (req, res) => {
              VALUES ($1,'usage',$2,$3,$4,$5)`,
             [certRow.id, certMoney, round2(Number(certRow.remaining_amount) - certMoney), id, `Оплата візиту #${id}`]);
         }
+        // real_amount = фактична вартість ПОСЛУГИ після знижок — БАЗА ДЛЯ ЗП майстра.
+        // Знижка розподіляється пропорційно між послугою та матеріалами (чек = послуга + матеріали),
+        // матеріали в базу ЗП НЕ входять (розхідники не дають %). Раніше real_amount не писався
+        // взагалі → ЗП рахувалась від планової ціни, знижки базу не зменшували (баг).
+        const svcShare = base > 0 ? (Number(appt.price) || 0) / base : 0;
+        const realServiceAmount = round2(Math.max(0, (Number(appt.price) || 0) - totalDiscount * svcShare));
         await client.query(
           `UPDATE appointments SET status='done', updated_at=NOW(),
                   discount_amount=$2, pay_cert_code=$3, pay_cert_amount=$4,
-                  pay_bonus_redeemed=$5, pay_bonus_money=$6, pay_settled_at=NOW()
+                  pay_bonus_redeemed=$5, pay_bonus_money=$6, pay_settled_at=NOW(),
+                  real_amount=$7
             WHERE id=$1`,
           [id, discountMoney || null, certMoney > 0 ? certRow.code : null, certMoney || null,
-           bonusRedeemed || null, bonusMoney || null]);
+           bonusRedeemed || null, bonusMoney || null, realServiceAmount]);
       }
       await client.query(raceLost ? 'ROLLBACK' : 'COMMIT');
     } catch (e) {
