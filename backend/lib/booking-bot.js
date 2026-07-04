@@ -503,6 +503,23 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
     reply_markup: mainMenu(),
   });
 
+  // Ненавʼязлива порада-допродаж (лише для нового запису, не для переносу)
+  if (!moved) {
+    try {
+      const cross = await suggestCrossSell(ctx, chosen.map(s => s.name), Number(apptIds && apptIds[0]) || 0);
+      if (cross) {
+        await ctx.tg('sendMessage', {
+          chat_id: chatId, parse_mode: 'HTML',
+          text: `💡 ${cross.line}`,
+          reply_markup: { inline_keyboard: [
+            [{ text: '✨ Так, підібрати час', callback_data: `bk:add:${cross.svc.id}` }],
+            [{ text: '🙂 Дякую, ні', callback_data: 'bk:dismiss' }],
+          ] },
+        });
+      }
+    } catch (e) { console.error('[bookbot/crosssell]', e.message); }
+  }
+
   // передоплата Mono — fire-and-forget
   if (bookingId && process.env.MONO_TOKEN) {
     setImmediate(async () => {
@@ -562,6 +579,53 @@ function mainMenu() {
 }
 
 // майбутні візити клієнта з кнопками перенести/скасувати (повторно використовує bk:r:*)
+// ── Бот-консультант: ненавʼязливий крос-сел після запису ───────────────────
+// Пропонуємо ЛИШЕ доповнюючу послугу до вже заброньованої, і лише якщо її реально
+// можна записати (є онлайн-майстер). Багато варіацій фраз, щоб не повторюватись.
+// Головне — не плутати клієнта: одна доречна пропозиція, легко відмовитись.
+const CROSS_RULES = [
+  { when: /манікюр/, target: /педикюр/, lines: [
+    'До манікюру гарно додати педикюр — підібрати час?',
+    'Багато клієнток роблять манікюр і педикюр разом. Показати вільний час на педикюр?',
+    'Хочете, щоб і ніжки були доглянуті? Можу підказати час на педикюр 💅',
+    'Часто беруть манікюр + педикюр в один візит — цікаво додати педикюр?' ] },
+  { when: /педикюр/, target: /манікюр/, lines: [
+    'До педикюру зазвичай додають манікюр — підібрати час?',
+    'Зробимо руки й ніжки в парі? Показати вільний час на манікюр?',
+    'Багато хто поєднує педикюр з манікюром — цікаво додати?' ] },
+  { when: /стрижк/, target: /фарбуванн/, lines: [
+    'До стрижки часто освіжають колір — підказати час на фарбування?',
+    'Свіжа стрижка + фарбування = завершений образ. Показати вільні вікна?',
+    'Хочете оновити й колір? Можу підібрати час на фарбування 💇' ] },
+  { when: /фарбуванн|мелірува/, target: /стрижк/, lines: [
+    'До фарбування гарно оновити форму — підказати час на стрижку?',
+    'Освіжимо й кінчики? Показати вільний час на стрижку?',
+    'Багато хто після фарбування робить стрижку — цікаво додати?' ] },
+  { when: /брів|брови/, target: /(ламінування|нарощування)\s*вій/, lines: [
+    'До брів гарно пасує ламінування вій — підібрати час?',
+    'Брови + вії = виразний погляд. Показати вільний час на вії?',
+    'Хочете підкреслити погляд? Можу підказати час на вії 👀' ] },
+  { when: /вій|вії/, target: /(ламінування|корекц|фарбуванн)[а-яіїєґ ]*бр/, lines: [
+    'До вій часто роблять корекцію брів — підібрати час?',
+    'Вії + доглянуті брови — гарний дует. Показати вільний час на брови?',
+    'Хочете завершити образ бровами? Можу підказати вільний час 👁' ] },
+];
+async function suggestCrossSell(ctx, bookedNames, seed) {
+  const joined = (bookedNames || []).join(' ').toLowerCase();
+  for (const rule of CROSS_RULES) {
+    if (!rule.when.test(joined)) continue;
+    if (rule.target.test(joined)) return null;      // вже беруть це — не пропонуємо те саме
+    const cat = await loadCatalog(ctx.pool);
+    const cand = cat.services.filter(s => rule.target.test((s.name || '').toLowerCase()));
+    for (const s of cand) {
+      try { const m = await eligibleMasters(ctx.pool, [s.id]); if (m.length) return { svc: s, line: rule.lines[Math.abs(seed || 0) % rule.lines.length] }; }
+      catch (_) {}
+    }
+    return null;                                     // правило підійшло, та бронювати нічого — мовчимо
+  }
+  return null;
+}
+
 // ── Особистий кабінет клієнта ──────────────────────────────────────────────
 async function showCabinet(ctx, uid, chatId) {
   const cl = await getClient(ctx.pool, uid);
@@ -582,7 +646,6 @@ async function showCabinet(ctx, uid, chatId) {
     [{ text: '🎁 Мої бонуси', callback_data: 'bk:cab:bonus' }],
     [{ text: '🎟 Мої сертифікати', callback_data: 'bk:cab:certs' }],
     [{ text: '👤 Профіль', callback_data: 'bk:cab:profile' }],
-    [{ text: '🗓 Записатись', callback_data: 'bk:cab:book' }],
   ];
   return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: head, reply_markup: { inline_keyboard: kb } });
 }
@@ -603,7 +666,7 @@ async function showBonuses(ctx, uid, chatId) {
       `SELECT amount, description, to_char(created_at AT TIME ZONE 'Europe/Kyiv','DD.MM.YY') d
          FROM bonus_transactions WHERE client_id=$1 ORDER BY created_at DESC LIMIT 6`, [cl.id])).rows;
     if (tx.length) { out.push('\n<b>Останні операції:</b>'); tx.forEach(t => { const plus = Number(t.amount) >= 0; out.push(`${plus ? '➕' : '➖'} ${Math.abs(Math.round(t.amount))} — ${t.description || (plus ? 'нараховано' : 'списано')} · ${t.d}`); }); }
-    else out.push('\nБонуси нараховуються автоматично — 3% кешбек з кожної оплати 💛');
+    else out.push('\nБонуси нараховуються автоматично за кожен візит — і ними можна оплатити частину наступного 💛');
   } catch (e) { console.error('[bookbot/bonus]', e.message); }
   return ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: cabBack });
 }
@@ -854,6 +917,25 @@ async function onCallback(cq, ctx) {
         await saveSession(ctx.pool, uid, chatId, 'bday', {});
         await respond(ctx.tg, target, '🎂 Напишіть вашу дату народження у форматі <b>ДД.ММ.РРРР</b> (напр. 25.12.1990) — і ми привітаємо вас та подаруємо бонус до дня народження 💛');
       }
+      return true;
+    }
+
+    // «Так, підібрати час» з поради-допродажу → нова сесія на цю послугу, БЕЗ старої сесії
+    if (data.startsWith('bk:add:')) {
+      const sId = Number(data.slice(7));
+      const cat = await loadCatalog(ctx.pool);
+      const svc = cat.byId.get(sId);
+      await ack();
+      if (!svc) { await respond(ctx.tg, target, 'Напишіть послугу — підберу час.'); return true; }
+      const session = { data: { parts: [{ query: svc.name, candidates: [svc], pick: svc }], master: null } };
+      try { session.data.masters = await eligibleMasters(ctx.pool, [svc.id]); } catch (_) {}
+      await showQuick(ctx, uid, target, session);
+      return true;
+    }
+    // «Дякую, ні» — мʼяко закриваємо пораду, без нав'язування
+    if (data === 'bk:dismiss') {
+      await ack();
+      await respond(ctx.tg, target, 'Добре! Якщо захочете — просто напишіть послугу або зайдіть у «👤 Мій кабінет» 💛');
       return true;
     }
 
