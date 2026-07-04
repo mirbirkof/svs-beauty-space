@@ -1066,4 +1066,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu };

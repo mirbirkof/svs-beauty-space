@@ -288,7 +288,7 @@ router.post('/telegram', async (req, res) => {
             return tg('sendMessage', {
               chat_id: msg.chat.id,
               text: `✅ Готово${upd2.rows[0].name ? ', ' + upd2.rows[0].name : ''}! Ваш Telegram підвʼязано.\nЩоб записатись — просто напишіть послугу (напр. «манікюр»), і я підберу вільний час.`,
-              reply_markup: { remove_keyboard: true },
+              reply_markup: bookingBot.mainMenu(),
             });
           }
           // номер є в базі, але вже зайнятий іншим Telegram-акаунтом
@@ -314,7 +314,7 @@ router.post('/telegram', async (req, res) => {
           return tg('sendMessage', {
             chat_id: msg.chat.id,
             text: '✅ Ваш номер збережено та підвʼязано до Telegram. Дякуємо!',
-            reply_markup: { remove_keyboard: true },
+            reply_markup: bookingBot.mainMenu(),
           });
         } catch (linkErr) {
           console.error('[booking/link]', linkErr.message);
@@ -335,7 +335,7 @@ router.post('/telegram', async (req, res) => {
           return tg('sendMessage', {
             chat_id: msg.chat.id,
             text: '😔 На жаль, онлайн-запис для цього номера недоступний. Будь ласка, звʼяжіться з адміністратором салону.',
-            reply_markup: { remove_keyboard: true },
+            reply_markup: bookingBot.mainMenu(),
           });
         }
       } catch (blErr) { console.error('[booking/blacklist]', blErr.message); }
@@ -445,7 +445,7 @@ router.post('/telegram', async (req, res) => {
         await tg('sendMessage', {
           chat_id: msg.chat.id,
           text: '✅ Запис підтверджено! Чекаємо вас у салоні. До зустрічі.',
-          reply_markup: { remove_keyboard: true },
+          reply_markup: bookingBot.mainMenu(),
         });
 
         // предоплата через Mono — fire-and-forget, запись уже подтверждена
