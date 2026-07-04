@@ -12444,6 +12444,31 @@ async function aiFabConfirm(yes){
     if(typeof loadManagerPanel==='function')try{loadManagerPanel();}catch(_){}
   }catch(e){ document.getElementById('aiFabWait')?.closest('.bot')?.remove(); _aiAdd('bot','Помилка: '+_aiEsc(e.message)); }
 }
+
+// ── Авто-детект нової версії CRM ─────────────────────────────────────────
+// Вкладка адмінки живе відкритою днями → деплої до неї не доходять без F5.
+// Раз на 3 хв звіряємо ETag сторінки; змінився → банер «оновіть» (клік = reload).
+(function versionWatch(){
+  let boot = null;
+  async function tagOf(){
+    try { const r = await fetch('/admin/', { method:'HEAD', cache:'no-store' });
+      return r.headers.get('etag') || r.headers.get('last-modified') || null; } catch(_){ return null; }
+  }
+  async function tick(){
+    const t = await tagOf();
+    if (!t) return;
+    if (boot === null) { boot = t; return; }
+    if (t !== boot && !document.getElementById('verBanner')) {
+      const b = document.createElement('div');
+      b.id = 'verBanner';
+      b.innerHTML = '🔄 Вийшла нова версія CRM — <b>натисніть, щоб оновити</b>';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#7c3aed;color:#fff;text-align:center;padding:10px;font-size:14px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25)';
+      b.onclick = () => location.reload();
+      document.body.appendChild(b);
+    }
+  }
+  tick(); setInterval(tick, 180000);
+})();
 </script>
 </body>
 </html>
