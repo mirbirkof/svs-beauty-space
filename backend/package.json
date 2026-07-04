@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node shop-api.js",
     "dev": "node --watch shop-api.js",
-    "test": "node --test -r dotenv/config test/*.test.js"
+    "test": "node --test -r dotenv/config test/*.test.js",
+    "audit:money": "node -r dotenv/config scripts/money_audit.js",
+    "audit:data": "node -r dotenv/config scripts/consistency_audit.js"
   },
   "dependencies": {
     "@sentry/node": "^8.55.2",
