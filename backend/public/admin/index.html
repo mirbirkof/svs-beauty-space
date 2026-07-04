@@ -1174,7 +1174,7 @@ select.input { background:var(--card); }
         <div class="card" id="mgrPanel" style="margin-bottom:20px;display:none">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
             <span class="material-icons-round" style="color:var(--primary,#6c5ce7)">insights</span>
-            <h3 style="margin:0">Панель керуючого <span style="font-size:12px;font-weight:500;color:var(--text-secondary)">— пульс салону за місяць</span></h3>
+            <h3 style="margin:0">Панель керуючого <span style="font-size:12px;font-weight:500;color:var(--text-secondary)">— пульс салону за місяць</span> <button type="button" class="info-i" data-t="<b>Панель керуючого.</b> Ключові цифри місяця в одному місці: дохід, записи, нові клієнти, завантаження майстрів. Заповнювати нічого не треба — це зведення, воно оновлюється саме. Червоні цифри = зверни увагу." onclick="showInfo(event,this.dataset.t)">i</button></h3>
           </div>
           <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
           <div id="mgrStaff" style="margin-top:16px;overflow-x:auto"></div>
@@ -1809,6 +1809,7 @@ select.input { background:var(--card); }
         <div id="stImpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) stImpClose()">
           <div class="modal" style="max-width:900px;width:94vw">
             <div class="modal-header"><h3 id="stImpTitle">Накладна — прихід</h3>
+            <button type="button" class="info-i" data-t="<b>Накладна — прихід.</b> Масове завезення товару на склад. Завантаж файл накладної (xlsx/csv/фото) або встав текст — система сама розпізнає позиції та кількість. Перевір список → «Провести прихід» → залишки поповняться. Кожен документ зберігається в історії." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
               <button class="modal-close" onclick="stImpClose()">✕</button></div>
             <div class="modal-body" style="max-height:72vh;overflow:auto">
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
@@ -2359,7 +2360,7 @@ select.input { background:var(--card); }
       <div class="page" id="page-contractors">
         <div class="card" style="max-width:760px">
           <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-            <h3 style="display:flex;align-items:center;gap:6px">Контрагенти
+            <h3 style="display:flex;align-items:center;gap:6px">Контрагенти <button type="button" class="info-i" data-t="<b>Контрагенти.</b> Довідник, з ким працює салон: постачальники, орендодавець, сервіси. Кнопка «+» — новий контрагент (назва, контакти, реквізити). Далі його можна обирати у витратах і закупівлях — щоб бачити, кому скільки заплатили." onclick="showInfo(event,this.dataset.t)">i</button>
               <button type="button" class="info-i" data-t="<b>Контрагенти</b> — постачальники, орендодавці та партнери. Тут їх додають і ведуть. Регулярні фіксовані витрати (оренда, комуналка) плануються кнопкою «Регулярний платіж» — система сама нагадає у вибране число місяця." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn btn-sm btn-primary" onclick="contractorModal()"><span class="material-icons-round" style="font-size:16px">add</span> Додати контрагента</button>
@@ -2394,7 +2395,7 @@ select.input { background:var(--card); }
 
         <div class="saas-pane" id="saas-plans" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h3 style="margin:0;font-size:17px">Тарифні плани</h3>
+            <h3 style="margin:0;font-size:17px">Тарифні плани <button type="button" class="info-i" data-t="<b>Тарифні плани.</b> Пакети підписки, які ти продаєш салонам-клієнтам платформи: ціна на місяць, які модулі входять. Кнопка «+» — новий тариф. Салон обирає тариф і платить за нього." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <button class="btn btn-primary btn-sm" onclick="saasPlanEdit()"><span class="material-icons-round" style="font-size:16px">add</span> Новий тариф</button>
           </div>
           <div id="saasPlansList"></div>
@@ -2402,7 +2403,7 @@ select.input { background:var(--card); }
 
         <div class="saas-pane" id="saas-tenants" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
-            <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3>
+            <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3> <button type="button" class="info-i" data-t="<b>Орендарі.</b> Салони, підключені до твоєї платформи. Кожен — окремий бізнес зі своїми даними (клієнти й склад не перетинаються). Тут створюєш нового орендаря і керуєш його доступом." onclick="showInfo(event,this.dataset.t)">i</button>
             <div style="display:flex;gap:8px;align-items:center">
               <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
               <button class="btn btn-primary btn-sm" onclick="saasNewTenant()"><span class="material-icons-round" style="font-size:16px">add_business</span> Новий салон</button>
@@ -2414,7 +2415,7 @@ select.input { background:var(--card); }
         <div class="saas-pane" id="saas-billing" style="display:none">
           <div id="saasBillingMetrics" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h3 style="margin:0;font-size:17px">Підписки салонів</h3>
+            <h3 style="margin:0;font-size:17px">Підписки салонів <button type="button" class="info-i" data-t="<b>Підписки салонів.</b> Хто з орендарів на якому тарифі, до якої дати оплачено, у кого прострочено. Тут продовжуєш або зупиняєш підписку конкретного салону." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <button class="btn btn-sm" onclick="saasPromoModal()"><span class="material-icons-round" style="font-size:16px">sell</span> Промокоди</button>
           </div>
           <div id="saasSubsList"></div>
@@ -2422,7 +2423,7 @@ select.input { background:var(--card); }
 
         <div class="saas-pane" id="saas-flags" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h3 style="margin:0;font-size:17px">Фіч-флаги</h3>
+            <h3 style="margin:0;font-size:17px">Фіч-флаги <button type="button" class="info-i" data-t="<b>Фіч-флаги.</b> Перемикачі функцій платформи: вмикають/вимикають окремі модулі для конкретного салону чи для всіх. Обережно: вимкнеш флаг — функція зникне у користувачів одразу." onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <button class="btn btn-primary btn-sm" onclick="saasFlagEdit()"><span class="material-icons-round" style="font-size:16px">add</span> Новий флаг</button>
           </div>
           <div id="saasFlagsList"></div>
@@ -2752,6 +2753,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:520px">
       <div class="modal-header">
         <h3 id="taskTitle">Нова задача</h3>
+        <button type="button" class="info-i" data-t="<b>Задача.</b> Доручення для команди: що зробити, хто відповідальний, до якої дати. Признач виконавця і дедлайн → задача з’явиться у нього в списку. Виконано → познач галочкою, вона піде в архів." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeTask()">✕</button>
       </div>
       <div class="modal-body" id="taskBody"></div>
@@ -2763,6 +2765,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:520px">
       <div class="modal-header">
         <h3 id="docTitle">Новий документ</h3>
+        <button type="button" class="info-i" data-t="<b>Документ.</b> Створення або редагування документа: договір, згода, акт, інструкція. Заповни назву і текст → збережи. Документ буде доступний команді в розділі «Документи»." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeDoc()">✕</button>
       </div>
       <div class="modal-body" id="docModalBody"></div>
@@ -2774,6 +2777,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:620px;width:92vw;max-height:90vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="surveyTitle">Опитування</h3>
+        <button type="button" class="info-i" data-t="<b>Опитування.</b> Анкета для клієнтів (напр. оцінка після візиту). Додай питання → збережи → розішли клієнтам. Відповіді збираються автоматично, результати видно у розділі «Опитування / NPS»." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeSurvey()">✕</button>
       </div>
       <div class="modal-body" id="surveyBody" style="overflow:auto"></div>
@@ -2785,6 +2789,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:680px;width:92vw;max-height:90vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="kbTitle">Стаття</h3>
+        <button type="button" class="info-i" data-t="<b>Стаття бази знань.</b> Внутрішня інструкція для команди: регламент, техкарта, відповідь на часте питання. Напиши зрозумілим текстом → збережи → співробітники знайдуть її в «Базі знань»." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeKb()">✕</button>
       </div>
       <div class="modal-body" id="kbBodyModal" style="overflow:auto"></div>
@@ -2796,6 +2801,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:540px">
       <div class="modal-header">
         <h3 id="incidentTitle">Новий інцидент</h3>
+        <button type="button" class="info-i" data-t="<b>Інцидент.</b> Фіксація проблеми: скарга клієнта, зіпсований матеріал, поломка обладнання. Опиши, що сталось і наскільки критично → збережи. Так проблеми не губляться і видно, що повторюється." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="closeIncident()">✕</button>
       </div>
       <div class="modal-body" id="incidentBody"></div>
@@ -2843,6 +2849,7 @@ select.input { background:var(--card); }
     <div class="modal" style="max-width:440px">
       <div class="modal-header">
         <h3 id="finOpTitle">Дохід</h3>
+        <button type="button" class="info-i" data-t="<b>Фінансова операція.</b> Ручне занесення грошей: дохід (передоплата, інші надходження) або витрата (оренда, закупівля). Обери категорію, суму і касу → збережи. Операція одразу з’явиться у звітах і русі коштів." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
         <button class="modal-close" onclick="finCloseOp()">✕</button>
       </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
@@ -6598,7 +6605,7 @@ async function loadProductSales(){
     const spMaster = salon.by_master.map(m=>`<tr><td>${m.master}</td><td>${_q(m.qty)}</td><td>${_money2(m.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає даних</td></tr>';
     // Інтернет-магазин (якщо є замовлення)
     const shopBlock = (r.by_brand && r.by_brand.length) ? `
-      <h3 style="margin:22px 0 8px">Інтернет-магазин</h3>
+      <h3 style="margin:22px 0 8px">Інтернет-магазин <button type="button" class="info-i" data-t="<b>Інтернет-магазин.</b> Товари, які видно на сайті магазину і які клієнти можуть замовити онлайн. Увімкни товар — він з’явиться на вітрині; вимкни — зникне з сайту, але залишиться на складі." onclick="showInfo(event,this.dataset.t)">i</button></h3>
       <div style="padding:10px 14px;border-radius:10px;background:var(--bg-secondary);margin-bottom:12px">Магазин: <b>${_money2(r.total)}</b></div>
       <div class="grid-2" style="gap:20px">
         <div><h4 style="margin:0 0 8px">За брендами</h4><table class="tbl"><thead><tr><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${r.by_brand.map(b=>`<tr><td>${b.brand}</td><td>${b.qty}</td><td>${_money2(b.revenue)}</td></tr>`).join('')}</tbody></table></div>
@@ -6606,7 +6613,7 @@ async function loadProductSales(){
       </div>` : '';
     box.innerHTML=`
       <div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Салон (BeautyPro): <b style="font-size:18px">${_money2(salon.total)}</b>${r.total?` &nbsp;·&nbsp; Магазин: <b>${_money2(r.total)}</b>`:''}</div>
-      <h3 style="margin:0 0 8px">Салонні товари</h3>
+      <h3 style="margin:0 0 8px">Салонні товари <button type="button" class="info-i" data-t="<b>Салонні товари.</b> Внутрішні матеріали для роботи майстрів: фарби, оксиди, витратники. На сайті їх не видно — вони списуються зі складу при візитах. Тут же задається ціна продажу за грам (колонка ₴/грам)." onclick="showInfo(event,this.dataset.t)">i</button></h3>
       <div class="grid-2" style="gap:20px">
         <div><h4 style="margin:0 0 8px">За категоріями</h4><table class="tbl"><thead><tr><th>Категорія</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spCat}</tbody></table></div>
         <div><h4 style="margin:0 0 8px">За майстрами</h4><table class="tbl"><thead><tr><th>Майстер</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spMaster}</tbody></table></div>
@@ -11687,7 +11694,7 @@ function renderMySub(){
       <div style="margin-top:12px">${btn}</div>
     </div>`;
   }).join('');
-  const plansBlock = `<h3 style="margin:6px 0 4px;font-size:18px">Тарифи</h3>${cycleSw}
+  const plansBlock = `<h3 style="margin:6px 0 4px;font-size:18px">Тарифи <button type="button" class="info-i" data-t="<b>Тарифи.</b> Доступні пакети підписки на CRM: що входить і скільки коштує на місяць чи рік. Обери відповідний і натисни кнопку переходу — система порахує оплату." onclick="showInfo(event,this.dataset.t)">i</button></h3>${cycleSw}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:26px">${cards}</div>`;
   // ── Рахунки ──
   let invRows = _mysub.invoices.map(inv=>{
@@ -11731,11 +11738,11 @@ function renderMySub(){
         <div style="margin-top:8px">${btn}</div>
       </div>`;
     }).join('');
-    addonsBlock = `<h3 style="margin:18px 0 4px;font-size:18px">Платні модулі</h3>
+    addonsBlock = `<h3 style="margin:18px 0 4px;font-size:18px">Платні модулі <button type="button" class="info-i" data-t="<b>Платні модулі.</b> Додаткові функції поверх тарифу (напр. SMS-розсилки, аналітика). Вмикаєш потрібний — він додається до рахунку. Вимкнути можна будь-коли." onclick="showInfo(event,this.dataset.t)">i</button></h3>
       <div style="font-size:13px;color:#9aa0a6;margin-bottom:12px">Підключайте лише те, що потрібно — поверх вашого тарифу.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:26px">${cards}</div>`;
   }
-  const invBlock = `<h3 style="margin:6px 0 12px;font-size:18px">Рахунки та платежі</h3>
+  const invBlock = `<h3 style="margin:6px 0 12px;font-size:18px">Рахунки та платежі <button type="button" class="info-i" data-t="<b>Рахунки та платежі.</b> Історія оплат за підписку: виставлені рахунки, що оплачено, що прострочено. Клік по рахунку — деталі й можливість оплатити." onclick="showInfo(event,this.dataset.t)">i</button></h3>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
       <thead><tr style="border-bottom:2px solid #eee;text-align:left;color:#9aa0a6;font-size:12px">
         <th style="padding:8px">Рахунок</th><th style="padding:8px">Дата</th><th style="padding:8px">Сума</th><th style="padding:8px">Статус</th><th></th>
