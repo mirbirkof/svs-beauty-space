@@ -13,6 +13,7 @@
    ═══════════════════════════════════════════════════════════════ */
 const matcher = require('./service-matcher');
 const slotEngine = require('./slot-engine');
+const { fmtPhoneFull } = require('./phone');
 
 const SESSION_TTL_MIN = 30;
 const MAX_DAYS = 14;          // горизонт вибору дати
@@ -693,7 +694,7 @@ async function showProfile(ctx, uid, chatId) {
   const c = (await ctx.pool.query(
     `SELECT name, phone, to_char(birthday,'DD.MM.YYYY') bday, COALESCE(total_visits,0) v,
             COALESCE(total_spent,0) sp, to_char(first_visit_at,'DD.MM.YYYY') fv FROM clients WHERE id=$1`, [cl.id])).rows[0];
-  const out = ['👤 <b>Профіль</b>\n', `Імʼя: <b>${c.name || '—'}</b>`, `Телефон: ${c.phone || '—'}`, `День народження: ${c.bday || 'не вказано'}`];
+  const out = ['👤 <b>Профіль</b>\n', `Імʼя: <b>${c.name || '—'}</b>`, `Телефон: ${fmtPhoneFull(c.phone)}`, `День народження: ${c.bday || 'не вказано'}`];
   if (Number(c.v)) out.push(`\n💛 З нами: ${c.v} візит(ів)${Number(c.sp) ? ` на ${Math.round(c.sp)} ₴` : ''}${c.fv ? ` з ${c.fv}` : ''}`);
   const kb = [];
   if (!c.bday) kb.push([{ text: '🎂 Вказати день народження', callback_data: 'bk:cab:setbday' }]);

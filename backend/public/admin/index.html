@@ -2914,7 +2914,7 @@ let TENANT_SLUG = (() => {
 })();
 function tenantHeader() { return TENANT_SLUG ? { 'X-Tenant-Slug': TENANT_SLUG } : {}; }
 // Телефон для відображення: БД зберігає цифри, показуємо у форматі +XXXXXXXXXXX
-function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
+function fmtPhone(p){ let d = String(p||'').replace(/\D/g,''); if(!d) return '—'; if(d.length===10&&d[0]==='0')d='38'+d; else if(d.length===9)d='380'+d; else if(d.length===11&&d.slice(0,2)==='80')d='3'+d; return '+'+d; }
 let currentPage = 'dashboard';
 let journalMode = 'day';
 

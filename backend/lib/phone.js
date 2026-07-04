@@ -10,16 +10,33 @@
    - нераспознанный (иностранный/другая длина) — как есть, только без
      пробелов/скобок/дефисов; '+' сохраняем, чтобы НЕ калечить номер (#107)
    ─────────────────────────────────────────────────────────────── */
+// Достраивает украинский номер до канонических 12 цифр (380XXXXXXXXX).
+// 0XXXXXXXXX / XXXXXXXXX / 80XXXXXXXXX → 380XXXXXXXXX. Иностранные — цифры как есть.
+function toCanonDigits(p) {
+  if (p == null) return null;
+  const d = String(p).replace(/\D/g, '');
+  if (!d) return null;
+  if (d.length === 12 && d.startsWith('380')) return d;
+  if (d.length === 11 && d.startsWith('80')) return '3' + d;
+  if (d.length === 10 && d.startsWith('0')) return '38' + d;
+  if (d.length === 9) return '380' + d;
+  return d;
+}
+
+// ФОРМАТ ХРАНЕНИЯ (не трогаем — канон без '+', матчинг по цифрам, аудит #31).
 function normalizePhoneDb(p) {
   if (p == null) return null;
   const d = String(p).replace(/\D/g, '');
   if (!d) return null;
-  if (d.length === 12 && d.startsWith('380')) return d;       // 380XXXXXXXXX и +380XXXXXXXXX
-  if (d.length === 11 && d.startsWith('80')) return '3' + d;  // 80XXXXXXXXX → 380...
-  if (d.length === 10 && d.startsWith('0')) return '38' + d;  // 0XXXXXXXXX → 380...
-  if (d.length === 9) return '380' + d;                       // XXXXXXXXX → 380...
-  // неоднозначный формат: чистим только разделители, ввод не теряем и не «украинизируем»
-  return String(p).trim().replace(/[\s()\-.]/g, '');
+  const c = toCanonDigits(p);
+  if (c && (c.length === 12 && c.startsWith('380'))) return c;   // достроенный украинский
+  return String(p).trim().replace(/[\s()\-.]/g, '').replace(/^\+/, ''); // прочее — без разделителей и без '+'
 }
 
-module.exports = { normalizePhoneDb };
+// ФОРМАТ ПОКАЗА (бот, админка, экспорт): всегда полный, с '+'. '+380XXXXXXXXX'.
+function fmtPhoneFull(p) {
+  const c = toCanonDigits(p);
+  return c ? '+' + c : '—';
+}
+
+module.exports = { normalizePhoneDb, fmtPhoneFull, toCanonDigits };
