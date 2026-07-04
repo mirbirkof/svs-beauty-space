@@ -204,7 +204,8 @@ router.post('/telegram', async (req, res) => {
     if (msg.text && msg.text.startsWith('/start')) {
       const parts = msg.text.split(' ');
       const token = parts[1];
-      if (!token || token === 'link') {
+      // короткі deep-link ключі з сайту/візитки — це НЕ токен запису, а звичайний старт
+      if (!token || /^(link|book|site|web|start|zapis|menu)$/i.test(token)) {
         // Холодний старт. Якщо вже знаємо цей Telegram — вітаємо на імʼя, номер не питаємо.
         try {
           const known = await getPool().query(
