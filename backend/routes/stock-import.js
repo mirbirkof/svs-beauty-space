@@ -23,8 +23,32 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
   try {
     let rows, rawText = '', fname = req.file ? req.file.originalname : null;
     if (req.file) {
-      rows = imp.parseUpload(req.file.originalname, req.file.buffer);
-      if (!/\.(xlsx|xls)$/i.test(fname || '')) rawText = req.file.buffer.toString('utf8');
+      // Фото/PDF — НЕ текст: без цієї перевірки бінарник читався як utf8 → «ієрогліфи»
+      const buf = req.file.buffer;
+      const magic = buf.slice(0, 4).toString('hex');
+      const isImage = /^(ffd8|8950|4749|424d)/.test(magic) || /^image\//.test(req.file.mimetype || '') ||
+        /\.(jpe?g|png|gif|bmp|heic|heif|webp)$/i.test(fname || '');
+      const isPdf = magic.startsWith('2550') || /\.pdf$/i.test(fname || '');
+      if (isImage || isPdf) {
+        return res.status(400).json({ error: 'binary-file',
+          message: (isPdf ? 'PDF' : 'Фото') + ' накладної поки не розпізнається автоматично. ' +
+            'Надішліть Excel (.xlsx), CSV або просто СКОПІЮЙТЕ ТЕКСТ накладної у поле нижче — розберу.' });
+      }
+      rows = imp.parseUpload(req.file.originalname, buf);
+      if (!/\.(xlsx|xls)$/i.test(fname || '')) {
+        rawText = buf.toString('utf8');
+        // друга лінія захисту: бінарник під виглядом .txt → багато нечитабельних символів
+        const sample = rawText.slice(0, 2000);
+        let junk = 0;
+        for (let ci = 0; ci < sample.length; ci++) {
+          const cc = sample.charCodeAt(ci);
+          if (cc === 0xFFFD || cc < 9 || (cc > 13 && cc < 32)) junk++;
+        }
+        if (sample.length > 50 && junk / sample.length > 0.05) {
+          return res.status(400).json({ error: 'binary-file',
+            message: 'Файл не схожий на текст (можливо, це фото чи архів). Надішліть Excel/CSV або вставте текст накладної.' });
+        }
+      }
     } else if (req.body && req.body.text) { rows = imp.parseText(req.body.text); rawText = req.body.text; }
     else return res.status(400).json({ error: 'no-input', message: 'Дайте файл або текст' });
     if (!rows.length) return res.json({ ok: true, items: [], message: 'Не знайшов жодного рядка з товаром' });

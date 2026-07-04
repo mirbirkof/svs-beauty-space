@@ -1809,7 +1809,7 @@ select.input { background:var(--card); }
         <div id="stImpModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) stImpClose()">
           <div class="modal" style="max-width:900px;width:94vw">
             <div class="modal-header"><h3 id="stImpTitle">Накладна — прихід</h3>
-            <button type="button" class="info-i" data-t="<b>Накладна — прихід.</b> Масове завезення товару на склад. Завантаж файл накладної (xlsx/csv/фото) або встав текст — система сама розпізнає позиції та кількість. Перевір список → «Провести прихід» → залишки поповняться. Кожен документ зберігається в історії." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
+            <button type="button" class="info-i" data-t="<b>Накладна — прихід.</b> Масове завезення товару на склад. Завантаж файл накладної (Excel/CSV/текст) або встав текст — система сама розпізнає позиції, кількість і дату. Фото поки не читається — скопіюйте текст із фото в поле. Перевір список і дату → «Провести прихід» → залишки поповняться. Кожен документ в історії." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
               <button class="modal-close" onclick="stImpClose()">✕</button></div>
             <div class="modal-body" style="max-height:72vh;overflow:auto">
               <div id="stImpDateRow" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:8px 10px;background:#fff8e6;border:1px solid #f0c36d;border-radius:8px">
