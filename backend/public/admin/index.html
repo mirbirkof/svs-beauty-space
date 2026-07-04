@@ -354,9 +354,10 @@ select.input { background:var(--card); }
 /* Оплачено (підтверджено продажем у касі) — зелена рамка + позначка */
 .jappt.jpaid { box-shadow:0 0 0 2px #10b981 inset, 0 1px 3px rgba(0,0,0,.15); }
 .jappt .paid-ico { position:absolute; bottom:4px; right:5px; font-size:14px; color:#d1fae5; }
-/* Онлайн-запис (бот/сайт) — рожевий фон, щоб одразу видно що це через онлайн */
-.jappt.jonline { background:linear-gradient(135deg,#ec4899,#db2777); }
-.jonline-badge { position:absolute; top:3px; right:4px; font-size:9px; font-weight:700; background:rgba(255,255,255,.28); border-radius:6px; padding:1px 5px; letter-spacing:.2px; }
+/* Онлайн-запис (бот/сайт) — ніжний пастельно-рожевий, щоб одразу видно що це онлайн */
+.jappt.jonline { background:linear-gradient(135deg,#fbcfe8,#f9a8d4); color:#7a2348; }
+.jappt.jonline .ok, .jappt.jonline .paid-ico { color:#9d3568; }
+.jonline-badge { position:absolute; top:3px; right:4px; font-size:9px; font-weight:700; background:rgba(122,35,72,.14); color:#7a2348; border-radius:6px; padding:1px 5px; letter-spacing:.2px; }
 .jappt .paid-tag { font-size:9px; font-weight:700; background:rgba(255,255,255,.25); padding:0 4px; border-radius:4px; margin-left:3px; vertical-align:middle; }
 .jlegend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin:10px 2px 0; }
 .jlegend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:middle; }
