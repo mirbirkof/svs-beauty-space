@@ -734,6 +734,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="pipeline" onclick="go('pipeline')">
             <span class="material-icons-round">view_kanban</span> Воронка візитів
           </a>
+          <a class="sidebar-item" data-page="wsched" onclick="go('wsched')">
+            <span class="material-icons-round">calendar_month</span> Графіки роботи
+          </a>
           <a class="sidebar-item" data-page="tasks" onclick="go('tasks')">
             <span class="material-icons-round">checklist</span> Задачі
             <span class="sidebar-badge" id="badge-tasks" style="display:none">0</span>
@@ -1558,6 +1561,12 @@ select.input { background:var(--card); }
         <div id="shiftsTimesheet" style="margin-bottom:18px"></div>
         <h3 style="margin:0 0 10px;font-size:15px">Зміни за період</h3>
         <div id="shiftsList"><div class="empty"><span class="material-icons-round">event_available</span>Завантаження...</div></div>
+      </div>
+
+      <!-- ═══ ГРАФІКИ РОБОТИ МАЙСТРІВ (доступ адміну за правом schedule) ═══ -->
+      <div class="page" id="page-wsched">
+        <p class="set-p" style="margin:0 0 12px">Робочі дні й години майстрів на місяць. Клік по клітинці дня — задати/змінити зміну. Кнопки згори — згенерувати графік за схемою (2/2, 5/2) на місяці вперед або скопіювати тиждень. Онлайн-запис пропонує клієнтам лише вільний час у межах цих змін.</p>
+        <div id="wschedGrid"><div class="empty"><span class="material-icons-round">calendar_month</span>Завантаження графіка…</div></div>
       </div>
 
       <!-- ═══ ФІНАНСОВИЙ ЦЕНТР (FIN-04) ═══ -->
@@ -3206,7 +3215,7 @@ function userHasPerm(req){
   return false;
 }
 const MENU_PERM_PAGE = {
-  journal:'booking.read', pipeline:'clients.read', shifts:'schedule.read',
+  journal:'booking.read', pipeline:'clients.read', shifts:'schedule.read', wsched:'schedule.read',
   clients:'clients.read', waitlist:'waitlist.read', repeat:'clients.read', blacklist:'blacklist.read',
   orders:'order.write', giftcerts:'order.write', subscriptions:'order.write',
   finance:'reports.finance', fincenter:'reports.finance', cashflow:'reports.finance',
@@ -3538,7 +3547,7 @@ function showInfo(ev, text){
 
 // ── Navigation ───────────────────────────────
 const pageTitles = {
-  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', tasks:'Задачі', incidents:'Інциденти', kb:'База знань', surveys:'Опитування / NPS', documents:'Документи', shifts:'Зміни / Табель', clients:'Клієнти',
+  dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', wsched:'Графіки роботи', tasks:'Задачі', incidents:'Інциденти', kb:'База знань', surveys:'Опитування / NPS', documents:'Документи', shifts:'Зміни / Табель', clients:'Клієнти',
   fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', purchasing:'Закупівлі', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
@@ -3808,7 +3817,7 @@ function go(page) {
   // меню не перемальовується і не «стрибає» при кожному кліку.
   document.getElementById('pageTitle').textContent = (typeof tr==='function'?tr(pageTitles[page]||page):(pageTitles[page]||page));
   document.getElementById('sidebar').classList.remove('open');
-  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
+  const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, wsched:loadWorkSchedule, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, stock:loadStockPage, online:loadOnlinePage, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
@@ -4624,6 +4633,13 @@ function schMonthNav(delta){
   M += delta; if (M<1){M=12;Y--;} if (M>12){M=1;Y++;}
   _schMonth = `${Y}-${String(M).padStart(2,'0')}`;
   renderScheduleOverview(document.getElementById('schGrid'));
+}
+// Окрема сторінка «Графіки роботи» — той самий місячний графік з генератором і
+// правкою днів, але доступна не лише власнику: адмін з правом schedule.read бачить,
+// а з schedule.write — задає зміни майстрів. Бек уже пускає за правом (не owner-only).
+function loadWorkSchedule() {
+  const g = document.getElementById('wschedGrid');
+  if (g) renderScheduleOverview(g);
 }
 async function renderScheduleOverview(grid) {
   const ym = _schMonth || (_schMonth = _ymNow());
