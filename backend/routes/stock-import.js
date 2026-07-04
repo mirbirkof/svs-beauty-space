@@ -21,21 +21,30 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 
 router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (req, res) => {
   try {
-    let rows, rawText = '', fname = req.file ? req.file.originalname : null;
+    let rows, rawText = '', fname = req.file ? req.file.originalname : null, ocrDate = null, viaOcr = false;
     if (req.file) {
-      // Фото/PDF — НЕ текст: без цієї перевірки бінарник читався як utf8 → «ієрогліфи»
+      // Фото/скріншот/PDF → OCR через Gemini vision (вимога: формат не має значення).
       const buf = req.file.buffer;
       const magic = buf.slice(0, 4).toString('hex');
       const isImage = /^(ffd8|8950|4749|424d)/.test(magic) || /^image\//.test(req.file.mimetype || '') ||
         /\.(jpe?g|png|gif|bmp|heic|heif|webp)$/i.test(fname || '');
       const isPdf = magic.startsWith('2550') || /\.pdf$/i.test(fname || '');
       if (isImage || isPdf) {
-        return res.status(400).json({ error: 'binary-file',
-          message: (isPdf ? 'PDF' : 'Фото') + ' накладної поки не розпізнається автоматично. ' +
-            'Надішліть Excel (.xlsx), CSV або просто СКОПІЮЙТЕ ТЕКСТ накладної у поле нижче — розберу.' });
+        const { ocrInvoice } = require('../lib/invoice-ocr');
+        const mime = isPdf ? 'application/pdf'
+          : (/^image\//.test(req.file.mimetype || '') ? req.file.mimetype
+            : (magic.startsWith('8950') ? 'image/png' : 'image/jpeg'));
+        try {
+          const ocr = await ocrInvoice(buf, mime);
+          rows = ocr.items; ocrDate = ocr.doc_date; viaOcr = true;
+          console.log(`[stock-import] OCR ${ocr.model}: ${rows.length} рядків, дата ${ocrDate || '—'}`);
+        } catch (e) {
+          return res.status(400).json({ error: 'ocr-failed', message: e.message });
+        }
+      } else {
+        rows = imp.parseUpload(req.file.originalname, buf);
       }
-      rows = imp.parseUpload(req.file.originalname, buf);
-      if (!/\.(xlsx|xls)$/i.test(fname || '')) {
+      if (!viaOcr && !/\.(xlsx|xls)$/i.test(fname || '')) {
         rawText = buf.toString('utf8');
         // друга лінія захисту: бінарник під виглядом .txt → багато нечитабельних символів
         const sample = rawText.slice(0, 2000);
@@ -54,9 +63,9 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
     if (!rows.length) return res.json({ ok: true, items: [], message: 'Не знайшов жодного рядка з товаром' });
     if (rows.length > 500) rows = rows.slice(0, 500);
     const items = await imp.matchRows(getPool(), rows);
-    // дата накладної: з тексту/імені файлу (підказка; оператор підтверджує в формі)
-    const doc_date = imp.extractDocDate(rawText, fname);
-    res.json({ ok: true, items, filename: fname, doc_date });
+    // дата накладної: OCR бачив сам документ → його дата головна; інакше з тексту/імені файлу
+    const doc_date = ocrDate || imp.extractDocDate(rawText, fname);
+    res.json({ ok: true, items, filename: fname, doc_date, via_ocr: viaOcr || undefined });
   } catch (e) {
     console.error('[stock-import/parse]', e.message);
     res.status(500).json({ error: 'parse-failed', message: 'Не вдалося розібрати документ: ' + e.message });
