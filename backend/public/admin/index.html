@@ -3852,8 +3852,12 @@ function go(page) {
   // Налаштування: кілька пунктів меню ведуть на одну сторінку (різні таби).
   // Уточнюємо підсвічування до єдиного активного пункта за поточним табом.
   if (page === 'settings') {
-    const cur = document.querySelector('.set-pane.active');
-    setTab(cur ? cur.id.replace('tab-', '') : 'profile');
+    // відновлюємо останню відкриту вкладку налаштувань з памʼяті (після F5 не стрибаємо на «Профіль»).
+    // Якщо користувач клікнув конкретний пункт — його явний setTab(...) виконається одразу після go() і переважить.
+    let tab = null;
+    try { tab = localStorage.getItem('svs_set_tab'); } catch(_) {}
+    if (!tab || !document.getElementById('tab-' + tab)) tab = 'profile';
+    setTab(tab);
   }
 }
 
@@ -4536,6 +4540,7 @@ async function contractorDelete(id){
 
 // ═══ SETTINGS ═════════════════════════════════
 function setTab(tab) {
+  try { localStorage.setItem('svs_set_tab', tab); } catch(_) {} // запам'ятовуємо активну вкладку — щоб після оновлення сторінки не стрибало на «Профіль»
   document.querySelectorAll('.set-pane').forEach(p => p.classList.toggle('active', p.id==='tab-'+tab));
   // Підсвічування у бічному меню: пункти налаштувань мають data-page="settings" + data-tab
   document.querySelectorAll('.sidebar-item[data-page="settings"]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
