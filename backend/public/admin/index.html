@@ -7766,7 +7766,7 @@ async function loadPurchasing(){
       ['Заказів',a.orders_count||0,''],['Витрачено',_puMoney(a.total_spent),''],
       ['Сер. доставка',(a.avg_delivery_days!=null?a.avg_delivery_days+' дн':'—'),''],
       ['Розбіжності',(a.discrepancy_rate||0)+'%',''],
-    ].map(k=>`<div class="fc-kpi"><div class="lbl">${k[0]}</div><div class="val">${k[1]}</div></div>`).join('');
+    ].map(k=>`<div class="fc-kpi" style="cursor:pointer" title="Показати всі закази" onclick="puGoOrders()">${''}<div class="lbl">${k[0]}</div><div class="val">${k[1]}</div></div>`).join('');
   }catch(e){ document.getElementById('puKpis').innerHTML=''; }
   // потребности
   try{
@@ -7873,9 +7873,25 @@ async function puOpen(id){
     ${o.notes?'<p class="hint">'+escapeHtml(o.notes)+'</p>':''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">${acts.join('')}</div>`, null);
 }
+function puGoOrders(){
+  const f=document.getElementById('puStatusFilter'); if(f) f.value='';
+  loadPurchasing();
+  document.getElementById('puOrders')?.closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+const _PU_NEXT={
+  submit:'Відправлено на узгодження → тепер натисни «Узгодити»',
+  approve:'Узгоджено ✓ → далі «Відправити постачальнику»',
+  send:'Замовлено у постачальника → коли товар приїде, натисни «Прийняти товар»',
+  close:'Заказ закрито — цикл завершено ✓',
+  cancel:'Заказ скасовано',
+};
 async function puAct(id,action){
   const r=await api('/api/purchasing/orders/'+id+'/'+action,{method:'POST',body:'{}'});
-  if(r&&r.ok){ toast('Готово'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){
+    toast(_PU_NEXT[action]||'Готово');
+    document.getElementById('genModal')?.remove(); _unlockScroll(); loadPurchasing();
+    if(action!=='cancel'&&action!=='close') puOpen(id); // ведемо далі по циклу — наступна кнопка одразу перед очима
+  } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function puReject(id){
   const c=prompt('Причина відхилення:'); if(c===null) return;
