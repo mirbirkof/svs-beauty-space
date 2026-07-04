@@ -3344,6 +3344,38 @@ function playBell() {
   } catch (_) { /* без звуку — не критично */ }
 }
 
+// Звук «розбитого кришталю» — для СКАСУВАННЯ онлайн-запису (щоб на слух відрізнити
+// від нового запису). Сплеск високочастотного шуму + кілька затухаючих уламків-тонів.
+function playCrash() {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') { _audioCtx.resume(); }
+    const ctx = _audioCtx, now = ctx.currentTime, dur = 0.5;
+    // короткий шумовий сплеск — «дзвін скла, що бʼється»
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const noise = ctx.createBufferSource(); noise.buffer = buf;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2000;
+    const ng = ctx.createGain(); ng.gain.value = 0.22;
+    noise.connect(hp); hp.connect(ng); ng.connect(ctx.destination);
+    noise.start(now); noise.stop(now + dur);
+    // уламки — кілька високих тонів, що падають і затухають
+    [3200, 2500, 4100, 1800].forEach((f, i) => {
+      const t0 = now + i * 0.025;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t0);
+      o.frequency.exponentialRampToValueAtTime(f * 0.55, t0 + 0.28);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + 0.36);
+    });
+  } catch (_) { /* без звуку — не критично */ }
+}
+
 // Спливаюче вікно (правий верх) про онлайн-запис або скасування. Тримається 7с,
 // клік по ньому → перехід у журнал на дату події. Кілька подій складаються стопкою.
 function showBookingPopup(ev) {
@@ -3412,7 +3444,7 @@ async function pollOnlineEvents() {
       if (_oeSeen.has(key)) return;
       _oeSeen.add(key);
       gotEvent = true;
-      playBell();
+      if (ev.event_type === 'cancelled') playCrash(); else playBell();
       showBookingPopup(ev);
     });
     if (_oeSeen.size > 400) _oeSeen = new Set([..._oeSeen].slice(-200));

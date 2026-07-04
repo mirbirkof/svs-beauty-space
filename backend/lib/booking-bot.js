@@ -760,10 +760,18 @@ async function onCallback(cq, ctx) {
         return true;
       }
       if (act === 'cn') {
+        const cnIds = own.rows.map(r => r.id);
         await ctx.pool.query(
           `UPDATE appointments SET status='cancelled', updated_at=NOW()
             WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
-          [own.rows.map(r => r.id)]);
+          [cnIds]);
+        // дзеркалимо у online_bookings → адмінка почує «розбитий кришталь» + спливне вікно (заметка #117)
+        try {
+          await ctx.pool.query(
+            `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
+              WHERE bp_appointment_id = ANY($1::text[]) AND COALESCE(status,'') <> 'cancelled'`,
+            [cnIds.map(String)]);
+        } catch (e) { console.error('[bookbot/ob-cancel]', e.message); }
         await respond(ctx.tg, target,
           '✖ Запис скасовано. Будемо раді бачити вас іншим разом 💛\nЩоб записатись знову — просто напишіть послугу.');
         return true;
