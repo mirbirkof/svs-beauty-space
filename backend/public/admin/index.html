@@ -1843,6 +1843,12 @@ select.input { background:var(--card); }
       <!-- ═══ ЗАКУПІВЛІ (SLS-06) ═══ -->
       <div class="page" id="page-purchasing">
         <div class="fc-kpis" id="puKpis" style="margin-bottom:14px"></div>
+        <div class="hint" style="margin-bottom:12px;padding:10px 14px;background:#f5f3ff;border-radius:10px;font-size:12.5px;line-height:1.5">
+          <b>Як працює закупівля:</b> «Автозакупка» збирає товари нижче мінімуму в <b>чернетку</b> заказу →
+          відкрий заказ → <b>На узгодження</b> → <b>Узгодити</b> (або Відхилити) → <b>Відправити постачальнику</b> →
+          коли товар приїхав — <b>Прийняти товар</b> (кількість зарахується на склад) → <b>Закрити</b>.
+          Чернетку можна редагувати або Скасувати — вона ні до чого не зобовʼязує.
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary btn-sm" onclick="puOrderModal()"><span class="material-icons-round" style="font-size:16px">add</span> Новий заказ</button>
           <button class="btn btn-sm" onclick="puAutoRun()">Автозакупка</button>
@@ -3936,15 +3942,53 @@ function _extEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&am
 async function loadSuppliers(){
   const el=document.getElementById('suppliersBody'); el.innerHTML=_extEmpty('Завантаження…');
   try{ const d=await api('/api/suppliers'); const rows=(d&&d.suppliers)||[];
+    window._supRows=rows;
     if(!rows.length){ el.innerHTML=_extEmpty('Немає постачальників. Натисніть «Додати».'); return; }
     el.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #eee;color:#666;font-size:13px">'+
-      '<th style="padding:11px 14px">Назва</th><th style="padding:11px 14px">Контакт</th><th style="padding:11px 14px">Телефон</th><th style="padding:11px 14px">Статус</th></tr></thead><tbody>'+
-      rows.map(s=>'<tr style="border-bottom:1px solid #f3f3f3"><td style="padding:11px 14px;font-weight:600">'+_extEsc(s.name)+'</td>'+
+      '<th style="padding:11px 14px">Назва</th><th style="padding:11px 14px">Контакт</th><th style="padding:11px 14px">Телефон</th><th style="padding:11px 14px">Статус</th><th></th></tr></thead><tbody>'+
+      rows.map(s=>'<tr style="border-bottom:1px solid #f3f3f3'+(s.status==='blocked'?';opacity:.55':'')+'"><td style="padding:11px 14px;font-weight:600">'+_extEsc(s.name)+'</td>'+
         '<td style="padding:11px 14px">'+_extEsc(s.contact_person||s.email||'—')+'</td>'+
         '<td style="padding:11px 14px">'+_extEsc(s.phone||'—')+'</td>'+
-        '<td style="padding:11px 14px">'+(s.status==='blocked'?'<span style="color:#d9534f">Заблокований</span>':s.status==='paused'?'<span style="color:#b8860b">На паузі</span>':'<span style="color:#0a8f5f">Активний</span>')+'</td></tr>').join('')+
+        '<td style="padding:11px 14px">'+(s.status==='blocked'?'<span style="color:#d9534f">Заблокований</span>':s.status==='paused'?'<span style="color:#b8860b">На паузі</span>':'<span style="color:#0a8f5f">Активний</span>')+'</td>'+
+        '<td style="padding:11px 14px;text-align:right;white-space:nowrap">'+
+          '<button class="btn btn-sm btn-icon" title="Редагувати" onclick="supplierEdit('+s.id+')"><span class="material-icons-round" style="font-size:15px">edit</span></button> '+
+          (s.status==='blocked'
+            ?'<button class="btn btn-sm btn-icon" title="Розблокувати" onclick="supplierRestore('+s.id+')"><span class="material-icons-round" style="font-size:15px">restart_alt</span></button>'
+            :'<button class="btn btn-sm btn-icon" title="Видалити (заблокувати)" onclick="supplierDelete('+s.id+')"><span class="material-icons-round" style="font-size:15px">delete</span></button>')+
+        '</td></tr>').join('')+
       '</tbody></table>';
   }catch(e){ _extErr(el,e); } }
+function supplierEdit(id){
+  const c=(window._supRows||[]).find(x=>x.id==id); if(!c) return;
+  showModal('Редагувати постачальника',`
+    <label class="fld"><span>Назва *</span><input id="supEName" class="input" value="${_extEsc(c.name)}"></label>
+    <label class="fld"><span>Телефон</span><input id="supEPhone" class="input" value="${_extEsc(c.phone||'')}"></label>
+    <label class="fld"><span>Email</span><input id="supEEmail" class="input" value="${_extEsc(c.email||'')}"></label>
+    <label class="fld"><span>Статус</span><select id="supEStatus" class="input">
+      <option value="active"${c.status==='active'?' selected':''}>Активний</option>
+      <option value="paused"${c.status==='paused'?' selected':''}>На паузі</option>
+      <option value="blocked"${c.status==='blocked'?' selected':''}>Заблокований</option></select></label>
+    <label class="fld"><span>Примітка</span><textarea id="supENotes" class="input" rows="2">${_extEsc(c.notes||'')}</textarea></label>`,
+    async ()=>{
+      const name=document.getElementById('supEName').value.trim();
+      if(!name){ toast&&toast('Вкажіть назву','error'); return false; }
+      const body={ name, phone:document.getElementById('supEPhone').value.trim()||null,
+        email:document.getElementById('supEEmail').value.trim()||null,
+        status:document.getElementById('supEStatus').value,
+        notes:document.getElementById('supENotes').value.trim()||null };
+      const r=await api('/api/suppliers/'+id,{method:'PATCH',body:JSON.stringify(body)});
+      if(r&&r.ok){ toast&&toast('Збережено'); loadSuppliers(); } else { toast&&toast((r&&r.error)||'Помилка','error'); return false; }
+    });
+}
+async function supplierDelete(id){
+  if(!confirm('Видалити постачальника? Він буде заблокований (історія замовлень збережеться).')) return;
+  const r=await api('/api/suppliers/'+id,{method:'DELETE'});
+  if(r&&r.ok){ toast&&toast('Заблоковано'); loadSuppliers(); } else { toast&&toast((r&&r.error)||'Помилка','error'); }
+}
+async function supplierRestore(id){
+  const r=await api('/api/suppliers/'+id,{method:'PATCH',body:JSON.stringify({status:'active'})});
+  if(r&&r.ok){ toast&&toast('Активовано'); loadSuppliers(); } else { toast&&toast((r&&r.error)||'Помилка','error'); }
+}
 function supplierCreate(){
   showModal('Новий постачальник','<input id="supName" placeholder="Назва" style="width:100%;margin-bottom:8px;padding:9px;border:1px solid #ddd;border-radius:8px"><input id="supPhone" placeholder="Телефон" style="width:100%;margin-bottom:8px;padding:9px;border:1px solid #ddd;border-radius:8px"><input id="supContact" placeholder="Контактна особа" style="width:100%;padding:9px;border:1px solid #ddd;border-radius:8px">',
     async()=>{ const name=document.getElementById('supName').value.trim(); if(!name){ toast&&toast('Вкажіть назву'); return false; }
