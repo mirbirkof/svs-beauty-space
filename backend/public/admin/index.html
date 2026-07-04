@@ -8594,7 +8594,7 @@ async function loadApptMaterials(id) {
     // сума рядка, що ЙДЕ В ЧЕК: фарба за грам (грами × грн/г) АБО пляшка/шт у продаж (кількість × роздріб).
     // Витрата салону (не billable, не за грам) — суми в чек нема (показуємо роздріб довідково нижче).
     const rowSum = m => m.price_per_gram!=null ? Number(m.qty_used||0)*Number(m.price_per_gram)
-      : (m.billable ? Number(m.qty_used||0)*Number(m.price||0) : null);
+      : (m.price!=null ? Number(m.qty_used||0)*Number(m.price) : null);
     const grand = items.reduce((s,m)=>s+(rowSum(m)||0),0);
     const billable = Number(d.billable_total)||0; // позиції у продаж клієнту (грам + пляшки) — ДОДАЄТЬСЯ ДО ЧЕКА
     // освіжаємо базу оплати (послуга + платні матеріали), щоб знижки/бонуси рахувались від повного чека
@@ -8617,19 +8617,16 @@ async function loadApptMaterials(id) {
               ${locked
                 ? `<span style="font-weight:700">×${Number(m.qty_used)}</span>`
                 : `<span onclick="apptMatQty(${id},${m.variant_id},${Number(m.qty_used)})" title="Змінити кількість" style="font-weight:700;cursor:pointer;border-bottom:1px dashed var(--primary,#6c5ce7)">×${Number(m.qty_used)}</span>`}
-              <span style="font-weight:700;min-width:70px;text-align:right">${m.price_per_gram!=null?`<span title="${Number(m.qty_used)} г × ${Number(m.price_per_gram)} грн/г — у чек клієнта" style="color:#7c3aed">${_money(rowSum(m))}</span>`:(m.billable?`<span title="продаж клієнту: ${Number(m.qty_used)} × роздріб — у чек" style="color:#6d28d9">${_money(rowSum(m))}</span>`:(m.price!=null?`<span title="розхід салону: ${Number(m.qty_used)} × ${_money(m.price)} — НЕ додається до чека клієнта. Щоб продати клієнту цілу упаковку — додайте матеріал з галочкою 🛍" style="color:#9aa0a6">${_money(Number(m.qty_used)*Number(m.price))} <span style="font-size:9px;font-weight:600">салон</span></span>`:'—'))}</span>
+              <span style="font-weight:700;min-width:70px;text-align:right">${rowSum(m)!=null?`<span title="${Number(m.qty_used)} × ${m.price_per_gram!=null?Number(m.price_per_gram)+' грн/г':_money(m.price)} — у чек клієнта" style="color:#7c3aed">${_money(rowSum(m))}</span>`:'—'}</span>
               ${locked ? '' : `<span onclick="apptMatDel(${id},${m.variant_id})" title="Прибрати матеріал" style="cursor:pointer;color:#ef4444;font-size:16px;line-height:1">×</span>`}
             </span>
           </div>`).join('')}
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-top:2px solid var(--border);font-size:14px">
-            <span style="font-weight:600">Разом у чек</span>
+            <span style="font-weight:600">Разом матеріали${noPrice?' <span style="color:var(--text-secondary);font-size:11px;font-weight:400">(частина без ціни)</span>':''}</span>
             <span style="font-weight:800">${_money(grand)}</span>
           </div>
-          ${(()=>{const sal=items.reduce((a,m)=>a+((m.price_per_gram==null&&!m.billable&&m.price!=null)?Number(m.qty_used)*Number(m.price):0),0);return sal>0?`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;font-size:12px;color:#9aa0a6" title="Вартість використаних упаковок (банки/стандарт) — витрата салону, до чека клієнта не входить">
-            <span>Розхід салону (не в чек)</span><span style="font-weight:700">${_money(sal)}</span>
-          </div>`:''})()}
           ${billable>0?`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f5f3ff;border-radius:8px;font-size:13px">
-            <span style="font-weight:600;color:#6d28d9">💜 Продаж матеріалів клієнту (за грам) — увійде в оплату</span>
+            <span style="font-weight:600;color:#6d28d9">💜 Матеріали візиту — увійдуть в оплату</span>
             <span style="font-weight:800;color:#6d28d9">+${_money(billable)}</span>
           </div>`:''}</div>` : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
         ${locked ? '' : `
@@ -8646,9 +8643,7 @@ async function loadApptMaterials(id) {
               <option value="pack">упаковок</option>
             </select>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--text-secondary);cursor:pointer" title="Продаж товару клієнту цілою одиницею (пляшка/шт) за роздрібною ціною — додається до чека. Фарба за грам продається завжди автоматично.">
-            <input type="checkbox" id="apptMatBillable"> 🛍 Продаж клієнту (пляшка/шт за роздрібною ціною → в чек)
-          </label>
+          <input type="checkbox" id="apptMatBillable" style="display:none">
           <div id="apptMatResults" style="margin-top:6px;max-height:180px;overflow:auto"></div>
         </div>`}
       </div>`;

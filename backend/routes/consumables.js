@@ -39,8 +39,8 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
               p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price,
               p.price_per_gram,
               CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                   WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
-                   END AS line_total
+                   WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
+                   END AS line_total -- будь-який матеріал з ціною йде в чек (вимога Босса 04.07)
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
