@@ -741,6 +741,9 @@ select.input { background:var(--card); }
             <span class="material-icons-round">checklist</span> Задачі
             <span class="sidebar-badge" id="badge-tasks" style="display:none">0</span>
           </a>
+          <a class="sidebar-item" data-embed="/admin/shift-checklist.html" onclick="openEmbed('/admin/shift-checklist.html','checklist Чек-лист зміни')" style="cursor:pointer">
+            <span class="material-icons-round">checklist</span> Чек-лист зміни
+          </a>
           <a class="sidebar-item" data-page="incidents" onclick="go('incidents')">
             <span class="material-icons-round">report_problem</span> Інциденти
             <span class="sidebar-badge" id="badge-incidents" style="display:none">0</span>
@@ -909,9 +912,6 @@ select.input { background:var(--card); }
           </a>
           <a class="sidebar-item mod-shifts" data-page="shifts" onclick="go('shifts')">
             <span class="material-icons-round">event_available</span> Зміни / Табель
-          </a>
-          <a class="sidebar-item" data-embed="/admin/shift-checklist.html" onclick="openEmbed('/admin/shift-checklist.html','checklist Чек-лист зміни')" style="cursor:pointer">
-            <span class="material-icons-round">checklist</span> Чек-лист зміни
           </a>
           <a class="sidebar-item" data-page="payroll" onclick="go('payroll')">
             <span class="material-icons-round">payments</span> Зарплата
@@ -3851,7 +3851,7 @@ function restoreSidebarGroups() {
 function openEmbed(url, title) {
   // Замок: власницькі embed-модулі (Система/Налаштування) закриті для всіх, крім owner
   if (USER && USER.role !== 'owner') {
-    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access','#users','/shift-checklist.html'];
+    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access','#users']; // shift-checklist відкрито адміну (заметка #123)
     if (OWNER_ONLY_EMBEDS.some(f => url.includes(f))) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
     for (const [frag, p] of (typeof MENU_PERM_EMBED !== 'undefined' ? MENU_PERM_EMBED : [])) {
       if (url.includes(frag) && !userHasPerm(p)) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
