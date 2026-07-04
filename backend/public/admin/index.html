@@ -4782,7 +4782,7 @@ function schMonthNav(delta){
   let [Y,M] = ym.split('-').map(Number);
   M += delta; if (M<1){M=12;Y--;} if (M>12){M=1;Y++;}
   _schMonth = `${Y}-${String(M).padStart(2,'0')}`;
-  renderScheduleOverview(document.getElementById('schGrid'));
+  renderScheduleOverview(_schActiveGrid());
 }
 // Окрема сторінка «Графіки роботи» — той самий місячний графік з генератором і
 // правкою днів, але доступна не лише власнику: адмін з правом schedule.read бачить,
@@ -4790,6 +4790,10 @@ function schMonthNav(delta){
 function loadWorkSchedule() {
   const g = document.getElementById('wschedGrid');
   if (g) renderScheduleOverview(g);
+}
+function _schActiveGrid(){
+  for(const id of ['wschedGrid','schGrid']){ const el=document.getElementById(id); if(el && el.offsetParent!==null) return el; }
+  return document.getElementById('schGrid')||document.getElementById('wschedGrid');
 }
 async function renderScheduleOverview(grid) {
   const ym = _schMonth || (_schMonth = _ymNow());
@@ -4846,7 +4850,7 @@ async function renderScheduleOverview(grid) {
        <button class="btn btn-sm" onclick="schMonthNav(-1)">‹</button>
        <span class="schmon-title">${_SCH_MON[M-1]} ${Y}</span>
        <button class="btn btn-sm" onclick="schMonthNav(1)">›</button>
-       <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(document.getElementById('schGrid'))" style="margin-left:8px">Сьогодні</button>
+       <button class="btn btn-sm" onclick="_schMonth=_ymNow();renderScheduleOverview(_schActiveGrid())" style="margin-left:8px">Сьогодні</button>
        <select class="input btn-sm" style="width:auto;margin-left:8px;padding:4px 8px;font-size:12.5px" title="Показати лише одну професію" onchange="window._schSpecFilter=this.value;renderScheduleOverview(this.closest('#schGrid,#wschedGrid')||document.getElementById('wschedGrid'))">
          <option value="">Усі професії</option>
          ${specs.map(sp=>`<option value="${escapeHtml(sp)}"${window._schSpecFilter===sp?' selected':''}>${escapeHtml(sp)}</option>`).join('')}
@@ -4881,7 +4885,7 @@ function schCopyWeek(){
     const from=document.getElementById('cwFrom').value, to=document.getElementById('cwTo').value;
     if(!from||!to){ toast('Оберіть обидва тижні','error'); throw new Error('dates'); }
     const r=await api('/api/schedule/copy-week',{method:'POST',body:JSON.stringify({master_id,from,to})});
-    if(r&&r.ok){ toast(`Скопійовано днів: ${r.copied}`); renderScheduleOverview(document.getElementById('schGrid')); }
+    if(r&&r.ok){ toast(`Скопійовано днів: ${r.copied}`); renderScheduleOverview(_schActiveGrid()); }
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('copy'); }
   });
 }
@@ -4922,7 +4926,7 @@ function schGenBatch(){
     if(end<=start){ toast('Кінець має бути пізніше початку','error'); throw new Error('t'); }
     const fromYm = anchor.slice(0,7);
     const r=await api('/api/schedule/apply-pattern-batch',{method:'POST',body:JSON.stringify({master_ids,months_ahead,work_days:wd,off_days:od,anchor,start,end,from_ym:fromYm})});
-    if(r&&r.ok){ toast(`Готово: ${r.masters} майстрів, ${r.months} міс. — ${r.work_days} робочих змін`); renderScheduleOverview(document.getElementById('schGrid')); }
+    if(r&&r.ok){ toast(`Готово: ${r.masters} майстрів, ${r.months} міс. — ${r.work_days} робочих змін`); renderScheduleOverview(_schActiveGrid()); }
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('gen'); }
   });
 }
@@ -4964,7 +4968,7 @@ function schApplyPattern(){
     const anchor=document.getElementById('apAnchor').value||(ym+'-01');
     if(end<=start){ toast('Кінець має бути пізніше початку','error'); throw new Error('time'); }
     const r=await api('/api/schedule/apply-pattern',{method:'POST',body:JSON.stringify({master_id,ym,work_days:wd,off_days:od,anchor,start,end})});
-    if(r&&r.ok){ toast(`Схему ${wd}/${od} виставлено: ${r.work_days} робочих, ${r.off_days} вихідних`); renderScheduleOverview(document.getElementById('schGrid')); }
+    if(r&&r.ok){ toast(`Схему ${wd}/${od} виставлено: ${r.work_days} робочих, ${r.off_days} вихідних`); renderScheduleOverview(_schActiveGrid()); }
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('apply'); }
   });
 }
@@ -5024,14 +5028,14 @@ function schEditDay(mid, date){
       await api('/api/schedule/day', { method:'POST', body: JSON.stringify({ master_id: mid, work_date: dt, start, end, off }) });
     }
     toast(off ? 'Вихідний збережено' : 'Зміну збережено');
-    renderScheduleOverview(document.getElementById('schGrid'));
+    renderScheduleOverview(_schActiveGrid());
   });
 }
 async function schRevertDay(mid, date){
   await api('/api/schedule/day?master_id='+mid+'&date='+date, { method:'DELETE' });
   document.getElementById('genModal')?.remove(); _unlockScroll();
   toast('Повернуто до графіка BeautyPro');
-  renderScheduleOverview(document.getElementById('schGrid'));
+  renderScheduleOverview(_schActiveGrid());
 }
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
@@ -11605,11 +11609,34 @@ async function loadPayrollRecords() {
           <button class="btn btn-outline btn-sm" onclick="openPayslip(${x.id})">Лист</button>
           ${x.status === 'draft' ? `<button class="btn btn-outline btn-sm" onclick="setPayrollStatus(${x.id},'approved')">Підтвердити</button>` : ''}
           ${x.status === 'approved' ? `<button class="btn btn-primary btn-sm" onclick="setPayrollStatus(${x.id},'paid')">Виплатити</button>` : ''}
+          ${x.status !== 'paid' ? `<button class="btn btn-sm btn-icon" title="Редагувати (бонус/утримання/примітка)" onclick="pyRecEdit(${x.id})"><span class="material-icons-round" style="font-size:15px">edit</span></button>
+          <button class="btn btn-sm btn-icon" title="Видалити розрахунок (бонуси/аванси повернуться в пул)" onclick="pyRecDelete(${x.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button>` : ''}
         </td></tr>`).join('')
     }</tbody></table>` : '<div class="empty">Нарахувань немає</div>';
+    window._pyRecs = items;
   } catch { el.innerHTML = '<div class="empty">Сервер недоступний</div>'; }
 }
 
+function pyRecEdit(id){
+  const x=(window._pyRecs||[]).find(r=>r.id===id); if(!x) return;
+  showModal('Редагувати нарахування — '+(x.master_name||''),`
+    <p class="set-p" style="margin-bottom:10px">Період ${(x.period_start||'').slice(0,10)} — ${(x.period_end||'').slice(0,10)} · послуги ${_pyMoney(x.services_revenue)} · % ${_pyMoney(x.percent_part)} · фікс ${_pyMoney(x.fixed_part)}</p>
+    <label class="fld"><span>Бонус, ₴</span><input id="preBonus" type="number" step="0.01" class="input" value="${Number(x.bonus||0)}"></label>
+    <label class="fld"><span>Утримання (штраф/аванс), ₴</span><input id="preDed" type="number" step="0.01" class="input" value="${Number(x.deduction||0)}"></label>
+    <label class="fld"><span>Примітка</span><textarea id="preNotes" class="input" rows="2">${escapeHtml(x.notes||'')}</textarea></label>`,
+    async ()=>{
+      const r=await api('/api/payroll/records/'+id,{method:'PATCH',body:JSON.stringify({
+        bonus:+document.getElementById('preBonus').value||0,
+        deduction:+document.getElementById('preDed').value||0,
+        notes:document.getElementById('preNotes').value.trim()||null })});
+      if(r&&r.ok){ toast('Збережено'); loadPayrollRecords(); } else { toast((r&&r.error)||'Помилка','error'); return false; }
+    });
+}
+async function pyRecDelete(id){
+  if(!confirm('Видалити розрахунок? Застосовані бонуси/штрафи/аванси повернуться в пул і врахуються при перерахунку.')) return;
+  const r=await api('/api/payroll/records/'+id,{method:'DELETE'});
+  if(r&&r.ok){ toast('Видалено'); loadPayrollRecords(); } else { toast((r&&r.message)||(r&&r.error)||'Помилка','error'); }
+}
 async function setPayrollStatus(id, status) {
   if (status === 'paid' && !confirm('Провести виплату? Сума спишеться з відкритої каси.')) return;
   const r = await api('/api/payroll/records/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
