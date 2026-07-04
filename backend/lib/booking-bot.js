@@ -617,6 +617,17 @@ async function onText(msg, ctx) {
   const faq = await tryFaq(text, ctx);
   if (faq) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq }); return true; }
 
+  // «комплекс/все разом/пакет» — це не окрема послуга, а набір. Підказуємо назвати конкретні,
+  // бо матчер поверне «не впізнав». Одразу пояснюємо як записатись на кілька послуг разом.
+  if (/^(комплекс(но|на|не)?|комбо|все\s*разом|усе\s*разом|пакет|набір)$/i.test(text.replace(/[.!?]/g, '').trim())) {
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: 'Напишіть, які саме послуги хочете разом — я підберу час на все.\nНапр. «<b>манікюр + педикюр</b>» або «<b>стрижка і фарбування</b>».',
+      reply_markup: mainMenu(),
+    });
+    return true;
+  }
+
   // «хочу в суботу пофарбуватись після обіду» → дата/вікно окремо, послуга окремо.
   // Парсер детермінований (без ШІ): що не розпізнав на 100% — клієнт обере кнопками.
   const intent = require('./date-intent').parse(text);
