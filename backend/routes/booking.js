@@ -79,23 +79,56 @@ async function resolveBookingIds(pool, serviceRef, masterRef) {
   };
 }
 
-function tg(method, body) {
+// Сирий виклик Telegram API (одна спроба).
+function tgRaw(method, body) {
   return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
+    const data = Buffer.from(JSON.stringify(body));
     const req = https.request({
       method: 'POST',
       hostname: 'api.telegram.org',
       path: `/bot${BOT_TOKEN}/${method}`,
       headers: { 'Content-Type': 'application/json', 'Content-Length': data.length },
+      timeout: 12000,
     }, (res) => {
       let buf = '';
       res.on('data', (c) => buf += c);
       res.on('end', () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(e); } });
     });
     req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('telegram timeout')));
     req.write(data);
     req.end();
   });
+}
+
+// Надійна відправка: НЕ втрачає відповідь мовчки.
+// - 429 (rate limit) → чекаємо retry_after і повторюємо (це і була «тиша» на частих повідомленнях);
+// - мережева помилка/5xx → короткий retry;
+// - інші відмови Telegram (400 тощо) → логуємо, щоб було видно, а не глухо.
+async function tg(method, body, _try = 0) {
+  try {
+    const r = await tgRaw(method, body);
+    if (r && r.ok === false) {
+      if (r.error_code === 429 && _try < 4) {
+        const wait = ((r.parameters && r.parameters.retry_after) || 1) * 1000 + 150;
+        await new Promise((s) => setTimeout(s, wait));
+        return tg(method, body, _try + 1);
+      }
+      if (r.error_code >= 500 && _try < 3) {
+        await new Promise((s) => setTimeout(s, 400 * (_try + 1)));
+        return tg(method, body, _try + 1);
+      }
+      console.error(`[booking/tg] Telegram ${method} відхилив: ${r.error_code} ${r.description || ''}`);
+    }
+    return r;
+  } catch (e) {
+    if (_try < 3) {
+      await new Promise((s) => setTimeout(s, 400 * (_try + 1)));
+      return tg(method, body, _try + 1);
+    }
+    console.error(`[booking/tg] ${method} не доставлено:`, e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // Нагадування про візити 24г/2г з кнопками «Буду/Перенести/Скасувати» (Етап 5).
@@ -150,7 +183,10 @@ router.get('/status/:token', async (req, res) => {
 
 // === POST /telegram (webhook) ===========================
 router.post('/telegram', async (req, res) => {
-  res.json({ ok: true }); // ack immediately
+  // ВАЖЛИВО: підтверджуємо Telegram ПІСЛЯ обробки (finally), а не до неї.
+  // Інакше рестарт/деплой посеред обробки губить повідомлення мовчки —
+  // бот сказав «отримав», а відповісти не встиг. Тепер при збої немає ack →
+  // Telegram повторить апдейт, і клієнт таки отримає відповідь.
   try {
     const upd = req.body;
     const botCtx = { tg, pool: getPool(), bp };
@@ -440,6 +476,8 @@ router.post('/telegram', async (req, res) => {
     }
   } catch (e) {
     console.error('[booking/telegram]', e.message);
+  } finally {
+    if (!res.headersSent) res.json({ ok: true });
   }
 });
 
