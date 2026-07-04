@@ -11,7 +11,8 @@
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']; // у 2.0 нульова квота (перевірено 04.07)
 const TIMEOUT_MS = 75000;
-const ATTEMPTS_PER_MODEL = 2; // JSON інколи обривається — один повтор виправдан
+const ATTEMPTS_PER_MODEL = 3; // Google буває перевантажений (503 high load) — чекаємо і повторюємо
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const PROMPT = `Ти читаєш НАКЛАДНУ (видаткова/прибуткова, товарний документ, укр/рос мовою).
 Це може бути: чисте фото документа, скан, PDF, АБО СКРІНШОТ ЕКРАНА, де накладна відкрита у вікні програми/браузера.
@@ -101,9 +102,17 @@ async function ocrInvoice(buffer, mimeType) {
         console.error(`[invoice-ocr] ${model} (спроба ${attempt}): ${e.message?.slice(0, 150)}`);
         // квота/ключ — повтор тією ж моделлю безглуздий, одразу наступна
         if (e.status === 429 || e.status === 403 || /quota|api key/i.test(e.message || '')) break;
+        // перевантаження Google (503 / high load / overloaded) — почекати і повторити
+        if (attempt < ATTEMPTS_PER_MODEL) {
+          const overloaded = e.status === 503 || /overload|high (load|demand)|currently experiencing|try again/i.test(e.message || '');
+          await sleep(overloaded ? 5000 * attempt : 1500);
+        }
       }
     }
   }
+  const overloaded = lastErr && (lastErr.status === 503 || /overload|high (load|demand)|currently experiencing|try again/i.test(lastErr.message || ''));
+  if (overloaded)
+    throw new Error('ШІ-розпізнавання тимчасово перевантажене (Google). Зачекайте 1-2 хвилини і натисніть «Розібрати» ще раз — файл перевантажувати не треба.');
   throw new Error('Не вдалося розпізнати накладну (' + (lastErr?.message?.slice(0, 100) || 'помилка AI') + '). ' +
     'Спробуйте: обрізати скріншот до самої накладної, чіткіше фото без тіней, або надішліть текст/Excel.');
 }
