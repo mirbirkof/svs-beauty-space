@@ -261,7 +261,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/segments', require('./routes/segments'));
 try { app.use('/api/rfm', require('./routes/rfm')); } catch(e) { console.error('[rfm] mount failed:', e.message); }
 try { app.use('/api/attribution', require('./routes/attribution')); } catch(e) { console.error('[attribution] mount failed:', e.message); }
-app.use('/api/campaigns', require('./routes/campaigns'));
+app.use('/api/campaigns', require('./lib/feature-gate').requireFeature('mkt.campaigns'), require('./routes/campaigns'));
 try { app.use('/api/purchasing', require('./routes/purchasing')); } catch(e) { console.error('[purchasing] mount failed:', e.message); }
 try { app.use('/api/referral', require('./routes/referral')); } catch(e) { console.error('[referral] mount failed:', e.message); }
 try { app.use('/api/marketing-center', require('./routes/marketing-center')); } catch(e) { console.error('[marketing-center] mount failed:', e.message); }
@@ -330,7 +330,7 @@ if (process.env.DATABASE_URL) {
 }
 try { app.use('/api/ai/quality', require('./routes/ai-quality')); } catch(e) { console.error('[ai-quality] mount failed:', e.message); }
 try { app.use('/api/v2', require('./routes/plans')); } catch(e) { console.error('[plans-v2] mount failed:', e.message); }
-try { app.use('/api/ai/receptionist', require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
+try { app.use('/api/ai/receptionist', require('./lib/feature-gate').requireFeature('ai.receptionist'), require('./routes/ai-receptionist')); } catch(e) { console.error('[ai-receptionist] mount failed:', e.message); }
 try { app.use('/api/ai/kb', require('./routes/ai-kb')); } catch(e) { console.error('[ai-kb] mount failed:', e.message); }
 try { app.use('/api/ai/marketing', require('./routes/ai-marketing')); } catch(e) { console.error('[ai-marketing] mount failed:', e.message); }
 try { app.use('/api/ai/agents', require('./routes/ai-agents')); } catch(e) { console.error('[ai-agents] mount failed:', e.message); }
@@ -375,6 +375,33 @@ try {
     setInterval(tick, 30 * 60 * 1000);
   }
 } catch(e) { console.error('[virtual-manager] init failed:', e.message); }
+
+// ── Прострочені ліцензії модулів (SaaS-аудит 06.07): trial/підписка не «вічні».
+// active + expires_at у минулому → grace_period (7 днів), далі → expired.
+// Платформенний крон: runAs(null) → без tenant-фільтра, обробляє ВСІ салони.
+if (process.env.DATABASE_URL) {
+  const licenseExpiryTick = async () => {
+    try {
+      const { runAs } = require('./lib/tenant');
+      const pool = require('./db-pg').getPool();
+      await runAs(null, async () => {
+        const g = await pool.query(
+          `UPDATE licenses SET status='grace_period',
+                  grace_period_ends = COALESCE(expires_at, NOW()) + INTERVAL '7 days'
+            WHERE status='active' AND license_type <> 'perpetual'
+              AND expires_at IS NOT NULL AND expires_at < NOW()
+            RETURNING id`);
+        const x = await pool.query(
+          `UPDATE licenses SET status='expired'
+            WHERE status='grace_period' AND grace_period_ends IS NOT NULL AND grace_period_ends < NOW()
+            RETURNING id`);
+        if (g.rowCount || x.rowCount) console.log(`[licenses] grace:${g.rowCount} expired:${x.rowCount}`);
+      });
+    } catch (e) { console.error('[licenses] expiry tick:', e.message); }
+  };
+  setInterval(licenseExpiryTick, 60 * 60 * 1000);
+  setTimeout(licenseExpiryTick, 90 * 1000);
+}
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 // Повний booking-роутер: telegram-вебхук бота @Svs_beautybot + розмовна запис + нагадування.

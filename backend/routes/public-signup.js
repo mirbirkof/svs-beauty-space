@@ -74,6 +74,24 @@ router.post('/signup', signupLimiter, async (req, res) => {
       }
     } catch (licErr) { console.error('[public-signup/license]', licErr.message); }
 
+    // МАЙСТЕР-ОДИНОЧКА (SaaS-аудит 06.07): одразу створюємо йому картку майстра
+    // (інакше журнал/онлайн-запис порожні і незрозумілі) та вмикаємо соло-режим
+    // (app_settings тепер per-tenant, міграція 217).
+    if (accountType === 'solo') {
+      try {
+        const { runAs } = require('../lib/tenant');
+        await runAs(r.tenant.id, async () => {
+          const { getPool } = require('../db-pg');
+          await getPool().query(
+            `INSERT INTO masters (name, phone, specialty, active, provides_services)
+             VALUES ($1, $2, NULL, true, true)
+             ON CONFLICT DO NOTHING`, [ownerName, phone]);
+          const { setSetting } = require('../lib/settings');
+          await setSetting('solo_master_mode', true, null);
+        });
+      } catch (soloErr) { console.error('[public-signup/solo]', soloErr.message); }
+    }
+
     res.status(201).json({
       ok: true,
       slug: r.slug,

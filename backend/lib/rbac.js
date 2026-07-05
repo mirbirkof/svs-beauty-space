@@ -50,6 +50,16 @@ async function resolveUserByToken(token) {
   if (!token) return null;
   // 1) legacy ADMIN_TOKEN → виртуальный owner (timing-safe, аудит #3)
   if (process.env.ADMIN_TOKEN && safeEqual(token, process.env.ADMIN_TOKEN)) {
+    // ТІЛЬКИ ПЛАТФОРМА (SaaS-аудит 06.07): легасі-токен один на весь інстанс, і якщо
+    // приймати його в контексті САЛОНА-ОРЕНДАРЯ (X-Tenant-Slug) — будь-хто, хто його
+    // дізнався, отримує owner-доступ до будь-якого салона. Орендарі — лише user-токени.
+    try {
+      const { isPlatformTenant } = require('./tenant');
+      if (isPlatformTenant && !isPlatformTenant()) {
+        console.warn('[rbac] ADMIN_TOKEN отклонён: запрос из tenant-контекста (не платформа)');
+        return null;
+      }
+    } catch (_) { /* поза HTTP-контекстом (скрипти) — як раніше */ }
     // bootstrap-only: после появления реального owner мастер-токен отключается
     if (process.env.ADMIN_TOKEN_BOOTSTRAP_ONLY === '1' && await ownerUserExists()) {
       console.warn('[rbac] ADMIN_TOKEN отклонён: bootstrap-режим, владелец уже существует');

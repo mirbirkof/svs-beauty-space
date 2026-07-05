@@ -88,13 +88,17 @@ const TOOLS = {
     parameters_schema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } } },
     is_destructive: false,
     async impl(args) {
-      const w = [`status='done'`], p = [];
-      if (args.from) { p.push(args.from); w.push(`starts_at >= $${p.length}`); }
-      if (args.to) { p.push(args.to); w.push(`starts_at <= $${p.length}`); }
-      const r = await q(
-        `SELECT COUNT(*)::int visits, COALESCE(SUM(price),0)::float revenue, COALESCE(AVG(price),0)::float avg_check
-           FROM appointments WHERE ${w.join(' AND ')}`, p).catch(() => [{}]);
-      return { visits: r[0]?.visits || 0, revenue: Math.round(r[0]?.revenue || 0), avg_check: Math.round(r[0]?.avg_check || 0) };
+      // ЄДИНЕ джерело правди — КАСА (lib/live-finance), а не планові ціни appointments:
+      // раніше помічник називав Босу цифру, що розходилась із фінцентром (аудит 06.07).
+      const { liveFinance } = require('./live-finance');
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev' }).format(new Date());
+      const fromD = args.from || today.slice(0, 8) + '01';
+      const toD = args.to || today;
+      const fin = await liveFinance(require('../db-pg').getPool(), `${fromD} 00:00:00+03`, `${toD} 23:59:59+03`);
+      return { period: { from: fromD, to: toD }, visits: fin.tx_count,
+        revenue: Math.round(fin.revenue.total), services: Math.round(fin.revenue.services),
+        products: Math.round(fin.revenue.products), avg_check: fin.avg_check,
+        profit: Math.round(fin.profit.net), margin_pct: fin.profit.margin_pct };
     },
   },
 
