@@ -8159,7 +8159,7 @@ function renderJournalList(container, data) {
         <td>${a.master_name||'—'}</td>
         <td>${a.service_name||'—'} <span style="color:var(--text-secondary)">· ${Math.round(a.duration_min)}хв</span></td>
         <td>${a.client_name||'—'}${a.client_phone?'<br><span style="color:var(--text-secondary);font-size:11px">'+fmtPhone(a.client_phone)+'</span>':''}</td>
-        <td style="font-weight:600">${_money(a.real_amount!=null?a.real_amount:a.price)}</td>
+        <td style="font-weight:600">${_money(_apptSum(a))}</td>
         <td><span class="badge">${ST_LABEL[a.status]||a.status||'—'}</span></td>
         <td>${a.notes?'<span class="material-icons-round" style="font-size:16px;color:var(--primary)" title="Є замітка">sticky_note_2</span>':''}</td>
       </tr>`;
@@ -8221,7 +8221,7 @@ function renderJournalDay(container, data) {
     // денна статистика майстра: к-ть записів + сума (без скасованих)
     const mAppts = (apptByMaster[m.id]||[]);
     const cnt = mAppts.length;
-    const sum = mAppts.reduce((acc,a)=> acc + (Number(a.real_amount!=null?a.real_amount:a.price)||0), 0);
+    const sum = mAppts.reduce((acc,a)=> acc + _apptSum(a), 0);
     // Майстер вважається робочим, якщо є графік АБО вже є записи цього дня.
     // Інакше адмін не міг додати запис мастеру, який фактично працює: колонка
     // світилась «вихідний» і жоден слот не був клікабельний (скарга Боса 20.06).
@@ -8273,7 +8273,7 @@ function renderJournalDay(container, data) {
         <div class="s">${a.service_name||'Послуга'}</div>
         <div class="c">${a.client_name||'—'}</div>
         ${h>48 && a.client_phone?`<div class="ph">${fmtPhone(a.client_phone)}</div>`:''}
-        ${h>64?`<div class="p">${_money(a.real_amount!=null?a.real_amount:a.price)}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':a.pay_method==='mixed'?'💵+💳 змішана':'оплачено'}</span>`:''}</div>`:''}
+        ${h>64?`<div class="p">${_money(_apptSum(a))}${a.paid?` <span class="paid-tag">${a.pay_method==='cash'?'💵 готівка':a.pay_method==='card'?'💳 безнал':a.pay_method==='mixed'?'💵+💳 змішана':'оплачено'}</span>`:''}</div>`:''}
         ${a.paid?'<span class="paid-ico material-icons-round" title="Оплачено">paid</span>':okIcon}
       </div>`;
     });
@@ -8521,7 +8521,7 @@ async function renderJournalWeek(container, dateStr) {
         <div class="c">${a.client_name||a.service_name||'—'}</div>
       </div>`;
     });
-    const sum = appts.reduce((acc,a)=>acc+(Number(a.real_amount!=null?a.real_amount:a.price)||0),0);
+    const sum = appts.reduce((acc,a)=>acc+_apptSum(a),0);
     return `<div class="jcol">
       <div class="jcol-head" style="${ds===today?'background:var(--primary-light)':''}">
         <div style="min-width:0">
@@ -8565,6 +8565,12 @@ function apptContactRow(a){
     <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="https://wa.me/${d}" target="_blank" rel="noopener"><span class="material-icons-round" style="font-size:16px">chat</span> WhatsApp</a>
     <a class="btn secondary" style="text-decoration:none;padding:6px 12px" href="https://t.me/+${d}" target="_blank" rel="noopener"><span class="material-icons-round" style="font-size:16px">send</span> Telegram</a>
   </div>`;
+}
+// Сума запису для журналу/списку/підсумків: після оплати — ФАКТ з каси
+// (послуга + матеріали, paid_total), інакше факт послуги (real_amount) або план (price)
+function _apptSum(a) {
+  if (a.paid_total != null) return Number(a.paid_total) || 0;
+  return Number(a.real_amount != null ? a.real_amount : a.price) || 0;
 }
 // Бейдж способу оплати: готівка / безготівка (картка)
 function _payBadge(method) {
