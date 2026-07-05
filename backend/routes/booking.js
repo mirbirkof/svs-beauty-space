@@ -540,6 +540,27 @@ router.post('/telegram/t/:slug', async (req, res) => {
       }
       return;
     }
+    // /owner <код> — привʼязка чату ВЛАСНИКА салону (зведення/алерти в його бот)
+    const _msg = req.body && req.body.message;
+    if (_msg && _msg.text && /^\/owner\b/.test(_msg.text.trim())) {
+      await runAs(t.id, async () => {
+        const { getSetting, setSetting } = require('../lib/settings');
+        const code = (_msg.text.trim().split(/\s+/)[1] || '').trim();
+        const saved = await getSetting('owner_link_code', null);
+        let reply;
+        if (saved && saved.code && code === String(saved.code) && Date.now() < Number(saved.exp || 0)) {
+          await getPool().query(
+            `UPDATE tenant_bot_settings SET owner_chat_id=$1, updated_at=NOW() WHERE tenant_id=$2`,
+            [_msg.chat.id, t.id]);
+          await setSetting('owner_link_code', null, null);
+          reply = '✅ Готово! Сюди приходитимуть щоденні фінансові зведення вашого салону.';
+        } else {
+          reply = '❌ Код невірний або протермінований. Отримайте новий в адмінці: Налаштування → Telegram-бот.';
+        }
+        await tg('sendMessage', { chat_id: _msg.chat.id, text: reply }, 0, bot.token).catch(() => {});
+      });
+      return;
+    }
     await runAs(t.id, () => processUpdate(req.body, tgFor(bot.token), { name: bot.salonName }));
   } catch (e) {
     console.error('[booking/telegram-t]', e.message);

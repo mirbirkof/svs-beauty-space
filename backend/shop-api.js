@@ -401,8 +401,16 @@ if (process.env.DATABASE_URL) {
         const t = await pool.query(
           `UPDATE subscriptions_saas SET status='past_due', updated_at=NOW()
             WHERE status='trialing' AND trial_ends_at IS NOT NULL AND trial_ends_at < NOW()
-            RETURNING tenant_id`);
+            RETURNING *`);
         if (t.rowCount) console.log(`[subscriptions] trial→past_due: ${t.rowCount}`);
+        // авто-рахунок на перший платний період (дефолт 06.07: рахунок одразу, оператор бачить список)
+        for (const sub of (t.rows || [])) {
+          try {
+            const billing = require('./lib/billing');
+            await billing.generateInvoice(sub, {});
+            console.log('[subscriptions] invoice generated for', sub.tenant_id);
+          } catch (e) { console.error('[subscriptions] invoice fail', sub.tenant_id, e.message); }
+        }
         // повідомлення оператору платформи: хто перейшов у grace/past_due (щоб подзвонити/виставити рахунок)
         if ((g.rowCount || t.rowCount) && process.env.ADMIN_TG_CHAT) {
           try {

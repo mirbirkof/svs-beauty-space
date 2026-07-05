@@ -407,7 +407,40 @@ router.get('/export/shared/:token', async (req, res) => {
 let cronRef = null;
 async function digestTick() {
   // крон поза HTTP-контекстом: без runAs pool.query бачив би всі тенанти (permissive RLS)
-  return runAs(DEFAULT_TENANT_ID, () => _digestTick());
+  await runAs(DEFAULT_TENANT_ID, () => _digestTick());
+  // зведення САЛОНАМ-ОРЕНДАРЯМ їхніми ботами (власник привʼязав чат через /owner)
+  await tenantDigestsTick().catch(e => console.error('[fin-digest] tenants:', e.message));
+}
+
+// Щоденні зведення орендарям: кожен салон отримує СВОЇ цифри СВОЇМ ботом о 21:00 Києва.
+// Стан «слали сьогодні» — в app_settings тенанта (digest_last_sent), без залежності
+// від financial_digest_settings-рядка (його може не бути).
+async function tenantDigestsTick() {
+  if (kyivHM() < '21:00') return;
+  const today = kyivDate();
+  // tenant_bot_settings під RLS: із крона (без tenant) permissive → бачимо всіх. Це навмисно.
+  const bots = await pool.query(
+    `SELECT tbs.tenant_id, tbs.bot_token, tbs.owner_chat_id
+       FROM tenant_bot_settings tbs JOIN tenants t ON t.id = tbs.tenant_id
+      WHERE tbs.status='connected' AND tbs.owner_chat_id IS NOT NULL AND t.status='active'
+        AND tbs.tenant_id <> $1`, [DEFAULT_TENANT_ID]).then(r => r.rows).catch(() => []);
+  for (const b of bots) {
+    try {
+      await runAs(b.tenant_id, async () => {
+        const { getSetting, setSetting } = require('../lib/settings');
+        if (await getSetting('digest_last_sent', null) === today) return;
+        const text = await buildDigest({ include_expenses: true, include_comparison: true });
+        const resp = await fetch(`https://api.telegram.org/bot${b.bot_token}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: b.owner_chat_id, text, parse_mode: 'HTML' }),
+        }).then(r => r.json()).catch(e => ({ ok: false, description: e.message }));
+        if (resp && resp.ok) {
+          await setSetting('digest_last_sent', today, null);
+          console.log('[fin-digest] tenant sent:', b.tenant_id);
+        } else console.error('[fin-digest] tenant send fail:', b.tenant_id, resp && resp.description);
+      });
+    } catch (e) { console.error('[fin-digest] tenant', b.tenant_id, e.message); }
+  }
 }
 async function _digestTick() {
   try {

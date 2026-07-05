@@ -1218,6 +1218,7 @@ select.input { background:var(--card); }
           </div>
         </div>
 
+        <div id="onbBanner"></div>
         <div class="kpi-grid" id="kpi"></div>
 
         <!-- ═══ Панель витрат за місяць ═══ -->
@@ -5807,7 +5808,28 @@ async function loadStaffMetrics() {
          </tr></thead><tbody>${rows}</tbody></table>`;
   } catch (_) { box.innerHTML = ''; }
 }
+// Онбординг-чеклист нового салону (SaaS): банер зі кроками, поки все не готово.
+async function loadOnbChecklist(){
+  const box = document.getElementById('onbBanner');
+  if (!box) return;
+  if (!localStorage.getItem('svs_tenant_slug')) { box.innerHTML=''; return; } // платформа/салон Босса — без банера
+  try {
+    const d = await api('/api/saas/onboarding-checklist');
+    if (!d || !Array.isArray(d.steps) || d.complete) { box.innerHTML=''; return; }
+    box.innerHTML = `<div class="card" style="margin-bottom:16px;border:1px solid #c7d2fe;background:#eef2ff">
+      <div class="card-body" style="padding:14px 18px">
+        <div style="font-weight:700;margin-bottom:8px">🚀 Налаштування салону · ${d.done}/${d.total}</div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:13.5px">
+          ${d.steps.map(st=>`<div style="display:flex;align-items:center;gap:8px;${st.done?'opacity:.55':''}">
+            <span>${st.done?'✅':'⬜'}</span>
+            ${st.done?`<span>${st.label}</span>`:`<a href="#" onclick="go('${st.go}');return false" style="color:#4f46e5;font-weight:600">${st.label}</a>`}
+          </div>`).join('')}
+        </div>
+      </div></div>`;
+  } catch(_) { box.innerHTML=''; }
+}
 async function loadDashboard() {
+  loadOnbChecklist(); // онбординг-банер для салонів-орендарів (не платформа)
   loadManagerPanel();
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};

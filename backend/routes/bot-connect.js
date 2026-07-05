@@ -53,6 +53,17 @@ router.get('/', requirePerm('integrations.read'), async (req, res) => {
 });
 
 // ── подключить бота ─────────────────────────────────────────────────
+// POST /owner-code — одноразовий код привʼязки чату власника (зведення в його бот).
+// Власник тисне кнопку в адмінці → отримує код → пише СВОЄМУ боту: /owner <код>
+router.post('/owner-code', requirePerm('settings.write'), async (req, res) => {
+  try {
+    const { setSetting } = require('../lib/settings');
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await setSetting('owner_link_code', { code, exp: Date.now() + 15 * 60 * 1000 }, req.user?.id || null);
+    res.json({ ok: true, code, ttl_min: 15, hint: 'Напишіть вашому боту: /owner ' + code });
+  } catch (e) { console.error('[bot-connect/owner-code]', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
 router.post('/', requirePerm('integrations.write'), async (req, res) => {
   try {
     const token = String((req.body || {}).token || '').trim();

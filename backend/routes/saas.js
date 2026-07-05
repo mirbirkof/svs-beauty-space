@@ -111,6 +111,30 @@ router.post('/flags', platformOnly, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+/* ── ОНБОРДИНГ-ЧЕКЛИСТ АРЕНДАТОРА (аудит 06.07) ──
+   Прості кроки першого запуску; фронт показує банер, поки все не готово. */
+router.get('/onboarding-checklist', async (req, res) => {
+  try {
+    const [masters, services, sched, bot, appts] = await Promise.all([
+      q(`SELECT COUNT(*)::int n FROM masters WHERE COALESCE(active,true)=true`),
+      q(`SELECT COUNT(*)::int n FROM services WHERE COALESCE(active,true)=true AND deleted_at IS NULL`),
+      q(`SELECT COUNT(*)::int n FROM master_schedule_days WHERE work_date >= CURRENT_DATE`),
+      q(`SELECT COUNT(*)::int n, MAX(CASE WHEN owner_chat_id IS NOT NULL THEN 1 ELSE 0 END)::int owner FROM tenant_bot_settings WHERE status='connected'`),
+      q(`SELECT COUNT(*)::int n FROM appointments`),
+    ]);
+    const steps = [
+      { key: 'masters',  done: (masters[0]?.n || 0) > 0,  label: 'Додайте майстрів', go: 'employees' },
+      { key: 'services', done: (services[0]?.n || 0) > 0, label: 'Додайте послуги з цінами', go: 'services' },
+      { key: 'schedule', done: (sched[0]?.n || 0) > 0,    label: 'Заповніть графік роботи', go: 'wsched' },
+      { key: 'bot',      done: (bot[0]?.n || 0) > 0,      label: 'Підключіть Telegram-бота (онлайн-запис)', go: 'settings' },
+      { key: 'owner_chat', done: (bot[0]?.owner || 0) > 0, label: 'Привʼяжіть свій чат (/owner — щоденні зведення)', go: 'settings' },
+      { key: 'first_booking', done: (appts[0]?.n || 0) > 0, label: 'Створіть перший запис', go: 'journal' },
+    ];
+    res.json({ steps, done: steps.filter(x => x.done).length, total: steps.length,
+      complete: steps.every(x => x.done) });
+  } catch (e) { console.error('[saas/onboarding-checklist]', e.message); res.status(500).json({ error: 'internal' }); }
+});
+
 /* ── ЛИЦЕНЗИЯ АРЕНДАТОРА ── */
 router.get('/license', async (req, res) => {
   try {
