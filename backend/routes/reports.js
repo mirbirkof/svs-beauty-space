@@ -305,7 +305,7 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
         (SELECT COUNT(*)            FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow'))  AS appts_month,
         (SELECT COUNT(DISTINCT client_id) FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow')) AS clients_month
     `);
-    const r0 = main.rows[0];
+    const r0 = main.rows[0] || {}; // порожній тенант: захист від undefined (SaaS-аудит)
 
     const [lowStock, openShifts, churnCnt, activeMasters, topMaster] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS n FROM product_variants WHERE active = true AND COALESCE(stock_qty,0) <= 5`).catch(()=>({rows:[{n:0}]})),

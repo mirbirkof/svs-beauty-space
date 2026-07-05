@@ -31,12 +31,17 @@ router.get('/_variants', requirePerm(), async (req, res) => {
 // Формула чека = та сама, що в GET-списку матеріалів: фарба за грам АБО будь-який
 // матеріал з роздрібною ціною. Знижки заднім числом не перераховуються.
 async function syncPaidMaterials(aid) {
+  // ТРАНЗАКЦІЯ + FOR UPDATE: два паралельні виклики (два адміни правлять матеріали)
+  // раніше могли вставити ДВІ sale_product операції або загубити оновлення (аудит 06.07).
+  // applyTenant — обовʼязково: ручний client поза pool-обгорткою не отримує RLS-контекст.
+  const client = await pool.connect();
   try {
-    const ops = await pool.query(
+    await client.query('BEGIN'); await applyTenant(client);
+    const ops = await client.query(
       `SELECT id, category, method, master_id, created_at FROM cash_operations
-        WHERE type='in' AND ref_type='appointment' AND ref_id=$1 ORDER BY id`, [aid]);
-    if (!ops.rows.length) return null; // візит не оплачено — каса не чіпається
-    const mat = await pool.query(
+        WHERE type='in' AND ref_type='appointment' AND ref_id=$1 ORDER BY id FOR UPDATE`, [aid]);
+    if (!ops.rows.length) { await client.query('ROLLBACK'); return null; } // не оплачено — каса не чіпається
+    const mat = await client.query(
       `SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
                                 WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                                 ELSE 0 END),0)::float AS total
@@ -47,22 +52,26 @@ async function syncPaidMaterials(aid) {
     const total = Math.round((Number(mat.rows[0] && mat.rows[0].total) || 0) * 100) / 100;
     const prod = ops.rows.find(o => o.category === 'sale_product');
     if (prod) {
-      if (total > 0) await pool.query(`UPDATE cash_operations SET amount=$2 WHERE id=$1`, [prod.id, total]);
-      else await pool.query(`DELETE FROM cash_operations WHERE id=$1`, [prod.id]);
+      if (total > 0) await client.query(`UPDATE cash_operations SET amount=$2 WHERE id=$1`, [prod.id, total]);
+      else await client.query(`DELETE FROM cash_operations WHERE id=$1`, [prod.id]);
     } else if (total > 0) {
       const svc = ops.rows.find(o => o.category === 'sale_service') || ops.rows[0];
-      const sn = await pool.query(
+      const sn = await client.query(
         `SELECT COALESCE(s.name, 'візит #' || a.id::text) AS n
            FROM appointments a LEFT JOIN services s ON s.id = a.service_id WHERE a.id=$1`, [aid]);
-      await pool.query(
+      await client.query(
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
          VALUES (NULL,'in','sale_product',$1,$2,'appointment',$3,$4,$5,$6)
          ON CONFLICT (tenant_id, ref_type, ref_id, method, category) WHERE type='in' AND ref_type='appointment' DO NOTHING`,
         [total, (svc && svc.method) || 'cash', aid, (svc && svc.master_id) || null,
          'Матеріали/товари до візиту: ' + sn.rows[0].n, (svc && svc.created_at) || null]);
     }
+    await client.query('COMMIT');
     return total;
-  } catch (e) { console.error('[consumables] paid-materials sync:', e.message); return null; }
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[consumables] paid-materials sync:', e.message); return null;
+  } finally { client.release(); }
 }
 
 // ── Матеріали візиту (заметка #105): фактичний розхід товарів на запис ──

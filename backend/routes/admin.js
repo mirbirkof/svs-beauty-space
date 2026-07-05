@@ -453,7 +453,10 @@ router.get('/clients/duplicates', async (req, res) => {
 
 // ── POST /api/admin/clients — создать клиента вручную (кнопка «Добавить клиента») ──
 // Раньше клиента можно было завести только CSV-импортом или неявно при записи (пробел, найден 02.07).
-router.post('/clients', async (req, res) => {
+router.post('/clients',
+  require('../lib/plan-limits').enforcePlanLimit('max_clients',
+    "SELECT COUNT(*)::int AS n FROM clients WHERE deleted_at IS NULL"),
+  async (req, res) => {
   try {
     const pool = getPool();
     const { name, phone, email } = req.body || {};

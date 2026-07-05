@@ -160,7 +160,10 @@ const employeeSchema = (required) => ({
   branch_id: t.id({ required: false }),
 });
 
-router.post('/', validateBody(employeeSchema(true)), async (req, res) => {
+router.post('/', validateBody(employeeSchema(true)),
+  require('../lib/plan-limits').enforcePlanLimit('max_employees',
+    "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
+  async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name || !b.phone) return res.status(400).json({ error: 'name, phone required' });

@@ -3,7 +3,7 @@
    суму — і вона проводиться в касу. Нагадування 1/15/кінець місяця (тік у shop-api).
    Доступ: GET reports.read, мутації reports.finance. */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 
 const router = express.Router();
@@ -119,7 +119,7 @@ router.post('/confirm', async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.ref_key || !(Number(b.amount) > 0)) return res.status(400).json({ error: 'ref_key і amount обовʼязкові' });
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS: ручний client без applyTenant бачив/писав чужих тенантів (аудит 06.07)
     // ідемпотентність: якщо вже підтверджено — повертаємо існуюче
     const ex = await client.query('SELECT * FROM expense_confirmations WHERE ref_key=$1 FOR UPDATE', [b.ref_key]);
     if (ex.rows[0]) { await client.query('COMMIT'); return res.json({ ok: true, already: true, confirmation: ex.rows[0] }); }
@@ -145,7 +145,7 @@ router.post('/confirm', async (req, res) => {
 router.delete('/confirm/:refkey(*)', async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const r = await client.query('DELETE FROM expense_confirmations WHERE ref_key=$1 RETURNING cash_op_id', [req.params.refkey]);
     if (r.rows[0] && r.rows[0].cash_op_id) await client.query('DELETE FROM cash_operations WHERE id=$1', [r.rows[0].cash_op_id]);
     await client.query('COMMIT');

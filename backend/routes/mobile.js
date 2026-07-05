@@ -671,6 +671,14 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
     );
     if (!appt.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 
+    // Идемпотентность МЕЖДУ методами: повторная отправка с другим method (обрыв сети,
+    // ретрай приложения) не должна создать вторую оплату — уникальный индекс ловит
+    // только тот же method+category (аудит 06.07).
+    const dup = await pool.query(
+      `SELECT id FROM cash_operations WHERE type='in' AND ref_type='appointment' AND ref_id=$1 LIMIT 1`,
+      [parseInt(appointment_id, 10)]);
+    if (dup.rows[0]) return res.status(200).json({ ok: true, already_paid: true, payment_id: dup.rows[0].id });
+
     const amountNum = Number(amount_cents) / 100;
     const bonusNum = bonus_amount ? Number(bonus_amount) / 100 : 0;
     const discountPct = discount_percent ? Number(discount_percent) : 0;

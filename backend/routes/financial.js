@@ -5,6 +5,7 @@
    Cron: щодня о заданий час шле зведення Босу в Telegram. */
 const express = require('express');
 const { getPool } = require('../db-pg');
+const { runAs, DEFAULT_TENANT_ID } = require('../lib/tenant');
 const { requirePerm } = require('../lib/rbac');
 const { tgSend } = require('./telegram-notify');
 const { liveFinance } = require('../lib/live-finance');
@@ -405,6 +406,10 @@ router.get('/export/shared/:token', async (req, res) => {
 // ── CRON: щоденне зведення + нічний снапшот ──────────────
 let cronRef = null;
 async function digestTick() {
+  // крон поза HTTP-контекстом: без runAs pool.query бачив би всі тенанти (permissive RLS)
+  return runAs(DEFAULT_TENANT_ID, () => _digestTick());
+}
+async function _digestTick() {
   try {
     const st = (await pool.query(`SELECT *, to_char(last_sent_date,'YYYY-MM-DD') AS last_sent_str FROM financial_digest_settings WHERE id=1`)).rows[0];
     if (!st || !st.is_active) return;
@@ -428,6 +433,9 @@ async function digestTick() {
 // Фоновий перерахунок знімка поточного дня (щоб дашборд вантажився миттєво з snapshot)
 let snapRef = null;
 async function snapshotTick() {
+  return runAs(DEFAULT_TENANT_ID, () => _snapshotTick());
+}
+async function _snapshotTick() {
   try {
     const b = snapBounds('daily', kyivDate());
     const data = await snapshot(b.from, b.to);

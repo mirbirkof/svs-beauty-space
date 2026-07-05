@@ -174,7 +174,10 @@ const CARD_FIELDS = [
   'age_restriction', 'contraindications', 'meta_title', 'meta_description', 'sort_order',
 ];
 
-router.post('/', WRITE, async (req, res) => {
+router.post('/', WRITE,
+  require('../lib/plan-limits').enforcePlanLimit('max_services',
+    "SELECT COUNT(*)::int AS n FROM services WHERE COALESCE(active,true)=true"),
+  async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name required' });

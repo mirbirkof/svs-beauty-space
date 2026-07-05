@@ -8,11 +8,12 @@
  *  щоденний guard у app_settings. Нічого не дублюється навіть при рестартах/кількох тіках.
  */
 const { getPool } = require('../db-pg');
+const { runAs, DEFAULT_TENANT_ID } = require('./tenant');
 const hub = require('./notification-hub');
 const { getSetting, setSetting } = require('./settings');
 const { shiftDaysByMaster } = require('./schedule-month');
 
-const TENANT = '00000000-0000-0000-0000-000000000000';
+const TENANT = DEFAULT_TENANT_ID; // салон Босса (раніше тут був НЕІСНУЮЧИЙ uuid ...000 — reputation_settings не знаходились)
 const BASE = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api-backup.onrender.com';
 
 // Київська дата YYYY-MM-DD
@@ -284,4 +285,14 @@ async function weeklyMonthlyReminders(pool = getPool()) {
   return sent;
 }
 
-module.exports = { autoReviewRequests, masterDailySchedules, ownerDailyReport, adminDayPlan, weeklyMonthlyReminders };
+// Кроны запускаются ПОЗА HTTP-контекстом → pool.query без tenant бачив би ВСІ салони
+// (permissive RLS). runAs(DEFAULT_TENANT_ID) обмежує віртуального менеджера салоном Босса.
+// Для інших салонів VM поки не запускається (їх звіти — окремий етап SaaS).
+const _wrap = fn => (...a) => runAs(DEFAULT_TENANT_ID, () => fn(...a));
+module.exports = {
+  autoReviewRequests: _wrap(autoReviewRequests),
+  masterDailySchedules: _wrap(masterDailySchedules),
+  ownerDailyReport: _wrap(ownerDailyReport),
+  adminDayPlan: _wrap(adminDayPlan),
+  weeklyMonthlyReminders: _wrap(weeklyMonthlyReminders),
+};

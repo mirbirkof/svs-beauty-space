@@ -13,7 +13,10 @@ router.get('/', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/', requirePerm('branches.write'), async (req, res) => {
+router.post('/', requirePerm('branches.write'),
+  require('../lib/plan-limits').enforcePlanLimit('max_branches',
+    "SELECT COUNT(*)::int AS n FROM branches"),
+  async (req, res) => {
   try {
     const { code, name, address, city, phone, timezone, working_hours, settings } = req.body || {};
     if (!code || !name) return res.status(400).json({ error: 'code, name required' });
