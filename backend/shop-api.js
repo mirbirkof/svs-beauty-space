@@ -396,6 +396,13 @@ if (process.env.DATABASE_URL) {
             WHERE status='grace_period' AND grace_period_ends IS NOT NULL AND grace_period_ends < NOW()
             RETURNING id`);
         if (g.rowCount || x.rowCount) console.log(`[licenses] grace:${g.rowCount} expired:${x.rowCount}`);
+        // trial ПЛАНУ скінчився → past_due (фічегейти/білінг бачать, що салон не платить).
+        // Автоінвойс/suspension — наступний етап (див. SAAS-READINESS-PLAN P1).
+        const t = await pool.query(
+          `UPDATE subscriptions_saas SET status='past_due', updated_at=NOW()
+            WHERE status='trialing' AND trial_ends_at IS NOT NULL AND trial_ends_at < NOW()
+            RETURNING tenant_id`);
+        if (t.rowCount) console.log(`[subscriptions] trial→past_due: ${t.rowCount}`);
       });
     } catch (e) { console.error('[licenses] expiry tick:', e.message); }
   };

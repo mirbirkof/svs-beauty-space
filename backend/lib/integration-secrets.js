@@ -70,7 +70,7 @@ function isAllowed(name) { return ALLOWED.has(String(name || '').trim()); }
 async function loadIntegrationSecrets() {
   try {
     const r = await getPool().query(
-      `SELECT key, value FROM app_settings WHERE key LIKE $1`, [PREFIX + '%']
+      `SELECT key, value FROM app_settings WHERE key LIKE $1 AND tenant_id = '00000000-0000-0000-0000-000000000001'`, [PREFIX + '%']
     );
     let loaded = 0;
     for (const row of r.rows) {
@@ -104,7 +104,7 @@ async function saveIntegrationSecret(name, value, userId = null) {
   await pool.query(
     `INSERT INTO app_settings (key, value, updated_by, updated_at)
      VALUES ($1, to_jsonb($2::text), $3, NOW())
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+     ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
     [PREFIX + name, encryptVal(v), userId]
   );
   process.env[name] = v; // діє одразу, без рестарту

@@ -88,6 +88,15 @@ router.post('/signup', signupLimiter, async (req, res) => {
              ON CONFLICT DO NOTHING`, [ownerName, phone]);
           const { setSetting } = require('../lib/settings');
           await setSetting('solo_master_mode', true, null);
+          // дефолтний графік (пн-сб 09-18 на 30 днів) — інакше онлайн-запис
+          // повертає нуль слотів і соло-майстер думає, що система зламана
+          await getPool().query(
+            `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source)
+             SELECT m.id, gs::date, '09:00', '18:00', 'signup-default'
+               FROM masters m,
+                    generate_series(CURRENT_DATE, CURRENT_DATE + 29, '1 day') gs
+              WHERE m.phone = $1 AND EXTRACT(ISODOW FROM gs) < 7
+             ON CONFLICT DO NOTHING`, [phone]);
         });
       } catch (soloErr) { console.error('[public-signup/solo]', soloErr.message); }
     }

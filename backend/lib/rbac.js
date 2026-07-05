@@ -55,7 +55,9 @@ async function resolveUserByToken(token) {
     // дізнався, отримує owner-доступ до будь-якого салона. Орендарі — лише user-токени.
     try {
       const { isPlatformTenant } = require('./tenant');
-      if (isPlatformTenant && !isPlatformTenant()) {
+      // саме === false: поза HTTP-контекстом isPlatformTenant() дає undefined —
+      // скрипти/боти платформи не повинні втрачати токен (verify-аудит 06.07)
+      if (isPlatformTenant && isPlatformTenant() === false) {
         console.warn('[rbac] ADMIN_TOKEN отклонён: запрос из tenant-контекста (не платформа)');
         return null;
       }

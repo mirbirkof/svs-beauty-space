@@ -12,18 +12,22 @@
    - limit_value < 0 = безліміт;
    - is_soft=TRUE → не блокуємо, лише заголовок X-Plan-Limit-Warning. */
 const { getPool } = require('../db-pg');
-const { isPlatformTenant } = require('./tenant');
+const { isPlatformTenant, getTenantId } = require('./tenant');
 
 const LEGACY_SLUG = { solo: 'free', pro: 'professional' };
 
 async function tenantLimit(pool, limitKey) {
+  // tenant_licenses БЕЗ RLS → tenant_id фільтруємо явно (verify-аудит 06.07)
+  const tid = getTenantId();
+  if (!tid) return null;
   const r = await pool.query(
     `SELECT pl.limit_value, pl.is_soft
        FROM tenant_licenses tl
        JOIN saas_plans_v2 p ON p.slug = COALESCE($2::jsonb->>tl.plan_code, tl.plan_code)
        JOIN plan_limits pl ON pl.plan_id = p.id AND pl.limit_key = $1
+      WHERE tl.tenant_id = $3
       ORDER BY tl.updated_at DESC NULLS LAST LIMIT 1`,
-    [limitKey, JSON.stringify(LEGACY_SLUG)]);
+    [limitKey, JSON.stringify(LEGACY_SLUG), tid]);
   return r.rows[0] || null;
 }
 

@@ -16,7 +16,11 @@ async function getSetting(key, def = null) {
   const hit = cache.get(ck(key));
   if (hit && hit.exp > Date.now()) return hit.value;
   try {
-    const r = await getPool().query('SELECT value FROM app_settings WHERE key = $1', [key]);
+    // Поза HTTP-контекстом RLS permissive → при 2+ тенантах ключ може дати кілька рядків.
+    // Детерміновано беремо рядок ПЛАТФОРМИ (салон Босса); тенантські крони мусять runAs.
+    const r = await getPool().query(
+      `SELECT value FROM app_settings WHERE key = $1
+        ORDER BY (tenant_id = '00000000-0000-0000-0000-000000000001') DESC LIMIT 1`, [key]);
     const value = r.rows[0] ? r.rows[0].value : def;
     cache.set(ck(key), { value, exp: Date.now() + CACHE_TTL_MS });
     return value;
@@ -38,7 +42,7 @@ async function setSetting(key, value, userId = null) {
 }
 
 async function getAllSettings() {
-  const r = await getPool().query('SELECT key, value FROM app_settings ORDER BY key');
+  const r = await getPool().query(`SELECT DISTINCT ON (key) key, value FROM app_settings ORDER BY key, (tenant_id = '00000000-0000-0000-0000-000000000001') DESC`);
   const out = {};
   for (const row of r.rows) out[row.key] = row.value;
   return out;
