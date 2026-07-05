@@ -386,16 +386,25 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
 // візити, унікальні клієнти, повторні візити %, середній чек, відміни.
 router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) => {
   try {
+    // Виручка майстра = ФАКТ з каси по візиту (послуга + матеріали/банки, після знижок) —
+    // та сама цифра, що в журналі та фінцентрі. Для неоплачених візитів fallback:
+    // real_amount/price (лише послуга). Раніше рахувалась планова ціна послуги →
+    // у майстра з проданими банками «неправильні цифри» на дашборді (заметка Босса 06.07).
     const r = await pool.query(
       `SELECT m.id, m.name,
               COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int visits,
               COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int uniq,
               COUNT(*) FILTER (WHERE a.status='cancelled')::int cancelled,
-              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)::numeric revenue
+              COALESCE(SUM(COALESCE(pt.paid, COALESCE(a.real_amount,a.price,0))) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)::numeric revenue
          FROM masters m
          LEFT JOIN appointments a ON a.master_id=m.id
               AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
               AND a.bp_state IS DISTINCT FROM 'bp_deleted'
+         LEFT JOIN LATERAL (
+              SELECT NULLIF(SUM(co.amount), 0)::numeric AS paid
+                FROM cash_operations co
+               WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id
+         ) pt ON true
         WHERE COALESCE(m.active,true)=true
         GROUP BY m.id, m.name
        HAVING COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)) > 0
