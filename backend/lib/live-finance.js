@@ -31,9 +31,19 @@ async function liveFinance(pool, from, to) {
     q(`SELECT COALESCE(SUM(COALESCE(fixed_per_month,0)),0)::numeric fx
          FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
         WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`),
-    q(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric g
-         FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id
-        WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0
+    // COGS = собівартість ВСІХ списань (розниця + матеріали візитів, заметка #141).
+    // Грамові товари (price_per_gram) з unit_ml: опт за упаковку ÷ грамів в упаковці;
+    // без unit_ml опт уже за грам; штучні — опт за одиницю. Знак delta зберігаємо:
+    // service-reverse (відкат оплати) повертає на склад і ВІДНІМАЄ з собівартості,
+    // інакше unpay→pay рахує списання двічі.
+    q(`SELECT COALESCE(SUM(-sm.delta * CASE WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 0
+                THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+                ELSE COALESCE(pv.wholesale,0) END),0)::numeric g
+         FROM stock_movements sm
+         JOIN product_variants pv ON pv.id=sm.variant_id
+         LEFT JOIN products p ON p.id=pv.product_id
+        WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%'
+               OR sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%')
           AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
