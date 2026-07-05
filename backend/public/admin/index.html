@@ -8816,7 +8816,16 @@ async function loadApptMaterials(id) {
         ${items.length ? `<div style="display:grid;gap:6px">${items.map(m => `
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
             <span style="flex:1;min-width:0">${escapeHtml(m.product_name||'Товар')}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}${m.price_per_gram!=null?' <span style="font-size:10px;color:#7c3aed;font-weight:700">за грам</span>':(m.billable?' <span style="font-size:10px;color:#6d28d9;font-weight:700">🛍 продаж</span>':'')}
-              <span style="display:block;color:var(--text-secondary);font-size:11px">${m.price!=null?`ціна: ${_money(m.price)} · `:''}на складі: ${m.stock_qty!=null?m.stock_qty:'—'}${Number(m.stock_qty)<0?' ⚠':''}</span></span>
+              <span style="display:block;color:var(--text-secondary);font-size:11px">${m.price!=null?`ціна: ${_money(m.price)} · `:''}на складі: ${m.stock_qty!=null?m.stock_qty:'—'}${Number(m.stock_qty)<0?' ⚠':''}</span>
+              ${m.price_per_gram==null && m.price!=null ? (() => {
+                // банка = продаж продукції: % іде ПРОДАВЦЮ. За замовчуванням — майстер візиту,
+                // адмін може вибрати іншого (кейс: клієнтку робила Світлана, продала Відюк)
+                const visitMaster = (journalData?.appointments||[]).find(x=>x.id===id)?.master_id;
+                const cur = m.seller_master_id != null ? Number(m.seller_master_id) : (visitMaster != null ? Number(visitMaster) : null);
+                const opts = ((journalData?.masters)||[]).map(ms=>`<option value="${ms.id}"${Number(ms.id)===cur?' selected':''}>${escapeHtml(ms.name)}</option>`).join('');
+                return `<span style="display:block;font-size:11px;margin-top:2px;color:#6d28d9">продавець (% з продажу):
+                  <select onchange="apptMatSeller(${id},${m.variant_id},this.value)" style="font-size:11px;border:1px dashed #c4b5fd;border-radius:6px;background:transparent;color:#6d28d9;font-weight:700;cursor:pointer;padding:1px 4px">${opts}</select></span>`;
+              })() : ''}</span>
             <span style="display:flex;align-items:center;gap:10px;white-space:nowrap">
               ${locked
                 ? `<span style="font-weight:700">×${Number(m.qty_used)}</span>`
@@ -8852,6 +8861,15 @@ async function loadApptMaterials(id) {
         </div>`}
       </div>`;
   } catch (_) { box.innerHTML = ''; }
+}
+async function apptMatSeller(apptId, variantId, sellerId) {
+  try {
+    const r = await api(`/api/consumables/appointment/${apptId}/${variantId}/seller`, {
+      method: 'PATCH', body: JSON.stringify({ seller_master_id: sellerId || null })
+    });
+    if (r && r.error) throw new Error(r.error);
+    if (typeof toast === 'function') toast('Продавця збережено — % з продажу піде йому');
+  } catch (e) { alert('Не вдалося зберегти продавця: ' + e.message); loadApptMaterials(apptId); }
 }
 function apptMatAddToggle(id) {
   const p = document.getElementById('apptMatPicker');

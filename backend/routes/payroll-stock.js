@@ -153,10 +153,11 @@ router.post('/payroll/calculate', async (req, res) => {
            AND COALESCE(c.commissionable, TRUE) = TRUE`,
         [master_id, period_start, period_end]
       );
-      // + продажі ЦІЛИХ ємностей у візитах майстра (правило Босса 05.07):
+      // + продажі ЦІЛИХ ємностей у візитах (правило Босса 05.07):
       // фарба за грам (price_per_gram) = розхідник, % не дає;
-      // банка/пляшка з роздрібною ціною = продаж продукції → % майстру.
-      // Адміни тут не зʼявляються: у операції master_id майстра-виконавця.
+      // банка/пляшка з роздрібною ціною = продаж продукції → % ПРОДАВЦЮ.
+      // Продавець = am.seller_master_id, якщо задано (кейс 06.07: клієнтку робила
+      // Світлана, а косметику продала Відюк), інакше майстер візиту. Адмінам % не йде.
       const bo = await pool.query(
         `SELECT COALESCE(SUM(ROUND(am.qty_used * pv.price, 2)), 0)::numeric AS revenue
          FROM appointment_materials am
@@ -164,7 +165,7 @@ router.post('/payroll/calculate', async (req, res) => {
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
          LEFT JOIN categories c ON c.id = p.category_id
-         WHERE a.master_id = $1::int
+         WHERE COALESCE(am.seller_master_id, a.master_id) = $1::int
            AND p.price_per_gram IS NULL AND pv.price IS NOT NULL
            AND a.status IN ('done','completed')
            AND a.starts_at >= $2::date

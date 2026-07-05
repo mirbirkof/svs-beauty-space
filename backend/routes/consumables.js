@@ -76,6 +76,7 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
     const r = await pool.query(
       `SELECT am.id, am.variant_id, am.qty_used, am.note, am.billable,
+              am.seller_master_id, sm.name AS seller_name,
               p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price,
               p.price_per_gram,
               CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
@@ -84,6 +85,7 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
+         LEFT JOIN masters sm ON sm.id = am.seller_master_id
         WHERE am.appointment_id=$1
         ORDER BY p.name`,
       [aid]
@@ -103,22 +105,27 @@ router.post('/appointment/:apptId', requirePerm('stock.write'), async (req, res)
   try {
     const aid = Number(req.params.apptId);
     if (!Number.isFinite(aid) || aid <= 0) return res.status(400).json({ error: 'bad-appointment-id' });
-    const { variant_id, qty_used, note, billable } = req.body || {};
+    const { variant_id, qty_used, note, billable, seller_master_id } = req.body || {};
     if (!variant_id) return res.status(400).json({ error: 'variant_id required' });
     // qty<=0 запрещено: отрицательное "списание" увеличило бы склад
     const qty = qty_used == null ? 1 : Number(qty_used);
     if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: 'qty_used must be > 0' });
     const bill = billable === true || billable === 'true' || billable === 1;
+    // Продавець банки (для % з продажу): NULL = майстер візиту. undefined = не чіпати при upsert.
+    const seller = seller_master_id === undefined ? undefined
+      : (seller_master_id === null || seller_master_id === '' ? null : Number(seller_master_id));
     const a = await pool.query(`SELECT id FROM appointments WHERE id=$1`, [aid]);
     if (!a.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const r = await pool.query(
-      `INSERT INTO appointment_materials (appointment_id, variant_id, qty_used, note, billable, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO appointment_materials (appointment_id, variant_id, qty_used, note, billable, created_by, seller_master_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (appointment_id, variant_id)
        DO UPDATE SET qty_used=EXCLUDED.qty_used, note=COALESCE(EXCLUDED.note, appointment_materials.note),
-                     billable=EXCLUDED.billable
+                     billable=EXCLUDED.billable,
+                     seller_master_id=CASE WHEN $8 THEN EXCLUDED.seller_master_id ELSE appointment_materials.seller_master_id END
        RETURNING *`,
-      [aid, Number(variant_id), qty, note || null, bill, (req.user && req.user.display_name) || null]
+      [aid, Number(variant_id), qty, note || null, bill, (req.user && req.user.display_name) || null,
+       seller === undefined ? null : seller, seller !== undefined]
     );
     await logAction({ user: req.user, action: 'material.set', entity: 'appointment', entity_id: aid, meta: { variant_id, qty } });
     const cashSynced = await syncPaidMaterials(aid); // оплачений візит → каса відразу актуальна
@@ -151,6 +158,24 @@ router.post('/appointment/:apptId/prefill', requirePerm('stock.write'), async (r
     await logAction({ user: req.user, action: 'material.prefill', entity: 'appointment', entity_id: aid, meta: { added: r.rowCount } });
     const cashSynced = await syncPaidMaterials(aid);
     res.json({ ok: true, added: r.rowCount, cash_synced: cashSynced });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// змінити ПРОДАВЦЯ банки (для % з продажу продукції) — не чіпає кількість/касу.
+// Можна міняти і після оплати: впливає лише на базу комісії продавця в ЗП.
+router.patch('/appointment/:apptId/:variantId/seller', requirePerm('stock.write'), async (req, res) => {
+  try {
+    const sid = req.body && req.body.seller_master_id != null && req.body.seller_master_id !== ''
+      ? Number(req.body.seller_master_id) : null;
+    const r = await pool.query(
+      `UPDATE appointment_materials SET seller_master_id=$3
+        WHERE appointment_id=$1 AND variant_id=$2 RETURNING id, seller_master_id`,
+      [Number(req.params.apptId), Number(req.params.variantId), sid]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
+    await logAction({ user: req.user, action: 'material.seller', entity: 'appointment',
+      entity_id: Number(req.params.apptId), meta: { variant_id: Number(req.params.variantId), seller_master_id: sid } });
+    res.json({ ok: true, seller_master_id: r.rows[0].seller_master_id });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
