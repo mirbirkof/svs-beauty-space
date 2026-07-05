@@ -387,7 +387,9 @@ router.get('/admin/all', platformOnly, authManage, async (req, res) => {
 /** POST /api/licenses/admin/grant — видати ліцензію тенанту */
 router.post('/admin/grant', platformOnly, authManage, async (req, res) => {
   try {
-    const { tenant_id, module_id, type = 'subscription', expires_at } = req.body || {};
+    const { module_id, type = 'subscription', expires_at } = req.body || {};
+    // без явного tenant_id — видаємо ліцензію ПОТОЧНОМУ салону (профіль модуля в адмінці)
+    const tenant_id = (req.body && req.body.tenant_id) || req.tenant_id;
     if (!tenant_id || !module_id) return res.status(400).json({ error: 'tenant_id_and_module_id_required' });
     if (!['trial','subscription','perpetual'].includes(type))
       return res.status(400).json({ error: 'invalid_type' });

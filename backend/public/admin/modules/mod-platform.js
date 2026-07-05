@@ -132,7 +132,10 @@
     title: 'Ліцензії та модулі',
     group: 'platform',
     icon: 'key',
-    section: '<div id="lic-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
+    section: '<div style="background:#f0f4ff;border:1px solid #d8e0ff;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.6;color:#33415c">' +
+             '<b>Модулі CRM.</b> Натисніть на будь-який модуль у каталозі — відкриється його профіль: опис, ціни, залежності та керування (спробувати безкоштовно, видати ліцензію, деактивувати).' +
+             '</div>' +
+             '<div id="lic-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
              '<h3 style="margin:18px 0 8px;font-size:16px">Каталог модулів</h3>' +
              '<div id="lic-catalog"></div>' +
              '<h3 style="margin:22px 0 8px;font-size:16px">Видані ліцензії</h3>' +
@@ -155,7 +158,7 @@
           if (cat) cat.innerHTML = window.modEmpty('Каталог порожній');
         } else {
           var cbody = crows.map(function (m) {
-            return '<tr>' +
+            return '<tr style="cursor:pointer" onclick="_licOpen(\'' + E(String(m.id)) + '\')" title="Профіль модуля">' +
               td('<b>' + E(m.name || '—') + '</b>') +
               td('<code>' + E(m.code || '—') + '</code>') +
               td(num(m.category)) +
@@ -200,6 +203,89 @@
       }
     }
   });
+
+  /* ── Профіль модуля (нотатка #133): клік по рядку каталогу ───────────── */
+  window._licOpen = async function (id) {
+    try {
+      var d = await window.modApi('/api/licenses/catalog/' + id);
+      var m = (d && d.data) || d || {};
+      if (m.error) throw new Error(m.error);
+      var my = null;
+      try {
+        var mine = await window.modApi('/api/licenses/my');
+        my = ((mine && mine.rows) || []).find(function (l) { return String(l.module_id) === String(id); }) || null;
+      } catch (_e) { /* ok */ }
+      var deps = (m.dependencies_detail || []).map(function (x) { return x.name || x.code; }).join(', ');
+      var price = function (v) { return v == null ? '—' : Number(v).toLocaleString('uk-UA') + ' грн'; };
+      var row = function (k, v) {
+        return '<div style="display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #f2f2f2;font-size:13.5px">' +
+          '<span style="color:#888">' + k + '</span><span style="text-align:right">' + (v == null || v === '' ? '—' : v) + '</span></div>';
+      };
+      var licBadge = my
+        ? '<span style="background:' + (my.status === 'active' ? '#2e9e5b' : '#e0a800') + ';color:#fff;padding:2px 10px;border-radius:10px;font-size:11.5px;font-weight:600">' + E(my.license_type) + ' · ' + E(my.status) + (my.trial_days_left != null ? ' · ' + E(my.trial_days_left) + ' дн.' : '') + '</span>'
+        : '<span style="background:#ccc;color:#fff;padding:2px 10px;border-radius:10px;font-size:11.5px;font-weight:600">не активовано</span>';
+      var body =
+        '<div style="margin-bottom:10px">' + licBadge + '</div>' +
+        '<div style="font-size:13.5px;line-height:1.55;color:#444;margin-bottom:12px">' + E(m.description || 'Опис модуля ще не заповнено.') + '</div>' +
+        row('Код', '<code>' + E(m.code || '—') + '</code>') +
+        row('Категорія', E(m.category || '—')) +
+        row('Ціна / місяць', price(m.price_monthly_uah)) +
+        row('Ціна / рік', price(m.price_yearly_uah)) +
+        row('Trial', (m.trial_days != null ? E(m.trial_days) + ' дн. безкоштовно' : '—')) +
+        row('Залежності', deps ? E(deps) : 'немає') +
+        (m.stats ? row('Активних ліцензій', E(m.stats.active != null ? m.stats.active : '—')) : '') +
+        '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">' +
+        (!my
+          ? '<button onclick="_licTrial(\'' + E(String(id)) + '\',this)" style="padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Спробувати безкоштовно (' + E(m.trial_days != null ? m.trial_days : 14) + ' дн.)</button>' +
+            '<button onclick="_licGrant(\'' + E(String(id)) + '\',this)" style="padding:8px 18px;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:8px;cursor:pointer;font-size:13px">Видати ліцензію (адмін)</button>'
+          : '<button onclick="_licRevoke(\'' + E(String(my.id)) + '\',this)" style="padding:8px 18px;background:#fff;color:#d9534f;border:1px solid #d9534f;border-radius:8px;cursor:pointer;font-size:13px">Деактивувати</button>') +
+        '</div>' +
+        '<div id="lic-modal-msg" style="margin-top:10px;font-size:12.5px"></div>';
+      if (typeof showModal === 'function') showModal(E(m.name || 'Модуль'), body);
+      else alert((m.name || '') + '\n' + (m.description || ''));
+    } catch (e) { alert('Не вдалося відкрити профіль модуля: ' + e.message); }
+  };
+  function licMsg(text, ok) {
+    var el = document.getElementById('lic-modal-msg');
+    if (el) el.innerHTML = '<span style="color:' + (ok ? '#2e9e5b' : '#d9534f') + '">' + E(text) + '</span>';
+  }
+  function licRefresh() {
+    var gm = document.getElementById('genModal');
+    setTimeout(function () {
+      if (gm) gm.remove();
+      if (window.extLoaders && window.extLoaders.licenses) window.extLoaders.licenses();
+    }, 900);
+  }
+  window._licTrial = async function (moduleId, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      var r = await window.modApi('/api/licenses/trial', { method: 'POST', body: JSON.stringify({ module_id: moduleId }) });
+      if (r && r.error) throw new Error(r.error);
+      licMsg('Trial активовано! Модуль увімкнено.', true); licRefresh();
+    } catch (e) { licMsg(e.message, false); if (btn) btn.disabled = false; }
+  };
+  window._licGrant = async function (moduleId, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      var meT = await window.modApi('/api/users/me').catch(function () { return {}; });
+      var tenantId = (meT && (meT.tenant_id || (meT.user && meT.user.tenant_id))) || null;
+      var r = await window.modApi('/api/licenses/admin/grant', {
+        method: 'POST',
+        body: JSON.stringify({ tenant_id: tenantId, module_id: moduleId, type: 'subscription' })
+      });
+      if (r && r.error) throw new Error(r.error);
+      licMsg('Ліцензію видано (підписка).', true); licRefresh();
+    } catch (e) { licMsg(e.message, false); if (btn) btn.disabled = false; }
+  };
+  window._licRevoke = async function (licenseId, btn) {
+    if (!confirm('Деактивувати ліцензію цього модуля?')) return;
+    if (btn) btn.disabled = true;
+    try {
+      var r = await window.modApi('/api/licenses/' + licenseId, { method: 'DELETE' });
+      if (r && r.error) throw new Error(r.error);
+      licMsg('Деактивовано.', true); licRefresh();
+    } catch (e) { licMsg(e.message, false); if (btn) btn.disabled = false; }
+  };
 
   /* ════════════════════════════════════════════════════════════
      3. FEATURE FLAGS
