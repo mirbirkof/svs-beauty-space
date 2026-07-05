@@ -3359,6 +3359,7 @@ function posOpen(){
     + '<tbody id="posCart"><tr><td colspan="5" style="color:#888;padding:10px 6px">Кошик порожній — знайдіть товар і додайте</td></tr></tbody></table>'
     + '<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">'
     + '<select id="posMethod" class="input" style="max-width:150px"><option value="cash">Готівка</option><option value="card">Картка</option><option value="transfer">Переказ</option></select>'
+    + '<select id="posSeller" class="input" style="max-width:210px" title="Хто продав — йому піде % з продажу. Порожньо = адмін (без %)"><option value="">Продавець: адмін (без %)</option></select>'
     + '<input id="posDate" type="date" class="input" style="max-width:160px" title="Дата продажу — можна заднім числом">'
     + '<input id="posNote" class="input" placeholder="Коментар / клієнт (не обовʼязково)" style="flex:1;min-width:180px">'
     + '</div><div id="posMsg" style="margin-top:8px;font-size:13px;color:#b3261e"></div></div>'
@@ -3367,6 +3368,15 @@ function posOpen(){
     + '<button class="btn" id="posGo" onclick="posSubmit()">Провести продаж</button></div></div>';
   document.body.appendChild(el);
   document.getElementById('posDate').value = new Date().toLocaleDateString('en-CA');
+  // продавці = сервісні майстри (для % з продажу продукції; адмінам % не йде)
+  api('/api/schedule/masters').then(d => {
+    const sel = document.getElementById('posSeller');
+    if (sel && d && Array.isArray(d.masters || d.items || d)) {
+      (d.masters || d.items || d).forEach(m => {
+        const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; sel.appendChild(o);
+      });
+    }
+  }).catch(() => {});
   document.getElementById('posQ').focus();
 }
 function posClose(){ document.getElementById('posModal')?.remove(); }
@@ -3433,6 +3443,8 @@ async function posSubmit(){
         amount: +(x.qty * x.price).toFixed(2),
         description: 'Продаж: ' + x.name + (x.qty > 1 ? ' ×' + x.qty : '') + (note ? ' — ' + note : ''),
         variant_id: x.id, qty: x.qty, allow_no_shift: true };
+      const seller = document.getElementById('posSeller')?.value;
+      if (seller) body.master_id = Number(seller); // продавець → йому % з продажу в ЗП
       if (date && date !== today) body.date = date;
       const r = await api('/api/cashbox/operations', { method: 'POST', body: JSON.stringify(body) });
       if (r && r.ok) done.push(x); else failed.push(x.name + ': ' + ((r && r.error) || 'помилка'));

@@ -173,7 +173,18 @@ router.post('/payroll/calculate', async (req, res) => {
            AND COALESCE(c.commissionable, TRUE) = TRUE`,
         [master_id, period_start, period_end]
       );
-      sales_revenue = parseFloat(so.rows[0]?.revenue || 0) + parseFloat(bo.rows[0]?.revenue || 0);
+      // + роздрібні POS-продажі («Оформити продаж») з указаним продавцем-майстром:
+      // каса пише sale_product з master_id продавця (ref_type NULL — без візиту).
+      const po = await pool.query(
+        `SELECT COALESCE(SUM(co.amount), 0)::numeric AS revenue
+         FROM cash_operations co
+         WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL
+           AND co.master_id = $1::int
+           AND co.created_at >= $2::date
+           AND co.created_at <  ($3::date + INTERVAL '1 day')`,
+        [master_id, period_start, period_end]
+      );
+      sales_revenue = parseFloat(so.rows[0]?.revenue || 0) + parseFloat(bo.rows[0]?.revenue || 0) + parseFloat(po.rows[0]?.revenue || 0);
       sales_part = sales_revenue * (salesPct / 100);
     }
 
