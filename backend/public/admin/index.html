@@ -1164,6 +1164,8 @@ select.input { background:var(--card); }
           <button class="btn btn-sm dash-rng active" data-r="month" onclick="dashRange('month')">Місяць</button>
           <button class="btn btn-sm dash-rng" data-r="prevmonth" onclick="dashRange('prevmonth')">Мин. місяць</button>
           <button class="btn btn-sm dash-rng" data-r="year" onclick="dashRange('year')">Рік</button>
+          <button class="btn btn-sm" title="Попередній період" style="padding:6px 10px;font-weight:700" onclick="dashNav(-1)">‹</button>
+          <button class="btn btn-sm" title="Наступний період" style="padding:6px 10px;font-weight:700" onclick="dashNav(1)">›</button>
           <span style="width:1px;height:22px;background:var(--border,#e5e5e5);margin:0 4px"></span>
           <input type="date" id="dashFrom" class="input" style="width:auto;padding:6px 9px;font-size:13px" onchange="dashRangeCustom()">
           <span style="color:var(--text-secondary)">—</span>
@@ -5442,6 +5444,7 @@ function dashRange(preset){
   else if(preset==='prevmonth'){ const d=new Date(now.getFullYear(), now.getMonth()-1, 1); from=_kyD(d).slice(0,7)+'-01'; const e=new Date(now.getFullYear(), now.getMonth(), 0); to=_kyD(e); }
   else if(preset==='year'){ from=today.slice(0,4)+'-01-01'; }
   _dashRange={from, to};
+  _dashUnit = preset==='prevmonth' ? 'month' : preset; // стрелки шагают выбранным периодом
   document.querySelectorAll('.dash-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===preset));
   const f=document.getElementById('dashFrom'), t=document.getElementById('dashTo'); if(f)f.value=from; if(t)t.value=to;
   _dashRangeLabel(from,to);
@@ -5451,8 +5454,38 @@ function dashRangeCustom(){
   const from=document.getElementById('dashFrom').value, to=document.getElementById('dashTo').value;
   if(!from||!to) return;
   _dashRange={from, to};
+  _dashUnit='custom'; // стрелки шагают длиной выбранного диапазона
   document.querySelectorAll('.dash-rng').forEach(b=>b.classList.remove('active'));
   _dashRangeLabel(from,to);
+  loadDashboard();
+}
+// ‹ › — прыжок на один выбранный период назад/вперёд (просьба Босса 05.07:
+// «выбираешь период и стрелочками прыгаешь в пределах выбранного периода»)
+let _dashUnit='month';
+function dashNav(dir){
+  const today=_kyD(new Date());
+  let {from,to}=_dashRange;
+  if(!from||!to){ from=today.slice(0,7)+'-01'; to=today; }
+  const D=s=>{ const[y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+  let f=D(from), t=D(to);
+  if(_dashUnit==='month'){
+    f=new Date(f.getFullYear(), f.getMonth()+dir, 1);
+    t=new Date(f.getFullYear(), f.getMonth()+1, 0); // последний день месяца
+  } else if(_dashUnit==='year'){
+    f=new Date(f.getFullYear()+dir, 0, 1);
+    t=new Date(f.getFullYear(), 11, 31);
+  } else if(_dashUnit==='today'){
+    f=new Date(f.getFullYear(), f.getMonth(), f.getDate()+dir); t=f;
+  } else { // week / custom: шаг = длина диапазона
+    const span=Math.round((t-f)/86400000)+1;
+    f=new Date(f.getFullYear(), f.getMonth(), f.getDate()+dir*span);
+    t=new Date(t.getFullYear(), t.getMonth(), t.getDate()+dir*span);
+  }
+  if(_kyD(f)>today) return; // в будущее не прыгаем
+  const from2=_kyD(f), to2=_kyD(t)>today?today:_kyD(t); // будущий хвост режем по сьогодні
+  _dashRange={from:from2, to:to2};
+  const fi=document.getElementById('dashFrom'), ti=document.getElementById('dashTo'); if(fi)fi.value=from2; if(ti)ti.value=to2;
+  _dashRangeLabel(from2,to2);
   loadDashboard();
 }
 function _dashRangeLabel(from,to){
