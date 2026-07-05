@@ -73,7 +73,11 @@
     title: 'Тарифні плани',
     group: 'platform',
     icon: 'workspace_premium',
-    section: '<div id="saasplans-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
+    section: '<div style="background:#f0f4ff;border:1px solid #d8e0ff;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13.5px;line-height:1.6;color:#33415c">' +
+             '<b>Тарифні плани.</b> Натисніть на план — відкриється його профіль: опис, ціни, фічі, ліміти й підключені салони. ' +
+             'Змінювати умови може лише власник платформи; нова ціна одразу діє для всіх підключених і майбутніх салонів.' +
+             '</div>' +
+             '<div id="saasplans-cards" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>' +
              '<div id="saasplans-table"></div>',
     loader: async function () {
       var cards = document.getElementById('saasplans-cards');
@@ -99,8 +103,9 @@
         // ціна може бути у plan.prices.monthly (public) або plan.price_monthly_uah (admin)
         function pm(p) { return p.prices ? p.prices.monthly : p.price_monthly_uah; }
         function py(p) { return p.prices ? p.prices.yearly : p.price_yearly_uah; }
-        var body = rows.map(function (p) {
-          return '<tr>' +
+        window._plansCache = rows; // профіль плану (#138)
+        var body = rows.map(function (p, i) {
+          return '<tr style="cursor:pointer" onclick="_planOpen(' + i + ')" title="Профіль плану">' +
             td('<b>' + E(p.name || '—') + '</b>' +
                (p.is_popular ? ' ' + badge('популярний', '#f0ad4e') : '')) +
             td('<code>' + E(p.slug || '—') + '</code>') +
@@ -121,6 +126,102 @@
       }
     }
   });
+
+  /* ── Профіль тарифного плану (#138): клік по рядку таблиці ──
+     Редагування — лише власник платформи (вхід без tenant-slug);
+     бекенд додатково захищений requirePlatform() на PUT /admin/plans/:id.
+     Збережена ціна діє миттєво для ВСІХ: тарифи читаються з saas_plans_v2
+     і підключеними салонами, і сторінкою реєстрації. */
+  window._planOpen = async function (idx) {
+    var p = (window._plansCache || [])[idx];
+    if (!p) return;
+    var isPlatform = !localStorage.getItem('svs_tenant_slug');
+    var pr = function (v) { return v == null || v === '' ? '—' : Number(v).toLocaleString('uk-UA') + ' ₴'; };
+    var row = function (k, v) {
+      return '<div style="display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #f2f2f2;font-size:13.5px">' +
+        '<span style="color:#888">' + k + '</span><span style="text-align:right">' + (v == null || v === '' ? '—' : v) + '</span></div>';
+    };
+    var feats = [], lims = [], tens = [];
+    try { feats = ((await window.modApi('/api/v2/admin/plans/' + p.id + '/features')) || {}).rows || []; } catch (_e) {}
+    try { lims = ((await window.modApi('/api/v2/admin/plans/' + p.id + '/limits')) || {}).rows || []; } catch (_e) {}
+    try { tens = ((await window.modApi('/api/v2/admin/plans/' + p.id + '/tenants')) || {}).rows || []; } catch (_e) {}
+    var featHtml = feats.length
+      ? feats.map(function (f) { return '<span style="display:inline-block;margin:2px 4px;padding:3px 10px;border-radius:10px;font-size:12px;background:' + (f.enabled ? '#2e9e5b22;color:#2e9e5b' : '#99999922;color:#999') + '">' + E(f.feature_key) + (f.enabled ? '' : ' (вимк.)') + '</span>'; }).join('')
+      : '<span style="color:#888;font-size:13px">фічі не задані</span>';
+    var limHtml = lims.length
+      ? lims.map(function (l) { return row(E(l.limit_key), (Number(l.limit_value) < 0 ? '∞' : E(l.limit_value)) + (l.is_soft ? ' <span style="color:#888">(soft)</span>' : '')); }).join('')
+      : '<div style="color:#888;font-size:13px;padding:6px 0">ліміти не задані</div>';
+    var body =
+      '<div style="margin-bottom:8px">' + badge(p.status || 'draft', statusColor(p.status)) +
+        (p.is_popular ? ' ' + badge('популярний', '#f0ad4e') : '') +
+        (p.is_public === false ? ' ' + badge('прихований', '#6c757d') : '') + '</div>' +
+      '<div style="font-size:13.5px;line-height:1.55;color:#444;margin-bottom:12px">' + E(p.description || 'Опис плану ще не заповнено.') + '</div>' +
+      row('Slug', '<code>' + E(p.slug || '—') + '</code>') +
+      row('Tier', p.tier != null ? E(p.tier) : '—') +
+      row('Ціна / місяць', pr(p.price_monthly_uah)) +
+      row('Ціна / рік', pr(p.price_yearly_uah)) +
+      row('Trial', p.trial_days != null ? E(p.trial_days) + ' дн.' : '—') +
+      row('Підключено салонів', tens.length ? ('<b>' + tens.length + '</b>') : '0') +
+      (tens.length ? '<div style="margin-top:6px;font-size:12.5px;color:#666">' + tens.slice(0, 8).map(function (t) { return E(t.name || t.slug || String(t.tenant_id || '').slice(0, 8)); }).join(', ') + (tens.length > 8 ? '…' : '') + '</div>' : '') +
+      '<div style="margin-top:12px"><b style="font-size:13.5px">Фічі плану</b><div style="margin-top:6px">' + featHtml + '</div></div>' +
+      '<div style="margin-top:12px"><b style="font-size:13.5px">Ліміти</b>' + limHtml + '</div>';
+    if (isPlatform) {
+      var inp = 'padding:7px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;width:110px';
+      body += '<div style="margin-top:18px;padding-top:14px;border-top:1px dashed #ddd">' +
+        '<b style="font-size:13.5px">Керування планом (власник платформи)</b>' +
+        '<div style="font-size:12px;color:#888;margin-top:4px">Нова ціна діє одразу для всіх підключених салонів і нових реєстрацій.</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">' +
+          '<label style="font-size:11.5px;color:#666">Назва<br><input id="planf-name" value="' + E(p.name || '') + '" style="' + inp + ';width:170px"></label>' +
+          '<label style="font-size:11.5px;color:#666">Ціна/міс, грн<br><input id="planf-pm" type="number" min="0" value="' + (p.price_monthly_uah != null ? Number(p.price_monthly_uah) : '') + '" style="' + inp + '"></label>' +
+          '<label style="font-size:11.5px;color:#666">Ціна/рік, грн<br><input id="planf-py" type="number" min="0" value="' + (p.price_yearly_uah != null ? Number(p.price_yearly_uah) : '') + '" style="' + inp + '"></label>' +
+          '<label style="font-size:11.5px;color:#666">Trial, днів<br><input id="planf-td" type="number" min="0" max="365" value="' + (p.trial_days != null ? Number(p.trial_days) : '') + '" style="' + inp + '"></label>' +
+          '<label style="font-size:11.5px;color:#666">Статус<br><select id="planf-st" style="' + inp + ';width:140px">' +
+            ['draft', 'published', 'archived'].map(function (s) { return '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+          '</select></label>' +
+        '</div>' +
+        '<div style="display:flex;gap:18px;margin-top:10px;font-size:13px">' +
+          '<label><input type="checkbox" id="planf-pop"' + (p.is_popular ? ' checked' : '') + '> Позначити «популярний»</label>' +
+          '<label><input type="checkbox" id="planf-pub"' + (p.is_public !== false ? ' checked' : '') + '> Показувати на сторінці тарифів</label>' +
+        '</div>' +
+        '<label style="font-size:11.5px;color:#666;display:block;margin-top:10px">Опис (бачать усі салони)<br>' +
+          '<textarea id="planf-desc" rows="2" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px">' + E(p.description || '') + '</textarea></label>' +
+        '<button onclick="_planSave(\'' + E(String(p.id)) + '\',this)" style="margin-top:10px;padding:8px 20px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Зберегти план</button>' +
+        '<div id="plan-modal-msg" style="margin-top:8px;font-size:12.5px"></div>' +
+      '</div>';
+    }
+    if (typeof showModal === 'function') showModal('План «' + E(p.name || p.slug || '') + '»', body);
+    else alert(p.name);
+  };
+  window._planSave = async function (planId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Зберігаю…'; }
+    var msg = function (t, ok) {
+      var el = document.getElementById('plan-modal-msg');
+      if (el) el.innerHTML = '<span style="color:' + (ok ? '#2e9e5b' : '#d9534f') + '">' + E(t) + '</span>';
+    };
+    try {
+      var g = function (i) { var el = document.getElementById(i); return el ? el.value : null; };
+      var c = function (i) { var el = document.getElementById(i); return el ? el.checked : undefined; };
+      var r = await window.modApi('/api/v2/admin/plans/' + planId, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: g('planf-name') || undefined,
+          price_monthly_uah: g('planf-pm') !== '' ? g('planf-pm') : undefined,
+          price_yearly_uah: g('planf-py') !== '' ? g('planf-py') : undefined,
+          trial_days: g('planf-td') !== '' ? g('planf-td') : undefined,
+          status: g('planf-st') || undefined,
+          is_popular: c('planf-pop'),
+          is_public: c('planf-pub'),
+          description: g('planf-desc')
+        })
+      });
+      if (r && r.error) throw new Error(r.error === 'platform_only' ? 'Змінювати тарифи може лише власник платформи' : r.error);
+      msg('Збережено. Нові умови діють для всіх підключених салонів і нових реєстрацій.', true);
+      setTimeout(function () {
+        document.getElementById('genModal')?.remove();
+        if (window.extLoaders && window.extLoaders.saasplans) window.extLoaders.saasplans();
+      }, 900);
+    } catch (e) { msg(e.message, false); if (btn) { btn.disabled = false; btn.textContent = 'Зберегти план'; } }
+  };
 
   /* ════════════════════════════════════════════════════════════
      2. ЛІЦЕНЗІЇ ТА МОДУЛІ

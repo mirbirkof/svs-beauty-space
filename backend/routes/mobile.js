@@ -682,16 +682,20 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
     );
     const shiftId = shiftRes.rows[0]?.id || null;
 
-    // Записываем операцию в кассу
+    // Записываем операцию в кассу. Колонок appointment_id/client_id в cash_operations НЕТ —
+    // привязка к визиту через ref_type/ref_id (как в /appointments/:id/pay).
+    // ON CONFLICT по ux_cash_ops_appt_payment = идемпотентность: повторная оплата не дублирует приход.
     const op = await pool.query(
       `INSERT INTO cash_operations
-         (shift_id, type, amount, method, category, description, appointment_id, master_id, client_id)
-       VALUES ($1,'in',$2,$3,'sale_service',$4,$5,$6,$7)
+         (shift_id, type, amount, method, category, description, ref_type, ref_id, master_id)
+       VALUES ($1,'in',$2,$3,'sale_service',$4,'appointment',$5,$6)
+       ON CONFLICT (tenant_id, ref_type, ref_id, method, category) WHERE type='in' AND ref_type='appointment' DO NOTHING
        RETURNING id`,
       [shiftId, finalAmount, payment_method === 'mixed' ? 'cash' : payment_method,
        appt.rows[0].services_text || 'Услуга',
-       appointment_id, appt.rows[0].master_id || null, appt.rows[0].client_id || null]
+       parseInt(appointment_id, 10), appt.rows[0].master_id || null]
     );
+    if (!op.rows[0]) return res.status(200).json({ ok: true, already_paid: true });
 
     // Обновляем статус записи
     await pool.query(
