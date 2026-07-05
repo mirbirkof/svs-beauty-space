@@ -388,14 +388,31 @@ router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) =>
   try {
     // Виручка майстра = ФАКТ з каси по візиту (послуга + матеріали/банки, після знижок) —
     // та сама цифра, що в журналі та фінцентрі. Для неоплачених візитів fallback:
-    // real_amount/price (лише послуга). Раніше рахувалась планова ціна послуги →
-    // у майстра з проданими банками «неправильні цифри» на дашборді (заметка Босса 06.07).
+    // real_amount/price (лише послуга).
+    // КОРЕКЦІЯ ПРОДАВЦЯ (Босс 06.07): банка, продана ІНШИМ майстром у чужому візиті,
+    // переїжджає в оборот продавця (у Світлани робота, продаж Відюк → оборот банок Відюк).
     const r = await pool.query(
-      `SELECT m.id, m.name,
-              COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int visits,
+      `WITH sold AS (
+         SELECT a.master_id AS owner_id,
+                COALESCE(am.seller_master_id, a.master_id) AS seller_id,
+                ROUND(am.qty_used * pv.price, 2) AS val
+           FROM appointment_materials am
+           JOIN appointments a ON a.id = am.appointment_id
+           JOIN product_variants pv ON pv.id = am.variant_id
+           LEFT JOIN products p ON p.id = pv.product_id
+          WHERE p.price_per_gram IS NULL AND pv.price IS NOT NULL
+            AND am.seller_master_id IS NOT NULL AND am.seller_master_id <> a.master_id
+            AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+            AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
+            AND a.bp_state IS DISTINCT FROM 'bp_deleted')
+       SELECT m.id, m.name,
+              COUNT(a.id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int visits,
               COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int uniq,
-              COUNT(*) FILTER (WHERE a.status='cancelled')::int cancelled,
-              COALESCE(SUM(COALESCE(pt.paid, COALESCE(a.real_amount,a.price,0))) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)::numeric revenue
+              COUNT(a.id) FILTER (WHERE a.status='cancelled')::int cancelled,
+              COALESCE(SUM(COALESCE(pt.paid, COALESCE(a.real_amount,a.price,0))) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)::numeric visit_revenue,
+              (COALESCE(SUM(COALESCE(pt.paid, COALESCE(a.real_amount,a.price,0))) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)),0)
+               - COALESCE((SELECT SUM(val) FROM sold WHERE owner_id = m.id), 0)
+               + COALESCE((SELECT SUM(val) FROM sold WHERE seller_id = m.id), 0))::numeric revenue
          FROM masters m
          LEFT JOIN appointments a ON a.master_id=m.id
               AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
@@ -407,15 +424,17 @@ router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) =>
          ) pt ON true
         WHERE COALESCE(m.active,true)=true
         GROUP BY m.id, m.name
-       HAVING COUNT(*) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)) > 0
+       HAVING COUNT(a.id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)) > 0
+           OR EXISTS (SELECT 1 FROM sold WHERE seller_id = m.id)
         ORDER BY revenue DESC`);
     const items = r.rows.map(x => {
       const visits = x.visits, uniq = x.uniq, rev = Number(x.revenue);
+      const visitRev = Number(x.visit_revenue || 0); // тільки гроші власних візитів — база сер. чека
       const finished = visits + x.cancelled;
       return {
         master_id: x.id, name: x.name, visits, unique_clients: uniq,
         revenue: Math.round(rev),
-        avg_check: visits > 0 ? Math.round(rev / visits) : 0,
+        avg_check: visits > 0 ? Math.round(visitRev / visits) : 0,
         repeat_pct: visits > 0 ? Math.round((visits - uniq) / visits * 100) : 0,
         cancelled: x.cancelled,
         cancel_pct: finished > 0 ? Math.round(x.cancelled / finished * 100) : 0,

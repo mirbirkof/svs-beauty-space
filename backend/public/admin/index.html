@@ -8825,7 +8825,14 @@ async function loadApptMaterials(id) {
           <span style="color:var(--text-secondary);font-size:12px">🧴 Матеріали (списання зі складу)</span>
           ${locked ? '<span style="font-size:11px;color:#047857;font-weight:700">✓ списано зі складу</span>' : ''}
         </div>
-        ${items.length ? `<div style="display:grid;gap:6px">${items.map(m => `
+        ${items.length ? (() => {
+          // Розхідники (за грам / без ціни) — зверху; ПРОДАЖ продукції (банки з ціною) —
+          // окремою групою внизу, поруч одна з одною (прохання Босса 06.07)
+          const isSale = m => m.price_per_gram == null && m.price != null;
+          const sorted = [...items.filter(m => !isSale(m)), ...items.filter(isSale)];
+          const firstSaleIdx = sorted.findIndex(isSale);
+          return `<div style="display:grid;gap:6px">${sorted.map((m, _i) => (_i === firstSaleIdx
+            ? `<div style="font-size:11px;font-weight:700;color:#6d28d9;margin-top:6px;letter-spacing:.4px">🛍 ПРОДАЖ ПРОДУКЦІЇ КЛІЄНТУ</div>` : '') + `
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
             <span style="flex:1;min-width:0">${escapeHtml(m.product_name||'Товар')}${m.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(m.volume)}</span>`:''}${m.price_per_gram!=null?' <span style="font-size:10px;color:#7c3aed;font-weight:700">за грам</span>':(m.billable?' <span style="font-size:10px;color:#6d28d9;font-weight:700">🛍 продаж</span>':'')}
               <span style="display:block;color:var(--text-secondary);font-size:11px">${m.price!=null?`ціна: ${_money(m.price)} · `:''}на складі: ${m.stock_qty!=null?m.stock_qty:'—'}${Number(m.stock_qty)<0?' ⚠':''}</span>
@@ -8853,7 +8860,7 @@ async function loadApptMaterials(id) {
           ${billable>0?`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f5f3ff;border-radius:8px;font-size:13px">
             <span style="font-weight:600;color:#6d28d9">💜 Матеріали візиту — увійдуть в оплату</span>
             <span style="font-weight:800;color:#6d28d9">+${_money(billable)}</span>
-          </div>`:''}</div>` : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
+          </div>`:''}</div>`; })() : `<div style="font-size:12px;color:var(--text-secondary)">Матеріали ще не додані${locked?'':' — додайте вручну або заповніть за нормами послуг'}</div>`}
         ${locked ? '' : `
         <div style="display:flex;gap:8px;margin-top:8px">
           <button type="button" class="btn btn-outline" style="flex:1;font-weight:600" onclick="apptMatAddToggle(${id})">+ матеріал</button>
