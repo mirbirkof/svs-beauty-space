@@ -20,7 +20,7 @@ async function featureAllowed(key) {
   const tid = getTenantId();
   if (!tid) return { ok: true, reason: 'no-tenant-ctx' };
   const pf = await pool.query(
-    `SELECT pf.enabled
+    `SELECT pf.enabled, tl.status
        FROM tenant_licenses tl
        JOIN saas_plans_v2 p ON p.slug = COALESCE($2::jsonb->>tl.plan_code, tl.plan_code)
        JOIN plan_features pf ON pf.plan_id = p.id AND pf.feature_key = $1
@@ -28,7 +28,9 @@ async function featureAllowed(key) {
       ORDER BY tl.updated_at DESC NULLS LAST LIMIT 1`,
     [key, JSON.stringify(LEGACY_SLUG), tid]);
   if (!pf.rows.length) return { ok: true, reason: 'no-plan-row' }; // fail-open
-  if (pf.rows[0].enabled) return { ok: true, reason: 'plan' };
+  // несплачений/скасований план → платні фічі гаснуть (past_due ставить білінг-тік)
+  const badStatus = ['past_due', 'cancelled', 'suspended', 'expired'].includes(String(pf.rows[0].status || ''));
+  if (pf.rows[0].enabled && !badStatus) return { ok: true, reason: 'plan' };
   // фіча вимкнена в плані — можливо куплена окремим модулем
   const lic = await pool.query(
     `SELECT 1 FROM licenses l JOIN module_catalog mc ON mc.id = l.module_id

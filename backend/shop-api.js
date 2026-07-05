@@ -396,20 +396,22 @@ if (process.env.DATABASE_URL) {
             WHERE status='grace_period' AND grace_period_ends IS NOT NULL AND grace_period_ends < NOW()
             RETURNING id, tenant_id`);
         if (g.rowCount || x.rowCount) console.log(`[licenses] grace:${g.rowCount} expired:${x.rowCount}`);
-        // trial ПЛАНУ скінчився → past_due (фічегейти/білінг бачать, що салон не платить).
-        // Автоінвойс/suspension — наступний етап (див. SAAS-READINESS-PLAN P1).
+        // Неоплата: рахунок (його генерує billing.runRecurring при продовженні) висить
+        // відкритим 7+ днів → підписка past_due, фічегейти гаснуть (аудит 06.07;
+        // trialing НЕ чіпаємо — runRecurring сам продовжує trial → active + рахунок).
         const t = await pool.query(
-          `UPDATE subscriptions_saas SET status='past_due', updated_at=NOW()
-            WHERE status='trialing' AND trial_ends_at IS NOT NULL AND trial_ends_at < NOW()
-            RETURNING *`);
-        if (t.rowCount) console.log(`[subscriptions] trial→past_due: ${t.rowCount}`);
-        // авто-рахунок на перший платний період (дефолт 06.07: рахунок одразу, оператор бачить список)
-        for (const sub of (t.rows || [])) {
-          try {
-            const billing = require('./lib/billing');
-            await billing.generateInvoice(sub, {});
-            console.log('[subscriptions] invoice generated for', sub.tenant_id);
-          } catch (e) { console.error('[subscriptions] invoice fail', sub.tenant_id, e.message); }
+          `UPDATE subscriptions_saas s SET status='past_due', updated_at=NOW()
+            WHERE s.status='active'
+              AND EXISTS (SELECT 1 FROM invoices_saas i
+                           WHERE i.subscription_id = s.id AND i.status = 'open'
+                             AND i.created_at < NOW() - INTERVAL '7 days')
+            RETURNING s.tenant_id, s.plan_code, s.current_period_end`);
+        if (t.rowCount) {
+          console.log(`[subscriptions] active→past_due (несплата 7+ днів): ${t.rowCount}`);
+          const billing = require('./lib/billing');
+          for (const sub of t.rows) {
+            await billing.syncLicense(sub.tenant_id, sub.plan_code, 'past_due', sub.current_period_end).catch(() => {});
+          }
         }
         // повідомлення оператору платформи: хто перейшов у grace/past_due (щоб подзвонити/виставити рахунок)
         if ((g.rowCount || t.rowCount) && process.env.ADMIN_TG_CHAT) {

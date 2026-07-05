@@ -2539,7 +2539,13 @@ select.input { background:var(--card); }
             <!-- БІЗНЕС-НАЛАШТУВАННЯ (власник) -->
             <div class="set-pane" id="tab-business">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Модулі <button type="button" class="info-i" data-t="<b>Модулі.</b> Вмикання/вимикання функцій CRM (зміни, табель тощо). Вимкнені модулі ховаються з меню, щоб не заважати." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <div id="ownerDigestBox" style="margin-bottom:16px;padding:12px 14px;border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff">
+                  <b style="font-size:13.5px">📬 Щоденні зведення власнику в Telegram</b>
+                  <p class="set-p" style="margin:6px 0 8px">Отримуйте фінансову зведення вашого салону щодня о 21:00 у ваш Telegram-бот. Натисніть кнопку, отримайте код і напишіть вашому боту: <code>/owner КОД</code></p>
+                  <button type="button" class="btn btn-sm btn-primary" onclick="(async()=>{try{const r=await api('/api/bot-connect/owner-code',{method:'POST',body:'{}'});document.getElementById('ownerCodeOut').innerHTML=r.ok?('Код: <b style=\'font-size:16px\'>'+r.code+'</b> · діє '+r.ttl_min+' хв — напишіть боту: <code>/owner '+r.code+'</code>'):('Помилка: '+(r.error||''));}catch(e){document.getElementById('ownerCodeOut').textContent=e.message}})()">Отримати код привʼязки</button>
+                  <div id="ownerCodeOut" style="margin-top:8px;font-size:13px"></div>
+                </div>
+                                <h3 class="set-h">Модулі <button type="button" class="info-i" data-t="<b>Модулі.</b> Вмикання/вимикання функцій CRM (зміни, табель тощо). Вимкнені модулі ховаються з меню, щоб не заважати." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Увімкнення / вимкнення необовʼязкових розділів. Вимкнений модуль зникає з меню, дані зберігаються.</p>
                 <div class="set-form">
                   <label class="set-toggle"><input type="checkbox" id="bz_mod_shifts" onchange="toggleShiftsModule(this.checked)"><span><b>Зміни / Табель</b><i>Окремий облік змін і clock-in/out. Для плану обороту кількість змін береться з графіка незалежно від цього модуля.</i></span></label>
