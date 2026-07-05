@@ -490,6 +490,28 @@ if (process.env.DATABASE_URL) {
     });
 }
 
+// ── DWH: нічний авто-ETL о 04:00 за Києвом (раз на добу) ──
+// dwh_etl_jobs.cron_expression існує, але шедулера не було — сховище наповнювалось
+// лише кнопкою. Тепер факти/виміри оновлюються самі щоночі.
+if (process.env.DATABASE_URL) {
+  let _lastEtlDay = null;
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const kyivHour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Europe/Kyiv' }).format(now));
+      const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(now);
+      if (kyivHour === 4 && _lastEtlDay !== day) {
+        _lastEtlDay = day;
+        const dwh = require('./routes/data-warehouse');
+        if (typeof dwh.runAllActive === 'function') {
+          const r = await dwh.runAllActive('cron');
+          console.log('[dwh-cron] нічний ETL виконано:', r.length, 'джобів');
+        }
+      }
+    } catch (e) { console.error('[dwh-cron]', e.message); }
+  }, 20 * 60 * 1000).unref();
+}
+
 // ── Render keep-alive: free tier засыпает после 15 мин простоя ──
 // Пингуем себя каждые 10 мин (svs-booking-api погашено 03.07 — бот тепер тут).
 if (process.env.RENDER_EXTERNAL_URL) {

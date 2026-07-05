@@ -237,6 +237,8 @@
         '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">' +
         (!my
           ? '<button onclick="_licTrial(\'' + E(String(id)) + '\',this)" style="padding:8px 18px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Спробувати безкоштовно (' + E(m.trial_days != null ? m.trial_days : 14) + ' дн.)</button>' +
+            (Number(m.price_monthly_uah) > 0 ? '<button onclick="_licBuy(\'' + E(String(id)) + '\',\'monthly\',this)" style="padding:8px 18px;background:#2e9e5b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Купити — ' + Number(m.price_monthly_uah).toLocaleString('uk-UA') + ' грн/міс</button>' : '') +
+            (Number(m.price_yearly_uah) > 0 ? '<button onclick="_licBuy(\'' + E(String(id)) + '\',\'yearly\',this)" style="padding:8px 18px;background:#fff;color:#2e9e5b;border:1px solid #2e9e5b;border-radius:8px;cursor:pointer;font-size:13px">Рік — ' + Number(m.price_yearly_uah).toLocaleString('uk-UA') + ' грн</button>' : '') +
             '<button onclick="_licGrant(\'' + E(String(id)) + '\',this)" style="padding:8px 18px;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:8px;cursor:pointer;font-size:13px">Видати ліцензію (адмін)</button>'
           : '<button onclick="_licRevoke(\'' + E(String(my.id)) + '\',this)" style="padding:8px 18px;background:#fff;color:#d9534f;border:1px solid #d9534f;border-radius:8px;cursor:pointer;font-size:13px">Деактивувати</button>') +
         '</div>' +
@@ -292,6 +294,21 @@
       if (r && r.error) throw new Error(r.error);
       licMsg('Збережено. Нові ціни і trial діють для всіх покупців.', true); licRefresh();
     } catch (e) { licMsg(e.message, false); if (btn) { btn.disabled = false; btn.textContent = 'Зберегти налаштування модуля'; } }
+  };
+  window._licBuy = async function (moduleId, cycle, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Створюю рахунок…'; }
+    try {
+      var r = await window.modApi('/api/licenses/purchase', {
+        method: 'POST', body: JSON.stringify({ module_id: moduleId, cycle: cycle })
+      });
+      if (r && r.error) throw new Error(r.error);
+      if (r.free) { licMsg('Модуль безкоштовний — увімкнено одразу.', true); licRefresh(); return; }
+      if (r.pageUrl) {
+        window.open(r.pageUrl, '_blank');
+        licMsg('Рахунок створено — відкрито сторінку оплати. Після оплати модуль увімкнеться автоматично (до 1 хв).', true);
+      }
+    } catch (e) { licMsg(e.message, false); }
+    if (btn) { btn.disabled = false; }
   };
   window._licTrial = async function (moduleId, btn) {
     if (btn) btn.disabled = true;

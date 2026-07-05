@@ -39,7 +39,7 @@ async function applyInvoiceStatus(data) {
   if (!invoiceId) return { ok: false, reason: 'no-invoice-id' };
 
   const cur = await pool.query(
-    `SELECT id, order_id, booking_id, amount, status, purpose FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
+    `SELECT id, order_id, booking_id, amount, status, purpose, tenant_id FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
   );
   if (!cur.rowCount) {
@@ -82,7 +82,34 @@ async function applyInvoiceStatus(data) {
     [data.status, data.failureReason || null, JSON.stringify(data), p.id]
   );
 
-  if (data.status === 'success' && p.booking_id && p.purpose === 'visit') {
+  if (data.status === 'success' && p.purpose && String(p.purpose).startsWith('module:')) {
+    // ── купівля модуля CRM (SaaS): активуємо ліцензію ──
+    try {
+      const parts = String(p.purpose).split(':'); // module:<module_id>:<cycle>
+      const moduleId = parts[1], cycle = parts[2] || 'monthly';
+      const ltype = cycle === 'perpetual' ? 'perpetual' : 'subscription';
+      const expires = cycle === 'perpetual' ? null
+        : new Date(Date.now() + (cycle === 'yearly' ? 365 : 30) * 864e5);
+      const upd = await pool.query(
+        `UPDATE licenses SET license_type=$3, status='active', activated_at=NOW(), expires_at=$4, updated_at=NOW()
+          WHERE tenant_id=$1 AND module_id=$2 RETURNING id`,
+        [p.tenant_id, moduleId, ltype, expires]);
+      if (!upd.rowCount) {
+        await pool.query(
+          `INSERT INTO licenses (tenant_id, module_id, license_type, status, activated_at, expires_at)
+           VALUES ($1,$2,$3,'active',NOW(),$4)`,
+          [p.tenant_id, moduleId, ltype, expires]);
+      }
+      try { require('../lib/license-check').invalidateLicense(p.tenant_id); } catch (_e) {}
+      console.log(`[mono:module] ліцензію активовано: tenant ${p.tenant_id}, module ${moduleId}, ${cycle}`);
+      if (process.env.ADMIN_TG_CHAT) {
+        const { tgSend } = require('./telegram-notify');
+        tgSend(process.env.ADMIN_TG_CHAT,
+          `💳 <b>Куплено модуль CRM</b>\nМодуль: ${moduleId}\nПеріод: ${cycle}\nСума: ${Math.round(data.amount ? data.amount / 100 : p.amount)} грн`)
+          .catch(() => {});
+      }
+    } catch (e) { console.error('[mono:module]', e.message); }
+  } else if (data.status === 'success' && p.booking_id && p.purpose === 'visit') {
     // ── оплата послуги ПІСЛЯ візиту ──
     const paid = data.amount ? data.amount / 100 : p.amount;
     const upd = await pool.query(

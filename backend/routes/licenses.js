@@ -334,6 +334,49 @@ router.delete('/:id', authRead, async (req, res) => {
   }
 });
 
+/** POST /api/licenses/purchase — купити модуль карткою (Mono).
+ *  body: { module_id, cycle: monthly|yearly|perpetual }
+ *  Безкоштовний модуль (ціна 0) вмикається одразу. Платний → рахунок Mono,
+ *  активація ліцензії — у вебхуці /api/pay/mono/webhook (purpose module:...). */
+router.post('/purchase', authRead, async (req, res) => {
+  try {
+    const { module_id, cycle = 'monthly' } = req.body || {};
+    if (!module_id) return res.status(400).json({ error: 'module_id_required' });
+    if (!['monthly', 'yearly', 'perpetual'].includes(cycle)) return res.status(400).json({ error: 'invalid_cycle' });
+    const mc = (await q(`SELECT * FROM module_catalog WHERE id=$1 AND status='available'`, [module_id]))[0];
+    if (!mc) return res.status(404).json({ error: 'module_not_found' });
+    const priceMap = { monthly: mc.price_monthly_uah, yearly: mc.price_yearly_uah, perpetual: mc.price_perpetual_uah };
+    const price = Number(priceMap[cycle] || 0);
+
+    // безкоштовний модуль → активація без оплати
+    if (!(price > 0)) {
+      const upd = await q(
+        `UPDATE licenses SET license_type='subscription', status='active', activated_at=NOW(), expires_at=NULL, updated_at=NOW()
+          WHERE tenant_id=$1 AND module_id=$2 RETURNING id`, [req.tenant_id, module_id]);
+      if (!upd.length) {
+        await q(`INSERT INTO licenses (tenant_id, module_id, license_type, status, activated_at, expires_at)
+                 VALUES ($1,$2,'subscription','active',NOW(),NULL)`, [req.tenant_id, module_id]);
+      }
+      try { require('../lib/license-check').invalidateLicense(req.tenant_id); } catch (_e) {}
+      return res.status(201).json({ ok: true, free: true });
+    }
+
+    const mono = require('../lib/mono');
+    const ref = 'mod-' + String(module_id).slice(0, 8) + '-' + Date.now();
+    const label = cycle === 'monthly' ? '1 місяць' : (cycle === 'yearly' ? '1 рік' : 'назавжди');
+    const inv = await mono.createInvoice({ amountUah: price, orderId: ref, destination: `Модуль CRM «${mc.name}» — ${label}` });
+    if (!inv || !inv.invoiceId) return res.status(502).json({ error: 'Не вдалося створити рахунок Mono: ' + JSON.stringify(inv || {}).slice(0, 120) });
+    await q(
+      `INSERT INTO payments (provider, invoice_id, amount, status, purpose, page_url, method, tenant_id)
+       VALUES ('mono', $1, $2, 'created', $3, $4, 'mono', $5)`,
+      [inv.invoiceId, price, `module:${module_id}:${cycle}`, inv.pageUrl || null, req.tenant_id]);
+    res.status(201).json({ ok: true, pageUrl: inv.pageUrl, invoiceId: inv.invoiceId, amount: price });
+  } catch (e) {
+    console.error('[licenses/purchase]', e.message);
+    res.status(500).json({ error: 'Не вдалося оформити покупку: ' + e.message });
+  }
+});
+
 /** GET /api/licenses/:id/history — аудит-лог ліцензії */
 router.get('/:id/history', authRead, async (req, res) => {
   try {

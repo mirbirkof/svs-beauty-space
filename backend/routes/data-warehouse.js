@@ -793,4 +793,13 @@ router.get('/facts', READ, async (req, res) => {
   } catch (e) { res.status(500).json({ error: errOut(e) }); }
 });
 
+// Нічний авто-ETL (shop-api.js): всі активні джоби у порядку priority
+async function runAllActive(trigger = 'cron') {
+  const jobs = await safeRows(`SELECT * FROM dwh_etl_jobs WHERE is_active=TRUE ORDER BY priority, name`);
+  const results = [];
+  for (const job of jobs) results.push({ job: job.name, ...(await runJob(job, trigger)) });
+  return results;
+}
+
 module.exports = router;
+module.exports.runAllActive = runAllActive;
