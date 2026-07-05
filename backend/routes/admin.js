@@ -29,12 +29,17 @@ const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const { notifyOrderStatus } = require('./telegram-notify');
-const { requirePerm, logAction } = require('../lib/rbac');
+const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
 const { findDuplicateClients, mergeClients } = require('../lib/client-merge');
 
 // ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
 router.use(requirePerm('admin.*'));
+
+// «Склад і ціни»: установка цен и правка остатков — только с правом stock.manage.
+// У owner оно есть через '*', администратору включается тумблером в «Керуванні доступом».
+function canManageStock(req) { return hasPermission(req.user && req.user.permissions, 'stock.manage'); }
+const STOCK_MANAGE_403 = { error: 'forbidden', need: 'stock.manage', message: 'Немає права «Склад і ціни» — власник може увімкнути його в «Керуванні доступом»' };
 
 // ═══════════════════════════════════════════════════════
 //   ТОВАРЫ И ВАРИАНТЫ
@@ -86,6 +91,7 @@ router.patch('/products/:id', async (req, res) => {
     const { name, brand_id, category_id, photo, description, featured, active, meta_title, meta_description, attrs, price_per_gram } = req.body || {};
     if (attrs !== undefined && (typeof attrs !== 'object' || Array.isArray(attrs) || attrs === null))
       return res.status(400).json({ error: 'attrs-must-be-object' });
+    if (price_per_gram !== undefined && !canManageStock(req)) return res.status(403).json(STOCK_MANAGE_403);
     // price_per_gram: число > 0 — встановити; 0/'' — прибрати (NULL); undefined — не чіпати
     let ppg; // undefined = не чіпати
     if (price_per_gram !== undefined) {
@@ -146,6 +152,7 @@ router.post('/products/:id/variants', async (req, res) => {
   try {
     const { volume, price, wholesale, sku, stock_qty = 0, branch_id } = req.body || {};
     if (!volume || price == null) return res.status(400).json({ error: 'volume-price-required' });
+    if (!canManageStock(req)) return res.status(403).json(STOCK_MANAGE_403);
     const pool = getPool();
     const r = await pool.query(
       `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active, branch_id)
@@ -161,6 +168,8 @@ router.post('/products/:id/variants', async (req, res) => {
 router.patch('/variants/:id', async (req, res) => {
   try {
     const { volume, price, wholesale, sku, stock_qty, active } = req.body || {};
+    if ((price !== undefined || wholesale !== undefined || stock_qty !== undefined) && !canManageStock(req))
+      return res.status(403).json(STOCK_MANAGE_403);
     const pool = getPool();
     const r = await pool.query(
       `UPDATE product_variants SET
@@ -222,6 +231,7 @@ router.post('/variants/:id/stock', async (req, res) => {
   const client = await pool.connect();
   try {
     const { qty, note } = req.body || {};
+    if (!canManageStock(req)) return res.status(403).json(STOCK_MANAGE_403);
     // #109: склад у грамах — дробові кількості дозволені (parseInt різав "45.5")
     const delta = Number(qty);
     if (!Number.isFinite(delta) || delta === 0) return res.status(400).json({ error: 'qty-required' });

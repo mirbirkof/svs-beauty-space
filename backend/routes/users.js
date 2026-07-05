@@ -14,6 +14,7 @@ router.get('/', requirePerm('users.read'), async (req, res) => {
     const r = await pool.query(
       `SELECT u.id, u.phone, u.email, u.display_name, u.username, r.code AS role, r.name AS role_name,
               u.master_id, u.branch_id, u.is_active, u.last_login_at, u.created_at,
+              u.extra_permissions,
               (u.password_hash IS NOT NULL) AS has_password
          FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id`
     );
@@ -152,7 +153,21 @@ router.delete('/:id', requirePerm('users.write'), async (req, res) => {
 router.patch('/:id', requirePerm('users.write'), async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { display_name, role_code, is_active, branch_id, master_id } = req.body || {};
+    const { display_name, role_code, is_active, branch_id, master_id, extra_permissions } = req.body || {};
+    // персональные тумблеры прав: белый список кодов + выдать можно только право, которое есть у самого выдающего
+    const TOGGLABLE_PERMS = ['stock.manage'];
+    let extraPerms = null; // null = не менять
+    if (extra_permissions !== undefined) {
+      if (!Array.isArray(extra_permissions)) return res.status(400).json({ error: 'extra_permissions-must-be-array' });
+      const clean = [...new Set(extra_permissions.filter(p => TOGGLABLE_PERMS.includes(p)))];
+      const { hasPermission } = require('../lib/rbac');
+      for (const p of clean) {
+        if (!hasPermission(req.user.permissions, p)) {
+          return res.status(403).json({ error: 'perm-not-owned', message: 'Нельзя выдать право, которого нет у себя' });
+        }
+      }
+      extraPerms = JSON.stringify(clean);
+    }
     let roleId = null;
     if (role_code) {
       const r = await pool.query(`SELECT id, level FROM roles WHERE code=$1`, [role_code]);
@@ -178,9 +193,10 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
          is_active    = COALESCE($3, is_active),
          branch_id    = COALESCE($4, branch_id),
          master_id    = COALESCE($5, master_id),
+         extra_permissions = COALESCE($7::jsonb, extra_permissions),
          updated_at   = NOW()
        WHERE id=$6 RETURNING id`,
-      [display_name || null, roleId, is_active, branch_id || null, master_id || null, id]
+      [display_name || null, roleId, is_active, branch_id || null, master_id || null, id, extraPerms]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'user.update', entity: 'user', entity_id: id, meta: req.body });

@@ -85,7 +85,7 @@ router.get('/orders/:id', requirePerm('stock.read'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/orders', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders', requirePerm('stock.manage'), async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN'); await applyTenant(client);
@@ -113,7 +113,7 @@ router.post('/orders', requirePerm('stock.write'), async (req, res) => {
   finally { client.release(); }
 });
 
-router.patch('/orders/:id', requirePerm('stock.write'), async (req, res) => {
+router.patch('/orders/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const cur = await getPool().query(`SELECT status FROM purchase_orders WHERE id=$1`, [req.params.id]);
     if (!cur.rowCount) return res.status(404).json({ error: 'not-found' });
@@ -133,7 +133,7 @@ router.patch('/orders/:id', requirePerm('stock.write'), async (req, res) => {
 });
 
 // draft → pending_approval
-router.post('/orders/:id/submit', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders/:id/submit', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await getPool().query(
       `UPDATE purchase_orders SET status='pending_approval', updated_at=NOW() WHERE id=$1 AND status='draft' RETURNING *`, [req.params.id]);
@@ -176,7 +176,7 @@ router.post('/orders/:id/reject', requirePerm('reports.finance'), async (req, re
 });
 
 // approved → ordered (отправлен поставщику)
-router.post('/orders/:id/send', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders/:id/send', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await getPool().query(
       `UPDATE purchase_orders SET status='ordered', ordered_at=NOW(), updated_at=NOW() WHERE id=$1 AND status='approved' RETURNING *`, [req.params.id]);
@@ -186,7 +186,7 @@ router.post('/orders/:id/send', requirePerm('stock.write'), async (req, res) => 
 });
 
 // Приёмка товара → создаёт stock_receipt и увеличивает products.stock
-router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN'); await applyTenant(client);
@@ -296,7 +296,7 @@ router.post('/orders/:id/receive', requirePerm('stock.write'), async (req, res) 
   finally { client.release(); }
 });
 
-router.post('/orders/:id/close', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders/:id/close', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await getPool().query(
       `UPDATE purchase_orders SET status='closed', updated_at=NOW() WHERE id=$1 AND status IN ('received','partially_received') RETURNING id`, [req.params.id]);
@@ -305,7 +305,7 @@ router.post('/orders/:id/close', requirePerm('stock.write'), async (req, res) =>
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/orders/:id/cancel', requirePerm('stock.write'), async (req, res) => {
+router.post('/orders/:id/cancel', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await getPool().query(
       `UPDATE purchase_orders SET status='cancelled', updated_at=NOW() WHERE id=$1 AND status IN ('draft','pending_approval','approved','rejected') RETURNING id`, [req.params.id]);
@@ -314,7 +314,7 @@ router.post('/orders/:id/cancel', requirePerm('stock.write'), async (req, res) =
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.delete('/orders/:id', requirePerm('stock.write'), async (req, res) => {
+router.delete('/orders/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await getPool().query(`DELETE FROM purchase_orders WHERE id=$1 AND status IN ('draft','cancelled','rejected') RETURNING id`, [req.params.id]);
     if (!r.rowCount) return res.status(409).json({ error: 'not-deletable' });
@@ -369,7 +369,7 @@ router.get('/auto-rules', requirePerm('stock.read'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/auto-rules', requirePerm('stock.write'), async (req, res) => {
+router.post('/auto-rules', requirePerm('stock.manage'), async (req, res) => {
   try {
     const { product_id, preferred_supplier_id, selection_strategy = 'preferred', max_auto_amount, auto_approve = false } = req.body || {};
     if (!product_id) return res.status(400).json({ error: 'product-required' });
@@ -384,7 +384,7 @@ router.post('/auto-rules', requirePerm('stock.write'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.put('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
+router.put('/auto-rules/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const { preferred_supplier_id, selection_strategy, max_auto_amount, auto_approve, active } = req.body || {};
     const sets = [], args = [];
@@ -398,7 +398,7 @@ router.put('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.delete('/auto-rules/:id', requirePerm('stock.write'), async (req, res) => {
+router.delete('/auto-rules/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     await getPool().query(`DELETE FROM auto_purchase_rules WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
@@ -460,7 +460,7 @@ async function runAutoPurchase() {
   return { candidates: due.rowCount, orders_created: created };
 }
 
-router.post('/auto-run', requirePerm('stock.write'), async (req, res) => {
+router.post('/auto-run', requirePerm('stock.manage'), async (req, res) => {
   try { res.json({ ok: true, ...(await runAutoPurchase()) }); }
   catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

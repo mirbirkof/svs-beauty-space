@@ -3270,14 +3270,14 @@ const MENU_PERM_PAGE = {
   pnl:'reports.finance', payouts:'reports.finance', budgeting:'reports.finance',
   kpiemp:'reports.finance', kpibranches:'reports.finance',
   reminders:'reminders.manage', promos:'promo.write', reviews:'reviews.write',
-  products:'stock.read', stock:'stock.read', purchasing:'stock.write', sync:'sync.write',
+  products:'stock.read', stock:'stock.read', purchasing:'stock.manage', sync:'sync.write',
 };
 const MENU_PERM_EMBED = [
   ['#cashbox','order.write'], ['#reports','reports.finance'], ['/bi.html','reports.finance'],
   ['/export.html','export.read'], ['#center','marketing.read'], ['#segments','marketing.read'],
   ['#campaigns','marketing.read'], ['#triggers','marketing.read'], ['/video-studio.html','marketing.read'],
   ['/dikidi.html','reviews.write'], ['#users-access','users.write'], ['#users','users.read'],
-  ['#inventory','stock.write'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
+  ['#inventory','stock.manage'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
   ['/integrations.html','integrations.read'], ['#audit','audit.read'],
 ];
 // Сторінки платформи/інфраструктури/налаштувань — ЛИШЕ власник, незалежно від прав ролі
@@ -10967,12 +10967,13 @@ async function loadProducts() {
     <tr><td>${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
     <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
     <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
-    <td style="cursor:pointer" title="Клік — змінити ціну продажу за грам" onclick="setPPG('${String(p.id).replace(/'/g,'&#39;')}','${String(p.name).replace(/'/g,'&#39;').slice(0,60)}',${p.price_per_gram??'null'})">${p.price_per_gram!=null?`<b style="color:#7c3aed">${Number(p.price_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
+    <td ${userHasPerm('stock.manage')?`style="cursor:pointer" title="Клік — змінити ціну продажу за грам" onclick="setPPG('${String(p.id).replace(/'/g,'&#39;')}','${String(p.name).replace(/'/g,'&#39;').slice(0,60)}',${p.price_per_gram??'null'})"`:`title="Змінювати ціни може лише той, кому власник увімкнув «Склад і ціни»"`}>${p.price_per_gram!=null?`<b style="color:#7c3aed">${Number(p.price_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
     <td>${p.active ? '✓':'—'}</td></tr>`).join('')
     || '<tr><td colspan="8"><div class="empty">Нічого не знайдено</div></td></tr>';
 }
 // ціна продажу за грам: клік по колонці ₴/грам (0 або порожньо = вимкнути продаж за грам)
 async function setPPG(id, name, cur) {
+  if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
   const v = prompt(`«${name}»\nЦіна продажу за грам, грн (порожньо або 0 — не продається за грам):`, cur ?? '');
   if (v === null) return;
   const n = Number(String(v).replace(',', '.'));
@@ -10983,6 +10984,7 @@ async function setPPG(id, name, cur) {
 
 // ═══ STOCK ═══════════════════════════════════
 async function addStock() {
+  if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
   const variant_id = parseInt(document.getElementById('stockVariantId').value, 10);
   // #109: дробові грами/мл — Number, а не parseInt (він різав 45.5 → 45)
   const qty = Number(String(document.getElementById('stockQty').value).replace(',', '.'));
@@ -11043,6 +11045,7 @@ function stImpOpen(kind) {
 }
 function stImpClose() { document.getElementById('stImpModal').style.display = 'none'; }
 async function stImpParse() {
+  if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
   const file = document.getElementById('stImpFile').files[0];
   const text = document.getElementById('stImpText').value.trim();
   const box = document.getElementById('stImpPreview');

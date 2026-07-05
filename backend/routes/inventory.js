@@ -8,7 +8,7 @@ const router = express.Router();
 const pool = getPool();
 
 // POST /api/inventory/audits — создать акт + наполнить позициями по scope
-router.post('/audits', requirePerm('stock.write'), async (req, res) => {
+router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
   const client = await pool.connect();
   try {
     const { branch_id, scope, scope_filter, notes } = req.body || {};
@@ -90,7 +90,7 @@ router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
 });
 
 // PATCH /api/inventory/items/:id — внести факт по одной позиции
-router.patch('/items/:id', requirePerm('stock.write'), async (req, res) => {
+router.patch('/items/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { actual_qty, reason, notes } = req.body || {};
@@ -112,7 +112,7 @@ router.patch('/items/:id', requirePerm('stock.write'), async (req, res) => {
 });
 
 // POST /api/inventory/audits/:id/complete — закрыть акт + применить корректировки
-router.post('/audits/:id/complete', requirePerm('stock.write'), async (req, res) => {
+router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res) => {
   const client = await pool.connect();
   try {
     const id = Number(req.params.id);
@@ -156,7 +156,7 @@ router.post('/audits/:id/complete', requirePerm('stock.write'), async (req, res)
 });
 
 // DELETE /api/inventory/audits/:id — отменить незавершённый
-router.delete('/audits/:id', requirePerm('stock.write'), async (req, res) => {
+router.delete('/audits/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await pool.query(
       `UPDATE inventory_audits SET status='cancelled' WHERE id=$1 AND status<>'completed' RETURNING id`,

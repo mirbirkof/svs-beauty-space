@@ -19,7 +19,7 @@ const imp = require('../lib/stock-import');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
-router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (req, res) => {
+router.post('/parse', requirePerm('stock.manage'), upload.single('file'), async (req, res) => {
   try {
     let rows, rawText = '', fname = req.file ? req.file.originalname : null, ocrDate = null, viaOcr = false, ocrMeta = null;
     if (req.file) {
@@ -73,7 +73,7 @@ router.post('/parse', requirePerm('stock.write'), upload.single('file'), async (
   }
 });
 
-router.post('/apply', requirePerm('stock.write'), async (req, res) => {
+router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
   const { kind, filename, items, doc_date, force } = req.body || {};
   if (!['invoice', 'pricelist'].includes(kind)) return res.status(400).json({ error: 'bad-kind' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'no-items' });

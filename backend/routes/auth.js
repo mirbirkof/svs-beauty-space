@@ -140,6 +140,13 @@ async function issueSession(client, { user, req, rememberMe }) {
   return { accessToken, refreshToken, refreshTtlMs: ttlMs, sessionId: sess.rows[0].id, expiresAt };
 }
 
+// эффективные права = ролевые + персональные (extra_permissions, тумблеры доступа)
+function effectivePerms(u) {
+  const base = Array.isArray(u.role_permissions) ? u.role_permissions : [];
+  const extra = Array.isArray(u.extra_permissions) ? u.extra_permissions : [];
+  return extra.length ? [...new Set([...base, ...extra])] : base;
+}
+
 function publicUser(u) {
   if (!u) return null;
   return {
@@ -149,7 +156,7 @@ function publicUser(u) {
     phone: u.phone,
     display_name: u.display_name,
     role: u.role_code,
-    permissions: u.role_permissions,
+    permissions: effectivePerms(u),
     email_verified: u.email_verified,
     phone_verified: u.phone_verified,
     two_factor_enabled: u.two_factor_enabled,
@@ -774,7 +781,7 @@ router.post('/panel-login', async (req, res) => {
     await recordAttempt(pool, { identifier, kind: 'panel-login', success: true, ip, ua, meta: {} });
     res.json({ ok: true, token, user: {
       id: user.id, display_name: user.display_name, role: user.role_code,
-      permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
+      permissions: effectivePerms(user), master_id: user.master_id, branch_id: user.branch_id,
     }});
   } catch (e) {
     res.status(500).json({ ok: false, error: 'panel-login-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
@@ -873,7 +880,7 @@ router.post('/tg-login-verify', async (req, res) => {
     await recordAttempt(pool, { identifier, kind: 'tg-login-verify', success: true, ip, ua, meta: {} });
     res.json({ ok: true, token, user: {
       id: user.id, display_name: user.display_name, role: user.role_code,
-      permissions: user.role_permissions, master_id: user.master_id, branch_id: user.branch_id,
+      permissions: effectivePerms(user), master_id: user.master_id, branch_id: user.branch_id,
     }});
   } catch (e) {
     res.status(500).json({ ok: false, error: 'tg-login-verify-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });

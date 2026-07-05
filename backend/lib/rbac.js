@@ -62,6 +62,7 @@ async function resolveUserByToken(token) {
   const hash = sha256(token);
   const r = await getPool().query(
     `SELECT u.id, u.display_name, u.branch_id, u.master_id, u.is_active,
+            u.extra_permissions,
             r.code AS role, r.permissions, r.level AS role_level
        FROM user_tokens t
        JOIN users u ON u.id = t.user_id
@@ -74,7 +75,12 @@ async function resolveUserByToken(token) {
   if (!r.rows[0].is_active) return null;
   // обновить last_used (fire-and-forget)
   getPool().query(`UPDATE user_tokens SET last_used=NOW() WHERE token_hash=$1`, [hash]).catch(()=>{});
-  return r.rows[0];
+  const u = r.rows[0];
+  // персональные права (тумблеры в «Керуванні доступом») поверх ролевых
+  if (Array.isArray(u.extra_permissions) && u.extra_permissions.length) {
+    u.permissions = [...new Set([...(u.permissions || []), ...u.extra_permissions])];
+  }
+  return u;
 }
 
 // Middleware фабрика: requirePerm('shop.write') или requirePerm() для просто авторизации
