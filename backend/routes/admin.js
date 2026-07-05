@@ -86,6 +86,19 @@ router.post('/products', async (req, res) => {
   } catch (e) { console.error('[admin:create-product]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
 });
 
+// Профіль товару: повна картка + всі варіанти одним запитом
+router.get('/products/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const p = await pool.query(`SELECT * FROM products WHERE id = $1`, [req.params.id]);
+    if (!p.rows[0]) return res.status(404).json({ error: 'not-found' });
+    const v = await pool.query(
+      `SELECT id, volume, price, wholesale, sku, stock_qty, unit_ml, active
+         FROM product_variants WHERE product_id = $1 ORDER BY id`, [req.params.id]);
+    res.json({ ok: true, product: p.rows[0], variants: v.rows });
+  } catch (e) { console.error('[admin:get-product]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 router.patch('/products/:id', async (req, res) => {
   try {
     const { name, brand_id, category_id, photo, description, featured, active, meta_title, meta_description, attrs, price_per_gram } = req.body || {};
@@ -140,7 +153,7 @@ router.get('/products/:id/variants', async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(
-      `SELECT id, volume, price, sku, stock_qty, active
+      `SELECT id, volume, price, wholesale, sku, stock_qty, unit_ml, active
          FROM product_variants WHERE product_id = $1 ORDER BY id`,
       [req.params.id]
     );
@@ -167,8 +180,8 @@ router.post('/products/:id/variants', async (req, res) => {
 
 router.patch('/variants/:id', async (req, res) => {
   try {
-    const { volume, price, wholesale, sku, stock_qty, active } = req.body || {};
-    if ((price !== undefined || wholesale !== undefined || stock_qty !== undefined) && !canManageStock(req))
+    const { volume, price, wholesale, sku, stock_qty, active, unit_ml } = req.body || {};
+    if ((price !== undefined || wholesale !== undefined || stock_qty !== undefined || unit_ml !== undefined) && !canManageStock(req))
       return res.status(403).json(STOCK_MANAGE_403);
     const pool = getPool();
     const r = await pool.query(
@@ -178,9 +191,10 @@ router.patch('/variants/:id', async (req, res) => {
          wholesale = COALESCE($4, wholesale),
          sku = COALESCE($5, sku),
          stock_qty = COALESCE($6, stock_qty),
-         active = COALESCE($7, active)
+         active = COALESCE($7, active),
+         unit_ml = COALESCE($8, unit_ml)
        WHERE id = $1 RETURNING *`,
-      [req.params.id, volume, price, wholesale, sku, stock_qty, active]
+      [req.params.id, volume, price, wholesale, sku, stock_qty, active, unit_ml]
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, variant: r.rows[0] });
@@ -196,7 +210,7 @@ router.get('/stock/list', async (req, res) => {
     let where = `pv.active IS NOT FALSE AND p.active IS NOT FALSE`;
     if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
     const r = await getPool().query(
-      `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku,
+      `SELECT pv.id, pv.product_id, p.name AS product_name, pv.volume, pv.sku,
               COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale,
               pv.unit_ml, p.price_per_gram
          FROM product_variants pv

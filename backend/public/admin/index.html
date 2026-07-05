@@ -2700,6 +2700,18 @@ select.input { background:var(--card); }
   </div><!-- /main -->
 
   <!-- ORDER MODAL -->
+  <!-- Профіль товару: повна картка + варіанти, редагування під правом «Склад і ціни» -->
+  <div id="prodModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeProd()">
+    <div class="modal" style="max-width:800px;width:94vw">
+      <div class="modal-header">
+        <h3>Профіль товару</h3>
+        <button type="button" class="info-i" data-t="<b>Профіль товару.</b> Уся картка в одному місці: назва, опис, фото, ціна за грам, варіанти з цінами й залишками. Редагування доступне з дозволом «Склад і ціни»." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
+        <button class="modal-close" onclick="closeProd()">✕</button>
+      </div>
+      <div class="modal-body" id="prodDetail"></div>
+    </div>
+  </div>
+
   <div id="orderModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeOrder()">
     <div class="modal">
       <div class="modal-header">
@@ -10972,13 +10984,89 @@ async function loadProducts() {
   const q = document.getElementById('productSearch').value.trim();
   const r = await api('/api/admin/products?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
   document.getElementById('productsBody').innerHTML = (r.items || []).map(p => `
-    <tr><td>${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
+    <tr><td style="cursor:pointer;color:var(--primary,#6c5ce7);font-weight:600" title="Відкрити профіль товару" onclick="openProduct('${String(p.id).replace(/'/g,'&#39;')}')">${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
     <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
     <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
     <td ${userHasPerm('stock.manage')?`style="cursor:pointer" title="Клік — змінити ціну продажу за грам" onclick="setPPG('${String(p.id).replace(/'/g,'&#39;')}','${String(p.name).replace(/'/g,'&#39;').slice(0,60)}',${p.price_per_gram??'null'})"`:`title="Змінювати ціни може лише той, кому власник увімкнув «Склад і ціни»"`}>${p.price_per_gram!=null?`<b style="color:#7c3aed">${Number(p.price_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
     <td>${p.active ? '✓':'—'}</td></tr>`).join('')
     || '<tr><td colspan="8"><div class="empty">Нічого не знайдено</div></td></tr>';
 }
+// ── Профіль товару: картка + варіанти, редагування під правом «Склад і ціни» ──
+let _prod = null;
+async function openProduct(id) {
+  if (!id) return;
+  const m = document.getElementById('prodModal'), box = document.getElementById('prodDetail');
+  m.style.display = 'flex'; box.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">Завантаження…</div>';
+  const r = await api('/api/admin/products/' + encodeURIComponent(id));
+  if (!r.ok || !r.product) { box.innerHTML = '<div class="empty">' + (r.message || r.error || 'Не вдалося завантажити') + '</div>'; return; }
+  _prod = r.product;
+  const can = userHasPerm('stock.manage');
+  const dis = can ? '' : 'disabled style="opacity:.75"';
+  const p = r.product;
+  const esc = s => escapeHtml(String(s == null ? '' : s));
+  const lbl = t => `<label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:2px">${t}</label>`;
+  box.innerHTML = `
+    ${can ? '' : '<div style="padding:8px 10px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;font-size:12.5px;margin-bottom:10px">Перегляд без редагування — дозвіл «Склад і ціни» вмикає власник у Бізнес-налаштуваннях → Дозволи адміністратора</div>'}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="grid-column:1/-1">${lbl('Назва')}<input id="pm_name" class="input" value="${esc(p.name)}" ${dis}></div>
+      <div>${lbl('Ціна продажу за грам/мл, грн (порожньо = не продається за грам)')}<input id="pm_ppg" class="input" type="number" step="0.01" min="0" value="${p.price_per_gram ?? ''}" ${dis}></div>
+      <div>${lbl('Фото (URL)')}<input id="pm_photo" class="input" value="${esc(p.photo)}" ${dis}></div>
+      <div style="grid-column:1/-1">${lbl('Опис')}<textarea id="pm_desc" class="input" rows="3" ${dis}>${esc(p.description)}</textarea></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_active" ${p.active !== false ? 'checked' : ''} ${dis}> Активний</label>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_feat" ${p.featured ? 'checked' : ''} ${dis}> У добірці магазину</label>
+    </div>
+    ${can ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;justify-content:flex-end"><span id="pm_msg" style="font-size:12px;color:var(--text-secondary)"></span><button class="btn btn-primary" onclick="saveProdCard()">Зберегти товар</button></div>' : ''}
+    <h4 style="margin:16px 0 6px">Варіанти — обʼєм, ціни, залишок</h4>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:13px"><thead><tr><th>Обʼєм</th><th>Ціна</th><th>Опт</th><th>Артикул</th><th>Залишок</th><th>мл(г)/уп</th><th>Акт.</th>${can ? '<th></th>' : ''}</tr></thead>
+    <tbody>${(r.variants || []).map(v => `<tr>
+      <td><input id="v${v.id}_volume" class="input" style="width:88px;padding:4px 6px" value="${esc(v.volume)}" ${dis}></td>
+      <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" ${dis}></td>
+      <td><input id="v${v.id}_wholesale" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.wholesale ?? ''}" ${dis}></td>
+      <td><input id="v${v.id}_sku" class="input" style="width:92px;padding:4px 6px" value="${esc(v.sku)}" ${dis}></td>
+      <td><input id="v${v.id}_stock" class="input" type="number" step="0.01" style="width:78px;padding:4px 6px" value="${v.stock_qty ?? 0}" ${dis}></td>
+      <td><input id="v${v.id}_unitml" class="input" type="number" step="0.01" style="width:72px;padding:4px 6px" value="${v.unit_ml ?? ''}" ${dis}></td>
+      <td style="text-align:center"><input type="checkbox" id="v${v.id}_active" ${v.active !== false ? 'checked' : ''} ${dis}></td>
+      ${can ? `<td><button class="btn btn-sm btn-outline" title="Зберегти варіант" onclick="saveProdVariant(${v.id})">💾</button></td>` : ''}
+    </tr>`).join('') || `<tr><td colspan="8" style="color:var(--text-secondary);padding:10px">Варіантів немає</td></tr>`}</tbody></table></div>
+    <div id="pm_vmsg" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>`;
+}
+function closeProd() {
+  document.getElementById('prodModal').style.display = 'none';
+  // оновити списки, якщо відкриті — щоб зміни одразу було видно
+  try { if (document.getElementById('productsBody') && document.getElementById('productSearch')) loadProducts(); } catch (_) {}
+  try { loadStockList(); } catch (_) {}
+}
+async function saveProdCard() {
+  const msg = document.getElementById('pm_msg'); msg.textContent = 'Збереження…';
+  const gv = i => document.getElementById(i).value;
+  const body = {
+    photo: gv('pm_photo').trim() || null,
+    description: gv('pm_desc').trim() || null,
+    active: document.getElementById('pm_active').checked,
+    featured: document.getElementById('pm_feat').checked,
+  };
+  const name = gv('pm_name').trim(); if (name) body.name = name;
+  const ppg = gv('pm_ppg').trim(); body.price_per_gram = ppg === '' ? 0 : Number(ppg.replace(',', '.'));
+  const r = await api('/api/admin/products/' + encodeURIComponent(_prod.id), { method: 'PATCH', body: JSON.stringify(body) });
+  msg.style.color = r.ok ? '#10b981' : '#ef4444';
+  msg.textContent = r.ok ? 'Збережено ✓' : (r.message || r.error || 'Помилка');
+  if (r.ok) setTimeout(() => msg.textContent = '', 2500);
+}
+async function saveProdVariant(vid) {
+  const g = s => document.getElementById('v' + vid + '_' + s);
+  const num = el => { const t = el.value.trim(); return t === '' ? null : Number(t.replace(',', '.')); };
+  const body = {
+    volume: g('volume').value.trim() || null, price: num(g('price')), wholesale: num(g('wholesale')),
+    sku: g('sku').value.trim() || null, stock_qty: num(g('stock')), unit_ml: num(g('unitml')),
+    active: g('active').checked,
+  };
+  const m = document.getElementById('pm_vmsg'); m.textContent = 'Збереження…';
+  const r = await api('/api/admin/variants/' + vid, { method: 'PATCH', body: JSON.stringify(body) });
+  m.style.color = r.ok ? '#10b981' : '#ef4444';
+  m.textContent = r.ok ? 'Варіант збережено ✓' : (r.message || r.error || 'Помилка');
+  if (r.ok) setTimeout(() => m.textContent = '', 2500);
+}
+
 // ціна продажу за грам: клік по колонці ₴/грам (0 або порожньо = вимкнути продаж за грам)
 async function setPPG(id, name, cur) {
   if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
@@ -11013,7 +11101,7 @@ async function loadStockList() {
     const d = await api('/api/admin/stock/list' + (q ? '?q=' + encodeURIComponent(q) : ''));
     const items = d.items || [];
     body.innerHTML = items.map(v => `<tr>
-      <td>${escapeHtml(v.product_name||'')}<div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
+      <td><span style="cursor:pointer;color:var(--primary,#6c5ce7);font-weight:600" title="Відкрити профіль товару" onclick="openProduct('${String(v.product_id||'').replace(/'/g,'&#39;')}')">${escapeHtml(v.product_name||'')}</span><div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
       <td>${escapeHtml(v.volume||'')}</td>
       <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${(v.price_per_gram!=null && Number(v.unit_ml)>1)?`${Number(v.stock_qty)} <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">мл/г</span>`:Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
       <td style="text-align:right">${v.price!=null?_money(v.price):'—'}</td>
