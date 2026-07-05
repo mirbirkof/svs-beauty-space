@@ -62,4 +62,8 @@ function requireFeature(key) {
   };
 }
 
-module.exports = { requireFeature };
+function invalidateFeatureCache(tenantId) {
+  for (const k of _cache.keys()) if (!tenantId || k.startsWith(tenantId + ':')) _cache.delete(k);
+}
+
+module.exports = { requireFeature, invalidateFeatureCache };

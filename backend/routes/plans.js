@@ -321,6 +321,45 @@ tenantRouter.get('/plan/upgrade-preview', async (req, res) => {
   } catch (e) { return err500(res, e); }
 });
 
+// POST /tenant/plan/change {target_plan, cycle?} — РЕАЛЬНА зміна плану (аудит 06.07:
+// раніше був лише preview). Prorated-розрахунок і рахунок робить lib/billing.changePlan;
+// якщо підписки ще нема — створюємо (безкоштовні активні одразу, платні з рахунком).
+tenantRouter.post('/plan/change', async (req, res) => {
+  try {
+    const tenantId = tenantOf(req);
+    const slug = String(req.body?.target_plan || '').trim();
+    const cycle = req.body?.cycle === 'yearly' ? 'yearly' : (req.body?.cycle === 'monthly' ? 'monthly' : null);
+    const target = (await q(
+      `SELECT * FROM saas_plans_v2 WHERE slug=$1 AND is_active=true AND status='published' LIMIT 1`, [slug]))[0];
+    if (!target) return res.status(404).json({ error: 'target_plan_not_found' });
+    const { plan: current } = await currentTenantPlan(tenantId);
+    if (current && current.slug === target.slug) return res.json({ ok: true, already: true, plan: target.slug });
+
+    const billing = require('../lib/billing');
+    let result;
+    try {
+      result = await billing.changePlan(tenantId, target.slug, cycle);
+    } catch (e) {
+      if (/subscription-not-found/.test(e.message)) {
+        const sub = await billing.createSubscription(tenantId,
+          { plan_code: target.slug, cycle: cycle || 'monthly', trial: false }, req.user || null);
+        result = { subscription: sub, proration: 0 };
+      } else throw e;
+    }
+    // історія зміни плану + інвалідація кешу фічегейтів (діяло б до 60с старе)
+    const action = !current ? 'created' : (target.tier > current.tier ? 'upgraded' : (target.tier < current.tier ? 'downgraded' : 'renewed'));
+    await q(`INSERT INTO plan_change_log (tenant_id, action, from_plan_id, to_plan_id, prorated_uah, actor_type, details)
+             VALUES ($1, $2::plan_change_action_enum, $3, $4, $5, 'tenant', $6)`,
+      [tenantId, action, current ? current.id : null, target.id, result.proration || 0,
+       JSON.stringify({ by: req.user?.display_name || null, cycle: cycle || result.subscription?.billing_cycle })]).catch(e => console.error('[plans/change] log:', e.message));
+    try { require('../lib/feature-gate').invalidateFeatureCache(tenantId); } catch (_) {}
+    await logAction({ user: req.user, action: 'plans.change', entity: 'subscriptions_saas',
+      entity_id: tenantId, meta: { to: target.slug, action, proration: result.proration }, ip: req.ip }).catch(() => {});
+    res.json({ ok: true, action, plan: target.slug, proration: result.proration,
+      subscription: { status: result.subscription?.status, period_end: result.subscription?.current_period_end } });
+  } catch (e) { return err500(res, e); }
+});
+
 // GET /tenant/addons — підключені add-ons тенанта
 tenantRouter.get('/addons', async (req, res) => {
   try {

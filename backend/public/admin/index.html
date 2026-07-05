@@ -3346,6 +3346,7 @@ let _posCart = [], _posT = null;
 function posOpen(){
   document.getElementById('posModal')?.remove();
   _posCart = [];
+  window._posBatchId = null; // нова корзина = новий чек (ідемпотентність лише в межах одного кошика)
   const el = document.createElement('div');
   el.id = 'posModal'; el.className = 'modal-overlay';
   el.onclick = e => { if (e.target === el) posClose(); };
@@ -3437,12 +3438,15 @@ async function posSubmit(){
   const btn = document.getElementById('posGo');
   btn.disabled = true; btn.textContent = 'Проводимо…';
   const done = [], failed = [];
+  // ідемпотентність кошика: обрив мережі + повтор «Провести» не задвоює позиції
+  if (!window._posBatchId) window._posBatchId = 'pos-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   for (const x of _posCart) {
     try {
       const body = { type: 'in', category: 'sale_product', method,
         amount: +(x.qty * x.price).toFixed(2),
         description: 'Продаж: ' + x.name + (x.qty > 1 ? ' ×' + x.qty : '') + (note ? ' — ' + note : ''),
-        variant_id: x.id, qty: x.qty, allow_no_shift: true };
+        variant_id: x.id, qty: x.qty, allow_no_shift: true,
+        ext_ref: window._posBatchId + ':' + x.id };
       const seller = document.getElementById('posSeller')?.value;
       if (seller) body.master_id = Number(seller); // продавець → йому % з продажу в ЗП
       if (date && date !== today) body.date = date;
@@ -3453,6 +3457,7 @@ async function posSubmit(){
   btn.disabled = false; btn.textContent = 'Провести продаж';
   if (failed.length) { msg.textContent = 'Не проведено — ' + failed.join('; '); _posCart = _posCart.filter(x => !done.includes(x)); posRender(); return; }
   const total = done.reduce((a, x) => a + x.qty * x.price, 0);
+  window._posBatchId = null; // новий кошик = новий чек
   posClose();
   if (typeof toast === 'function') toast('Продаж проведено: ' + done.length + ' поз. на ' + total.toFixed(2) + ' ₴, склад списано');
   else alert('Продаж проведено: ' + done.length + ' поз. на ' + total.toFixed(2) + ' ₴. Склад списано.');

@@ -390,11 +390,11 @@ if (process.env.DATABASE_URL) {
                   grace_period_ends = COALESCE(expires_at, NOW()) + INTERVAL '7 days'
             WHERE status='active' AND license_type <> 'perpetual'
               AND expires_at IS NOT NULL AND expires_at < NOW()
-            RETURNING id`);
+            RETURNING id, tenant_id`);
         const x = await pool.query(
           `UPDATE licenses SET status='expired'
             WHERE status='grace_period' AND grace_period_ends IS NOT NULL AND grace_period_ends < NOW()
-            RETURNING id`);
+            RETURNING id, tenant_id`);
         if (g.rowCount || x.rowCount) console.log(`[licenses] grace:${g.rowCount} expired:${x.rowCount}`);
         // trial ПЛАНУ скінчився → past_due (фічегейти/білінг бачать, що салон не платить).
         // Автоінвойс/suspension — наступний етап (див. SAAS-READINESS-PLAN P1).
@@ -403,6 +403,18 @@ if (process.env.DATABASE_URL) {
             WHERE status='trialing' AND trial_ends_at IS NOT NULL AND trial_ends_at < NOW()
             RETURNING tenant_id`);
         if (t.rowCount) console.log(`[subscriptions] trial→past_due: ${t.rowCount}`);
+        // повідомлення оператору платформи: хто перейшов у grace/past_due (щоб подзвонити/виставити рахунок)
+        if ((g.rowCount || t.rowCount) && process.env.ADMIN_TG_CHAT) {
+          try {
+            const { tgSend } = require('./routes/telegram-notify');
+            const names = await pool.query(
+              `SELECT t2.name, t2.slug FROM tenants t2 WHERE t2.id = ANY($1::uuid[])`,
+              [[...new Set([...(g.rows||[]).map(r=>r.tenant_id).filter(Boolean), ...(t.rows||[]).map(r=>r.tenant_id).filter(Boolean)])]]).catch(()=>({rows:[]}));
+            if (names.rows.length) await tgSend(process.env.ADMIN_TG_CHAT,
+              '<b>⏳ SaaS: прострочені підписки</b>\n' + names.rows.map(x=>`• ${x.name} (${x.slug})`).join('\n') +
+              '\nМодулі перейшли в grace/past_due — виставте рахунок або звʼяжіться.');
+          } catch (e) { console.error('[licenses] notify:', e.message); }
+        }
       });
     } catch (e) { console.error('[licenses] expiry tick:', e.message); }
   };

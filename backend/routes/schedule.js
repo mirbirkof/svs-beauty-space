@@ -1115,10 +1115,17 @@ router.patch('/appointments/:id', async (req, res) => {
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
     // Сума в касі = ціна послуги + платні матеріали (фарба за грам). Продажі BP не чіпаємо.
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
-      // Чек тепер розділений: sale_service = ціна послуги, sale_product = платні матеріали.
-      // Легасі-операції (до розділення, без окремого sale_product) — матеріали лишаються в sale_service.
+      // Чек розділений: sale_service = послуга, sale_product = платні матеріали.
+      // Легасі (без sale_product) — матеріали лишаються в sale_service.
+      // ІСТОРИЧНА ЗНИЖКА (SaaS-аудит 06.07): знижка/сертифікат/бонуси оплати
+      // розподіляються пропорційно НОВІЙ базі, real_amount (база ЗП) оновлюється —
+      // раніше каса перераховувалась по повній ціні, а real_amount лишався старим.
       await pool.query(
-        `WITH mat AS (
+        `WITH ap AS (
+           SELECT COALESCE(discount_amount,0) + COALESCE(pay_cert_amount,0) + COALESCE(pay_bonus_money,0) AS disc,
+                  pay_settled_at
+             FROM appointments WHERE id = $1),
+         mat AS (
            SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
                                     WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                                     ELSE 0 END), 0) AS total
@@ -1126,19 +1133,36 @@ router.patch('/appointments/:id', async (req, res) => {
              JOIN product_variants pv ON pv.id = am.variant_id
              LEFT JOIN products p ON p.id = pv.product_id
             WHERE am.appointment_id = $1),
+         calc AS (
+           SELECT mat.total AS mat, ap.disc,
+                  GREATEST($2::numeric + mat.total, 0.01) AS base,
+                  LEAST(ap.disc, $2::numeric + mat.total) AS disc_eff
+             FROM mat, ap),
          has_prod AS (
            SELECT EXISTS(SELECT 1 FROM cash_operations
                           WHERE ref_type='appointment' AND ref_id=$1 AND type='in' AND category='sale_product') AS yes)
          UPDATE cash_operations co
-            SET amount = CASE co.category
-                           WHEN 'sale_product' THEN mat.total
-                           ELSE $2 + CASE WHEN has_prod.yes THEN 0 ELSE mat.total END
-                         END
-           FROM mat, has_prod
+            SET amount = ROUND(CASE co.category
+                           WHEN 'sale_product' THEN calc.mat * (1 - calc.disc_eff / calc.base)
+                           ELSE ($2 + CASE WHEN has_prod.yes THEN 0 ELSE calc.mat END) * (1 - calc.disc_eff / calc.base)
+                         END, 2)
+           FROM calc, has_prod
           WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
             AND co.category IN ('sale_service','sale_product')`,
         [Number(req.params.id), newPrice]
       ).catch(e => console.error('[schedule] price→cash sync:', e.message));
+      // база ЗП: фактична вартість ПОСЛУГИ після пропорційної знижки
+      await pool.query(
+        `UPDATE appointments a
+            SET real_amount = ROUND($2::numeric * (1 - LEAST(COALESCE(a.discount_amount,0)+COALESCE(a.pay_cert_amount,0)+COALESCE(a.pay_bonus_money,0), $2::numeric + m.total)
+                                                   / GREATEST($2::numeric + m.total, 0.01)), 2)
+           FROM (SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used*p.price_per_gram,2)
+                                          WHEN pv.price IS NOT NULL THEN ROUND(am.qty_used*pv.price,2) ELSE 0 END),0) AS total
+                   FROM appointment_materials am JOIN product_variants pv ON pv.id=am.variant_id
+                   LEFT JOIN products p ON p.id=pv.product_id WHERE am.appointment_id=$1) m
+          WHERE a.id = $1 AND a.pay_settled_at IS NOT NULL`,
+        [Number(req.params.id), newPrice]
+      ).catch(e => console.error('[schedule] price→real_amount sync:', e.message));
     }
 
     // услуга выполнена → списываем расходники со склада (идемпотентно)

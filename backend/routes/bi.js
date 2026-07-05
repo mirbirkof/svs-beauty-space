@@ -61,8 +61,9 @@ const DATASETS = {
     },
     measures: {
       count:     { sql: 'COUNT(*)', label: 'К-сть записів' },
-      revenue:   { sql: 'COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)', label: 'Виручка' },
-      avg_check: { sql: 'COALESCE(ROUND(AVG(NULLIF(COALESCE(a.real_amount,a.price),0)),2),0)', label: 'Середній чек' },
+      // факт з каси по візиту (послуга+товари після знижок), fallback real/price (аудит 06.07)
+      revenue:   { sql: "COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))),0)", label: 'Виручка' },
+      avg_check: { sql: "COALESCE(ROUND(AVG(NULLIF(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price)),0)),2),0)", label: 'Середній чек' },
       cashback:  { sql: 'COALESCE(SUM(a.cashback),0)', label: 'Кешбек' },
       clients:   { sql: 'COUNT(DISTINCT a.client_id)', label: 'Унік. клієнтів' },
     },

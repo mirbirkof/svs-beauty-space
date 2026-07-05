@@ -82,7 +82,7 @@ router.get('/', async (req, res) => {
       // виручка послуг по майстру (= джерело правди по виручці)
       pool.query(`SELECT master_id, COALESCE(SUM(amount),0)::float rev, COUNT(*)::int cnt
                     FROM cash_operations
-                   WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2
+                   WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at BETWEEN $1 AND $2
                    GROUP BY master_id`, [fromTs, toTs]),
       // нарахований % по майстру — ТА САМА формула, що в liveFinance
       pool.query(`WITH da AS (

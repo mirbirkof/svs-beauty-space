@@ -189,7 +189,10 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
                 COUNT(DISTINCT o.id) FILTER (WHERE o.status='paid')
                 + COUNT(DISTINCT a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())  AS frequency,
                 COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
-                + COALESCE(SUM(COALESCE(a.real_amount, a.price)) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()),0) AS monetary
+                -- факт з каси по візиту (послуга+товари), fallback real/price (аудит 06.07)
+                + COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+                                          WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id),
+                                        COALESCE(a.real_amount, a.price))) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()),0) AS monetary
            FROM clients c
            LEFT JOIN orders o       ON o.client_id = c.id
            LEFT JOIN appointments a ON a.client_id = c.id

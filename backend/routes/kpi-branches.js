@@ -49,7 +49,7 @@ router.get('/', READ, async (req, res) => {
       WITH agg AS (
         SELECT b.id, b.name, b.code,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+          COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
           COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled
         FROM branches b
@@ -84,7 +84,7 @@ router.get('/:id(\\d+)', READ, async (req, res) => {
     const dflt = await defaultBranchId();
     const kpi = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+        COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
         COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled
       FROM appointments a
@@ -93,7 +93,7 @@ router.get('/:id(\\d+)', READ, async (req, res) => {
     const masters = await pool.query(`
       SELECT COALESCE(NULLIF(m.name,''),'—') AS master,
         COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue
+        COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue
       FROM appointments a
       LEFT JOIN masters m ON m.id=a.master_id
       WHERE COALESCE(a.branch_id,$4)=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)
@@ -117,7 +117,7 @@ router.get('/:id(\\d+)/plan-fact', READ, async (req, res) => {
     const dflt = await defaultBranchId();
     const fact = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-        COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+        COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients
       FROM appointments a
       WHERE COALESCE(a.branch_id,$3)=$1 AND to_char(a.starts_at,'YYYY-MM')=$2`, [id, month, dflt]);
@@ -174,7 +174,7 @@ router.get('/benchmark', READ, async (req, res) => {
       WITH agg AS (
         SELECT b.id, b.name, b.code,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
-          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+          COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
           COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled,
           COUNT(*) AS total_slots
@@ -235,7 +235,7 @@ router.get('/network-summary', READ, async (req, res) => {
     const r = await pool.query(`
       WITH agg AS (
         SELECT b.id, b.name,
-          COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
+          COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id), COALESCE(a.real_amount,a.price))) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
           COUNT(*) AS total_slots

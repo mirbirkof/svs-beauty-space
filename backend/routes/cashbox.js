@@ -385,7 +385,7 @@ router.post('/operations', async (req, res) => {
   // закриту зміну, ламаючи Z-звіт і зведення каси. Тепер вони серіалізуються.
   const client = await pool.connect();
   try {
-    const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, allow_no_shift } = req.body || {};
+    const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, allow_no_shift, ext_ref } = req.body || {};
     if (!type || !category || !amount) return res.status(400).json({ error: 'type, category, amount required' });
     if (!['in', 'out'].includes(type)) return res.status(400).json({ error: 'bad type' });
     if (Number(amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
@@ -423,10 +423,17 @@ router.post('/operations', async (req, res) => {
     }
 
     const createdAt = opDateParam(req.body); // дата «заднім числом» (#72) або NULL → NOW()
+    // ext_ref (POS-кошик тощо): повторний POST з тим самим ref НЕ дублює операцію —
+    // унікальний індекс ux_cash_ops_ext_ref (міграція 218). Повертаємо існуючу.
+    const extRef = ext_ref ? String(ext_ref).slice(0, 120) : null;
+    if (extRef) {
+      const dup = await client.query(`SELECT * FROM cash_operations WHERE ext_ref=$1 LIMIT 1`, [extRef]);
+      if (dup.rows[0]) { await client.query('ROLLBACK'); return res.json({ ok: true, already: true, operation: dup.rows[0], stock_qty: null }); }
+    }
     const r = await client.query(
-      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10::timestamptz, NOW())) RETURNING *`,
-      [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null, createdAt]
+      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at, ext_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10::timestamptz, NOW()), $11) RETURNING *`,
+      [shiftRow.id, type, category, amount, method || 'cash', ref_type || null, ref_id || null, master_id || null, description || null, createdAt, extRef]
     );
 
     // Продаж товару через касу → списуємо зі складу в ТІЙ ЖЕ транзакції.
