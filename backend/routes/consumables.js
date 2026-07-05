@@ -25,6 +25,46 @@ router.get('/_variants', requirePerm(), async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// Якщо візит ВЖЕ оплачений — зміна матеріалів одразу оновлює касу (операція sale_product).
+// Інакше адмін дописує маску/шампунь після оплати: у чеку видно, а грошей у касі нема
+// (кейс Босса 05.07: маска ENVIE 780 грн і шампунь не потрапили в касу дня).
+// Формула чека = та сама, що в GET-списку матеріалів: фарба за грам АБО будь-який
+// матеріал з роздрібною ціною. Знижки заднім числом не перераховуються.
+async function syncPaidMaterials(aid) {
+  try {
+    const ops = await pool.query(
+      `SELECT id, category, method, master_id, created_at FROM cash_operations
+        WHERE type='in' AND ref_type='appointment' AND ref_id=$1 ORDER BY id`, [aid]);
+    if (!ops.rows.length) return null; // візит не оплачено — каса не чіпається
+    const mat = await pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                                WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
+                                ELSE 0 END),0)::float AS total
+         FROM appointment_materials am
+         JOIN product_variants pv ON pv.id = am.variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+        WHERE am.appointment_id=$1`, [aid]);
+    const total = Math.round((Number(mat.rows[0] && mat.rows[0].total) || 0) * 100) / 100;
+    const prod = ops.rows.find(o => o.category === 'sale_product');
+    if (prod) {
+      if (total > 0) await pool.query(`UPDATE cash_operations SET amount=$2 WHERE id=$1`, [prod.id, total]);
+      else await pool.query(`DELETE FROM cash_operations WHERE id=$1`, [prod.id]);
+    } else if (total > 0) {
+      const svc = ops.rows.find(o => o.category === 'sale_service') || ops.rows[0];
+      const sn = await pool.query(
+        `SELECT COALESCE(s.name, 'візит #' || a.id::text) AS n
+           FROM appointments a LEFT JOIN services s ON s.id = a.service_id WHERE a.id=$1`, [aid]);
+      await pool.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+         VALUES (NULL,'in','sale_product',$1,$2,'appointment',$3,$4,$5,$6)
+         ON CONFLICT (tenant_id, ref_type, ref_id, method, category) WHERE type='in' AND ref_type='appointment' DO NOTHING`,
+        [total, (svc && svc.method) || 'cash', aid, (svc && svc.master_id) || null,
+         'Матеріали/товари до візиту: ' + sn.rows[0].n, (svc && svc.created_at) || null]);
+    }
+    return total;
+  } catch (e) { console.error('[consumables] paid-materials sync:', e.message); return null; }
+}
+
 // ── Матеріали візиту (заметка #105): фактичний розхід товарів на запис ──
 // ВАЖЛИВО: ці роути оголошено ДО параметричного /:serviceId, інакше Express
 // зʼїсть "appointment" як serviceId і нові ендпоінти ніколи не спрацюють.
@@ -81,7 +121,8 @@ router.post('/appointment/:apptId', requirePerm('stock.write'), async (req, res)
       [aid, Number(variant_id), qty, note || null, bill, (req.user && req.user.display_name) || null]
     );
     await logAction({ user: req.user, action: 'material.set', entity: 'appointment', entity_id: aid, meta: { variant_id, qty } });
-    res.json({ ok: true, item: r.rows[0] });
+    const cashSynced = await syncPaidMaterials(aid); // оплачений візит → каса відразу актуальна
+    res.json({ ok: true, item: r.rows[0], cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -108,7 +149,8 @@ router.post('/appointment/:apptId/prefill', requirePerm('stock.write'), async (r
       [aid, (req.user && req.user.display_name) || null]
     );
     await logAction({ user: req.user, action: 'material.prefill', entity: 'appointment', entity_id: aid, meta: { added: r.rowCount } });
-    res.json({ ok: true, added: r.rowCount });
+    const cashSynced = await syncPaidMaterials(aid);
+    res.json({ ok: true, added: r.rowCount, cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -120,7 +162,8 @@ router.delete('/appointment/:apptId/:variantId', requirePerm('stock.write'), asy
       [Number(req.params.apptId), Number(req.params.variantId)]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
-    res.json({ ok: true });
+    const cashSynced = await syncPaidMaterials(Number(req.params.apptId));
+    res.json({ ok: true, cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

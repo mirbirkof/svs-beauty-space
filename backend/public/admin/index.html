@@ -8661,8 +8661,13 @@ async function openAppt(id, masterId) {
       ${a.paid ? `
         <div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;font-weight:600;color:#047857">
           <span style="font-size:18px">✓</span>
-          <div style="flex:1">Оплачено · ${_money(a.real_amount!=null?a.real_amount:a.price)} ${_payBadge(a.pay_method)}
-            <div style="font-size:11px;font-weight:400;color:#059669">${(a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `Факт оплати (план ${_money(a.price)}) · у касі враховано` : 'У касі вже враховано'}</div>
+          <div style="flex:1">Оплачено · ${_money(a.paid_total!=null?a.paid_total:(a.real_amount!=null?a.real_amount:a.price))} ${_payBadge(a.pay_method)}
+            <div style="font-size:11px;font-weight:400;color:#059669">${(() => {
+              const svc = a.real_amount!=null?Number(a.real_amount):Number(a.price||0);
+              const mat = a.paid_total!=null?Math.round((Number(a.paid_total)-svc)*100)/100:0;
+              if (mat>0.001) return `послуга ${_money(svc)} + матеріали ${_money(mat)} · у касі враховано`;
+              return (a.real_amount!=null && Number(a.real_amount)!==Number(a.price)) ? `Факт оплати (план ${_money(a.price)}) · у касі враховано` : 'У касі вже враховано';
+            })()}</div>
           </div>
         </div>
         <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})">↩ Скасувати оплату</button>` : `

@@ -689,6 +689,11 @@ router.get('/journal', async (req, res) => {
                          = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date
                    ORDER BY co.id DESC LIMIT 1)
               ) AS pay_method,
+              -- Повна СПЛАЧЕНА сума по візиту: послуга + платні матеріали, всі касові операції.
+              -- Чек тепер розділений (sale_service + sale_product), тож плашка «Оплачено»
+              -- має показувати суму ВСІХ операцій, а не лише послугу.
+              (SELECT SUM(co.amount)::numeric FROM cash_operations co
+                 WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id) AS paid_total,
               COALESCE(
                 NULLIF(c.name,''),
                 CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
@@ -777,6 +782,7 @@ router.get('/journal', async (req, res) => {
           // показує гроші іншого (баг «у Вери 850₴ за нігті Лери»). Скидаємо в null —
           // плитка й підсумок колонки впадуть на price сегмента (лише свої послуги).
           real_amount: null,
+          paid_total: null, // гроші всього візиту — не тягнемо в сегменти (та сама логіка, що real_amount)
           // оплата рахувалась SQL-ом саме для майстра запису; для чужого сегмента
           // не знаємо → краще пропуск, ніж брехливе «оплачено»
           paid: sameMaster ? a.paid : false,
@@ -1114,11 +1120,11 @@ router.patch('/appointments/:id', async (req, res) => {
       await pool.query(
         `WITH mat AS (
            SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                                    WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                                    WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                                     ELSE 0 END), 0) AS total
              FROM appointment_materials am
              JOIN product_variants pv ON pv.id = am.variant_id
-             JOIN products p ON p.id = pv.product_id
+             LEFT JOIN products p ON p.id = pv.product_id
             WHERE am.appointment_id = $1),
          has_prod AS (
            SELECT EXISTS(SELECT 1 FROM cash_operations
@@ -1447,16 +1453,19 @@ router.post('/appointments/:id/pay', async (req, res) => {
     if (!ap.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     const appt = ap.rows[0];
     // матеріали, що продаються клієнту, додаються до чека:
-    //  - фарба за грам (price_per_gram) → грами × ціна/г, продається завжди
-    //  - пляшка/шт з прапорцем billable → кількість × роздрібна ціна варіанта
+    //  - фарба за грам (price_per_gram) → грами × ціна/г
+    //  - БУДЬ-ЯКИЙ матеріал з роздрібною ціною → кількість × ціна варіанта
+    // (вимога Босса 04.07: будь-який матеріал з ціною йде в чек — та сама формула,
+    //  що в списку матеріалів GET /consumables/appointment; раніше тут був фільтр
+    //  billable=TRUE і маска/шампунь показувались у чеку, але не потрапляли в оплату)
     const mat = await pool.query(
       `SELECT COALESCE(SUM(
                 CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                     WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                     WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                      ELSE 0 END),0)::float AS total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
-         JOIN products p ON p.id = pv.product_id
+         LEFT JOIN products p ON p.id = pv.product_id
         WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
     const matTotal = Number(mat.rows[0].total) || 0;
     const base = (Number(appt.price) || 0) + matTotal;   // повна вартість візиту до знижок
