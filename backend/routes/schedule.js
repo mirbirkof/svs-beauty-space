@@ -1109,16 +1109,28 @@ router.patch('/appointments/:id', async (req, res) => {
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
     // Сума в касі = ціна послуги + платні матеріали (фарба за грам). Продажі BP не чіпаємо.
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
+      // Чек тепер розділений: sale_service = ціна послуги, sale_product = платні матеріали.
+      // Легасі-операції (до розділення, без окремого sale_product) — матеріали лишаються в sale_service.
       await pool.query(
-        `UPDATE cash_operations co SET amount = $2 + COALESCE((
-            SELECT SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                            WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
-                            ELSE 0 END)
-              FROM appointment_materials am
-              JOIN product_variants pv ON pv.id = am.variant_id
-              JOIN products p ON p.id = pv.product_id
-             WHERE am.appointment_id = $1), 0)
-          WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in' AND co.category='sale_service'`,
+        `WITH mat AS (
+           SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                                    WHEN am.billable IS TRUE       THEN ROUND(am.qty_used * COALESCE(pv.price,0), 2)
+                                    ELSE 0 END), 0) AS total
+             FROM appointment_materials am
+             JOIN product_variants pv ON pv.id = am.variant_id
+             JOIN products p ON p.id = pv.product_id
+            WHERE am.appointment_id = $1),
+         has_prod AS (
+           SELECT EXISTS(SELECT 1 FROM cash_operations
+                          WHERE ref_type='appointment' AND ref_id=$1 AND type='in' AND category='sale_product') AS yes)
+         UPDATE cash_operations co
+            SET amount = CASE co.category
+                           WHEN 'sale_product' THEN mat.total
+                           ELSE $2 + CASE WHEN has_prod.yes THEN 0 ELSE mat.total END
+                         END
+           FROM mat, has_prod
+          WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
+            AND co.category IN ('sale_service','sale_product')`,
         [Number(req.params.id), newPrice]
       ).catch(e => console.error('[schedule] price→cash sync:', e.message));
     }
@@ -1562,7 +1574,8 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // добивает partial UNIQUE ux_cash_ops_appt_payment (миграция 198) + ON CONFLICT
     // DO NOTHING — проигравший запрос получает идемпотентный 200 already_paid, не вторую оплату.
     const descr = (appt.service_name || 'Послуга')
-      + (matTotal > 0 ? ` + матеріали ${matTotal} грн` : '')
+      + (totalDiscount > 0 ? ` (знижка ${totalDiscount} грн)` : '');
+    const prodDescr = `Матеріали/товари до візиту: ${appt.service_name || '#' + id}`
       + (totalDiscount > 0 ? ` (знижка ${totalDiscount} грн)` : '');
     const client = await pool.connect();
     let op = { rows: [{ id: null }] }, raceLost = false;
@@ -1572,17 +1585,33 @@ router.post('/appointments/:id/pay', async (req, res) => {
       // mixed → окрема операція на кожен метод (готівка/картка); unique-індекс тепер per-method.
       if (finalCash > 0) {
         let inserted = 0;
+        // Чек ділиться в касі: послуга → sale_service, платні матеріали/товари → sale_product
+        // (інакше «товари» у фінзведенні завжди 0, а база % майстра завищена на матеріали).
+        // Знижка/сертифікат/бонуси розподіляються пропорційно часткам чека.
+        const productCash = matTotal > 0 ? Math.min(finalCash, round2(matTotal * finalCash / base)) : 0;
+        let svcLeft = round2(finalCash - productCash);
+        let prodLeft = productCash;
         for (const [pMethod, pSum] of payParts) {
-          const pDescr = payParts.length > 1
-            ? `${descr} [змішана: ${pMethod === 'cash' ? 'готівка' : 'картка'} ${pSum} грн]` : descr;
-          const r = await client.query(
-            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
-             VALUES ($1,'in','sale_service',$2,$3,'appointment',$4,$5,$6,COALESCE($7,NOW()))
-             ON CONFLICT (tenant_id, ref_type, ref_id, method) WHERE type='in' AND ref_type='appointment' DO NOTHING
-             RETURNING id`,
-            [shiftId, pSum, pMethod, id, appt.master_id || null, pDescr, opCreatedAt]
-          );
-          if (r.rows[0]) { inserted++; if (!op.rows[0]?.id) op = r; }
+          const svcPart = round2(Math.min(svcLeft, pSum));
+          const prodPart = round2(Math.min(prodLeft, round2(pSum - svcPart)));
+          svcLeft = round2(svcLeft - svcPart);
+          prodLeft = round2(prodLeft - prodPart);
+          const mixTag = payParts.length > 1
+            ? ` [змішана: ${pMethod === 'cash' ? 'готівка' : 'картка'} ${pSum} грн]` : '';
+          const parts = [
+            svcPart > 0 ? ['sale_service', svcPart, descr + mixTag] : null,
+            prodPart > 0 ? ['sale_product', prodPart, prodDescr + mixTag] : null,
+          ].filter(Boolean);
+          for (const [pCat, pAmt, pDescr] of parts) {
+            const r = await client.query(
+              `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, created_at)
+               VALUES ($1,'in',$2,$3,$4,'appointment',$5,$6,$7,COALESCE($8,NOW()))
+               ON CONFLICT (tenant_id, ref_type, ref_id, method, category) WHERE type='in' AND ref_type='appointment' DO NOTHING
+               RETURNING id`,
+              [shiftId, pCat, pAmt, pMethod, id, appt.master_id || null, pDescr, opCreatedAt]
+            );
+            if (r.rows[0]) { inserted++; if (!op.rows[0]?.id) op = r; }
+          }
         }
         if (!inserted) raceLost = true;
       }

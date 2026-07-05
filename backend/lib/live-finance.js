@@ -17,7 +17,8 @@ async function liveFinance(pool, from, to) {
   const [revC, ordR, comm, fixed, cogs, other, finSet] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
-              COUNT(*) FILTER (WHERE category IN ('sale_service','sale_product'))::int cnt
+              COUNT(DISTINCT CASE WHEN category IN ('sale_service','sale_product')
+                    THEN COALESCE(ref_type || ':' || ref_id::text, 'op:' || id::text) END)::int cnt
          FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`WITH da AS (
