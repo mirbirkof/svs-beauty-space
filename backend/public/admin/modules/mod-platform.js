@@ -241,6 +241,27 @@
           : '<button onclick="_licRevoke(\'' + E(String(my.id)) + '\',this)" style="padding:8px 18px;background:#fff;color:#d9534f;border:1px solid #d9534f;border-radius:8px;cursor:pointer;font-size:13px">Деактивувати</button>') +
         '</div>' +
         '<div id="lic-modal-msg" style="margin-top:10px;font-size:12.5px"></div>';
+      // #137: власник платформи керує ціною/trial/статусом модуля прямо тут.
+      // Платформа = вхід без tenant-slug (салон Босса — головне управління).
+      var isPlatform = !localStorage.getItem('svs_tenant_slug');
+      if (isPlatform) {
+        var inp = 'padding:7px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;width:110px';
+        body += '<div style="margin-top:18px;padding-top:14px;border-top:1px dashed #ddd">' +
+          '<b style="font-size:13.5px">Керування модулем (власник платформи)</b>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">' +
+            '<label style="font-size:11.5px;color:#666">Ціна/міс, грн<br><input id="licf-pm" type="number" min="0" value="' + (m.price_monthly_uah != null ? Number(m.price_monthly_uah) : '') + '" style="' + inp + '"></label>' +
+            '<label style="font-size:11.5px;color:#666">Ціна/рік, грн<br><input id="licf-py" type="number" min="0" value="' + (m.price_yearly_uah != null ? Number(m.price_yearly_uah) : '') + '" style="' + inp + '"></label>' +
+            '<label style="font-size:11.5px;color:#666">Назавжди, грн<br><input id="licf-pp" type="number" min="0" value="' + (m.price_perpetual_uah != null ? Number(m.price_perpetual_uah) : '') + '" style="' + inp + '"></label>' +
+            '<label style="font-size:11.5px;color:#666">Trial, днів<br><input id="licf-td" type="number" min="0" max="365" value="' + (m.trial_days != null ? Number(m.trial_days) : '') + '" style="' + inp + '"></label>' +
+            '<label style="font-size:11.5px;color:#666">Статус<br><select id="licf-st" style="' + inp + ';width:130px">' +
+              ['available', 'archived', 'deprecated'].map(function (s) { return '<option value="' + s + '"' + (m.status === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
+            '</select></label>' +
+          '</div>' +
+          '<label style="font-size:11.5px;color:#666;display:block;margin-top:10px">Опис (бачать усі покупці)<br>' +
+            '<textarea id="licf-desc" rows="2" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px">' + E(m.description || '') + '</textarea></label>' +
+          '<button onclick="_licSave(\'' + E(String(id)) + '\',this)" style="margin-top:10px;padding:8px 20px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">Зберегти налаштування модуля</button>' +
+        '</div>';
+      }
       if (typeof showModal === 'function') showModal(E(m.name || 'Модуль'), body);
       else alert((m.name || '') + '\n' + (m.description || ''));
     } catch (e) { alert('Не вдалося відкрити профіль модуля: ' + e.message); }
@@ -256,6 +277,22 @@
       if (window.extLoaders && window.extLoaders.licenses) window.extLoaders.licenses();
     }, 900);
   }
+  window._licSave = async function (moduleId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Зберігаю…'; }
+    try {
+      var g = function (i) { var el = document.getElementById(i); return el && el.value !== '' ? el.value : null; };
+      var r = await window.modApi('/api/licenses/catalog/' + moduleId, {
+        method: 'PUT',
+        body: JSON.stringify({
+          price_monthly_uah: g('licf-pm'), price_yearly_uah: g('licf-py'),
+          price_perpetual_uah: g('licf-pp'), trial_days: g('licf-td'),
+          status: g('licf-st'), description: g('licf-desc')
+        })
+      });
+      if (r && r.error) throw new Error(r.error);
+      licMsg('Збережено. Нові ціни і trial діють для всіх покупців.', true); licRefresh();
+    } catch (e) { licMsg(e.message, false); if (btn) { btn.disabled = false; btn.textContent = 'Зберегти налаштування модуля'; } }
+  };
   window._licTrial = async function (moduleId, btn) {
     if (btn) btn.disabled = true;
     try {

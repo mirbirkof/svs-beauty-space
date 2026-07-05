@@ -184,10 +184,13 @@ router.put('/catalog/:id', platformOnly, authManage, async (req, res) => {
          status=COALESCE($4::module_status_enum, status),
          price_monthly_uah=COALESCE($5, price_monthly_uah),
          price_yearly_uah=COALESCE($6, price_yearly_uah),
-         sort_order=COALESCE($7, sort_order), updated_at=now()
+         price_perpetual_uah=COALESCE($7, price_perpetual_uah),
+         trial_days=COALESCE($8, trial_days),
+         sort_order=COALESCE($9, sort_order), updated_at=now()
        WHERE id=$1 RETURNING *`,
       [req.params.id, b.name || null, b.description || null,
        b.status || null, b.price_monthly_uah ?? null, b.price_yearly_uah ?? null,
+       b.price_perpetual_uah ?? null, b.trial_days ?? null,
        b.sort_order ?? null]
     ))[0];
     if (!row) return res.status(404).json({ error: 'module_not_found' });
