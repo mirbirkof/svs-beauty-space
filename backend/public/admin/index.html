@@ -1180,14 +1180,19 @@ select.input { background:var(--card); }
           <div id="mgrKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px"></div>
           <div id="mgrStaff" style="margin-top:16px;overflow-x:auto"></div>
           <div id="mgrOnboard" style="margin-top:16px"></div>
-          <div style="margin-top:16px;border-top:1px solid var(--border,#eee);padding-top:14px">
-            <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px">💬 Помічник — спитайте про касу, план, заявки, кого дозаписати</div>
+        </div>
+
+        <!-- ═══ Помічник CRM — окремо від фінансової панелі, доступний усім співробітникам.
+             Що саме він відповість — ріже сервер по правах конкретного користувача. ═══ -->
+        <div class="card" id="asstCard" style="margin-bottom:20px">
+          <div style="padding-top:2px">
+            <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px">💬 Помічник — спитайте що де знаходиться, як працює, про касу чи кого дозаписати</div>
             <div id="asstLog" style="max-height:240px;overflow-y:auto;margin-bottom:8px;font-size:13.5px;line-height:1.5"></div>
             <div style="display:flex;gap:8px">
-              <input id="asstInput" class="input" style="flex:1" placeholder="напр. «каса за вчора» або «кого дозаписати»" onkeydown="if(event.key==='Enter')asstSend()">
+              <input id="asstInput" class="input" style="flex:1" placeholder="напр. «де склад?», «як провести інвентаризацію?», «каса за вчора»" onkeydown="if(event.key==='Enter')asstSend()">
               <button class="btn btn-primary" onclick="asstSend()">Спитати</button>
             </div>
-            <div style="margin-top:6px"><a href="#" style="font-size:12px;color:var(--text-secondary)" onclick="var b=document.getElementById('aiCfgBox');b.style.display=b.style.display==='none'?'block':'none';if(b.style.display==='block')loadAiSettings();return false">⚙️ Налаштувати мозок помічника</a></div>
+            <div style="margin-top:6px" id="aiCfgLinkWrap"><a href="#" style="font-size:12px;color:var(--text-secondary)" onclick="var b=document.getElementById('aiCfgBox');b.style.display=b.style.display==='none'?'block':'none';if(b.style.display==='block')loadAiSettings();return false">⚙️ Налаштувати мозок помічника</a></div>
             <div id="aiCfgBox" style="display:none;margin-top:8px;padding:10px;background:var(--bg,#f7f8fb);border-radius:10px;font-size:13px">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div><label style="font-size:11px;color:var(--text-secondary)">Провайдер</label>
@@ -3288,6 +3293,8 @@ const OWNER_ONLY_GROUPS = ['grp-settings','grp-system','grp-team'];
 function applyMenuPerms(){
   if (!USER || USER.role === 'owner') return; // власник бачить усе — жодних змін
   OWNER_ONLY_GROUPS.forEach(id => { const g = document.getElementById(id); if (g) g.style.display = 'none'; });
+  // налаштування мозку помічника (провайдер/ключ) — лише кому доступні фінанси; сам чат видно всім
+  if (!userHasPerm('reports.finance')) { const w = document.getElementById('aiCfgLinkWrap'); if (w) w.style.display = 'none'; }
   document.querySelectorAll('.sidebar-item').forEach(it => {
     let req = null;
     const pg = it.dataset.page;
