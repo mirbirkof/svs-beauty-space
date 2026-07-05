@@ -54,6 +54,9 @@ const db = {
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Svs_beautybot';
+// SAS этап 1: личные боты салонов (tenant_bot_settings) + tenant-контекст вебхука
+const { resolveBySlug, runAs } = require('../lib/tenant');
+const { getBotForTenant } = require('../lib/tenant-bots');
 
 // === Helpers ============================================
 function genToken() {
@@ -80,13 +83,13 @@ async function resolveBookingIds(pool, serviceRef, masterRef) {
 }
 
 // Сирий виклик Telegram API (одна спроба).
-function tgRaw(method, body) {
+function tgRaw(method, body, botToken = BOT_TOKEN) {
   return new Promise((resolve, reject) => {
     const data = Buffer.from(JSON.stringify(body));
     const req = https.request({
       method: 'POST',
       hostname: 'api.telegram.org',
-      path: `/bot${BOT_TOKEN}/${method}`,
+      path: `/bot${botToken}/${method}`,
       headers: { 'Content-Type': 'application/json', 'Content-Length': data.length },
       timeout: 12000,
     }, (res) => {
@@ -105,18 +108,18 @@ function tgRaw(method, body) {
 // - 429 (rate limit) → чекаємо retry_after і повторюємо (це і була «тиша» на частих повідомленнях);
 // - мережева помилка/5xx → короткий retry;
 // - інші відмови Telegram (400 тощо) → логуємо, щоб було видно, а не глухо.
-async function tg(method, body, _try = 0) {
+async function tg(method, body, _try = 0, botToken = BOT_TOKEN) {
   try {
-    const r = await tgRaw(method, body);
+    const r = await tgRaw(method, body, botToken);
     if (r && r.ok === false) {
       if (r.error_code === 429 && _try < 4) {
         const wait = ((r.parameters && r.parameters.retry_after) || 1) * 1000 + 150;
         await new Promise((s) => setTimeout(s, wait));
-        return tg(method, body, _try + 1);
+        return tg(method, body, _try + 1, botToken);
       }
       if (r.error_code >= 500 && _try < 3) {
         await new Promise((s) => setTimeout(s, 400 * (_try + 1)));
-        return tg(method, body, _try + 1);
+        return tg(method, body, _try + 1, botToken);
       }
       console.error(`[booking/tg] Telegram ${method} відхилив: ${r.error_code} ${r.description || ''}`);
     }
@@ -124,11 +127,16 @@ async function tg(method, body, _try = 0) {
   } catch (e) {
     if (_try < 3) {
       await new Promise((s) => setTimeout(s, 400 * (_try + 1)));
-      return tg(method, body, _try + 1);
+      return tg(method, body, _try + 1, botToken);
     }
     console.error(`[booking/tg] ${method} не доставлено:`, e.message);
     return { ok: false, error: e.message };
   }
+}
+
+// tg-функция, привязанная к чужому боту (SAS: ответы ботом салона-клиента)
+function tgFor(botToken) {
+  return (method, body) => tg(method, body, 0, botToken);
 }
 
 // Нагадування про візити 24г/2г з кнопками «Буду/Перенести/Скасувати» (Етап 5).
@@ -163,10 +171,16 @@ router.post('/init', validateBody({
     const token = genToken();
     await db.insert(token, { service_id, employee_id, date_from, date_to, client_name: client_name || null, channel: channel || 'site_salon' });
 
+    // SAS: диплинк ведёт в бота ЭТОГО салона (env-бот — только для салона Босса)
+    let botUsername = BOT_USERNAME;
+    try {
+      const tbot = await getBotForTenant(req.tenant_id);
+      if (tbot && tbot.username) botUsername = tbot.username;
+    } catch (_e) { /* fallback на бота платформы */ }
     res.json({
       ok: true,
       token,
-      deep_link: `https://t.me/${BOT_USERNAME}?start=${token}`,
+      deep_link: `https://t.me/${botUsername}?start=${token}`,
     });
   } catch (e) {
     console.error('[booking/init]', e.message);
@@ -181,14 +195,12 @@ router.get('/status/:token', async (req, res) => {
   res.json({ status: row.status, appointment_id: row.appointment_id || null, error: row.error || null });
 });
 
-// === POST /telegram (webhook) ===========================
-router.post('/telegram', async (req, res) => {
-  // ВАЖЛИВО: підтверджуємо Telegram ПІСЛЯ обробки (finally), а не до неї.
-  // Інакше рестарт/деплой посеред обробки губить повідомлення мовчки —
-  // бот сказав «отримав», а відповісти не встиг. Тепер при збої немає ack →
-  // Telegram повторить апдейт, і клієнт таки отримає відповідь.
-  try {
-    const upd = req.body;
+// === Обробка Telegram-апдейта =============================
+// Спільна для легасі-вебхука (бот Босса, env-токен) і per-tenant вебхуків
+// (боти салонів-клієнтів). Параметр tg ЗАТІНЯЄ модульний tg — увесь код
+// нижче автоматично відповідає правильним ботом.
+async function processUpdate(upd, tg, salon) {
+  {
     const botCtx = { tg, pool: getPool(), bp };
 
     // Розмовна запис: натискання inline-кнопок → повністю в booking-bot
@@ -221,7 +233,7 @@ router.post('/telegram', async (req, res) => {
         // Новий користувач → пропонуємо підвʼязати номер
         return tg('sendMessage', {
           chat_id: msg.chat.id,
-          text: 'Вітаємо у SVS Beauty Space! 👋\nЩоб отримувати нагадування про візити, персональні пропозиції та підтверджувати онлайн-записи — підвʼяжіть свій номер телефону одним дотиком:',
+          text: 'Вітаємо у ' + ((salon && salon.name) || 'SVS Beauty Space') + '! 👋\nЩоб отримувати нагадування про візити, персональні пропозиції та підтверджувати онлайн-записи — підвʼяжіть свій номер телефону одним дотиком:',
           reply_markup: {
             keyboard: [[{ text: '📱 Поділитись номером', request_contact: true }]],
             one_time_keyboard: true,
@@ -475,8 +487,39 @@ router.post('/telegram', async (req, res) => {
         });
       }
     }
+  }
+}
+
+// === POST /telegram (webhook, легасі: бот Босса на env-токені) ===========
+// ВАЖЛИВО: підтверджуємо Telegram ПІСЛЯ обробки (finally), а не до неї.
+// Інакше рестарт/деплой посеред обробки губить повідомлення мовчки —
+// бот сказав «отримав», а відповісти не встиг. При збої немає ack →
+// Telegram повторить апдейт, і клієнт таки отримає відповідь.
+router.post('/telegram', async (req, res) => {
+  try {
+    await processUpdate(req.body, tg, { name: 'SVS Beauty Space' });
   } catch (e) {
     console.error('[booking/telegram]', e.message);
+  } finally {
+    if (!res.headersSent) res.json({ ok: true });
+  }
+});
+
+// === POST /telegram/t/:slug (per-tenant вебхук ботів салонів, SAS) =======
+// URL реєструється автоматично в /api/bot-connect (setWebhook + secret).
+router.post('/telegram/t/:slug', async (req, res) => {
+  try {
+    const t = await resolveBySlug(String(req.params.slug || ''));
+    if (!t || t.status !== 'active') { res.status(404).json({ ok: false }); return; }
+    const bot = await runAs(t.id, () => getBotForTenant(t.id));
+    if (!bot || bot.source !== 'db') { res.status(404).json({ ok: false }); return; }
+    // захист від підробки: Telegram шле секрет, заданий при setWebhook
+    if (bot.secret && req.headers['x-telegram-bot-api-secret-token'] !== bot.secret) {
+      res.status(403).json({ ok: false }); return;
+    }
+    await runAs(t.id, () => processUpdate(req.body, tgFor(bot.token), { name: bot.salonName }));
+  } catch (e) {
+    console.error('[booking/telegram-t]', e.message);
   } finally {
     if (!res.headersSent) res.json({ ok: true });
   }

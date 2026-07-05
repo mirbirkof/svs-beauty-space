@@ -381,6 +381,8 @@ try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) {
 // З 03.07 вебхук вказує СЮДИ (svs-shop-api) — окремий сервіс svs-booking-api деплоївся
 // з іншого репо і застряг на червневому коді. /catalog перехоплює booking-catalog вище.
 try { app.use('/api/booking', require('./routes/booking')); } catch(e) { console.error('[booking] mount failed:', e.message); }
+// SAS этап 1: самостоятельное подключение ТГ-бота салона (BotFather token → всё само)
+try { app.use('/api/bot-connect', require('./routes/bot-connect')); } catch(e) { console.error('[bot-connect] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }
 try { app.use('/api/bi', require('./routes/bi')); } catch(e) { console.error('[bi] mount failed:', e.message); }
 try { app.use('/api/google-business', require('./routes/google-business')); } catch(e) { console.error('[google-business] mount failed:', e.message); }
