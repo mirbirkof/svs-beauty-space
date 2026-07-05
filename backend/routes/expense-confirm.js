@@ -30,7 +30,7 @@ router.get('/pending', async (req, res) => {
   try {
     const p = periodOf(req);
     const q = (sql, a = []) => pool.query(sql, a).then(r => r.rows).catch(() => []);
-    const [salary, recurring, confirmed] = await Promise.all([
+    const [salary, sales, recurring, confirmed] = await Promise.all([
       // нарахована ЗП по майстрах (виручка×% схеми, лише за послуги що пройшли)
       q(`WITH da AS (SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
             WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
@@ -42,15 +42,58 @@ router.get('/pending', async (req, res) => {
            GROUP BY m.id, m.name
           HAVING SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END) > 0
            ORDER BY amount DESC`, [p.from, p.to]),
+      // % З ПРОДАЖУ ПРОДУКЦІЇ (правило Босса 05-06.07): банки у візитах по ПРОДАВЦЮ
+      // (seller_master_id, інакше майстер візиту) + роздрібні POS-продажі майстра.
+      // Фарба за грам = розхідник, % не дає. Адміни не зʼявляються (нема їх master_id).
+      q(`WITH bottles AS (
+            SELECT COALESCE(am.seller_master_id, a.master_id) AS mid,
+                   SUM(ROUND(am.qty_used * pv.price, 2)) AS rev
+              FROM appointment_materials am
+              JOIN appointments a ON a.id = am.appointment_id
+              JOIN product_variants pv ON pv.id = am.variant_id
+              LEFT JOIN products p ON p.id = pv.product_id
+              LEFT JOIN categories c ON c.id = p.category_id
+             WHERE p.price_per_gram IS NULL AND pv.price IS NOT NULL
+               AND a.status IN ('done','completed')
+               AND a.starts_at BETWEEN $1 AND $2
+               AND COALESCE(c.commissionable, TRUE) = TRUE
+             GROUP BY 1),
+          pos AS (
+            SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co
+             WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL
+               AND co.master_id IS NOT NULL AND co.created_at BETWEEN $1 AND $2
+             GROUP BY 1),
+          tot AS (SELECT mid, SUM(rev) AS rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
+          SELECT m.id, m.name, tot.rev::numeric AS sales_revenue,
+                 MAX(ps.sales_commission_pct)::numeric AS sales_pct,
+                 ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100)::numeric AS amount
+            FROM tot JOIN masters m ON m.id = tot.mid
+            LEFT JOIN payroll_schemes ps ON ps.master_id = m.id::text AND ps.is_active = TRUE
+           WHERE COALESCE(ps.sales_commission_pct, 0) > 0
+           GROUP BY m.id, m.name, tot.rev, ps.sales_commission_pct`, [p.from, p.to]),
       q(`SELECT id, category, amount, description, day_of_month FROM recurring_expenses WHERE active=TRUE ORDER BY category`),
       q(`SELECT ref_key, amount_paid, confirmed_at FROM expense_confirmations WHERE period=$1`, [p.period]),
     ]);
     const cmap = {}; confirmed.forEach(c => { cmap[c.ref_key] = c; });
+    const salesMap = {}; sales.forEach(s => { salesMap[s.id] = s; });
     const salaryItems = salary.map(s => {
       const key = `salary:${s.id}:${p.period}`;
+      const sl = salesMap[s.id]; delete salesMap[s.id];
+      const salesPart = sl ? Number(sl.amount) : 0;
       return { kind: 'salary', ref_key: key, label: `ЗП ${s.name}${s.percent != null ? ` (${s.percent}%)` : ''}`,
-        master_id: s.id, amount_calc: Number(s.amount), confirmed: !!cmap[key], amount_paid: cmap[key] ? Number(cmap[key].amount_paid) : null };
+        master_id: s.id, amount_calc: Number(s.amount) + salesPart,
+        services_part: Number(s.amount), sales_part: salesPart,
+        sales_revenue: sl ? Number(sl.sales_revenue) : 0, sales_pct: sl ? Number(sl.sales_pct) : null,
+        confirmed: !!cmap[key], amount_paid: cmap[key] ? Number(cmap[key].amount_paid) : null };
     });
+    // майстри, у яких Є продажі, але немає послуг за період (продали з вітрини) — окремий рядок ЗП
+    for (const s of Object.values(salesMap)) {
+      const key = `salary:${s.id}:${p.period}`;
+      salaryItems.push({ kind: 'salary', ref_key: key, label: `ЗП ${s.name} (продажі)`,
+        master_id: s.id, amount_calc: Number(s.amount), services_part: 0, sales_part: Number(s.amount),
+        sales_revenue: Number(s.sales_revenue), sales_pct: Number(s.sales_pct),
+        confirmed: !!cmap[key], amount_paid: cmap[key] ? Number(cmap[key].amount_paid) : null });
+    }
     const recItems = recurring.map(r => {
       const key = `recurring:${r.id}:${p.period}`;
       const lbl = { rent: 'Оренда', utilities: 'Комуналка', marketing: 'Маркетинг' }[r.category] || r.category;

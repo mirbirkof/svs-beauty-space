@@ -11776,8 +11776,11 @@ async function loadExpenseConfirm(){
           <b style="color:#1B7A3D">✓ Проведено ${money(x.amount_paid)}</b>
           <button class="btn btn-sm" title="Скасувати" onclick="ecUndo('${encodeURIComponent(x.ref_key)}')">↺</button></div>`;
       }
+      // розбивка: послуги + % з продажу продукції (повна статистика — прохання Босса 06.07)
+      const brk = (x.sales_part > 0)
+        ? `<span style="display:block;font-size:11.5px;color:var(--text-secondary);margin-top:2px">послуги ${money(x.services_part)} · <span style="color:#6d28d9;font-weight:700">продажі ${money(x.sales_part)}</span> <span style="color:#9ca3af">(${x.sales_pct != null ? x.sales_pct + '% від ' : ''}${money(x.sales_revenue)})</span></span>` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border,#eee);border-radius:10px;background:#fff">
-        <span style="flex:1">${escapeHtml(x.label)}</span>
+        <span style="flex:1">${escapeHtml(x.label)}${brk}</span>
         <span class="muted" style="font-size:12px">нараховано</span>
         <input type="number" class="inp" id="ec_${x.ref_key.replace(/[^a-z0-9]/gi,'_')}" value="${Math.round(x.amount_calc)}" style="width:120px;padding:6px 9px;text-align:right">
         <button class="btn btn-primary btn-sm" onclick='ecConfirm(${JSON.stringify(x).replace(/'/g,"&#39;")})'>Провести</button></div>`;

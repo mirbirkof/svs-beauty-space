@@ -14,7 +14,7 @@ const CAT_LABELS = {
 async function liveFinance(pool, from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
   const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
-  const [revC, ordR, comm, fixed, cogs, other, finSet] = await Promise.all([
+  const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
               COUNT(DISTINCT CASE WHEN category IN ('sale_service','sale_product')
@@ -49,6 +49,29 @@ async function liveFinance(pool, from, to) {
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
         GROUP BY category ORDER BY s DESC`, [from, to]),
     q(`SELECT value FROM app_settings WHERE key='finance'`),
+    // % майстрам З ПРОДАЖУ продукції: банки у візитах по ПРОДАВЦЮ + роздрібні POS-продажі
+    // майстра × sales_commission_pct (та сама формула, що ЗП і «Підтвердження витрат»)
+    q(`WITH bottles AS (
+          SELECT COALESCE(am.seller_master_id, a.master_id) AS mid,
+                 SUM(ROUND(am.qty_used * pv.price, 2)) AS rev
+            FROM appointment_materials am
+            JOIN appointments a ON a.id = am.appointment_id
+            JOIN product_variants pv ON pv.id = am.variant_id
+            LEFT JOIN products p ON p.id = pv.product_id
+            LEFT JOIN categories c ON c.id = p.category_id
+           WHERE p.price_per_gram IS NULL AND pv.price IS NOT NULL
+             AND a.status IN ('done','completed')
+             AND a.starts_at BETWEEN $1 AND $2
+             AND COALESCE(c.commissionable, TRUE) = TRUE
+           GROUP BY 1),
+        pos AS (
+          SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co
+           WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL
+             AND co.master_id IS NOT NULL AND co.created_at BETWEEN $1 AND $2
+           GROUP BY 1),
+        tot AS (SELECT mid, SUM(rev) AS rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
+        SELECT COALESCE(SUM(ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100)),0)::numeric s
+          FROM tot LEFT JOIN payroll_schemes ps ON ps.master_id = tot.mid::text AND ps.is_active = TRUE`, [from, to]),
   ]);
 
   const revServices = Number(revC[0]?.svc || 0);
@@ -57,7 +80,8 @@ async function liveFinance(pool, from, to) {
 
   const commissionPct = Number(comm[0]?.comm || 0);
   const fixedAccrued = Number(fixed[0]?.fx || 0) * (days / 30); // оклади — пропорційно довжині періоду
-  const commission = Math.round(commissionPct + fixedAccrued);
+  const salesCommission = Number(salesComm[0]?.s || 0); // % з продажу продукції (банки/POS)
+  const commission = Math.round(commissionPct + fixedAccrued + salesCommission);
   // Матеріали = собівартість проданих товарів (COGS) + матеріали послуг як % від виручки послуг
   // (норм на послуги в системі нема, тож рахуємо % з налаштувань; 0 = вимкнено, як зараз).
   const materialPct = Number(finSet[0]?.value?.material_pct || 0);
