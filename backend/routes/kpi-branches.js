@@ -30,20 +30,30 @@ function dateBounds(req) {
 
 // успешные/проведённые визиты
 const DONE = `a.status IN ('done','completed','paid','finished','closed')`;
+// отменённые/неявки (в БД встречается и 'noshow' без подчёркивания)
+const CANCELLED = `a.status IN ('cancelled','canceled','no_show','noshow')`;
+
+// У исторических записей branch_id пуст (импорт из Букона/BeautyPro не знал о филиалах).
+// Такие визиты относим к главному (минимальному активному) филиалу, иначе все KPI = 0.
+async function defaultBranchId() {
+  const r = await pool.query(`SELECT MIN(id) AS id FROM branches WHERE is_active`);
+  return (r.rows[0] && r.rows[0].id) || 0;
+}
 
 // ── KPI всех филиалов + рейтинг ──────────────────────
 router.get('/', READ, async (req, res) => {
   try {
     const { from, to } = dateBounds(req);
+    const dflt = await defaultBranchId();
     const r = await pool.query(`
       WITH agg AS (
         SELECT b.id, b.name, b.code,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
           COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
-          COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled
+          COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled
         FROM branches b
-        LEFT JOIN appointments a ON a.branch_id=b.id
+        LEFT JOIN appointments a ON COALESCE(a.branch_id,$3)=b.id
           AND a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)
         WHERE b.is_active
         GROUP BY b.id, b.name, b.code
@@ -52,7 +62,7 @@ router.get('/', READ, async (req, res) => {
         CASE WHEN visits>0 THEN ROUND(revenue/visits,2) ELSE 0 END AS avg_check,
         CASE WHEN (visits+cancelled)>0 THEN ROUND(100.0*visits/(visits+cancelled),1) ELSE 0 END AS completion_rate
       FROM agg
-      ORDER BY revenue DESC`, [from, to]);
+      ORDER BY revenue DESC`, [from, to, dflt]);
     // рейтинг по выручке
     const ranked = r.rows.map((row, idx) => ({ ...row, rank: idx + 1 }));
     const totals = ranked.reduce((acc, x) => ({
@@ -71,22 +81,23 @@ router.get('/:id(\\d+)', READ, async (req, res) => {
     const id = req.params.id;
     const branch = await pool.query(`SELECT id,name,code,address,city FROM branches WHERE id=$1`, [id]);
     if (!branch.rowCount) return res.status(404).json({ error: 'branch_not_found' });
+    const dflt = await defaultBranchId();
     const kpi = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
         COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
-        COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled
+        COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled
       FROM appointments a
-      WHERE a.branch_id=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)`,
-      [id, from, to]);
+      WHERE COALESCE(a.branch_id,$4)=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)`,
+      [id, from, to, dflt]);
     const masters = await pool.query(`
       SELECT COALESCE(NULLIF(m.name,''),'—') AS master,
         COUNT(*) FILTER (WHERE ${DONE}) AS visits,
         COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue
       FROM appointments a
       LEFT JOIN masters m ON m.id=a.master_id
-      WHERE a.branch_id=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)
-      GROUP BY m.name ORDER BY revenue DESC`, [id, from, to]);
+      WHERE COALESCE(a.branch_id,$4)=$1 AND a.starts_at >= $2::date AND a.starts_at < ($3::date + 1)
+      GROUP BY m.name ORDER BY revenue DESC`, [id, from, to, dflt]);
     const k = kpi.rows[0];
     k.avg_check = Number(k.visits) > 0 ? Math.round(Number(k.revenue)/Number(k.visits)*100)/100 : 0;
     res.json({ period: { from, to }, branch: branch.rows[0], kpi: k, masters: masters.rows });
@@ -103,12 +114,13 @@ router.get('/:id(\\d+)/plan-fact', READ, async (req, res) => {
     const t = await pool.query(
       `SELECT revenue_target,visits_target,new_clients_target,occupancy_target
        FROM fin_branch_targets WHERE branch_id=$1 AND period_month=$2`, [id, month]);
+    const dflt = await defaultBranchId();
     const fact = await pool.query(`
       SELECT COUNT(*) FILTER (WHERE ${DONE}) AS visits,
         COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
         COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients
       FROM appointments a
-      WHERE a.branch_id=$1 AND to_char(a.starts_at,'YYYY-MM')=$2`, [id, month]);
+      WHERE COALESCE(a.branch_id,$3)=$1 AND to_char(a.starts_at,'YYYY-MM')=$2`, [id, month, dflt]);
     const tgt = t.rows[0] || { revenue_target:0, visits_target:0, new_clients_target:0, occupancy_target:0 };
     const f = fact.rows[0];
     const pct = (fv, tv) => Number(tv) > 0 ? Math.round(100*Number(fv)/Number(tv)) : null;
@@ -157,16 +169,17 @@ router.put('/targets', MANAGE, async (req, res) => {
 router.get('/benchmark', READ, async (req, res) => {
   try {
     const { from, to } = dateBounds(req);
+    const dflt = await defaultBranchId();
     const r = await pool.query(`
       WITH agg AS (
         SELECT b.id, b.name, b.code,
           COUNT(*) FILTER (WHERE ${DONE}) AS visits,
           COALESCE(SUM(COALESCE(a.real_amount,a.price)) FILTER (WHERE ${DONE}),0) AS revenue,
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
-          COUNT(*) FILTER (WHERE a.status IN ('cancelled','canceled','no_show')) AS cancelled,
+          COUNT(*) FILTER (WHERE ${CANCELLED}) AS cancelled,
           COUNT(*) AS total_slots
         FROM branches b
-        LEFT JOIN appointments a ON a.branch_id=b.id
+        LEFT JOIN appointments a ON COALESCE(a.branch_id,$3)=b.id
           AND a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)
         WHERE b.is_active
         GROUP BY b.id, b.name, b.code
@@ -201,7 +214,7 @@ router.get('/benchmark', READ, async (req, res) => {
           COALESCE(100.0*(total_count - occ_rank)/(NULLIF(total_count-1,0)::numeric),50)
         ) / 4, 1) AS total_score
       FROM ranked
-      ORDER BY total_score DESC`, [from, to]);
+      ORDER BY total_score DESC`, [from, to, dflt]);
 
     const count = r.rows.length;
     const top25 = Math.ceil(count * 0.25);
@@ -218,6 +231,7 @@ router.get('/benchmark', READ, async (req, res) => {
 router.get('/network-summary', READ, async (req, res) => {
   try {
     const { from, to } = dateBounds(req);
+    const dflt = await defaultBranchId();
     const r = await pool.query(`
       WITH agg AS (
         SELECT b.id, b.name,
@@ -226,7 +240,7 @@ router.get('/network-summary', READ, async (req, res) => {
           COUNT(DISTINCT a.client_id) FILTER (WHERE ${DONE}) AS clients,
           COUNT(*) AS total_slots
         FROM branches b
-        LEFT JOIN appointments a ON a.branch_id=b.id
+        LEFT JOIN appointments a ON COALESCE(a.branch_id,$3)=b.id
           AND a.starts_at >= $1::date AND a.starts_at < ($2::date + 1)
         WHERE b.is_active
         GROUP BY b.id, b.name
@@ -242,7 +256,7 @@ router.get('/network-summary', READ, async (req, res) => {
         (SELECT revenue FROM agg ORDER BY revenue DESC LIMIT 1) AS best_branch_revenue,
         (SELECT name FROM agg ORDER BY revenue ASC LIMIT 1) AS worst_branch_name,
         (SELECT revenue FROM agg ORDER BY revenue ASC LIMIT 1) AS worst_branch_revenue
-      FROM agg`, [from, to]);
+      FROM agg`, [from, to, dflt]);
     res.json({ period: { from, to }, summary: r.rows[0] || {} });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

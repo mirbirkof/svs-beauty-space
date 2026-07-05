@@ -54,7 +54,7 @@
   window.registerModule({
     page: 'pnl',
     title: 'Звіт P&L / Прибутки-збитки',
-    group: 'analytics',
+    group: 'finance',
     icon: 'trending_up',
     section: '<div id="pnlCards"></div><div id="pnlBody"></div>',
     loader: async function () {
@@ -125,7 +125,7 @@
   window.registerModule({
     page: 'payouts',
     title: 'Виплати ЗП / Відомість',
-    group: 'analytics',
+    group: 'finance',
     icon: 'payments',
     section: '<div id="payoutsCards"></div><div id="payoutsBody"></div>',
     loader: async function () {
@@ -283,30 +283,33 @@
   });
 
 
-  /* ═══════════ 4. KPI ФІЛІАЛІВ (бенчмаркінг + рейтинг + план/факт) ════════ */
+  /* ═══════════ 4. KPI САЛОНУ / ФІЛІАЛІВ (адаптивний) ═══════════════════════
+   * 1 філіал  → режим «KPI салону»: показники з порівнянням до минулого періоду,
+   *             план/факт місяця з цілями та темпом, розбивка по майстрах.
+   * 2+ філіали → мережевий режим: рейтинг філіалів + бенчмаркінг (як було). */
   window.registerModule({
     page: 'kpibranches',
-    title: 'KPI філіалів',
+    title: 'KPI салону',
     group: 'analytics',
     icon: 'store',
     section: [
-      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">',
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">',
         '<label style="font-size:13px;color:#555">Від:',
           '<input id="kpibr_from" type="date" style="margin-left:6px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">',
         '</label>',
         '<label style="font-size:13px;color:#555">До:',
           '<input id="kpibr_to" type="date" style="margin-left:6px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">',
         '</label>',
-        '<button id="kpibr_load" style="padding:6px 16px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">',
-          'Оновити',
-        '</button>',
+        '<button id="kpibr_load" style="padding:6px 16px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Оновити</button>',
+        '<span style="font-size:12px;color:#999">Показники порівнюються з попереднім періодом тієї ж довжини</span>',
       '</div>',
       '<div id="kpibrCards"></div>',
+      '<div id="kpibrPlan"></div>',
+      '<div id="kpibrMasters"></div>',
       '<div id="kpibrRating"></div>',
       '<div id="kpibrBench"></div>'
     ].join(''),
     loader: async function () {
-      // ── вирахувати діапазон дат (поточний місяць за замовчуванням)
       var today = new Date();
       var y = today.getUTCFullYear();
       var m = String(today.getUTCMonth() + 1).padStart(2, '0');
@@ -316,140 +319,266 @@
       var fromEl = document.getElementById('kpibr_from');
       var toEl   = document.getElementById('kpibr_to');
       var btn    = document.getElementById('kpibr_load');
-      var cards  = document.getElementById('kpibrCards');
-      var rating = document.getElementById('kpibrRating');
-      var bench  = document.getElementById('kpibrBench');
 
       if (fromEl && !fromEl.value) fromEl.value = defaultFrom;
       if (toEl   && !toEl.value)   toEl.value   = defaultTo;
 
-      var from = (fromEl && fromEl.value) || defaultFrom;
-      var to   = (toEl   && toEl.value)   || defaultTo;
-
       if (btn && !btn._bound) {
         btn._bound = true;
-        btn.addEventListener('click', function () {
-          if (cards)  cards.innerHTML  = window.modEmpty('Завантаження…');
-          if (rating) rating.innerHTML = '';
-          if (bench)  bench.innerHTML  = '';
-          window._kpibr_load && window._kpibr_load();
-        });
+        btn.addEventListener('click', function () { window._kpibr_load && window._kpibr_load(); });
       }
 
-      var qs = '?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+      window._kpibr_load = load;
+      await load();
 
-      // ── зберігаємо функцію перезавантаження для кнопки
-      var self = this;
-      window._kpibr_load = async function () {
-        var fr = (document.getElementById('kpibr_from') && document.getElementById('kpibr_from').value) || defaultFrom;
-        var t  = (document.getElementById('kpibr_to')   && document.getElementById('kpibr_to').value)   || defaultTo;
-        var q  = '?from=' + encodeURIComponent(fr) + '&to=' + encodeURIComponent(t);
-        await loadKpiBranches(q);
-      };
+      // ── дельта до попереднього періоду: ▲ +12% / ▼ −8% ──
+      function deltaBadge(cur, prev) {
+        cur = Number(cur) || 0; prev = Number(prev) || 0;
+        if (!prev) return '<div style="font-size:11px;color:#9aa0a6;margin-top:2px">немає бази порівняння</div>';
+        var d = Math.round(1000 * (cur - prev) / prev) / 10;
+        if (Math.abs(d) < 0.05) return '<div style="font-size:11px;color:#9aa0a6;margin-top:2px">= без змін</div>';
+        var up = d > 0;
+        return '<div style="font-size:12px;font-weight:600;margin-top:2px;color:' + (up ? '#2e9e5b' : '#d9534f') + '">' +
+          (up ? '▲ +' : '▼ ') + d.toLocaleString('uk-UA') + '% до попер. періоду</div>';
+      }
+      function kpiCard(title, valueHtml, deltaHtml, color) {
+        return '<div class="card" style="flex:1;min-width:160px;padding:16px">' +
+          '<div style="font-size:12px;color:#888">' + window.modEsc(title) + '</div>' +
+          '<div style="font-size:24px;font-weight:700;color:' + (color || '#222') + '">' + (valueHtml == null ? '—' : valueHtml) + '</div>' +
+          (deltaHtml || '') + '</div>';
+      }
+      function bar(label, factTxt, planTxt, p) {
+        var pc = (p == null) ? null : Math.max(0, Math.min(150, Number(p)));
+        var col = pc == null ? '#ccc' : (pc >= 100 ? '#2e9e5b' : (pc >= 70 ? '#e0a800' : '#d9534f'));
+        return '<div style="margin:10px 0">' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">' +
+            '<span>' + window.modEsc(label) + '</span>' +
+            '<span><b>' + factTxt + '</b> з ' + planTxt + (pc == null ? '' : ' · <b style="color:' + col + '">' + Math.round(pc) + '%</b>') + '</span>' +
+          '</div>' +
+          '<div style="height:8px;background:#f0f0f0;border-radius:6px;overflow:hidden">' +
+            '<div style="height:100%;width:' + (pc == null ? 0 : Math.min(100, pc)) + '%;background:' + col + ';border-radius:6px"></div>' +
+          '</div></div>';
+      }
 
-      if (cards) cards.innerHTML = window.modEmpty('Завантаження…');
-
-      await loadKpiBranches(qs);
-
-      // ── внутрішня функція завантаження ──────────────────────────────────────
-      async function loadKpiBranches(q) {
+      async function load() {
         var cEl = document.getElementById('kpibrCards');
+        var pEl = document.getElementById('kpibrPlan');
+        var mEl = document.getElementById('kpibrMasters');
         var rEl = document.getElementById('kpibrRating');
         var bEl = document.getElementById('kpibrBench');
         if (cEl) cEl.innerHTML = window.modEmpty('Завантаження…');
+        if (pEl) pEl.innerHTML = ''; if (mEl) mEl.innerHTML = '';
+        if (rEl) rEl.innerHTML = ''; if (bEl) bEl.innerHTML = '';
         try {
-          var listData  = await window.modApi('/api/kpi-branches' + q);
-          var benchData = null;
-          var sumData   = null;
-          try { benchData = await window.modApi('/api/kpi-branches/benchmark' + q); } catch (_e) { /* ok */ }
-          try { sumData   = await window.modApi('/api/kpi-branches/network-summary' + q); } catch (_e) { /* ok */ }
+          var from = (fromEl && fromEl.value) || defaultFrom;
+          var to   = (toEl && toEl.value) || defaultTo;
+          var q = '?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
 
-          var branches = (listData && Array.isArray(listData.branches)) ? listData.branches : [];
-          var totals   = (listData && listData.totals) || {};
-          var summary  = (sumData  && sumData.summary)  || {};
+          // попередній період тієї ж довжини
+          var dFrom = new Date(from + 'T00:00:00Z'), dTo = new Date(to + 'T00:00:00Z');
+          var lenMs = Math.max(864e5, dTo - dFrom + 864e5);
+          var prevTo = new Date(dFrom - 864e5), prevFrom = new Date(dFrom - lenMs);
+          var pq = '?from=' + prevFrom.toISOString().slice(0, 10) + '&to=' + prevTo.toISOString().slice(0, 10);
 
-          // ── KPI-картки сітки ─────────────────────────────────────────────
-          if (cEl) {
-            cEl.innerHTML = cardsRow(
-              window.modCard('Філіалів',         fmtNum(branches.length),                          '#222') +
-              window.modCard('Виручка мережі',   fmtMoney(pick(summary.total_revenue, totals.revenue)), '#1a73e8') +
-              window.modCard('Всього візитів',   fmtNum(pick(summary.total_visits, totals.visits)), '#2e9e5b') +
-              window.modCard('Сер. чек мережі',  fmtMoney(summary.network_avg_check),               '#7b5cd6') +
-              window.modCard('Завантаженість %', fmtPct(summary.avg_occupancy),                     '#e67e22') +
-              window.modCard('Лідер',
-                summary.best_branch_name
-                  ? (window.modEsc(summary.best_branch_name) + ' ' + fmtMoney(summary.best_branch_revenue))
-                  : '—', '#16a085')
-            );
+          var cur = await window.modApi('/api/kpi-branches' + q);
+          if (cur && cur.error) throw new Error(cur.error);
+          var prev = null;
+          try { prev = await window.modApi('/api/kpi-branches' + pq); } catch (_e) { /* ok */ }
+
+          var branches = (cur && Array.isArray(cur.branches)) ? cur.branches : [];
+          if (!branches.length) { if (cEl) cEl.innerHTML = window.modEmpty('Немає активних філіалів'); return; }
+
+          if (branches.length === 1) {
+            await renderSalon(branches[0], (prev && prev.branches && prev.branches[0]) || {}, from, to, q, cEl, pEl, mEl);
+          } else {
+            await renderNetwork(branches, q, cEl, rEl, bEl);
           }
+        } catch (e) { if (cEl) window.modErr(cEl, e); }
+      }
 
-          // ── Рейтинг філіалів ─────────────────────────────────────────────
-          if (rEl) {
-            var rHtml = '<h3 style="font-size:15px;font-weight:600;margin:18px 0 10px">Рейтинг філіалів</h3>';
-            if (!branches.length) {
-              rHtml += window.modEmpty('Немає даних за вибраний період');
-            } else {
-              rHtml += tableOpen() + '<thead><tr>' +
-                th('#', true) + th('Філіал') + th('Виручка', true) +
-                th('Візити', true) + th('Клієнти', true) + th('Сер. чек', true) +
-                th('Виконання', true) +
-                '</tr></thead><tbody>';
-              for (var i = 0; i < branches.length; i++) {
-                var br = branches[i] || {};
-                var compRate = br.completion_rate != null
-                  ? '<span style="color:' + (Number(br.completion_rate) >= 80 ? '#2e9e5b' : (Number(br.completion_rate) >= 60 ? '#e0a800' : '#d9534f')) + '">' +
-                    fmtPct(br.completion_rate) + '</span>'
-                  : '—';
-                rHtml += '<tr>' +
-                  td('<b>' + window.modEsc(String(br.rank || i + 1)) + '</b>', true) +
-                  td(window.modEsc(br.name || br.code || '—')) +
-                  td(fmtMoney(br.revenue), true) +
-                  td(fmtNum(br.visits), true) +
-                  td(fmtNum(br.clients), true) +
-                  td(fmtMoney(br.avg_check), true) +
-                  td(compRate, true) +
-                  '</tr>';
-              }
-              rHtml += '</tbody></table>';
+      /* ── РЕЖИМ «KPI САЛОНУ» (один філіал) ─────────────────────────────── */
+      async function renderSalon(br, pv, from, to, q, cEl, pEl, mEl) {
+        cEl.innerHTML = cardsRow(
+          kpiCard('Виручка',    fmtMoney(br.revenue),  deltaBadge(br.revenue,  pv.revenue),  '#1a73e8') +
+          kpiCard('Візити',     fmtNum(br.visits),     deltaBadge(br.visits,   pv.visits),   '#2e9e5b') +
+          kpiCard('Клієнти',    fmtNum(br.clients),    deltaBadge(br.clients,  pv.clients),  '#7b5cd6') +
+          kpiCard('Сер. чек',   fmtMoney(br.avg_check),deltaBadge(br.avg_check,pv.avg_check),'#e67e22') +
+          kpiCard('Доведено до візиту', fmtPct(br.completion_rate),
+            '<div style="font-size:11px;color:#9aa0a6;margin-top:2px">частка записів без скасувань і неявок</div>', '#16a085')
+        );
+
+        // план/факт місяця (місяць беремо з дати «Від»)
+        var month = String(from).slice(0, 7);
+        var pf = null;
+        try { pf = await window.modApi('/api/kpi-branches/' + br.id + '/plan-fact?month=' + month); } catch (_e) { /* ok */ }
+        if (pEl && pf) {
+          var t = pf.target || {}, f = pf.fact || {}, pr = pf.progress || {};
+          var hasPlan = Number(t.revenue_target) > 0 || Number(t.visits_target) > 0 || Number(t.new_clients_target) > 0;
+          var html = '<div class="card" style="padding:18px;margin-bottom:18px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">' +
+              '<h3 style="margin:0;font-size:15px;font-weight:700">План / факт за ' + window.modEsc(month) + '</h3>' +
+              '<button id="kpibr_goalbtn" style="padding:5px 14px;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:6px;cursor:pointer;font-size:12.5px">' +
+                (hasPlan ? 'Змінити ціль' : 'Задати ціль') + '</button>' +
+            '</div>';
+          if (hasPlan) {
+            html += bar('Виручка', fmtMoney(f.revenue), fmtMoney(t.revenue_target), pr.revenue) +
+                    bar('Візити',  fmtNum(f.visits),   fmtNum(t.visits_target),   pr.visits) +
+                    bar('Клієнти', fmtNum(f.clients),  fmtNum(t.new_clients_target), pr.new_clients);
+            // темп: скільки на день лишилось до цілі виручки
+            var nowM = new Date().toISOString().slice(0, 7);
+            if (month === nowM && Number(t.revenue_target) > Number(f.revenue)) {
+              var lastDay = new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate();
+              var daysLeft = Math.max(1, lastDay - new Date().getUTCDate() + 1);
+              var perDay = Math.ceil((Number(t.revenue_target) - Number(f.revenue)) / daysLeft);
+              html += '<div style="margin-top:10px;padding:10px 12px;background:#f6f9ff;border-radius:8px;font-size:13px">' +
+                'Щоб дотягнути до цілі: <b>' + fmtMoney(perDay) + '/день</b> протягом ' + daysLeft + ' дн., що лишились</div>';
             }
-            rEl.innerHTML = rHtml;
+          } else {
+            html += '<div style="padding:14px 0;color:#9aa0a6;font-size:13.5px">Ціль на місяць не задана. Задайте ціль по виручці/візитах — і тут з\'явиться прогрес та потрібний темп на день.</div>';
           }
+          // інлайн-форма цілі
+          html += '<div id="kpibr_goalform" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed #ddd">' +
+            '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">' +
+              '<label style="font-size:12px;color:#555">Виручка, ₴<br><input id="kpibr_t_rev" type="number" min="0" value="' + (Number(t.revenue_target) || '') + '" style="margin-top:4px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;width:130px"></label>' +
+              '<label style="font-size:12px;color:#555">Візити<br><input id="kpibr_t_vis" type="number" min="0" value="' + (Number(t.visits_target) || '') + '" style="margin-top:4px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;width:100px"></label>' +
+              '<label style="font-size:12px;color:#555">Клієнти<br><input id="kpibr_t_cli" type="number" min="0" value="' + (Number(t.new_clients_target) || '') + '" style="margin-top:4px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;width:100px"></label>' +
+              '<button id="kpibr_goalsave" style="padding:7px 18px;background:#1a73e8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Зберегти</button>' +
+            '</div></div>';
+          html += '</div>';
+          pEl.innerHTML = html;
 
-          // ── Бенчмаркінг (топ/сер/низ) ───────────────────────────────────
-          if (bEl) {
-            var bList = (benchData && Array.isArray(benchData.benchmark)) ? benchData.benchmark : [];
-            var bHtml = '<h3 style="font-size:15px;font-weight:600;margin:18px 0 10px">Бенчмаркінг (порівняння)</h3>';
-            if (!bList.length) {
-              bHtml += window.modEmpty('Немає даних для бенчмаркінгу');
-            } else {
-              var TIER_COLOR = { top: '#2e9e5b', mid: '#e0a800', bottom: '#d9534f' };
-              var TIER_LABEL = { top: 'Топ', mid: 'Середній', bottom: 'Відстає' };
-              bHtml += tableOpen() + '<thead><tr>' +
-                th('Філіал') + th('Виручка', true) + th('Сер. чек', true) +
-                th('Завантаж.', true) + th('Баланс. бал', true) + th('Рівень') +
-                '</tr></thead><tbody>';
-              for (var j = 0; j < bList.length; j++) {
-                var b = bList[j] || {};
-                var tier = b.tier || 'mid';
-                var tierBadge = '<span style="background:' + (TIER_COLOR[tier] || '#888') +
-                  ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' +
-                  window.modEsc(TIER_LABEL[tier] || tier) + '</span>';
-                bHtml += '<tr>' +
-                  td(window.modEsc(b.name || b.code || '—')) +
-                  td(fmtMoney(b.revenue), true) +
-                  td(fmtMoney(b.avg_check), true) +
-                  td(fmtPct(b.occupancy), true) +
-                  td('<b>' + fmtNum(b.total_score) + '</b>', true) +
-                  td(tierBadge) +
-                  '</tr>';
-              }
-              bHtml += '</tbody></table>';
+          var gb = document.getElementById('kpibr_goalbtn');
+          var gf = document.getElementById('kpibr_goalform');
+          if (gb && gf) gb.addEventListener('click', function () {
+            gf.style.display = gf.style.display === 'none' ? 'block' : 'none';
+          });
+          var gs = document.getElementById('kpibr_goalsave');
+          if (gs) gs.addEventListener('click', async function () {
+            gs.disabled = true; gs.textContent = 'Зберігаю…';
+            try {
+              var saved = await window.modApi('/api/kpi-branches/targets', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  branch_id: br.id, period_month: month,
+                  revenue_target: Number(document.getElementById('kpibr_t_rev').value) || 0,
+                  visits_target: Number(document.getElementById('kpibr_t_vis').value) || 0,
+                  new_clients_target: Number(document.getElementById('kpibr_t_cli').value) || 0
+                })
+              });
+              if (saved && saved.error) throw new Error(saved.error);
+              await load();
+            } catch (e) {
+              gs.disabled = false; gs.textContent = 'Зберегти';
+              alert('Не вдалося зберегти ціль: ' + ((e && e.message) || e));
             }
-            bEl.innerHTML = bHtml;
-          }
+          });
+        }
 
-        } catch (e) {
-          if (cEl) window.modErr(cEl, e);
+        // розбивка по майстрах
+        if (mEl) {
+          var det = null;
+          try { det = await window.modApi('/api/kpi-branches/' + br.id + q); } catch (_e) { /* ok */ }
+          var masters = (det && Array.isArray(det.masters)) ? det.masters : [];
+          masters = masters.filter(function (x) { return Number(x.visits) > 0 || Number(x.revenue) > 0; });
+          var mHtml = '<h3 style="font-size:15px;font-weight:600;margin:18px 0 10px">Внесок майстрів за період</h3>';
+          if (!masters.length) {
+            mHtml += window.modEmpty('Немає проведених візитів за період');
+          } else {
+            var totRev = masters.reduce(function (s, x) { return s + Number(x.revenue || 0); }, 0) || 1;
+            mHtml += tableOpen() + '<thead><tr>' +
+              th('Майстер') + th('Візити', true) + th('Виручка', true) + th('Частка', true) +
+              '</tr></thead><tbody>';
+            for (var i = 0; i < masters.length; i++) {
+              var ms = masters[i] || {};
+              var share = Math.round(1000 * Number(ms.revenue || 0) / totRev) / 10;
+              mHtml += '<tr>' +
+                td(window.modEsc(ms.master || '—')) +
+                td(fmtNum(ms.visits), true) +
+                td(fmtMoney(ms.revenue), true) +
+                td('<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">' +
+                   '<div style="width:70px;height:6px;background:#f0f0f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:' + Math.min(100, share) + '%;background:#1a73e8"></div></div>' +
+                   '<span style="min-width:44px;text-align:right">' + share + '%</span></div>', true) +
+                '</tr>';
+            }
+            mHtml += '</tbody></table>';
+          }
+          mEl.innerHTML = '<div class="card" style="padding:0 16px 6px;overflow:auto">' + mHtml + '</div>';
+        }
+      }
+
+      /* ── МЕРЕЖЕВИЙ РЕЖИМ (2+ філіали): рейтинг + бенчмаркінг ──────────── */
+      async function renderNetwork(branches, q, cEl, rEl, bEl) {
+        var benchData = null, sumData = null;
+        try { benchData = await window.modApi('/api/kpi-branches/benchmark' + q); } catch (_e) { /* ok */ }
+        try { sumData   = await window.modApi('/api/kpi-branches/network-summary' + q); } catch (_e) { /* ok */ }
+        var summary = (sumData && sumData.summary) || {};
+
+        cEl.innerHTML = cardsRow(
+          window.modCard('Філіалів',        fmtNum(branches.length), '#222') +
+          window.modCard('Виручка мережі',  fmtMoney(summary.total_revenue), '#1a73e8') +
+          window.modCard('Всього візитів',  fmtNum(summary.total_visits), '#2e9e5b') +
+          window.modCard('Сер. чек мережі', fmtMoney(summary.network_avg_check), '#7b5cd6') +
+          window.modCard('Лідер',
+            summary.best_branch_name
+              ? (window.modEsc(summary.best_branch_name) + ' ' + fmtMoney(summary.best_branch_revenue))
+              : '—', '#16a085')
+        );
+
+        if (rEl) {
+          var rHtml = '<h3 style="font-size:15px;font-weight:600;margin:18px 0 10px">Рейтинг філіалів</h3>';
+          rHtml += tableOpen() + '<thead><tr>' +
+            th('#', true) + th('Філіал') + th('Виручка', true) +
+            th('Візити', true) + th('Клієнти', true) + th('Сер. чек', true) + th('Виконання', true) +
+            '</tr></thead><tbody>';
+          for (var i = 0; i < branches.length; i++) {
+            var br = branches[i] || {};
+            var compRate = br.completion_rate != null
+              ? '<span style="color:' + (Number(br.completion_rate) >= 80 ? '#2e9e5b' : (Number(br.completion_rate) >= 60 ? '#e0a800' : '#d9534f')) + '">' + fmtPct(br.completion_rate) + '</span>'
+              : '—';
+            rHtml += '<tr>' +
+              td('<b>' + window.modEsc(String(br.rank || i + 1)) + '</b>', true) +
+              td(window.modEsc(br.name || br.code || '—')) +
+              td(fmtMoney(br.revenue), true) +
+              td(fmtNum(br.visits), true) +
+              td(fmtNum(br.clients), true) +
+              td(fmtMoney(br.avg_check), true) +
+              td(compRate, true) +
+              '</tr>';
+          }
+          rHtml += '</tbody></table>';
+          rEl.innerHTML = rHtml;
+        }
+
+        if (bEl) {
+          var bList = (benchData && Array.isArray(benchData.benchmark)) ? benchData.benchmark : [];
+          var bHtml = '<h3 style="font-size:15px;font-weight:600;margin:18px 0 10px">Бенчмаркінг (порівняння)</h3>';
+          if (!bList.length) {
+            bHtml += window.modEmpty('Немає даних для бенчмаркінгу');
+          } else {
+            var TIER_COLOR = { top: '#2e9e5b', mid: '#e0a800', bottom: '#d9534f' };
+            var TIER_LABEL = { top: 'Топ', mid: 'Середній', bottom: 'Відстає' };
+            bHtml += tableOpen() + '<thead><tr>' +
+              th('Філіал') + th('Виручка', true) + th('Сер. чек', true) +
+              th('Завантаж.', true) + th('Баланс. бал', true) + th('Рівень') +
+              '</tr></thead><tbody>';
+            for (var j = 0; j < bList.length; j++) {
+              var b = bList[j] || {};
+              var tier = b.tier || 'mid';
+              var tierBadge = '<span style="background:' + (TIER_COLOR[tier] || '#888') +
+                ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' +
+                window.modEsc(TIER_LABEL[tier] || tier) + '</span>';
+              bHtml += '<tr>' +
+                td(window.modEsc(b.name || b.code || '—')) +
+                td(fmtMoney(b.revenue), true) +
+                td(fmtMoney(b.avg_check), true) +
+                td(fmtPct(b.occupancy), true) +
+                td('<b>' + fmtNum(b.total_score) + '</b>', true) +
+                td(tierBadge) +
+                '</tr>';
+            }
+            bHtml += '</tbody></table>';
+          }
+          bEl.innerHTML = bHtml;
         }
       }
     }
@@ -460,7 +589,7 @@
     page:  'budgeting',
     label: 'Бюджетування',
     icon:  'account_balance_wallet',
-    group: 'analytics',
+    group: 'finance',
 
     render: function (container) {
       container.innerHTML =
@@ -713,7 +842,7 @@
     page:  'cashflow',
     label: 'Cash Flow',
     icon:  'account_balance',
-    group: 'analytics',
+    group: 'finance',
 
     render: function (container) {
       container.innerHTML =

@@ -12,7 +12,11 @@
   // Опис груп лівого меню для нових модулів
   var GROUPS = {
     analytics: { id: 'grp-ext-analytics', title: 'Аналітика та AI', icon: 'insights' },
-    platform:  { id: 'grp-ext-platform',  title: 'Платформа та інфраструктура', icon: 'dns' }
+    platform:  { id: 'grp-ext-platform',  title: 'Платформа та інфраструктура', icon: 'dns' },
+    // існуючі групи моноліту — модульні сторінки інжектяться в них,
+    // щоб «Аналітика та AI» не була звалищем фінансів і маркетингу
+    finance:   { id: 'grp-finance',   title: 'Фінанси',   icon: 'payments' },
+    marketing: { id: 'grp-marketing', title: 'Маркетинг', icon: 'campaign' }
   };
 
   window.registerModule = function (cfg) {

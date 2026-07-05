@@ -21,7 +21,7 @@
   window.registerModule({
     page: 'mktcenter',
     title: 'Маркетинг-центр',
-    group: 'analytics',
+    group: 'marketing',
     icon: 'campaign',
     section: '<div id="mktcenter-root"></div>',
     loader: async function () {
@@ -126,7 +126,7 @@
   window.registerModule({
     page: 'forms',
     title: 'Конструктор форм',
-    group: 'analytics',
+    group: 'marketing',
     icon: 'dynamic_form',
     section: '<div id="forms-root"></div>',
     loader: async function () {
@@ -222,7 +222,7 @@
   window.registerModule({
     page: 'refmkt',
     title: 'Реферальний маркетинг',
-    group: 'analytics',
+    group: 'marketing',
     icon: 'share',
     section: '<div id="refmkt-root"></div>',
     loader: async function () {
@@ -364,7 +364,7 @@
   window.registerModule({
     page: 'beforeafter',
     title: 'Фото До/Після',
-    group: 'analytics',
+    group: 'marketing',
     icon: 'photo_library',
     section: '<div id="beforeafter-root"></div>',
     loader: async function () {
