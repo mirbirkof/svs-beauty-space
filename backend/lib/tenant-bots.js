@@ -65,4 +65,12 @@ async function tgCall(token, method, body) {
   return r.json();
 }
 
-module.exports = { getBotForTenant, invalidateBot, tgCall };
+/** Всі підключені боти салонів (для кронів: нагадування). Поза tenant-контекстом
+ *  політика RLS COALESCE показує всі рядки — це навмисно для крона. */
+async function listConnectedBots(pool) {
+  const r = await (pool || getPool()).query(
+    `SELECT tenant_id, bot_token FROM tenant_bot_settings WHERE status = 'connected'`);
+  return r.rows;
+}
+
+module.exports = { getBotForTenant, invalidateBot, tgCall, listConnectedBots };

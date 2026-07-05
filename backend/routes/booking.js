@@ -56,7 +56,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Svs_beautybot';
 // SAS этап 1: личные боты салонов (tenant_bot_settings) + tenant-контекст вебхука
 const { resolveBySlug, runAs } = require('../lib/tenant');
-const { getBotForTenant } = require('../lib/tenant-bots');
+const { getBotForTenant, listConnectedBots } = require('../lib/tenant-bots');
+const { isLicensed } = require('../lib/license-check');
+const { DEFAULT_TENANT_ID } = require('../lib/tenant');
 
 // === Helpers ============================================
 function genToken() {
@@ -142,8 +144,11 @@ function tgFor(botToken) {
 // Нагадування про візити 24г/2г з кнопками «Буду/Перенести/Скасувати» (Етап 5).
 // Дедуп усередині (booking_reminders) — безпечно навіть якщо процесів два.
 if (BOT_TOKEN) {
-  try { require('../lib/booking-reminders').start(getPool, tg); }
-  catch (e) { console.error('[booking/reminders-init]', e.message); }
+  try {
+    require('../lib/booking-reminders').start(getPool, tg, {
+      runAs, defaultTenantId: DEFAULT_TENANT_ID, tgFor, listConnectedBots,
+    });
+  } catch (e) { console.error('[booking/reminders-init]', e.message); }
 }
 
 // In-memory schema — no init needed
@@ -168,15 +173,24 @@ router.post('/init', validateBody({
     if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
     if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
     if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
+    // SAS: онлайн-запис — ліцензований модуль (салон платформи — без обмежень)
+    if (!(await isLicensed(req.tenant_id, 'online_booking'))) {
+      return res.status(403).json({ error: 'Онлайн-запис не активовано для цього салону. Активуйте модуль у CRM (Ліцензії та модулі).' });
+    }
     const token = genToken();
     await db.insert(token, { service_id, employee_id, date_from, date_to, client_name: client_name || null, channel: channel || 'site_salon' });
 
-    // SAS: диплинк ведёт в бота ЭТОГО салона (env-бот — только для салона Босса)
+    // SAS: диплинк ведёт в бота ЭТОГО салона (env-бот — только для салона Босса).
+    // Чужой салон БЕЗ своего бота: ссылка на бота платформы бессмысленна —
+    // тот работает в контексте салона Босса и записи этого салона не увидит.
     let botUsername = BOT_USERNAME;
     try {
       const tbot = await getBotForTenant(req.tenant_id);
       if (tbot && tbot.username) botUsername = tbot.username;
-    } catch (_e) { /* fallback на бота платформы */ }
+      if (req.tenant_id !== DEFAULT_TENANT_ID && (!tbot || tbot.source !== 'db')) {
+        return res.status(409).json({ error: 'Підключіть Telegram-бота салону: CRM → «ТГ-бот запису». Після цього клієнти зможуть підтверджувати онлайн-запис.' });
+      }
+    } catch (_e) { /* fallback на бота платформи */ }
     res.json({
       ok: true,
       token,
@@ -516,6 +530,15 @@ router.post('/telegram/t/:slug', async (req, res) => {
     // захист від підробки: Telegram шле секрет, заданий при setWebhook
     if (bot.secret && req.headers['x-telegram-bot-api-secret-token'] !== bot.secret) {
       res.status(403).json({ ok: false }); return;
+    }
+    // SAS: ліцензія модуля онлайн-запису (грейс 3 дні всередині isLicensed)
+    if (!(await isLicensed(t.id, 'online_booking'))) {
+      const chatId = req.body && ((req.body.message && req.body.message.chat && req.body.message.chat.id)
+        || (req.body.callback_query && req.body.callback_query.message && req.body.callback_query.message.chat && req.body.callback_query.message.chat.id));
+      if (chatId) {
+        await tg('sendMessage', { chat_id: chatId, text: '⏸ Онлайн-запис тимчасово недоступний — зверніться до салону.' }, 0, bot.token).catch(() => {});
+      }
+      return;
     }
     await runAs(t.id, () => processUpdate(req.body, tgFor(bot.token), { name: bot.salonName }));
   } catch (e) {

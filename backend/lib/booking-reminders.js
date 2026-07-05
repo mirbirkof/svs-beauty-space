@@ -101,10 +101,29 @@ async function tick(pool, tg) {
   }
 }
 
-function start(getPool, tg) {
+function start(getPool, tg, opts) {
   if (_started) return;
   _started = true;
-  const run = () => tick(getPool(), tg).catch(e => console.error('[reminders/tick]', e.message));
+  opts = opts || {};
+  const run = async () => {
+    const pool = getPool();
+    // 1) салон платформи — бот з env (як і раніше). runAs обмежує RLS своїм тенантом.
+    try {
+      if (opts.runAs && opts.defaultTenantId) await opts.runAs(opts.defaultTenantId, () => tick(pool, tg));
+      else await tick(pool, tg);
+    } catch (e) { console.error('[reminders/tick]', e.message); }
+    // 2) SAS: салони з власними ботами — кожен у СВОЄМУ tenant-контексті СВОЇМ ботом
+    if (opts.listConnectedBots && opts.runAs && opts.tgFor) {
+      try {
+        const bots = await opts.listConnectedBots(pool);
+        for (const b of bots) {
+          if (String(b.tenant_id) === String(opts.defaultTenantId)) continue; // платформа вже оброблена
+          await opts.runAs(b.tenant_id, () => tick(pool, opts.tgFor(b.bot_token)))
+            .catch((e) => console.error('[reminders/tenant]', b.tenant_id, e.message));
+        }
+      } catch (e) { console.error('[reminders/bots]', e.message); }
+    }
+  };
   setTimeout(run, 30 * 1000);        // перший прохід через 30с після старту
   setInterval(run, TICK_MS);
 }

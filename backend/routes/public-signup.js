@@ -57,6 +57,23 @@ router.post('/signup', signupLimiter, async (req, res) => {
       plan_code: planCode, cycle, trial: needTrial,
     }, { id: null, source: 'public-signup' });
 
+    // SAS этап 2: онлайн-запис доступний одразу — ліцензія модуля online_booking.
+    // Платні плани → trial на trial_days; solo/free → безстрокова підписка (це
+    // ключовий сценарій майстра-одиночки: CRM + запис + свій ТГ-бот безкоштовно).
+    try {
+      const { getPool } = require('../db-pg');
+      const mod = await getPool().query(`SELECT id, trial_days FROM module_catalog WHERE code = 'online_booking'`);
+      if (mod.rowCount) {
+        await getPool().query(
+          `INSERT INTO licenses (tenant_id, module_id, license_type, status, activated_at, expires_at)
+           VALUES ($1, $2, $3, 'active', NOW(), $4)
+           ON CONFLICT DO NOTHING`,
+          [r.tenant.id, mod.rows[0].id,
+           needTrial ? 'trial' : 'subscription',
+           needTrial ? new Date(Date.now() + (Number(mod.rows[0].trial_days) || 14) * 864e5) : null]);
+      }
+    } catch (licErr) { console.error('[public-signup/license]', licErr.message); }
+
     res.status(201).json({
       ok: true,
       slug: r.slug,
