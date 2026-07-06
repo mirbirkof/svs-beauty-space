@@ -172,6 +172,7 @@ const CARD_FIELDS = [
   'buffer_before', 'buffer_after', 'min_booking_interval', 'max_simultaneous',
   'required_room_type', 'icon', 'color', 'status', 'is_new', 'is_hit', 'is_discounted',
   'age_restriction', 'contraindications', 'meta_title', 'meta_description', 'sort_order',
+  'is_material', // рядок-послуга є матеріалом → не входить у базу % майстра (SaaS-аудит 06.07)
 ];
 
 router.post('/', WRITE,

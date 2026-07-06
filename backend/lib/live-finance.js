@@ -25,8 +25,7 @@ async function liveFinance(pool, from, to) {
     // net (дефолт) = сплачене мінус рядки-матеріали; gross = повний чек послуг.
     q(`WITH matlines AS (
          SELECT asv.appointment_id aid,
-                SUM(asv.price) FILTER (WHERE (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
-                  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) mat
+                SUM(asv.price) FILTER (WHERE (sc.is_material = TRUE OR (sc.is_material IS NOT TRUE AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
            FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
           GROUP BY asv.appointment_id),
        da AS (

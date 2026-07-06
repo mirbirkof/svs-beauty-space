@@ -6,14 +6,20 @@
        рядки-матеріали у складі візиту (знижки автоматично зменшують базу).
    gross — «від загальної суми чека»: повний чек послуг (робота + рядки-матеріали).
 
-   Рядок послуги = МАТЕРІАЛ, якщо в назві є «матеріал» і немає «без»/«врахуванн»
-   (щоб не сплутати з «...(без врахування матеріалів)» — це робота). */
+   Рядок послуги = МАТЕРІАЛ, якщо services.is_material=TRUE (явний прапорець, керується в UI).
+   Fallback для не розмічених послуг — евристика за назвою: «матеріал» без «без»/«врахуванн»
+   (щоб не сплутати з «...(без врахування матеріалів)» — це робота). Явний прапорець важливий
+   для нових салонів з іншим неймінгом, де евристика не спрацює (SaaS-аудит 06.07). */
+
+// Вираз «рядок послуги = матеріал»: явний прапорець АБО евристика за назвою (fallback)
+const IS_MATERIAL_LINE = `(sc.is_material = TRUE OR (sc.is_material IS NOT TRUE
+  AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))`;
 
 // CTE: matlines(aid, mat) — сума рядків-матеріалів по візиту
 const MATLINES_CTE = `
   SELECT asv.appointment_id aid,
-         SUM(asv.price) FILTER (WHERE (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
-           AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) mat
+         SUM(asv.price) FILTER (WHERE ${IS_MATERIAL_LINE}) mat
     FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
    GROUP BY asv.appointment_id`;
 
@@ -29,4 +35,4 @@ const COMMISSION_EXPR = (labor = 'rev_labor', full = 'rev_full') =>
         THEN (CASE WHEN ps.percent_base='gross' THEN ${full} ELSE ${labor} END)*COALESCE(ps.percent,0)/100
         ELSE 0 END`;
 
-module.exports = { MATLINES_CTE, REV_LABOR, REV_FULL, COMMISSION_EXPR };
+module.exports = { MATLINES_CTE, IS_MATERIAL_LINE, REV_LABOR, REV_FULL, COMMISSION_EXPR };

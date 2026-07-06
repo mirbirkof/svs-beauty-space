@@ -841,9 +841,13 @@ router.post('/categories', async (req, res) => {
 router.patch('/categories/:id', async (req, res) => {
   try {
     const { name, icon, group_name } = req.body || {};
+    // commissionable: чи дає категорія товару % майстру з продажу (фарби/окисники=FALSE — розхідник).
+    // Керується з UI (SaaS-аудит 06.07: раніше правилось лише міграцією). null → не змінюємо.
+    const comm = (req.body && req.body.commissionable != null) ? !!req.body.commissionable : null;
     const r = await getPool().query(
-      `UPDATE categories SET name=COALESCE($2,name), icon=COALESCE($3,icon), group_name=COALESCE($4,group_name) WHERE id=$1 RETURNING *`,
-      [req.params.id, name, icon, group_name]
+      `UPDATE categories SET name=COALESCE($2,name), icon=COALESCE($3,icon), group_name=COALESCE($4,group_name),
+              commissionable=COALESCE($5,commissionable) WHERE id=$1 RETURNING *`,
+      [req.params.id, name, icon, group_name, comm]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, category: r.rows[0] });
