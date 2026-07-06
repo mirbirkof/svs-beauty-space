@@ -11813,8 +11813,9 @@ async function loadExpenseConfirm(){
         ? `<span style="color:#9ca3af"> (послуги ${money(x.services_revenue)} + матеріали ${money(x.materials_cost)})</span>` : '';
       const salesBrk = (x.sales_part > 0)
         ? ` · <span style="color:#6d28d9;font-weight:700">продажі ${money(x.sales_part)}</span> <span style="color:#9ca3af">(${x.sales_pct != null ? x.sales_pct + '% від ' : ''}${money(x.sales_revenue)})</span>` : '';
+      const fixedBrk = (x.fixed_part > 0) ? ` · фікс ${money(x.fixed_part)}` : '';
       const brk = (x.services_part > 0 || x.sales_part > 0)
-        ? `<span style="display:block;font-size:11.5px;color:var(--text-secondary);margin-top:2px">послуги ${money(x.services_part)}${netBrk}${salesBrk}</span>` : '';
+        ? `<span style="display:block;font-size:11.5px;color:var(--text-secondary);margin-top:2px">послуги ${money(x.services_part)}${netBrk}${salesBrk}${fixedBrk}</span>` : '';
       // майстер без схеми начислення: сума не порахована — підказуємо оборот, власник вписує вручну (#144)
       const warn = x.no_scheme
         ? `<span style="display:block;font-size:11.5px;color:#b45309;margin-top:2px">⚠️ схему начислення не задано — оборот послуг ${money(x.services_revenue)}. Вкажіть суму вручну або задайте схему в «Схеми нарахування».</span>` : '';

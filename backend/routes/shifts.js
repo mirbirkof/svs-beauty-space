@@ -3,7 +3,7 @@
    агрегат відпрацьованих годин (табель). Не плутати з cash_shifts (каса).
    Доступ: GET = schedule.read, мутації = schedule.write (як журнал). */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
@@ -333,7 +333,7 @@ router.post('/swaps/:id/accept', async (req, res) => {
 router.post('/swaps/:id/approve', async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const swr = await client.query(`SELECT * FROM shift_swaps WHERE id=$1 FOR UPDATE`, [+req.params.id]);
     const sw = swr.rows[0];
     if (!sw) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }

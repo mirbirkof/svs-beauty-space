@@ -54,6 +54,7 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
     let { phone, email, display_name, role_code, master_id, branch_id,
           username, password, specialty, commission_pct, create_master } = req.body || {};
     if (!display_name || !role_code) return res.status(400).json({ error: 'display_name, role_code required' });
+    await applyTenant(client); // RLS ДО вибору ролі — інакше роль могла смэтчитись із чужого тенанта (аудит 06.07)
     const role = await client.query(`SELECT id, code, level FROM roles WHERE code=$1`, [role_code]);
     if (!role.rows[0]) return res.status(400).json({ error: 'bad-role' });
     // защита от эскалации: нельзя создать сотрудника с ролью выше собственной

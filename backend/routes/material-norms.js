@@ -7,7 +7,7 @@
    master-UI эти GET не зовёт — только админ-SPA mod-platform.js, у admin есть stock.*,
    у manager — stock.read); мутации — settings.write. */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
@@ -81,7 +81,7 @@ router.post('/', W, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name обовʼязковий' });
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const norm = (await client.query(
       `INSERT INTO material_norms (service_id,service_variant,name,description,status,created_by)
        VALUES ($1,$2,$3,$4,COALESCE($5,'active'),$6) RETURNING *`,
@@ -110,7 +110,7 @@ router.patch('/:id(\\d+)', W, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const b = req.body || {};
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const set = [], vals = [];
     for (const f of ['service_id', 'service_variant', 'name', 'description', 'status']) {
       if (b[f] !== undefined) { set.push(`${f}=$${vals.length + 1}`); vals.push(b[f]); }
@@ -153,7 +153,7 @@ router.post('/:id(\\d+)/duplicate', W, async (req, res) => {
   const client = await pool.connect();
   try {
     const id = Number(req.params.id);
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const src = (await client.query(`SELECT * FROM material_norms WHERE id=$1`, [id])).rows[0];
     if (!src) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     const copy = (await client.query(
@@ -210,7 +210,7 @@ router.post('/consumption/write-off', W, async (req, res) => {
         return res.status(400).json({ error: 'actual_quantity має бути > 0', variant_id: it.variant_id });
       }
     }
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     // контекст визита + guard от двойного списания: тот же флаг stock_written_off,
     // что и в lib/consumables.js — один визит списывается ровно одним механизмом.
     // FOR UPDATE сериализует конкурентные write-off по одной записи.
@@ -276,7 +276,7 @@ router.post('/consumption/reverse', W, async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.appointment_id) return res.status(400).json({ error: 'appointment_id обовʼязковий' });
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     // FOR UPDATE: два конкурентных reverse не вернут товар на склад дважды —
     // второй дождётся коммита первого и увидит reversed=TRUE (0 строк)
     const rows = (await client.query(

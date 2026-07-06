@@ -12,7 +12,7 @@
  * Mount: /api/zones (shop-api.js)
  */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
 const router = express.Router();
@@ -84,6 +84,7 @@ router.get('/', async (req, res) => {
       pool.query(`SELECT master_id, COALESCE(SUM(amount),0)::float rev, COUNT(*)::int cnt
                     FROM cash_operations
                    WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at BETWEEN $1 AND $2
+                     AND master_id IS NOT NULL -- зал = продажі майстра; без майстра → бакет «магазин» (інакше двоїлось, аудит 06.07)
                    GROUP BY master_id`, [fromTs, toTs]),
       // нарахований % по майстру — ТА САМА формула, що в liveFinance
       pool.query(`WITH matlines AS (${MATLINES_CTE}),
@@ -105,7 +106,7 @@ router.get('/', async (req, res) => {
                    GROUP BY m.id`),
       pool.query(`SELECT value FROM app_settings WHERE key='finance'`),
       // товари (магазин) — окремий бакет
-      pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::float cash_prod
+      pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND master_id IS NULL),0)::float cash_prod
                     FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]),
       pool.query(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::float g
                     FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id
@@ -238,7 +239,7 @@ router.put('/:id/masters', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const ids = Array.isArray(req.body?.master_ids) ? req.body.master_ids.map(Number).filter(Boolean) : [];
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
     const z = await client.query('SELECT id FROM salon_zones WHERE id=$1', [id]);
     if (!z.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     // прибираємо цих майстрів з будь-яких залів і призначаємо в цей (UNIQUE master_id)

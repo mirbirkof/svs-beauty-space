@@ -83,7 +83,7 @@ async function liveFinance(pool, from, to) {
              AND co.master_id IS NOT NULL AND co.created_at BETWEEN $1 AND $2
            GROUP BY 1),
         tot AS (SELECT mid, SUM(rev) AS rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
-        SELECT COALESCE(SUM(ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100)),0)::numeric s
+        SELECT COALESCE(SUM(ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100, 2)),0)::numeric s
           FROM tot LEFT JOIN payroll_schemes ps ON ps.master_id = tot.mid::text AND ps.is_active = TRUE`, [from, to]),
   ]);
 

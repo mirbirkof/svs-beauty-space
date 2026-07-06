@@ -106,7 +106,7 @@ router.post('/', async (req, res) => {
     const r = await pool.query(
       `INSERT INTO shift_checklists (work_date, admin_name, items, cash_program, cash_journal, cash_fact, cash_fact_cash, cash_fact_cashless, cash_diff, note, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-       ON CONFLICT (work_date) DO UPDATE SET
+       ON CONFLICT (tenant_id, work_date) DO UPDATE SET
          admin_name=COALESCE(EXCLUDED.admin_name, shift_checklists.admin_name),
          items=EXCLUDED.items, cash_program=EXCLUDED.cash_program, cash_journal=EXCLUDED.cash_journal,
          cash_fact=EXCLUDED.cash_fact, cash_fact_cash=EXCLUDED.cash_fact_cash, cash_fact_cashless=EXCLUDED.cash_fact_cashless,

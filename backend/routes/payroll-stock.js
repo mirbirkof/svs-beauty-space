@@ -307,14 +307,22 @@ router.patch('/payroll/records/:id', async (req, res) => {
         // главный guard идемпотентности: расход по этому расчёту уже проведён?
         const already = await client.query(`SELECT 1 FROM cash_operations WHERE ref_type='payroll' AND ref_id=$1 AND type='out' LIMIT 1`, [r0.id]);
         if (!already.rowCount) {
-          const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
-          if (sh.rows[0]) {
-            await client.query(
-              `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-               VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
-              [sh.rows[0].id, r0.total, r0.id, r0.master_id, `ЗП ${r0.master_name||'#'+r0.master_id}`]
-            );
+          // захист від ПОДВІЙНОЇ виплати: та сама ЗП могла бути вже проведена через «Підтвердження витрат»
+          const ym = String(r0.period_start).slice(0, 7);
+          const dup = await client.query(
+            `SELECT 1 FROM expense_confirmations WHERE ref_key=$1 LIMIT 1`, [`salary:${r0.master_id}:${ym}`]);
+          if (dup.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'already_confirmed',
+              message: 'ЗП цього майстра за цей місяць уже проведена через «Підтвердження витрат». Скасуйте там або не проводьте двічі.' });
           }
+          const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+          // без відкритої зміни расход НЕ пропускаємо мовчки — пишемо з shift_id NULL (як expense-confirm), інакше виплата зникає з каси
+          await client.query(
+            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+             VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
+            [sh.rows[0] ? sh.rows[0].id : null, r0.total, r0.id, r0.master_id, `ЗП ${r0.master_name||'#'+r0.master_id}`]
+          );
           // история выплат (идемпотентно: одна выплата на расчёт)
           const exists = await client.query(`SELECT 1 FROM payroll_payments WHERE record_id=$1 LIMIT 1`, [r0.id]);
           if (!exists.rowCount) {

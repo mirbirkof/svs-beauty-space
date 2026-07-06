@@ -51,12 +51,15 @@ router.get('/pending', async (req, res) => {
             -- Це автоматично враховує знижки (сплачено менше → база менша) і віддає салону матеріали.
             SELECT a.master_id,
                    GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
-                   COALESCE(a.real_amount,a.price,0) rev_full
+                   COALESCE(a.real_amount,a.price,0) rev_full,
+                   (a.starts_at AT TIME ZONE 'Europe/Kiev')::date day_kyiv
               FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
              WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
                AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
-          rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full FROM da GROUP BY master_id)
+          rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full,
+                         COUNT(DISTINCT day_kyiv) work_days FROM da GROUP BY master_id)
           SELECT m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
+                 ps.fixed_per_month, ps.fixed_per_day, COALESCE(rev.work_days,0)::int work_days,
                  COALESCE(rev.rev_labor,0)::numeric services_revenue,
                  COALESCE(rev.rev_full,0)::numeric services_full,
                  (COALESCE(rev.rev_full,0)-COALESCE(rev.rev_labor,0))::numeric materials_cost,
@@ -91,7 +94,7 @@ router.get('/pending', async (req, res) => {
           tot AS (SELECT mid, SUM(rev) AS rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
           SELECT m.id, m.name, tot.rev::numeric AS sales_revenue,
                  MAX(ps.sales_commission_pct)::numeric AS sales_pct,
-                 ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100)::numeric AS amount
+                 ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100, 2)::numeric AS amount
             FROM tot JOIN masters m ON m.id = tot.mid
             LEFT JOIN payroll_schemes ps ON ps.master_id = m.id::text AND ps.is_active = TRUE
            WHERE COALESCE(ps.sales_commission_pct, 0) > 0
@@ -108,9 +111,14 @@ router.get('/pending', async (req, res) => {
       const noScheme = s.scheme_type == null; // немає схеми начислення → сума не порахована автоматично
       const isNet = s.percent_base === 'net';
       const baseLbl = isNet ? ` за вирах. матеріалів` : '';
+      // фікс-частина (оклад/ставка за зміну) — раніше не входила в нарахування взагалі (аудит 06.07).
+      // Ставка за зміну × фактично відпрацьовані дні періоду (дні з візитами).
+      const fixedPart = (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid')
+        ? (Number(s.fixed_per_month) || +(Number(s.fixed_per_day || 0) * Number(s.work_days || 0)).toFixed(2))
+        : 0;
       return { kind: 'salary', ref_key: key, label: `ЗП ${s.name}${s.percent != null ? ` (${s.percent}%${baseLbl})` : ''}`,
-        master_id: s.id, amount_calc: Number(s.amount) + salesPart,
-        services_part: Number(s.amount), sales_part: salesPart,
+        master_id: s.id, amount_calc: +(Number(s.amount) + salesPart + fixedPart).toFixed(2),
+        services_part: Number(s.amount), sales_part: salesPart, fixed_part: fixedPart,
         services_revenue: Number(s.services_revenue || 0), materials_cost: Number(s.materials_cost || 0),
         percent_base: s.percent_base || 'gross', no_scheme: noScheme,
         sales_revenue: sl ? Number(sl.sales_revenue) : 0, sales_pct: sl ? Number(sl.sales_pct) : null,
@@ -150,6 +158,17 @@ router.post('/confirm', async (req, res) => {
     const b = req.body || {};
     if (!b.ref_key || !(Number(b.amount) > 0)) return res.status(400).json({ error: 'ref_key і amount обовʼязкові' });
     await client.query('BEGIN'); await applyTenant(client); // RLS: ручний client без applyTenant бачив/писав чужих тенантів (аудит 06.07)
+    // захист від ПОДВІЙНОЇ виплати: ця ж ЗП могла бути вже виплачена через «Розрахувати зарплату» (payroll_records)
+    if (b.kind === 'salary' && b.master_id && b.period) {
+      const dup = await client.query(
+        `SELECT 1 FROM payroll_records WHERE master_id=$1::text AND status='paid'
+          AND TO_CHAR(period_start,'YYYY-MM')=$2 LIMIT 1`, [String(b.master_id), b.period]);
+      if (dup.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'already_paid_via_payroll',
+          message: 'ЗП цього майстра за цей місяць уже виплачена через «Розрахувати зарплату». Не проводьте двічі.' });
+      }
+    }
     // ідемпотентність: якщо вже підтверджено — повертаємо існуюче
     const ex = await client.query('SELECT * FROM expense_confirmations WHERE ref_key=$1 FOR UPDATE', [b.ref_key]);
     if (ex.rows[0]) { await client.query('COMMIT'); return res.json({ ok: true, already: true, confirmation: ex.rows[0] }); }

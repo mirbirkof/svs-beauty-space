@@ -6,7 +6,7 @@
    (він списує розхідники при 'done') — тут лише читання дошки + статистика.
    Доступ: schedule.read (як журнал). */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 // Публікація доменних подій у шину INF-01 (опційно — не валить перехід якщо шини нема)
 let emit = async () => {}; try { ({ emit } = require('../lib/event-bus')); } catch { /* optional */ }
@@ -173,7 +173,7 @@ router.post('/transition', async (req, res) => {
     const stageCode = String(target_stage_id || '').trim();
     if (!appointment_id || !STATUS_BY_STAGE[stageCode])
       return res.status(400).json({ error: 'appointment_id and valid target_stage_id required' });
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client); // RLS: без цього видно/пишеться чужий тенант (аудит 06.07)
     const appt = (await client.query(
       `SELECT id, status, service_id, client_id, COALESCE(is_vip,false) AS is_vip FROM appointments WHERE id=$1 FOR UPDATE`,
       [+appointment_id]).catch(async () => {

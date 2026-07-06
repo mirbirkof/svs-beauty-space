@@ -14,7 +14,7 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const pool = getPool();
@@ -310,7 +310,7 @@ router.post('/targets/bulk', async (req, res) => {
     let count = 0;
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN'); await applyTenant(client); // RLS-ізоляція (аудит 06.07)
       for (const e of emps) {
         for (const t of (e.targets || [])) {
           if (!t.metric_code || t.target_value === undefined) continue;
