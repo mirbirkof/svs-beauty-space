@@ -4621,7 +4621,7 @@ async function loadFinance(){
     const expSeg=(exp.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||FIN_EXPENSE_PAL[i%FIN_EXPENSE_PAL.length]}));
     box.innerHTML =
       _finCard('Залишок на початок', _finMoney(op.total), '#3b82f6', openSeg, openSeg) +
-      _finCard('Доходи', _finMoney(inc.total), '#059669', incSeg, incSeg.slice(0,6), {colorEdit:true}) +
+      _finCard('Доходи', _finMoney(inc.total), '#059669', incSeg, incSeg.slice(0,8), {colorEdit:true}) +
       _finCard('Витрати', _finMoney(exp.total), '#dc2626', expSeg, expSeg.slice(0,6), {colorEdit:true}) +
       _finCard('Залишок на кінець', _finMoney(cl.total), '#3b82f6', closeSeg, closeSeg);
     document.getElementById('finSummary').style.display='flex';

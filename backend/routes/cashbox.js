@@ -183,6 +183,23 @@ router.get('/finance', requireHistory, async (req, res) => {
        WHERE o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
        ORDER BY o.created_at DESC LIMIT 300`, params);
 
+    // Оборот послуг по відділах (нормалізація вільного тексту specialty у відділ).
+    // Джерело — те саме cash_operations sale_service, що й revenue.services → суми збігаються.
+    const DEPT_CASE = `CASE
+        WHEN lower(coalesce(m.specialty,'')) ~ 'перукар|колорист|стиліст|барбер|голов' THEN 'Перукарський'
+        WHEN lower(coalesce(m.specialty,'')) ~ 'манікюр|нігт|педикюр|nail' THEN 'Нігтьовий сервіс'
+        WHEN lower(coalesce(m.specialty,'')) ~ 'візаж|бров|брів|леш|вії|макіяж|permanent|перманент' THEN 'Візаж, брови, вії'
+        WHEN lower(coalesce(m.specialty,'')) ~ 'масаж|тіло|косметолог|догляд|spa|спа|епіляц|депіляц' THEN 'Тіло і догляд'
+        ELSE 'Інше / не вказано' END`;
+    const svcDept = await pool.query(
+      `SELECT ${DEPT_CASE} AS dept,
+              SUM(o.amount)::float AS amount,
+              COUNT(DISTINCT o.master_id)::int AS masters
+       FROM cash_operations o LEFT JOIN masters m ON m.id = o.master_id
+       WHERE o.type='in' AND o.category='sale_service'
+         AND o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
+       GROUP BY dept HAVING SUM(o.amount) > 0 ORDER BY amount DESC`, params);
+
     // Касовий рух (для балансу готівки/безготівки — реальні гроші в касі)
     const cashIn = { cash: 0, cashless: 0 }, cashOut = { cash: 0, cashless: 0 };
     for (const r of cats.rows) {
@@ -195,10 +212,22 @@ router.get('/finance', requireHistory, async (req, res) => {
     // Верхня межа = кінець вибраного дня (повний день). Виручка = всі гроші за день;
     // нарахований % майстрам усередині liveFinance і так капається на NOW() (майбутні послуги не рахуються).
     const fin = await liveFinance(pool, `${from} 00:00:00+03`, `${to} 23:59:59+03`);
+    // Розбивка послуг по відділах, масштабована до єдиного джерела правди
+    // (fin.revenue.services) — щоб сума сегментів точно = рядку «Послуги».
+    const svcRaw = svcDept.rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const svcScale = svcRaw > 0 ? fin.revenue.services / svcRaw : 1;
+    const svcSegs = svcDept.rows.map(r => ({
+      category: 'svc_dept:' + r.dept,
+      label: r.dept,
+      amount: Math.round(Number(r.amount) * svcScale * 100) / 100,
+      masters: r.masters,
+      dept: true,
+    }));
     const income = {
       total: fin.revenue.total, cash: cashIn.cash, cashless: cashIn.cashless,
+      services_total: fin.revenue.services,
       by_category: [
-        { category: 'sale_service', label: 'Послуги', amount: fin.revenue.services },
+        ...svcSegs,
         { category: 'sale_product', label: 'Товари', amount: fin.revenue.products },
       ].filter(x => x.amount > 0),
     };
