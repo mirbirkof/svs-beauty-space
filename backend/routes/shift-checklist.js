@@ -19,7 +19,9 @@ function kyivToday() {
 }
 
 // Шаблон пунктів — прямо з посадової інструкції адміністратора.
-function template() {
+// solo=true (майстер-одиночка) → прибираємо пункти про команду (SaaS-аудит 06.07).
+const TEAM_ONLY = new Set(['masters_ready', 'plan_sent']);
+function template(solo = false) {
   return [
     // Відкриття зміни (7:45–9:00)
     { key: 'zones_clean',    phase: 'open',  label: 'Робочі зони чисті: пил, підлога, дзеркала, стільці' },
@@ -39,12 +41,16 @@ function template() {
     { key: 'power_off',      phase: 'close', label: 'Електроприлади вимкнено' },
     { key: 'alarm_on',       phase: 'close', label: 'Сигналізацію поставлено' },
     { key: 'keys_safe',      phase: 'close', label: 'Ключі від каси не залишені в замку' },
-  ].map((x) => ({ ...x, done: false, done_at: null }));
+  ].filter((x) => !(solo && TEAM_ONLY.has(x.key))).map((x) => ({ ...x, done: false, done_at: null }));
+}
+async function isSolo() {
+  try { const { getSetting } = require('../lib/settings'); return !!(await getSetting('solo_master_mode')); }
+  catch (_) { return false; }
 }
 
 // Зливає збережені відмітки на свіжий шаблон (щоб нові пункти зʼявлялись у старих днів).
-function mergeItems(saved) {
-  const tpl = template();
+function mergeItems(saved, solo = false) {
+  const tpl = template(solo);
   const byKey = {};
   (Array.isArray(saved) ? saved : []).forEach((s) => { if (s && s.key) byKey[s.key] = s; });
   return tpl.map((t) => byKey[t.key]
@@ -56,15 +62,16 @@ function mergeItems(saved) {
 router.get('/', async (req, res) => {
   try {
     const date = req.query.date || kyivToday();
+    const solo = await isSolo();
     const r = await pool.query('SELECT * FROM shift_checklists WHERE work_date=$1', [date]);
     if (!r.rows[0]) {
-      return res.json({ work_date: date, admin_name: null, items: template(),
+      return res.json({ work_date: date, admin_name: null, items: template(solo),
         cash_program: null, cash_journal: null, cash_fact: null,
         cash_fact_cash: null, cash_fact_cashless: null, cash_diff: null,
         note: null, closed_at: null, saved: false });
     }
     const row = r.rows[0];
-    row.items = mergeItems(row.items);
+    row.items = mergeItems(row.items, solo);
     row.saved = true;
     res.json(row);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -88,7 +95,7 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body || {};
     const date = b.work_date || kyivToday();
-    const items = mergeItems(b.items); // нормалізуємо на шаблон
+    const items = mergeItems(b.items, await isSolo()); // нормалізуємо на шаблон (solo — без пунктів команди)
     // проставляємо done_at для свіжо відмічених
     const nowIso = new Date().toISOString();
     items.forEach((it) => { if (it.done && !it.done_at) it.done_at = nowIso; if (!it.done) it.done_at = null; });
