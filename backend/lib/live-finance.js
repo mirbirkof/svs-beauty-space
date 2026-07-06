@@ -63,6 +63,7 @@ async function liveFinance(pool, from, to) {
              AND a.status IN ('done','completed')
              AND a.starts_at BETWEEN $1 AND $2
              AND COALESCE(c.commissionable, TRUE) = TRUE
+             AND (am.seller_master_id IS NOT NULL OR am.billable = TRUE)
            GROUP BY 1),
         pos AS (
           SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co

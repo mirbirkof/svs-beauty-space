@@ -78,6 +78,9 @@ router.get('/pending', async (req, res) => {
                AND a.status IN ('done','completed')
                AND a.starts_at BETWEEN $1 AND $2
                AND COALESCE(c.commissionable, TRUE) = TRUE
+               -- лише РЕАЛЬНО ПРОДАНІ клієнту банки (є продавець або позначено продажем).
+               -- Профі-засоби, використані в послузі (без продавця) = матеріал, % не дають (правило Власника 06.07).
+               AND (am.seller_master_id IS NOT NULL OR am.billable = TRUE)
              GROUP BY 1),
           pos AS (
             SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co

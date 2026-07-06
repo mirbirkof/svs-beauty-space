@@ -196,7 +196,9 @@ router.post('/payroll/calculate', async (req, res) => {
            AND a.status IN ('done','completed')
            AND a.starts_at >= $2::date
            AND a.starts_at <  ($3::date + INTERVAL '1 day')
-           AND COALESCE(c.commissionable, TRUE) = TRUE`,
+           AND COALESCE(c.commissionable, TRUE) = TRUE
+           -- лише реально продані банки (продавець або billable), не профі-засоби у послузі
+           AND (am.seller_master_id IS NOT NULL OR am.billable = TRUE)`,
         [master_id, period_start, period_end]
       );
       // + роздрібні POS-продажі («Оформити продаж») з указаним продавцем-майстром:
