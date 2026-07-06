@@ -125,6 +125,24 @@ router.get('/', async (req, res) => {
 
     const ordR = await pool.query(`SELECT COALESCE(SUM(total),0)::float s FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]);
 
+    // % з продажу продукції по майстру (банки по продавцю + POS) — щоб сума залів = Фінцентр (аудит 06.07)
+    const salesCommR = await pool.query(`
+      WITH bottles AS (
+        SELECT COALESCE(am.seller_master_id, a.master_id) AS mid, SUM(ROUND(am.qty_used*pv.price,2)) AS rev
+          FROM appointment_materials am JOIN appointments a ON a.id=am.appointment_id
+          JOIN product_variants pv ON pv.id=am.variant_id
+          LEFT JOIN products p ON p.id=pv.product_id LEFT JOIN categories c ON c.id=p.category_id
+         WHERE p.price_per_gram IS NULL AND pv.price IS NOT NULL AND a.status IN ('done','completed')
+           AND a.starts_at BETWEEN $1 AND $2 AND COALESCE(c.commissionable,TRUE)=TRUE GROUP BY 1),
+      pos AS (
+        SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co
+         WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL AND co.master_id IS NOT NULL
+           AND co.created_at BETWEEN $1 AND $2 GROUP BY 1),
+      tot AS (SELECT mid, SUM(rev) rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
+      SELECT tot.mid AS master_id, ROUND(tot.rev*COALESCE(ps.sales_commission_pct,0)/100,2)::float comm
+        FROM tot LEFT JOIN payroll_schemes ps ON ps.master_id=tot.mid::text AND ps.is_active=TRUE
+       WHERE COALESCE(ps.sales_commission_pct,0)>0`, [fromTs, toTs]);
+
     const materialPct = Number(finSetR.rows[0]?.value?.material_pct || 0);
     const sharedTotal = Number(otherR.rows[0]?.s || 0);
 
@@ -151,6 +169,11 @@ router.get('/', async (req, res) => {
       const zid = m2z.get(Number(r.master_id));
       const bucket = zid && acc.has(zid) ? acc.get(zid) : unassigned;
       bucket.commission += Number(r.fx_month) * (days / 30) + Number(r.fx_day);
+    }
+    for (const r of salesCommR.rows) {
+      const zid = r.master_id != null ? m2z.get(Number(r.master_id)) : undefined;
+      const bucket = zid && acc.has(zid) ? acc.get(zid) : unassigned;
+      bucket.commission += Number(r.comm);
     }
 
     const totalSvcRev = [...acc.values()].reduce((a, b) => a + b.revenue, 0) + unassigned.revenue;
