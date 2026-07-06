@@ -183,22 +183,21 @@ router.get('/finance', requireHistory, async (req, res) => {
        WHERE o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
        ORDER BY o.created_at DESC LIMIT 300`, params);
 
-    // Оборот послуг по відділах (нормалізація вільного тексту specialty у відділ).
-    // Джерело — те саме cash_operations sale_service, що й revenue.services → суми збігаються.
-    const DEPT_CASE = `CASE
-        WHEN lower(coalesce(m.specialty,'')) ~ 'перукар|колорист|стиліст|барбер|голов' THEN 'Перукарський'
-        WHEN lower(coalesce(m.specialty,'')) ~ 'манікюр|нігт|педикюр|nail' THEN 'Нігтьовий сервіс'
-        WHEN lower(coalesce(m.specialty,'')) ~ 'візаж|бров|брів|леш|вії|макіяж|permanent|перманент' THEN 'Візаж, брови, вії'
-        WHEN lower(coalesce(m.specialty,'')) ~ 'масаж|тіло|косметолог|догляд|spa|спа|епіляц|депіляц' THEN 'Тіло і догляд'
-        ELSE 'Інше / не вказано' END`;
+    // Оборот послуг по залах/напрямках Фінцентру (майстри вже розподілені Босом
+    // у salon_zones/zone_masters). Джерело — те саме cash_operations sale_service,
+    // що й revenue.services → суми збігаються. Кольори — з налаштувань залу.
     const svcDept = await pool.query(
-      `SELECT ${DEPT_CASE} AS dept,
+      `SELECT COALESCE(z.name,'Без залу') AS dept, z.color AS color,
+              COALESCE(z.sort_order, 999) AS sort,
               SUM(o.amount)::float AS amount,
               COUNT(DISTINCT o.master_id)::int AS masters
-       FROM cash_operations o LEFT JOIN masters m ON m.id = o.master_id
+       FROM cash_operations o
+       LEFT JOIN zone_masters zm ON zm.master_id = o.master_id
+       LEFT JOIN salon_zones z ON z.id = zm.zone_id AND z.active = true
        WHERE o.type='in' AND o.category='sale_service'
          AND o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
-       GROUP BY dept HAVING SUM(o.amount) > 0 ORDER BY amount DESC`, params);
+       GROUP BY z.name, z.color, z.sort_order
+       HAVING SUM(o.amount) > 0 ORDER BY sort, amount DESC`, params);
 
     // Касовий рух (для балансу готівки/безготівки — реальні гроші в касі)
     const cashIn = { cash: 0, cashless: 0 }, cashOut = { cash: 0, cashless: 0 };
@@ -221,6 +220,7 @@ router.get('/finance', requireHistory, async (req, res) => {
       label: r.dept,
       amount: Math.round(Number(r.amount) * svcScale * 100) / 100,
       masters: r.masters,
+      color: r.color || null,
       dept: true,
     }));
     const income = {

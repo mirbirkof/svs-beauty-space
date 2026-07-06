@@ -2349,9 +2349,11 @@ select.input { background:var(--card); }
             <button class="fin-per" data-per="year" onclick="finSetPeriod('year')">Рік</button>
           </div>
           <div class="fin-dates">
+            <button class="btn btn-sm fin-nav" onclick="finShift(-1)" title="Попередній період"><span class="material-icons-round" style="font-size:18px">chevron_left</span></button>
             <input id="finFrom" type="date" class="input" onchange="finCustom()">
             <span style="opacity:.5">—</span>
             <input id="finTo" type="date" class="input" onchange="finCustom()">
+            <button class="btn btn-sm fin-nav" onclick="finShift(1)" title="Наступний період"><span class="material-icons-round" style="font-size:18px">chevron_right</span></button>
           </div>
           <div class="fin-actions">
             <button class="btn btn-sm" style="background:#dcfce7;color:#166534" onclick="finOpenOp('in')"><span class="material-icons-round" style="font-size:16px">add</span> Дохід</button>
@@ -4559,6 +4561,7 @@ const FIN_CATS_IN  = { sale_service:'Послуги', sale_product:'Продаж
 const FIN_CATS_OUT = { salary:'Виплата зарплати', supplier:'Товари / постачальники', rent:'Оренда', utilities:'Комунальні послуги', refund:'Повернення клієнту', encashment_out:'Інкасація', other_out:'Інші витрати' };
 function _finMoney(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
 function finSetPeriod(per){
+  _finRangeMode=per;
   document.querySelectorAll('.fin-per').forEach(b=>b.classList.toggle('active', b.dataset.per===per));
   const now = new Date(); const pad=n=>String(n).padStart(2,'0');
   const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -4571,8 +4574,30 @@ function finSetPeriod(per){
   document.getElementById('finTo').value=to;
   loadFinance();
 }
+let _finRangeMode='day';
 function finCustom(){
   document.querySelectorAll('.fin-per').forEach(b=>b.classList.remove('active'));
+  _finRangeMode='custom';
+  loadFinance();
+}
+// Стрілки: зсув діапазону на його довжину (день→±день, тиждень→±7, місяць→±місяць, рік→±рік, довільний→на к-сть днів)
+function finShift(dir){
+  const fEl=document.getElementById('finFrom'), tEl=document.getElementById('finTo');
+  if(!fEl.value||!tEl.value) return;
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  let from=new Date(fEl.value+'T00:00:00'), to=new Date(tEl.value+'T00:00:00');
+  if(isNaN(from)||isNaN(to)) return;
+  if(_finRangeMode==='month'){
+    from=new Date(from.getFullYear(), from.getMonth()+dir, 1);
+    to=new Date(from.getFullYear(), from.getMonth()+1, 0);
+  } else if(_finRangeMode==='year'){
+    const y=from.getFullYear()+dir; from=new Date(y,0,1); to=new Date(y,11,31);
+  } else {
+    const lenDays=Math.round((to-from)/86400000)+1;
+    from.setDate(from.getDate()+dir*lenDays); to.setDate(to.getDate()+dir*lenDays);
+  }
+  fEl.value=fmt(from); tEl.value=fmt(to);
   loadFinance();
 }
 function _finDonut(segments){
@@ -4617,7 +4642,7 @@ async function loadFinance(){
     const op=r.opening, inc=r.income, exp=r.expense, cl=r.closing;
     const openSeg=[{label:'Готівка',value:op.cash,color:FIN_BAL_CASH,always:true},{label:'Безготівка',value:op.cashless,color:FIN_BAL_CASHLESS,always:true}];
     const closeSeg=[{label:'Готівка',value:cl.cash,color:FIN_BAL_CASH,always:true},{label:'Безготівка',value:cl.cashless,color:FIN_BAL_CASHLESS,always:true}];
-    const incSeg=(inc.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||FIN_INCOME_PAL[i%FIN_INCOME_PAL.length]}));
+    const incSeg=(inc.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||c.color||FIN_INCOME_PAL[i%FIN_INCOME_PAL.length]}));
     const expSeg=(exp.by_category||[]).map((c,i)=>({cat:c.category,label:c.label,value:c.amount,color:_finCatColors[c.category]||FIN_EXPENSE_PAL[i%FIN_EXPENSE_PAL.length]}));
     box.innerHTML =
       _finCard('Залишок на початок', _finMoney(op.total), '#3b82f6', openSeg, openSeg) +
