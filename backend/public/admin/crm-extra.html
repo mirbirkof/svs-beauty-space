@@ -161,8 +161,10 @@ main { padding:24px 0; }
   <div class="card">
     <h2>Період</h2>
     <div class="row">
+      <button class="btn ghost" onclick="rShift(-1)" title="Попередній період" style="font-size:16px;line-height:1;padding:6px 11px">←</button>
       <input id="r-from" type="date">
       <input id="r-to" type="date">
+      <button class="btn ghost" onclick="rShift(1)" title="Наступний період" style="font-size:16px;line-height:1;padding:6px 11px">→</button>
       <button class="btn" onclick="loadReports()">Оновити</button>
       <button class="btn ghost" onclick="setRange(7)">7 днів</button>
       <button class="btn ghost" onclick="setRange(30)">30 днів</button>
@@ -495,6 +497,19 @@ function setRange(days){
   const to = new Date(); const from = new Date(to.getTime()-days*86400*1000);
   document.getElementById('r-from').value = from.toISOString().slice(0,10);
   document.getElementById('r-to').value = to.toISOString().slice(0,10);
+  loadReports();
+}
+// Стрілки: зсув діапазону на його довжину у днях (для P&L, RFM та решти звітів)
+function rShift(dir){
+  const fEl=document.getElementById('r-from'), tEl=document.getElementById('r-to');
+  if(!fEl.value||!tEl.value){ setRange(30); return; }
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  let from=new Date(fEl.value+'T00:00:00'), to=new Date(tEl.value+'T00:00:00');
+  if(isNaN(from)||isNaN(to)) return;
+  const lenDays=Math.round((to-from)/86400000)+1;
+  from.setDate(from.getDate()+dir*lenDays); to.setDate(to.getDate()+dir*lenDays);
+  fEl.value=fmt(from); tEl.value=fmt(to);
   loadReports();
 }
 const _charts = {};
