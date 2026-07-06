@@ -35,13 +35,24 @@ router.get('/pending', async (req, res) => {
       // за період — навіть без схеми начислення (інакше майстер зникає зі списку й
       // власник його не бачить: фідбек #144 — Евеліна/Настя не відображались).
       // Для percent/hybrid рахуємо суму; без схеми amount=0 → власник вписує вручну.
-      q(`WITH da AS (
-            SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+      q(`WITH svc AS (
+            -- сума РОБОТИ по кожному візиту (без рядків-матеріалів). Рядок = матеріал, якщо в назві
+            -- є «матеріал» і немає «без»/«врахуванн» (щоб не сплутати з «...без врахування матеріалів»).
+            SELECT asv.appointment_id aid, COUNT(*) nlines,
+                   SUM(asv.price) FILTER (WHERE NOT (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+                     AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) labor
+              FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
+             GROUP BY asv.appointment_id),
+          da AS (
+            SELECT a.master_id,
+                   -- net-база: робота без матеріал-рядків (fallback на чек, якщо рядків послуг нема)
+                   CASE WHEN svc.nlines>0 THEN COALESCE(svc.labor,0) ELSE COALESCE(a.real_amount,a.price,0) END rev_labor,
+                   COALESCE(a.real_amount,a.price,0) rev_full
+              FROM appointments a LEFT JOIN svc ON svc.aid=a.id
              WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
                AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
-          rev AS (SELECT master_id, SUM(rev) rev FROM da GROUP BY master_id),
-          -- матеріали/розхідники за період (додаються до бази лише для 'gross'): за грам АБО
-          -- некомісійна категорія. Розхідник — за ціною ЗА ГРАМ (price_per_gram), не за упаковку.
+          rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full FROM da GROUP BY master_id),
+          -- розхідники за грам (для бази 'gross' додаються до повного чека). За ціною ЗА ГРАМ.
           mat AS (
             SELECT a.master_id, SUM(ROUND(am.qty_used*COALESCE(p.price_per_gram,pv.price),2)) cost
               FROM appointment_materials am
@@ -50,13 +61,15 @@ router.get('/pending', async (req, res) => {
               LEFT JOIN products p ON p.id=pv.product_id
               LEFT JOIN categories c ON c.id=p.category_id
              WHERE a.status IN ('done','completed') AND a.starts_at BETWEEN $1 AND $2
-               AND (p.price_per_gram IS NOT NULL OR COALESCE(c.commissionable,TRUE)=FALSE)
+               AND p.price_per_gram IS NOT NULL
              GROUP BY a.master_id)
           SELECT m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
-                 COALESCE(rev.rev,0)::numeric services_revenue,
+                 COALESCE(rev.rev_labor,0)::numeric services_revenue,
+                 COALESCE(rev.rev_full,0)::numeric services_full,
                  COALESCE(mat.cost,0)::numeric materials_cost,
                  ROUND(CASE WHEN ps.scheme_type IN ('percent','hybrid')
-                   THEN (COALESCE(rev.rev,0) + CASE WHEN ps.percent_base='gross' THEN COALESCE(mat.cost,0) ELSE 0 END) * COALESCE(ps.percent,0)/100
+                   THEN (CASE WHEN ps.percent_base='gross' THEN COALESCE(rev.rev_full,0)+COALESCE(mat.cost,0)
+                              ELSE COALESCE(rev.rev_labor,0) END) * COALESCE(ps.percent,0)/100
                    ELSE 0 END)::numeric amount
             FROM rev JOIN masters m ON m.id=rev.master_id
             LEFT JOIN mat ON mat.master_id=rev.master_id
@@ -78,9 +91,8 @@ router.get('/pending', async (req, res) => {
                AND a.status IN ('done','completed')
                AND a.starts_at BETWEEN $1 AND $2
                AND COALESCE(c.commissionable, TRUE) = TRUE
-               -- лише РЕАЛЬНО ПРОДАНІ клієнту банки (є продавець або позначено продажем).
-               -- Профі-засоби, використані в послузі (без продавця) = матеріал, % не дають (правило Власника 06.07).
-               AND (am.seller_master_id IS NOT NULL OR am.billable = TRUE)
+               -- Банка/ампула = товар. За замовчуванням % іде МАЙСТРУ ВІЗИТУ (COALESCE seller→master).
+               -- Продавця вказують лише коли продав хтось інший (правило Власника 06.07). Фарба за грам — розхідник, не тут.
              GROUP BY 1),
           pos AS (
             SELECT co.master_id AS mid, SUM(co.amount) AS rev FROM cash_operations co
