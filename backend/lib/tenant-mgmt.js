@@ -85,7 +85,12 @@ async function createTenant(name, opts = {}, actor = null) {
     subscription = await billing.createSubscription(tenant.id, { plan_code: planCode, cycle, trial }, actor);
   } catch (e) { console.error('[tenant-mgmt:createTenant:sub]', e.message); }
 
-  // 4) Онбординг: шаг registration выполнен.
+  // 4) Товарні категорії — стандартний набір з правильним commissionable (SaaS-аудит 06.07:
+  //    новий салон стартував із порожніми категоріями → фарби/окисники давали % майстру,
+  //    склад без груп). Фарби/окисники/знебарвлення/завивка/пігменти = розхідник (commissionable=FALSE).
+  try { await seedTenantCategories(tenant.id); } catch (e) { console.error('[tenant-mgmt:createTenant:cats]', e.message); }
+
+  // 5) Онбординг: шаг registration выполнен.
   try { await completeStep(tenant.id, 'registration'); } catch (_) {}
 
   return {
@@ -227,6 +232,34 @@ async function setStatus(tenantId, status, reason = null) {
 
 // ── Онбординг ────────────────────────────────────────────────────────
 const ONB_STEPS = ['registration', 'profile', 'services', 'employees', 'first_booking'];
+
+// Стандартний набір товарних категорій. commissionable=FALSE → розхідник (% з продажу не дає).
+const DEFAULT_CATEGORIES = [
+  ['coloring', 'Фарби', 'Фарбування', false], ['oxidant', 'Окисники', 'Фарбування', false],
+  ['bleach', 'Знебарвлення', 'Фарбування', false], ['pigment', 'Пігменти', 'Фарбування', false],
+  ['perm', 'Завивка', 'Професійне', false],
+  ['shampoo', 'Шампуні', 'Миття та догляд', true], ['conditioner', 'Кондиціонери', 'Миття та догляд', true],
+  ['mask', 'Маски', 'Миття та догляд', true], ['ampoules', 'Ампули', 'Лікування', true],
+  ['keratin', 'Кератин', 'Лікування', true], ['repair', 'Реконструкція', 'Лікування', true],
+  ['scalp', 'Шкіра голови', 'Лікування', true], ['lotion', 'Лосьйони', 'Лікування', true],
+  ['serum', 'Сироватки', 'Незмивний догляд', true], ['oil', 'Олії', 'Незмивний догляд', true],
+  ['cream', 'Креми', 'Незмивний догляд', true], ['fluid', 'Флюїди', 'Незмивний догляд', true],
+  ['spray', 'Спреї', 'Незмивний догляд', true], ['thermal', 'Термозахисти', 'Незмивний догляд', true],
+  ['care', 'Догляд', 'Незмивний догляд', true], ['styling', 'Стайлінг', 'Професійне', true],
+  ['toning', 'Тонуючі маски', 'Тонування', true], ['set', 'Набори', 'Набори', true],
+  ['tools', 'Інструменти', 'Професійне', true], ['accessory', 'Аксесуари', 'Професійне', true],
+];
+async function seedTenantCategories(tenantId) {
+  const pool = getPool();
+  await runAs(tenantId, async () => {
+    for (const [id, name, group_name, comm] of DEFAULT_CATEGORIES) {
+      await pool.query(
+        `INSERT INTO categories (id, name, group_name, commissionable)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (tenant_id, id) DO NOTHING`,
+        [id, name, group_name, comm]);
+    }
+  });
+}
 
 async function getOnboarding(tenantId) {
   const pool = getPool();
