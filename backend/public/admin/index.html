@@ -2525,8 +2525,8 @@ select.input { background:var(--card); }
             <!-- ГРАФІК ЗМІН -->
             <div class="set-pane" id="tab-schedule">
               <div class="card"><div class="card-body">
-                <h3 class="set-h">Графік змін майстрів <button type="button" class="info-i" data-t="<b>Графік змін.</b> Загальні правила робочого часу й змін майстрів. Детальний помісячний графік редагується в розділі «Персонал → Графіки»." onclick="showInfo(event,this.dataset.t)">i</button></h3>
-                <p class="set-p">Робочі дні й години кожного майстра на тиждень. Журнал показує лише робочий час, онлайн-запис пропонує тільки вільні слоти в межах зміни.</p>
+                <h3 class="set-h">Тижневий графік (шаблон) <button type="button" class="info-i" data-t="<b>Тижневий графік (шаблон).</b> Постійний тижневий розклад одного майстра (Пн–Нд) — база, за якою генеруються реальні зміни. Місячний графік усієї команди з правкою по днях — у розділі «Команда → Графіки роботи»." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <p class="set-p">Постійний тижневий шаблон робочих днів і годин одного майстра. За ним генерується місячний графік. Місячний графік усієї команди (з правкою по днях і схемами 2/2, 5/2) — у розділі «Команда → Графіки роботи».</p>
                 <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
                   <select id="schMaster" class="input" style="max-width:260px" onchange="loadSchedule()"><option value="">— оберіть майстра —</option></select>
                   <span id="schMsg" class="set-msg"></span>
@@ -4917,9 +4917,8 @@ async function loadSchMasters() {
   try {
     const r = await api('/api/schedule/masters?all=1');
     _schMastersCache = (r.items || r.masters || []);
-    const def = keep || '__all__'; // дефолт — зведений огляд усієї команди
+    const def = keep || ''; // дефолт — обрати майстра (тижневий шаблон per-master). Місячний огляд усієї команди живе в розділі «Графіки роботи»
     sel.innerHTML = '<option value="">— оберіть майстра —</option>' +
-      `<option value="__all__"${def==='__all__'?' selected':''}>👥 Усі майстри (огляд)</option>` +
       _schMastersCache.map(m => `<option value="${m.id}"${String(m.id)===String(def)?' selected':''}>${m.active===false?'🚫 ':''}${m.name}${m.active===false?' (звільнений)':''}</option>`).join('');
     loadSchedule();
   } catch { sel.innerHTML = '<option value="">майстри недоступні</option>'; }

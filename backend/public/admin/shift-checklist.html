@@ -65,8 +65,10 @@ try{ if(window.top!==window.self) document.documentElement.classList.add('embedd
     <div class="cashrow">
       <div class="fld"><label>Сума за програмою, ₴</label><input type="number" id="cashProgram" step="0.01" oninput="recalcDiff()"></div>
       <div class="fld"><label>Сума за журналом, ₴</label><input type="number" id="cashJournal" step="0.01"></div>
-      <div class="fld"><label>Реально в касі, ₴</label><input type="number" id="cashFact" step="0.01" oninput="recalcDiff()"></div>
+      <div class="fld"><label>Реально готівкою, ₴</label><input type="number" id="cashFactCash" step="0.01" oninput="recalcDiff()"></div>
+      <div class="fld"><label>Реально безготівкою, ₴</label><input type="number" id="cashFactCashless" step="0.01" oninput="recalcDiff()"></div>
     </div>
+    <div style="margin-top:6px">Реально в касі (разом): <b id="cashFactTotal">—</b></div>
     <div>Розбіжність: <span id="diff" class="diff">—</span></div>
   </div>
 
@@ -103,7 +105,14 @@ async function load(){
     $('admin').value = DATA.admin_name||'';
     $('cashProgram').value = DATA.cash_program!=null?DATA.cash_program:'';
     $('cashJournal').value = DATA.cash_journal!=null?DATA.cash_journal:'';
-    $('cashFact').value = DATA.cash_fact!=null?DATA.cash_fact:'';
+    // готівка/безготівка — нові поля; для старих записів (лише cash_fact) кладемо суму в готівку
+    if(DATA.cash_fact_cash!=null||DATA.cash_fact_cashless!=null){
+      $('cashFactCash').value = DATA.cash_fact_cash!=null?DATA.cash_fact_cash:'';
+      $('cashFactCashless').value = DATA.cash_fact_cashless!=null?DATA.cash_fact_cashless:'';
+    } else {
+      $('cashFactCash').value = DATA.cash_fact!=null?DATA.cash_fact:'';
+      $('cashFactCashless').value = '';
+    }
     recalcDiff();
     renderList();
     renderState();
@@ -133,7 +142,11 @@ function renderState(){
 }
 
 function recalcDiff(){
-  const p=parseFloat($('cashProgram').value), f=parseFloat($('cashFact').value);
+  const cash=parseFloat($('cashFactCash').value), cashless=parseFloat($('cashFactCashless').value);
+  const hasFact = !isNaN(cash) || !isNaN(cashless);
+  const f = hasFact ? ((isNaN(cash)?0:cash)+(isNaN(cashless)?0:cashless)) : NaN;
+  $('cashFactTotal').textContent = hasFact ? (+f.toFixed(2))+' ₴' : '—';
+  const p=parseFloat($('cashProgram').value);
   const el=$('diff');
   if(isNaN(p)||isNaN(f)){ el.textContent='—'; el.className='diff'; return; }
   const d=+(f-p).toFixed(2);
@@ -146,7 +159,8 @@ function collect(){
     work_date: $('date').value||kyivToday(),
     admin_name: $('admin').value||null,
     items: DATA.items,
-    cash_program: $('cashProgram').value, cash_journal: $('cashJournal').value, cash_fact: $('cashFact').value,
+    cash_program: $('cashProgram').value, cash_journal: $('cashJournal').value,
+    cash_fact_cash: $('cashFactCash').value, cash_fact_cashless: $('cashFactCashless').value,
   };
 }
 async function save(){

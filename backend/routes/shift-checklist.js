@@ -59,7 +59,8 @@ router.get('/', async (req, res) => {
     const r = await pool.query('SELECT * FROM shift_checklists WHERE work_date=$1', [date]);
     if (!r.rows[0]) {
       return res.json({ work_date: date, admin_name: null, items: template(),
-        cash_program: null, cash_journal: null, cash_fact: null, cash_diff: null,
+        cash_program: null, cash_journal: null, cash_fact: null,
+        cash_fact_cash: null, cash_fact_cashless: null, cash_diff: null,
         note: null, closed_at: null, saved: false });
     }
     const row = r.rows[0];
@@ -91,20 +92,27 @@ router.post('/', async (req, res) => {
     // проставляємо done_at для свіжо відмічених
     const nowIso = new Date().toISOString();
     items.forEach((it) => { if (it.done && !it.done_at) it.done_at = nowIso; if (!it.done) it.done_at = null; });
-    const prog = b.cash_program != null && b.cash_program !== '' ? Number(b.cash_program) : null;
-    const jour = b.cash_journal != null && b.cash_journal !== '' ? Number(b.cash_journal) : null;
-    const fact = b.cash_fact != null && b.cash_fact !== '' ? Number(b.cash_fact) : null;
+    const num = (v) => (v != null && v !== '' ? Number(v) : null);
+    const prog = num(b.cash_program);
+    const jour = num(b.cash_journal);
+    const factCash = num(b.cash_fact_cash);
+    const factCashless = num(b.cash_fact_cashless);
+    // факт = готівка + безготівка; якщо жодного поля не задано — падаємо на старий cash_fact
+    const fact = (factCash != null || factCashless != null)
+      ? +(((factCash || 0) + (factCashless || 0)).toFixed(2))
+      : num(b.cash_fact);
     const diff = (fact != null && prog != null) ? +(fact - prog).toFixed(2) : null;
     const admin = (b.admin_name || (req.staff && req.staff.name) || null);
     const r = await pool.query(
-      `INSERT INTO shift_checklists (work_date, admin_name, items, cash_program, cash_journal, cash_fact, cash_diff, note, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+      `INSERT INTO shift_checklists (work_date, admin_name, items, cash_program, cash_journal, cash_fact, cash_fact_cash, cash_fact_cashless, cash_diff, note, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
        ON CONFLICT (work_date) DO UPDATE SET
          admin_name=COALESCE(EXCLUDED.admin_name, shift_checklists.admin_name),
          items=EXCLUDED.items, cash_program=EXCLUDED.cash_program, cash_journal=EXCLUDED.cash_journal,
-         cash_fact=EXCLUDED.cash_fact, cash_diff=EXCLUDED.cash_diff, note=EXCLUDED.note, updated_at=NOW()
+         cash_fact=EXCLUDED.cash_fact, cash_fact_cash=EXCLUDED.cash_fact_cash, cash_fact_cashless=EXCLUDED.cash_fact_cashless,
+         cash_diff=EXCLUDED.cash_diff, note=EXCLUDED.note, updated_at=NOW()
        RETURNING *`,
-      [date, admin, JSON.stringify(items), prog, jour, fact, diff, b.note || null]);
+      [date, admin, JSON.stringify(items), prog, jour, fact, factCash, factCashless, diff, b.note || null]);
     res.json({ ok: true, ...r.rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
