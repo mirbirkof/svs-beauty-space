@@ -1585,9 +1585,11 @@ select.input { background:var(--card); }
           <button class="btn btn-sm fc-rng active" data-r="month" onclick="fcRange('month')">Місяць</button>
           <button class="btn btn-sm fc-rng" data-r="prevmonth" onclick="fcRange('prevmonth')">Мин. місяць</button>
           <button class="btn btn-sm fc-rng" data-r="year" onclick="fcRange('year')">Рік</button>
+          <button class="btn btn-sm fin-nav" onclick="fcShift(-1)" title="Попередній період"><span class="material-icons-round" style="font-size:18px">chevron_left</span></button>
           <input type="date" id="fcFrom" class="input" style="width:auto;padding:5px 8px;font-size:13px" onchange="fcRangeCustom()">
           <span style="color:var(--text-secondary)">—</span>
           <input type="date" id="fcTo" class="input" style="width:auto;padding:5px 8px;font-size:13px" onchange="fcRangeCustom()">
+          <button class="btn btn-sm fin-nav" onclick="fcShift(1)" title="Наступний період"><span class="material-icons-round" style="font-size:18px">chevron_right</span></button>
           <button class="btn btn-sm" onclick="fcDigestSettings()" style="margin-left:auto"><span class="material-icons-round" style="font-size:16px">notifications</span> Щоденна зведення</button>
           <button class="btn btn-primary btn-sm" onclick="fcSendDigest(this)"><span class="material-icons-round" style="font-size:16px">send</span> Надіслати зведення зараз</button>
         </div>
@@ -7269,6 +7271,7 @@ async function shiftDelete(id){
 function _fcChg(c){ if(c==null) return ''; const cl=c>0?'up':c<0?'down':'flat'; const a=c>0?'▲':c<0?'▼':'■'; return `<span class="chg ${cl}">${a} ${Math.abs(c)}%</span>`; }
 const _FC_CATS={ rent:'Оренда', salary:'Зарплата', payroll:'Зарплата', purchase:'Закупівлі', marketing:'Маркетинг', utilities:'Комуналка', supplies:'Витратні', other:'Інше' };
 let _fcRange = { from:null, to:null }; // null = поточний місяць
+let _fcRangeMode = 'month';
 function fcRange(preset){
   const now=new Date(), today=_kyD(now); let from, to=today;
   if(preset==='today') from=today;
@@ -7276,7 +7279,7 @@ function fcRange(preset){
   else if(preset==='month') from=today.slice(0,7)+'-01';
   else if(preset==='prevmonth'){ const d=new Date(now.getFullYear(),now.getMonth()-1,1); from=_kyD(d).slice(0,7)+'-01'; to=_kyD(new Date(now.getFullYear(),now.getMonth(),0)); }
   else if(preset==='year') from=today.slice(0,4)+'-01-01';
-  _fcRange={from,to};
+  _fcRange={from,to}; _fcRangeMode=preset;
   document.querySelectorAll('.fc-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===preset));
   const f=document.getElementById('fcFrom'),t=document.getElementById('fcTo'); if(f)f.value=from; if(t)t.value=to;
   loadFinCenter();
@@ -7284,7 +7287,29 @@ function fcRange(preset){
 function fcRangeCustom(){
   const from=document.getElementById('fcFrom').value, to=document.getElementById('fcTo').value;
   if(!from||!to) return;
-  _fcRange={from,to};
+  _fcRange={from,to}; _fcRangeMode='custom';
+  document.querySelectorAll('.fc-rng').forEach(b=>b.classList.remove('active'));
+  loadFinCenter();
+}
+// Стрілки: зсув діапазону (місяць→±місяць, рік→±рік, інакше на к-сть днів діапазону)
+function fcShift(dir){
+  const fEl=document.getElementById('fcFrom'), tEl=document.getElementById('fcTo');
+  if(!fEl.value||!tEl.value) return;
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  let from=new Date(fEl.value+'T00:00:00'), to=new Date(tEl.value+'T00:00:00');
+  if(isNaN(from)||isNaN(to)) return;
+  if(_fcRangeMode==='month'||_fcRangeMode==='prevmonth'){
+    from=new Date(from.getFullYear(), from.getMonth()+dir, 1);
+    to=new Date(from.getFullYear(), from.getMonth()+1, 0);
+  } else if(_fcRangeMode==='year'){
+    const y=from.getFullYear()+dir; from=new Date(y,0,1); to=new Date(y,11,31);
+  } else {
+    const lenDays=Math.round((to-from)/86400000)+1;
+    from.setDate(from.getDate()+dir*lenDays); to.setDate(to.getDate()+dir*lenDays);
+  }
+  fEl.value=fmt(from); tEl.value=fmt(to);
+  _fcRange={from:fEl.value, to:tEl.value};
   document.querySelectorAll('.fc-rng').forEach(b=>b.classList.remove('active'));
   loadFinCenter();
 }
