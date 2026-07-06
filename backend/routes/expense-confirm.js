@@ -31,17 +31,21 @@ router.get('/pending', async (req, res) => {
     const p = periodOf(req);
     const q = (sql, a = []) => pool.query(sql, a).then(r => r.rows).catch(() => []);
     const [salary, sales, recurring, confirmed] = await Promise.all([
-      // нарахована ЗП по майстрах (виручка×% схеми, лише за послуги що пройшли)
+      // нарахована ЗП по майстрах. ПОКАЗУЄМО ВСІХ активних майстрів, що мали візити
+      // за період — навіть без схеми начислення (інакше майстер зникає зі списку й
+      // власник його не бачить: фідбек #144 — Евеліна/Настя не відображались).
+      // Для percent/hybrid рахуємо суму; без схеми amount=0 → власник вписує вручну.
       q(`WITH da AS (SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
             WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
               AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
-          SELECT m.id, m.name, MAX(ps.percent) percent,
+          SELECT m.id, m.name, MAX(ps.percent) percent, MAX(ps.scheme_type) scheme_type,
+                 COALESCE(SUM(da.rev),0)::numeric services_revenue,
                  ROUND(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END))::numeric amount
             FROM da JOIN masters m ON m.id=da.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+           WHERE m.active=TRUE
            GROUP BY m.id, m.name
-          HAVING SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END) > 0
-           ORDER BY amount DESC`, [p.from, p.to]),
+           ORDER BY amount DESC, services_revenue DESC`, [p.from, p.to]),
       // % З ПРОДАЖУ ПРОДУКЦІЇ (правило Босса 05-06.07): банки у візитах по ПРОДАВЦЮ
       // (seller_master_id, інакше майстер візиту) + роздрібні POS-продажі майстра.
       // Фарба за грам = розхідник, % не дає. Адміни не зʼявляються (нема їх master_id).
@@ -80,9 +84,11 @@ router.get('/pending', async (req, res) => {
       const key = `salary:${s.id}:${p.period}`;
       const sl = salesMap[s.id]; delete salesMap[s.id];
       const salesPart = sl ? Number(sl.amount) : 0;
+      const noScheme = s.scheme_type == null; // немає схеми начислення → сума не порахована автоматично
       return { kind: 'salary', ref_key: key, label: `ЗП ${s.name}${s.percent != null ? ` (${s.percent}%)` : ''}`,
         master_id: s.id, amount_calc: Number(s.amount) + salesPart,
         services_part: Number(s.amount), sales_part: salesPart,
+        services_revenue: Number(s.services_revenue || 0), no_scheme: noScheme,
         sales_revenue: sl ? Number(sl.sales_revenue) : 0, sales_pct: sl ? Number(sl.sales_pct) : null,
         confirmed: !!cmap[key], amount_paid: cmap[key] ? Number(cmap[key].amount_paid) : null };
     });
