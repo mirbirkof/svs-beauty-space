@@ -28,8 +28,9 @@ router.post('/payroll/schemes', async (req, res) => {
     const { master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes } = req.body || {};
     if (!master_id || !scheme_type) return res.status(400).json({ error: 'master_id, scheme_type required' });
     if (!['percent', 'fixed', 'hybrid'].includes(scheme_type)) return res.status(400).json({ error: 'bad scheme_type' });
-    // база відсотка: 'gross' (від усієї суми) або 'net' (за вирахуванням матеріалів)
-    const percent_base = (req.body && req.body.percent_base === 'net') ? 'net' : 'gross';
+    // база відсотка: 'net' (за вирахуванням матеріалів, ДЕФОЛТ — як у всіх поточних майстрів і в UI)
+    // або 'gross' (від усієї суми чека). Дефолт net і тут, і в модалці — інакше пересохранение схеми міняло базу.
+    const percent_base = (req.body && req.body.percent_base === 'gross') ? 'gross' : 'net';
     // числові поля: якщо задані — мають бути коректними числами >= 0 (інакше NaN у numeric-колонки)
     for (const [k, v] of Object.entries({ percent, fixed_per_day, fixed_per_month, sales_commission_pct })) {
       if (v === undefined || v === null || v === '') continue;

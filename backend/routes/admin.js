@@ -869,7 +869,10 @@ router.get('/masters', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-router.post('/masters', async (req, res) => {
+router.post('/masters',
+  require('../lib/plan-limits').enforcePlanLimit('max_employees',
+    "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
+  async (req, res) => {
   try {
     const { name, phone, specialty, bio, avatar, beautypro_id, commission_pct } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });

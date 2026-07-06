@@ -56,4 +56,13 @@ function enforcePlanLimit(limitKey, countSql) {
   };
 }
 
-module.exports = { enforcePlanLimit };
+// Пряма перевірка ліміту (для шляхів, де middleware не підходить — транзакції users.js).
+// Повертає число (жорсткий ліміт) або null (безліміт/soft/платформа/нема плану).
+async function getPlanLimit(limitKey) {
+  if (isPlatformTenant && isPlatformTenant()) return null;
+  const lim = await tenantLimit(getPool(), limitKey);
+  if (!lim || lim.limit_value == null || Number(lim.limit_value) < 0 || lim.is_soft) return null;
+  return Number(lim.limit_value);
+}
+
+module.exports = { enforcePlanLimit, getPlanLimit };

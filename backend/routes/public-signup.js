@@ -86,6 +86,11 @@ router.post('/signup', signupLimiter, async (req, res) => {
             `INSERT INTO masters (name, phone, specialty, active, provides_services)
              VALUES ($1, $2, NULL, true, true)
              ON CONFLICT DO NOTHING`, [ownerName, phone]);
+          // лінкуємо owner-користувача з карткою майстра — інакше весь кабінет майстра
+          // (/api/me/*, «мої клієнти») відповідає 403 «Тільки для майстра» (аудит 06.07, P0)
+          await getPool().query(
+            `UPDATE users u SET master_id = m.id FROM masters m
+              WHERE m.phone = $1 AND u.phone = $1 AND u.master_id IS NULL`, [phone]);
           const { setSetting } = require('../lib/settings');
           await setSetting('solo_master_mode', true, null);
           // дефолтний графік (пн-сб 09-18 на 30 днів) — інакше онлайн-запис
@@ -94,7 +99,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
             `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source)
              SELECT m.id, gs::date, '09:00', '18:00', 'signup-default'
                FROM masters m,
-                    generate_series(CURRENT_DATE, CURRENT_DATE + 29, '1 day') gs
+                    generate_series(CURRENT_DATE, CURRENT_DATE + 89, '1 day') gs
               WHERE m.phone = $1 AND EXTRACT(ISODOW FROM gs) < 7
              ON CONFLICT DO NOTHING`, [phone]);
         });

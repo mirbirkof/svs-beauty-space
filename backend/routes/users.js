@@ -75,6 +75,15 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
 
     // якщо роль майстер і просять — створюємо запис у masters і лінкуємо
     if (!master_id && (create_master || role.rows[0].code === 'master')) {
+      // ліміт плану max_employees — цей шлях обходив enforcePlanLimit (аудит 06.07)
+      const max = await require('../lib/plan-limits').getPlanLimit('max_employees').catch(() => null);
+      if (max != null) {
+        const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true`);
+        if (cnt.rows[0].n >= max) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
+        }
+      }
       const m = await client.query(
         `INSERT INTO masters (name, phone, specialty, commission_pct, active)
          VALUES ($1,$2,$3,$4,true) RETURNING id`,

@@ -5204,8 +5204,7 @@ async function schToggleActive(id, makeActive) {
 function loadSchedule() {
   const id = document.getElementById('schMaster').value;
   const grid = document.getElementById('schGrid');
-  if (id === '__all__') { renderScheduleOverview(grid); return; }
-  if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати графік, або «Усі майстри» для огляду.</p>'; return; }
+  if (!id) { grid.innerHTML = '<p class="set-p">Оберіть майстра, щоб налаштувати його тижневий шаблон. Огляд усієї команди — розділ «Команда → Графіки роботи».</p>'; return; }
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id));
   const sched = (m && m.schedule_json) || {};
   const isActive = !m || m.active !== false;
@@ -11797,7 +11796,7 @@ async function loadExpenseConfirm(){
   try{
     const d=await api('/api/expense-confirm/pending?from='+from+'&to='+to);
     document.getElementById('ecPeriodLbl').textContent = d.period?('· '+d.period.from+' – '+d.period.to):'';
-    const items=d.items||[];
+    const items=(d.items||[]).slice().sort((a,b)=>(b.amount_calc||0)-(a.amount_calc||0) || (b.services_revenue||0)-(a.services_revenue||0));
     if(!items.length){ box.innerHTML='<div class="empty">Витрат до підтвердження немає</div>'; return; }
     const money=v=>(Math.round(+v||0)).toLocaleString('uk-UA')+' ₴';
     box.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">`+items.map(x=>{

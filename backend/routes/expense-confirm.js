@@ -58,7 +58,7 @@ router.get('/pending', async (req, res) => {
                AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
           rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full,
                          COUNT(DISTINCT day_kyiv) work_days FROM da GROUP BY master_id)
-          SELECT m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
+          SELECT DISTINCT ON (m.id) m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
                  ps.fixed_per_month, ps.fixed_per_day, COALESCE(rev.work_days,0)::int work_days,
                  COALESCE(rev.rev_labor,0)::numeric services_revenue,
                  COALESCE(rev.rev_full,0)::numeric services_full,
@@ -67,7 +67,8 @@ router.get('/pending', async (req, res) => {
             FROM rev JOIN masters m ON m.id=rev.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=rev.master_id::text AND ps.is_active=TRUE
            WHERE m.active=TRUE OR ps.scheme_type IS NOT NULL -- звільнені зі схемою видно в минулих періодах
-           ORDER BY amount DESC, services_revenue DESC`, [p.from, p.to]),
+           ORDER BY m.id, ps.updated_at DESC NULLS LAST -- DISTINCT ON: одна (свіжа) схема на майстра, дубль не задвоює суму
+           `, [p.from, p.to]),
       // % З ПРОДАЖУ ПРОДУКЦІЇ (правило Босса 05-06.07): банки у візитах по ПРОДАВЦЮ
       // (seller_master_id, інакше майстер візиту) + роздрібні POS-продажі майстра.
       // Фарба за грам = розхідник, % не дає. Адміни не зʼявляються (нема їх master_id).
