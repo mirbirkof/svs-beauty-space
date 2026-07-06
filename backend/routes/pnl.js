@@ -166,6 +166,12 @@ async function aggregate(start, end, branchId) {
     `SELECT COALESCE(SUM(fixed_part + COALESCE(bonus,0) - COALESCE(deduction,0)),0)::numeric s
        FROM payroll_records
       WHERE status IN ('approved','paid') AND period_start < $2 AND period_end >= $1`, [start, end]);
+  // ЗП, проведена через «Підтвердження витрат» (у payroll_records НЕ потрапляє) —
+  // касові операції ref_type='expense_confirm' категорії salary (аудит 06.07: випадала з P&L)
+  const salConfirmed = await safeRows(
+    `SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations
+      WHERE type='out' AND category='salary' AND ref_type='expense_confirm'
+        AND created_at >= $1 AND created_at < $2`, [start, end]);
   // OpEx-витрати по категоріях cash_operations type=out (крім зарплати — вона з payroll)
   const opexCats = await safeRows(
     `SELECT co.category, COALESCE(SUM(co.amount),0)::numeric s
@@ -203,6 +209,8 @@ async function aggregate(start, end, branchId) {
   // cogs
   add('cogs', 'materials', 'Розхідні матеріали', num(mat[0]?.s), 110, { source: 'stock_movements' });
   add('cogs', 'salary_piece', 'Зарплата майстрів (відрядна)', num(salPiece[0]?.s), 120, { source: 'payroll_records', part: 'percent_part' });
+  // ЗП, проведена через «Підтвердження витрат» — окремий рядок (у payroll_records її нема; аудит 06.07)
+  add('cogs', 'salary_confirmed', 'Зарплата майстрів (через підтвердження)', num(salConfirmed[0]?.s), 121, { source: 'cash_operations', ref_type: 'expense_confirm' });
   // opex: salary fixed
   add('opex', 'salary_fixed', 'Зарплати (оклад + адмін)', num(salFixed[0]?.s), 210, { source: 'payroll_records', part: 'fixed_part' });
   let so = 220;

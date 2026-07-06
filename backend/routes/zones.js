@@ -99,11 +99,17 @@ router.get('/', async (req, res) => {
                          COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full')}),0)::float comm
                     FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
                    GROUP BY da.master_id`, [fromTs, toTs]),
-      // фікс-оклади по майстру (пропорційно довжині періоду)
-      pool.query(`SELECT m.id master_id, COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::float fx
+      // фікс-оклади по майстру: fixed_per_month (пропорц. періоду) + fixed_per_day × зміни графіка
+      pool.query(`WITH sched AS (
+                    SELECT master_id, COUNT(*)::int shifts FROM master_schedule_days
+                     WHERE work_date >= $1::date AND work_date <= $2::date GROUP BY master_id)
+                  SELECT m.id master_id,
+                         COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::float fx_month,
+                         COALESCE(SUM(COALESCE(ps.fixed_per_day,0) * COALESCE(sc.shifts,0)),0)::float fx_day
                     FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
+                    LEFT JOIN sched sc ON sc.master_id=m.id
                    WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE
-                   GROUP BY m.id`),
+                   GROUP BY m.id`, [String(fromTs).slice(0,10), String(toTs).slice(0,10)]),
       pool.query(`SELECT value FROM app_settings WHERE key='finance'`),
       // товари (магазин) — окремий бакет
       pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND master_id IS NULL),0)::float cash_prod
@@ -144,7 +150,7 @@ router.get('/', async (req, res) => {
     for (const r of fixedR.rows) {
       const zid = m2z.get(Number(r.master_id));
       const bucket = zid && acc.has(zid) ? acc.get(zid) : unassigned;
-      bucket.commission += Number(r.fx) * (days / 30);
+      bucket.commission += Number(r.fx_month) * (days / 30) + Number(r.fx_day);
     }
 
     const totalSvcRev = [...acc.values()].reduce((a, b) => a + b.revenue, 0) + unassigned.revenue;

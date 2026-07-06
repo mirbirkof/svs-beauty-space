@@ -41,9 +41,17 @@ async function liveFinance(pool, from, to) {
                 ELSE 0 END),0)::numeric comm,
               COUNT(*)::int appts
          FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [from, to]),
-    q(`SELECT COALESCE(SUM(COALESCE(fixed_per_month,0)),0)::numeric fx
+    // фікс-оклади: fixed_per_month (пропорційно періоду) + fixed_per_day × реальні зміни графіка.
+    // Раніше fixed_per_day ігнорувався повністю (аудит 06.07).
+    q(`WITH sched AS (
+         SELECT master_id, COUNT(*)::int shifts FROM master_schedule_days
+          WHERE work_date >= $1::date AND work_date <= $2::date GROUP BY master_id)
+       SELECT COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::numeric fx_month,
+              COALESCE(SUM(COALESCE(ps.fixed_per_day,0) * COALESCE(sc.shifts,0)),0)::numeric fx_day
          FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
-        WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`),
+         LEFT JOIN sched sc ON sc.master_id=m.id
+        WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`,
+      [String(from).slice(0,10), String(to).slice(0,10)]),
     // COGS = собівартість ВСІХ списань (розниця + матеріали візитів, заметка #141).
     // Грамові товари (price_per_gram) з unit_ml: опт за упаковку ÷ грамів в упаковці;
     // без unit_ml опт уже за грам; штучні — опт за одиницю. Знак delta зберігаємо:
@@ -92,7 +100,7 @@ async function liveFinance(pool, from, to) {
   const revTotal = revServices + revProducts;
 
   const commissionPct = Number(comm[0]?.comm || 0);
-  const fixedAccrued = Number(fixed[0]?.fx || 0) * (days / 30); // оклади — пропорційно довжині періоду
+  const fixedAccrued = Number(fixed[0]?.fx_month || 0) * (days / 30) + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
   const salesCommission = Number(salesComm[0]?.s || 0); // % з продажу продукції (банки/POS)
   const commission = Math.round(commissionPct + fixedAccrued + salesCommission);
   // Матеріали = собівартість проданих товарів (COGS) + матеріали послуг як % від виручки послуг

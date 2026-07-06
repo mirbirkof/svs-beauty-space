@@ -289,6 +289,7 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
         SELECT (created_at AT TIME ZONE 'Europe/Kyiv') AS k, amount, category
           FROM cash_operations
          WHERE type='in' AND category IN ('sale_service','sale_product')
+           AND ref_type IS DISTINCT FROM 'order' -- онлайн-замовлення рахуємо з orders, інакше двоїлось (аудит 06.07)
       ),
       ord AS (
         SELECT (created_at AT TIME ZONE 'Europe/Kyiv') AS k, total
@@ -364,9 +365,18 @@ router.get('/revenue-series', requirePerm('reports.finance'), cacheReport(), asy
          SELECT generate_series($1::date, $2::date, '1 day')::date AS d
        ),
        prod AS (
-         SELECT created_at::date AS d, COALESCE(SUM(total),0)::numeric AS rev
-           FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2
-          GROUP BY 1
+         SELECT d, SUM(rev)::numeric AS rev FROM (
+           SELECT created_at::date AS d, COALESCE(SUM(total),0)::numeric AS rev
+             FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2
+            GROUP BY 1
+           UNION ALL
+           -- банки у візитах + POS-продажі з каси (без онлайн-замовлень — вони вище)
+           SELECT created_at::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
+             FROM cash_operations
+            WHERE type='in' AND category='sale_product' AND ref_type IS DISTINCT FROM 'order'
+              AND created_at BETWEEN $1 AND $2
+            GROUP BY 1) t
+          GROUP BY d
        ),
        serv AS (
          SELECT created_at::date AS d, COALESCE(SUM(amount),0)::numeric AS rev

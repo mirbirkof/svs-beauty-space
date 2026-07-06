@@ -4,6 +4,7 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
+const { MATLINES_CTE } = require('../lib/payroll-base');
 const { normalizePhoneDb } = require('../lib/phone');
 const router = express.Router();
 const pool = getPool();
@@ -614,18 +615,27 @@ router.get('/payroll/my', async (req, res) => {
     if (s) {
       const kyivYm = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
       let ym = /^\d{4}-\d{2}$/.test(req.query.ym) ? req.query.ym : kyivYm;
+      // ЄДИНА формула (payroll-base): net = сплачене мінус рядки-матеріали, gross = повний чек.
+      // Раніше бралась каса sale_service (повний чек з матеріалами) → кабінет майстра
+      // завищував базу для net-схем і розходився з «Підтвердженням витрат» (аудит 06.07).
       const revOf = (yymm) => pool.query(
-        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(amount),0)::numeric AS revenue
-           FROM cash_operations
-          WHERE master_id=$1::int AND type='in' AND category='sale_service'
-            AND (created_at AT TIME ZONE 'Europe/Kyiv') >= ($2||'-01')::date
-            AND (created_at AT TIME ZONE 'Europe/Kyiv') <  (($2||'-01')::date + INTERVAL '1 month')`, [mid, yymm]);
+        `WITH matlines AS (${MATLINES_CTE})
+         SELECT COUNT(*)::int AS cnt,
+                COALESCE(SUM(CASE WHEN $3='gross' THEN COALESCE(a.real_amount,a.price,0)
+                                  ELSE GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) END),0)::numeric AS revenue
+           FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+          WHERE a.master_id=$1::int AND a.starts_at <= NOW()
+            AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+            AND (a.starts_at AT TIME ZONE 'Europe/Kyiv') >= ($2||'-01')::date
+            AND (a.starts_at AT TIME ZONE 'Europe/Kyiv') <  (($2||'-01')::date + INTERVAL '1 month')`,
+        [mid, yymm, s.percent_base === 'gross' ? 'gross' : 'net']);
       let ob = await revOf(ym);
       if ((ob.rows[0]?.cnt || 0) === 0 && !req.query.ym) {
         const last = await pool.query(
-          `SELECT to_char((created_at AT TIME ZONE 'Europe/Kyiv'),'YYYY-MM') AS ym
-             FROM cash_operations WHERE master_id=$1::int AND type='in' AND category='sale_service'
-            ORDER BY created_at DESC LIMIT 1`, [mid]);
+          `SELECT to_char((starts_at AT TIME ZONE 'Europe/Kyiv'),'YYYY-MM') AS ym
+             FROM appointments WHERE master_id=$1::int
+              AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))
+            ORDER BY starts_at DESC LIMIT 1`, [mid]);
         if (last.rows[0]?.ym) { ym = last.rows[0].ym; ob = await revOf(ym); }
       }
       const cnt = ob.rows[0]?.cnt || 0;
@@ -656,12 +666,35 @@ router.get('/payroll/my', async (req, res) => {
       const psum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_penalties WHERE master_id=$1 AND applied_record_id IS NULL AND penalty_date >= $2::date AND penalty_date < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
       const asum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_advances WHERE master_id=$1 AND settled=FALSE AND issued_at >= $2::date AND issued_at < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
       const bonus = parseFloat(bsum.rows[0].s), penalty = parseFloat(psum.rows[0].s), advance = parseFloat(asum.rows[0].s);
-      const earned = percent_part + fixed_part + bonus;
+      // % з продажу продукції (банки по продавцю + POS) — та сама формула, що скрізь
+      let sales_part = 0;
+      if (parseFloat(s.sales_commission_pct || 0) > 0) {
+        const sq = await pool.query(
+          `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2))
+               FROM appointment_materials am
+               JOIN appointments a ON a.id=am.appointment_id
+               JOIN product_variants pv ON pv.id=am.variant_id
+               LEFT JOIN products p ON p.id=pv.product_id
+               LEFT JOIN categories c ON c.id=p.category_id
+              WHERE COALESCE(am.seller_master_id, a.master_id)=$1::int
+                AND p.price_per_gram IS NULL AND pv.price IS NOT NULL
+                AND a.status IN ('done','completed')
+                AND (a.starts_at AT TIME ZONE 'Europe/Kyiv') >= $2::date
+                AND (a.starts_at AT TIME ZONE 'Europe/Kyiv') < ($2::date + INTERVAL '1 month')
+                AND COALESCE(c.commissionable,TRUE)=TRUE),0)
+           + COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+              WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL AND co.master_id=$1::int
+                AND (co.created_at AT TIME ZONE 'Europe/Kyiv') >= $2::date
+                AND (co.created_at AT TIME ZONE 'Europe/Kyiv') < ($2::date + INTERVAL '1 month')),0) AS sold`,
+          [mid, mStart]);
+        sales_part = +(parseFloat(sq.rows[0].sold || 0) * parseFloat(s.sales_commission_pct) / 100).toFixed(2);
+      }
+      const earned = percent_part + fixed_part + sales_part + bonus;
       current = {
         period_start: ym + '-01', ym,
         services_count: cnt, services_revenue: revenue,
         scheme_type: s.scheme_type, percent: parseFloat(s.percent || 0), scheme_from_commission: !!s._from_commission,
-        percent_part: Math.round(percent_part), fixed_part: Math.round(fixed_part),
+        percent_part: Math.round(percent_part), fixed_part: Math.round(fixed_part), sales_part,
         bonus, penalty, advance,
         earned: Math.round(earned),
         to_pay: Math.round(earned - penalty - advance),

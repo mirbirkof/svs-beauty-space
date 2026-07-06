@@ -22,6 +22,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { MATLINES_CTE } = require('../lib/payroll-base');
 const router = express.Router();
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -205,25 +206,51 @@ router.post('/kpi-bonuses/pull', async (req, res) => {
 // по активной схеме (services_revenue * percent + fixed), чтобы строка не была пустой.
 
 async function liveEstimate(masterId, from, to) {
-  const s = (await q(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE LIMIT 1`, [masterId]))[0];
+  const s = (await q(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [masterId]))[0];
+  // ЄДИНА формула (lib/payroll-base, правило Босса 06.07): net = сплачене мінус рядки-матеріали,
+  // gross = повний чек. Раніше рахувалось повним чеком → відомість розходилась із «Підтвердженням».
   const ob = (await q(
-    // Границы периода как в едином accrual-эталоне (lib/live-finance): киевский пояс (+03)
-    // и только фактически оказанные визиты (starts_at <= NOW) — ЗП за выполненное, не за будущее.
-    `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
-       FROM appointments
-      WHERE master_id=$1::int
-        AND starts_at >= ($2||' 00:00:00+03')::timestamptz
-        AND starts_at <  ($3||' 00:00:00+03')::timestamptz
-        AND starts_at <= NOW()
-        AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))`,
+    `WITH matlines AS (${MATLINES_CTE})
+     SELECT COUNT(*)::int AS cnt,
+            COALESCE(SUM(GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0))),0)::numeric AS revenue,
+            COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full
+       FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+      WHERE a.master_id=$1::int
+        AND a.starts_at >= ($2||' 00:00:00+03')::timestamptz
+        AND a.starts_at <  ($3||' 00:00:00+03')::timestamptz
+        AND a.starts_at <= NOW()
+        AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))`,
     [masterId, from, to]))[0];
   const revenue = num(ob.revenue), cnt = ob.cnt || 0;
-  let percent_part = 0, fixed_part = 0;
+  const revenueFull = num(ob.revenue_full);
+  let percent_part = 0, fixed_part = 0, sales_part = 0;
   if (s) {
-    if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = revenue * (num(s.percent) / 100);
+    const base = (s.percent_base === 'gross') ? revenueFull : revenue;
+    if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = +(base * (num(s.percent) / 100)).toFixed(2);
     if ((s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') && s.fixed_per_month) fixed_part = num(s.fixed_per_month);
+    // % з продажу продукції — банки по продавцю + POS (та сама формула, що «Підтвердження»)
+    if (num(s.sales_commission_pct) > 0) {
+      const sold = (await q(
+        `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2))
+             FROM appointment_materials am
+             JOIN appointments a ON a.id=am.appointment_id
+             JOIN product_variants pv ON pv.id=am.variant_id
+             LEFT JOIN products p ON p.id=pv.product_id
+             LEFT JOIN categories c ON c.id=p.category_id
+            WHERE COALESCE(am.seller_master_id, a.master_id)=$1::int
+              AND p.price_per_gram IS NULL AND pv.price IS NOT NULL
+              AND a.status IN ('done','completed')
+              AND a.starts_at >= ($2||' 00:00:00+03')::timestamptz AND a.starts_at < ($3||' 00:00:00+03')::timestamptz
+              AND COALESCE(c.commissionable,TRUE)=TRUE),0)
+         + COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+            WHERE co.type='in' AND co.category='sale_product' AND co.ref_type IS NULL AND co.master_id=$1::int
+              AND co.created_at >= ($2||' 00:00:00+03')::timestamptz AND co.created_at < ($3||' 00:00:00+03')::timestamptz),0) AS sold`,
+        [masterId, from, to]))[0];
+      sales_part = +(num(sold.sold) * num(s.sales_commission_pct) / 100).toFixed(2);
+    }
   }
-  return { services_count: cnt, services_revenue: revenue, percent_part, fixed_part, total: percent_part + fixed_part, scheme: s ? s.scheme_type : null };
+  return { services_count: cnt, services_revenue: revenue, percent_part, fixed_part, sales_part,
+    total: +(percent_part + fixed_part + sales_part).toFixed(2), scheme: s ? s.scheme_type : null };
 }
 
 // GET /api/payouts/sheet?period=YYYY-MM&status=&master_id=&format=json|csv
