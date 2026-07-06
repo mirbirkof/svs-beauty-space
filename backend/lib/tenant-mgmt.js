@@ -241,11 +241,13 @@ async function completeStep(tenantId, step) {
   if (!ONB_STEPS.includes(step)) throw new Error('invalid-step');
   const pool = getPool();
   const o = await getOnboarding(tenantId);
+  // соло-майстер працює сам → крок 'employees' не потрібен, інакше 100% недосяжні (SaaS-аудит 06.07)
+  const required = (o.account_type === 'solo') ? ONB_STEPS.filter(s => s !== 'employees') : ONB_STEPS;
   const done = new Set(o.steps_completed || []); done.add(step);
-  const arr = ONB_STEPS.filter(s => done.has(s));
-  const percent = Math.round((arr.length / ONB_STEPS.length) * 100);
+  const arr = required.filter(s => done.has(s));
+  const percent = Math.round((arr.length / required.length) * 100);
   const completed = percent === 100;
-  const curStep = Math.min(5, arr.length + (completed ? 0 : 1));
+  const curStep = Math.min(required.length, arr.length + (completed ? 0 : 1));
   const row = (await pool.query(
     `UPDATE tenant_onboarding SET steps_completed=$2, completion_percent=$3, current_step=$4,
        completed_at=CASE WHEN $5 THEN COALESCE(completed_at,NOW()) ELSE NULL END, updated_at=NOW()

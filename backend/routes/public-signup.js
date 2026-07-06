@@ -93,6 +93,11 @@ router.post('/signup', signupLimiter, async (req, res) => {
               WHERE m.phone = $1 AND u.phone = $1 AND u.master_id IS NULL`, [phone]);
           const { setSetting } = require('../lib/settings');
           await setSetting('solo_master_mode', true, null);
+          // тип акаунта в онбординг + крок 'employees' авто-виконано (соло працює сам,
+          // інакше чек-лист онбордингу навічно вимагає «додати співробітників», 100% недосяжні)
+          await getPool().query(
+            `UPDATE tenant_onboarding SET account_type='solo' WHERE tenant_id=$1`, [r.tenant.id]);
+          try { await tm.completeStep(r.tenant.id, 'employees'); } catch (_) {}
           // дефолтний графік (пн-сб 09-18 на 30 днів) — інакше онлайн-запис
           // повертає нуль слотів і соло-майстер думає, що система зламана
           await getPool().query(
