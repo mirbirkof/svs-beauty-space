@@ -5,6 +5,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
+const { COMMISSION_EXPR } = require('../lib/payroll-base');
 
 const router = express.Router();
 const pool = getPool();
@@ -29,7 +30,9 @@ function periodOf(req) {
 router.get('/pending', async (req, res) => {
   try {
     const p = periodOf(req);
-    const q = (sql, a = []) => pool.query(sql, a).then(r => r.rows).catch(() => []);
+    // ВАЖЛИВО: помилку SQL не ковтаємо мовчки — логуємо (інакше блок тихо порожніє, кейс 06.07)
+    const q = (sql, a = []) => pool.query(sql, a).then(r => r.rows)
+      .catch(e => { console.error('[expense-confirm/pending] SQL:', e.message); return []; });
     const [salary, sales, recurring, confirmed] = await Promise.all([
       // нарахована ЗП по майстрах. ПОКАЗУЄМО ВСІХ активних майстрів, що мали візити
       // за період — навіть без схеми начислення (інакше майстер зникає зі списку й
@@ -57,12 +60,10 @@ router.get('/pending', async (req, res) => {
                  COALESCE(rev.rev_labor,0)::numeric services_revenue,
                  COALESCE(rev.rev_full,0)::numeric services_full,
                  (COALESCE(rev.rev_full,0)-COALESCE(rev.rev_labor,0))::numeric materials_cost,
-                 ROUND(CASE WHEN ps.scheme_type IN ('percent','hybrid')
-                   THEN (CASE WHEN ps.percent_base='gross' THEN COALESCE(rev.rev_full,0)
-                              ELSE COALESCE(rev.rev_labor,0) END) * COALESCE(ps.percent,0)/100, 2)::numeric amount
+                 ROUND((${COMMISSION_EXPR('COALESCE(rev.rev_labor,0)', 'COALESCE(rev.rev_full,0)')})::numeric, 2) amount
             FROM rev JOIN masters m ON m.id=rev.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=rev.master_id::text AND ps.is_active=TRUE
-           WHERE m.active=TRUE
+           WHERE m.active=TRUE OR ps.scheme_type IS NOT NULL -- звільнені зі схемою видно в минулих періодах
            ORDER BY amount DESC, services_revenue DESC`, [p.from, p.to]),
       // % З ПРОДАЖУ ПРОДУКЦІЇ (правило Босса 05-06.07): банки у візитах по ПРОДАВЦЮ
       // (seller_master_id, інакше майстер візиту) + роздрібні POS-продажі майстра.
