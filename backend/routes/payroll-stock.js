@@ -100,20 +100,21 @@ router.post('/payroll/calculate', async (req, res) => {
     // Виручка для ЗП — по ФАКТИЧНО сплаченому (real_amount із продажу BeautyPro),
     // якщо факт невідомий — планова ціна. Майстер отримує % з реально отриманих грошей,
     // а не з планової ціни (знижки/зміна послуги мають зменшувати базу).
-    // Виручка РОБОТИ (без рядків-матеріалів у складі візиту) — це net-база «за вирахуванням матеріалів».
+    // net-база «за вирахуванням матеріалів» = ФАКТИЧНО СПЛАЧЕНЕ за послуги мінус рядки-матеріали
+    // у складі візиту (знижки автоматично зменшують базу — майстер отримує % з реальних грошей).
     // Рядок послуги = матеріал, якщо в назві є «матеріал» і немає «без»/«врахуванн»
     // (щоб не сплутати з «...(без врахування матеріалів)» — це робота).
     const ob = await pool.query(
-      `WITH svc AS (
-         SELECT asv.appointment_id aid, COUNT(*) nlines,
-                SUM(asv.price) FILTER (WHERE NOT (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
-                  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) labor
+      `WITH matlines AS (
+         SELECT asv.appointment_id aid,
+                SUM(asv.price) FILTER (WHERE (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+                  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) mat
            FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
           GROUP BY asv.appointment_id)
        SELECT COUNT(*)::int AS cnt,
-              COALESCE(SUM(CASE WHEN svc.nlines>0 THEN COALESCE(svc.labor,0) ELSE COALESCE(a.real_amount,a.price,0) END),0)::numeric AS revenue,
+              COALESCE(SUM(GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0))),0)::numeric AS revenue,
               COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full
-         FROM appointments a LEFT JOIN svc ON svc.aid=a.id
+         FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
         WHERE a.master_id = $1::int
           AND a.starts_at >= $2::date
           AND a.starts_at <  ($3::date + INTERVAL '1 day')
@@ -121,33 +122,14 @@ router.post('/payroll/calculate', async (req, res) => {
       [master_id, period_start, period_end]
     );
     const services_count = ob.rows[0]?.cnt || 0;
-    const services_revenue = parseFloat(ob.rows[0]?.revenue || 0);        // net-база (робота)
+    const services_revenue = parseFloat(ob.rows[0]?.revenue || 0);        // net-база (робота, зі знижками)
     const services_full = parseFloat(ob.rows[0]?.revenue_full || 0);      // повний чек (для gross)
 
     // 2b. База відсотка (фідбек Власника 06.07):
-    //   'net'   — ЗА ВИРАХУВАННЯМ матеріалів. Ціна візиту (appointments.price) = лише РОБОТА
-    //             майстра (матеріали — окремі рядки й у price не входять), тож база = послуги як є.
-    //   'gross' — ВІД ЗАГАЛЬНОЇ суми чека: робота + матеріали/розхідники (база більша, % зазвичай менший).
-    //   Розхідник рахуємо за ціною ЗА ГРАМ (price_per_gram), а не за ціною цілої упаковки.
-    let materials_cost = 0;
-    if (s.percent_base === 'gross' && (s.scheme_type === 'percent' || s.scheme_type === 'hybrid')) {
-      const mc = await pool.query(
-        `SELECT COALESCE(SUM(ROUND(am.qty_used * COALESCE(p.price_per_gram, pv.price), 2)), 0)::numeric AS cost
-           FROM appointment_materials am
-           JOIN appointments a ON a.id = am.appointment_id
-           JOIN product_variants pv ON pv.id = am.variant_id
-           LEFT JOIN products p ON p.id = pv.product_id
-           LEFT JOIN categories c ON c.id = p.category_id
-          WHERE a.master_id = $1::int
-            AND a.status IN ('done','completed')
-            AND a.starts_at >= $2::date AND a.starts_at < ($3::date + INTERVAL '1 day')
-            AND p.price_per_gram IS NOT NULL`,
-        [master_id, period_start, period_end]
-      );
-      materials_cost = parseFloat(mc.rows[0]?.cost || 0);
-    }
-    // net: база = робота; gross: база = повний чек + розхідники за грам
-    const percent_base_amount = (s.percent_base === 'gross') ? (services_full + materials_cost) : services_revenue;
+    //   'net'   — робота: сплачене за послуги мінус рядки-матеріали (пораховано вище);
+    //   'gross' — повний чек послуг (робота + рядки-матеріали). Розхідники за грам сюди
+    //             НЕ додаємо: клієнт платить їх окремим товаром (sale_product) — було б задвоєння.
+    const percent_base_amount = (s.percent_base === 'gross') ? services_full : services_revenue;
 
     // 3. рассчитать части
     let percent_part = 0, fixed_part = 0;

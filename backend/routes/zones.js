@@ -14,6 +14,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
+const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
 const router = express.Router();
 const pool = getPool();
 
@@ -85,12 +86,16 @@ router.get('/', async (req, res) => {
                    WHERE type='in' AND category IN ('sale_service','sale_product') AND created_at BETWEEN $1 AND $2
                    GROUP BY master_id`, [fromTs, toTs]),
       // нарахований % по майстру — ТА САМА формула, що в liveFinance
-      pool.query(`WITH da AS (
-                    SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+      pool.query(`WITH matlines AS (${MATLINES_CTE}),
+                  da AS (
+                    SELECT a.master_id,
+                           GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
+                           COALESCE(a.real_amount,a.price,0) rev_full
+                      FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
                      WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
                        AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
                   SELECT da.master_id,
-                         COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END),0)::float comm
+                         COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full')}),0)::float comm
                     FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
                    GROUP BY da.master_id`, [fromTs, toTs]),
       // фікс-оклади по майстру (пропорційно довжині періоду)

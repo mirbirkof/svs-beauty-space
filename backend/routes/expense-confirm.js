@@ -35,44 +35,32 @@ router.get('/pending', async (req, res) => {
       // за період — навіть без схеми начислення (інакше майстер зникає зі списку й
       // власник його не бачить: фідбек #144 — Евеліна/Настя не відображались).
       // Для percent/hybrid рахуємо суму; без схеми amount=0 → власник вписує вручну.
-      q(`WITH svc AS (
-            -- сума РОБОТИ по кожному візиту (без рядків-матеріалів). Рядок = матеріал, якщо в назві
-            -- є «матеріал» і немає «без»/«врахуванн» (щоб не сплутати з «...без врахування матеріалів»).
-            SELECT asv.appointment_id aid, COUNT(*) nlines,
-                   SUM(asv.price) FILTER (WHERE NOT (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
-                     AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) labor
+      q(`WITH matlines AS (
+            -- сума рядків-МАТЕРІАЛІВ по візиту. Рядок = матеріал, якщо в назві є «матеріал»
+            -- і немає «без»/«врахуванн» (щоб не сплутати з «...без врахування матеріалів» — це робота).
+            SELECT asv.appointment_id aid,
+                   SUM(asv.price) FILTER (WHERE (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+                     AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) mat
               FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
              GROUP BY asv.appointment_id),
           da AS (
+            -- net-база візиту = ФАКТИЧНО СПЛАЧЕНЕ за послуги мінус рядки-матеріали.
+            -- Це автоматично враховує знижки (сплачено менше → база менша) і віддає салону матеріали.
             SELECT a.master_id,
-                   -- net-база: робота без матеріал-рядків (fallback на чек, якщо рядків послуг нема)
-                   CASE WHEN svc.nlines>0 THEN COALESCE(svc.labor,0) ELSE COALESCE(a.real_amount,a.price,0) END rev_labor,
+                   GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                    COALESCE(a.real_amount,a.price,0) rev_full
-              FROM appointments a LEFT JOIN svc ON svc.aid=a.id
+              FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
              WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
                AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
-          rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full FROM da GROUP BY master_id),
-          -- розхідники за грам (для бази 'gross' додаються до повного чека). За ціною ЗА ГРАМ.
-          mat AS (
-            SELECT a.master_id, SUM(ROUND(am.qty_used*COALESCE(p.price_per_gram,pv.price),2)) cost
-              FROM appointment_materials am
-              JOIN appointments a ON a.id=am.appointment_id
-              JOIN product_variants pv ON pv.id=am.variant_id
-              LEFT JOIN products p ON p.id=pv.product_id
-              LEFT JOIN categories c ON c.id=p.category_id
-             WHERE a.status IN ('done','completed') AND a.starts_at BETWEEN $1 AND $2
-               AND p.price_per_gram IS NOT NULL
-             GROUP BY a.master_id)
+          rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full FROM da GROUP BY master_id)
           SELECT m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
                  COALESCE(rev.rev_labor,0)::numeric services_revenue,
                  COALESCE(rev.rev_full,0)::numeric services_full,
-                 COALESCE(mat.cost,0)::numeric materials_cost,
+                 (COALESCE(rev.rev_full,0)-COALESCE(rev.rev_labor,0))::numeric materials_cost,
                  ROUND(CASE WHEN ps.scheme_type IN ('percent','hybrid')
-                   THEN (CASE WHEN ps.percent_base='gross' THEN COALESCE(rev.rev_full,0)+COALESCE(mat.cost,0)
-                              ELSE COALESCE(rev.rev_labor,0) END) * COALESCE(ps.percent,0)/100
-                   ELSE 0 END)::numeric amount
+                   THEN (CASE WHEN ps.percent_base='gross' THEN COALESCE(rev.rev_full,0)
+                              ELSE COALESCE(rev.rev_labor,0) END) * COALESCE(ps.percent,0)/100, 2)::numeric amount
             FROM rev JOIN masters m ON m.id=rev.master_id
-            LEFT JOIN mat ON mat.master_id=rev.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=rev.master_id::text AND ps.is_active=TRUE
            WHERE m.active=TRUE
            ORDER BY amount DESC, services_revenue DESC`, [p.from, p.to]),

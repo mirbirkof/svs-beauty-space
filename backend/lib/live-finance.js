@@ -21,11 +21,24 @@ async function liveFinance(pool, from, to) {
                     THEN COALESCE(ref_type || ':' || ref_id::text, 'op:' || id::text) END)::int cnt
          FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
-    q(`WITH da AS (
-         SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+    // % майстрам за послуги — ТА САМА формула, що ЗП і «Підтвердження витрат» (правило Босса 06.07):
+    // net (дефолт) = сплачене мінус рядки-матеріали; gross = повний чек послуг.
+    q(`WITH matlines AS (
+         SELECT asv.appointment_id aid,
+                SUM(asv.price) FILTER (WHERE (LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+                  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%')) mat
+           FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
+          GROUP BY asv.appointment_id),
+       da AS (
+         SELECT a.master_id,
+                GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
+                COALESCE(a.real_amount,a.price,0) rev_full
+           FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
           WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
-       SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END),0)::numeric comm,
+       SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid')
+                THEN (CASE WHEN ps.percent_base='gross' THEN da.rev_full ELSE da.rev_labor END)*COALESCE(ps.percent,0)/100
+                ELSE 0 END),0)::numeric comm,
               COUNT(*)::int appts
          FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [from, to]),
     q(`SELECT COALESCE(SUM(COALESCE(fixed_per_month,0)),0)::numeric fx
