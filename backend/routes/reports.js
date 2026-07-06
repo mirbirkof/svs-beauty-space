@@ -187,21 +187,34 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
 router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
   try {
     const r = await pool.query(
-      `WITH base AS (
+      `-- Роздільна агрегація orders та appointments (без декартового добутку:
+       -- раніше подвійний LEFT JOIN множив рядки, сума й частота роздувались
+       -- у клієнтів, що мали і замовлення, і візити одночасно.
+       WITH ord AS (
+         SELECT client_id,
+                MAX(created_at) FILTER (WHERE status='paid') AS last_paid,
+                COUNT(*) FILTER (WHERE status='paid') AS cnt,
+                COALESCE(SUM(total) FILTER (WHERE status='paid'),0) AS sm
+           FROM orders GROUP BY client_id
+       ),
+       ap AS (
+         SELECT a.client_id,
+                MAX(a.starts_at) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()) AS last_visit,
+                COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()) AS cnt,
+                COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+                                        WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id),
+                                      COALESCE(a.real_amount, a.price)))
+                         FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()),0) AS sm
+           FROM appointments a GROUP BY a.client_id
+       ),
+       base AS (
          SELECT c.id, c.name, c.phone,
-                COALESCE(MAX(o.created_at) FILTER (WHERE o.status='paid'),
-                         MAX(a.starts_at)  FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())) AS last_activity,
-                COUNT(DISTINCT o.id) FILTER (WHERE o.status='paid')
-                + COUNT(DISTINCT a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())  AS frequency,
-                COALESCE(SUM(o.total) FILTER (WHERE o.status='paid'),0)
-                -- факт з каси по візиту (послуга+товари), fallback real/price (аудит 06.07)
-                + COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co
-                                          WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id),
-                                        COALESCE(a.real_amount, a.price))) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()),0) AS monetary
+                GREATEST(ord.last_paid, ap.last_visit) AS last_activity,
+                COALESCE(ord.cnt,0) + COALESCE(ap.cnt,0) AS frequency,
+                COALESCE(ord.sm,0)  + COALESCE(ap.sm,0)  AS monetary
            FROM clients c
-           LEFT JOIN orders o       ON o.client_id = c.id
-           LEFT JOIN appointments a ON a.client_id = c.id
-          GROUP BY c.id, c.name, c.phone
+           LEFT JOIN ord ON ord.client_id = c.id
+           LEFT JOIN ap  ON ap.client_id  = c.id
        ),
        filtered AS (
          SELECT * FROM base WHERE last_activity IS NOT NULL
