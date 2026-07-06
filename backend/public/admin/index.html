@@ -4330,6 +4330,7 @@ async function svcEdit(id){
           '<label><input type="checkbox" id="svcf_hit" '+(s.is_hit?'checked':'')+'> Хіт</label>'+
           '<label><input type="checkbox" id="svcf_new" '+(s.is_new?'checked':'')+'> Новинка</label>'+
           '<label><input type="checkbox" id="svcf_disc" '+(s.is_discounted?'checked':'')+'> Зі знижкою</label>'+
+          '<label title="Рядок-вартість матеріалу (напр. «...матеріал»). Не входить у базу % майстра."><input type="checkbox" id="svcf_material" '+(s.is_material?'checked':'')+'> Це матеріал (не в базі ЗП)</label>'+
         '</div>'+
         '<label style="display:block;font-size:12px;opacity:.75;margin:8px 0 3px">Опис для клієнта</label>'+
         '<textarea id="svcf_desc" class="input" rows="2">'+escapeHtml(s.description||'')+'</textarea>'+
@@ -4363,6 +4364,7 @@ async function svcSave(id){
     status:document.getElementById('svcf_status').value,
     is_hit:document.getElementById('svcf_hit').checked,
     is_new:document.getElementById('svcf_new').checked,
+    is_material:(document.getElementById('svcf_material')||{}).checked||false,
     is_discounted:document.getElementById('svcf_disc').checked,
     description:document.getElementById('svcf_desc').value||null,
     contraindications:document.getElementById('svcf_contra').value||null,

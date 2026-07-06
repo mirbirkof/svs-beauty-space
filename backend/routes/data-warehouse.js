@@ -28,11 +28,20 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { isPlatformTenant } = require('../lib/tenant');
 const router = express.Router();
 const pool = getPool();
 
 const READ = requirePerm('dwh.read');
 const MANAGE = requirePerm('dwh.manage');
+// DWH fact/dim таблиці ще БЕЗ tenant_id — довільний SQL (/query) читав би дані всіх салонів.
+// До повної ізоляції DWH дозволяємо сирий SQL лише платформенному тенанту (оператор).
+// Звичайні салони користуються готовими звітами (reports/*). (SaaS-аудит 06.07)
+function platformOnly(req, res, next) {
+  if (isPlatformTenant && isPlatformTenant()) return next();
+  return res.status(403).json({ error: 'dwh_platform_only',
+    message: 'Довільні DWH-запити доступні лише оператору платформи. Користуйтесь готовими звітами.' });
+}
 const errOut = (e) => process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message;
 const num = (v) => Number(v || 0);
 
@@ -511,7 +520,7 @@ const DWH_TABLES = [
 ];
 
 // POST /query — аналітичний запит. Тільки SELECT, тільки DWH-таблиці, авто-LIMIT, timeout.
-router.post('/query', requirePerm('dwh.query.execute'), async (req, res) => {
+router.post('/query', platformOnly, requirePerm('dwh.query.execute'), async (req, res) => {
   const t0 = Date.now();
   try {
     const sql = String((req.body && req.body.sql) || '').trim();

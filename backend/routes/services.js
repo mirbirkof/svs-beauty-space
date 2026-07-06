@@ -207,17 +207,17 @@ router.post('/', WRITE,
         (name, name_ua, name_en, slug, category, category_id, rebook_interval_days, description, internal_note, price, duration_min,
          buffer_before, buffer_after, min_booking_interval, max_simultaneous, required_room_type,
          photo_urls, icon, color, status, active, is_new, is_hit, is_discounted, age_restriction,
-         contraindications, meta_title, meta_description, sort_order)
+         contraindications, meta_title, meta_description, sort_order, is_material)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
                COALESCE($12,0),COALESCE($13,0),COALESCE($14,30),COALESCE($15,1),$16,
                $17::jsonb,$18,$19,$20,$21,COALESCE($22,FALSE),COALESCE($23,FALSE),COALESCE($24,FALSE),$25,
-               $26,$27,$28,COALESCE($29,0))
+               $26,$27,$28,COALESCE($29,0),COALESCE($30,FALSE))
        RETURNING *`,
       [b.name, b.name_ua || null, b.name_en || null, slug, categoryText, categoryId, rebook, b.description || null,
        b.internal_note || null, price, duration, b.buffer_before, b.buffer_after, b.min_booking_interval,
        b.max_simultaneous, b.required_room_type || null, photoUrls, b.icon || null, b.color || null,
        status, status === 'active', b.is_new, b.is_hit, b.is_discounted, b.age_restriction || null,
-       b.contraindications || null, b.meta_title || null, b.meta_description || null, b.sort_order]
+       b.contraindications || null, b.meta_title || null, b.meta_description || null, b.sort_order, b.is_material === true]
     );
     const svc = r.rows[0];
     await pool.query(
