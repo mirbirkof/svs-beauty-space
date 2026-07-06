@@ -35,16 +35,33 @@ router.get('/pending', async (req, res) => {
       // за період — навіть без схеми начислення (інакше майстер зникає зі списку й
       // власник його не бачить: фідбек #144 — Евеліна/Настя не відображались).
       // Для percent/hybrid рахуємо суму; без схеми amount=0 → власник вписує вручну.
-      q(`WITH da AS (SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
-            WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
-              AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
-          SELECT m.id, m.name, MAX(ps.percent) percent, MAX(ps.scheme_type) scheme_type,
-                 COALESCE(SUM(da.rev),0)::numeric services_revenue,
-                 ROUND(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid') THEN da.rev*COALESCE(ps.percent,0)/100 ELSE 0 END))::numeric amount
-            FROM da JOIN masters m ON m.id=da.master_id
-            LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+      q(`WITH da AS (
+            SELECT a.master_id, COALESCE(a.real_amount,a.price,0) rev FROM appointments a
+             WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
+               AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
+          rev AS (SELECT master_id, SUM(rev) rev FROM da GROUP BY master_id),
+          -- матеріали/розхідники за період (додаються до бази лише для 'gross'): за грам АБО
+          -- некомісійна категорія. Розхідник — за ціною ЗА ГРАМ (price_per_gram), не за упаковку.
+          mat AS (
+            SELECT a.master_id, SUM(ROUND(am.qty_used*COALESCE(p.price_per_gram,pv.price),2)) cost
+              FROM appointment_materials am
+              JOIN appointments a ON a.id=am.appointment_id
+              JOIN product_variants pv ON pv.id=am.variant_id
+              LEFT JOIN products p ON p.id=pv.product_id
+              LEFT JOIN categories c ON c.id=p.category_id
+             WHERE a.status IN ('done','completed') AND a.starts_at BETWEEN $1 AND $2
+               AND (p.price_per_gram IS NOT NULL OR COALESCE(c.commissionable,TRUE)=FALSE)
+             GROUP BY a.master_id)
+          SELECT m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
+                 COALESCE(rev.rev,0)::numeric services_revenue,
+                 COALESCE(mat.cost,0)::numeric materials_cost,
+                 ROUND(CASE WHEN ps.scheme_type IN ('percent','hybrid')
+                   THEN (COALESCE(rev.rev,0) + CASE WHEN ps.percent_base='gross' THEN COALESCE(mat.cost,0) ELSE 0 END) * COALESCE(ps.percent,0)/100
+                   ELSE 0 END)::numeric amount
+            FROM rev JOIN masters m ON m.id=rev.master_id
+            LEFT JOIN mat ON mat.master_id=rev.master_id
+            LEFT JOIN payroll_schemes ps ON ps.master_id=rev.master_id::text AND ps.is_active=TRUE
            WHERE m.active=TRUE
-           GROUP BY m.id, m.name
            ORDER BY amount DESC, services_revenue DESC`, [p.from, p.to]),
       // % З ПРОДАЖУ ПРОДУКЦІЇ (правило Босса 05-06.07): банки у візитах по ПРОДАВЦЮ
       // (seller_master_id, інакше майстер візиту) + роздрібні POS-продажі майстра.
@@ -85,10 +102,13 @@ router.get('/pending', async (req, res) => {
       const sl = salesMap[s.id]; delete salesMap[s.id];
       const salesPart = sl ? Number(sl.amount) : 0;
       const noScheme = s.scheme_type == null; // немає схеми начислення → сума не порахована автоматично
-      return { kind: 'salary', ref_key: key, label: `ЗП ${s.name}${s.percent != null ? ` (${s.percent}%)` : ''}`,
+      const isNet = s.percent_base === 'net';
+      const baseLbl = isNet ? ` за вирах. матеріалів` : '';
+      return { kind: 'salary', ref_key: key, label: `ЗП ${s.name}${s.percent != null ? ` (${s.percent}%${baseLbl})` : ''}`,
         master_id: s.id, amount_calc: Number(s.amount) + salesPart,
         services_part: Number(s.amount), sales_part: salesPart,
-        services_revenue: Number(s.services_revenue || 0), no_scheme: noScheme,
+        services_revenue: Number(s.services_revenue || 0), materials_cost: Number(s.materials_cost || 0),
+        percent_base: s.percent_base || 'gross', no_scheme: noScheme,
         sales_revenue: sl ? Number(sl.sales_revenue) : 0, sales_pct: sl ? Number(sl.sales_pct) : null,
         confirmed: !!cmap[key], amount_paid: cmap[key] ? Number(cmap[key].amount_paid) : null };
     });

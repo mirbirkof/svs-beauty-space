@@ -11808,9 +11808,13 @@ async function loadExpenseConfirm(){
           <b style="color:#1B7A3D">✓ Проведено ${money(x.amount_paid)}</b>
           <button class="btn btn-sm" title="Скасувати" onclick="ecUndo('${encodeURIComponent(x.ref_key)}')">↺</button></div>`;
       }
-      // розбивка: послуги + % з продажу продукції (повна статистика — прохання Босса 06.07)
-      const brk = (x.sales_part > 0)
-        ? `<span style="display:block;font-size:11.5px;color:var(--text-secondary);margin-top:2px">послуги ${money(x.services_part)} · <span style="color:#6d28d9;font-weight:700">продажі ${money(x.sales_part)}</span> <span style="color:#9ca3af">(${x.sales_pct != null ? x.sales_pct + '% від ' : ''}${money(x.sales_revenue)})</span></span>` : '';
+      // розбивка: послуги (з базою відсотка) + % з продажу продукції (повна статистика — прохання Босса 06.07)
+      const netBrk = (x.percent_base === 'gross' && x.materials_cost > 0)
+        ? `<span style="color:#9ca3af"> (послуги ${money(x.services_revenue)} + матеріали ${money(x.materials_cost)})</span>` : '';
+      const salesBrk = (x.sales_part > 0)
+        ? ` · <span style="color:#6d28d9;font-weight:700">продажі ${money(x.sales_part)}</span> <span style="color:#9ca3af">(${x.sales_pct != null ? x.sales_pct + '% від ' : ''}${money(x.sales_revenue)})</span>` : '';
+      const brk = (x.services_part > 0 || x.sales_part > 0)
+        ? `<span style="display:block;font-size:11.5px;color:var(--text-secondary);margin-top:2px">послуги ${money(x.services_part)}${netBrk}${salesBrk}</span>` : '';
       // майстер без схеми начислення: сума не порахована — підказуємо оборот, власник вписує вручну (#144)
       const warn = x.no_scheme
         ? `<span style="display:block;font-size:11.5px;color:#b45309;margin-top:2px">⚠️ схему начислення не задано — оборот послуг ${money(x.services_revenue)}. Вкажіть суму вручну або задайте схему в «Схеми нарахування».</span>` : '';
@@ -11868,9 +11872,9 @@ async function loadPayrollSchemes() {
     const r = await api('/api/payroll/schemes');
     const items = r.items || [];
     document.getElementById('payrollList').innerHTML = items.length ? `
-      <table class="tbl"><thead><tr><th>Майстер</th><th>Тип</th><th>%</th><th>Ставка/день</th><th>Оклад/міс</th><th>% з продажів</th></tr></thead><tbody>${
+      <table class="tbl"><thead><tr><th>Майстер</th><th>Тип</th><th>%</th><th>База %</th><th>Ставка/день</th><th>Оклад/міс</th><th>% з продажів</th></tr></thead><tbody>${
         items.map(s => `<tr><td>${s.master_name || s.master_id}</td><td><span class="badge b-new">${s.scheme_type}</span></td>
-          <td>${s.percent || '—'}</td><td>${s.fixed_per_day || '—'}</td><td>${s.fixed_per_month || '—'}</td><td>${s.sales_commission_pct || '—'}</td></tr>`).join('')
+          <td>${s.percent || '—'}</td><td>${s.percent_base === 'gross' ? 'вся сума чека' : 'послуги (без матер.)'}</td><td>${s.fixed_per_day || '—'}</td><td>${s.fixed_per_month || '—'}</td><td>${s.sales_commission_pct || '—'}</td></tr>`).join('')
       }</tbody></table>` : '<div class="empty"><span class="material-icons-round">payments</span>Схеми зарплати не задані</div>';
   } catch { document.getElementById('payrollList').innerHTML = '<div class="empty">Сервер зарплати недоступний</div>'; }
 }
@@ -11882,6 +11886,10 @@ async function schemeForm() {
     <label>Майстер<select id="sfMaster" class="inp" style="width:100%">${mopts}</select></label>
     <label>Тип схеми<select id="sfType" class="inp" style="width:100%"><option value="percent">Відсоток з послуг</option><option value="fixed">Фіксована ставка/оклад</option><option value="hybrid">Змішана</option></select></label>
     <label>% з послуг<input id="sfPercent" type="number" class="inp" style="width:100%" placeholder="напр. 40"></label>
+    <label>База відсотка<select id="sfBase" class="inp" style="width:100%">
+      <option value="net">За вирахуванням матеріалів (напр. 50/50 мінус фарба, окисник)</option>
+      <option value="gross">Від загальної суми чека (напр. 70/30 від усього)</option>
+    </select></label>
     <label>Ставка за зміну<input id="sfDay" type="number" class="inp" style="width:100%" placeholder="₴/день"></label>
     <label>Оклад на місяць<input id="sfMonth" type="number" class="inp" style="width:100%" placeholder="₴/міс"></label>
     <label>% з продажів товарів<input id="sfSales" type="number" class="inp" style="width:100%" placeholder="напр. 10"></label>
@@ -11892,7 +11900,8 @@ async function schemeForm() {
     const master_name = (_pyMasters.find(m => m.id === master_id) || {}).name;
     const body = { master_id, master_name, scheme_type: document.getElementById('sfType').value,
       percent: +document.getElementById('sfPercent').value || null, fixed_per_day: +document.getElementById('sfDay').value || null,
-      fixed_per_month: +document.getElementById('sfMonth').value || null, sales_commission_pct: +document.getElementById('sfSales').value || 0 };
+      fixed_per_month: +document.getElementById('sfMonth').value || null, sales_commission_pct: +document.getElementById('sfSales').value || 0,
+      percent_base: document.getElementById('sfBase').value || 'net' };
     const r = await api('/api/payroll/schemes', { method: 'POST', body: JSON.stringify(body) });
     if (r.ok) { toast('Схему збережено'); loadPayrollSchemes(); } else toast(r.error || 'Помилка', 'error');
   });

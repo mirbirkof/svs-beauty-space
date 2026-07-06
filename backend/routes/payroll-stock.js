@@ -28,6 +28,8 @@ router.post('/payroll/schemes', async (req, res) => {
     const { master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes } = req.body || {};
     if (!master_id || !scheme_type) return res.status(400).json({ error: 'master_id, scheme_type required' });
     if (!['percent', 'fixed', 'hybrid'].includes(scheme_type)) return res.status(400).json({ error: 'bad scheme_type' });
+    // база відсотка: 'gross' (від усієї суми) або 'net' (за вирахуванням матеріалів)
+    const percent_base = (req.body && req.body.percent_base === 'net') ? 'net' : 'gross';
     // числові поля: якщо задані — мають бути коректними числами >= 0 (інакше NaN у numeric-колонки)
     for (const [k, v] of Object.entries({ percent, fixed_per_day, fixed_per_month, sales_commission_pct })) {
       if (v === undefined || v === null || v === '') continue;
@@ -37,9 +39,9 @@ router.post('/payroll/schemes', async (req, res) => {
     // деактивируем старые схемы для этого мастера
     await pool.query(`UPDATE payroll_schemes SET is_active=FALSE WHERE master_id=$1`, [master_id]);
     const r = await pool.query(
-      `INSERT INTO payroll_schemes (master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE) RETURNING id`,
-      [master_id, master_name || null, scheme_type, percent || null, fixed_per_day || null, fixed_per_month || null, sales_commission_pct || 0, notes || null]
+      `INSERT INTO payroll_schemes (master_id, master_name, scheme_type, percent, fixed_per_day, fixed_per_month, sales_commission_pct, notes, percent_base, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE) RETURNING id`,
+      [master_id, master_name || null, scheme_type, percent || null, fixed_per_day || null, fixed_per_month || null, sales_commission_pct || 0, notes || null, percent_base]
     );
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -110,10 +112,34 @@ router.post('/payroll/calculate', async (req, res) => {
     const services_count = ob.rows[0]?.cnt || 0;
     const services_revenue = parseFloat(ob.rows[0]?.revenue || 0);
 
+    // 2b. База відсотка (фідбек Власника 06.07):
+    //   'net'   — ЗА ВИРАХУВАННЯМ матеріалів. Ціна візиту (appointments.price) = лише РОБОТА
+    //             майстра (матеріали — окремі рядки й у price не входять), тож база = послуги як є.
+    //   'gross' — ВІД ЗАГАЛЬНОЇ суми чека: робота + матеріали/розхідники (база більша, % зазвичай менший).
+    //   Розхідник рахуємо за ціною ЗА ГРАМ (price_per_gram), а не за ціною цілої упаковки.
+    let materials_cost = 0;
+    if (s.percent_base === 'gross' && (s.scheme_type === 'percent' || s.scheme_type === 'hybrid')) {
+      const mc = await pool.query(
+        `SELECT COALESCE(SUM(ROUND(am.qty_used * COALESCE(p.price_per_gram, pv.price), 2)), 0)::numeric AS cost
+           FROM appointment_materials am
+           JOIN appointments a ON a.id = am.appointment_id
+           JOIN product_variants pv ON pv.id = am.variant_id
+           LEFT JOIN products p ON p.id = pv.product_id
+           LEFT JOIN categories c ON c.id = p.category_id
+          WHERE a.master_id = $1::int
+            AND a.status IN ('done','completed')
+            AND a.starts_at >= $2::date AND a.starts_at < ($3::date + INTERVAL '1 day')
+            AND (p.price_per_gram IS NOT NULL OR COALESCE(c.commissionable, TRUE) = FALSE)`,
+        [master_id, period_start, period_end]
+      );
+      materials_cost = parseFloat(mc.rows[0]?.cost || 0);
+    }
+    const percent_base_amount = services_revenue + materials_cost; // net: +0; gross: +матеріали
+
     // 3. рассчитать части
     let percent_part = 0, fixed_part = 0;
     if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') {
-      percent_part = services_revenue * (parseFloat(s.percent || 0) / 100);
+      percent_part = percent_base_amount * (parseFloat(s.percent || 0) / 100);
     }
     if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
       if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
