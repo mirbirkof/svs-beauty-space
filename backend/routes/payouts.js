@@ -359,16 +359,15 @@ router.post('/records/:id/pay', async (req, res) => {
       return res.status(409).json({ error: 'overpay', message: 'Сумма превышает остаток к выплате', remaining });
     }
 
-    // расход в открытую кассовую смену (если есть)
-    let cashOpId = null;
+    // расход в кассу. Без відкритої зміни пишемо з shift_id NULL (як повна виплата в
+    // payroll-stock), інакше видані гроші зникають з обліку каси (баг 2.3: транш без
+    // відкритої зміни не потрапляв у cash_operations взагалі).
     const sh = (await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`)).rows[0];
-    if (sh) {
-      const op = await client.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-         VALUES ($1,'out','salary',$2,$3,'payroll_partial',$4,$5,$6) RETURNING id`,
-        [sh.id, amt, method || 'cash', r0.id, r0.master_id, `ЗП (частина) ${r0.master_name || '#' + r0.master_id}`]);
-      cashOpId = op.rows[0].id;
-    }
+    const op = await client.query(
+      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+       VALUES ($1,'out','salary',$2,$3,'payroll_partial',$4,$5,$6) RETURNING id`,
+      [sh ? sh.id : null, amt, method || 'cash', r0.id, r0.master_id, `ЗП (частина) ${r0.master_name || '#' + r0.master_id}`]);
+    const cashOpId = op.rows[0].id;
     const part = await client.query(
       `INSERT INTO payroll_partial_payments (record_id, master_id, master_name, amount, method, note, cash_op_id, created_by, created_by_name)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, paid_at`,
