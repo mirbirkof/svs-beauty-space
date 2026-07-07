@@ -237,7 +237,9 @@ async function manualAdjust(opts = {}) {
         opts.sourceType || 'manual', opts.sourceId || null,
         opts.description || 'Ручне списання', opts.adjustedBy || null])).rows[0];
     await client.query(
-      `UPDATE bonus_balances SET balance=$1, updated_at=now() WHERE client_id=$2`, [newBal, clientId]);
+      // total_redeemed теж оновлюємо — інакше агрегат розсинхронізується з balance (formula ≠ balance)
+      `UPDATE bonus_balances SET balance=$1, total_redeemed=COALESCE(total_redeemed,0)+$3, updated_at=now() WHERE client_id=$2`,
+      [newBal, clientId, take]);
     return tx;
   });
 }
