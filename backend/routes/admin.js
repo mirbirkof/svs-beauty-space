@@ -56,7 +56,9 @@ router.get('/products', async (req, res) => {
     if (category) { args.push(category); cond.push(`p.category_id = $${args.length}`); }
     if (active != null) { args.push(active === 'true'); cond.push(`p.active = $${args.length}`); }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
-    args.push(parseInt(limit, 10), parseInt(offset, 10));
+    // Ліміт: за замовчуванням показуємо ВСЕ (без обрізки на 50/100), клемп до 5000 як запобіжник.
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 5000);
+    args.push(lim, parseInt(offset, 10) || 0);
     const r = await pool.query(
       `SELECT p.id, p.name, p.brand_id, p.category_id, p.active, p.featured, p.price_per_gram, p.cost_per_gram,
               (SELECT COUNT(*) FROM product_variants WHERE product_id = p.id) AS variants_count,
@@ -64,11 +66,12 @@ router.get('/products', async (req, res) => {
               (SELECT MIN(price) FROM product_variants WHERE product_id = p.id) AS price_from
        FROM products p
        ${where}
-       ORDER BY p.id DESC
+       ORDER BY LOWER(p.name) ASC
        LIMIT $${args.length - 1} OFFSET $${args.length}`,
       args
     );
-    res.json({ ok: true, items: r.rows });
+    const total = (await pool.query(`SELECT COUNT(*)::int n FROM products p ${where}`, args.slice(0, -2))).rows[0].n;
+    res.json({ ok: true, items: r.rows, total });
   } catch (e) { console.error('[admin:products]', e); res.status(500).json({ error: 'internal' }); }
 });
 

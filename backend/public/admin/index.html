@@ -1779,10 +1779,18 @@ select.input { background:var(--card); }
       </div>
 
       <div class="page" id="page-products">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <input id="productSearch" placeholder="Пошук товару..." class="input" style="flex:1" oninput="debounce(loadProducts,400)">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <input id="productSearch" placeholder="Пошук товару..." class="input" style="flex:1;min-width:160px" oninput="renderProducts()">
+          <select id="productCat" class="input" style="min-width:150px" onchange="renderProducts()"><option value="">Всі категорії</option></select>
+          <select id="productBrand" class="input" style="min-width:130px" onchange="renderProducts()"><option value="">Всі бренди</option></select>
+          <select id="productSort" class="input" style="min-width:130px" onchange="renderProducts()">
+            <option value="name">За назвою (А-Я)</option>
+            <option value="cat">За категорією</option>
+            <option value="stock">За залишком</option>
+          </select>
           <button class="btn btn-primary" onclick="newProductModal()"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Додати товар</button>
         </div>
+        <div id="productCount" style="font-size:12px;color:var(--text-secondary);margin-bottom:8px"></div>
         <div class="card">
           <div class="card-body" style="padding:0">
             <table class="tbl">
@@ -11313,10 +11321,32 @@ async function openOrder(id) {
 function closeOrder() { document.getElementById('orderModal').style.display = 'none'; }
 
 // ═══ PRODUCTS ════════════════════════════════
+let _ALL_PRODUCTS = [];
 async function loadProducts() {
-  const q = document.getElementById('productSearch').value.trim();
-  const r = await api('/api/admin/products?limit=100' + (q ? '&search=' + encodeURIComponent(q) : ''));
-  document.getElementById('productsBody').innerHTML = (r.items || []).map(p => `
+  // грузимо ВСІ товари одразу (бекенд віддає без обрізки, відсортовані за назвою)
+  const r = await api('/api/admin/products');
+  _ALL_PRODUCTS = r.items || [];
+  const uniq = k => [...new Set(_ALL_PRODUCTS.map(p => p[k]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'uk'));
+  const fill = (id, vals, label) => { const s = document.getElementById(id); if (!s) return; const cur = s.value;
+    s.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option value="${String(v).replace(/"/g,'&quot;')}">${v}</option>`).join('');
+    s.value = cur; };
+  fill('productCat', uniq('category_id'), 'Всі категорії');
+  fill('productBrand', uniq('brand_id'), 'Всі бренди');
+  renderProducts();
+}
+function renderProducts() {
+  const q = (document.getElementById('productSearch')?.value || '').trim().toLowerCase();
+  const cat = document.getElementById('productCat')?.value || '';
+  const brand = document.getElementById('productBrand')?.value || '';
+  const sort = document.getElementById('productSort')?.value || 'name';
+  let list = _ALL_PRODUCTS.filter(p =>
+    (!q || String(p.name || '').toLowerCase().includes(q) || String(p.brand_id || '').toLowerCase().includes(q)) &&
+    (!cat || p.category_id === cat) && (!brand || p.brand_id === brand));
+  if (sort === 'cat') list = [...list].sort((a,b) => String(a.category_id||'яяя').localeCompare(String(b.category_id||'яяя'),'uk') || String(a.name||'').localeCompare(String(b.name||''),'uk'));
+  else if (sort === 'stock') list = [...list].sort((a,b) => (Number(b.total_stock)||0) - (Number(a.total_stock)||0));
+  const cntEl = document.getElementById('productCount');
+  if (cntEl) cntEl.textContent = `Показано ${list.length} з ${_ALL_PRODUCTS.length} товарів`;
+  document.getElementById('productsBody').innerHTML = list.map(p => `
     <tr><td style="cursor:pointer;color:var(--primary,#6c5ce7);font-weight:600" title="Відкрити профіль товару" onclick="openProduct('${String(p.id).replace(/'/g,'&#39;')}')">${p.name}</td><td>${p.brand_id}</td><td>${p.category_id||'—'}</td>
     <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
     <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
@@ -11351,7 +11381,7 @@ async function openProduct(id) {
     </div>
     ${can ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;justify-content:flex-end"><span id="pm_msg" style="font-size:12px;color:var(--text-secondary)"></span><button class="btn btn-primary" onclick="saveProdCard()">Зберегти товар</button></div>' : ''}
     <h4 style="margin:16px 0 6px">Варіанти — обʼєм, ціни, залишок</h4>
-    <div style="overflow-x:auto"><table style="width:100%;font-size:13px"><thead><tr><th>Обʼєм</th><th>Ціна</th><th>Опт</th><th>Артикул</th><th>Залишок</th><th>мл(г)/уп</th><th>Акт.</th>${can ? '<th></th>' : ''}</tr></thead>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:13px"><thead><tr><th>Обʼєм</th><th>Ціна</th><th title="Закупівельна ціна за упаковку">Опт</th><th>Артикул</th><th>Залишок</th><th title="Вага/обʼєм упаковки в грамах (для фарби 100 мл ≈ 90 г). Звʼязує собівартість/г із закупівельною ціною.">Вага, г ⓘ</th><th>Акт.</th>${can ? '<th></th>' : ''}</tr></thead>
     <tbody>${(r.variants || []).map(v => `<tr>
       <td><input id="v${v.id}_volume" class="input" style="width:88px;padding:4px 6px" value="${esc(v.volume)}" ${dis}></td>
       <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" ${dis}></td>
