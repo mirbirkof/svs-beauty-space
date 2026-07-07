@@ -342,6 +342,28 @@ async function createSubscriptionPayLink(invoiceId) {
   return { pay_url: monoInv.pageUrl, mono_invoice_id: monoInv.invoiceId };
 }
 
+// Надсилає власнику салону нагадування про оплату продовження підписки з pay-link.
+// Використовується dunning-циклом (manual/Mono): без реальної відправки клієнт не знав,
+// що треба платити — раніше processDunning лише виставляв notification_sent=TRUE без дії.
+async function notifyOwnerPayLink(tenantId, invoiceId) {
+  const pool = getPool();
+  const bs = (await pool.query(
+    `SELECT bot_token, owner_chat_id FROM tenant_bot_settings WHERE tenant_id=$1 AND status='connected'`,
+    [tenantId])).rows[0];
+  if (!bs || !bs.bot_token || !bs.owner_chat_id) return { sent: false, reason: 'no-owner-contact' };
+  let payUrl = null;
+  try { const link = await createSubscriptionPayLink(invoiceId); if (link && !link.alreadyPaid) payUrl = link.pay_url; }
+  catch (e) { /* pay-link опційний (немає MONO_TOKEN) — надсилаємо текст без посилання */ }
+  const text = payUrl
+    ? `💳 <b>Продовження підписки SVS CRM</b>\nПотрібна оплата, щоб не втратити доступ.\nОплатити: ${payUrl}`
+    : `💳 <b>Продовження підписки SVS CRM</b>\nПотрібна оплата. Відкрийте розділ «Підписка» в адмінці.`;
+  try {
+    const { tgCall } = require('./tenant-bots');
+    await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
+    return { sent: true, payUrl: !!payUrl };
+  } catch (e) { return { sent: false, reason: e.message?.slice(0, 80) }; }
+}
+
 // Викликається вебхуком/полінгом Mono (payments-mono.js), коли рахунок підписки
 // має фінальний статус. На success — позначає рахунок оплаченим і активує підписку.
 async function payInvoiceViaMono(monoInvoiceId, data) {
@@ -624,8 +646,11 @@ async function processDunning(limit = 100) {
         [d.id, JSON.stringify(result.raw)]);
       recovered++;
     } else {
-      await pool.query(`UPDATE dunning_attempts SET status='attempted', attempted_at=NOW(), notification_sent=TRUE, notification_type='email', gateway_response=$2 WHERE id=$1`,
-        [d.id, result.raw ? JSON.stringify(result.raw) : null]);
+      // manual/Mono: авто-charge немає — реально надсилаємо власнику pay-link у Telegram
+      // (раніше notification_sent=TRUE виставлявся без жодної відправки — клієнт не платив).
+      const notif = await notifyOwnerPayLink(d.tenant_id, d.invoice_id).catch(() => ({ sent: false }));
+      await pool.query(`UPDATE dunning_attempts SET status='attempted', attempted_at=NOW(), notification_sent=$3, notification_type='telegram', gateway_response=$2 WHERE id=$1`,
+        [d.id, result.raw ? JSON.stringify(result.raw) : null, !!notif.sent]);
       // последняя попытка провалена → suspend
       if (d.attempt_number >= DUNNING_OFFSETS_H.length) {
         await pool.query(`UPDATE subscriptions_saas SET status='suspended', updated_at=NOW() WHERE id=$1`, [d.subscription_id]);
@@ -662,7 +687,7 @@ async function runRecurring(limit = 200) {
     const inv = await generateInvoice(renewedSub).catch(e => { console.error('[billing] renew invoice', e.message); return null; });
     if (inv) {
       invoiced++;
-      // авто-charge если шлюз настроен, иначе dunning (manual = ожидание оплаты)
+      // авто-charge если шлюз настроен, иначе dunning (manual/Mono = pay-link, ожидание оплаты)
       const g = gateway(renewedSub.payment_gateway);
       if (renewedSub.payment_gateway !== 'manual' && g.configured()) {
         try {
@@ -670,6 +695,12 @@ async function runRecurring(limit = 200) {
           if (r.status === 'succeeded') await recordPayment(inv.id, { gateway: renewedSub.payment_gateway, status: 'succeeded', gatewayPaymentId: r.gateway_payment_id, raw: r.raw });
           else await scheduleDunning(renewedSub.id, inv.id);
         } catch { await scheduleDunning(renewedSub.id, inv.id); }
+      } else {
+        // manual/Mono: авто-списання картки немає (Mono = разове pay-link). Раніше рахунок
+        // при продовженні створювався у вакуумі — клієнт не отримував нагадування й не платив,
+        // а suspend не наставав (dunning не планувався). Тепер запускаємо dunning-цикл:
+        // processDunning надішле власнику salon pay-link, після N невдач → suspend.
+        await scheduleDunning(renewedSub.id, inv.id).catch(e => console.error('[billing] renew dunning', e.message));
       }
     }
   }
