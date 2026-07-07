@@ -1342,7 +1342,7 @@ router.post('/appointments', async (req, res) => {
         if (ex.rows[0]) cid = ex.rows[0].id;
         else {
           const nc = await pool.query(
-            `INSERT INTO clients (phone, name, source) VALUES ($1,$2,'salon')
+            `INSERT INTO clients (phone, name, source, consent_given_at, consent_source) VALUES ($1,$2,'salon',NOW(),'admin')
              ON CONFLICT (tenant_id, phone) DO UPDATE SET name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name)
              RETURNING id`,
             [canon, client_name || null]

@@ -470,7 +470,8 @@ router.post('/clients',
     const dup = await pool.query('SELECT id, name FROM clients WHERE phone = $1 AND deleted_at IS NULL LIMIT 1', [normPhone]);
     if (dup.rowCount) return res.status(409).json({ error: 'Клієнт з таким телефоном вже існує', existing_id: dup.rows[0].id });
     const r = await pool.query(
-      `INSERT INTO clients (name, phone, email, created_at) VALUES ($1, $2, $3, NOW())
+      `INSERT INTO clients (name, phone, email, created_at, consent_given_at, consent_source)
+       VALUES ($1, $2, $3, NOW(), NOW(), 'admin')
        RETURNING id, name, phone, email`,
       [String(name).trim(), normPhone, email ? String(email).trim() : null]);
     logAction({ user: req.user, action: 'client.create', entity: 'client', entity_id: r.rows[0].id, ip: req.ip }).catch(() => {});
