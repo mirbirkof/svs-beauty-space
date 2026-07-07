@@ -11343,7 +11343,7 @@ async function openProduct(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="grid-column:1/-1">${lbl('Назва')}<input id="pm_name" class="input" value="${esc(p.name)}" ${dis}></div>
       <div>${lbl('Ціна продажу за грам/мл, грн (порожньо = не продається за грам)')}<input id="pm_ppg" class="input" type="number" step="0.01" min="0" value="${p.price_per_gram ?? ''}" ${dis}></div>
-      <div>${lbl('Собівартість за грам/мл, грн (для маржі)')}<input id="pm_cpg" class="input" type="number" step="0.01" min="0" value="${p.cost_per_gram ?? ''}" ${dis}></div>
+      <div>${lbl('Собівартість за грам/мл, грн (для маржі)')}<input id="pm_cpg" class="input" type="number" step="0.01" min="0" value="${p.cost_per_gram ?? ''}" oninput="syncCpgToVariants()" ${dis}><div style="font-size:11px;color:var(--text-secondary);margin-top:3px">× грамів в упаковці (колонка «мл(г)/уп») = закупівельна ціна «Опт». Порахується автоматично в обидві сторони. 100 мл фарби ≈ 90 г.</div></div>
       <div>${lbl('Фото (URL)')}<input id="pm_photo" class="input" value="${esc(p.photo)}" ${dis}></div>
       <div style="grid-column:1/-1">${lbl('Опис')}<textarea id="pm_desc" class="input" rows="3" ${dis}>${esc(p.description)}</textarea></div>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_active" ${p.active !== false ? 'checked' : ''} ${dis}> Активний</label>
@@ -11355,10 +11355,10 @@ async function openProduct(id) {
     <tbody>${(r.variants || []).map(v => `<tr>
       <td><input id="v${v.id}_volume" class="input" style="width:88px;padding:4px 6px" value="${esc(v.volume)}" ${dis}></td>
       <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" ${dis}></td>
-      <td><input id="v${v.id}_wholesale" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.wholesale ?? ''}" ${dis}></td>
+      <td><input id="v${v.id}_wholesale" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.wholesale ?? ''}" oninput="syncWholesaleToCpg('${v.id}')" ${dis}></td>
       <td><input id="v${v.id}_sku" class="input" style="width:92px;padding:4px 6px" value="${esc(v.sku)}" ${dis}></td>
       <td><input id="v${v.id}_stock" class="input" type="number" step="0.01" style="width:78px;padding:4px 6px" value="${v.stock_qty ?? 0}" ${dis}></td>
-      <td><input id="v${v.id}_unitml" class="input" type="number" step="0.01" style="width:72px;padding:4px 6px" value="${v.unit_ml ?? ''}" ${dis}></td>
+      <td><input id="v${v.id}_unitml" class="input" type="number" step="0.01" style="width:72px;padding:4px 6px" value="${v.unit_ml ?? ''}" oninput="syncCpgToVariants()" ${dis}></td>
       <td style="text-align:center"><input type="checkbox" id="v${v.id}_active" ${v.active !== false ? 'checked' : ''} ${dis}></td>
       ${can ? `<td><button class="btn btn-sm btn-outline" title="Зберегти варіант" onclick="saveProdVariant(${v.id})">💾</button></td>` : ''}
     </tr>`).join('') || `<tr><td colspan="8" style="color:var(--text-secondary);padding:10px">Варіантів немає</td></tr>`}</tbody></table></div>
@@ -11386,6 +11386,25 @@ async function saveProdCard() {
   msg.style.color = r.ok ? '#10b981' : '#ef4444';
   msg.textContent = r.ok ? 'Збережено ✓' : (r.message || r.error || 'Помилка');
   if (r.ok) setTimeout(() => msg.textContent = '', 2500);
+}
+// Звʼязка собівартості за грам ↔ закупівельна ціна за упаковку (Опт).
+// Через вагу упаковки (колонка «мл(г)/уп» = unit_ml, грамів у пляшці/тюбику).
+// wholesale = cost_per_gram × грамів;  cost_per_gram = wholesale ÷ грамів.
+function _pmNum(id){ const el=document.getElementById(id); if(!el) return NaN; return parseFloat(String(el.value||'').replace(',','.')); }
+function syncCpgToVariants(){
+  const cpg=_pmNum('pm_cpg'); if(!isFinite(cpg)||cpg<=0) return;
+  document.querySelectorAll('input[id^="v"][id$="_wholesale"]').forEach(w=>{
+    const vid=w.id.slice(1,-('_wholesale'.length));
+    const um=_pmNum('v'+vid+'_unitml');
+    if(isFinite(um)&&um>0) w.value=(cpg*um).toFixed(2);
+  });
+}
+function syncWholesaleToCpg(vid){
+  const um=_pmNum('v'+vid+'_unitml'), w=_pmNum('v'+vid+'_wholesale');
+  if(isFinite(um)&&um>0&&isFinite(w)&&w>0){
+    const c=document.getElementById('pm_cpg');
+    if(c) c.value=String(Math.round(w/um*10000)/10000);
+  }
 }
 async function saveProdVariant(vid) {
   const g = s => document.getElementById('v' + vid + '_' + s);
