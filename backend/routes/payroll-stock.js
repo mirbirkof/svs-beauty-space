@@ -464,16 +464,15 @@ router.post('/payroll/advances', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,COALESCE($6::date,CURRENT_DATE),$7,$8) RETURNING id`,
       [master_id, master_name || null, amount, reason || null, method || 'cash', issued_at || null, req.user?.id || null, req.user?.display_name || null]
     );
-    // авто-расход аванса в открытую кассовую смену
+    // авто-расход аванса в кассу. Без відкритої зміни пишемо з shift_id NULL (як часткова/повна
+    // виплата ЗП), інакше виданий аванс зникає з обліку каси — гроші видані, руху немає.
     try {
       const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
-      if (sh.rows[0]) {
-        await pool.query(
-          `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-           VALUES ($1,'out','salary',$2,$3,'advance',$4,$5,$6)`,
-          [sh.rows[0].id, amount, method || 'cash', r.rows[0].id, master_id, `Аванс ${master_name || '#' + master_id}`]
-        );
-      }
+      await pool.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+         VALUES ($1,'out','salary',$2,$3,'advance',$4,$5,$6)`,
+        [sh.rows[0] ? sh.rows[0].id : null, amount, method || 'cash', r.rows[0].id, master_id, `Аванс ${master_name || '#' + master_id}`]
+      );
     } catch (e) { console.warn('[advance-cashbox]', e.message); }
     logAction({ user: req.user, action: 'advance.created', entity: 'payroll_advances', entity_id: r.rows[0].id, ip: req.ip, meta: { master_id, amount } });
     res.json({ ok: true, id: r.rows[0].id });
