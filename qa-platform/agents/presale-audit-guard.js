@@ -57,6 +57,37 @@ const RULES = [
              AND NOT EXISTS (SELECT 1 FROM cash_operations o
                              WHERE o.ref_type='online_booking' AND o.ref_id=b.id AND o.type='in')
              AND b.prepaid_at > NOW()-INTERVAL '30 days'` },
+
+  // ── Расширенные инварианты (доводка до 99%, 07.07.2026) ──
+  { module: 'booking', role: 'admin', severity: 'high', optional: true,
+    title: 'Запись с невалидной длительностью (starts_at >= ends_at)',
+    sql: `SELECT COUNT(*)::int n FROM appointments WHERE ends_at IS NOT NULL AND starts_at >= ends_at` },
+  { module: 'finance', role: 'accountant', severity: 'high', optional: true,
+    title: 'Кассовая операция без tenant_id (сирота/утечка изоляции кассы)',
+    sql: `SELECT COUNT(*)::int n FROM cash_operations WHERE tenant_id IS NULL` },
+  { module: 'payroll', role: 'accountant', severity: 'medium', optional: true,
+    title: 'Расчёт ЗП оплачен, но нет истории выплат (ни полной, ни траншей)',
+    sql: `SELECT COUNT(*)::int n FROM payroll_records pr WHERE pr.status='paid' AND pr.total > 0
+            AND NOT EXISTS (SELECT 1 FROM payroll_payments pp WHERE pp.record_id=pr.id)
+            AND NOT EXISTS (SELECT 1 FROM payroll_partial_payments pk WHERE pk.record_id=pr.id)` },
+  { module: 'subscriptions', role: 'accountant', severity: 'medium', optional: true,
+    title: 'Абонемент active, но срок действия истёк (статус не обновлён кроном)',
+    sql: `SELECT COUNT(*)::int n FROM subscriptions WHERE status='active' AND expires_at IS NOT NULL AND expires_at < CURRENT_DATE - 1` },
+  { module: 'certificates', role: 'accountant', severity: 'high', optional: true,
+    title: 'Сертификат fully_used, но остаток > 0 (статус противоречит балансу)',
+    sql: `SELECT COUNT(*)::int n FROM gift_certificates WHERE status='fully_used' AND remaining_amount > 0.01` },
+  { module: 'billing', role: 'accountant', severity: 'high', optional: true,
+    title: 'Двойная успешная оплата Mono на один счёт подписки',
+    sql: `SELECT COUNT(*)::int n FROM (SELECT invoice_id FROM payments_saas
+            WHERE gateway='monobank' AND status='succeeded' AND invoice_id IS NOT NULL
+            GROUP BY invoice_id HAVING COUNT(*) > 1) d` },
+  { module: 'loyalty', role: 'accountant', severity: 'high', optional: true,
+    title: 'Бонусный баланс больше начисленного (невозможно — накрутка)',
+    sql: `SELECT COUNT(*)::int n FROM bonus_balances WHERE balance > COALESCE(total_accrued,0) + 0.01` },
+  { module: 'finance', role: 'accountant', severity: 'medium', optional: true,
+    title: 'Визит оплачен (pay_settled_at), но нет базы для ЗП (real_amount NULL)',
+    sql: `SELECT COUNT(*)::int n FROM appointments WHERE pay_settled_at IS NOT NULL AND real_amount IS NULL
+            AND pay_settled_at > NOW()-INTERVAL '30 days'` },
 ];
 
 module.exports = {
