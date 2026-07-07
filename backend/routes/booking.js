@@ -328,9 +328,11 @@ async function processUpdate(upd, tg, salon) {
           }
           // номера ще немає в базі → створюємо картку клієнта
           await getPool().query(
-            `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username)
-             VALUES ($1, $2, $3, 'bot-link', $4, $5, $6)
+            `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username, consent_given_at, consent_source)
+             VALUES ($1, $2, $3, 'bot-link', $4, $5, $6, NOW(), 'bot')
              ON CONFLICT (tenant_id, phone) DO UPDATE SET
+               consent_given_at = COALESCE(clients.consent_given_at, NOW()),
+               consent_source = COALESCE(clients.consent_source, 'bot'),
                telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
                name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
                tg_first_name = COALESCE(EXCLUDED.tg_first_name, clients.tg_first_name),
@@ -420,8 +422,8 @@ async function processUpdate(upd, tg, salon) {
             );
           } else {
             cl = await getPool().query(
-              `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username)
-               VALUES ($1, $2, $3, 'bot-salon', $4, $5, $6)
+              `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username, consent_given_at, consent_source)
+               VALUES ($1, $2, $3, 'bot-salon', $4, $5, $6, NOW(), 'bot')
                ON CONFLICT (tenant_id, phone) DO UPDATE SET
                  telegram_id = COALESCE(clients.telegram_id, EXCLUDED.telegram_id),
                  name = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
