@@ -171,7 +171,17 @@ module.exports = {
       // ── Авторизованная проверка ВНУТРЕННИХ страниц кабинета ──
       // Раньше тестер видел только логин и был слеп к кабинету (там жил баг с роботом-помічником).
       // Логинимся реальным владельцем (env QA_UI_TOKEN + QA_UI_SLUG) и проходим страницы кабинета.
-      const uiTok = process.env.QA_UI_TOKEN, uiSlug = process.env.QA_UI_SLUG;
+      // Самологин через panel-login — токен не хранится, значит не протухает.
+      const ui = cfg.qaUi || {};
+      let uiTok = process.env.QA_UI_TOKEN, uiSlug = ui.slug || process.env.QA_UI_SLUG;
+      if (!uiTok && ui.phone && ui.password && uiSlug) {
+        try {
+          const lr = await fetch(base.replace(/\/$/, '') + '/api/auth/panel-login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tenant-Slug': uiSlug },
+            body: JSON.stringify({ identifier: ui.phone, password: ui.password }) });
+          const lj = await lr.json(); if (lj && lj.ok && lj.token) uiTok = lj.token;
+        } catch (_) {}
+      }
       if (uiTok && uiSlug && !regression) {
         const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'uk-UA' });
         await actx.addInitScript(([t, s]) => { try { localStorage.setItem('svs_admin_token', t); localStorage.setItem('svs_tenant_slug', s); } catch (e) {} }, [uiTok, uiSlug]);
