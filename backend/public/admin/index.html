@@ -11387,7 +11387,7 @@ async function openProduct(id) {
       <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" ${dis}></td>
       <td><input id="v${v.id}_wholesale" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.wholesale ?? ''}" oninput="syncWholesaleToCpg('${v.id}')" ${dis}></td>
       <td><input id="v${v.id}_sku" class="input" style="width:92px;padding:4px 6px" value="${esc(v.sku)}" ${dis}></td>
-      <td><input id="v${v.id}_stock" class="input" type="number" step="0.01" style="width:78px;padding:4px 6px" value="${v.stock_qty ?? 0}" ${dis}></td>
+      <td style="white-space:nowrap"><input id="v${v.id}_stock" class="input" type="number" step="0.01" style="width:78px;padding:4px 6px" value="${v.stock_qty ?? 0}" ${dis}>${p.price_per_gram!=null?`<button type="button" class="btn btn-sm btn-outline" style="padding:2px 5px;margin-left:3px;font-size:11px" title="Ввести залишок в УПАКОВКАХ → перерахую в грами (× вагу упаковки)" onclick="stockPkgToGrams('${v.id}')" ${dis}>уп→г</button>`:''}</td>
       <td><input id="v${v.id}_unitml" class="input" type="number" step="0.01" style="width:72px;padding:4px 6px" value="${v.unit_ml ?? ''}" oninput="syncCpgToVariants()" ${dis}></td>
       <td style="text-align:center"><input type="checkbox" id="v${v.id}_active" ${v.active !== false ? 'checked' : ''} ${dis}></td>
       ${can ? `<td><button class="btn btn-sm btn-outline" title="Зберегти варіант" onclick="saveProdVariant(${v.id})">💾</button></td>` : ''}
@@ -11435,6 +11435,17 @@ function syncWholesaleToCpg(vid){
     const c=document.getElementById('pm_cpg');
     if(c) c.value=String(Math.round(w/um*10000)/10000);
   }
+}
+// Ввід залишку в УПАКОВКАХ → грами (щоб не вводити штуки в грамове поле і не ламати облік).
+function stockPkgToGrams(vid){
+  const um=_pmNum('v'+vid+'_unitml');
+  if(!isFinite(um)||um<=0){ alert('Спочатку вкажіть вагу упаковки (колонка «Вага, г»).'); return; }
+  const s=prompt('Скільки УПАКОВОК на складі?\nПерерахую в грами: × '+um+' г за упаковку.');
+  if(s==null) return;
+  const pk=parseFloat(String(s).replace(',','.'));
+  if(!isFinite(pk)||pk<0){ alert('Введіть число упаковок.'); return; }
+  const el=document.getElementById('v'+vid+'_stock');
+  if(el){ el.value=Math.round(pk*um*100)/100; el.focus(); }
 }
 async function saveProdVariant(vid) {
   const g = s => document.getElementById('v' + vid + '_' + s);
