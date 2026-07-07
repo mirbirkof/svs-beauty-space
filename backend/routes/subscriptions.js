@@ -319,17 +319,25 @@ router.post('/:id/use', async (req, res) => {
     if (!['active', 'trial'].includes(sub.status)) return res.status(409).json({ error: 'not-active', status: sub.status });
     const isMinutes = sub.plan_type === 'minutes';
     const isTime = sub.plan_type === 'time';
-    let balance = null, col = null;
+    let balance = null, col = null, newStatus = sub.status;
     if (!isTime) {
       col = isMinutes ? 'minutes_remaining' : 'visits_remaining';
       const cur = Number(sub[col]);
       if (qty > cur) return res.status(409).json({ error: 'insufficient-balance', remaining: cur });
-      balance = cur - qty;
-    }
-    // При нульовому остатку: visits/combo/minutes → expired; trial зберігає свій статус доки не вичерпано і не минув строк.
-    const newStatus = (!isTime && balance <= 0) ? 'expired' : sub.status;
-    if (!isTime) {
-      await pool.query(`UPDATE subscriptions SET ${col}=$1, status=$2, updated_at=NOW() WHERE id=$3`, [balance, newStatus, sub.id]);
+      // Атомарне списання: умовний UPDATE (col >= qty) закриває гонку read-modify-write —
+      // раніше баланс читався (325), віднімався в JS і писався готовим значенням без умови,
+      // тож два паралельних /use списували абонемент ДВІЧІ за одну ціну.
+      // status='expired' при нульовому остатку; trial зберігає статус доки є баланс і строк.
+      const upd = await pool.query(
+        `UPDATE subscriptions
+            SET ${col} = ${col} - $1,
+                status = CASE WHEN ${col} - $1 <= 0 THEN 'expired' ELSE status END,
+                updated_at = NOW()
+          WHERE id = $2 AND ${col} >= $1 AND status IN ('active','trial')
+          RETURNING ${col} AS bal, status AS st`, [qty, sub.id]);
+      if (!upd.rows[0]) return res.status(409).json({ error: 'insufficient-balance', message: 'Абонемент щойно списано або вичерпано. Оновіть сторінку.' });
+      balance = Number(upd.rows[0].bal);
+      newStatus = upd.rows[0].st;
     }
     await pool.query(
       `INSERT INTO subscription_usage (subscription_id,client_id,appointment_id,type,quantity,balance_after,performed_by,notes)
