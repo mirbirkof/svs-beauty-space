@@ -3051,10 +3051,12 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-function showLogin() { document.getElementById('login').style.display=''; document.getElementById('app').style.display='none'; }
+function showLogin() { document.getElementById('login').style.display=''; document.getElementById('app').style.display='none';
+  try { document.getElementById('aiFab')?.classList.add('hidden'); document.getElementById('aiPanel')?.classList.remove('open'); } catch(_){} }
 function showApp() {
   document.getElementById('login').style.display='none';
   document.getElementById('app').style.display='';
+  try { document.getElementById('aiFab')?.classList.remove('hidden'); } catch(_){}
   const h = location.hash.replace('#','');
   if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
   loadBillingAlert();
@@ -12923,7 +12925,7 @@ try { if (typeof applyMenuPerms === 'function') applyMenuPerms(); } catch(_) {}<
   #aiPanel .chips{padding:0 12px 10px;display:flex;gap:6px;flex-wrap:wrap;background:#f7f8fb}
   #aiPanel .chips button{font-size:11.5px;border:1px solid #e3e6ef;background:#fff;border-radius:20px;padding:5px 10px;cursor:pointer;color:#5a6275}
 </style>
-<button id="aiFab" title="AI-помічник" onclick="aiFabToggle()">🤖<span class="dot"></span></button>
+<button id="aiFab" class="hidden" title="AI-помічник" onclick="aiFabToggle()">🤖<span class="dot"></span></button>
 <div id="aiPanel">
   <div class="hd"><span style="font-size:18px">🤖</span> AI-помічник<button class="x" onclick="aiFabToggle(false)">×</button></div>
   <div class="log" id="aiFabLog"><div class="bot"><span>Вітаю! Спитайте про касу, план, заявки, кого дозаписати — або попросіть внести витрату чи премію.</span></div></div>
