@@ -290,8 +290,9 @@ router.post('/consumption/reverse', W, async (req, res) => {
         await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [back, r.variant_id]);
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
-           VALUES ($1, $2, 'service-reverse:' || $3::text, $3, 'повернення за скасуванням візиту (material-norms reverse)')`,
-          [r.variant_id, back, b.appointment_id]);
+           VALUES ($1, $2, $3, $4, $5)`,
+          [r.variant_id, back, `service-reverse:${b.appointment_id}`, b.appointment_id,
+           'повернення за скасуванням візиту (material-norms reverse)']);
       }
     }
     await client.query(`UPDATE material_consumption_log SET reversed=TRUE WHERE appointment_id=$1 AND reversed=FALSE`, [b.appointment_id]);
