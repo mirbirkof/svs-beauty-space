@@ -138,6 +138,8 @@ router.post('/appointment/:apptId', requirePerm('stock.write'), async (req, res)
     );
     await logAction({ user: req.user, action: 'material.set', entity: 'appointment', entity_id: aid, meta: { variant_id, qty } });
     const cashSynced = await syncPaidMaterials(aid); // оплачений візит → каса відразу актуальна
+    // склад: якщо візит уже списаний — пересписати за новою кількістю (інакше дрейф залишку)
+    try { await require('../lib/consumables').resyncWriteOff(aid); } catch (e) { console.error('[consumables:resync]', e.message); }
     res.json({ ok: true, item: r.rows[0], cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -166,6 +168,7 @@ router.post('/appointment/:apptId/prefill', requirePerm('stock.write'), async (r
     );
     await logAction({ user: req.user, action: 'material.prefill', entity: 'appointment', entity_id: aid, meta: { added: r.rowCount } });
     const cashSynced = await syncPaidMaterials(aid);
+    try { await require('../lib/consumables').resyncWriteOff(aid); } catch (e) { console.error('[consumables:resync]', e.message); }
     res.json({ ok: true, added: r.rowCount, cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -197,6 +200,7 @@ router.delete('/appointment/:apptId/:variantId', requirePerm('stock.write'), asy
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     const cashSynced = await syncPaidMaterials(Number(req.params.apptId));
+    try { await require('../lib/consumables').resyncWriteOff(Number(req.params.apptId)); } catch (e) { console.error('[consumables:resync]', e.message); }
     res.json({ ok: true, cash_synced: cashSynced });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

@@ -151,4 +151,24 @@ async function reverseWriteOffForAppointment(apptId) {
   }
 }
 
-module.exports = { writeOffForAppointment, reverseWriteOffForAppointment };
+/**
+ * Пере-синхронізувати склад після зміни матеріалів ВЖЕ списаного візиту (аудит 07.07).
+ * Раніше правка/додавання/видалення матеріалів після 'done' не коригувала склад → дрейф
+ * (списали 45 г, майстер виправив на 60 — зайві 15 г ніколи не спишуться).
+ * Рішення через перевірені функції: відкотити старе списання і списати заново за поточними
+ * кількостями. Ідемпотентно; якщо візит не був списаний — нічого не робить.
+ */
+async function resyncWriteOff(apptId) {
+  const client = await pool.connect();
+  let written = false;
+  try {
+    const a = await client.query(`SELECT stock_written_off FROM appointments WHERE id=$1`, [apptId]);
+    written = !!(a.rows[0] && a.rows[0].stock_written_off);
+  } finally { client.release(); }
+  if (!written) return { resynced: false };
+  await reverseWriteOffForAppointment(apptId);
+  const r = await writeOffForAppointment(apptId);
+  return { resynced: true, ...r };
+}
+
+module.exports = { writeOffForAppointment, reverseWriteOffForAppointment, resyncWriteOff };
