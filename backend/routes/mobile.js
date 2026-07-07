@@ -684,6 +684,18 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
     const discountPct = discount_percent ? Number(discount_percent) : 0;
     const finalAmount = amountNum * (1 - discountPct / 100) - bonusNum;
 
+    // Валідація балансу бонусів ДО проведення каси: інакше finalAmount вже зменшено на
+    // bonusNum, а списання нижче могло мовчки впасти (клієнт платить менше, бонуси цілі —
+    // грошова діра). Якщо на балансі менше — відмова до каси.
+    if (bonusNum > 0 && appt.rows[0].client_id) {
+      const bb = await pool.query('SELECT balance FROM bonus_balances WHERE client_id=$1 LIMIT 1', [appt.rows[0].client_id]);
+      const bal = parseFloat(bb.rows[0]?.balance || 0);
+      if (bal < bonusNum) {
+        return res.status(400).json({ error: 'insufficient-bonus-balance', balance: bal, requested: bonusNum,
+          message: `На бонусному рахунку ${bal}, а списати треба ${bonusNum}. Оплату не проведено.` });
+      }
+    }
+
     // Находим текущую открытую смену
     const shiftRes = await pool.query(
       `SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`
@@ -711,12 +723,30 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
       [payment_method, appointment_id]
     );
 
-    // Списание бонусов если mixed/bonus
+    // Списание бонусов если mixed/bonus.
+    // ФІКС: bonus.redeem приймає ОБ'ЄКТ {clientId, amount, ...}, а не позиційні аргументи —
+    // старий виклик redeem(client_id, bonusNum, text) завжди кидав 'clientId-and-amount-required',
+    // помилка глушилась → бонуси НЕ списувались, а каса вже зменшена (грошова діра).
+    // Ідемпотентність по source_id: повторна оплата візиту не спише бонуси двічі.
     if (bonusNum > 0 && appt.rows[0].client_id) {
-      try {
-        const bonus = require('../lib/bonus');
-        await bonus.redeem(appt.rows[0].client_id, bonusNum, `Оплата записи #${appointment_id}`);
-      } catch (_) { /* bonus module optional */ }
+      const bonus = require('../lib/bonus');
+      const dup = await pool.query(
+        `SELECT 1 FROM bonus_transactions WHERE type='redemption' AND source_type='mobile-pay' AND source_id=$1 LIMIT 1`,
+        [parseInt(appointment_id, 10)]);
+      if (!dup.rows[0]) {
+        try {
+          await bonus.redeem({
+            clientId: appt.rows[0].client_id,
+            amount: bonusNum,
+            checkAmount: amountNum * (1 - discountPct / 100),
+            sourceType: 'mobile-pay',
+            sourceId: parseInt(appointment_id, 10),
+            description: `Оплата записи #${appointment_id}`,
+          });
+        } catch (e) {
+          console.error('[mobile:bonus-redeem]', e.message); // не глушим молча — видно в логах
+        }
+      }
     }
 
     logAction({ user: req.user, action: 'mobile.payment.create', entity: 'cash_operations',
