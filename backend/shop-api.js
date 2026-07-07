@@ -486,6 +486,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     try { require('./lib/retention').startRetentionCron(); } catch (e) { console.error('[retention] cron start failed:', e.message); }
     // Бизнес-автоматизации: неявка→задача, отток 60д→задача, ДР клиента→задача администратору
     try { require('./lib/automations').startAutomations(); } catch (e) { console.error('[automations] start failed:', e.message); }
+    // GDPR: фоновая дошифровка ПД новых клиентов (phone_enc/phone_bidx). No-op без PII_KEY.
+    try { require('./lib/pii-backfill-cron').startCron(); } catch (e) { console.error('[pii] cron start failed:', e.message); }
   }
 });
 
