@@ -301,6 +301,18 @@ router.patch('/payroll/records/:id', async (req, res) => {
     args.push(req.params.id);
     await client.query(`UPDATE payroll_records SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
 
+    // Скасування виплати (paid → draft/approved): сторнуємо salary-операцію з каси,
+    // інакше витрата лишалась осиротілою (каса показує виплату ЗП, а розрахунок не виплачений).
+    // Прибираємо лише з ВІДКРИТОЇ зміни (або без зміни) — закриту зміну не чіпаємо, щоб не
+    // ламати її підсумок заднім числом (як при unpay візиту). Транші payroll_partial НЕ чіпаємо.
+    if (prevStatus === 'paid' && status && status !== 'paid') {
+      await client.query(
+        `DELETE FROM cash_operations WHERE ref_type='payroll' AND ref_id=$1 AND type='out'
+           AND (shift_id IS NULL OR shift_id IN (SELECT id FROM cash_shifts WHERE status='open'))`,
+        [req.params.id]);
+      await client.query(`DELETE FROM payroll_payments WHERE record_id=$1`, [req.params.id]);
+    }
+
     // авто-расход в кассу + история выплат — только при ПЕРВОМ переходе в 'paid'
     if (status === 'paid') {
       const r0 = lock.rows[0];
