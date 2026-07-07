@@ -1786,7 +1786,7 @@ select.input { background:var(--card); }
         <div class="card">
           <div class="card-body" style="padding:0">
             <table class="tbl">
-              <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>₴/грам <button type="button" class="info-i" data-t="<b>Продаж матеріалу за грам.</b> Якщо вказана ціна (напр. фарба 12 грн/г) — вартість використаних грамів автоматично додається до чека клієнта при оплаті візиту. Клікніть по значенню, щоб змінити. Порожньо = матеріал не продається окремо." onclick="showInfo(event,this.dataset.t)">i</button></th><th>Активний</th></tr></thead>
+              <thead><tr><th>Назва</th><th>Бренд</th><th>Категорія</th><th>Варіантів</th><th>Залишок</th><th>Від</th><th>₴/грам <button type="button" class="info-i" data-t="<b>Продаж матеріалу за грам.</b> Якщо вказана ціна (напр. фарба 12 грн/г) — вартість використаних грамів автоматично додається до чека клієнта при оплаті візиту. Клікніть по значенню, щоб змінити. Порожньо = матеріал не продається окремо." onclick="showInfo(event,this.dataset.t)">i</button></th><th>Собівар./г <button type="button" class="info-i" data-t="<b>Собівартість матеріалу за грам.</b> Скільки коштує салону 1 г/мл цього матеріалу (напр. фарба 2.6 грн/г). Використовується для розрахунку реальної маржі по послугах. Клікніть по товару, щоб змінити в картці." onclick="showInfo(event,this.dataset.t)">i</button></th><th>Активний</th></tr></thead>
               <tbody id="productsBody"></tbody>
             </table>
           </div>
@@ -11321,8 +11321,9 @@ async function loadProducts() {
     <td>${p.variants_count}</td><td>${p.total_stock??0}</td>
     <td>${p.price_from ? Number(p.price_from).toLocaleString()+' ₴' : '—'}</td>
     <td ${userHasPerm('stock.manage')?`style="cursor:pointer" title="Клік — змінити ціну продажу за грам" onclick="setPPG('${String(p.id).replace(/'/g,'&#39;')}','${String(p.name).replace(/'/g,'&#39;').slice(0,60)}',${p.price_per_gram??'null'})"`:`title="Змінювати ціни може лише той, кому власник увімкнув «Склад і ціни»"`}>${p.price_per_gram!=null?`<b style="color:#7c3aed">${Number(p.price_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
+    <td style="cursor:pointer" title="Клік — відкрити картку товару для зміни собівартості" onclick="openProduct('${String(p.id).replace(/'/g,'&#39;')}')">${p.cost_per_gram!=null?`<b style="color:#0ea5e9">${Number(p.cost_per_gram)} ₴/г</b>`:'<span style="color:var(--text-secondary)">—</span>'}</td>
     <td>${p.active ? '✓':'—'}</td></tr>`).join('')
-    || '<tr><td colspan="8"><div class="empty">Нічого не знайдено</div></td></tr>';
+    || '<tr><td colspan="9"><div class="empty">Нічого не знайдено</div></td></tr>';
 }
 // ── Профіль товару: картка + варіанти, редагування під правом «Склад і ціни» ──
 let _prod = null;
