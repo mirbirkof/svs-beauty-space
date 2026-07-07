@@ -30,9 +30,13 @@ const SYSTEM = `Ти — AI-адміністратор салону краси. 
 Не використовуй markdown (без зірочок, решіток, списків з дефісами).`;
 
 /** Компактний снімок салону для LLM: послуги+ціни, філія (адреса/телефон/години), майстри. Кеш 5 хв. */
-let _snapCache = null, _snapTs = 0;
+// Кеш ПО ТЕНАНТУ: глобальний _snapCache віддавав снімок салону А салону Б (cross-tenant leak).
+const _snapCache = new Map(); // tenantId -> { snap, ts }
+function _snapTenant() { try { return require('../lib/tenant').getTenantId() || 'default'; } catch { return 'default'; } }
 async function buildSalonSnapshot() {
-  if (_snapCache && Date.now() - _snapTs < 5 * 60 * 1000) return _snapCache;
+  const _tid = _snapTenant();
+  const _hit = _snapCache.get(_tid);
+  if (_hit && Date.now() - _hit.ts < 5 * 60 * 1000) return _hit.snap;
   const [services, branch, masters, cfg] = await Promise.all([
     q(`SELECT name, category, duration_min, price FROM services
         WHERE COALESCE(active,true)=true AND deleted_at IS NULL
@@ -57,7 +61,7 @@ async function buildSalonSnapshot() {
     masters: masters.map(m => ({ імʼя: [m.name, m.surname].filter(Boolean).join(' '), напрям: m.online_title || m.specialty || m.category })),
     custom_faq: (cfg[0] && cfg[0].custom_faq) || [],
   };
-  _snapCache = snap; _snapTs = Date.now();
+  _snapCache.set(_tid, { snap, ts: Date.now() });
   return snap;
 }
 
@@ -293,7 +297,7 @@ router.put('/config', requirePerm('reports.finance'), async (req, res) => {
     if (!fields.length) return res.status(400).json({ error: 'no_fields' });
     params.push(cfg.id);
     const r = await q(`UPDATE ai_receptionist_config SET ${fields.join(', ')}, updated_at=NOW() WHERE id=$${params.length} RETURNING *`, params);
-    _snapCache = null; // сбросить кеш снимка (мог измениться tone/working_hours/faq)
+    _snapCache.delete(_snapTenant()); // сбросить кеш снимка ТЕКУЩЕГО тенанта (мог измениться tone/working_hours/faq)
     res.json({ ok: true, config: r[0] });
   } catch (e) { console.error('[ai-recept:cfg-put]', e); res.status(500).json({ error: 'internal' }); }
 });

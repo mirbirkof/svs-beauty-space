@@ -316,8 +316,10 @@ ${JSON.stringify(snap, null, 1)}
 Дай 2-4 insights і 2-4 recommendations. Звертай увагу на: дні тижня з низькою виручкою, мастерів з високим % відмін, відтік клієнтів, товари на виході, динаміку місяць-до-місяця.`;
 }
 
-// ── Кеш инсайтов (per-process, 1ч) ─────────────────────────
-let _cache = { at: 0, data: null, key: '' };
+// ── Кеш инсайтов (per-process, 1ч) — ПО ТЕНАНТУ ────────────
+// Раніше глобальний _cache віддавав інсайти салону А салону Б (cross-tenant leak).
+function _aiTid() { try { return require('../lib/tenant').getTenantId() || 'default'; } catch { return 'default'; } }
+const _cache = new Map(); // tenantId -> { at, data }
 const CACHE_MS = 60 * 60 * 1000;
 
 // GET /api/ai/insights?fresh=1
@@ -325,8 +327,9 @@ router.get('/insights', requirePerm('reports.finance'), async (req, res) => {
   try {
     if (!llm.available()) return res.status(503).json({ error: 'ai_unconfigured', message: 'LLM-ключ не налаштовано на сервері' });
     const fresh = req.query.fresh === '1';
-    if (!fresh && _cache.data && (Date.now() - _cache.at) < CACHE_MS) {
-      return res.json({ ..._cache.data, cached: true });
+    const _ci = _cache.get(_aiTid());
+    if (!fresh && _ci && (Date.now() - _ci.at) < CACHE_MS) {
+      return res.json({ ..._ci.data, cached: true });
     }
     const snapshot = await buildSnapshot();
     let ai = null;
@@ -346,7 +349,7 @@ router.get('/insights', requirePerm('reports.finance'), async (req, res) => {
       ai_ok: !!ai,
       cached: false,
     };
-    if (ai) { _cache = { at: Date.now(), data: payload }; }
+    if (ai) { _cache.set(_aiTid(), { at: Date.now(), data: payload }); }
     res.json(payload);
   } catch (e) {
     console.error('[ai:insights]', e);
@@ -364,7 +367,8 @@ router.post('/drill', requirePerm('reports.finance'), async (req, res) => {
     const topic = String(req.body?.topic || '').trim();
     if (!DRILL_TOPICS.includes(topic)) return res.status(400).json({ error: 'unknown_topic' });
     const fresh = req.query.fresh === '1' || req.body?.fresh === true;
-    const c = _drillCache[topic];
+    const _dk = _aiTid() + ':' + topic; // ключ по тенанту — інакше drill салону А віддавався салону Б
+    const c = _drillCache[_dk];
     if (!fresh && c && (Date.now() - c.at) < DRILL_CACHE_MS) return res.json({ ...c.data, cached: true });
 
     const d = await drillData(topic);
@@ -385,7 +389,7 @@ router.post('/drill', requirePerm('reports.finance'), async (req, res) => {
       ...(ai || { summary: 'AI тимчасово недоступний — нижче лише реальні цифри.', findings: [], root_causes: [], action_plan: [], kpi_to_watch: '' }),
       ai_ok: !!ai, cached: false,
     };
-    if (ai) _drillCache[topic] = { at: Date.now(), data: payload };
+    if (ai) _drillCache[_dk] = { at: Date.now(), data: payload };
     res.json(payload);
   } catch (e) {
     console.error('[ai:drill]', e);
@@ -584,7 +588,7 @@ router.get('/work-plan', requirePerm('clients.read'), async (req, res) => {
     const scope = req.query.scope === 'week' ? 'week' : 'day';
     const name = String(req.query.admin || '').trim().slice(0, 60);
     const fresh = req.query.fresh === '1';
-    const ckey = scope + '|' + name;
+    const ckey = _aiTid() + '|' + scope + '|' + name; // ключ по тенанту — план салону А не віддається салону Б
     const c = _planCache[ckey];
     if (!fresh && c && (Date.now() - c.at) < PLAN_CACHE_MS) return res.json({ ...c.data, cached: true });
 
