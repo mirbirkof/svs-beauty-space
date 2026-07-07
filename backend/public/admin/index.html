@@ -11372,7 +11372,7 @@ async function openProduct(id) {
     ${can ? '' : '<div style="padding:8px 10px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;font-size:12.5px;margin-bottom:10px">Перегляд без редагування — дозвіл «Склад і ціни» вмикає власник у Бізнес-налаштуваннях → Дозволи адміністратора</div>'}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="grid-column:1/-1">${lbl('Назва')}<input id="pm_name" class="input" value="${esc(p.name)}" ${dis}></div>
-      <div>${lbl('Ціна продажу за грам/мл, грн (порожньо = не продається за грам)')}<input id="pm_ppg" class="input" type="number" step="0.01" min="0" value="${p.price_per_gram ?? ''}" ${dis}></div>
+      <div>${lbl('Ціна продажу за грам/мл, грн (порожньо = не продається за грам)')}<input id="pm_ppg" class="input" type="number" step="0.01" min="0" value="${p.price_per_gram ?? ''}" oninput="syncPpgToVariants()" ${dis}><div style="font-size:11px;color:var(--text-secondary);margin-top:3px">Це ціна за 1 г у послузі (грами × ця ціна йдуть у чек). × вагу упаковки = «Ціна» цілої упаковки (рахується сама в обидві сторони).</div></div>
       <div>${lbl('Собівартість за грам/мл, грн (для маржі)')}<input id="pm_cpg" class="input" type="number" step="0.01" min="0" value="${p.cost_per_gram ?? ''}" oninput="syncCpgToVariants()" ${dis}><div style="font-size:11px;color:var(--text-secondary);margin-top:3px">× грамів в упаковці (колонка «мл(г)/уп») = закупівельна ціна «Опт». Порахується автоматично в обидві сторони. 100 мл фарби ≈ 90 г.</div></div>
       <div>${lbl('Фото (URL)')}<input id="pm_photo" class="input" value="${esc(p.photo)}" ${dis}></div>
       <div style="grid-column:1/-1">${lbl('Опис')}<textarea id="pm_desc" class="input" rows="3" ${dis}>${esc(p.description)}</textarea></div>
@@ -11384,7 +11384,7 @@ async function openProduct(id) {
     <div style="overflow-x:auto"><table style="width:100%;font-size:13px"><thead><tr><th>Обʼєм</th><th>Ціна</th><th title="Закупівельна ціна за упаковку">Опт</th><th>Артикул</th><th>Залишок</th><th title="Вага/обʼєм упаковки в грамах (для фарби 100 мл ≈ 90 г). Звʼязує собівартість/г із закупівельною ціною.">Вага, г ⓘ</th><th>Акт.</th>${can ? '<th></th>' : ''}</tr></thead>
     <tbody>${(r.variants || []).map(v => `<tr>
       <td><input id="v${v.id}_volume" class="input" style="width:88px;padding:4px 6px" value="${esc(v.volume)}" ${dis}></td>
-      <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" ${dis}></td>
+      <td><input id="v${v.id}_price" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.price ?? ''}" oninput="syncPriceToPpg('${v.id}')" ${dis}></td>
       <td><input id="v${v.id}_wholesale" class="input" type="number" step="0.01" style="width:82px;padding:4px 6px" value="${v.wholesale ?? ''}" oninput="syncWholesaleToCpg('${v.id}')" ${dis}></td>
       <td><input id="v${v.id}_sku" class="input" style="width:92px;padding:4px 6px" value="${esc(v.sku)}" ${dis}></td>
       <td style="white-space:nowrap"><input id="v${v.id}_stock" class="input" type="number" step="0.01" style="width:78px;padding:4px 6px" value="${v.stock_qty ?? 0}" ${dis}>${p.price_per_gram!=null?`<button type="button" class="btn btn-sm btn-outline" style="padding:2px 5px;margin-left:3px;font-size:11px" title="Ввести залишок в УПАКОВКАХ → перерахую в грами (× вагу упаковки)" onclick="stockPkgToGrams('${v.id}')" ${dis}>уп→г</button>`:''}</td>
@@ -11434,6 +11434,22 @@ function syncWholesaleToCpg(vid){
   if(isFinite(um)&&um>0&&isFinite(w)&&w>0){
     const c=document.getElementById('pm_cpg');
     if(c) c.value=String(Math.round(w/um*10000)/10000);
+  }
+}
+// Звʼязка ціни продажу за грам ↔ «Ціна» цілої упаковки (через вагу). Дзеркально до собівартості.
+function syncPpgToVariants(){
+  const ppg=_pmNum('pm_ppg'); if(!isFinite(ppg)||ppg<=0) return;
+  document.querySelectorAll('input[id^="v"][id$="_price"]').forEach(pr=>{
+    const vid=pr.id.slice(1,-('_price'.length));
+    const um=_pmNum('v'+vid+'_unitml');
+    if(isFinite(um)&&um>0) pr.value=(ppg*um).toFixed(2);
+  });
+}
+function syncPriceToPpg(vid){
+  const um=_pmNum('v'+vid+'_unitml'), pr=_pmNum('v'+vid+'_price');
+  if(isFinite(um)&&um>0&&isFinite(pr)&&pr>0){
+    const el=document.getElementById('pm_ppg');
+    if(el) el.value=String(Math.round(pr/um*10000)/10000);
   }
 }
 // Ввід залишку в УПАКОВКАХ → грами (щоб не вводити штуки в грамове поле і не ламати облік).
