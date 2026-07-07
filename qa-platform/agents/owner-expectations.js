@@ -37,14 +37,13 @@ const RULES = [
            WHERE COALESCE(s.price,0) = 0
              AND EXISTS (SELECT 1 FROM appointments a WHERE a.service_id = s.id AND a.starts_at >= NOW() - INTERVAL '60 days')`,
     threshold: 7 }, // baseline: 7 массажных услуг с нулевой ценой известны с 15.06
-  { module: 'schedule', role: 'admin', severity: 'high',
-    title: 'Правка цены откатилась синком BeautyPro (заметка #94 — manual_override обязан защищать)',
-    // запись с manual_override, у которой price разошёлся с суммой строк услуг → синк перетёр
-    sql: `SELECT COUNT(*)::int n FROM appointments a
-           WHERE a.manual_override = true
-             AND EXISTS (SELECT 1 FROM appointment_services x WHERE x.appointment_id = a.id)
-             AND COALESCE(a.price,0) <> (SELECT COALESCE(SUM(x.price),0) FROM appointment_services x WHERE x.appointment_id = a.id)`,
-    threshold: 0, optional: true },
+  // ── СНЯТО 07.07: чек устарел и давал ложные срабатывания ──
+  // Логика была: manual_override + price≠сумма_услуг ⇒ «синк BeautyPro перетёр правку».
+  // Но (1) BP-синк отключён (BP_SYNC_DISABLED=1) — перетирать нечему; (2) manual_override
+  // ИМЕННО и означает, что владелец задал СВОЮ итоговую цену (скидка/комп) ≠ сумме строк.
+  // Значит price≠сумма при manual_override — это норма (проверено: 5 записей = скидки владельца),
+  // а не баг. Чек флагал ровно легитимный сценарий. Реальный риск «отката» вернётся только
+  // если снова включат BP-синк — тогда сторожить надо сигнатуру отката, а не сам факт расхождения.
   { module: 'warehouse', role: 'warehouse', severity: 'low',
     title: 'Материалы визита добавлены, но визит проведён без списания (заметка #105)',
     sql: `SELECT COUNT(DISTINCT am.appointment_id)::int n FROM appointment_materials am
