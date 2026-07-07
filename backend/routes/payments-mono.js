@@ -38,6 +38,19 @@ async function applyInvoiceStatus(data) {
   const invoiceId = data.invoiceId;
   if (!invoiceId) return { ok: false, reason: 'no-invoice-id' };
 
+  // Вебхук/поллинг Mono приходят ВНЕ HTTP-контекста тенанта → recordCashIn и все
+  // pool.query писались бы в дефолтный (чужой) салон. Резолвим tenant_id платежа и
+  // выполняем всю обработку в его контексте (RLS + касса пишутся в правильный салон).
+  const { getTenantId, runAs } = require('../lib/tenant');
+  if (!getTenantId()) {
+    const t = await pool.query(
+      `SELECT tenant_id FROM payments WHERE provider = 'mono' AND invoice_id = $1`, [invoiceId]);
+    if (t.rows[0] && t.rows[0].tenant_id) {
+      return runAs(t.rows[0].tenant_id, () => applyInvoiceStatus(data));
+    }
+    // payment не найден в payments — возможно рахунок підписки SaaS (billing сам резолвить tenant)
+  }
+
   const cur = await pool.query(
     `SELECT id, order_id, booking_id, amount, status, purpose, tenant_id FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
