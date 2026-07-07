@@ -48,7 +48,7 @@ const STOCK_MANAGE_403 = { error: 'forbidden', need: 'stock.manage', message: 'Ð
 router.get('/products', async (req, res) => {
   try {
     const pool = getPool();
-    const { search, brand, category, active, limit = 50, offset = 0 } = req.query;
+    const { search, brand, category, active, limit, offset = 0 } = req.query;
     const cond = [];
     const args = [];
     if (search) { args.push(`%${search}%`); cond.push(`p.name ILIKE $${args.length}`); }
