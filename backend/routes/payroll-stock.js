@@ -317,21 +317,30 @@ router.patch('/payroll/records/:id', async (req, res) => {
             return res.status(409).json({ error: 'already_confirmed',
               message: 'ЗП цього майстра за цей місяць уже проведена через «Підтвердження витрат». Скасуйте там або не проводьте двічі.' });
           }
-          const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
-          // без відкритої зміни расход НЕ пропускаємо мовчки — пишемо з shift_id NULL (як expense-confirm), інакше виплата зникає з каси
-          await client.query(
-            `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-             VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
-            [sh.rows[0] ? sh.rows[0].id : null, r0.total, r0.id, r0.master_id, `ЗП ${r0.master_name||'#'+r0.master_id}`]
-          );
-          // история выплат (идемпотентно: одна выплата на расчёт)
-          const exists = await client.query(`SELECT 1 FROM payroll_payments WHERE record_id=$1 LIMIT 1`, [r0.id]);
-          if (!exists.rowCount) {
+          // захист від ПОДВІЙНОЇ виплати: якщо по цьому розрахунку вже були ЧАСТКОВІ
+          // транші (payroll_partial), повна виплата має провести лише ЗАЛИШОК, інакше
+          // каса втрачає гроші (транш 500 + повна 1000 = 1500 витрат при ЗП 1000).
+          const paidPartial = Number((await client.query(
+            `SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_partial_payments WHERE record_id=$1`, [r0.id])).rows[0].s);
+          const toPay = Math.round((Number(r0.total) - paidPartial) * 100) / 100;
+          if (toPay > 0.001) {
+            const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
+            // без відкритої зміни расход НЕ пропускаємо мовчки — пишемо з shift_id NULL (як expense-confirm), інакше виплата зникає з каси
             await client.query(
-              `INSERT INTO payroll_payments (master_id, master_name, record_id, amount, method, period_start, period_end, created_by, created_by_name)
-               VALUES ($1,$2,$3,$4,'cash',$5,$6,$7,$8)`,
-              [r0.master_id, r0.master_name, r0.id, r0.total, r0.period_start, r0.period_end, req.user?.id || null, req.user?.display_name || null]
+              `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
+               VALUES ($1,'out','salary',$2,'cash','payroll',$3,$4,$5)`,
+              [sh.rows[0] ? sh.rows[0].id : null, toPay, r0.id, r0.master_id,
+               `ЗП ${r0.master_name||'#'+r0.master_id}` + (paidPartial > 0 ? ` (залишок після траншів ${paidPartial})` : '')]
             );
+            // история выплат (идемпотентно: одна выплата на расчёт)
+            const exists = await client.query(`SELECT 1 FROM payroll_payments WHERE record_id=$1 LIMIT 1`, [r0.id]);
+            if (!exists.rowCount) {
+              await client.query(
+                `INSERT INTO payroll_payments (master_id, master_name, record_id, amount, method, period_start, period_end, created_by, created_by_name)
+                 VALUES ($1,$2,$3,$4,'cash',$5,$6,$7,$8)`,
+                [r0.master_id, r0.master_name, r0.id, toPay, r0.period_start, r0.period_end, req.user?.id || null, req.user?.display_name || null]
+              );
+            }
           }
         }
       }

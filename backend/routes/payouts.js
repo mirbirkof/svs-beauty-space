@@ -347,6 +347,9 @@ router.post('/records/:id/pay', async (req, res) => {
          FROM payroll_records WHERE id=$1 FOR UPDATE`, [req.params.id])).rows[0];
     if (!r0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
     if (r0.status === 'cancelled') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'record cancelled' }); }
+    // Розрахунок уже повністю виплачено (повна виплата через payroll-stock) — новий транш
+    // = подвійна витрата. Блокуємо (зворотний бік захисту 2.2: full→partial).
+    if (r0.status === 'paid') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'already_paid', message: 'Розрахунок уже повністю виплачено' }); }
 
     const paidBefore = num((await client.query(
       `SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_partial_payments WHERE record_id=$1`, [r0.id])).rows[0].s);
