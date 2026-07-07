@@ -281,10 +281,17 @@ router.post('/consumption/reverse', W, async (req, res) => {
     // второй дождётся коммита первого и увидит reversed=TRUE (0 строк)
     const rows = (await client.query(
       `SELECT * FROM material_consumption_log WHERE appointment_id=$1 AND reversed=FALSE FOR UPDATE`, [b.appointment_id])).rows;
+    // Повертаємо на склад ТОЧНУ кількість для ВСІХ одиниць (g/ml/pcs/pair) — симетрично
+    // списанню (stock_qty NUMERIC). Раніше поверталися лише pcs/pair, а грамові/мл списання
+    // губилися → фантомна недостача складу. Math.round теж прибрано (0.33 г → 0). Пишемо рух.
     for (const r of rows) {
-      if ((r.unit === 'pcs' || r.unit === 'pair')) {
-        const back = Math.round(Number(r.actual_quantity ?? r.norm_quantity));
-        await client.query(`UPDATE product_variants SET stock_qty = stock_qty + $1 WHERE id=$2`, [back, r.variant_id]);
+      const back = Number(r.actual_quantity ?? r.norm_quantity);
+      if (Number.isFinite(back) && back > 0) {
+        await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id=$2`, [back, r.variant_id]);
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+           VALUES ($1, $2, 'service-reverse:' || $3::text, $3, 'повернення за скасуванням візиту (material-norms reverse)')`,
+          [r.variant_id, back, b.appointment_id]);
       }
     }
     await client.query(`UPDATE material_consumption_log SET reversed=TRUE WHERE appointment_id=$1 AND reversed=FALSE`, [b.appointment_id]);
