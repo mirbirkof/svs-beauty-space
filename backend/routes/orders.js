@@ -83,7 +83,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
         return res.status(400).json({ error: 'variant-not-found', variant_id: it.variant_id });
       }
       const row = v.rows[0];
-      const qty = Math.max(1, parseInt(it.qty || 1, 10));
+      const qty = Math.max(1, Math.min(10000, parseInt(it.qty || 1, 10) || 1)); // верхня межа 10000 — захист від резерву всього складу числом-гігантом
       const available = (row.stock_qty || 0) - (row.reserved_qty || 0);
       // мягкая проверка: разрешаем preorder если stock_qty не задан (NULL/0)
       if (row.stock_qty != null && row.stock_qty > 0 && qty > available) {
