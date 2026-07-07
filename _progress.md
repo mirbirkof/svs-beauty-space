@@ -38,10 +38,14 @@
 - [x] 6.2 viewport — ЛОЖНАЯ ТРЕВОГА: admin index/login/reset уже width=1280 (правило Босса соблюдено). master.html/cabinet.html = «Кабінет майстра», мобильный by design (мастер с телефона). Не трогаем.
 - [x] 6.3 signup.html ЕСТЬ и работает (location.origin + /api/public/signup, прод 400=жив). Онбординг ЕСТЬ (loadOnboarding + onboarding.js 6 роутов). ЛОЖНАЯ ТРЕВОГА.
 
-## БЛОК 7: Прод-хардненинг
-- [ ] 7.1 SENTRY_DSN
-- [ ] 7.2 CVE-патчи (multer, form-data, opentelemetry)
-- [ ] 7.3 rate-limit на логин
-- [ ] 7.4 S3-бэкапы
+## БЛОК 7 РАЗОБРАН: прод-хардненинг (код готов, остаток = ops Босса)
+- [x] 7.3 rate-limit на логин — УЖЕ ЕСТЬ: ip-лимит + failed_login_attempts + lock + 429 на login/verify-2fa/panel-login/tg-login. Не через express-middleware, а свой механизм attempts. Функционально закрыто.
+- [x] 7.1 Sentry — КОД ГОТОВ (sentry.capture в unhandledRejection/uncaughtException). Защита от падения сервера ЕСТЬ. Нужен только env SENTRY_DSN на Render → OPS БОССА.
+- [~] 7.2 CVE (form-data/multer/xlsx high) — "No fix available", --force сломает загрузки (multer 2.x breaking). Вектор — только авторизованный админ, не публичный. ТЕХДОЛГ, не блокер. НЕ ломаю рабочее.
+- [~] 7.4 S3-бэкапы — код backup-core есть, нужны S3-креды env на Render → OPS БОССА.
+
+## OPS-ДЕЙСТВИЯ ДЛЯ БОССА (env на Render, я не имею доступа):
+1. SENTRY_DSN=<dsn> — включит мониторинг ошибок
+2. S3-креды (S3_BUCKET/KEY/SECRET) — включит выгрузку бэкапов в облако
 
 Текущая оценка: ~59% (закрыт 1 из ~20 фиксов, но блок изоляции — тяжёлый).
