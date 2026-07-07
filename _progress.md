@@ -30,8 +30,8 @@
 - [ ] 4.2 Авто-charge с сохранённой карты
 - [ ] 4.3 Единые планы (saas_plans vs saas_plans_v2)
 
-## БЛОК 5: Склад
-- [ ] 5.1 consumables.js ReferenceError applyTenant (не импортирован)
+## БЛОК 5 ЗАКРЫТ: склад
+- [x] 5.1 routes/consumables.js применял applyTenant без импорта → ReferenceError. Добавлен импорт ✓ (lib/consumables.js был OK — агент указал не тот файл, но баг реальный в routes/)
 
 ## БЛОК 6: Фронт
 - [ ] 6.1 js/auth.js localhost → prod URL
