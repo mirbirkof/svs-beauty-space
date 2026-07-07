@@ -153,6 +153,23 @@ if (BOT_TOKEN) {
 
 // In-memory schema — no init needed
 
+// Зсув Києва (хв) для конкретного інстанту — з урахуванням літнього/зимового часу.
+function _kyivOffsetMin(utcMs) {
+  const s = new Date(utcMs).toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const m = s.match(/(\d+)\/(\d+)\/(\d+),?\s+(\d+):(\d+):(\d+)/);
+  if (!m) return 0;
+  const asIfUtc = Date.UTC(+m[3], +m[1] - 1, +m[2], +m[4] === 24 ? 0 : +m[4], +m[5], +m[6]);
+  return Math.round((asIfUtc - utcMs) / 60000);
+}
+// Наївний київський час "YYYY-MM-DDTHH:MM(:SS)" → коректний UTC-ISO. Рядки з зоною не чіпаємо.
+function kyivWallToIso(s) {
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return s;
+  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6] || 0);
+  return new Date(guess - _kyivOffsetMin(guess) * 60000).toISOString();
+}
+
 // === POST /init =========================================
 router.post('/init', validateBody({
   service_id: t.string({ min: 1, max: 64, required: true }),
@@ -167,8 +184,12 @@ router.post('/init', validateBody({
     if (!service_id || !employee_id || !date_from || !date_to) {
       return res.status(400).json({ error: 'service_id, employee_id, date_from, date_to обовʼязкові' });
     }
+    // ТАЙМЗОНА (аудит 07.07): /slots віддає НАЇВНИЙ київський час ("YYYY-MM-DDTHH:MM:SS" без зони).
+    // Якщо зберегти сиру рядок у timestamptz (сесія БД в UTC) — візит зсунеться на 2-3 год.
+    // Приводимо наївний київський час до правильного інстанту. Рядки з зоною (Z/±hh:mm) не чіпаємо.
+    const dfrom = kyivWallToIso(date_from), dto = kyivWallToIso(date_to);
     // валидация дат: не в прошлом, конец после начала, не дальше года вперёд
-    const from = new Date(date_from), to = new Date(date_to);
+    const from = new Date(dfrom), to = new Date(dto);
     if (isNaN(from) || isNaN(to)) return res.status(400).json({ error: 'Невірний формат дати' });
     if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
     if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
@@ -178,7 +199,7 @@ router.post('/init', validateBody({
       return res.status(403).json({ error: 'Онлайн-запис не активовано для цього салону. Активуйте модуль у CRM (Ліцензії та модулі).' });
     }
     const token = genToken();
-    await db.insert(token, { service_id, employee_id, date_from, date_to, client_name: client_name || null, channel: channel || 'site_salon' });
+    await db.insert(token, { service_id, employee_id, date_from: dfrom, date_to: dto, client_name: client_name || null, channel: channel || 'site_salon' });
 
     // SAS: диплинк ведёт в бота ЭТОГО салона (env-бот — только для салона Босса).
     // Чужой салон БЕЗ своего бота: ссылка на бота платформы бессмысленна —
