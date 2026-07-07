@@ -128,6 +128,17 @@ const RULES = [
     sql: `SELECT COUNT(*)::int n FROM (SELECT tenant_id, phone FROM clients
             WHERE phone IS NOT NULL AND phone <> '' AND deleted_at IS NULL
             GROUP BY tenant_id, phone HAVING COUNT(*) > 1) d` },
+
+  // ── Дрейф склада: правки материалов после списания (аудит 07.07, фикс resyncWriteOff) ──
+  { module: 'warehouse', role: 'warehouse', severity: 'high', optional: true,
+    title: 'Дрейф склада: списано движениями ≠ материалам выполненного визита',
+    sql: `SELECT COUNT(*)::int n FROM (
+            SELECT a.id,
+              (SELECT COALESCE(SUM(qty_used),0) FROM appointment_materials am WHERE am.appointment_id=a.id) AS mat,
+              (SELECT COALESCE(-SUM(delta),0) FROM stock_movements sm
+                 WHERE sm.reason IN ('service:'||a.id::text,'service-reverse:'||a.id::text)) AS deducted
+            FROM appointments a WHERE a.stock_written_off=true
+          ) d WHERE ABS(mat - deducted) > 0.01` },
 ];
 
 module.exports = {
