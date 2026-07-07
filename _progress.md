@@ -33,10 +33,10 @@
 ## БЛОК 5 ЗАКРЫТ: склад
 - [x] 5.1 routes/consumables.js применял applyTenant без импорта → ReferenceError. Добавлен импорт ✓ (lib/consumables.js был OK — агент указал не тот файл, но баг реальный в routes/)
 
-## БЛОК 6: Фронт
-- [ ] 6.1 js/auth.js localhost → prod URL
-- [ ] 6.2 viewport 1280 в admin/master.html, qa.html
-- [ ] 6.3 UI онбординга + self-service signup
+## БЛОК 6 РАЗОБРАН: фронт (в основном ложные тревоги)
+- [x] 6.1 js/auth.js localhost→prod (гигиена) — НО файл legacy/мёртвый: account.html его не грузит, эндпоинты /auth/sms/* не существуют. Реальный вход через cabinet.js (уже prod). Не был блокером.
+- [x] 6.2 viewport — ЛОЖНАЯ ТРЕВОГА: admin index/login/reset уже width=1280 (правило Босса соблюдено). master.html/cabinet.html = «Кабінет майстра», мобильный by design (мастер с телефона). Не трогаем.
+- [x] 6.3 signup.html ЕСТЬ и работает (location.origin + /api/public/signup, прод 400=жив). Онбординг ЕСТЬ (loadOnboarding + onboarding.js 6 роутов). ЛОЖНАЯ ТРЕВОГА.
 
 ## БЛОК 7: Прод-хардненинг
 - [ ] 7.1 SENTRY_DSN
