@@ -180,7 +180,7 @@ tenantRouter.use(requirePerm('saas.read'));
 // GET /tenant/flags — все флаги текущего тенанта
 tenantRouter.get('/', async (req, res) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenant_id;
+    const tenantId = req.tenant_id || req.tenantId || req.user?.tenant_id;
     const flags = await q(`SELECT key FROM feature_flags WHERE status != 'archived' ORDER BY key`);
     const result = {};
     for (const f of flags) {
@@ -194,7 +194,7 @@ tenantRouter.get('/', async (req, res) => {
 // GET /tenant/flags/:key
 tenantRouter.get('/:key', async (req, res) => {
   try {
-    const tenantId = req.tenantId || req.user?.tenant_id;
+    const tenantId = req.tenant_id || req.tenantId || req.user?.tenant_id;
     const ev = await evaluateFlag(req.params.key, tenantId);
     res.json({ enabled: ev.enabled, variant: ev.variant });
   } catch (e) { return err500(res, e); }

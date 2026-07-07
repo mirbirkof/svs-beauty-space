@@ -55,8 +55,11 @@ function pricesFor(plan, currency) {
 }
 
 // Тенант поточного запиту.
+// ВАЖЛИВО: tenantMiddleware виставляє req.tenant_id (snake_case), а НЕ req.tenantId.
+// Раніше читалося лише camelCase → для будь-якого салону крім Боса tenant=null,
+// план/ліміти/usage рахувалися невірно. Читаємо req.tenant_id першим.
 function tenantOf(req) {
-  return req.tenantId || req.user?.tenant_id || null;
+  return req.tenant_id || req.tenantId || req.user?.tenant_id || null;
 }
 
 // Зібрати features+limits плану.
