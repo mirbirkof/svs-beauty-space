@@ -56,7 +56,9 @@ async function liveFinance(pool, from, to) {
     // без unit_ml опт уже за грам; штучні — опт за одиницю. Знак delta зберігаємо:
     // service-reverse (відкат оплати) повертає на склад і ВІДНІМАЄ з собівартості,
     // інакше unpay→pay рахує списання двічі.
-    q(`SELECT COALESCE(SUM(-sm.delta * CASE WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 0
+    q(`SELECT COALESCE(SUM(-sm.delta * CASE
+                WHEN p.price_per_gram IS NOT NULL AND p.cost_per_gram IS NOT NULL THEN p.cost_per_gram
+                WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 0
                 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
                 ELSE COALESCE(pv.wholesale,0) END),0)::numeric g
          FROM stock_movements sm

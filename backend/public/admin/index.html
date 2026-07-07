@@ -11343,6 +11343,7 @@ async function openProduct(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="grid-column:1/-1">${lbl('Назва')}<input id="pm_name" class="input" value="${esc(p.name)}" ${dis}></div>
       <div>${lbl('Ціна продажу за грам/мл, грн (порожньо = не продається за грам)')}<input id="pm_ppg" class="input" type="number" step="0.01" min="0" value="${p.price_per_gram ?? ''}" ${dis}></div>
+      <div>${lbl('Собівартість за грам/мл, грн (для маржі)')}<input id="pm_cpg" class="input" type="number" step="0.01" min="0" value="${p.cost_per_gram ?? ''}" ${dis}></div>
       <div>${lbl('Фото (URL)')}<input id="pm_photo" class="input" value="${esc(p.photo)}" ${dis}></div>
       <div style="grid-column:1/-1">${lbl('Опис')}<textarea id="pm_desc" class="input" rows="3" ${dis}>${esc(p.description)}</textarea></div>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_active" ${p.active !== false ? 'checked' : ''} ${dis}> Активний</label>
@@ -11380,6 +11381,7 @@ async function saveProdCard() {
   };
   const name = gv('pm_name').trim(); if (name) body.name = name;
   const ppg = gv('pm_ppg').trim(); body.price_per_gram = ppg === '' ? 0 : Number(ppg.replace(',', '.'));
+  const cpg = gv('pm_cpg').trim(); body.cost_per_gram = cpg === '' ? 0 : Number(cpg.replace(',', '.'));
   const r = await api('/api/admin/products/' + encodeURIComponent(_prod.id), { method: 'PATCH', body: JSON.stringify(body) });
   msg.style.color = r.ok ? '#10b981' : '#ef4444';
   msg.textContent = r.ok ? 'Збережено ✓' : (r.message || r.error || 'Помилка');
