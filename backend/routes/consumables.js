@@ -1,6 +1,6 @@
 /* Расходники на услугу (SAL-08): какие товары и сколько уходит на одно выполнение */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
