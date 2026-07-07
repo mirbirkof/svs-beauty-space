@@ -1,0 +1,87 @@
+ВСЕГО находок (сырые, до скептика): 26
+
+### CRITICAL (3)
+• [data-warehouse / DWH ETL] Ночной ETL хранилища аналитики (DWH) сваливает данные ВСЕХ салонов в тенант Босса — кросс-тенантная утечка оборота/клиентов/визитов (conf 0.85)
+   shop-api.js:561-566 запускает `dwh.runAllActive('cron')` из setInterval БЕЗ tenant-контекста (нет runAs, нет HTTP-запрос
+   почему: После первого же ночного прогона DWH заполнен клиентами/визитами/выручкой/зарплатами ВСЕХ салонов, помеченными tenant_id
+• [payroll] Авто-расчёт ЗП (autoPayrollRun) обходит ВСЕ гарды двойной выплаты — деньги выдаются повторно (conf 0.9)
+   routes/payouts.js:596-602 — autoPayrollRun создаёт payroll_records со status='auto' и сразу пишет расход в кассу с ref_t
+   почему: Реальный сценарий продакшна: 1-го/16-го авто-крон (или ручной POST /api/payouts/auto-run) уже выдал ЗП мастеру и списал 
+• [payroll] expense-confirm дедуп не видит авто-расчёт (status='auto') → двойная выплата через «Підтвердження витрат» (conf 0.85)
+   routes/expense-confirm.js:162-170 — dup-guard салари ищет только `payroll_records WHERE status='paid' AND TO_CHAR(period
+   почему: После авто-выплаты (status='auto', деньги уже списаны) экран «Підтвердження витрат» всё равно покажет ЗП мастера как нео
+
+### HIGH (11)
+• [payroll] Двойная выплата ЗП: авто-расчёт (status='auto', касса ref_type='auto_payroll') не блокирует последующую ручную выплату PATCH→paid (conf 0.82)
+   payouts.js:596-602 autoPayrollRun вставляет payroll_record status='auto' И сразу постит расход в кассу VALUES (NULL,'out
+   почему: autoPayrollRun вызывается через POST /api/payouts/auto-run?force и рассчитан на крон 1-го/16-го. После авто-начисления з
+• [payroll] sales_part (комиссия с продаж) не входит в GENERATED total → мастера на схеме с sales_commission_pct недоплачиваются (conf 0.72)
+   005_payroll_stock.sql:30 `total NUMERIC(12,2) GENERATED ALWAYS AS (percent_part + fixed_part + bonus - deduction) STORED
+   почему: У салонов красоты мастера часто получают % с продажи косметики (sales_commission_pct — реальное поле схемы, код его стар
+• [payroll] Частичная выплата (payouts /pay) и «Підтвердження витрат» не защищены друг от друга — двойной расход ЗП (conf 0.7)
+   expense-confirm.js:162-170 guard проверяет ТОЛЬКО `payroll_records ... status='paid'`. Частично оплаченный расчёт остаёт
+   почему: «Розрахувати зарплату» (частичные транши) и «Підтвердження витрат» — два параллельных UI для одной и той же ЗП за месяц.
+• [payroll] Частичная выплата разрешена по авто-расчёту поверх уже списанного авто-расхода (conf 0.85)
+   routes/payouts.js:349-352 — POST /records/:id/pay блокирует только status 'cancelled' и 'paid'. Статус 'auto' проходит. 
+   почему: Третий путь двойной выплаты той же ЗП: авто-расчёт списал полную сумму, затем кто-то проводит частичный транш по тому же
+• [payroll] autoPayrollRun создаёт запись при пересечении с ручным расчётом (overlap не проверяется) → двойное начисление визитов (conf 0.8)
+   routes/payouts.js:588 — идемпотентность авто-расчёта проверяет ТОЛЬКО точное совпадение period_start: `WHERE master_id=$
+   почему: Если владелец сначала посчитал ЗП вручную за месяц (period_start=01, period_end=31), авто-крон 16-го создаст ОТДЕЛЬНЫЙ r
+• [payroll] cancel/recalculate авто-расчёта не сторнируют уже списанный авто-расход из кассы → потерянные деньги / рассинхрон (conf 0.8)
+   routes/payouts.js:461-480 (cancel) переводит status в 'cancelled' и разапплаивает бонусы/штрафы/авансы, но НЕ трогает ca
+   почему: Отмена авто-расчёта оставляет осиротевший расход salary в кассе (деньги «выданы», начисления нет) — ровно тот баг, котор
+• [booking (online_bookings EXCLUDE + master_id тип)] EXCLUDE-констрейнт от двойного онлайн-бронирования не работает МЕЖДУ каналами: бот и сайт пишут разный master_id для одного мастера (conf 0.83)
+   online_bookings.master_id — TEXT (migrations/002_waitlist.sql:41). Разговорный бот пишет туда ВНУТРЕННИЙ id мастера: lib
+   почему: Клиент через сайт и клиент через чат-бота могут забронировать один слот одного мастера — единственная объявленная в этой
+• [booking (таймзона веб-канала)] Веб-брони сохраняются со сдвигом на 2-3 часа: сырая наивная строка времени пишется в timestamptz без AT TIME ZONE, сессия БД в UTC (conf 0.72)
+   Движок отдаёт НАИВНУЮ строку киевского wall-time: lib/slot-engine.js:665 + прод `{"from":"2026-07-09T08:00:00"}` (без оф
+   почему: Один и тот же слот из /slots сохраняется в РАЗНОЕ абсолютное время в зависимости от канала: бот — верно, сайт — со сдвиг
+• [material-norms.js /consumption/forecast] Прогноз закупки: остаток умножается на объём упаковки повторно — дни-до-исчерпания завышены в N раз, критичные материалы не показываются (conf 0.85)
+   routes/material-norms.js:348-350: `const pkg = parseVol(r.volume) || 1; const stockUnits = Number(r.stock_qty) * pkg; ..
+   почему: Прогноз закупки — ключевая фича склада для салона. Из-за завышения в десятки-тысячи раз владелец НИКОГДА не увидит краск
+• [consumables.js CRUD appointment_materials] Правка/добавление/удаление материалов после списания (status=done) не корректирует склад — тихий дрейф остатков (conf 0.8)
+   schedule.js:1170-1173: на status='done' вызывается writeOffForAppointment → списывает qty_used и ставит stock_written_of
+   почему: Штатный сценарий салона: мастер отмечает 'Виконано', потом уточняет фактический расход (было 45 г — исправил на 60 г, ил
+• [loyalty/bonus] Мобильная оплата: касса уменьшается на запрошенные бонусы, а redeem списывает меньше из-за лимита max_pay_percent — прямая денежная дыра (conf 0.85)
+   routes/mobile.js:685 `const finalAmount = amountNum * (1 - discountPct / 100) - bonusNum;` — касса (строки 708-717, INSE
+   почему: Это клиентский путь оплаты (mobile app мастера/кассы), работает на дефолтных настройках (30%), которые салон почти всегд
+
+### MEDIUM (9)
+• [миграции / app_tenant grants] Ни в одной миграции нет ALTER DEFAULT PRIVILEGES для app_tenant — свежая БД поднимется с неработающими tenant-запросами (permission denied) (conf 0.6)
+   grep 'ALTER DEFAULT PRIVILEGES' по migrations/*.sql даёт совпадения только в КОММЕНТАРИЯХ (015_rls_tenant_isolation.sql:
+   почему: Раз прод работает, ALTER DEFAULT PRIVILEGES настроен вручную на боевой Neon-БД (вне миграций). Это значит: при развёртыв
+• [payroll] Потеря истории траншей: DELETE расчёта (draft/approved/auto с частичными выплатами) каскадно стирает payroll_partial_payments, cash_operations остаются осиротелыми (conf 0.68)
+   173_payouts_v2.sql:54 `record_id INTEGER NOT NULL REFERENCES payroll_records(id) ON DELETE CASCADE`. payroll-stock.js:37
+   почему: Реальные деньги уже выданы мастеру траншем, запись расчёта удаляется (например чтобы пересчитать период) — история выпла
+• [payroll] Частичная/полная выплата поверх авто-расчёта: транш на status='auto' даёт лишний расход поверх авто-кассы (conf 0.6)
+   payouts.js /records/:id/pay проверяет только r0.status==='cancelled' (349) и ==='paid' (352). Запись status='auto' от au
+   почему: После авто-выплаты 1-го/16-го запись живёт в 'auto'. Любая ручная доплата/выплата траншем по ней даёт двойной расход из 
+• [payroll] Авто-расчёт не учитывает штрафы/авансы (deduction) и не settl-ит авансы → переплата + повторное удержание (conf 0.75)
+   routes/payouts.js:595-598 — INSERT payroll_records при авто-расчёте передаёт только services/percent_part/fixed_part/tot
+   почему: 1) Авто-расчёт выдаёт полную сумму без вычета ранее выданных авансов и штрафов → мастер получает больше, чем должен (ава
+• [booking (appointments без DB-backstop + гонка в боте)] Таблица appointments не имеет EXCLUDE-констрейнта, а бот и веб-зеркало вставляют записи без атомарного гейта — гонка даёт двойную запись (conf 0.7)
+   appt_no_overlap ставится только условно и пропускается при наличии пересечений (migrations/138_appt_no_overlap.sql:35-46
+   почему: appointments — это то, что реально видит мастер в расписании дня. Без DB-констрейнта и без атомарного гейта в бот-пути д
+• [booking (fallback 'любой мастер')] При записи без выбора мастера фронт шлёт service_id в поле employee_id — бронь пишется с id услуги вместо мастера (conf 0.6)
+   public/book.html:530 `employee_id: prof || S.svc.id` — если мастер не выбран ('будь-який'), в employee_id уходит ID УСЛУ
+   почему: Кнопка 'любой мастер' — стандартный сценарий онлайн-записи. В результате бронь не попадает в журнал мастера (appointment
+• [purchasing.js /needs (low-stock reorder)] Автозаказ/low-stock сравнивает остаток в мл/г с min_stock в штуках — грамовые товары почти никогда не попадают в 'нужно докупить' (conf 0.7)
+   purchasing.js:42-46: `LEFT JOIN (SELECT product_id, SUM(COALESCE(stock_qty,0)) AS qty ...) v ... WHERE ... COALESCE(v.qt
+   почему: Модуль 'нужно докупить' / авто-заказ — вторая ключевая складская фича. Единицы min_stock (упаковки) и остатка (мл/г) не 
+• [inventory.js /audits/:id/complete] Завершение инвентаризации затирает live-остаток снимком пересчёта, теряя списания сделанные во время инвентаризации (conf 0.6)
+   inventory.js:40 expected_qty снимается при СОЗДАНИИ акта (снимок stock_qty). inventory.js:132 при complete: `UPDATE prod
+   почему: Инвентаризация салона может идти часы/дни, параллельно салон работает и списывает материалы. Закрытие акта откатывает ск
+• [loyalty/bonus] Мобильная оплата: finalAmount не ограничен снизу нулём — bonus_amount больше чека даёт отрицательную кассовую операцию (conf 0.7)
+   routes/mobile.js:685 `finalAmount = amountNum * (1 - discountPct/100) - bonusNum;` без Math.max(0,...). Далее INSERT в c
+   почему: amount_cents, bonus_amount, discount_percent приходят из тела запроса без верхнего капа (grep по mobile.js: cap на disco
+
+### LOW (3)
+• [payroll] payroll_records.total может быть отрицательным (deduction > earnings), выплата/payslip это не нормализуют (conf 0.6)
+   migrations/005 + 044: total = GENERATED (percent_part+fixed_part+sales_part+bonus-deduction), без GREATEST(0,...). При а
+   почему: Не двойная выплата, но: отрицательный «к выплате» в расчётном листе выглядит как баг перед клиентом, а долг мастера (пер
+• [booking (валидация /init vs хранение)] Валидация 'не в прошлом' в /init использует new Date() по TZ сервера, а хранит сырую строку — рассинхрон с фактически сохранённым инстантом (conf 0.5)
+   routes/booking.js:171-175 валидирует `new Date(date_from)` (парсится в TZ процесса/UTC), но в БД идёт сырой row.date_fro
+   почему: Граничные брони (ранним утром / поздно вечером) могут пройти валидацию, но лечь в БД на 2-3ч раньше/позже — либо в прошл
+• [loyalty/certificates+subscriptions] Нет БД-инварианта неотрицательного остатка на сертификатах и абонементах (защита только в коде) (conf 0.6)
+   migrations/056_gift_certificates.sql:15 `remaining_amount NUMERIC(10,2) NOT NULL` — без CHECK (>=0); в 172_gift_certific
+   почему: Не активный баг сегодня (текущие пути защищены), но отсутствие БД-инварианта — это дыра в глубине защиты для денежного м
