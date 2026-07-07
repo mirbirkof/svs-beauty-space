@@ -635,6 +635,37 @@ router.delete('/clients/:id', async (req, res) => {
   } catch (e) { console.error('[admin:client:archive]', e); res.status(500).json({ error: 'internal' }); }
 });
 
+// ── POST /api/admin/clients/:id/erase — GDPR «право на забуття» (Art. 17) ──
+// РЕАЛЬНЕ стирання ПД: знеособлюємо клієнта (ПІБ/телефон/email/telegram/дата народження)
+// і видаляємо чисті ПД (нотатки, вподобання, медкартку). Знеособлені фінансові/візитні
+// записи ЛИШАЮТЬСЯ (податкове зберігання) — але вже без прив'язки до особи.
+router.post('/clients/:id/erase', async (req, res) => {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: 'bad-id' });
+    await client.query('BEGIN'); await applyTenant(client);
+    const r = await client.query(
+      `UPDATE clients SET
+         name = 'Видалений клієнт', phone = NULL, email = NULL,
+         telegram_id = NULL, tg_first_name = NULL, tg_last_name = NULL, tg_username = NULL,
+         birthday = NULL, notes = NULL, deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+       WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    // чисті ПД — фізичне видалення
+    for (const t of ['client_notes', 'client_preferences', 'medical_cards']) {
+      await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id]).catch(() => {});
+    }
+    await client.query('COMMIT');
+    logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
+    res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[admin:client:erase]', e); res.status(500).json({ error: 'internal' });
+  } finally { client.release(); }
+});
+
 // ── POST /api/admin/clients/:id/restore — вернуть из архива ──
 router.post('/clients/:id/restore', async (req, res) => {
   try {
