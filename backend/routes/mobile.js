@@ -679,14 +679,13 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
       [parseInt(appointment_id, 10)]);
     if (dup.rows[0]) return res.status(200).json({ ok: true, already_paid: true, payment_id: dup.rows[0].id });
 
+    const bonusModule = require('../lib/bonus');
     const amountNum = Number(amount_cents) / 100;
-    const bonusNum = bonus_amount ? Number(bonus_amount) / 100 : 0;
     const discountPct = discount_percent ? Number(discount_percent) : 0;
-    const finalAmount = amountNum * (1 - discountPct / 100) - bonusNum;
+    const checkAfterDiscount = amountNum * (1 - discountPct / 100);
+    let bonusNum = bonus_amount ? Number(bonus_amount) / 100 : 0;
 
-    // Валідація балансу бонусів ДО проведення каси: інакше finalAmount вже зменшено на
-    // bonusNum, а списання нижче могло мовчки впасти (клієнт платить менше, бонуси цілі —
-    // грошова діра). Якщо на балансі менше — відмова до каси.
+    // Валідація балансу бонусів ДО проведення каси.
     if (bonusNum > 0 && appt.rows[0].client_id) {
       const bb = await pool.query('SELECT balance FROM bonus_balances WHERE client_id=$1 LIMIT 1', [appt.rows[0].client_id]);
       const bal = parseFloat(bb.rows[0]?.balance || 0);
@@ -694,7 +693,14 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
         return res.status(400).json({ error: 'insufficient-bonus-balance', balance: bal, requested: bonusNum,
           message: `На бонусному рахунку ${bal}, а списати треба ${bonusNum}. Оплату не проведено.` });
       }
+      // КРИТ (аудит 07.07): redeem обрізає бонус до max_pay_percent% чека. Якщо каса відніме
+      // ПОВНИЙ bonusNum, а спишеться менше — грошова діра. Рахуємо ЕФЕКТИВНИЙ бонус (те, що
+      // реально спишеться) і використовуємо його І в касі, І в redeem — суми збігаються.
+      bonusNum = await bonusModule.previewRedeem({
+        clientId: appt.rows[0].client_id, amount: bonusNum, checkAmount: checkAfterDiscount });
     }
+    // finalAmount не може бути відʼємним (bonusNum вже обмежений лімітом і балансом).
+    const finalAmount = Math.max(0, checkAfterDiscount - bonusNum);
 
     // Находим текущую открытую смену
     const shiftRes = await pool.query(

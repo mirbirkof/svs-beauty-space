@@ -150,6 +150,32 @@ async function accrue(opts = {}) {
 }
 
 // ── Списання (FIFO по найближчому сгоранню) ─────────────────────────
+// Скільки бонусів РЕАЛЬНО спишеться при цих opts (та ж логіка обрізки, що й redeem, але read-only).
+// Потрібно, щоб каса рахувала знижку рівно на суму, яку redeem фактично спише (інакше грошова діра).
+// Повертає ефективну суму бонусів (0, якщо списання неможливе/нижче мінімуму/вимкнено).
+async function previewRedeem(opts = {}) {
+  const clientId = Number(opts.clientId);
+  let amount = round2(opts.amount || 0);
+  if (!clientId || amount <= 0) return 0;
+  return withTx(async (client) => {
+    const settings = await _resolveSettings(client);
+    if (settings.enabled === false) return 0;
+    if (amount < Number(settings.min_redeem_amount)) return 0;
+    if (opts.checkAmount != null) {
+      const rate = Number(settings.exchange_rate) || 1;
+      const maxMoney = round2(Number(opts.checkAmount) * Number(settings.max_pay_percent) / 100);
+      const maxBonus = round2(maxMoney / rate);
+      if (amount > maxBonus) amount = maxBonus;
+    }
+    if (amount <= 0) return 0;
+    await _ensureBalanceRow(client, clientId);
+    const bal = (await client.query('SELECT balance FROM bonus_balances WHERE client_id=$1', [clientId])).rows[0];
+    const b = Number(bal?.balance || 0);
+    if (b < amount) amount = round2(b);
+    return amount > 0 ? amount : 0;
+  }).catch(() => 0);
+}
+
 // opts: { clientId, amount (бонусів), checkAmount?, branchId?, sourceType?, sourceId?, description? }
 async function redeem(opts = {}) {
   const clientId = Number(opts.clientId);
@@ -357,6 +383,6 @@ async function _pickRule(client, ruleId, triggerEvent, category) {
 
 module.exports = {
   getSettings, saveSettings, getBalance, getHistory,
-  accrue, redeem, manualAdjust, expireBonuses,
+  accrue, redeem, previewRedeem, manualAdjust, expireBonuses,
   listRules, createRule, updateRule, deleteRule, analytics,
 };
