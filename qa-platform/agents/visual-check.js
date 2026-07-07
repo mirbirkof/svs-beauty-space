@@ -167,6 +167,54 @@ module.exports = {
         await context.close();
         if (regression) break;
       }
+
+      // ── Авторизованная проверка ВНУТРЕННИХ страниц кабинета ──
+      // Раньше тестер видел только логин и был слеп к кабинету (там жил баг с роботом-помічником).
+      // Логинимся реальным владельцем (env QA_UI_TOKEN + QA_UI_SLUG) и проходим страницы кабинета.
+      const uiTok = process.env.QA_UI_TOKEN, uiSlug = process.env.QA_UI_SLUG;
+      if (uiTok && uiSlug && !regression) {
+        const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'uk-UA' });
+        await actx.addInitScript(([t, s]) => { try { localStorage.setItem('svs_admin_token', t); localStorage.setItem('svs_tenant_slug', s); } catch (e) {} }, [uiTok, uiSlug]);
+        const ap = await actx.newPage();
+        try {
+          await ap.goto(base.replace(/\/$/, '') + '/admin/index.html', { timeout: 30000, waitUntil: 'networkidle' });
+          await ap.waitForTimeout(4000);
+          const inApp = await ap.evaluate(() => { const a = document.getElementById('app'); return a && getComputedStyle(a).display !== 'none'; });
+          if (!inApp) {
+            coverage.push(['ux', 'auth-internal:login-failed', false]);
+            bugs.push({ severity: 'low', module: 'ux', role: 'ux', title: 'Внутренние страницы не проверены: вход не удался',
+              needsManual: true, manualReason: 'QA_UI_TOKEN протух — обновить токен владельца' });
+          } else {
+            const pages = await ap.evaluate(() => [...document.querySelectorAll("[data-page],[onclick*='go('],.sidebar-item,.nav-item")]
+              .map(e => e.getAttribute('data-page') || (e.getAttribute('onclick') || '').match(/go\(['"]?(\w+)/)?.[1])
+              .filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).slice(0, 30));
+            for (const pg of pages) {
+              try {
+                await ap.evaluate((id) => { try { window.go && window.go(id); } catch (e) {} try { location.hash = id; } catch (e) {} }, pg);
+                await ap.waitForTimeout(1300);
+                const iss = await ap.evaluate((vw) => {
+                  const out = { overflow: 0, empty: 0, invis: 0, offscreen: 0, where: [] };
+                  const vis = (e) => { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden' || +s.opacity < 0.05) return false; const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4; };
+                  if (document.documentElement.scrollWidth > vw + 4) out.overflow = document.documentElement.scrollWidth - vw;
+                  document.querySelectorAll('button,a.btn,.btn').forEach((x) => { if (!vis(x)) return; const t = (x.innerText || '').trim(); const ic = x.querySelector('img,svg,[class*=icon]') || /[\u{1F000}-\u{1FAFF}☀-➿]/u.test(x.textContent || ''); if (!t && !ic) { out.empty++; if (out.where.length < 6) out.where.push('пустая кнопка ' + (x.id ? '#' + x.id : '.' + String(x.className).slice(0, 20))); } });
+                  document.querySelectorAll('button,a,input,.card,h1,h2,h3,table').forEach((x) => { if (!vis(x)) return; const r = x.getBoundingClientRect(); if (r.width < vw && (r.right > vw + 8 || r.left < -8)) { out.offscreen++; if (out.where.length < 10) out.where.push('обрезан краем ' + (x.id ? '#' + x.id : x.tagName)); } });
+                  document.querySelectorAll('p,span,td,label,h1,h2,h3,button,small').forEach((x) => { const t = Array.from(x.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim(); if (!t || !vis(x)) return; const s = getComputedStyle(x); if (s.color === s.backgroundColor && !/,\s*0\)$/.test(s.backgroundColor)) { out.invis++; if (out.where.length < 12) out.where.push('невидимый текст ' + (x.id ? '#' + x.id : x.tagName)); } });
+                  return out;
+                }, 1440);
+                scenarios.push(`visual:кабинет/${pg}`);
+                const bad = iss.overflow > 20 || iss.empty > 0 || iss.invis > 0 || iss.offscreen > 0;
+                coverage.push(['ux', `кабинет/${pg}`, !bad]);
+                if (bad) bugs.push({ severity: 'medium', module: 'ux', role: 'ux',
+                  title: `Визуальная проблема в кабинете — ${pg}`, scenario: `внутренняя страница кабинета «${pg}»`,
+                  expected: 'вёрстка ровная', actual: `overflow=${iss.overflow} пустых=${iss.empty} невидимых=${iss.invis} обрезано=${iss.offscreen}. ${iss.where.slice(0, 5).join('; ')}`, stillBroken: true });
+              } catch (e) { coverage.push(['ux', `кабинет/${pg}:load`, false]); }
+            }
+          }
+        } catch (e) { coverage.push(['ux', 'auth-internal:error', false]); }
+        finally { await ap.close().catch(() => {}); await actx.close().catch(() => {}); }
+      } else {
+        coverage.push(['ux', 'auth-internal:skipped-no-creds', true]);
+      }
     } catch (e) {
       bugs.push({ severity: 'medium', module: 'ux', role: 'ux', title: 'Визуальная проверка упала (браузер)',
         scenario: 'playwright visual', expected: 'работает', actual: String(e.message).slice(0, 150) });
