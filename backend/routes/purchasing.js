@@ -258,7 +258,6 @@ router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res)
             [r.poi.variant_id, r.poi.product_id])).rows;
           if (vchk.length) {
             targetVariant = r.poi.variant_id;
-            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`, [good, targetVariant, cost]);
           } else {
             console.warn(`[purchasing] variant_id ${r.poi.variant_id} не принадлежит товару ${r.poi.product_id} — приход ${good} не распределён`);
           }
@@ -268,16 +267,26 @@ router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res)
             [r.poi.product_id])).rows;
           if (vrows.length === 1) {
             targetVariant = vrows[0].id;
-            await client.query(`UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`, [good, targetVariant, cost]);
           } else if (vrows.length > 1) {
             unassigned.push(r.poi.product_name);
             console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов без variant_id в позиции — приход ${good} не распределён (выберите вариант в форме закупки)`);
           }
         }
-        // Рух складу прив'язуємо до variant_id (а не product_id) — для трасування й COGS.
-        await client.query(
-          `INSERT INTO stock_movements(variant_id, product_id, delta, reason, notes) VALUES ($1,$2,$3,'purchase',$4)`,
-          [targetVariant, r.poi.product_id, good, `PO ${po.rows[0].po_number}`]);
+        // товар «за грам/мл» (unit_ml > 1): кількість у замовленні — ПЛЯШКИ/УПАКОВКИ,
+        // а склад ведеться в мл/г → приход = good × unit_ml (як у stock-import). Раніше
+        // Purchasing клав +good замість +good×unit_ml → грамові товари врали при приході.
+        if (targetVariant) {
+          const um = Number((await client.query(
+            `SELECT unit_ml::float AS unit_ml FROM product_variants WHERE id=$1`, [targetVariant])).rows[0]?.unit_ml) || 0;
+          const delta = um > 1 ? good * um : good;
+          await client.query(
+            `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`,
+            [delta, targetVariant, cost]);
+          // Рух складу прив'язуємо до variant_id (а не product_id) — для трасування й COGS.
+          await client.query(
+            `INSERT INTO stock_movements(variant_id, product_id, delta, reason, notes) VALUES ($1,$2,$3,'purchase',$4)`,
+            [targetVariant, r.poi.product_id, delta, `PO ${po.rows[0].po_number}`]);
+        }
       }
     }
 
