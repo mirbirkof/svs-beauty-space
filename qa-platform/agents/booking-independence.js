@@ -13,6 +13,9 @@ module.exports = {
     // 1) Записи-сироты: подтверждена в online_bookings, но НЕ появилась в журнале мастера.
     //    Смотрим только свежие (после фикса 02.07) — старые созданы до прямой вставки.
     scenarios.push('booking:confirmed-has-appointment');
+    // Матчимо надійно: спершу за прямим звʼязком bp_appointment_id (переживає перенос часу),
+    // потім за client+час. Скасований візит не рахуємо живим — але тоді і онлайн-запис має бути
+    // 'cancelled' (це робить фікс у schedule.js при відміні). Тож 'confirmed' без живого візиту = діра.
     const orphan = await q(`
       SELECT COUNT(*)::int n FROM online_bookings ob
        WHERE ob.status = 'confirmed'
@@ -20,9 +23,9 @@ module.exports = {
          AND ob.date_from > NOW() - INTERVAL '30 days'
          AND NOT EXISTS (
            SELECT 1 FROM appointments a
-            WHERE a.client_id = ob.client_id
-              AND a.starts_at = ob.date_from
-              AND a.status NOT IN ('cancelled'))`).catch(() => [{ n: 0 }]);
+            WHERE a.status NOT IN ('cancelled')
+              AND ( (ob.bp_appointment_id ~ '^[0-9]+$' AND a.id = ob.bp_appointment_id::int)
+                 OR (a.client_id = ob.client_id AND a.starts_at = ob.date_from) ))`).catch(() => [{ n: 0 }]);
     if (orphan[0].n > 0) bugs.push({ severity: 'high', module: 'booking', role: 'client',
       title: 'Онлайн-запись подтверждена, но не попала в журнал мастера',
       scenario: 'online_bookings.confirmed без пары в appointments',

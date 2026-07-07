@@ -1784,6 +1784,13 @@ router.delete('/appointments/:id', async (req, res) => {
       } else {
         await client.query(`DELETE FROM appointments WHERE id=$1`, [id]);
       }
+      // Синхронізуємо привʼязану онлайн-запис: якщо візит скасовано в журналі, онлайн-запис
+      // теж має стати 'cancelled' (інакше залишається 'confirmed' → криві звіти по онлайн-записах).
+      // Звʼязок: online_bookings.bp_appointment_id зберігає id створеного appointment.
+      await client.query(
+        `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
+           WHERE bp_appointment_id = $1::text AND status <> 'cancelled'`, [id]
+      );
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
