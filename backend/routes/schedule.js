@@ -1649,18 +1649,26 @@ router.post('/appointments/:id/pay', async (req, res) => {
         if (!inserted) raceLost = true;
       }
       if (!raceLost) {
-        // списання сертифіката (атомарно з касою)
+        // списання сертифіката (атомарно з касою).
+        // Умовний UPDATE (status + remaining_amount >= сума) закриває double-spend:
+        // раніше WHERE лише по id — той самий сертифікат, застосований до ДВОХ візитів
+        // паралельно, списувався двічі й ішов у мінус. Тепер програвша транзакція
+        // отримує rowCount=0 → throw CERT_RACE → ROLLBACK усієї оплати (каса теж).
         if (certRow && certMoney > 0) {
-          await client.query(
+          const cu = await client.query(
             `UPDATE gift_certificates
                 SET remaining_amount = remaining_amount - $2,
                     status = CASE WHEN remaining_amount - $2 <= 0.001 THEN 'fully_used' ELSE 'partially_used' END,
                     updated_at = NOW()
-              WHERE id = $1`, [certRow.id, certMoney]);
+              WHERE id = $1
+                AND status IN ('active','partially_used','issued','sold')
+                AND remaining_amount >= $2
+              RETURNING remaining_amount`, [certRow.id, certMoney]);
+          if (!cu.rows[0]) { const err = new Error('cert-race'); err.code = 'CERT_RACE'; throw err; }
           await client.query(
             `INSERT INTO gift_certificate_transactions (gc_id, type, amount, balance_after, appointment_id, notes)
              VALUES ($1,'usage',$2,$3,$4,$5)`,
-            [certRow.id, certMoney, round2(Number(certRow.remaining_amount) - certMoney), id, `Оплата візиту #${id}`]);
+            [certRow.id, certMoney, round2(Number(cu.rows[0].remaining_amount)), id, `Оплата візиту #${id}`]);
         }
         // real_amount = фактична вартість ПОСЛУГИ після знижок — БАЗА ДЛЯ ЗП майстра.
         // Знижка розподіляється пропорційно між послугою та матеріалами (чек = послуга + матеріали),
@@ -1714,7 +1722,11 @@ router.post('/appointments/:id/pay', async (req, res) => {
 
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount }, bonus_accrued: accrued });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) {
+    if (e && e.code === 'CERT_RACE')
+      return res.status(409).json({ error: 'cert-race', message: 'Сертифікат уже використано або на ньому недостатньо коштів. Оновіть сторінку й перевірте баланс.' });
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  }
 });
 
 // ── DELETE /api/schedule/appointments/:id — видалити запис ──
