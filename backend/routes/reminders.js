@@ -152,6 +152,8 @@ async function cronTick() {
     }
   } catch (e) {
     console.error('[reminders] cron error:', e.message);
+    // ескалація в Sentry — інакше падіння крону нагадувань тихо зникає, клієнти не отримують нагадувань
+    try { require('../lib/sentry').capture(e, { kind: 'cron', job: 'reminders' }); } catch (_) {}
   }
 }
 
