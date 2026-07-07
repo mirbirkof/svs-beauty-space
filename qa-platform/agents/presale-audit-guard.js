@@ -118,6 +118,16 @@ const RULES = [
   { module: 'finance', role: 'accountant', severity: 'high', optional: true,
     title: 'Приход в кассу с отрицательной суммой (не сторно)',
     sql: `SELECT COUNT(*)::int n FROM cash_operations WHERE type='in' AND amount < 0` },
+
+  // ── Корректность создания клиентов (проверка Босса 07.07) ──
+  { module: 'clients', role: 'admin', severity: 'high', optional: true,
+    title: 'Клиент без tenant_id (создание не проставило салон)',
+    sql: `SELECT COUNT(*)::int n FROM clients WHERE tenant_id IS NULL` },
+  { module: 'clients', role: 'admin', severity: 'high', optional: true,
+    title: 'Дубль активных клиентов по телефону в одном салоне (дедуп сломан)',
+    sql: `SELECT COUNT(*)::int n FROM (SELECT tenant_id, phone FROM clients
+            WHERE phone IS NOT NULL AND phone <> '' AND deleted_at IS NULL
+            GROUP BY tenant_id, phone HAVING COUNT(*) > 1) d` },
 ];
 
 module.exports = {
