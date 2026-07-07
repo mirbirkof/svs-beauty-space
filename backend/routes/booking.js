@@ -432,17 +432,28 @@ async function processUpdate(upd, tg, salon) {
               [normalizePhoneDb(phoneDigits), row.client_name || tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
             );
           }
-          const ob = await getPool().query(
-            `INSERT INTO online_bookings
-              (client_id, client_phone, client_name, service_id, master_id,
-               date_from, date_to, channel, bp_appointment_id, status,
-               source_token, telegram_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',$10,$11)
-             RETURNING id`,
-            [cl.rows[0].id, phone, row.client_name || msg.from.first_name || null,
-             row.service_id, row.employee_id, row.date_from, row.date_to,
-             row.channel || 'bot', bp_id, row.token, msg.from.id]
-          );
+          let ob;
+          try {
+            ob = await getPool().query(
+              `INSERT INTO online_bookings
+                (client_id, client_phone, client_name, service_id, master_id,
+                 date_from, date_to, channel, bp_appointment_id, status,
+                 source_token, telegram_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',$10,$11)
+               RETURNING id`,
+              [cl.rows[0].id, phone, row.client_name || msg.from.first_name || null,
+               row.service_id, row.employee_id, row.date_from, row.date_to,
+               row.channel || 'bot', bp_id, row.token, msg.from.id]
+            );
+          } catch (exErr) {
+            // 23P01 = EXCLUDE ob_no_overlap_confirmed: слот заняли между проверкой и вставкой
+            // (гонка двух паралельних підтверджень). БД-гарантія проти подвійного бронювання.
+            if (exErr.code === '23P01') {
+              await db.update(row.token, { status: 'error', error: 'slot-taken' }).catch(() => {});
+              return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 На жаль, цей час щойно зайняли. Поверніться на сайт і оберіть інший слот.' });
+            }
+            throw exErr;
+          }
           bookingId = ob.rows[0].id;
 
           // САМОСТОЯТЕЛЬНОСТЬ ОТ BEAUTYPRO (02.07): пишем визит в НАШ журнал appointments,
