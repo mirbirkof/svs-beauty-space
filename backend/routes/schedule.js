@@ -1357,13 +1357,25 @@ router.post('/appointments', async (req, res) => {
       cid = nc.rows[0].id;
     }
 
+    // Атомарна вставка: INSERT лише якщо слот НЕ перетинається (гейт у тому ж запиті).
+    // findOverlap вище дає ранню відповідь для UX, але між ним і INSERT є вікно гонки
+    // (подвійний клік оператора / два оператори). WHERE NOT EXISTS закриває його в одному
+    // statement. EXCLUDE-констрейнт на appointments не ставимо — 233 історичних перетини
+    // з BP-імпорту (майбутніх 0), він би не встав; тут — захист на рівні запиту.
     const r = await pool.query(
       `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
-       VALUES ($1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8)
+       SELECT $1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8
+        WHERE NOT EXISTS (
+          SELECT 1 FROM appointments
+           WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
+             AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz))
        RETURNING id`,
       [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
        sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]
     );
+    if (!r.rows[0]) {
+      return res.status(409).json({ error: 'slot-busy', message: 'У майстра вже є запис на цей час (щойно зайняли)' });
+    }
     await emitAppt('appointment.created', r.rows[0].id, Number(master_id)); // в журнал событий + вебхуки
     // Подтверждение клиенту через Notification Hub (не блокирует ответ).
     if (cid) {
