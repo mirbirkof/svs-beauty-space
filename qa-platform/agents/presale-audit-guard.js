@@ -88,6 +88,36 @@ const RULES = [
     title: 'Визит оплачен (pay_settled_at), но нет базы для ЗП (real_amount NULL)',
     sql: `SELECT COUNT(*)::int n FROM appointments WHERE pay_settled_at IS NOT NULL AND real_amount IS NULL
             AND pay_settled_at > NOW()-INTERVAL '30 days'` },
+
+  // ── Партия 2: dangling refs, дубли, консистентность (07.07.2026) ──
+  { module: 'warehouse', role: 'warehouse', severity: 'medium', optional: true,
+    title: 'Материалы визита на несуществующий визит (orphan appointment_materials)',
+    sql: `SELECT COUNT(*)::int n FROM appointment_materials am
+            WHERE NOT EXISTS (SELECT 1 FROM appointments a WHERE a.id=am.appointment_id)` },
+  { module: 'finance', role: 'accountant', severity: 'high', optional: true,
+    title: 'Двойная оплата визита: >1 прихода sale_service на одну запись',
+    sql: `SELECT COUNT(*)::int n FROM (SELECT ref_id FROM cash_operations
+            WHERE type='in' AND ref_type='appointment' AND category='sale_service'
+            GROUP BY ref_id, method HAVING COUNT(*) > 1) d` },
+  { module: 'loyalty', role: 'accountant', severity: 'medium', optional: true,
+    title: 'Списание абонемента больше купленного (usage > visits_included)',
+    sql: `SELECT COUNT(*)::int n FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
+            WHERE p.visits_included IS NOT NULL AND p.type IN ('visits','combo')
+              AND (p.visits_included - COALESCE(s.visits_remaining,0)) > p.visits_included` },
+  { module: 'booking', role: 'admin', severity: 'medium', optional: true,
+    title: 'Онлайн-запись confirmed без записи в журнале appointments (потерянный визит)',
+    sql: `SELECT COUNT(*)::int n FROM online_bookings b
+            WHERE b.status='confirmed' AND b.bp_appointment_id IS NULL
+              AND b.date_from > NOW()-INTERVAL '30 days' AND b.date_from < NOW()+INTERVAL '30 days'
+              AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.starts_at=b.date_from
+                              AND a.master_id::text=b.master_id AND a.status <> 'cancelled')` },
+  { module: 'clients', role: 'admin', severity: 'medium', optional: true,
+    title: 'Бонусный баланс на несуществующего клиента (orphan)',
+    sql: `SELECT COUNT(*)::int n FROM bonus_balances bb
+            WHERE NOT EXISTS (SELECT 1 FROM clients c WHERE c.id=bb.client_id)` },
+  { module: 'finance', role: 'accountant', severity: 'high', optional: true,
+    title: 'Приход в кассу с отрицательной суммой (не сторно)',
+    sql: `SELECT COUNT(*)::int n FROM cash_operations WHERE type='in' AND amount < 0` },
 ];
 
 module.exports = {
