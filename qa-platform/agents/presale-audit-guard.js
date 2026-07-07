@@ -139,6 +139,21 @@ const RULES = [
                  WHERE sm.reason IN ('service:'||a.id::text,'service-reverse:'||a.id::text)) AS deducted
             FROM appointments a WHERE a.stock_written_off=true
           ) d WHERE ABS(mat - deducted) > 0.01` },
+
+  // ── Связность цен материалов (заявка владельца #145, «везде проверь» 07.07) ──
+  { module: 'pricing', role: 'accountant', severity: 'high', optional: true,
+    title: 'Товар продаётся ниже закупки (Ціна упаковки < Опт) — убыток',
+    sql: `SELECT COUNT(*)::int n FROM product_variants
+           WHERE price IS NOT NULL AND wholesale IS NOT NULL AND price > 0 AND wholesale > 0 AND price < wholesale` },
+  { module: 'pricing', role: 'accountant', severity: 'high', optional: true,
+    title: 'Материал продаётся за грамм ниже себестоимости за грамм — убыток',
+    sql: `SELECT COUNT(*)::int n FROM products
+           WHERE price_per_gram IS NOT NULL AND cost_per_gram IS NOT NULL AND price_per_gram < cost_per_gram` },
+  { module: 'pricing', role: 'accountant', severity: 'medium', optional: true,
+    title: 'Настроенная краска: цена упаковки рассинхронена с ценой за грамм × вес',
+    sql: `SELECT COUNT(*)::int n FROM products p JOIN product_variants pv ON pv.product_id=p.id
+           WHERE p.cost_per_gram IN (2.6,4.05,3.76,9.67) AND pv.unit_ml > 0 AND pv.price IS NOT NULL
+             AND ABS(pv.price - p.price_per_gram*pv.unit_ml) > 0.5` },
 ];
 
 module.exports = {
