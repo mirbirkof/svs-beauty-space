@@ -7,7 +7,9 @@
 (function () {
   'use strict';
 
-  var API = 'http://localhost:3001/api';  // Change to production URL
+  // Прод-API (override через window.SVS_API_BASE для white-label доменів).
+  // Раніше був хардкод http://localhost:3001 → вхід/авторизація на проді не працювали взагалі.
+  var API = (window.SVS_API_BASE || 'https://svs-shop-api.onrender.com') + '/api';
 
   var currentUser = JSON.parse(localStorage.getItem('svs_user') || 'null');
   var authToken   = localStorage.getItem('svs_token') || null;
