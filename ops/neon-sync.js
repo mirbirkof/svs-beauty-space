@@ -170,6 +170,8 @@ async function makeFKsDeferrable(backup) {
 // on PRIMARY. Primary is the source of truth; if prod never created/validated a
 // constraint, its data can violate the migration-created one on backup and block
 // the reload. FKs are not dropped — they are deferred instead.
+// Also reconciles PRIMARY KEY definitions — if migration changed PK columns (e.g.
+// categories from (id) to (tenant_id,id)), backup's old PK must be rebuilt.
 async function reconcileConstraints(primary, backup) {
   const grab = async (c) => (await c.query(
     `SELECT conrelid::regclass::text tbl, conname, contype
@@ -183,6 +185,31 @@ async function reconcileConstraints(primary, backup) {
       await backup.query(`ALTER TABLE ${d.tbl} DROP CONSTRAINT ${ident(d.conname)}`);
       log(`dropped backup-only constraint ${d.tbl}.${d.conname} (absent on primary)`);
     } catch (e) { log(`drop ${d.tbl}.${d.conname} skip: ${e.message}`); }
+  }
+
+  // Reconcile PRIMARY KEY column sets: if primary changed PK (e.g. added tenant_id),
+  // rebuild backup PK to match. FKs referencing old PK are dropped first (cascade).
+  const grabPK = async (c) => (await c.query(`
+    SELECT conrelid::regclass::text AS tbl, conname,
+           array_agg(a.attname ORDER BY array_position(conkey, a.attnum)) AS cols
+      FROM pg_constraint c2
+      JOIN pg_attribute a ON a.attrelid = c2.conrelid AND a.attnum = ANY(c2.conkey)
+     WHERE c2.connamespace='public'::regnamespace AND c2.contype='p'
+     GROUP BY conrelid, conname`)).rows;
+  const [ppk, bpk] = await Promise.all([grabPK(primary), grabPK(backup)]);
+  const ppkMap = new Map(ppk.map(r => [r.tbl, { name: r.conname, cols: r.cols }]));
+  for (const br of bpk) {
+    const pr = ppkMap.get(br.tbl);
+    if (!pr) continue; // table only on backup — skip
+    const same = pr.cols.join(',') === br.cols.join(',');
+    if (same) continue;
+    log(`PK mismatch on ${br.tbl}: backup=(${br.cols}) primary=(${pr.cols}) — rebuilding`);
+    try {
+      // DROP CASCADE removes dependent FKs on backup (they'll be re-synced next time)
+      await backup.query(`ALTER TABLE ${br.tbl} DROP CONSTRAINT ${ident(br.conname)} CASCADE`);
+      await backup.query(`ALTER TABLE ${br.tbl} ADD CONSTRAINT ${ident(pr.name)} PRIMARY KEY (${pr.cols.map(ident).join(', ')})`);
+      log(`rebuilt PK ${br.tbl}.${pr.name} (${pr.cols})`);
+    } catch (e) { log(`rebuild PK ${br.tbl} skip: ${e.message}`); }
   }
 }
 
