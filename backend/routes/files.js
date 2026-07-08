@@ -18,7 +18,9 @@ const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { getTenantId, DEFAULT_TENANT_ID } = require('../lib/tenant');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+// UPLOADS_DIR — путь к постоянному диску (Render Disk). Файлы НЕ в Postgres,
+// поэтому без постоянного диска они эфемерны на Render (стираются при редеплое).
+const UPLOAD_ROOT = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 const MAX_SIZE = 15 * 1024 * 1024; // 15MB
 
 const ALLOWED_MIME = new Set([

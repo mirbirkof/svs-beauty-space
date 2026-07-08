@@ -22,7 +22,9 @@ const canRead = requirePerm('marketing.read');
 const canWrite = requirePerm('marketing.write');
 
 // Куди зберігаємо готові ролики (той самий диск, що й files.js).
-const VIDEO_DIR = path.join(__dirname, '..', 'uploads', 'video');
+// UPLOADS_DIR — постоянный диск (Render Disk); без него локальная папка (эфемерна на Render).
+const UPLOAD_ROOT = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+const VIDEO_DIR = path.join(UPLOAD_ROOT, 'video');
 
 // Загрузка своих клипов: в память (montage сам пишет во временную папку и чистит).
 // Лимиты — защита и от DoS, и от таймаутов рендера на проде.
@@ -212,8 +214,8 @@ router.get('/file/:id', canRead, async (req, res) => {
     if (!pool) return res.status(404).json({ error: 'not-found' });
     const r = await pool.query(`SELECT storage_path FROM ai_video_library WHERE id=$1`, [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
-    const abs = path.join(__dirname, '..', 'uploads', r.rows[0].storage_path);
-    if (!abs.startsWith(path.join(__dirname, '..', 'uploads')) || !fs.existsSync(abs)) {
+    const abs = path.join(UPLOAD_ROOT, r.rows[0].storage_path);
+    if (!abs.startsWith(UPLOAD_ROOT) || !fs.existsSync(abs)) {
       return res.status(410).json({ error: 'file-gone' }); // запис є, файл стерто (редеплой)
     }
     const stat = fs.statSync(abs);
@@ -241,8 +243,8 @@ router.delete('/library/:id', canWrite, async (req, res) => {
     if (!pool) return res.status(404).json({ error: 'not-found' });
     const r = await pool.query(`DELETE FROM ai_video_library WHERE id=$1 RETURNING storage_path`, [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
-    const abs = path.join(__dirname, '..', 'uploads', r.rows[0].storage_path);
-    if (abs.startsWith(path.join(__dirname, '..', 'uploads'))) await fsp.rm(abs, { force: true }).catch(() => {});
+    const abs = path.join(UPLOAD_ROOT, r.rows[0].storage_path);
+    if (abs.startsWith(UPLOAD_ROOT)) await fsp.rm(abs, { force: true }).catch(() => {});
     res.json({ ok: true });
   } catch (e) { fail(res, e, 'library-delete'); }
 });

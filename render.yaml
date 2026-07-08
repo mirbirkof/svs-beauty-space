@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════════
+#   SVS Beauty World — Render Blueprint (Infrastructure as Code)
+#   Разворачивает сервис одинаково на любом Render-аккаунте.
+#   Render Dashboard → Blueprints → New → указать этот репозиторий.
+#
+#   ⚠ ПОЧЕМУ ЭТО ВАЖНО ДЛЯ ПЕРЕЕЗДА:
+#   1. disk (/data) — постоянное хранилище файлов. БЕЗ него фото клиентов
+#      и видео стираются при каждом редеплое (диск Render эфемерный).
+#   2. sync:false секреты — вводятся руками в Dashboard и НЕ хранятся в
+#      блупринте. При переезде скопировать их 1:1 со старого сервера,
+#      иначе зашифрованные данные не расшифровать (см. MIGRATION.md).
+# ═══════════════════════════════════════════════════════════════════
+services:
+  - type: web
+    name: svs-shop-api
+    runtime: node
+    rootDir: backend
+    plan: starter            # starter+ обязателен для persistent disk
+    region: frankfurt
+    buildCommand: npm ci
+    startCommand: node shop-api.js
+    healthCheckPath: /health
+    autoDeploy: true
+
+    # Постоянный диск для файлов (фото клиентов, документы, AI-видео).
+    disk:
+      name: uploads
+      mountPath: /data
+      sizeGB: 5
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: UPLOADS_DIR
+        value: /data/uploads         # файлы на постоянном диске
+      - key: BP_SYNC_DISABLED
+        value: "1"
+
+      # ── Данные и подключение к БД ──
+      - key: DATABASE_URL
+        sync: false                  # строка Neon/Postgres
+      - key: DATABASE_URL_APP
+        sync: false                  # роль app_tenant (RLS)
+
+      # ── [SECRET-CARRY] ключи шифрования — переносить 1:1 со старого сервера ──
+      - key: PII_KEY
+        sync: false                  # AES телефонов клиентов
+      - key: INTEGRATION_ENC_KEY
+        sync: false                  # токены интеграций
+      - key: LICENSE_KEY_SECRET
+        sync: false                  # подпись лицензий
+      - key: JWT_SECRET
+        sync: false                  # токены входа сотрудников
+
+      # ── Доступ / боты (задать в Dashboard) ──
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: TELEGRAM_NOTIFY_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
