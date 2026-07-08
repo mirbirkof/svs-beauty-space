@@ -197,13 +197,16 @@ async function reconcileConstraints(primary, backup) {
      WHERE c2.connamespace='public'::regnamespace AND c2.contype='p'
      GROUP BY conrelid, conname`)).rows;
   const [ppk, bpk] = await Promise.all([grabPK(primary), grabPK(backup)]);
-  const ppkMap = new Map(ppk.map(r => [r.tbl, { name: r.conname, cols: r.cols }]));
+  // pg driver may return array_agg as a JS array OR as a pg literal string {a,b,c}
+  const pgArr = v => Array.isArray(v) ? v : String(v).replace(/^\{|\}$/g, '').split(',').filter(Boolean);
+  const ppkMap = new Map(ppk.map(r => [r.tbl, { name: r.conname, cols: pgArr(r.cols) }]));
   for (const br of bpk) {
     const pr = ppkMap.get(br.tbl);
     if (!pr) continue; // table only on backup — skip
-    const same = pr.cols.join(',') === br.cols.join(',');
+    const brCols = pgArr(br.cols);
+    const same = pr.cols.join(',') === brCols.join(',');
     if (same) continue;
-    log(`PK mismatch on ${br.tbl}: backup=(${br.cols}) primary=(${pr.cols}) — rebuilding`);
+    log(`PK mismatch on ${br.tbl}: backup=(${brCols}) primary=(${pr.cols}) — rebuilding`);
     try {
       // DROP CASCADE removes dependent FKs on backup (they'll be re-synced next time)
       await backup.query(`ALTER TABLE ${br.tbl} DROP CONSTRAINT ${ident(br.conname)} CASCADE`);
