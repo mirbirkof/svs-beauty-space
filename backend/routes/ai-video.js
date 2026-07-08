@@ -15,6 +15,7 @@ const router = express.Router();
 const { requirePerm } = require('../lib/rbac');
 const studio = require('../lib/ai-video-studio');
 const montager = require('../lib/ai-video-montage');
+const fileStore = require('../lib/file-store'); // общее облако (мульти-сервер)
 let _pool = null;
 function db() { if (!_pool) { try { _pool = require('../db-pg').getPool(); } catch { _pool = null; } } return _pool; }
 
@@ -172,6 +173,11 @@ router.post('/montage', canRead, (req, res) => {
              (req.staff && req.staff.name) || (req.user && req.user.name) || null]);
           videoId = ins.rows[0].id;
         }
+        // Дублируем ролик в общее облако — чтобы его видели все серверы.
+        if (fileStore.shared()) {
+          try { await fileStore.put(path.join('video', fname), await fsp.readFile(abs), 'video/mp4'); }
+          catch (e) { console.error('[ai-video] cloud upload failed (локальная копия есть):', e.message); }
+        }
       } catch (saveErr) { console.error('[ai-video] save library:', saveErr.message); }
 
       res.setHeader('Content-Type', 'video/mp4');
@@ -215,8 +221,15 @@ router.get('/file/:id', canRead, async (req, res) => {
     const r = await pool.query(`SELECT storage_path FROM ai_video_library WHERE id=$1`, [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     const abs = path.join(UPLOAD_ROOT, r.rows[0].storage_path);
-    if (!abs.startsWith(UPLOAD_ROOT) || !fs.existsSync(abs)) {
-      return res.status(410).json({ error: 'file-gone' }); // запис є, файл стерто (редеплой)
+    if (!abs.startsWith(UPLOAD_ROOT)) return res.status(410).json({ error: 'file-gone' });
+    if (!fs.existsSync(abs)) {
+      // Файла нет локально — тянем из общего облака и кладём в локальный кэш.
+      if (!fileStore.shared()) return res.status(410).json({ error: 'file-gone' });
+      try {
+        const buf = await fileStore.getBuffer(r.rows[0].storage_path);
+        await fsp.mkdir(path.dirname(abs), { recursive: true });
+        await fsp.writeFile(abs, buf);
+      } catch { return res.status(410).json({ error: 'file-gone' }); }
     }
     const stat = fs.statSync(abs);
     const range = req.headers.range;

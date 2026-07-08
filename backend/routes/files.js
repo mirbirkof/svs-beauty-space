@@ -17,6 +17,7 @@ const path = require('path');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { getTenantId, DEFAULT_TENANT_ID } = require('../lib/tenant');
+const fileStore = require('../lib/file-store'); // общее облако (для мульти-сервера)
 
 // UPLOADS_DIR — путь к постоянному диску (Render Disk). Файлы НЕ в Postgres,
 // поэтому без постоянного диска они эфемерны на Render (стираются при редеплое).
@@ -86,6 +87,12 @@ router.post('/upload', requirePerm('file.write'), uploadSingle, async (req, res)
     const abs = path.join(UPLOAD_ROOT, rel);
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, buffer);
+    // Дублируем в общее облако — чтобы файл видели все серверы (основной+резервный).
+    // Best-effort: если облако выключено или недоступно — остаётся локальная копия.
+    if (fileStore.shared()) {
+      try { await fileStore.put(rel, buffer, mimetype); }
+      catch (e) { console.error('[files] cloud upload failed (локальная копия есть):', e.message); }
+    }
 
     const { entity_type, entity_id, is_public } = req.body || {};
     const r = await pool.query(
@@ -143,19 +150,36 @@ router.get('/:id', async (req, res) => {
       [req.params.id]);
     const f = r.rows[0];
     if (!f) return res.status(404).json({ error: 'not-found' });
+    const send = () => sendFile(res, f).catch((e) => {
+      if (!res.headersSent) res.status(500).json({ error: 'file-read-error' });
+      console.error('[files] sendFile:', e.message);
+    });
     if (!f.is_public) {
       // приватный — требуем file.read
-      return requirePerm('file.read')(req, res, () => sendFile(res, f));
+      return requirePerm('file.read')(req, res, send);
     }
-    sendFile(res, f);
+    send();
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-function sendFile(res, f) {
+async function sendFile(res, f) {
   const abs = path.join(UPLOAD_ROOT, f.storage_path);
-  if (!abs.startsWith(UPLOAD_ROOT) || !fs.existsSync(abs)) {
-    return res.status(410).json({ error: 'file-gone' });
+  const safe = abs.startsWith(UPLOAD_ROOT);
+  if (!safe) return res.status(410).json({ error: 'file-gone' });
+
+  const localExists = fs.existsSync(abs);
+  // Файла нет локально (залил другой сервер) — тянем из общего облака.
+  let cloudBuffer = null;
+  if (!localExists) {
+    if (!fileStore.shared()) return res.status(410).json({ error: 'file-gone' });
+    try {
+      cloudBuffer = await fileStore.getBuffer(f.storage_path);
+      // Кладём в локальный кэш, чтобы следующая отдача была с диска.
+      fsp.mkdir(path.dirname(abs), { recursive: true })
+        .then(() => fsp.writeFile(abs, cloudBuffer)).catch(() => {});
+    } catch { return res.status(410).json({ error: 'file-gone' }); }
   }
+
   // SVG может содержать <script> → stored XSS при inline-отдаче (legacy-файлы в базе).
   // Растровые картинки отдаём inline, всё остальное (вкл. svg) — только attachment.
   const isRasterImage = f.mime_type.startsWith('image/') && f.mime_type !== 'image/svg+xml';
@@ -166,6 +190,7 @@ function sendFile(res, f) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Cache-Control', f.is_public ? 'public, max-age=86400' : 'private, no-cache');
+  if (cloudBuffer) return res.end(cloudBuffer);
   fs.createReadStream(abs).pipe(res);
 }
 
