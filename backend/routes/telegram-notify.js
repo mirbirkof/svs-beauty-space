@@ -22,7 +22,12 @@ function getBotToken() {
     || null;
 }
 
+// Обгортка з retry: 429 (rate limit)/5xx/таймаут → повтор із backoff,
+// щоб не втрачати сповіщення клієнту/адміну про замовлення й оплату.
 function tgSend(chatId, text, opts = {}) {
+  return require('../lib/retry').withRetry(() => _tgSendOnce(chatId, text, opts), { label: 'telegram', tries: 3, baseDelay: 600 });
+}
+function _tgSendOnce(chatId, text, opts = {}) {
   return new Promise((resolve, reject) => {
     const token = getBotToken();
     if (!token) return reject(new Error('no-bot-token'));
@@ -44,7 +49,11 @@ function tgSend(chatId, text, opts = {}) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(buf);
-          if (!parsed.ok) return reject(new Error(parsed.description || 'tg-error'));
+          if (!parsed.ok) {
+            const err = new Error(parsed.description || 'tg-error');
+            err.statusCode = parsed.error_code || res.statusCode; // 429/5xx → retry спрацює
+            return reject(err);
+          }
           resolve(parsed.result);
         } catch (e) { reject(e); }
       });

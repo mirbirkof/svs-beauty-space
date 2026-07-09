@@ -11,7 +11,12 @@ const path = require('path');
 
 const API_HOST = 'api.monobank.ua';
 
+const { withRetry } = require('./retry');
+// Публічна обгортка: повторює запит при 429/5xx/таймауті (не втрачаємо платіж/статус).
 function monoRequest(method, apiPath, body) {
+  return withRetry(() => _monoRequestOnce(method, apiPath, body), { label: 'mono', tries: 3, baseDelay: 500 });
+}
+function _monoRequestOnce(method, apiPath, body) {
   return new Promise((resolve, reject) => {
     const token = process.env.MONO_TOKEN;
     if (!token) return reject(new Error('MONO_TOKEN not configured'));

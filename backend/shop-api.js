@@ -196,6 +196,24 @@ app.get('/api/shop/readiness', (req, res) => {
   });
 });
 
+// Жива проба БД (SAS): /health = liveness (процес живий), це — readiness БД.
+// Пінгує реальне зʼєднання SELECT 1 з коротким таймаутом. Моніторинг/фейловер
+// має дивитись СЮДИ, а не на /health — інакше "здоровий" сервіс з мертвою базою
+// (інцидент 08.07: /health віддавав ok при недоступному Neon).
+app.get('/api/shop/db-health', async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const t0 = Date.now();
+  try {
+    const pool = require('./db-pg').getPool();
+    const q = pool.query('SELECT 1 AS ok');
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('db-timeout')), 4000));
+    await Promise.race([q, timeout]);
+    res.json({ ok: true, db: 'up', latency_ms: Date.now() - t0 });
+  } catch (e) {
+    res.status(503).json({ ok: false, db: 'down', error: String(e.message || e).slice(0, 80), latency_ms: Date.now() - t0 });
+  }
+});
+
 // Instagram вебхук (COM-10) — ДО tenantMiddleware: тенант определяется по
 // ig_user_id из payload (Meta шлёт все салоны на один URL), не по запросу.
 try { app.use('/api/instagram', require('./routes/instagram-webhook')); } catch(e) { console.error('[instagram-webhook] mount failed:', e.message); }
