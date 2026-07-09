@@ -159,12 +159,42 @@ async function buildDailyReport(pool, tenantId, date = null) {
                 THEN (CASE WHEN ps.percent_base='gross' THEN fa.rev_full ELSE fa.rev_labor END)*COALESCE(ps.percent,0)/100
                 ELSE 0 END),0)::numeric comm
          FROM fa LEFT JOIN payroll_schemes ps ON ps.master_id=fa.master_id::text AND ps.is_active=TRUE`, [tenantId]);
+    // фікс/зміну (адміни та майстри зі ставкою) за майбутні 7 днів графіка
     const futFix = await one(pool,
       `SELECT COALESCE(SUM(COALESCE(ps.fixed_per_day,0)),0)::numeric v
          FROM master_schedule_days msd
          JOIN masters m ON m.id=msd.master_id AND m.tenant_id=$1
          JOIN payroll_schemes ps ON ps.master_id=m.id::text AND ps.is_active=TRUE
         WHERE msd.work_date > CURRENT_DATE AND msd.work_date <= CURRENT_DATE + 7 AND msd.start_time IS NOT NULL`, [tenantId]);
+    // ОКЛАДИ (fixed_per_month, напр. статичні співробітники) — частка 7 днів
+    const futFixMonth = await one(pool,
+      `SELECT COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::numeric v
+         FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
+        WHERE m.tenant_id=$1 AND ps.is_active=TRUE AND COALESCE(m.active,true)=true`, [tenantId]);
+    // ПОСТІЙНІ: план (recurring_expenses active) проти факту 30 днів тієї ж категорії —
+    // беремо БІЛЬШЕ (якщо реально платять 100к оренди при плані 50к — прогноз чесніший)
+    const recRows = await many(pool,
+      `SELECT category, SUM(amount)::numeric plan FROM recurring_expenses
+        WHERE tenant_id=$1 AND active=TRUE GROUP BY category`, [tenantId]);
+    const factOut = await many(pool,
+      `SELECT category, SUM(amount)::numeric f FROM cash_operations
+        WHERE tenant_id=$1 AND type='out' AND created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY category`, [tenantId]);
+    const factMap = new Map(factOut.map(r => [String(r.category || '').toLowerCase(), Number(r.f)]));
+    const recCats = new Set();
+    let recurringMonthly = 0;
+    for (const r of recRows) {
+      const cat = String(r.category || '').toLowerCase();
+      recCats.add(cat);
+      recurringMonthly += Math.max(Number(r.plan || 0), factMap.get(cat) || 0);
+    }
+    // ІНШІ операційні (факт 30 днів): без salary (ЗП прогнозуємо нарахуванням — інакше
+    // подвійний рахунок) і без категорій recurring (вже враховані вище)
+    let otherMonthly = 0;
+    for (const [cat, v] of factMap) {
+      if (cat === 'salary' || recCats.has(cat)) continue;
+      otherMonthly += v;
+    }
     // середній % собівартості матеріалів від виручки за 30 днів (факт)
     const matShare = await one(pool,
       `SELECT CASE WHEN COALESCE(SUM(amount) FILTER (WHERE type='in' AND category IN ('sale_service','sale_product')),0) > 0
@@ -177,11 +207,21 @@ async function buildDailyReport(pool, tenantId, date = null) {
                    / SUM(amount) FILTER (WHERE type='in' AND category IN ('sale_service','sale_product'))
               ELSE 0 END AS share
          FROM cash_operations WHERE tenant_id=$1 AND created_at >= NOW() - INTERVAL '30 days'`, [tenantId]);
+    const W = 7 / 30.44; // частка тижня від місяця
     const fRevenue = Number(fwd.v || 0);
-    const fSalary = Math.round(Number(futComm.comm || 0) + Number(futFix.v || 0));
+    const fCommission = Math.round(Number(futComm.comm || 0));
+    const fFixShifts = Math.round(Number(futFix.v || 0));
+    const fFixMonth = Math.round(Number(futFixMonth.v || 0) * W);
+    const fRecurring = Math.round(recurringMonthly * W);
+    const fOther = Math.round(otherMonthly * W);
     const fMaterials = Math.round(fRevenue * Number(matShare.share || 0));
-    forecast = { revenue: fRevenue, salary: fSalary, materials: fMaterials,
-                 total: fSalary + fMaterials, net: Math.round(fRevenue - fSalary - fMaterials) };
+    const fTotal = fCommission + fFixShifts + fFixMonth + fRecurring + fOther + fMaterials;
+    forecast = { revenue: fRevenue,
+                 commission: fCommission, fixShifts: fFixShifts, fixMonth: fFixMonth,
+                 recurring: fRecurring, other: fOther, materials: fMaterials,
+                 salary: fCommission + fFixShifts + fFixMonth, // сумісність
+                 total: fTotal, net: Math.round(fRevenue - fTotal),
+                 dailyFixed: Math.round((recurringMonthly + otherMonthly + Number(futFixMonth.v || 0)) / 30.44) };
   } catch (e) { console.error('[owner-report:forecast]', e.message); }
 
   return {
@@ -217,6 +257,10 @@ function formatReport(r, title = 'Щоденний звіт') {
     const otherSum = (r.fin.expenses.other || []).reduce((a, x) => a + x.sum, 0);
     if (otherSum > 0) L.push(`   ➖ Інші витрати: ${money(otherSum)}`);
     L.push(`   ✅ <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${r.fin.profit.margin_pct}%)`);
+    // Довідково: постійні витрати розмазані по днях (оренда/сервіси/оклади платяться
+    // раз на місяць — у «чистими за день» вони входять у день оплати, як у Фінцентрі)
+    if (r.forecast && r.forecast.dailyFixed > 0)
+      L.push(`   📎 Довідково: постійні ≈ ${money(r.forecast.dailyFixed)}/день (оренда, сервіси, оклади)`);
   } else {
     L.push(`💸 <b>Витрати:</b> ${money(r.expenses)}`);
   }
@@ -232,10 +276,17 @@ function formatReport(r, title = 'Щоденний звіт') {
   L.push(`🕓 <b>Вільно завтра:</b> ${r.freeTomorrowH} год`);
   L.push(`📅 <b>Записів на 7 днів:</b> ${r.forward.count} на ${money(r.forward.revenue)} (очікувана виручка)`);
   if (r.forecast) {
-    L.push(`🔮 <b>Прогноз на 7 днів:</b>`);
-    L.push(`   ➖ ЗП з майбутніх записів: ~${money(r.forecast.salary)}`);
-    L.push(`   ➖ Матеріали (за серед. %): ~${money(r.forecast.materials)}`);
-    L.push(`   ✅ Чистими очікується: ~${money(r.forecast.net)}`);
+    const f = r.forecast;
+    L.push(`🔮 <b>Прогноз на 7 днів (усі витрати):</b>`);
+    L.push(`   ➖ ЗП майстрам (% з записів): ~${money(f.commission)}`);
+    if (f.fixShifts > 0) L.push(`   ➖ Ставки за зміни (адмін/фікс): ~${money(f.fixShifts)}`);
+    if (f.fixMonth > 0) L.push(`   ➖ Оклади (частка тижня): ~${money(f.fixMonth)}`);
+    if (f.recurring > 0) L.push(`   ➖ Постійні — оренда, сервіси: ~${money(f.recurring)}`);
+    if (f.materials > 0) L.push(`   ➖ Матеріали (за серед. %): ~${money(f.materials)}`);
+    if (f.other > 0) L.push(`   ➖ Інші операційні (середнє): ~${money(f.other)}`);
+    L.push(`   Разом витрат: ~${money(f.total)}`);
+    L.push(`   ${f.net >= 0 ? '✅' : '🔴'} <b>Чистими очікується: ~${money(f.net)}</b>`);
+    L.push(`   <i>(виручка — за ВЖЕ створеними записами; зазвичай дозаписуються ще, тож факт буде кращим)</i>`);
   }
   if (r.winback > 0) L.push(`🔔 <b>Повернути клієнтів:</b> ${r.winback} (зникли 2.5-6 міс, були постійними)`);
   if (r.clients.noshow > 0) L.push(`⚠️ <b>Не прийшли:</b> ${r.clients.noshow}`);
