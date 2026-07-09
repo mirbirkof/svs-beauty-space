@@ -22,6 +22,8 @@ function getPool() {
       : false,
     max: Number(process.env.PG_POOL_MAX || 25),
     idleTimeoutMillis: 30000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
     // Аудит #36: каждый tenant-запрос берёт отдельное соединение из пула (max).
     // Параллельные запросы (дашборд с 10-15 виджетами) могут исчерпать пул.
     // Полный фикс — connection-per-request (Этап 3, нужен нагрузочный тест).
