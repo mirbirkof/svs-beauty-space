@@ -348,6 +348,23 @@ async function buildMonthlyReport(pool, tenantId) {
         AND co.created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')
       GROUP BY m.name ORDER BY v DESC LIMIT 3`, [tenantId]);
 
+  // Розріз продажів косметики: у візитах (split-чек) / з полиці (магазин/POS) /
+  // окремо матеріали ЗА ГРАМИ (billable, у товару є ціна за грам)
+  const prodSplit = await one(pool,
+    `SELECT
+       COALESCE(SUM(amount) FILTER (WHERE ref_type='appointment'),0)::numeric in_visits,
+       COALESCE(SUM(amount) FILTER (WHERE ref_type IS DISTINCT FROM 'appointment'),0)::numeric off_shelf
+     FROM cash_operations
+     WHERE tenant_id=$1 AND type='in' AND category='sale_product'
+       AND created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')`, [tenantId]);
+  const grams = await one(pool,
+    `SELECT COALESCE(SUM(am.qty_used * p.price_per_gram),0)::numeric v
+       FROM appointment_materials am
+       JOIN product_variants pv ON pv.id=am.variant_id JOIN products p ON p.id=pv.product_id
+       JOIN appointments a ON a.id=am.appointment_id
+      WHERE am.tenant_id=$1 AND am.billable=TRUE AND p.price_per_gram IS NOT NULL
+        AND (a.starts_at AT TIME ZONE '${TZ}') >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')`, [tenantId]);
+
   // Розклад грошей місяця — liveFinance (та сама формула, що Фінцентр CRM).
   // За місяць кассовий метод чесний: оренда/оклади вже впали у свої дні.
   let fin = null;
@@ -366,6 +383,8 @@ async function buildMonthlyReport(pool, tenantId) {
     clients: { total: Number(cl.total || 0), new: Number(cl.new || 0),
                repeat: Math.max(0, Number(cl.total || 0) - Number(cl.new || 0)), noshow: Number(cl.noshow || 0) },
     topMasters: top.map(x => ({ name: x.name, revenue: Number(x.v) })),
+    products: { inVisits: Number(prodSplit.in_visits || 0), offShelf: Number(prodSplit.off_shelf || 0),
+                grams: Number(grams.v || 0) },
     fin,
   };
 }
@@ -376,6 +395,12 @@ function formatMonthlyReport(r, title = 'Звіт за місяць') {
   L.push('');
   L.push(`💰 <b>Виручка: ${money(r.revenue)}</b> (${r.checks} чек.)`);
   L.push(`   • Послуги ${money(r.services)} · Косметика ${money(r.cosmetics)}`);
+  if (r.products && (r.products.inVisits > 0 || r.products.offShelf > 0)) {
+    L.push(`   🛍 <b>Продажі косметики:</b>`);
+    if (r.products.inVisits > 0) L.push(`      • у візитах (товари+матеріали): ${money(r.products.inVisits)}`);
+    if (r.products.grams > 0) L.push(`      • з них матеріали за грами: ${money(r.products.grams)}`);
+    if (r.products.offShelf > 0) L.push(`      • з полиці (магазин/POS): ${money(r.products.offShelf)}`);
+  }
   L.push(`   • Готівка ${money(r.cash)} · Безнал ${money(r.cashless)}`);
   if (r.pct != null) L.push(`🎯 <b>План:</b> ${money(r.plan)} — виконано ${pctBar(r.pct)} <b>${r.pct}%</b>`);
   if (r.prevMonth > 0) {
