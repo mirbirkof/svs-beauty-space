@@ -385,7 +385,7 @@ try {
     const tick = async () => {
       try { const n = await vm.autoReviewRequests(); if (n) console.log(`[vm] запитано відгуків: ${n}`); } catch (e) { console.error('[vm] reviews tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.masterDailySchedules(); if (n) console.log(`[vm] розклад майстрам: ${n}`); } } catch (e) { console.error('[vm] sched tick:', e.message); }
-      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.ownerDailyReport(); if (n) console.log('[vm] ранковий звіт собственнику надіслано'); } } catch (e) { console.error('[vm] owner-report tick:', e.message); }
+      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.ownerDailyReportAll(); if (n) console.log(`[vm] ранковий фінзвіт власникам надіслано: ${n}`); } } catch (e) { console.error('[vm] owner-report tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.adminDayPlan(); if (n) console.log('[vm] план дня адміну надіслано'); } } catch (e) { console.error('[vm] day-plan tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.weeklyMonthlyReminders(); if (n) console.log(`[vm] тижневі/місячні нагадування: ${n}`); } } catch (e) { console.error('[vm] reminders tick:', e.message); }
     };

@@ -100,14 +100,14 @@ function _money(n) { return Math.round(Number(n) || 0).toLocaleString('uk-UA') +
 
 // План обороту на місяць = Σ по активних майстрах (plan_per_shift × змін у графіку).
 // Спільний для ранкового звіту і плану дня — щоб числа не розходились.
-async function _monthPlanTotal(pool) {
+async function _monthPlanTotal(pool, tenantId = null) {
   try {
     const ym = kyivDate().slice(0, 7);
     const [year, month] = ym.split('-').map(Number);
     const plans = (await pool.query(
       `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
          FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true
-        WHERE mp.year=$1 AND mp.month=$2`, [year, month])).rows;
+        WHERE mp.year=$1 AND mp.month=$2 AND ($3::uuid IS NULL OR mp.tenant_id = $3)`, [year, month, tenantId])).rows;
     const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map());
     let total = 0;
     for (const p of plans) {
@@ -117,21 +117,51 @@ async function _monthPlanTotal(pool) {
   } catch (_) { return 0; }
 }
 
-async function ownerDailyReport(pool = getPool()) {
-  const chat = process.env.ADMIN_TG_CHAT;
-  if (!chat) return 0;
+// Отримувачі фінзвіту = ВСІ власники салону з привʼязаним Telegram (SaaS-логіка:
+// звіт автоматично кожному власнику КОНКРЕТНОГО салону, не в один глобальний чат).
+// Власник = роль code='owner' АБО повний доступ (permissions '*') АБО високий level.
+async function _ownerRecipients(pool, tenantId) {
+  const rows = (await pool.query(
+    `SELECT DISTINCT u.telegram_id
+       FROM users u JOIN roles r ON r.id = u.role_id
+      WHERE u.tenant_id = $1 AND COALESCE(u.is_active, true) = true
+        AND u.telegram_id IS NOT NULL
+        AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
+             OR r.permissions::text LIKE '%*%' OR COALESCE(r.level, 0) >= 900)`,
+    [tenantId]).catch(() => ({ rows: [] }))).rows;
+  return rows.map(r => String(r.telegram_id)).filter(Boolean);
+}
+
+// Пройти по ВСІХ активних салонах і надіслати кожному його власникам.
+async function ownerDailyReportAll(pool = getPool()) {
+  let sent = 0;
+  const tenants = (await runAs(null, () => pool.query(
+    `SELECT id FROM tenants WHERE COALESCE(status,'active') NOT IN ('suspended','cancelled')`))
+    .then(r => r.rows).catch(() => [])) || [];
+  for (const t of tenants) {
+    try { sent += await ownerDailyReport(pool, t.id); }
+    catch (e) { console.error('[vm] owner-report tenant', t.id, e.message); }
+  }
+  return sent;
+}
+
+// Фінзвіт для ОДНОГО салону — всім його власникам. tenantId обовʼязковий (SaaS).
+async function ownerDailyReport(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
   const today = kyivDate();
-  if ((await getSetting('vm_owner_report_sent', null)) === today) return 0; // вже слали сьогодні
+  // Отримувачі: власники салону + (для платформи) ADMIN_TG_CHAT як сумісність.
+  const recipients = new Set(await _ownerRecipients(pool, tenantId));
+  if (tenantId === DEFAULT_TENANT_ID && process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT));
+  if (!recipients.size) return 0; // немає кому слати
 
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
 
-  // Вчора (київський день)
+  // Вчора (київський день) — лише цей салон
   const yRows = await q(
     `SELECT category, method, COALESCE(SUM(amount),0)::numeric v, COUNT(*)::int n
        FROM cash_operations
-      WHERE type='in' AND category IN ('sale_service','sale_product')
+      WHERE type='in' AND category IN ('sale_service','sale_product') AND tenant_id = $1
         AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date - 1
-      GROUP BY category, method`);
+      GROUP BY category, method`, [tenantId]);
   let ySvc = 0, yProd = 0, yCash = 0, yCard = 0, yChecks = 0;
   for (const r of yRows) {
     const v = Number(r.v);
@@ -145,19 +175,19 @@ async function ownerDailyReport(pool = getPool()) {
   const mRow = (await q(
     `SELECT COALESCE(SUM(amount),0)::numeric v
        FROM cash_operations
-      WHERE type='in' AND category IN ('sale_service','sale_product')
-        AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`))[0] || { v: 0 };
+      WHERE type='in' AND category IN ('sale_service','sale_product') AND tenant_id = $1
+        AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`, [tenantId]))[0] || { v: 0 };
   const mRevenue = Number(mRow.v);
 
-  // Місяць: план (спільний helper)
-  const mPlan = await _monthPlanTotal(pool);
+  // Місяць: план (спільний helper) — по цьому салону
+  const mPlan = await _monthPlanTotal(pool, tenantId);
   const pct = mPlan > 0 ? Math.round(mRevenue / mPlan * 100) : null;
 
   // Сьогодні: записів заплановано
   const tRow = (await q(
     `SELECT COUNT(*)::int n FROM appointments
-      WHERE status NOT IN ('cancelled','noshow')
-        AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`))[0] || { n: 0 };
+      WHERE status NOT IN ('cancelled','noshow') AND tenant_id = $1
+        AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`, [tenantId]))[0] || { n: 0 };
 
   // Закриття заявок за місяць (без bp_deleted — то синк-артефакти, не відмови клієнтів).
   // served = проведені (done+confirmed), lost = реальні відмови + noshow.
@@ -165,8 +195,8 @@ async function ownerDailyReport(pool = getPool()) {
     `SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served,
             COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost
        FROM appointments
-      WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
-        AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`))[0] || { served: 0, lost: 0 };
+      WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') AND tenant_id = $1
+        AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`, [tenantId]))[0] || { served: 0, lost: 0 };
   const clFinished = clRow.served + clRow.lost;
   const closurePct = clFinished > 0 ? Math.round(clRow.served / clFinished * 100) : null;
 
@@ -185,10 +215,18 @@ async function ownerDailyReport(pool = getPool()) {
     (closureLine ? closureLine + '\n' : '') +
     `\n📅 <b>Сьогодні записів:</b> ${tRow.n}`;
 
-  await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
-    category: 'transactional', priority: 'normal', source: 'vm-owner-report', dedupKey: `ownerrep:${today}` });
-  await setSetting('vm_owner_report_sent', today);
-  return 1;
+  // Розсилка КОЖНОМУ власнику. dedupKey per (салон, власник, день) → хаб не
+  // задублює навіть при повторному тіку крона (ON CONFLICT dedup_key DO NOTHING).
+  let sent = 0;
+  for (const rcpt of recipients) {
+    try {
+      await hub.enqueue({ recipient: rcpt, channel: 'telegram', body,
+        category: 'transactional', priority: 'normal', source: 'vm-owner-report',
+        dedupKey: `ownerrep:${tenantId}:${today}:${rcpt}` });
+      sent++;
+    } catch (e) { console.error('[vm] owner-report send', rcpt, e.message); }
+  }
+  return sent;
 }
 
 // ── D) Ранковий план дня адміну ──────────────────────────────────────────
@@ -293,6 +331,8 @@ module.exports = {
   autoReviewRequests: _wrap(autoReviewRequests),
   masterDailySchedules: _wrap(masterDailySchedules),
   ownerDailyReport: _wrap(ownerDailyReport),
+  // НЕ обгортаємо: сам ітерує всі салони і передає явний tenantId (SaaS-розсилка).
+  ownerDailyReportAll,
   adminDayPlan: _wrap(adminDayPlan),
   weeklyMonthlyReminders: _wrap(weeklyMonthlyReminders),
 };
