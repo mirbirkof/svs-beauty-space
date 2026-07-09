@@ -85,13 +85,29 @@ async function getColumns(c, table) {
   const r = await c.query(`
     SELECT a.attname AS name,
            format_type(a.atttypid, a.atttypmod) AS type,
-           a.attidentity AS identity
+           a.attidentity AS identity,
+           a.attnotnull AS notnull,
+           pg_get_expr(ad.adbin, ad.adrelid) AS "default"
     FROM pg_attribute a
+    LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
     WHERE a.attrelid = $1::regclass
       AND a.attnum > 0 AND NOT a.attisdropped
       AND a.attgenerated = ''
     ORDER BY a.attnum`, [ '"' + table.replace(/"/g, '""') + '"' ]);
   return r.rows;
+}
+
+// Витягти імʼя послідовності з nextval('schema.seq'::regclass) → створити її на backup,
+// щоб DEFAULT автонумерації працював (інакше нова таблиця = колонки без автоінкремента,
+// вставка падає. Інцидент 09.07: 11 таблиць без sequence після фейловера).
+async function ensureSeqForDefault(backup, def) {
+  if (!def) return null;
+  const m = def.match(/nextval\('([^']+)'/);
+  if (!m) return null;
+  let seq = m[1].replace(/::regclass$/i, '').replace(/"/g, '');
+  const bare = seq.includes('.') ? seq.split('.').pop() : seq;
+  try { await backup.query(`CREATE SEQUENCE IF NOT EXISTS ${ident(bare)}`); } catch (_) {}
+  return bare;
 }
 
 // Build a minimal CREATE TABLE for tables present on primary but missing on backup
@@ -104,10 +120,26 @@ async function createMissingTables(primary, backup, missing) {
       JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
       WHERE i.indrelid=$1::regclass AND i.indisprimary
       ORDER BY a.attnum`, [ '"' + t.replace(/"/g, '""') + '"' ]);
-    const colDefs = cols.map(c => `${ident(c.name)} ${c.type}`);
+    // Повний DDL: тип + DEFAULT (з автостворенням послідовності) + NOT NULL.
+    // Раніше створювались "голі" колонки без defaults/автонумерації → вставка падала.
+    const ownedSeqs = [];
+    const colDefs = [];
+    for (const c of cols) {
+      let d = `${ident(c.name)} ${c.type}`;
+      if (c.default) {
+        const seq = await ensureSeqForDefault(backup, c.default);
+        if (seq) ownedSeqs.push([seq, c.name]);
+        d += ` DEFAULT ${c.default}`;
+      }
+      if (c.notnull) d += ' NOT NULL';
+      colDefs.push(d);
+    }
     if (pk.rows.length) colDefs.push(`PRIMARY KEY (${pk.rows.map(r => ident(r.attname)).join(', ')})`);
     const ddl = `CREATE TABLE IF NOT EXISTS ${ident(t)} (\n  ${colDefs.join(',\n  ')}\n)`;
     await backup.query(ddl);
+    for (const [seq, col] of ownedSeqs) {
+      await backup.query(`ALTER SEQUENCE ${ident(seq)} OWNED BY ${ident(t)}.${ident(col)}`).catch(() => {});
+    }
     log(`created missing table on backup: ${t}`);
   }
 }
@@ -132,8 +164,10 @@ async function ensureColumns(primary, backup, tables) {
     for (const c of pCols) {
       if (!have.has(c.name)) {
         try {
-          await backup.query(`ALTER TABLE ${ident(t)} ADD COLUMN ${ident(c.name)} ${c.type}`);
-          log(`added missing column ${t}.${c.name} ${c.type}`);
+          let add = `ALTER TABLE ${ident(t)} ADD COLUMN ${ident(c.name)} ${c.type}`;
+          if (c.default) { await ensureSeqForDefault(backup, c.default); add += ` DEFAULT ${c.default}`; }
+          await backup.query(add);
+          log(`added missing column ${t}.${c.name} ${c.type}${c.default ? ' (with default)' : ''}`);
           added++;
         } catch (e) { log(`add col ${t}.${c.name} skip: ${e.message}`); }
       } else if (have.get(c.name) !== c.type) {
