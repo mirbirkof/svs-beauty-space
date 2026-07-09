@@ -842,7 +842,7 @@ async function ownerTgUser(ctx, uid) {
 function ownerMenu() {
   return {
     keyboard: [
-      [{ text: '📊 Звіт сьогодні' }],
+      [{ text: '📊 Звіт сьогодні' }, { text: '📆 Звіт за місяць' }],
       [{ text: '💰 Каса' }, { text: '📅 Записи' }],
       [{ text: '👥 Майстри' }, { text: '📦 Залишки' }],
       [{ text: '🗓 Записатись' }],
@@ -868,6 +868,11 @@ async function handleOwnerButton(text, msg, ctx) {
   const tid = ctx.tenantId;
   if (/^📊\s*Звіт/i.test(text)) {
     await send(formatReport(await buildDailyReport(ctx.pool, tid, null), 'Звіт за сьогодні'));
+    return true;
+  }
+  if (/^📆\s*Звіт/i.test(text)) {
+    const { buildMonthlyReport, formatMonthlyReport } = require('./owner-report');
+    await send(formatMonthlyReport(await buildMonthlyReport(ctx.pool, tid)));
     return true;
   }
   if (/^💰\s*Каса/i.test(text)) {

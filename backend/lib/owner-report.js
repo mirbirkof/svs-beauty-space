@@ -293,4 +293,113 @@ function formatReport(r, title = 'Щоденний звіт') {
   return L.join('\n');
 }
 
-module.exports = { buildDailyReport, formatReport, money };
+// ── МІСЯЧНИЙ звіт: той самий «розклад грошей», але за місяць + порівняння ──
+async function buildMonthlyReport(pool, tenantId) {
+  pool = pool || getPool();
+
+  // Каса місяця: послуги/товари, нал/безнал, чеки
+  const cash = await one(pool,
+    `SELECT
+       COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
+       COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric prod,
+       COALESCE(SUM(amount) FILTER (WHERE method='cash'),0)::numeric cash,
+       COALESCE(SUM(amount) FILTER (WHERE method<>'cash'),0)::numeric cashless,
+       COUNT(*)::int checks
+     FROM cash_operations
+     WHERE tenant_id=$1 AND type='in' AND category IN ('sale_service','sale_product')
+       AND created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')`, [tenantId]);
+  const revenue = Number(cash.svc || 0) + Number(cash.prod || 0);
+
+  // Минулий місяць — ЗА ТОЙ САМИЙ період (1-е..сьогодні), інакше порівняння
+  // неповного місяця з повним завжди показує "падіння" (нечесно)
+  const prev = await one(pool,
+    `SELECT COALESCE(SUM(amount),0)::numeric v FROM cash_operations
+      WHERE tenant_id=$1 AND type='in' AND category IN ('sale_service','sale_product')
+        AND created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}') - INTERVAL '1 month'
+        AND created_at <  NOW() - INTERVAL '1 month'`, [tenantId]);
+
+  // План місяця
+  const planRow = await one(pool,
+    `SELECT COALESCE(SUM(CASE WHEN mp.auto_from_shifts THEN mp.plan_per_shift*COALESCE(sh.shifts,0) ELSE mp.plan_total END),0)::numeric v
+       FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)
+       LEFT JOIN (SELECT master_id, COUNT(*) shifts FROM master_schedule_days
+                   WHERE work_date >= date_trunc('month', CURRENT_DATE) AND start_time IS NOT NULL
+                   GROUP BY master_id) sh ON sh.master_id=mp.master_id
+      WHERE mp.tenant_id=$1 AND mp.year=EXTRACT(year FROM CURRENT_DATE)::int
+        AND mp.month=EXTRACT(month FROM CURRENT_DATE)::int`, [tenantId]);
+  const plan = Number(planRow.v || 0);
+
+  // Клієнти місяця
+  const cl = await one(pool,
+    `SELECT
+       COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','confirmed'))::int total,
+       COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','confirmed')
+         AND c.first_visit_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}'))::int new,
+       COUNT(*) FILTER (WHERE a.status='noshow')::int noshow
+     FROM appointments a LEFT JOIN clients c ON c.id=a.client_id
+     WHERE a.tenant_id=$1 AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')
+       AND a.starts_at <= NOW()`, [tenantId]);
+
+  // Топ-3 майстри місяця (за виручкою послуг)
+  const top = await many(pool,
+    `SELECT m.name, COALESCE(SUM(co.amount),0)::numeric v
+       FROM cash_operations co JOIN masters m ON m.id=co.master_id
+      WHERE co.tenant_id=$1 AND co.type='in' AND co.category='sale_service'
+        AND co.created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')
+      GROUP BY m.name ORDER BY v DESC LIMIT 3`, [tenantId]);
+
+  // Розклад грошей місяця — liveFinance (та сама формула, що Фінцентр CRM).
+  // За місяць кассовий метод чесний: оренда/оклади вже впали у свої дні.
+  let fin = null;
+  try {
+    const { runAs } = require('./tenant');
+    const { liveFinance } = require('./live-finance');
+    const b = await one(pool,
+      `SELECT (date_trunc('month', NOW() AT TIME ZONE '${TZ}') AT TIME ZONE '${TZ}') AS f, NOW() AS t`);
+    if (b.f) fin = await runAs(tenantId, () => liveFinance(pool, b.f, b.t));
+  } catch (e) { console.error('[owner-report:month-fin]', e.message); }
+
+  return {
+    revenue, services: Number(cash.svc || 0), cosmetics: Number(cash.prod || 0),
+    cash: Number(cash.cash || 0), cashless: Number(cash.cashless || 0), checks: Number(cash.checks || 0),
+    prevMonth: Number(prev.v || 0), plan, pct: plan > 0 ? Math.round(revenue / plan * 100) : null,
+    clients: { total: Number(cl.total || 0), new: Number(cl.new || 0),
+               repeat: Math.max(0, Number(cl.total || 0) - Number(cl.new || 0)), noshow: Number(cl.noshow || 0) },
+    topMasters: top.map(x => ({ name: x.name, revenue: Number(x.v) })),
+    fin,
+  };
+}
+
+function formatMonthlyReport(r, title = 'Звіт за місяць') {
+  const L = [];
+  L.push(`📆 <b>${title}</b>`);
+  L.push('');
+  L.push(`💰 <b>Виручка: ${money(r.revenue)}</b> (${r.checks} чек.)`);
+  L.push(`   • Послуги ${money(r.services)} · Косметика ${money(r.cosmetics)}`);
+  L.push(`   • Готівка ${money(r.cash)} · Безнал ${money(r.cashless)}`);
+  if (r.pct != null) L.push(`🎯 <b>План:</b> ${money(r.plan)} — виконано ${pctBar(r.pct)} <b>${r.pct}%</b>`);
+  if (r.prevMonth > 0) {
+    const d = Math.round((r.revenue - r.prevMonth) / r.prevMonth * 100);
+    L.push(`📊 <b>До минулого місяця (той самий період):</b> ${d >= 0 ? '+' : ''}${d}% (було ${money(r.prevMonth)})`);
+  }
+  L.push('');
+  L.push(`👥 <b>Клієнти:</b> ${r.clients.total}  (🆕 ${r.clients.new} · 🔁 ${r.clients.repeat})`);
+  if (r.clients.noshow > 0) L.push(`⚠️ Не прийшли: ${r.clients.noshow}`);
+  if (r.topMasters.length) {
+    L.push(`🏆 <b>Топ майстри:</b>`);
+    r.topMasters.forEach((m, i) => L.push(`   ${['🥇','🥈','🥉'][i] || '•'} ${m.name} — ${money(m.revenue)}`));
+  }
+  L.push('');
+  if (r.fin) {
+    L.push(`🧮 <b>Розклад грошей за місяць:</b>`);
+    L.push(`   ➖ ЗП (нараховано, % + ставки + оклади): ${money(r.fin.expenses.commission)}`);
+    L.push(`   ➖ Собівартість матеріалів: ${money(r.fin.expenses.materials)}`);
+    for (const o of (r.fin.expenses.other || [])) L.push(`   ➖ ${o.label}: ${money(o.sum)}`);
+    L.push(`   Разом витрат: ${money(r.fin.expenses.total)}`);
+    L.push(`   ${r.fin.profit.net >= 0 ? '✅' : '🔴'} <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${r.fin.profit.margin_pct}%)`);
+    L.push(`   💳 Середній чек: ${money(r.fin.avg_check)}`);
+  }
+  return L.join('\n');
+}
+
+module.exports = { buildDailyReport, formatReport, buildMonthlyReport, formatMonthlyReport, money };
