@@ -819,7 +819,24 @@ async function ownerTgUser(ctx, uid) {
           AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
                OR r.permissions::jsonb ? '*')
         LIMIT 1`, [ctx.tenantId, uid]);
-    return r.rows[0] || null;
+    if (r.rows[0]) return r.rows[0];
+    // Фолбек-автопривʼязка: власник уже відомий боту як КЛІЄНТ (шарив контакт раніше —
+    // Telegram гарантував володіння номером), а телефон клієнтської картки збігається з
+    // owner-обліковкою БЕЗ telegram_id → привʼязуємо. Кейс СВС: бот вітав як клієнта і
+    // кнопку контакту не показував, привʼязатись не було чим.
+    const link = await ctx.pool.query(
+      `UPDATE users u SET telegram_id = $2, updated_at = NOW()
+         FROM roles r, clients c
+        WHERE r.id = u.role_id AND u.tenant_id = $1 AND u.telegram_id IS NULL
+          AND COALESCE(u.is_active, true) = true
+          AND c.tenant_id = $1 AND c.telegram_id = $2
+          AND regexp_replace(COALESCE(u.phone,''), '\\D', '', 'g')
+              = regexp_replace(COALESCE(c.phone,''), '\\D', '', 'g')
+          AND regexp_replace(COALESCE(u.phone,''), '\\D', '', 'g') <> ''
+          AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
+               OR r.permissions::jsonb ? '*')
+        RETURNING u.id, u.display_name`, [ctx.tenantId, uid]);
+    return link.rows[0] || null;
   } catch (_) { return null; }
 }
 function ownerMenu() {

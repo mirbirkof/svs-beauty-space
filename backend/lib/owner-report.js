@@ -124,6 +124,66 @@ async function buildDailyReport(pool, tenantId, date = null) {
         AND last_visit_at IS NOT NULL
         AND last_visit_at < NOW() - INTERVAL '75 days' AND last_visit_at > NOW() - INTERVAL '180 days'`, [tenantId]);
 
+  // 11) ФІНАНСИ ДНЯ «як положено» (запит Босса 09.07): ЗП майстрам (та сама формула,
+  // що відомість/Фінцентр), собівартість матеріалів (COGS), інші витрати → ЧИСТИМИ.
+  // liveFinance treba tenant-контекст (його запити без tenant_id, RLS-scoped) → runAs.
+  let fin = null;
+  try {
+    const { runAs } = require('./tenant');
+    const { liveFinance } = require('./live-finance');
+    const bounds = d
+      ? await one(pool, `SELECT ($1::date::timestamp AT TIME ZONE '${TZ}') AS f, (($1::date+1)::timestamp AT TIME ZONE '${TZ}') AS t`, [d])
+      : await one(pool, `SELECT (((NOW() AT TIME ZONE '${TZ}')::date)::timestamp AT TIME ZONE '${TZ}') AS f, (((NOW() AT TIME ZONE '${TZ}')::date + 1)::timestamp AT TIME ZONE '${TZ}') AS t`);
+    if (bounds.f) fin = await runAs(tenantId, () => liveFinance(pool, bounds.f, bounds.t));
+  } catch (e) { console.error('[owner-report:fin]', e.message); }
+
+  // 12) ПРОГНОЗ на 7 днів: очікувана ЗП з майбутніх записів (та сама формула схем) +
+  // фікс-ставки за майбутні зміни + матеріали за середнім % собівартості останніх 30 днів.
+  let forecast = null;
+  try {
+    const futComm = await one(pool,
+      `WITH matlines AS (
+         SELECT asv.appointment_id aid,
+                SUM(asv.price) FILTER (WHERE (sc.is_material = TRUE OR (sc.is_material IS NOT TRUE
+                  AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
+                  AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
+           FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id GROUP BY asv.appointment_id),
+       fa AS (
+         SELECT a.master_id,
+                GREATEST(0, COALESCE(a.price,0) - COALESCE(ml.mat,0)) rev_labor,
+                COALESCE(a.price,0) rev_full
+           FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+          WHERE a.tenant_id=$1 AND a.status NOT IN ('cancelled','noshow')
+            AND a.starts_at > NOW() AND a.starts_at <= NOW() + INTERVAL '7 days')
+       SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid')
+                THEN (CASE WHEN ps.percent_base='gross' THEN fa.rev_full ELSE fa.rev_labor END)*COALESCE(ps.percent,0)/100
+                ELSE 0 END),0)::numeric comm
+         FROM fa LEFT JOIN payroll_schemes ps ON ps.master_id=fa.master_id::text AND ps.is_active=TRUE`, [tenantId]);
+    const futFix = await one(pool,
+      `SELECT COALESCE(SUM(COALESCE(ps.fixed_per_day,0)),0)::numeric v
+         FROM master_schedule_days msd
+         JOIN masters m ON m.id=msd.master_id AND m.tenant_id=$1
+         JOIN payroll_schemes ps ON ps.master_id=m.id::text AND ps.is_active=TRUE
+        WHERE msd.work_date > CURRENT_DATE AND msd.work_date <= CURRENT_DATE + 7 AND msd.start_time IS NOT NULL`, [tenantId]);
+    // середній % собівартості матеріалів від виручки за 30 днів (факт)
+    const matShare = await one(pool,
+      `SELECT CASE WHEN COALESCE(SUM(amount) FILTER (WHERE type='in' AND category IN ('sale_service','sale_product')),0) > 0
+              THEN COALESCE((SELECT SUM(COALESCE(am.qty_used,1) * COALESCE(p2.cost_per_gram, 0))
+                       FROM appointment_materials am
+                       JOIN product_variants pv ON pv.id=am.variant_id
+                       JOIN products p2 ON p2.id=pv.product_id
+                       JOIN appointments a2 ON a2.id=am.appointment_id
+                      WHERE am.tenant_id=$1 AND a2.starts_at >= NOW() - INTERVAL '30 days'),0)
+                   / SUM(amount) FILTER (WHERE type='in' AND category IN ('sale_service','sale_product'))
+              ELSE 0 END AS share
+         FROM cash_operations WHERE tenant_id=$1 AND created_at >= NOW() - INTERVAL '30 days'`, [tenantId]);
+    const fRevenue = Number(fwd.v || 0);
+    const fSalary = Math.round(Number(futComm.comm || 0) + Number(futFix.v || 0));
+    const fMaterials = Math.round(fRevenue * Number(matShare.share || 0));
+    forecast = { revenue: fRevenue, salary: fSalary, materials: fMaterials,
+                 total: fSalary + fMaterials, net: Math.round(fRevenue - fSalary - fMaterials) };
+  } catch (e) { console.error('[owner-report:forecast]', e.message); }
+
   return {
     date: d, revenue, cosmetics: Number(cash.prod || 0), services: Number(cash.svc || 0),
     cash: Number(cash.cash || 0), cashless: Number(cash.cashless || 0), checks: Number(cash.checks || 0),
@@ -132,6 +192,7 @@ async function buildDailyReport(pool, tenantId, date = null) {
     month: { revenue: monthRev, plan: monthPlan, pct: planPct },
     load, freeTomorrowH, forward: { count: Number(fwd.n || 0), revenue: Number(fwd.v || 0) },
     winback: Number(winback.n || 0),
+    fin, forecast,
   };
 }
 
@@ -147,8 +208,19 @@ function formatReport(r, title = 'Щоденний звіт') {
   L.push('');
   L.push(`👥 <b>Клієнти:</b> ${r.clients.total}  (🆕 ${r.clients.new} · 🔁 ${r.clients.repeat})`);
   if (r.bestMaster) L.push(`🏆 <b>Кращий майстер:</b> ${r.bestMaster.name} — ${money(r.bestMaster.revenue)}`);
-  L.push(`💸 <b>Витрати:</b> ${money(r.expenses)}`);
-  L.push(`🏦 <b>Залишок:</b> ${money(r.balance)}`);
+  L.push('');
+  // «Скільки чистими і що скільки коштувало» — ЗП за тією ж формулою, що відомість
+  if (r.fin) {
+    L.push(`🧮 <b>Розклад грошей за день:</b>`);
+    L.push(`   ➖ ЗП майстрам (нараховано): ${money(r.fin.expenses.commission)}`);
+    L.push(`   ➖ Собівартість матеріалів: ${money(r.fin.expenses.materials)}`);
+    const otherSum = (r.fin.expenses.other || []).reduce((a, x) => a + x.sum, 0);
+    if (otherSum > 0) L.push(`   ➖ Інші витрати: ${money(otherSum)}`);
+    L.push(`   ✅ <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${r.fin.profit.margin_pct}%)`);
+  } else {
+    L.push(`💸 <b>Витрати:</b> ${money(r.expenses)}`);
+  }
+  L.push(`🏦 <b>Залишок грошей:</b> ${money(r.balance)}`);
   L.push('');
   if (r.load && r.load.length) {
     L.push(`📈 <b>Завантаженість майстрів:</b>`);
@@ -159,6 +231,12 @@ function formatReport(r, title = 'Щоденний звіт') {
   }
   L.push(`🕓 <b>Вільно завтра:</b> ${r.freeTomorrowH} год`);
   L.push(`📅 <b>Записів на 7 днів:</b> ${r.forward.count} на ${money(r.forward.revenue)} (очікувана виручка)`);
+  if (r.forecast) {
+    L.push(`🔮 <b>Прогноз на 7 днів:</b>`);
+    L.push(`   ➖ ЗП з майбутніх записів: ~${money(r.forecast.salary)}`);
+    L.push(`   ➖ Матеріали (за серед. %): ~${money(r.forecast.materials)}`);
+    L.push(`   ✅ Чистими очікується: ~${money(r.forecast.net)}`);
+  }
   if (r.winback > 0) L.push(`🔔 <b>Повернути клієнтів:</b> ${r.winback} (зникли 2.5-6 міс, були постійними)`);
   if (r.clients.noshow > 0) L.push(`⚠️ <b>Не прийшли:</b> ${r.clients.noshow}`);
   return L.join('\n');
