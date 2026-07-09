@@ -236,7 +236,10 @@ router.get('/status/:token', async (req, res) => {
 // нижче автоматично відповідає правильним ботом.
 async function processUpdate(upd, tg, salon) {
   {
-    const botCtx = { tg, pool: getPool(), bp };
+    // tenantId для гілки власника: per-tenant вебхук іде в runAs(t.id) → getTenantId()
+    // повертає салон; легасі-бот Босса без контексту → DEFAULT_TENANT_ID.
+    const tenantId = require('../lib/tenant').getTenantId() || DEFAULT_TENANT_ID;
+    const botCtx = { tg, pool: getPool(), bp, tenantId, salonName: (salon && salon.name) || null };
 
     // Розмовна запис: натискання inline-кнопок → повністю в booking-bot
     if (upd.callback_query) {
@@ -253,6 +256,8 @@ async function processUpdate(upd, tg, salon) {
       const token = parts[1];
       // короткі deep-link ключі з сайту/візитки — це НЕ токен запису, а звичайний старт
       if (!token || /^(link|book|site|web|start|zapis|menu)$/i.test(token)) {
+        // Власник салону → його меню керування (ізольовано; клієнт цього не бачить).
+        try { if (await bookingBot.tryOwnerStart(msg, botCtx)) return; } catch (e) { console.error('[booking/owner-start]', e.message); }
         // Холодний старт. Якщо вже знаємо цей Telegram — вітаємо на імʼя, номер не питаємо.
         try {
           const known = await getPool().query(

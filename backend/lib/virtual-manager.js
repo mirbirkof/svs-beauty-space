@@ -153,67 +153,13 @@ async function ownerDailyReport(pool = getPool(), tenantId = DEFAULT_TENANT_ID) 
   if (tenantId === DEFAULT_TENANT_ID && process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT));
   if (!recipients.size) return 0; // немає кому слати
 
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
-
-  // Вчора (київський день) — лише цей салон
-  const yRows = await q(
-    `SELECT category, method, COALESCE(SUM(amount),0)::numeric v, COUNT(*)::int n
-       FROM cash_operations
-      WHERE type='in' AND category IN ('sale_service','sale_product') AND tenant_id = $1
-        AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date - 1
-      GROUP BY category, method`, [tenantId]);
-  let ySvc = 0, yProd = 0, yCash = 0, yCard = 0, yChecks = 0;
-  for (const r of yRows) {
-    const v = Number(r.v);
-    if (r.category === 'sale_service') ySvc += v; else yProd += v;
-    if (r.method === 'cash') yCash += v; else yCard += v;
-    yChecks += r.n;
-  }
-  const yTotal = ySvc + yProd;
-
-  // Місяць: оборот (факт)
-  const mRow = (await q(
-    `SELECT COALESCE(SUM(amount),0)::numeric v
-       FROM cash_operations
-      WHERE type='in' AND category IN ('sale_service','sale_product') AND tenant_id = $1
-        AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')`, [tenantId]))[0] || { v: 0 };
-  const mRevenue = Number(mRow.v);
-
-  // Місяць: план (спільний helper) — по цьому салону
-  const mPlan = await _monthPlanTotal(pool, tenantId);
-  const pct = mPlan > 0 ? Math.round(mRevenue / mPlan * 100) : null;
-
-  // Сьогодні: записів заплановано
-  const tRow = (await q(
-    `SELECT COUNT(*)::int n FROM appointments
-      WHERE status NOT IN ('cancelled','noshow') AND tenant_id = $1
-        AND (starts_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`, [tenantId]))[0] || { n: 0 };
-
-  // Закриття заявок за місяць (без bp_deleted — то синк-артефакти, не відмови клієнтів).
-  // served = проведені (done+confirmed), lost = реальні відмови + noshow.
-  const clRow = (await q(
-    `SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served,
-            COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost
-       FROM appointments
-      WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') AND tenant_id = $1
-        AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`, [tenantId]))[0] || { served: 0, lost: 0 };
-  const clFinished = clRow.served + clRow.lost;
-  const closurePct = clFinished > 0 ? Math.round(clRow.served / clFinished * 100) : null;
-
-  const planLine = pct != null
-    ? `📈 <b>Місяць:</b> ${_money(mRevenue)} з ${_money(mPlan)} плану (<b>${pct}%</b>)`
-    : `📈 <b>Місяць:</b> ${_money(mRevenue)} обороту`;
-  const closureLine = closurePct != null
-    ? `🎯 <b>Закриття заявок:</b> ${closurePct}% ${closurePct >= 80 ? '✅' : '⚠️ нижче цілі 80%'} (${clRow.served} з ${clFinished})`
-    : '';
-  const body =
-    `☀️ <b>Ранковий звіт</b>\n\n` +
-    `💰 <b>Вчора в касі: ${_money(yTotal)}</b> (${yChecks} чек.)\n` +
-    `   • Послуги ${_money(ySvc)} · Товари ${_money(yProd)}\n` +
-    `   • Готівка ${_money(yCash)} · Безнал ${_money(yCard)}\n\n` +
-    `${planLine}\n` +
-    (closureLine ? closureLine + '\n' : '') +
-    `\n📅 <b>Сьогодні записів:</b> ${tRow.n}`;
+  // Повний звіт (за вчора) — єдиний модуль owner-report (каса, клієнти нові/повторні,
+  // кращий майстер, витрати, залишок, завантаженість, вільно завтра, записи на 7 днів,
+  // очікувана виручка, кого повернути, no-show). Той самий модуль живить меню власника.
+  const { buildDailyReport, formatReport } = require('./owner-report');
+  const yst = new Date(Date.now() - 864e5).toLocaleDateString('sv-SE', { timeZone: 'Europe/Kiev' });
+  const rep = await buildDailyReport(pool, tenantId, yst);
+  const body = '☀️ ' + formatReport(rep, 'Ранковий звіт (за вчора)');
 
   // Розсилка КОЖНОМУ власнику. dedupKey per (салон, власник, день) → хаб не
   // задублює навіть при повторному тіку крона (ON CONFLICT dedup_key DO NOTHING).

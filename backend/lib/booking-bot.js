@@ -805,10 +805,99 @@ async function tryMenuButton(text, msg, ctx) {
   return false;
 }
 
+// ── МЕНЮ ВЛАСНИКА (ізольоване від клієнтів) ────────────────────────────────
+// Власник = користувач салону з роллю owner/повним доступом, чий telegram_id
+// збігається з відправником. Клієнт (є лише в clients) НІКОЛИ не бачить це меню.
+async function ownerTgUser(ctx, uid) {
+  if (!ctx || !ctx.tenantId) return null;
+  try {
+    const r = await ctx.pool.query(
+      `SELECT u.id, u.display_name FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.telegram_id = $2 AND COALESCE(u.is_active, true) = true
+          AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
+               OR r.permissions::text LIKE '%*%' OR COALESCE(r.level, 0) >= 900)
+        LIMIT 1`, [ctx.tenantId, uid]);
+    return r.rows[0] || null;
+  } catch (_) { return null; }
+}
+function ownerMenu() {
+  return {
+    keyboard: [
+      [{ text: '📊 Звіт сьогодні' }],
+      [{ text: '💰 Каса' }, { text: '📅 Записи' }],
+      [{ text: '👥 Майстри' }, { text: '📦 Залишки' }],
+      [{ text: '🗓 Записатись' }],
+    ],
+    resize_keyboard: true, is_persistent: true,
+  };
+}
+// /start власника → вітання + його меню
+async function tryOwnerStart(msg, ctx) {
+  const owner = await ownerTgUser(ctx, msg.from.id);
+  if (!owner) return false;
+  await ctx.tg('sendMessage', {
+    chat_id: msg.chat.id, parse_mode: 'HTML',
+    text: `👑 Вітаю, <b>${owner.display_name || 'власник'}</b>!\nМеню керування салоном нижче.`,
+    reply_markup: ownerMenu(),
+  });
+  return true;
+}
+// Обробка кнопок власника. Повертає true, якщо це була owner-кнопка.
+async function handleOwnerButton(text, msg, ctx) {
+  const send = (t) => ctx.tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML', text: t, reply_markup: ownerMenu() });
+  const { buildDailyReport, formatReport, money } = require('./owner-report');
+  const tid = ctx.tenantId;
+  if (/^📊\s*Звіт/i.test(text)) {
+    await send(formatReport(await buildDailyReport(ctx.pool, tid, null), 'Звіт за сьогодні'));
+    return true;
+  }
+  if (/^💰\s*Каса/i.test(text)) {
+    const r = await buildDailyReport(ctx.pool, tid, null);
+    await send(`💰 <b>Каса сьогодні: ${money(r.revenue)}</b> (${r.checks} чек.)\n   • Послуги ${money(r.services)} · Косметика ${money(r.cosmetics)}\n   • Готівка ${money(r.cash)} · Безнал ${money(r.cashless)}\n💸 Витрати: ${money(r.expenses)}\n🏦 Залишок: ${money(r.balance)}`);
+    return true;
+  }
+  if (/^📅\s*Записи/i.test(text)) {
+    const r = await buildDailyReport(ctx.pool, tid, null);
+    await send(`📅 <b>Записи</b>\n👥 Сьогодні клієнтів: ${r.clients.total} (🆕 ${r.clients.new} · 🔁 ${r.clients.repeat})${r.clients.noshow ? `\n⚠️ Не прийшли: ${r.clients.noshow}` : ''}\n🕓 Вільно завтра: ${r.freeTomorrowH} год\n➡️ На 7 днів: ${r.forward.count} записів на ${money(r.forward.revenue)}`);
+    return true;
+  }
+  if (/^👥\s*Майстри/i.test(text)) {
+    const r = await buildDailyReport(ctx.pool, tid, null);
+    let t = '👥 <b>Завантаженість майстрів сьогодні</b>\n';
+    if (r.load && r.load.length) for (const m of r.load) {
+      const pct = m.work_min > 0 ? Math.round(m.busy_min / m.work_min * 100) : 0;
+      t += `   • ${m.name}: ${pct}%\n`;
+    } else t += 'Сьогодні ніхто не працює за графіком.\n';
+    if (r.bestMaster) t += `🏆 Кращий сьогодні: ${r.bestMaster.name} — ${money(r.bestMaster.revenue)}`;
+    await send(t);
+    return true;
+  }
+  if (/^📦\s*Залишк/i.test(text)) {
+    let rows = [];
+    try {
+      rows = (await ctx.pool.query(
+        `SELECT name, COALESCE(stock_qty, inventory, 0)::numeric q FROM products
+          WHERE tenant_id = $1 AND COALESCE(stock_qty, inventory, 0) <= COALESCE(min_qty, 3)
+          ORDER BY q ASC LIMIT 15`, [tid])).rows;
+    } catch (_) { rows = []; }
+    if (!rows.length) await send('📦 <b>Залишки</b>\nВсе гаразд — нічого критично не закінчується.');
+    else await send('📦 <b>Закінчується (дозамовити):</b>\n' + rows.map(x => `   • ${x.name} — ${Number(x.q)}`).join('\n'));
+    return true;
+  }
+  return false; // не owner-кнопка (напр. «🗓 Записатись») → звичайний потік
+}
+
 async function onText(msg, ctx) {
   const uid = msg.from.id, chatId = msg.chat.id;
   const text = (msg.text || '').trim();
   if (!text || text.startsWith('/')) return false; // команди — не сюди
+
+  // Гілка власника: відправник — власник салону і натиснув owner-кнопку →
+  // обробляємо і виходимо. Клієнтський потік нижче не зачіпається.
+  {
+    const owner = await ownerTgUser(ctx, uid);
+    if (owner && await handleOwnerButton(text, msg, ctx)) return true;
+  }
 
   // кнопки меню (старого і нового) — ДО матчера, інакше «Не впізнав послугу "📝 Записатись"»
   if (await tryMenuButton(text, msg, ctx)) return true;
@@ -1149,4 +1238,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart };
