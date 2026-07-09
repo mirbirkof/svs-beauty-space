@@ -382,9 +382,66 @@ async function supportStats() {
   return { open, avg_first_response_h: Number(resp.h) || 0, avg_resolution_h: Number(resolv.h) || 0, by_status: st };
 }
 
+// ── GDPR оффбординг: повне видалення даних салону при уході ───────────
+// Незворотнє. Захист: (1) лише платформа (гард роуту), (2) салон має бути
+// cancelled/suspended (не активний), (3) точна назва-підтвердження, (4) НЕ
+// платформений тенант. Рекомендація: спершу /backup/export (портативність ПД).
+// Видаляє рядки з УСІХ таблиць, що мають tenant_id (виявляє динамічно, нічого не
+// пропустить), у кілька проходів через SAVEPOINT — коректний порядок FK без суперюзера.
+async function purgeTenant(tenantId, { confirmName } = {}, actor = null) {
+  const pool = getPool();
+  const qi = (t) => '"' + String(t).replace(/"/g, '""') + '"';
+  const t = (await pool.query(
+    `SELECT id, name, status, COALESCE(is_internal, false) AS is_internal FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+  if (!t) throw new Error('tenant-not-found');
+  if (t.is_internal) throw new Error('cannot-purge-platform-tenant');
+  if (!['cancelled', 'suspended'].includes(t.status)) throw new Error('tenant-must-be-cancelled-or-suspended-first');
+  if (!confirmName || String(confirmName).trim() !== t.name) throw new Error('confirm-name-mismatch');
+
+  const tbls = (await pool.query(
+    `SELECT table_name FROM information_schema.columns
+      WHERE table_schema='public' AND column_name='tenant_id' AND table_name <> 'tenants'`)).rows.map(r => r.table_name);
+
+  const client = await pool.connect();
+  const deleted = {};
+  try {
+    await client.query('BEGIN');
+    let remaining = [...tbls];
+    for (let pass = 0; pass < 10 && remaining.length; pass++) {
+      const next = [];
+      for (const tb of remaining) {
+        await client.query('SAVEPOINT sp');
+        try {
+          const r = await client.query(`DELETE FROM ${qi(tb)} WHERE tenant_id=$1`, [tenantId]);
+          deleted[tb] = (deleted[tb] || 0) + r.rowCount;
+          await client.query('RELEASE SAVEPOINT sp');
+        } catch (e) {
+          await client.query('ROLLBACK TO SAVEPOINT sp');
+          if (/foreign key|violates|depends/i.test(e.message)) next.push(tb); // спробуємо наступним проходом
+          else throw e;
+        }
+      }
+      if (next.length === remaining.length) throw new Error('fk-cycle, не видалились: ' + next.join(', '));
+      remaining = next;
+    }
+    // платформені рядки, що посилаються на тенант
+    for (const pt of ['subscriptions_saas', 'invoices_saas', 'tenant_addon_subscriptions', 'licenses', 'tenant_onboarding']) {
+      await client.query('SAVEPOINT sp2');
+      try { await client.query(`DELETE FROM ${qi(pt)} WHERE tenant_id=$1`, [tenantId]); await client.query('RELEASE SAVEPOINT sp2'); }
+      catch (_) { await client.query('ROLLBACK TO SAVEPOINT sp2'); }
+    }
+    await client.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { client.release(); }
+  const totalRows = Object.values(deleted).reduce((s, n) => s + n, 0);
+  console.log(`[tenant-mgmt:purge] tenant=${tenantId} name="${t.name}" by=${actor && actor.id || '?'} tables=${Object.keys(deleted).length} rows=${totalRows}`);
+  return { purged: tenantId, name: t.name, tables_cleared: Object.keys(deleted).length, rows_deleted: totalRows, detail: deleted };
+}
+
 module.exports = {
   computeHealth, runHealthCheck, runHealthAll, categorize,
-  dashboard, listTenants, tenantDetail, setStatus, createTenant,
+  dashboard, listTenants, tenantDetail, setStatus, createTenant, purgeTenant,
   getOnboarding, completeStep, updateOnboarding, ONB_STEPS,
   createTicket, listTickets, getTicket, updateTicket, replyTicket, supportStats,
 };

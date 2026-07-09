@@ -93,6 +93,17 @@ router.post('/tenants/:id/unblock', requirePerm('saas.write'), async (req, res) 
   } catch (e) { fail(res, e); }
 });
 
+// ── GDPR оффбординг: НЕЗВОРОТНЄ видалення всіх даних салону ───────────
+// Тіло: { confirm_name }. Салон має бути cancelled/suspended. Радимо спершу
+// зробити експорт (GET /api/backup/export від імені салону) для портативності ПД.
+router.post('/tenants/:id/purge', requirePerm('saas.write'), async (req, res) => {
+  try {
+    const r = await tm.purgeTenant(req.params.id, { confirmName: req.body?.confirm_name }, req.user);
+    await logAction({ user: req.user, action: 'tenant.purge', entity: 'tenants', entity_id: req.params.id, ip: req.ip, meta: { rows: r.rows_deleted, tables: r.tables_cleared } });
+    res.json({ ok: true, ...r });
+  } catch (e) { fail(res, e); }
+});
+
 // ── СУПЕРАДМИН: онбординг тенанта ────────────────────────────────────
 router.get('/tenants/:id/onboarding', requirePerm('saas.read'), async (req, res) => {
   try { res.json(await tm.getOnboarding(req.params.id)); } catch (e) { fail(res, e); }
