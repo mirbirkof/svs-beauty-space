@@ -323,6 +323,35 @@ async function processUpdate(upd, tg, salon) {
       if (!row) {
         // Розмовна запис чекає номер для завершення? → бронюємо й виходимо.
         if (await bookingBot.onContact(msg, botCtx)) return;
+        // СПІВРОБІТНИК/ВЛАСНИК: номер збігається з обліковкою CRM цього салону →
+        // привʼязуємо telegram_id до users (безпечно: Telegram гарантує, що контакт
+        // належить відправнику — перевірка user_id вище; чужий telegram не перетремо).
+        try {
+          const staff = await getPool().query(
+            `UPDATE users u SET telegram_id = $1, updated_at = NOW()
+               FROM roles r
+              WHERE r.id = u.role_id AND u.tenant_id = $3
+                AND regexp_replace(COALESCE(u.phone,''), '\\D', '', 'g') = $2
+                AND COALESCE(u.is_active, true) = true
+                AND (u.telegram_id IS NULL OR u.telegram_id = $1)
+              RETURNING u.display_name,
+                (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%' OR r.permissions::jsonb ? '*') AS is_owner`,
+            [msg.from.id, phoneDigits, tenantId]);
+          if (staff.rowCount) {
+            const s = staff.rows[0];
+            if (s.is_owner) {
+              return tg('sendMessage', {
+                chat_id: msg.chat.id, parse_mode: 'HTML',
+                text: `👑 Вітаю, <b>${s.display_name || 'власник'}</b>! Telegram підвʼязано до вашого акаунта.\nТепер вам приходитиме ранковий фінзвіт, а меню керування — нижче.`,
+                reply_markup: bookingBot.ownerMenu ? bookingBot.ownerMenu() : undefined,
+              });
+            }
+            return tg('sendMessage', {
+              chat_id: msg.chat.id, parse_mode: 'HTML',
+              text: `✅ <b>${s.display_name || ''}</b>, Telegram підвʼязано до вашого робочого акаунта. Тепер сюди приходитимуть сповіщення й коди входу.`,
+            });
+          }
+        } catch (e) { console.error('[booking/staff-link]', e.message); }
         // Немає активного запису → режим привʼязки акаунта до клієнта за номером.
         // Telegram гарантує що номер належить відправнику (перевірка user_id вище).
         try {

@@ -814,8 +814,10 @@ async function ownerTgUser(ctx, uid) {
     const r = await ctx.pool.query(
       `SELECT u.id, u.display_name FROM users u JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id = $1 AND u.telegram_id = $2 AND COALESCE(u.is_active, true) = true
+          -- лише СПРАВЖНІЙ власник: роль owner або повний доступ (jsonb містить САМЕ '*');
+          -- НЕ text LIKE '%*%' — "crm.*" адміна теж містить зірочку (витік фінансів)
           AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
-               OR r.permissions::text LIKE '%*%' OR COALESCE(r.level, 0) >= 900)
+               OR r.permissions::jsonb ? '*')
         LIMIT 1`, [ctx.tenantId, uid]);
     return r.rows[0] || null;
   } catch (_) { return null; }
@@ -1238,4 +1240,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu };

@@ -126,8 +126,10 @@ async function _ownerRecipients(pool, tenantId) {
        FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.tenant_id = $1 AND COALESCE(u.is_active, true) = true
         AND u.telegram_id IS NOT NULL
+        -- Власник = роль owner АБО ПОВНИЙ доступ (permissions містить САМЕ '*').
+        -- НЕ text LIKE '%*%': "crm.*" адміна теж містить зірочку → фінзвіт витік би адмінам.
         AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
-             OR r.permissions::text LIKE '%*%' OR COALESCE(r.level, 0) >= 900)`,
+             OR r.permissions::jsonb ? '*')`,
     [tenantId]).catch(() => ({ rows: [] }))).rows;
   return rows.map(r => String(r.telegram_id)).filter(Boolean);
 }
