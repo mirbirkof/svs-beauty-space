@@ -13,3 +13,4 @@ backend/shop.db-*
 ~/
 
 backend/uploads/
+.env.bak-*

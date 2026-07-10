@@ -2,6 +2,6 @@
   "active": "supabase",
   "active_db_host": "aws-0-eu-west-1.pooler.supabase.com",
   "project_ref": "mbbahbprldketnlostvo",
-  "updated_at": "2026-07-10T13:29:51.000Z",
-  "note": "переезд с Neon (квоты free-tier) 10.07.2026; neon-failover decommission pending"
+  "updated_at": "2026-07-10T15:14:37.000Z",
+  "note": "прод (Render) на Supabase с 10.07; neon-failover демон устарел — ждёт вывода из эксплуатации (kill=RED)"
 }
