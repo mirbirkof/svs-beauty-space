@@ -57,7 +57,8 @@ async function catalog() {
           AND (ends_at IS NULL OR ends_at > NOW())
         ORDER BY created_at DESC NULLS LAST LIMIT 30`).catch(() => []),
     q(`SELECT code, type, value, min_total, valid_until FROM promos
-        WHERE active=true AND (valid_until IS NULL OR valid_until > NOW()) LIMIT 30`).catch(() => []),
+        WHERE active=true AND (valid_until IS NULL OR valid_until > NOW())
+          AND tenant_id = current_tenant_id() LIMIT 30`).catch(() => []),
   ]);
   _cat = {
     services: services.map(s => ({ назва: s.name, ціна: Number(s.price) || null })),

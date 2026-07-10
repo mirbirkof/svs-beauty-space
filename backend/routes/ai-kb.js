@@ -117,7 +117,7 @@ async function syncSource(type) {
         + `${p.ends_at ? ' Діє до ' + new Date(p.ends_at).toLocaleDateString('uk-UA') + '.' : ''}`;
       rows.push({ id: String(p.id), title: `Акція: ${p.title}`, content });
     }
-    const codes = await q(`SELECT code, type, value, min_total, valid_until FROM promos WHERE active=true`).catch(() => []);
+    const codes = await q(`SELECT code, type, value, min_total, valid_until FROM promos WHERE active=true AND tenant_id = current_tenant_id()`).catch(() => []);
     for (const c of codes) {
       const val = c.type === 'percent' ? `${c.value}%` : `${c.value} грн`;
       rows.push({ id: `code_${c.code}`, title: `Промокод ${c.code}`,

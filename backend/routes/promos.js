@@ -17,9 +17,12 @@ let bootstrapped = false;
 async function bootstrap() {
   if (bootstrapped) return;
   const pool = getPool();
+  // Блокер #6: promos изолированы по tenant_id (composite PK). На проде схему приводит
+  // миграция 238; здесь — та же схема для свежей БД, где bootstrap опередит миграцию.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS promos (
-      code         TEXT PRIMARY KEY,
+      tenant_id    uuid NOT NULL DEFAULT current_tenant_id(),
+      code         TEXT NOT NULL,
       type         TEXT NOT NULL CHECK (type IN ('percent','fixed')),
       value        NUMERIC NOT NULL,
       min_total    NUMERIC DEFAULT 0,
@@ -27,7 +30,8 @@ async function bootstrap() {
       uses         INT DEFAULT 0,
       valid_until  TIMESTAMPTZ,
       active       BOOLEAN DEFAULT TRUE,
-      created_at   TIMESTAMPTZ DEFAULT NOW()
+      created_at   TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (tenant_id, code)
     )
   `);
   bootstrapped = true;
