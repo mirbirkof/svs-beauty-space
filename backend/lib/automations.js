@@ -93,10 +93,12 @@ let _timer = null;
 function startAutomations() {
   // подписка на неявку
   try { require('./event-bus').on('appointment.noshow', onNoShow); } catch (e) { console.error('[automations] subscribe:', e.message); }
-  // суточный прогон отток+ДР: первый через 6 мин, далее раз в 24ч
+  // суточный прогон отток+ДР: первый через 6 мин, далее раз в 24ч.
+  // Блокер #5: прогон ПО КАЖДОМУ салону под его RLS-контекстом (изоляция чтения клиентов).
   if (!_timer) {
-    setTimeout(() => runDailyAutomations().catch(() => {}), 6 * 60 * 1000);
-    _timer = setInterval(() => runDailyAutomations().catch(() => {}), 24 * 3600 * 1000);
+    const runAll = () => require('./tenant').forEachTenant(() => runDailyAutomations()).catch(() => {});
+    setTimeout(runAll, 6 * 60 * 1000);
+    _timer = setInterval(runAll, 24 * 3600 * 1000);
   }
   console.log('[automations] активны: noshow→задача, отток60→задача, ДР→задача');
 }

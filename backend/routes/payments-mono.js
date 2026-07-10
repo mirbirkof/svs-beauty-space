@@ -540,11 +540,10 @@ router.get('/health', async (req, res) => {
 
 // ── cron: поллинг pending-инвойсов (страховка от потерянных вебхуков) ──
 let _cronTimer = null;
-function startCron() {
-  if (_cronTimer) return;
-  // Миграция применена 10.06.2026 под owner-ролью (app_tenant не владеет таблицами):
-  //   payments.purpose TEXT; online_bookings.visit_invoice_sent_at/visit_paid_at TIMESTAMPTZ
-  _cronTimer = setInterval(async () => {
+// Один проход скана — выполняется В КОНТЕКСТЕ ОДНОГО салона (forEachTenant).
+// Все запросы через getPool() фильтруются RLS по текущему tenant_id, поэтому
+// платежи/записи одного салона не попадают в кассу/чат другого.
+async function monoScanTick() {
     try {
       const pool = getPool();
       const r = await pool.query(
@@ -620,9 +619,20 @@ function startCron() {
         } catch (e) { console.error('[mono:visit-scan]', b.id, e.message); }
       }
     } catch (e) { console.error('[mono:cron]', e.message); }
+}
+
+function startCron() {
+  if (_cronTimer) return;
+  // Миграция применена 10.06.2026 под owner-ролью (app_tenant не владеет таблицами):
+  //   payments.purpose TEXT; online_bookings.visit_invoice_sent_at/visit_paid_at TIMESTAMPTZ
+  // Блокер #5: тик прогоняется ПО КАЖДОМУ салону под его RLS-контекстом, иначе
+  // mono-скан видел платежи/записи всех салонов и слал инвойсы/писал кассу в дефолтный.
+  const { forEachTenant } = require('../lib/tenant');
+  _cronTimer = setInterval(() => {
+    forEachTenant(() => monoScanTick()).catch(e => console.error('[mono:cron:sweep]', e.message));
   }, 3 * 60 * 1000);
   _cronTimer.unref();
-  console.log('[mono] pending-invoice poller started (3 min)');
+  console.log('[mono] pending-invoice poller started (3 min, per-tenant)');
 }
 
 module.exports = router;

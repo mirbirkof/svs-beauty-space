@@ -112,4 +112,23 @@ function runAs(tenantId, fn) {
   return tenantContext.run({ tenantId }, fn);
 }
 
-module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, invalidateTenant, runAs, DEFAULT_TENANT_ID };
+// ПРЕСЕЙЛ-БЛОКЕР #5: прогнать fn(tenantId) для КАЖДОГО живого салона под его RLS-контекстом.
+// Кроны (постоянные расходы, Mono-скан, дни рождения) раньше делали один глобальный запрос
+// без контекста → RLS permissive → данные всех салонов сваливались в дефолтный. Теперь крон
+// оборачивается в forEachTenant, и все запросы внутри fn фильтруются по каждому тенанту.
+// Список тенантов читаем вне tenant-контекста (runAs(null)), чтобы увидеть все строки.
+// Ошибка в одном салоне не рвёт остальные — логируем и продолжаем.
+async function forEachTenant(fn, { statuses = ['active', 'trial'] } = {}) {
+  const { getPool } = require('../db-pg');
+  const rows = await runAs(null, () =>
+    getPool().query(`SELECT id FROM tenants WHERE status = ANY($1) ORDER BY created_at`, [statuses])
+  ).then(r => r.rows).catch((e) => { console.error('[forEachTenant] list failed:', e.message); return []; });
+  let ok = 0, fail = 0;
+  for (const t of rows) {
+    try { await runAs(t.id, () => fn(t.id)); ok++; }
+    catch (e) { fail++; console.error(`[forEachTenant] tenant ${t.id} failed:`, e.message); }
+  }
+  return { tenants: rows.length, ok, fail };
+}
+
+module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, invalidateTenant, runAs, forEachTenant, DEFAULT_TENANT_ID };

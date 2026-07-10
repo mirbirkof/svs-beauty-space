@@ -372,7 +372,12 @@ try {
   app.use('/api/recurring-expenses', recExp);
   // Тік авто-проводки постійних витрат: на старті (через 30с) і кожні 12 год. Ідемпотентно по місяцю.
   if (process.env.DATABASE_URL && typeof recExp.postDue === 'function') {
-    const tick = () => recExp.postDue().then(n => { if (n) console.log(`[recurring-exp] проведено ${n} постійних витрат`); }).catch(e => console.error('[recurring-exp] tick:', e.message));
+    // Блокер #5: проводим постоянные расходы ПО КАЖДОМУ салону под его RLS-контекстом,
+    // иначе расходы всех салонов сваливались в кассу Босса (дефолтный тенант).
+    const { forEachTenant } = require('./lib/tenant');
+    const tick = () => forEachTenant(() => recExp.postDue())
+      .then(r => { if (r.ok) console.log(`[recurring-exp] тік по ${r.tenants} салонах (ok ${r.ok}, fail ${r.fail})`); })
+      .catch(e => console.error('[recurring-exp] tick:', e.message));
     setTimeout(tick, 30000);
     setInterval(tick, 12 * 60 * 60 * 1000);
   }
