@@ -2,6 +2,6 @@
   "active": "supabase",
   "active_db_host": "aws-0-eu-west-1.pooler.supabase.com",
   "project_ref": "mbbahbprldketnlostvo",
-  "updated_at": "2026-07-10T15:14:37.000Z",
-  "note": "прод (Render) на Supabase с 10.07; neon-failover демон устарел — ждёт вывода из эксплуатации (kill=RED)"
+  "updated_at": "2026-07-10T16:14:15.000Z",
+  "note": "прод на Supabase с 10.07. Файл заморожен (chmod 444) от устаревшего neon-failover демона, который перезаписывал его на Neon. Демон ждёт вывода из эксплуатации."
 }

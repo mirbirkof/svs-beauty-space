@@ -398,9 +398,12 @@ async function purgeTenant(tenantId, { confirmName } = {}, actor = null) {
   if (!['cancelled', 'suspended'].includes(t.status)) throw new Error('tenant-must-be-cancelled-or-suspended-first');
   if (!confirmName || String(confirmName).trim() !== t.name) throw new Error('confirm-name-mismatch');
 
+  // ЛИШЕ uuid-колонки: у branch_kpi_snapshots tenant_id INTEGER (інша семантика) —
+  // DELETE ... WHERE tenant_id=<uuid> кидав 22P02 і валив увесь purge (E2E-аудит 10.07)
   const tbls = (await pool.query(
     `SELECT table_name FROM information_schema.columns
-      WHERE table_schema='public' AND column_name='tenant_id' AND table_name <> 'tenants'`)).rows.map(r => r.table_name);
+      WHERE table_schema='public' AND column_name='tenant_id' AND data_type='uuid'
+        AND table_name <> 'tenants'`)).rows.map(r => r.table_name);
 
   const client = await pool.connect();
   const deleted = {};

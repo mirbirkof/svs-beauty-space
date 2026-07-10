@@ -17,6 +17,20 @@
  */
 const { Pool } = require('pg');
 
+/* Платформенно-управляемые таблицы: имеют tenant_id, но писать/читать в них должен
+ * ПЛАТФОРМЕННЫЙ код в чужой тенант (tenant-mgmt.js: createTenant/purge, billing,
+ * public-signup). tenant_isolation (fail-closed при GUC) ломает signup: запрос идёт
+ * в контексте дефолтного тенанта, а строки создаются для НОВОГО (E2E-аудит 10.07:
+ * «new row violates RLS for subscriptions_saas/licenses»). Изоляция здесь — явными
+ * WHERE tenant_id=$1 (дизайн lib/tenant-mgmt.js, шапка). staff_otp_throttle —
+ * глобальный анти-brute-force (PK по key, ключи pwd:ip:* общие между салонами):
+ * per-tenant политика валила login-password 500 (upsert в невидимую строку). */
+const PLATFORM_MANAGED = [
+  '_migrations', 'subscriptions_saas', 'invoices_saas', 'tenant_addon_subscriptions',
+  'licenses', 'tenant_onboarding', 'staff_otp_throttle',
+];
+const EXCLUDE_SQL = PLATFORM_MANAGED.map(t => `'${t}'`).join(', ');
+
 const ENSURE_SQL = `
 DO $$
 DECLARE
@@ -33,7 +47,7 @@ BEGIN
      WHERE c.table_schema = 'public'
        AND c.column_name  = 'tenant_id'
        AND c.data_type    = 'uuid'
-       AND c.table_name NOT IN ('_migrations')
+       AND c.table_name NOT IN (${EXCLUDE_SQL})
        AND NOT EXISTS (
          SELECT 1 FROM pg_policies p
           WHERE p.schemaname = 'public'
@@ -75,7 +89,7 @@ async function ensureTenantRls() {
       SELECT count(*)::int AS c
         FROM information_schema.columns c
        WHERE c.table_schema='public' AND c.column_name='tenant_id' AND c.data_type='uuid'
-         AND c.table_name <> '_migrations'
+         AND c.table_name NOT IN (${EXCLUDE_SQL})
          AND NOT EXISTS (SELECT 1 FROM pg_policies p
                           WHERE p.schemaname='public' AND p.tablename=c.table_name
                             AND p.policyname='tenant_isolation')`);
