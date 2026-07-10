@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVS Beauty Space — Магазин · Легенда (Edward Scissorhands Fantasy)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#080b14; --night2:#0d1220; --moon:#e6ecf9; --silver:#9fb0cc;
+  --ice:#b9c5ff; --hedge:#0e2018; --hedge2:#14301f; --gold:#C9A96E; --blood:#7e1f2e;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:auto}
+body{background:var(--night);color:var(--moon);font-family:'Inter',sans-serif;overflow-x:hidden}
+::selection{background:var(--gold);color:var(--night)}
+.serif{font-family:'Cormorant Garamond',serif}
+
+/* ── завеса-загрузка ── */
+#veil{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#veil .half{position:absolute;top:0;width:51%;height:100%;background:#05070d}
+#veil .half.l{left:0}#veil .half.r{right:0}
+#veil svg{width:110px;height:110px;position:relative;z-index:2;opacity:.95}
+#veil path{stroke:var(--silver);stroke-width:1.6;fill:none;stroke-linecap:round}
+
+/* ── курсор-ножиці ── */
+#cur{position:fixed;left:0;top:0;z-index:150;pointer-events:none;width:34px;height:34px;margin:-17px 0 0 -17px;display:none}
+@media(hover:hover) and (pointer:fine){ #cur{display:block} body{cursor:none} a,button{cursor:none} }
+#cur svg{width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(185,197,255,.45))}
+#cur .bl{stroke:var(--ice);stroke-width:1.5;fill:none;stroke-linecap:round;transform-origin:17px 19px;transition:transform .12s}
+
+.snow{position:fixed;inset:0;z-index:1;pointer-events:none}
+main{position:relative;z-index:2}
+
+/* ── назад ── */
+.back{position:fixed;top:14px;left:14px;z-index:120;font-size:12px;letter-spacing:.08em;color:var(--silver);text-decoration:none;border:1px solid rgba(159,176,204,.35);padding:7px 13px;border-radius:99px;background:rgba(8,11,20,.55);backdrop-filter:blur(6px)}
+.back:hover{color:var(--moon);border-color:var(--moon)}
+
+/* ── nav ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:110;display:flex;justify-content:center;gap:34px;padding:18px 90px;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--silver);background:linear-gradient(180deg,rgba(8,11,20,.85),transparent)}
+nav b{color:var(--moon);font-weight:500}
+nav span{opacity:.75}
+@media(max-width:720px){nav{gap:16px;padding:16px 12px 16px 110px;font-size:10px}}
+
+/* ── СЦЕНА 1: пагорб ── */
+#hill{height:100vh;position:relative;overflow:hidden;background:
+  radial-gradient(90vmax 90vmax at 72% 8%, #1a2340 0%, transparent 55%),
+  linear-gradient(180deg,#0a0f1e 0%, #080b14 70%)}
+.moon{position:absolute;right:14vw;top:9vh;width:14vmin;height:14vmin;border-radius:50%;
+  background:radial-gradient(circle at 42% 38%, #ffffff 0%, #dfe6f4 55%, #b9c5ff 100%);
+  box-shadow:0 0 60px 22px rgba(185,197,255,.28), 0 0 160px 70px rgba(185,197,255,.12)}
+.stars i{position:absolute;width:2px;height:2px;border-radius:50%;background:var(--moon);opacity:.7;animation:tw 3.4s ease-in-out infinite}
+@keyframes tw{50%{opacity:.15;transform:scale(.6)}}
+.ridge{position:absolute;left:-4vw;right:-4vw;bottom:-2px}
+.ridge svg{display:block;width:100%;height:34vh}
+.r1 path{fill:#0c1424}.r2 path{fill:#090e1b}.r3 path{fill:#05070d}
+.mansion{position:absolute;left:50%;bottom:24vh;transform:translateX(-50%);width:min(34vmin,300px);opacity:.92}
+.mansion path{fill:#04060c}
+.mansion .win{fill:#e9d9a0;opacity:.85;animation:flick 5s ease-in-out infinite}
+@keyframes flick{50%{opacity:.35}}
+.h-title{position:absolute;left:8vw;top:30vh;max-width:620px}
+.h-kicker{font-size:12px;letter-spacing:.42em;text-transform:uppercase;color:var(--ice);margin-bottom:22px;opacity:.9}
+h1{font-family:'Cormorant Garamond',serif;font-weight:600;font-style:italic;font-size:clamp(44px,7.4vw,104px);line-height:1.02;color:var(--moon)}
+h1 .ch{display:inline-block;will-change:transform,opacity}
+.h-sub{margin-top:26px;font-size:15px;line-height:1.75;color:var(--silver);max-width:400px}
+.h-hint{position:absolute;bottom:5vh;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--silver);opacity:.7}
+.h-hint::after{content:"";display:block;width:1px;height:38px;background:linear-gradient(var(--silver),transparent);margin:10px auto 0}
+
+/* гігантські ножиці героя */
+#heroSc{position:absolute;right:9vw;bottom:8vh;width:min(30vmin,280px);filter:drop-shadow(0 6px 30px rgba(0,0,0,.6))}
+#heroSc .blade{stroke:url(#mg);stroke-width:2.4;fill:rgba(230,236,249,.05);stroke-linejoin:round}
+#heroSc .rivet{fill:var(--gold)}
+#heroSc .ring{stroke:url(#mg);stroke-width:2.4;fill:none}
+#heroSc .g1,#heroSc .g2{transform-origin:100px 118px}
+.glint{position:absolute;width:120%;height:14px;left:-10%;top:34%;transform:rotate(-24deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);mix-blend-mode:screen;opacity:0}
+
+/* ── СЦЕНА 2: розріз ── */
+#cut{height:100vh;position:relative;overflow:hidden;background:linear-gradient(180deg,#080b14,#0a0e1c 55%,#080b14)}
+#cut .stage{position:absolute;inset:0}
+#strandWrap{position:absolute;inset:0}
+#strandWrap svg{width:100%;height:100%}
+.strand-raw{stroke:url(#hairRaw);stroke-width:10;fill:none;stroke-linecap:round;filter:url(#rough)}
+.strand-silk{stroke:url(#hairSilk);stroke-width:7;fill:none;stroke-linecap:round}
+#cutSc{position:absolute;width:88px;height:88px;left:0;top:0;will-change:transform;filter:drop-shadow(0 0 14px rgba(185,197,255,.35))}
+#cutSc .bl{stroke:#dfe6f4;stroke-width:2;fill:rgba(230,236,249,.06);stroke-linecap:round;transform-origin:44px 48px}
+.cut-cap{position:absolute;left:8vw;bottom:10vh;max-width:430px}
+.cut-cap h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(30px,4.4vw,54px);color:var(--moon)}
+.cut-cap p{margin-top:14px;color:var(--silver);font-size:14px;line-height:1.75}
+.snip{position:absolute;width:26px;height:5px;border-radius:3px;background:linear-gradient(90deg,#6e5320,#C9A96E,#f0dfae);pointer-events:none;opacity:0}
+
+/* ── СЦЕНА 3: сад-вітрина ── */
+#garden{position:relative;padding:15vh 8vw 8vh;background:
+  radial-gradient(120vmax 60vmax at 50% -10%, #0d1526 0%, transparent 50%),
+  linear-gradient(180deg,#080b14, #0a1410 45%, #081109)}
+.g-head{max-width:700px;margin:0 auto 9vh;text-align:center}
+.g-head h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(34px,5vw,62px)}
+.g-head p{margin-top:16px;color:var(--silver);font-size:14px;line-height:1.7}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:26px;max-width:1220px;margin:0 auto}
+.card{position:relative;background:linear-gradient(180deg,var(--hedge2),var(--hedge));border-radius:130px 130px 18px 18px;padding:14px 14px 20px;border:1px solid rgba(201,169,110,.25);overflow:hidden;will-change:clip-path,transform}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;background:
+  radial-gradient(90px 60px at 20% 10%, rgba(185,197,255,.10), transparent 60%),
+  repeating-radial-gradient(circle at 30% 20%, transparent 0 7px, rgba(0,0,0,.16) 7px 8px);pointer-events:none}
+.ph{position:relative;height:230px;border-radius:116px 116px 10px 10px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid rgba(230,236,249,.14)}
+.ph .bottle{width:64px;height:150px;border-radius:16px 16px 8px 8px;position:relative;box-shadow:inset -10px 0 22px rgba(0,0,0,.4), 0 14px 30px rgba(0,0,0,.5)}
+.ph .bottle::before{content:"";position:absolute;top:-16px;left:50%;transform:translateX(-50%);width:26px;height:18px;border-radius:5px 5px 0 0;background:#1c2233}
+.ph .brand{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:rgba(230,236,249,.85)}
+.ph .shine{position:absolute;top:0;bottom:0;width:46%;left:-60%;transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent)}
+.card:hover .shine{transition:left .8s cubic-bezier(.22,.61,.36,1);left:130%}
+.c-name{margin-top:16px;font-family:'Cormorant Garamond',serif;font-size:21px;font-style:italic;color:var(--moon);line-height:1.25;min-height:52px}
+.c-meta{display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px}
+.c-vol{font-size:11px;letter-spacing:.14em;color:var(--silver)}
+.tag{position:relative;transform-origin:top center;background:linear-gradient(180deg,#1a2030,#12182a);border:1px solid rgba(201,169,110,.5);color:var(--gold);font-weight:700;font-size:15px;padding:7px 13px;border-radius:6px}
+.tag::before{content:"";position:absolute;top:-8px;left:50%;width:1px;height:8px;background:rgba(201,169,110,.6);transform:translateX(-50%)}
+.card:hover .tag{animation:swing 1.1s cubic-bezier(.36,.07,.19,.97)}
+@keyframes swing{0%{transform:rotate(0)}18%{transform:rotate(-13deg)}42%{transform:rotate(9deg)}66%{transform:rotate(-5deg)}84%{transform:rotate(2.5deg)}100%{transform:rotate(0)}}
+.buy{margin-top:14px;width:100%;padding:11px;border-radius:10px;border:1px solid rgba(201,169,110,.55);background:transparent;color:var(--gold);font-family:'Inter',sans-serif;font-size:12px;letter-spacing:.2em;text-transform:uppercase;transition:.25s}
+.buy:hover{background:var(--gold);color:var(--night)}
+
+/* ── цитата ── */
+#tale{min-height:72vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:12vh 8vw;position:relative;overflow:hidden;background:linear-gradient(180deg,#081109,#080b14 60%)}
+#tale blockquote{max-width:820px;font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(26px,4vw,50px);line-height:1.35;
+  background:linear-gradient(100deg,#5c6a86 20%, #eef3ff 40%, #b9c5ff 50%, #eef3ff 60%, #5c6a86 80%);
+  background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent}
+#tale cite{display:block;margin-top:26px;font-size:12px;letter-spacing:.34em;text-transform:uppercase;color:var(--silver);font-style:normal}
+
+/* ── фінал ── */
+#final{min-height:88vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden;padding:10vh 8vw}
+#final h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(38px,6vw,84px);line-height:1.08}
+#final p{margin-top:20px;color:var(--silver);max-width:430px;font-size:14px;line-height:1.75}
+#cta{margin-top:44px;position:relative;display:inline-block;padding:20px 54px;border-radius:99px;border:1px solid var(--gold);color:var(--gold);font-size:13px;letter-spacing:.3em;text-transform:uppercase;text-decoration:none;overflow:hidden;will-change:transform}
+#cta i{position:absolute;inset:0;background:var(--gold);border-radius:inherit;transform:scaleX(0);transform-origin:left;transition:transform .45s cubic-bezier(.65,0,.35,1);z-index:0}
+#cta b{position:relative;z-index:1;font-weight:500;transition:color .3s}
+#cta:hover i{transform:scaleX(1)}
+#cta:hover b{color:var(--night)}
+
+footer{padding:40px 8vw;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(159,176,204,.15);font-size:11px;letter-spacing:.16em;color:var(--silver)}
+.badge{border:1px solid rgba(159,176,204,.3);border-radius:99px;padding:6px 12px}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  #veil{display:none}
+  .h-title,#heroSc,.card,.cut-cap{opacity:1!important;transform:none!important;clip-path:none!important}
+}
+@media(max-width:720px){
+  .h-title{top:22vh}
+  #heroSc{width:38vmin;right:6vw;bottom:16vh}
+  .mansion{bottom:26vh}
+  .cut-cap{bottom:6vh}
+}
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Всі концепти</a>
+
+<div id="veil"><div class="half l"></div><div class="half r"></div>
+  <svg viewBox="0 0 100 100"><path id="veilPath" d="M30 20 C55 45 55 45 70 78 M70 20 C45 45 45 45 30 78 M38 78 a7 7 0 1 0 0.1 0 M62 78 a7 7 0 1 0 0.1 0"/></svg>
+</div>
+
+<div id="cur"><svg viewBox="0 0 34 34">
+  <g class="bl" id="cb1"><line x1="17" y1="19" x2="27" y2="5"/><circle cx="13" cy="26" r="4"/></g>
+  <g class="bl" id="cb2"><line x1="17" y1="19" x2="7" y2="5"/><circle cx="21" cy="26" r="4"/></g>
+</svg></div>
+
+<canvas class="snow" id="snow"></canvas>
+
+<nav><span>Колекція</span><span>Бренди</span><b class="serif" style="font-size:16px;letter-spacing:.1em">SVS&nbsp;·&nbsp;Легенда</b><span>Легенда</span><span>Кошик&nbsp;(0)</span></nav>
+
+<main>
+<!-- СЦЕНА 1 -->
+<section id="hill">
+  <div class="stars" id="stars"></div>
+  <div class="moon" data-depth="0.25"></div>
+  <div class="mansion" data-depth="0.5">
+    <svg viewBox="0 0 300 220">
+      <path d="M20 220 L20 120 L45 120 L45 90 L60 70 L75 90 L75 120 L110 120 L110 60 L150 18 L190 60 L190 120 L225 120 L225 95 L240 75 L255 95 L255 130 L280 130 L280 220 Z"/>
+      <rect class="win" x="142" y="70" width="16" height="24" rx="8"/>
+      <rect class="win" x="60" y="130" width="12" height="18" rx="6" style="animation-delay:1.2s"/>
+      <rect class="win" x="230" y="140" width="12" height="18" rx="6" style="animation-delay:2.4s"/>
+    </svg>
+  </div>
+  <div class="ridge r1" data-depth="0.65"><svg viewBox="0 0 1440 300" preserveAspectRatio="none"><path d="M0 300 L0 190 Q180 120 360 170 T720 150 T1080 180 T1440 140 L1440 300 Z"/></svg></div>
+  <div class="ridge r2" data-depth="0.82"><svg viewBox="0 0 1440 300" preserveAspectRatio="none"><path d="M0 300 L0 230 Q240 170 480 210 T960 200 T1440 220 L1440 300 Z"/></svg></div>
+  <div class="ridge r3" data-depth="1"><svg viewBox="0 0 1440 300" preserveAspectRatio="none"><path d="M0 300 L0 262 Q360 226 720 252 T1440 246 L1440 300 Z"/></svg></div>
+
+  <div class="h-title">
+    <div class="h-kicker">SVS Beauty Space презентує</div>
+    <h1 id="h1">Магія<br>в руках майстра</h1>
+    <p class="h-sub">Казка про ножиці, що творять дива — і про засоби, якими легенда доглядає волосся. Італійська професійна косметика Raywell · Extremo · Invidia · Eterna · Envie.</p>
+  </div>
+
+  <svg id="heroSc" viewBox="0 0 200 240">
+    <defs>
+      <linearGradient id="mg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f2f6ff"/><stop offset=".5" stop-color="#8fa0c0"/><stop offset="1" stop-color="#e6ecf9"/>
+      </linearGradient>
+    </defs>
+    <g class="g1"><path class="blade" d="M100 118 L58 18 Q54 8 62 10 L74 16 Q78 18 80 24 L104 106 Z"/><circle class="ring" cx="76" cy="176" r="26"/><path class="blade" d="M100 118 L88 152 L76 150"/></g>
+    <g class="g2"><path class="blade" d="M100 118 L142 18 Q146 8 138 10 L126 16 Q122 18 120 24 L96 106 Z"/><circle class="ring" cx="124" cy="176" r="26"/><path class="blade" d="M100 118 L112 152 L124 150"/></g>
+    <circle class="rivet" cx="100" cy="118" r="5"/>
+  </svg>
+  <div class="glint" id="glint"></div>
+  <div class="h-hint">Гортайте казку</div>
+</section>
+
+<!-- СЦЕНА 2 -->
+<section id="cut">
+  <div class="stage">
+    <div id="strandWrap">
+      <svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="hairRaw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4a3a26"/><stop offset="1" stop-color="#6b5638"/></linearGradient>
+          <linearGradient id="hairSilk" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C9A96E"/><stop offset=".5" stop-color="#f2e3bc"/><stop offset="1" stop-color="#C9A96E"/></linearGradient>
+          <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="7"/></filter>
+        </defs>
+        <path id="strandPath" class="strand-raw"  d="M-40 210 C 240 140, 420 330, 700 300 S 1120 170, 1480 340"/>
+        <path id="silkPath"  class="strand-silk" d="M-40 210 C 240 140, 420 330, 700 300 S 1120 170, 1480 340"/>
+      </svg>
+    </div>
+    <svg id="cutSc" viewBox="0 0 88 96">
+      <g class="bl" id="sb1"><path d="M44 48 L22 10 Q20 5 25 7 L32 11 Q34 12 35 15 L46 42 Z" /><circle cx="34" cy="72" r="11" fill="none"/></g>
+      <g class="bl" id="sb2"><path d="M44 48 L66 10 Q68 5 63 7 L56 11 Q54 12 53 15 L42 42 Z"/><circle cx="54" cy="72" r="11" fill="none"/></g>
+      <circle cx="44" cy="48" r="3" fill="#C9A96E"/>
+    </svg>
+    <div class="cut-cap">
+      <h2>Один дотик —<br>і хаос стає шовком</h2>
+      <p>Ножиці майстра йдуть уздовж пряді, а позаду лишається блиск. Саме це роблять із волоссям кератинові філери та ботокс-догляд з нашої вітрини.</p>
+    </div>
+  </div>
+</section>
+
+<!-- СЦЕНА 3 -->
+<section id="garden">
+  <div class="g-head">
+    <h2>Сад чарівних засобів</h2>
+    <p>Кожен флакон — фігурно підстрижене деревце нашого саду. 267 позицій професійного догляду, зібраних майстром.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+</section>
+
+<!-- ЦИТАТА -->
+<section id="tale">
+  <div>
+    <blockquote id="quote">«Дай мені ножиці — і я розкажу,<br>ким ти можеш бути»</blockquote>
+    <cite>— з легенди про Майстра</cite>
+  </div>
+</section>
+
+<!-- ФІНАЛ -->
+<section id="final">
+  <h2 class="reveal">Довірте волосся<br>легенді</h2>
+  <p class="reveal">Засоби, якими працює салон SVS Beauty Space — тепер у вашій ванній. Доставка Новою Поштою по всій Україні.</p>
+  <a id="cta" href="#"><i></i><b>До колекції</b></a>
+</section>
+
+<footer>
+  <span>SVS BEAUTY SPACE · KYIV</span>
+  <span class="badge">Концепт 11 · Fantasy «Edward Scissorhands» · GSAP ScrollTrigger</span>
+</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOUCH = matchMedia('(hover: none)').matches;
+gsap.registerPlugin(ScrollTrigger);
+
+/* ── товари ── */
+const GOODS = [
+  ['Raywell Bio Nature Шампунь відновлюючий','250 мл','890 ₴','#2a3550,#141b2e','RAYWELL'],
+  ['Extremo Кератиновий філер','100 мл','1 240 ₴','#503a2a,#2e1f14','EXTREMO'],
+  ['Invidia Blonde One маска холодний блонд','500 мл','1 060 ₴','#3d4a6b,#1c2233','INVIDIA'],
+  ['Eterna 9.3 стійка фарба','100 мл','420 ₴','#5a4a2a,#241c0f','ETERNA'],
+  ['Envie Luxury арганова олія','100 мл','740 ₴','#6b5638,#33240f','ENVIE'],
+  ['Raywell Botox Hairgold набір','3 × 150 мл','2 380 ₴','#405a45,#132015','RAYWELL'],
+  ['Extremo Термозахист-спрей','200 мл','560 ₴','#4a2a3a,#220f1c','EXTREMO'],
+  ['Invidia Color Lock кондиціонер','300 мл','820 ₴','#2a4a4a,#0f2222','INVIDIA'],
+];
+document.getElementById('grid').innerHTML = GOODS.map(g=>`
+  <article class="card">
+    <div class="ph" style="background:radial-gradient(140px 180px at 50% 30%, ${g[3].split(',')[0]}, ${g[3].split(',')[1]})">
+      <div class="bottle" style="background:linear-gradient(160deg,${g[3].split(',')[0]},${g[3].split(',')[1]})"></div>
+      <div class="brand">${g[4]}</div><div class="shine"></div>
+    </div>
+    <div class="c-name">${g[0]}</div>
+    <div class="c-meta"><span class="c-vol">${g[1]}</span><span class="tag">${g[2]}</span></div>
+    <button class="buy">Зрізати з грядки</button>
+  </article>`).join('');
+
+/* ── зорі ── */
+const stars = document.getElementById('stars');
+for(let i=0;i<70;i++){const s=document.createElement('i');s.style.left=Math.random()*100+'%';s.style.top=Math.random()*55+'%';s.style.animationDelay=(Math.random()*3)+'s';stars.appendChild(s);}
+
+/* ── сніг (canvas, одна rAF-петля) ── */
+const cv = document.getElementById('snow'), ctx = cv.getContext('2d');
+let W,H,flakes=[],wind=0,targetWind=0,intensity=1;
+function sizeCv(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
+sizeCv();addEventListener('resize',sizeCv);
+const FLAKES = TOUCH?90:170;
+for(let i=0;i<FLAKES;i++)flakes.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:.7+Math.random()*2.4,v:.35+Math.random()*.9,ph:Math.random()*6.28,sw:.3+Math.random()*.8});
+if(!RM)(function snowLoop(){
+  ctx.clearRect(0,0,W,H);
+  wind += (targetWind-wind)*.02;
+  ctx.fillStyle='rgba(238,243,255,.85)';
+  for(const f of flakes){
+    f.ph+=.008*f.sw; f.y+=f.v*intensity; f.x+=Math.sin(f.ph)*f.sw+wind;
+    if(f.y>H+4){f.y=-4;f.x=Math.random()*W}
+    if(f.x>W+4)f.x=-4; if(f.x<-4)f.x=W+4;
+    ctx.globalAlpha=.35+f.r/3.4;
+    ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,6.28);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(snowLoop);
+})();
+addEventListener('mousemove',e=>{targetWind=((e.clientX/innerWidth)-.5)*1.6;},{passive:true});
+
+/* ── курсор-ножиці ── */
+if(!TOUCH && !RM){
+  const cur=document.getElementById('cur'),b1=document.getElementById('cb1'),b2=document.getElementById('cb2');
+  let cx=innerWidth/2,cy=innerHeight/2,tx=cx,ty=cy;
+  addEventListener('mousemove',e=>{tx=e.clientX;ty=e.clientY;},{passive:true});
+  (function curLoop(){cx+=(tx-cx)*.22;cy+=(ty-cy)*.22;cur.style.transform=`translate(${cx}px,${cy}px)`;requestAnimationFrame(curLoop);})();
+  addEventListener('mousedown',()=>{b1.style.transform='rotate(14deg)';b2.style.transform='rotate(-14deg)';});
+  addEventListener('mouseup',()=>{b1.style.transform='';b2.style.transform='';});
+}
+
+/* ── розкриття завіси ── */
+if(!RM){
+  const tl0=gsap.timeline();
+  const vp=document.getElementById('veilPath'), L=vp.getTotalLength();
+  vp.style.strokeDasharray=L; vp.style.strokeDashoffset=L;
+  tl0.to(vp,{strokeDashoffset:0,duration:1,ease:'power2.inOut'})
+     .to('#veil svg',{scale:.6,opacity:0,duration:.4,ease:'power2.in'},'+=.15')
+     .to('#veil .half.l',{xPercent:-101,duration:.9,ease:'power4.inOut'},'<')
+     .to('#veil .half.r',{xPercent:101,duration:.9,ease:'power4.inOut'},'<')
+     .set('#veil',{display:'none'});
+  /* заголовок по літерах */
+  const h1=document.getElementById('h1');
+  h1.innerHTML=h1.innerHTML.split('<br>').map(line=>[...line].map(c=>c===' '?' ':`<span class="ch">${c}</span>`).join('')).join('<br>');
+  tl0.from('#h1 .ch',{y:70,opacity:0,rotateZ:6,stagger:.035,duration:.9,ease:'power3.out'},'-=.55')
+     .from('.h-kicker,.h-sub',{y:24,opacity:0,stagger:.15,duration:.7,ease:'power2.out'},'-=.6')
+     .from('#heroSc',{y:90,opacity:0,rotate:-14,duration:1.1,ease:'power3.out'},'-=.7');
+  /* дихання ножиць + періодичний зблиск */
+  gsap.to('#heroSc .g1',{rotate:-7,transformOrigin:'100px 118px',duration:2.6,yoyo:true,repeat:-1,ease:'sine.inOut'});
+  gsap.to('#heroSc .g2',{rotate:7,transformOrigin:'100px 118px',duration:2.6,yoyo:true,repeat:-1,ease:'sine.inOut'});
+  gsap.to('#glint',{opacity:.9,left:'110%',duration:1.1,ease:'power2.inOut',repeat:-1,repeatDelay:4.5});
+}
+
+/* ── сцена 1: параллакс-спуск із пагорба ── */
+if(!RM){
+  gsap.utils.toArray('#hill [data-depth]').forEach(el=>{
+    gsap.to(el,{y:()=> -140*parseFloat(el.dataset.depth),ease:'none',
+      scrollTrigger:{trigger:'#hill',start:'top top',end:'bottom top',scrub:true}});
+  });
+  gsap.to('.h-title',{y:-60,opacity:0,ease:'none',scrollTrigger:{trigger:'#hill',start:'20% top',end:'75% top',scrub:true}});
+  gsap.to('#heroSc',{y:-260,rotate:16,scale:.8,ease:'none',scrollTrigger:{trigger:'#hill',start:'top top',end:'bottom top',scrub:true}});
+}
+
+/* ── сцена 2: ножиці ріжуть прядь (pinned scrub) ── */
+if(!RM){
+  const path=document.getElementById('strandPath'), silk=document.getElementById('silkPath'), sc=document.getElementById('cutSc');
+  const PL=path.getTotalLength();
+  silk.style.strokeDasharray=PL; silk.style.strokeDashoffset=PL;   /* шовк проявляється за ножицями */
+  const svgEl=path.ownerSVGElement;
+  const state={p:0}; let lastSnip=0;
+  function place(p){
+    const pt=path.getPointAtLength(p*PL);
+    const pt2=path.getPointAtLength(Math.min(PL,p*PL+2));
+    const ang=Math.atan2(pt2.y-pt.y,pt2.x-pt.x)*180/Math.PI;
+    /* координати viewBox → екран */
+    const vb=svgEl.viewBox.baseVal, r=svgEl.getBoundingClientRect();
+    const kx=r.width/vb.width, ky=r.height/vb.height;
+    sc.style.transform=`translate(${pt.x*kx-44}px,${pt.y*ky-48}px) rotate(${ang+90}deg)`;
+    silk.style.strokeDashoffset=PL*(1-p);
+    /* щілчок лез + падаючий відрізок кожні ~7% шляху */
+    if(p-lastSnip>.07 && p<1){
+      lastSnip=p;
+      gsap.fromTo('#sb1',{rotate:0},{rotate:16,transformOrigin:'44px 48px',duration:.09,yoyo:true,repeat:1});
+      gsap.fromTo('#sb2',{rotate:0},{rotate:-16,transformOrigin:'44px 48px',duration:.09,yoyo:true,repeat:1});
+      const bit=document.createElement('div');bit.className='snip';
+      bit.style.left=(r.left+pt.x*kx)+'px';bit.style.top=(r.top+pt.y*ky)+'px';
+      document.body.appendChild(bit);
+      gsap.fromTo(bit,{opacity:1,rotate:gsap.utils.random(-30,30)},
+        {y:gsap.utils.random(120,260),x:gsap.utils.random(-70,70),rotate:gsap.utils.random(-260,260),opacity:0,duration:1.1,ease:'power2.in',onComplete:()=>bit.remove()});
+    }
+  }
+  gsap.to(state,{p:1,ease:'none',
+    scrollTrigger:{trigger:'#cut',start:'top top',end:'+=2200',pin:true,scrub:.6,
+      onUpdate:self=>{place(state.p); intensity=1+self.progress*1.6;}}});
+  gsap.from('.cut-cap',{y:60,opacity:0,duration:.8,ease:'power2.out',
+    scrollTrigger:{trigger:'#cut',start:'top 60%'}});
+  place(0);
+}
+
+/* ── сцена 3: картки «підстригаються» ── */
+if(!RM){
+  const ragged='polygon(0 12%, 12% 0, 30% 9%, 47% 1%, 66% 10%, 84% 2%, 100% 13%, 96% 38%, 100% 64%, 93% 86%, 100% 100%, 0 100%, 5% 74%, 0 45%)';
+  const clean='polygon(0 0, 100% 0, 100% 100%, 0 100%)';
+  gsap.utils.toArray('.card').forEach((card,i)=>{
+    gsap.set(card,{clipPath:ragged,scale:.94,opacity:0});
+    ScrollTrigger.create({trigger:card,start:'top 88%',once:true,onEnter:()=>{
+      gsap.timeline()
+        .to(card,{opacity:1,duration:.25},0)
+        .to(card,{clipPath:clean,scale:1,duration:.9,ease:'power3.inOut',delay:i%4*.08},0)
+        .fromTo(card.querySelector('.shine'),{left:'-60%'},{left:'130%',duration:.9,ease:'power2.out'},.45);
+    }});
+  });
+  gsap.from('.g-head',{y:50,opacity:0,duration:.9,ease:'power2.out',scrollTrigger:{trigger:'#garden',start:'top 75%'}});
+}
+
+/* ── цитата: місячний перелив по тексту ── */
+if(!RM){
+  gsap.fromTo('#quote',{backgroundPosition:'120% 0'},{backgroundPosition:'-20% 0',ease:'none',
+    scrollTrigger:{trigger:'#tale',start:'top 80%',end:'bottom 30%',scrub:true}});
+}
+
+/* ── фінал: reveal + магнітна кнопка ── */
+if(!RM){
+  gsap.utils.toArray('#final .reveal').forEach(el=>{
+    gsap.from(el,{y:46,opacity:0,duration:.9,ease:'power3.out',
+      scrollTrigger:{trigger:el,start:'top 85%'}});
+  });
+  const cta=document.getElementById('cta');
+  if(!TOUCH){
+    cta.addEventListener('mousemove',e=>{
+      const r=cta.getBoundingClientRect();
+      gsap.to(cta,{x:(e.clientX-r.left-r.width/2)*.32,y:(e.clientY-r.top-r.height/2)*.42,duration:.4,ease:'power2.out'});
+    });
+    cta.addEventListener('mouseleave',()=>gsap.to(cta,{x:0,y:0,duration:.7,ease:'elastic.out(1,.4)'}));
+  }
+}
+</script>
+</body>
+</html>

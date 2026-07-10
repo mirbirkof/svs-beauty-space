@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVS Beauty Space — Магазин · Шовк (WebGL Hair Shader)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#070605;--ink2:#0e0c09;--gold:#C9A96E;--gold2:#f2e3bc;--cream:#F3EDE4;--stone:#8A8076}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--ink);color:var(--cream);font-family:'Inter',sans-serif;overflow-x:hidden}
+::selection{background:var(--gold);color:var(--ink)}
+#gl{position:fixed;inset:0;z-index:0}
+#grain{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
+main{position:relative;z-index:2}
+.back{position:fixed;top:14px;left:14px;z-index:120;font-size:12px;letter-spacing:.08em;color:var(--stone);text-decoration:none;border:1px solid rgba(138,128,118,.4);padding:7px 13px;border-radius:99px;background:rgba(7,6,5,.5);backdrop-filter:blur(6px)}
+.back:hover{color:var(--cream);border-color:var(--cream)}
+nav{position:fixed;top:0;left:0;right:0;z-index:110;display:flex;justify-content:center;gap:36px;padding:20px 90px;font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--stone)}
+nav b{color:var(--gold);font-weight:500;font-family:'Cormorant Garamond',serif;font-size:17px;letter-spacing:.12em}
+@media(max-width:720px){nav{gap:14px;padding:16px 10px 16px 110px;font-size:9px}}
+
+#hero{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}
+.kicker{font-size:11px;letter-spacing:.5em;text-transform:uppercase;color:var(--gold);margin-bottom:26px}
+h1{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:clamp(52px,10vw,150px);line-height:.98;font-style:italic}
+h1 .ch{display:inline-block;will-change:transform,opacity;background:linear-gradient(180deg,#fff8e9,var(--gold) 78%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.h-sub{margin-top:30px;max-width:440px;color:var(--stone);font-size:14px;line-height:1.8}
+.h-hint{position:absolute;bottom:4.5vh;font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:var(--stone)}
+.h-hint::after{content:"";display:block;width:1px;height:34px;margin:10px auto 0;background:linear-gradient(var(--gold),transparent)}
+
+.chapter{min-height:100vh;display:flex;align-items:center;padding:14vh 8vw;position:relative}
+.chapter .box{max-width:520px;background:rgba(7,6,5,.45);backdrop-filter:blur(14px);border:1px solid rgba(201,169,110,.22);border-radius:22px;padding:46px}
+.chapter.right{justify-content:flex-end}
+.ch-num{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:var(--gold);letter-spacing:.2em}
+.chapter h2{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:clamp(30px,4.2vw,52px);line-height:1.12;margin-top:12px}
+.chapter p{margin-top:16px;color:var(--stone);font-size:14px;line-height:1.8}
+
+#shop{position:relative;padding:16vh 8vw 10vh;background:linear-gradient(180deg,transparent,rgba(7,6,5,.88) 18%,#070605 40%)}
+.s-head{text-align:center;max-width:640px;margin:0 auto 10vh}
+.s-head h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(36px,5vw,64px)}
+.s-head p{margin-top:14px;color:var(--stone);font-size:14px;line-height:1.7}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:2px;max-width:1240px;margin:0 auto;background:rgba(201,169,110,.18)}
+.card{position:relative;background:#0b0a08;padding:30px 26px 26px;overflow:hidden;will-change:transform}
+.card::after{content:"";position:absolute;inset:0;background:radial-gradient(220px 160px at var(--mx,50%) var(--my,20%),rgba(201,169,110,.14),transparent 70%);opacity:0;transition:opacity .35s;pointer-events:none}
+.card:hover::after{opacity:1}
+.ph{height:210px;display:flex;align-items:center;justify-content:center;position:relative}
+.ph .bottle{width:58px;height:140px;border-radius:14px 14px 7px 7px;position:relative;transition:transform .5s cubic-bezier(.22,.61,.36,1);box-shadow:inset -12px 0 24px rgba(0,0,0,.55),0 18px 34px rgba(0,0,0,.55)}
+.ph .bottle::before{content:"";position:absolute;top:-15px;left:50%;transform:translateX(-50%);width:24px;height:16px;border-radius:4px 4px 0 0;background:#1a150e}
+.ph .halo{position:absolute;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(201,169,110,.22),transparent 65%);transition:transform .5s;transform:scale(.6);opacity:0}
+.card:hover .halo{transform:scale(1.15);opacity:1}
+.card:hover .bottle{transform:translateY(-8px) rotate(-2.5deg)}
+.brand{font-size:9px;letter-spacing:.4em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+.c-name{font-family:'Cormorant Garamond',serif;font-size:20px;font-style:italic;line-height:1.25;min-height:50px;color:var(--cream)}
+.c-meta{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+.c-vol{font-size:11px;color:var(--stone);letter-spacing:.12em}
+.price{font-weight:700;color:var(--gold);font-size:16px}
+.buy{margin-top:16px;width:100%;padding:12px;background:transparent;border:1px solid rgba(201,169,110,.5);color:var(--gold);font-size:11px;letter-spacing:.24em;text-transform:uppercase;border-radius:9px;overflow:hidden;position:relative;transition:color .3s}
+.buy i{position:absolute;inset:0;background:var(--gold);transform:translateY(101%);transition:transform .38s cubic-bezier(.65,0,.35,1)}
+.buy b{position:relative;font-weight:500}
+.buy:hover{color:var(--ink)}.buy:hover i{transform:translateY(0)}
+
+#fin{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12vh 8vw;background:#070605}
+#fin h2{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(40px,6.4vw,92px);line-height:1.05}
+#fin p{margin-top:18px;color:var(--stone);font-size:14px;max-width:420px;line-height:1.8}
+#cta{margin-top:42px;padding:19px 52px;border-radius:99px;border:1px solid var(--gold);color:var(--gold);text-decoration:none;font-size:12px;letter-spacing:.32em;text-transform:uppercase;position:relative;overflow:hidden}
+#cta i{position:absolute;inset:0;background:var(--gold);transform:scaleY(0);transform-origin:bottom;transition:transform .4s cubic-bezier(.65,0,.35,1)}
+#cta b{position:relative;font-weight:500;transition:color .3s}
+#cta:hover i{transform:scaleY(1)} #cta:hover b{color:var(--ink)}
+footer{padding:38px 8vw;display:flex;justify-content:space-between;border-top:1px solid rgba(138,128,118,.18);font-size:11px;letter-spacing:.16em;color:var(--stone);background:#070605}
+.badge{border:1px solid rgba(138,128,118,.35);border-radius:99px;padding:6px 12px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Всі концепти</a>
+<canvas id="gl"></canvas>
+<div id="grain"></div>
+
+<nav><span>Колекція</span><span>Догляд</span><b>SVS · Шовк</b><span>Бренди</span><span>Кошик (0)</span></nav>
+
+<main>
+<section id="hero">
+  <div class="kicker">Італійський професійний догляд</div>
+  <h1 id="h1">Волосся —<br>це шовк</h1>
+  <p class="h-sub">Живе золото тече за вашим курсором. Так само течуть по волоссю кератин, ботокс і арганова олія з нашої колекції.</p>
+  <div class="h-hint">Гортайте</div>
+</section>
+
+<section class="chapter">
+  <div class="box" data-rev>
+    <div class="ch-num">Розділ I</div>
+    <h2>Кожна прядь пам'ятає дотик</h2>
+    <p>Фарбування, фен, сонце — волосся записує все. Кератинові філери Extremo заповнюють пошкодження зсередини, повертаючи пряді дзеркальну гладкість.</p>
+  </div>
+</section>
+
+<section class="chapter right">
+  <div class="box" data-rev>
+    <div class="ch-num">Розділ II</div>
+    <h2>Блиск — це фізика, а не магія</h2>
+    <p>Гладенька кутикула відбиває світло як шовкове полотно. Ботокс-догляд Raywell вирівнює лусочки — і ваше волосся починає світитись зсередини.</p>
+  </div>
+</section>
+
+<section id="shop">
+  <div class="s-head">
+    <h2>Колекція, що тече золотом</h2>
+    <p>267 засобів професійного рівня — той самий догляд, яким працюють майстри SVS Beauty Space.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+</section>
+
+<section id="fin">
+  <h2 data-rev>Нехай тече<br>по ваших плечах</h2>
+  <p data-rev>Доставка Новою Поштою 1-2 дні. Консультація майстра з підбору догляду — безкоштовно.</p>
+  <a id="cta" href="#"><i></i><b>Обрати догляд</b></a>
+</section>
+
+<footer><span>SVS BEAUTY SPACE · KYIV</span><span class="badge">Концепт 12 · «Шовк» · WebGL hair shader + GSAP</span></footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOUCH = matchMedia('(hover: none)').matches;
+gsap.registerPlugin(ScrollTrigger);
+
+/* ── товари ── */
+const GOODS=[
+ ['RAYWELL','Bio Nature Шампунь відновлюючий','250 мл','890 ₴','#2b2418'],
+ ['EXTREMO','Кератиновий філер','100 мл','1 240 ₴','#33240f'],
+ ['INVIDIA','Blonde One маска холодний блонд','500 мл','1 060 ₴','#1f2433'],
+ ['ETERNA','9.3 стійка фарба','100 мл','420 ₴','#2e2410'],
+ ['ENVIE','Luxury арганова олія','100 мл','740 ₴','#302008'],
+ ['RAYWELL','Botox Hairgold набір','3 × 150 мл','2 380 ₴','#20301c'],
+ ['EXTREMO','Термозахист-спрей','200 мл','560 ₴','#2c1520'],
+ ['INVIDIA','Color Lock кондиціонер','300 мл','820 ₴','#122626'],
+];
+document.getElementById('grid').innerHTML=GOODS.map(g=>`
+ <article class="card">
+   <div class="brand">${g[0]}</div>
+   <div class="ph"><div class="halo"></div><div class="bottle" style="background:linear-gradient(160deg,${g[4]},#0a0806)"></div></div>
+   <div class="c-name">${g[1]}</div>
+   <div class="c-meta"><span class="c-vol">${g[2]}</span><span class="price">${g[3]}</span></div>
+   <button class="buy"><i></i><b>До кошика</b></button>
+ </article>`).join('');
+/* світлова пляма за курсором на картці */
+if(!TOUCH)document.querySelectorAll('.card').forEach(c=>c.addEventListener('mousemove',e=>{
+  const r=c.getBoundingClientRect();
+  c.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');
+  c.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');
+},{passive:true}));
+
+/* ═══ WebGL: шейдер золотих прядей ═══ */
+(function(){
+  const cv=document.getElementById('gl');
+  const gl=cv.getContext('webgl',{antialias:false,alpha:false});
+  if(!gl || RM){ cv.style.background='radial-gradient(80vmax 80vmax at 50% 30%,#241c10,#070605)'; return; }
+  const VS=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+  const FS=`
+precision highp float;
+uniform vec2 uRes; uniform float uT; uniform vec2 uMouse; uniform float uVel; uniform float uScroll; uniform float uPart;
+/* hash & noise */
+float h21(vec2 p){p=fract(p*vec2(234.34,435.345));p+=dot(p,p+34.23);return fract(p.x*p.y);}
+float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+ return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*noise(p);p*=2.03;a*=.5;}return s;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes; vec2 asp=vec2(uRes.x/uRes.y,1.);
+  vec2 q=uv*asp;
+  /* вплив миші: локальне збурення потоку */
+  vec2 m=uMouse*asp;
+  float md=length(q-m);
+  float ripple=exp(-md*3.2)*uVel;
+  /* «волосся»: сильно анізотропний fbm — розтяг по X, дрейф часом */
+  float t=uT*.07;
+  vec2 flow=vec2(q.x*1.2 + t, q.y*7.5 - fbm(q*2.2+t)*2.1 + ripple*2.6);
+  float strands=fbm(flow);
+  float fine=fbm(flow*3.7+13.7);
+  float s=strands*.72+fine*.28;
+  /* пасма: смуги з м'якими краями */
+  float band=smoothstep(.32,.5,s)*smoothstep(.86,.6,s);
+  /* спекулярний перелив уздовж пасом */
+  float spec=pow(smoothstep(.45,.62,fine),3.)*1.4;
+  /* розсування шовку прокруткою: темна «долина» по центру росте */
+  float part=smoothstep(.0,.9,uPart);
+  float valley=smoothstep(.5*part, .52*part+.001, abs(uv.x-.5));
+  /* палітра: чорне золото */
+  vec3 gold=vec3(.79,.66,.43), deep=vec3(.16,.11,.05), ink=vec3(.03,.024,.02);
+  vec3 col=mix(ink,deep,s);
+  col=mix(col,gold,band*.85);
+  col+=gold*spec*band;
+  col+=vec3(1.,.95,.8)*ripple*.35;
+  /* глибина/віньєтка + scroll-затемнення до вітрини */
+  col*=mix(1.,.25,pow(1.-valley,2.)*part);
+  float vig=smoothstep(1.25,.45,length(uv-.5));
+  col*=vig;
+  col*=1.-uScroll*.35;
+  gl_FragColor=vec4(col,1.);
+}`;
+  function sh(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s;}
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,VS));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));
+  gl.linkProgram(pr);gl.useProgram(pr);
+  const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U={res:gl.getUniformLocation(pr,'uRes'),t:gl.getUniformLocation(pr,'uT'),m:gl.getUniformLocation(pr,'uMouse'),v:gl.getUniformLocation(pr,'uVel'),s:gl.getUniformLocation(pr,'uScroll'),p:gl.getUniformLocation(pr,'uPart')};
+  const DPR=Math.min(devicePixelRatio||1, TOUCH?1.5:2);
+  function size(){cv.width=innerWidth*DPR;cv.height=innerHeight*DPR;gl.viewport(0,0,cv.width,cv.height);}
+  size();addEventListener('resize',size);
+  let mx=.5,my=.5,tx=.5,ty=.5,vel=0,scroll=0,part=0,run=true;
+  addEventListener('mousemove',e=>{
+    const nx=e.clientX/innerWidth, ny=1-e.clientY/innerHeight;
+    vel=Math.min(1.4, vel + Math.hypot(nx-tx,ny-ty)*9);
+    tx=nx;ty=ny;
+  },{passive:true});
+  document.addEventListener('visibilitychange',()=>{run=!document.hidden;if(run)requestAnimationFrame(loop);});
+  let t0=performance.now();
+  function loop(now){
+    if(!run)return;
+    mx+=(tx-mx)*.06;my+=(ty-my)*.06;vel*=.94;
+    gl.uniform2f(U.res,cv.width,cv.height);
+    gl.uniform1f(U.t,(now-t0)/1000);
+    gl.uniform2f(U.m,mx,my);
+    gl.uniform1f(U.v,vel);
+    gl.uniform1f(U.s,scroll);
+    gl.uniform1f(U.p,part);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  /* скролл-драйв: розсування шовку до вітрини, загальне затемнення */
+  ScrollTrigger.create({trigger:'#shop',start:'top 140%',end:'top 30%',scrub:true,
+    onUpdate:s=>{part=s.progress;}});
+  ScrollTrigger.create({trigger:document.body,start:'top top',end:'max',scrub:true,
+    onUpdate:s=>{scroll=s.progress;}});
+})();
+
+/* ── типографіка героя ── */
+if(!RM){
+  const h1=document.getElementById('h1');
+  h1.innerHTML=h1.innerHTML.split('<br>').map(l=>[...l].map(c=>c===' '?' ':`<span class="ch">${c}</span>`).join('')).join('<br>');
+  gsap.from('#h1 .ch',{yPercent:120,opacity:0,rotateZ:8,stagger:{each:.04,from:'random'},duration:1.2,ease:'power4.out',delay:.25});
+  gsap.from('.kicker,.h-sub,.h-hint',{opacity:0,y:22,stagger:.16,duration:.9,ease:'power2.out',delay:.7});
+  gsap.to('#hero',{opacity:0,y:-80,ease:'none',scrollTrigger:{trigger:'#hero',start:'top top',end:'bottom 35%',scrub:true}});
+  gsap.utils.toArray('[data-rev]').forEach(el=>{
+    gsap.from(el,{y:60,opacity:0,duration:1,ease:'power3.out',scrollTrigger:{trigger:el,start:'top 82%'}});
+  });
+  ScrollTrigger.batch('.card',{start:'top 90%',onEnter:els=>
+    gsap.from(els,{y:70,opacity:0,scale:.96,stagger:.09,duration:.9,ease:'power3.out'})});
+}
+</script>
+</body>
+</html>
