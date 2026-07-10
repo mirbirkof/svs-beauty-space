@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Салон · Концепт: Parallax Storytelling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#070605; --cream:#F3EDE4; --gold:#C9A96E; --gold-deep:#8a6f42; --white:#FDFBF7;
+    --serif:'Cormorant Garamond',serif; --sans:'Inter',sans-serif;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--cream);color:var(--ink);font-family:var(--sans);font-weight:300;line-height:1.6;overflow-x:hidden}
+  ::selection{background:var(--gold);color:var(--ink)}
+
+  /* ---------- back button ---------- */
+  .back-btn{position:fixed;top:14px;left:14px;z-index:300;background:var(--ink);color:var(--cream);
+    text-decoration:none;font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:9px 14px;
+    transition:background .3s,color .3s}
+  .back-btn:hover{background:var(--gold);color:var(--ink)}
+
+  /* ---------- nav ---------- */
+  nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;justify-content:space-between;align-items:center;
+    padding:18px 5vw 18px 140px;background:linear-gradient(180deg,rgba(243,237,228,.95),rgba(243,237,228,0));
+    animation:navIn 1s var(--ease) both}
+  @keyframes navIn{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:translateY(0)}}
+  .logo{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:.05em;color:var(--ink);text-decoration:none}
+  .logo em{font-style:normal;color:var(--gold)}
+  .nav-links{display:flex;gap:30px;list-style:none}
+  .nav-links a{color:var(--ink);text-decoration:none;font-size:12px;letter-spacing:.15em;text-transform:uppercase;position:relative}
+  .nav-links a::after{content:'';position:absolute;left:0;bottom:-4px;width:0;height:1px;background:var(--gold);transition:width .35s}
+  .nav-links a:hover::after{width:100%}
+  .btn-book{background:var(--ink);color:var(--cream);text-decoration:none;font-size:11px;letter-spacing:.15em;
+    text-transform:uppercase;padding:11px 22px;transition:background .3s,color .3s}
+  .btn-book:hover{background:var(--gold);color:var(--ink)}
+
+  /* ---------- progress dots ---------- */
+  .dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);z-index:200;display:flex;flex-direction:column;gap:16px}
+  .dots a{width:10px;height:10px;border-radius:50%;border:1px solid var(--ink);display:block;position:relative;
+    transition:background .4s,transform .4s,border-color .4s}
+  .dots a.active{background:var(--gold);border-color:var(--gold);transform:scale(1.45)}
+  .dots a span{position:absolute;right:22px;top:50%;transform:translateY(-50%);white-space:nowrap;
+    font-size:10px;letter-spacing:.2em;text-transform:uppercase;opacity:0;transition:opacity .3s;pointer-events:none}
+  .dots a:hover span{opacity:1}
+
+  /* ---------- золотой путь (вау) ---------- */
+  #path-wrap{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+  #gold-path{width:100%;height:100%}
+
+  /* ---------- scenes ---------- */
+  .story{position:relative}
+  .scene{position:relative;min-height:100vh;display:flex;align-items:center;padding:14vh 8vw;overflow:hidden;z-index:2}
+  .layer{position:absolute;inset:-12% 0;pointer-events:none;will-change:transform}
+  .scene-inner{position:relative;max-width:1100px;z-index:5}
+  .sc-label{font-size:11px;letter-spacing:.4em;text-transform:uppercase;color:var(--gold-deep);display:block;margin-bottom:20px}
+  .scene h2{font-family:var(--serif);font-weight:500;font-size:clamp(38px,6vw,92px);line-height:1.02;letter-spacing:-.01em}
+  .scene h2 em{font-style:italic;color:var(--gold)}
+  .scene p.lede{max-width:52ch;font-size:15px;margin-top:24px}
+  .reveal{opacity:0;transform:translateY(44px);transition:opacity 1s var(--ease),transform 1s var(--ease)}
+  .reveal.in{opacity:1;transform:translateY(0)}
+
+  /* scene 1 hero */
+  .s-hero{background:linear-gradient(175deg,#efe6d7 0%,var(--cream) 55%,#e9dfcd 100%)}
+  .s-hero h1{font-family:var(--serif);font-weight:500;font-size:clamp(46px,8vw,124px);line-height:1;letter-spacing:-.01em}
+  .s-hero h1 em{font-style:italic;color:var(--gold)}
+  .s-hero h1,.s-hero .sc-label,.s-hero p.lede,.s-hero .hero-cta{animation:heroUp 1.2s var(--ease) both}
+  .s-hero .sc-label{animation-delay:.15s}.s-hero h1{animation-delay:.3s}
+  .s-hero p.lede{animation-delay:.55s}.s-hero .hero-cta{animation-delay:.75s}
+  @keyframes heroUp{from{opacity:0;transform:translateY(46px)}to{opacity:1;transform:translateY(0)}}
+  .hero-cta{margin-top:36px;display:flex;gap:16px;flex-wrap:wrap}
+  .btn-ghost{color:var(--ink);text-decoration:none;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    padding:13px 26px;border:1px solid var(--ink);transition:background .3s,color .3s}
+  .btn-ghost:hover{background:var(--ink);color:var(--cream)}
+  .orb{position:absolute;border-radius:50%;filter:blur(2px)}
+  .orb-1{width:44vmin;height:44vmin;top:6%;right:8%;background:radial-gradient(circle at 32% 28%,#e3cd9e,#C9A96E 60%,#8a6f42)}
+  .orb-2{width:16vmin;height:16vmin;bottom:16%;right:30%;background:radial-gradient(circle at 35% 30%,#f0e4cb,#cbb083)}
+  .orb-3{width:9vmin;height:9vmin;top:22%;left:52%;background:radial-gradient(circle at 35% 30%,#efe6d7,#b79a67)}
+  .scroll-hint{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);font-size:10px;
+    letter-spacing:.3em;text-transform:uppercase;color:var(--gold-deep);animation:hint 2.2s ease-in-out infinite}
+  @keyframes hint{0%,100%{transform:translate(-50%,0);opacity:.55}50%{transform:translate(-50%,8px);opacity:1}}
+
+  /* scene 2 services */
+  .s-services{background:var(--ink);color:var(--cream)}
+  .s-services .sc-label{color:var(--gold)}
+  .srv-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-top:6vh}
+  .srv{border:1px solid rgba(243,237,228,.18);padding:30px 28px;position:relative;overflow:hidden;
+    transition:border-color .4s,transform .5s var(--ease)}
+  .srv::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent 30%,rgba(201,169,110,.14),transparent 70%);
+    transform:translateX(-101%);transition:transform .8s var(--ease)}
+  .srv:hover{border-color:var(--gold);transform:translateY(-5px)}
+  .srv:hover::before{transform:translateX(101%)}
+  .srv h3{font-family:var(--serif);font-size:27px;font-weight:500;margin-bottom:8px}
+  .srv p{font-size:13.5px;opacity:.72;max-width:44ch}
+  .srv .pr{display:block;margin-top:16px;color:var(--gold);font-size:13px;letter-spacing:.1em}
+
+  /* scene 3 masters */
+  .s-masters{background:linear-gradient(180deg,#ece3d2,var(--cream))}
+  .m-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:6vh}
+  .master{text-align:center}
+  .ava{width:100%;aspect-ratio:3/4;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .ava span{font-family:var(--serif);font-style:italic;font-size:64px;color:rgba(253,251,247,.9);text-shadow:0 2px 20px rgba(7,6,5,.3);
+    transition:transform .7s var(--ease)}
+  .master:hover .ava span{transform:scale(1.15) rotate(-3deg)}
+  .a1{background:linear-gradient(160deg,#3a2f22,#8a6f42 70%,#C9A96E)}
+  .a2{background:linear-gradient(200deg,#241f18,#6e5a34 60%,#d9c9ae)}
+  .a3{background:linear-gradient(150deg,#4a2c2a,#95604f 60%,#d8b49a)}
+  .master h3{font-family:var(--serif);font-size:26px;font-weight:600;margin-top:18px}
+  .master p{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold-deep)}
+
+  /* scene 4 testimonial */
+  .s-quote{background:var(--ink);color:var(--cream);text-align:center;justify-content:center}
+  .s-quote blockquote{font-family:var(--serif);font-style:italic;font-weight:500;
+    font-size:clamp(26px,4.2vw,54px);line-height:1.25;max-width:24ch;margin:0 auto}
+  .s-quote blockquote em{color:var(--gold)}
+  .s-quote cite{display:block;margin-top:30px;font-style:normal;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold)}
+  .stars{color:var(--gold);font-size:20px;letter-spacing:8px;margin-bottom:26px;display:block}
+
+  /* scene 5 booking */
+  .s-book{background:linear-gradient(165deg,var(--cream) 0%,#e5d9c2 100%)}
+  .book-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:6vw;align-items:center;width:100%;max-width:1100px}
+  .form{display:flex;flex-direction:column;gap:14px;margin-top:4vh}
+  .form input{background:transparent;border:none;border-bottom:1px solid var(--ink);padding:14px 2px;
+    font-family:var(--sans);font-size:15px;color:var(--ink);outline:none;transition:border-color .3s}
+  .form input:focus{border-color:var(--gold)}
+  .form input::placeholder{color:rgba(7,6,5,.45)}
+  .form button{margin-top:18px;background:var(--ink);color:var(--cream);border:none;cursor:pointer;
+    font-family:var(--sans);font-size:12px;letter-spacing:.2em;text-transform:uppercase;padding:17px;
+    transition:background .3s,color .3s,box-shadow .4s}
+  .form button:hover{background:var(--gold);color:var(--ink);box-shadow:0 14px 34px rgba(201,169,110,.4)}
+  .book-info p{margin-bottom:12px;font-size:14.5px}
+  .book-info b{font-weight:500;color:var(--gold-deep)}
+
+  /* ---------- footer ---------- */
+  footer{background:var(--ink);color:var(--cream);padding:7vh 5vw 4vh;position:relative;z-index:2}
+  .f-bottom{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.1em;
+    opacity:.85;flex-wrap:wrap;gap:12px}
+  .badge{border:1px solid var(--gold);color:var(--gold);padding:6px 12px;font-size:10px;letter-spacing:.2em;text-transform:uppercase}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:960px){
+    nav{padding-left:5vw}
+    .nav-links{display:none}
+    .back-btn{top:auto;bottom:14px}
+    .dots{right:10px}
+    .srv-grid{grid-template-columns:1fr}
+    .m-grid{grid-template-columns:1fr;max-width:340px;margin-left:auto;margin-right:auto}
+    .book-grid{grid-template-columns:1fr}
+    .scene{padding:12vh 7vw}
+  }
+
+  /* ---------- reduced motion ---------- */
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+    html{scroll-behavior:auto}
+    .reveal{opacity:1;transform:none}
+    .layer{transform:none !important}
+    #path-wrap{display:none}
+  }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back-btn">← Всі концепти</a>
+
+<nav>
+  <a class="logo" href="#">SVS <em>·</em> Beauty Space</a>
+  <ul class="nav-links">
+    <li><a href="#s1">Салон</a></li>
+    <li><a href="#s2">Послуги</a></li>
+    <li><a href="#s3">Майстри</a></li>
+    <li><a href="#s5">Контакти</a></li>
+  </ul>
+  <a class="btn-book" href="#s5">Запис онлайн</a>
+</nav>
+
+<div class="dots" id="dots">
+  <a href="#s1" class="active"><span>Салон</span></a>
+  <a href="#s2"><span>Послуги</span></a>
+  <a href="#s3"><span>Майстри</span></a>
+  <a href="#s4"><span>Відгуки</span></a>
+  <a href="#s5"><span>Запис</span></a>
+</div>
+
+<main class="story" id="story">
+
+  <!-- золотой путь: рисуется по мере скролла -->
+  <div id="path-wrap">
+    <svg id="gold-path" preserveAspectRatio="none" viewBox="0 0 100 500">
+      <path id="thread" d="M 82 0 C 95 40, 30 60, 22 95 S 88 150, 80 195 S 12 250, 20 295 S 90 350, 78 395 S 25 450, 50 500"
+        fill="none" stroke="#C9A96E" stroke-width="0.45" stroke-linecap="round" opacity="0.85"/>
+    </svg>
+  </div>
+
+  <!-- SCENE 1: hero -->
+  <section class="scene s-hero" id="s1">
+    <div class="layer" data-speed="0.22"><div class="orb orb-1"></div></div>
+    <div class="layer" data-speed="0.4"><div class="orb orb-2"></div></div>
+    <div class="layer" data-speed="0.6"><div class="orb orb-3"></div></div>
+    <div class="scene-inner">
+      <span class="sc-label">Розділ 01 · SVS Beauty Space, Київ</span>
+      <h1>Шлях до <em>ідеального</em> волосся</h1>
+      <p class="lede">Це історія у п'яти розділах — від першого дотику майстра до вашого відображення у дзеркалі. Прокрутіть сторінку, і ми пройдемо цей шлях разом.</p>
+      <div class="hero-cta">
+        <a class="btn-book" href="#s5">Почати свій шлях</a>
+        <a class="btn-ghost" href="#s2">Дивитись послуги</a>
+      </div>
+    </div>
+    <span class="scroll-hint">Гортайте ↓</span>
+  </section>
+
+  <!-- SCENE 2: services -->
+  <section class="scene s-services" id="s2">
+    <div class="layer" data-speed="0.25" style="background:radial-gradient(60% 50% at 80% 20%,rgba(201,169,110,.12),transparent 70%)"></div>
+    <div class="scene-inner">
+      <span class="sc-label reveal">Розділ 02 · Послуги</span>
+      <h2 class="reveal">Кожна історія починається з <em>догляду</em></h2>
+      <div class="srv-grid">
+        <div class="srv reveal"><h3>Кератинове відновлення</h3><p>Глибока реконструкція структури волосся на філерах Extremo. Результат — від 3 місяців.</p><span class="pr">від 1 800 ₴</span></div>
+        <div class="srv reveal"><h3>Фарбування та блонд</h3><p>Персональні формули на фарбах Eterna та догляд Invidia Blonde One для чистого кольору без жовтизни.</p><span class="pr">від 1 500 ₴</span></div>
+        <div class="srv reveal"><h3>Ботокс для волосся</h3><p>Raywell Hairgold — інтенсивна відбудова, блиск і щільність вже після першої процедури.</p><span class="pr">від 1 400 ₴</span></div>
+        <div class="srv reveal"><h3>Стрижка та стайлінг</h3><p>Форма, що тримається між візитами. Фінішний догляд — арганова олія Envie Luxury.</p><span class="pr">від 700 ₴</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 3: masters -->
+  <section class="scene s-masters" id="s3">
+    <div class="layer" data-speed="0.3" style="background:radial-gradient(46% 40% at 12% 78%,rgba(201,169,110,.25),transparent 70%)"></div>
+    <div class="scene-inner" style="width:100%">
+      <span class="sc-label reveal">Розділ 03 · Майстри</span>
+      <h2 class="reveal">Руки, яким <em>довіряють</em></h2>
+      <div class="m-grid">
+        <div class="master reveal"><div class="ava a1"><span>С</span></div><h3>Світлана</h3><p>Засновниця · колорист</p></div>
+        <div class="master reveal"><div class="ava a2"><span>В</span></div><h3>Вікторія</h3><p>Топ-стиліст</p></div>
+        <div class="master reveal"><div class="ava a3"><span>О</span></div><h3>Олена</h3><p>Майстер відновлення</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCENE 4: testimonial -->
+  <section class="scene s-quote" id="s4">
+    <div class="layer" data-speed="0.2" style="background:radial-gradient(55% 45% at 50% 10%,rgba(201,169,110,.14),transparent 70%)"></div>
+    <div class="scene-inner">
+      <span class="sc-label reveal" style="text-align:center;display:block">Розділ 04 · Відгуки</span>
+      <span class="stars reveal">★★★★★</span>
+      <blockquote class="reveal">«Після кератину в SVS я вперше за роки <em>розпустила волосся</em> — і не змогла перестати всміхатись.»</blockquote>
+      <cite class="reveal">Марина К. · клієнтка салону з 2023 року</cite>
+    </div>
+  </section>
+
+  <!-- SCENE 5: booking -->
+  <section class="scene s-book" id="s5">
+    <div class="layer" data-speed="0.35" style="background:radial-gradient(40% 45% at 88% 80%,rgba(201,169,110,.28),transparent 70%)"></div>
+    <div class="scene-inner" style="max-width:1100px;width:100%">
+      <div class="book-grid">
+        <div>
+          <span class="sc-label reveal">Розділ 05 · Фінал вашої історії</span>
+          <h2 class="reveal">Запишіться — і <em>почнемо</em></h2>
+          <form class="form reveal" onsubmit="event.preventDefault();this.querySelector('button').textContent='Дякуємо! Ми зателефонуємо ✓'">
+            <input type="text" placeholder="Ваше ім'я" required>
+            <input type="tel" placeholder="Телефон" required>
+            <input type="text" placeholder="Бажана послуга (необов'язково)">
+            <button type="submit">Записатися до майстра</button>
+          </form>
+        </div>
+        <div class="book-info reveal">
+          <p><b>Адреса.</b> Київ, вул. Прикладна, 12</p>
+          <p><b>Графік.</b> Щодня 10:00–20:00</p>
+          <p><b>Телефон.</b> +380 (67) 000 00 00</p>
+          <p><b>Бонус.</b> При першому візиті — консультація з добору домашнього догляду з 267 позицій італійської косметики безкоштовно.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="f-bottom">
+    <span>© 2026 SVS Beauty Space · салон і магазин італійської косметики</span>
+    <span class="badge">Концепт: Parallax Storytelling</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* scroll-reveal */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  },{threshold:.15});
+  document.querySelectorAll('.reveal').forEach(function(el,i){
+    el.style.transitionDelay = (i%5)*90 + 'ms';
+    io.observe(el);
+  });
+
+  /* progress dots */
+  var scenes = Array.prototype.slice.call(document.querySelectorAll('.scene'));
+  var dots = Array.prototype.slice.call(document.querySelectorAll('#dots a'));
+  var sceneIO = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        var idx = scenes.indexOf(e.target);
+        dots.forEach(function(d,i){ d.classList.toggle('active', i===idx); });
+      }
+    });
+  },{threshold:.5});
+  scenes.forEach(function(s){ sceneIO.observe(s); });
+
+  if(reduced) return;
+
+  /* многослойный параллакс + золотая нить (rAF) */
+  var layers = Array.prototype.slice.call(document.querySelectorAll('.layer'));
+  var thread = document.getElementById('thread');
+  var pathLen = thread.getTotalLength();
+  thread.style.strokeDasharray = pathLen;
+  thread.style.strokeDashoffset = pathLen;
+  var story = document.getElementById('story');
+  var ticking = false;
+
+  function frame(){
+    ticking = false;
+    var vh = window.innerHeight;
+    /* слои: каждый со своей скоростью */
+    layers.forEach(function(l){
+      var r = l.parentElement.getBoundingClientRect();
+      if(r.bottom < -vh*0.2 || r.top > vh*1.2) return;
+      var progress = (r.top + r.height/2 - vh/2);
+      l.style.transform = 'translateY(' + (progress * parseFloat(l.dataset.speed)) + 'px)';
+    });
+    /* нить: прорисовка по прогрессу скролла всей истории */
+    var sr = story.getBoundingClientRect();
+    var total = sr.height - vh;
+    var p = Math.min(1, Math.max(0, -sr.top / total));
+    thread.style.strokeDashoffset = pathLen * (1 - p);
+  }
+  window.addEventListener('scroll',function(){
+    if(!ticking){ ticking = true; requestAnimationFrame(frame); }
+  },{passive:true});
+  window.addEventListener('resize',frame);
+  frame();
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="site-01-story";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Магазин · Liquid Glass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9A96E;
+  --cream:#F3EDE4;
+  --ink:#070605;
+  --glass:rgba(255,255,255,.06);
+  --glass-border:rgba(255,255,255,.16);
+  --ease-fluid:cubic-bezier(.22,1,.36,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--ink);
+  color:var(--cream);
+  overflow-x:hidden;
+  min-height:100vh;
+}
+h1,h2,h3,.logo{font-family:'Unbounded',sans-serif}
+
+/* ---------- floating blobs background ---------- */
+.blobs{position:fixed;inset:0;z-index:0;overflow:hidden;filter:blur(70px) saturate(130%)}
+.blob{position:absolute;border-radius:50%;opacity:.5;will-change:transform}
+.blob-1{width:52vmax;height:52vmax;top:-18vmax;left:-12vmax;
+  background:radial-gradient(circle at 35% 35%,#C9A96E 0%,#8a6a34 45%,transparent 70%);
+  animation:drift1 34s var(--ease-fluid) infinite alternate}
+.blob-2{width:44vmax;height:44vmax;bottom:-16vmax;right:-10vmax;
+  background:radial-gradient(circle at 60% 40%,#7e5cff 0%,#3b2a86 50%,transparent 72%);
+  animation:drift2 42s var(--ease-fluid) infinite alternate;opacity:.35}
+.blob-3{width:38vmax;height:38vmax;top:38%;left:52%;
+  background:radial-gradient(circle at 50% 50%,#2ec5c9 0%,#155e69 55%,transparent 75%);
+  animation:drift3 38s var(--ease-fluid) infinite alternate;opacity:.28}
+.blob-4{width:30vmax;height:30vmax;top:60%;left:6%;
+  background:radial-gradient(circle at 50% 50%,#e0b7d4 0%,#8d5a80 55%,transparent 75%);
+  animation:drift1 46s var(--ease-fluid) infinite alternate-reverse;opacity:.22}
+@keyframes drift1{0%{transform:translate(0,0) scale(1)}50%{transform:translate(9vmax,6vmax) scale(1.14)}100%{transform:translate(-5vmax,10vmax) scale(.94)}}
+@keyframes drift2{0%{transform:translate(0,0) scale(1) rotate(0deg)}100%{transform:translate(-11vmax,-8vmax) scale(1.2) rotate(40deg)}}
+@keyframes drift3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-14vmax,-10vmax) scale(1.25)}}
+
+/* subtle vignette so glass reads */
+.vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 30%,transparent 40%,rgba(7,6,5,.55) 100%)}
+
+main,header,footer{position:relative;z-index:2}
+
+/* ---------- glass header ---------- */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1rem clamp(1.2rem,4vw,3rem);
+  background:rgba(12,10,8,.35);
+  backdrop-filter:blur(22px) saturate(170%);
+  -webkit-backdrop-filter:blur(22px) saturate(170%);
+  border-bottom:1px solid var(--glass-border);
+  animation:navIn .9s var(--ease-fluid) both;
+}
+@keyframes navIn{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:translateY(0)}}
+.logo{font-size:1.05rem;font-weight:600;letter-spacing:.16em;color:var(--cream);text-decoration:none}
+.logo em{font-style:normal;color:var(--gold)}
+nav.menu{display:flex;gap:2rem}
+nav.menu a{color:rgba(243,237,228,.75);text-decoration:none;font-size:.85rem;letter-spacing:.08em;text-transform:uppercase;transition:color .4s}
+nav.menu a:hover{color:var(--gold)}
+.cart-btn{
+  display:inline-flex;align-items:center;gap:.5rem;
+  padding:.55rem 1.2rem;border-radius:100px;
+  background:var(--glass);border:1px solid var(--glass-border);
+  color:var(--cream);font-size:.82rem;letter-spacing:.06em;cursor:pointer;
+  backdrop-filter:blur(10px);transition:border-color .4s,box-shadow .4s;
+}
+.cart-btn:hover{border-color:var(--gold);box-shadow:0 0 24px rgba(201,169,110,.35)}
+
+/* ---------- hero ---------- */
+.hero{
+  min-height:92vh;display:flex;flex-direction:column;justify-content:center;
+  padding:9rem clamp(1.2rem,6vw,6rem) 4rem;max-width:1280px;margin:0 auto;
+}
+.hero .eyebrow{
+  display:inline-flex;align-items:center;gap:.6rem;width:fit-content;
+  font-size:.75rem;letter-spacing:.28em;text-transform:uppercase;color:var(--gold);
+  padding:.5rem 1.1rem;border-radius:100px;
+  background:var(--glass);border:1px solid var(--glass-border);
+  backdrop-filter:blur(12px);
+  animation:riseIn .9s .15s var(--ease-fluid) both;
+}
+.hero h1{
+  font-size:clamp(2.2rem,6.5vw,4.6rem);font-weight:800;line-height:1.08;
+  margin:1.6rem 0 1.4rem;max-width:16ch;
+  background:linear-gradient(110deg,var(--cream) 30%,var(--gold) 55%,#fff 70%,var(--cream) 85%);
+  background-size:220% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:riseIn 1s .3s var(--ease-fluid) both,sheen 7s 1.4s linear infinite;
+}
+@keyframes sheen{0%{background-position:120% 0}100%{background-position:-120% 0}}
+.hero p{max-width:52ch;color:rgba(243,237,228,.72);font-weight:300;line-height:1.75;font-size:1.02rem;animation:riseIn 1s .45s var(--ease-fluid) both}
+.hero-cta{display:flex;gap:1rem;margin-top:2.6rem;flex-wrap:wrap;animation:riseIn 1s .6s var(--ease-fluid) both}
+.btn{
+  padding:.95rem 2.2rem;border-radius:100px;font-size:.88rem;letter-spacing:.1em;
+  text-transform:uppercase;text-decoration:none;cursor:pointer;
+  transition:transform .5s var(--ease-fluid),box-shadow .5s;
+}
+.btn-gold{background:linear-gradient(135deg,#e2c893,var(--gold) 60%,#a8854b);color:var(--ink);font-weight:600;border:none}
+.btn-gold:hover{transform:translateY(-3px);box-shadow:0 14px 40px rgba(201,169,110,.45)}
+.btn-glass{background:var(--glass);border:1px solid var(--glass-border);color:var(--cream);backdrop-filter:blur(12px)}
+.btn-glass:hover{transform:translateY(-3px);border-color:var(--gold)}
+@keyframes riseIn{from{opacity:0;transform:translateY(34px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---------- section titles ---------- */
+section{max-width:1280px;margin:0 auto;padding:4.5rem clamp(1.2rem,6vw,6rem)}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:2.6rem;flex-wrap:wrap}
+.sec-head h2{font-size:clamp(1.5rem,3.4vw,2.3rem);font-weight:600}
+.sec-head h2 span{color:var(--gold)}
+.sec-head .hint{color:rgba(243,237,228,.5);font-size:.85rem;letter-spacing:.06em}
+
+/* ---------- product grid: glass cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:1.6rem}
+.card{
+  position:relative;border-radius:26px;overflow:hidden;
+  background:var(--glass);
+  border:1px solid var(--glass-border);
+  backdrop-filter:blur(24px) saturate(180%);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 20px 50px rgba(0,0,0,.35);
+  transition:transform .55s var(--ease-fluid),border-color .55s,box-shadow .55s;
+  transform:translateY(0);
+}
+.card:hover{
+  transform:translateY(-10px) scale(1.015);
+  border-color:rgba(201,169,110,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 30px 70px rgba(0,0,0,.5),0 0 40px rgba(201,169,110,.18);
+}
+/* specular streak running across card on hover */
+.card::after{
+  content:"";position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.28) 46%,rgba(255,255,255,.05) 54%,transparent 66%);
+  transform:translateX(-130%) skewX(-8deg);
+  transition:none;
+}
+.card:hover::after{animation:specular 1s var(--ease-fluid) forwards}
+@keyframes specular{from{transform:translateX(-130%) skewX(-8deg)}to{transform:translateX(130%) skewX(-8deg)}}
+
+.thumb{position:relative;height:230px;overflow:hidden}
+.thumb .ph{position:absolute;inset:0;transition:transform .8s var(--ease-fluid)}
+.card:hover .thumb .ph{transform:scale(1.07)}
+.ph-1{background:radial-gradient(circle at 35% 30%,#e6d3ac,#C9A96E 45%,#5c4423 100%)}
+.ph-2{background:radial-gradient(circle at 65% 35%,#c9b8ff,#7e5cff 50%,#241a52 100%)}
+.ph-3{background:radial-gradient(circle at 40% 60%,#fdf3de,#dfc38b 40%,#7a5c2e 100%)}
+.ph-4{background:radial-gradient(circle at 60% 40%,#a5ecec,#2ec5c9 50%,#0c3b40 100%)}
+.ph-5{background:radial-gradient(circle at 30% 40%,#f6dfee,#cf8ab8 50%,#54243f 100%)}
+.ph-6{background:radial-gradient(circle at 55% 30%,#f3ede4,#b9a17a 55%,#3f321c 100%)}
+.ph-7{background:radial-gradient(circle at 45% 55%,#ffe9c4,#e0a34e 50%,#663f10 100%)}
+.ph-8{background:radial-gradient(circle at 50% 35%,#d7e6ff,#7fa4e6 50%,#1e3257 100%)}
+.thumb .bottle{
+  position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);
+  width:74px;height:150px;border-radius:20px 20px 12px 12px;
+  background:linear-gradient(160deg,rgba(255,255,255,.5),rgba(255,255,255,.08) 40%,rgba(0,0,0,.25));
+  backdrop-filter:blur(4px);
+  border:1px solid rgba(255,255,255,.35);
+  box-shadow:inset 6px 0 12px rgba(255,255,255,.25),0 14px 30px rgba(0,0,0,.35);
+}
+.thumb .bottle::before{
+  content:"";position:absolute;top:-22px;left:50%;transform:translateX(-50%);
+  width:30px;height:26px;border-radius:6px 6px 3px 3px;
+  background:linear-gradient(160deg,#f0e6d2,#8f7648);
+}
+.thumb .bottle::after{
+  content:"";position:absolute;top:38px;left:9px;right:9px;height:56px;border-radius:6px;
+  background:rgba(243,237,228,.85);
+}
+.badge{
+  position:absolute;top:14px;left:14px;z-index:2;
+  font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;
+  padding:.4rem .85rem;border-radius:100px;color:var(--cream);
+  background:rgba(7,6,5,.4);border:1px solid var(--glass-border);
+  backdrop-filter:blur(8px);
+}
+.card-body{padding:1.3rem 1.4rem 1.5rem;position:relative;z-index:2}
+.brand{font-size:.68rem;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);margin-bottom:.45rem}
+.card-body h3{font-size:.98rem;font-weight:400;line-height:1.45;min-height:2.9em}
+.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:1.1rem}
+.price{font-family:'Unbounded';font-size:1.12rem;font-weight:600;color:var(--cream)}
+.price small{font-size:.68rem;color:rgba(243,237,228,.5);font-weight:300;display:block;letter-spacing:.04em}
+.add{
+  width:44px;height:44px;border-radius:50%;border:1px solid var(--glass-border);
+  background:var(--glass);color:var(--gold);font-size:1.3rem;line-height:1;cursor:pointer;
+  backdrop-filter:blur(8px);
+  transition:transform .4s var(--ease-fluid),background .4s,color .4s,border-color .4s;
+}
+.add:hover{transform:rotate(90deg) scale(1.08);background:var(--gold);color:var(--ink);border-color:var(--gold)}
+
+/* ---------- ribbon / feature strip ---------- */
+.strip{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.2rem;
+}
+.strip .cell{
+  padding:1.6rem 1.5rem;border-radius:20px;
+  background:var(--glass);border:1px solid var(--glass-border);
+  backdrop-filter:blur(18px) saturate(160%);
+}
+.strip .cell b{display:block;font-family:'Unbounded';font-weight:600;font-size:.95rem;color:var(--gold);margin-bottom:.5rem}
+.strip .cell span{font-size:.85rem;color:rgba(243,237,228,.65);line-height:1.6}
+
+/* ---------- scroll reveal ---------- */
+.reveal{opacity:0;transform:translateY(42px);transition:opacity .9s var(--ease-fluid),transform .9s var(--ease-fluid)}
+.reveal.in{opacity:1;transform:translateY(0)}
+.reveal:nth-child(2){transition-delay:.08s}
+.reveal:nth-child(3){transition-delay:.16s}
+.reveal:nth-child(4){transition-delay:.24s}
+.reveal:nth-child(5){transition-delay:.1s}
+.reveal:nth-child(6){transition-delay:.18s}
+.reveal:nth-child(7){transition-delay:.26s}
+.reveal:nth-child(8){transition-delay:.34s}
+
+/* ---------- footer ---------- */
+footer{
+  margin-top:3rem;padding:3rem clamp(1.2rem,6vw,6rem) 6rem;
+  border-top:1px solid var(--glass-border);
+  background:rgba(12,10,8,.4);backdrop-filter:blur(20px) saturate(160%);
+}
+.foot-inner{max-width:1280px;margin:0 auto;display:flex;justify-content:space-between;gap:2rem;flex-wrap:wrap;align-items:center}
+.foot-inner p{color:rgba(243,237,228,.5);font-size:.82rem;line-height:1.7}
+.concept-badge{
+  display:inline-flex;align-items:center;gap:.55rem;
+  padding:.55rem 1.2rem;border-radius:100px;font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;
+  background:var(--glass);border:1px solid rgba(201,169,110,.5);color:var(--gold);
+  backdrop-filter:blur(10px);
+}
+.concept-badge::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 12px var(--gold)}
+
+/* ---------- fixed back button ---------- */
+.back-fix{
+  position:fixed;left:1.1rem;bottom:1.1rem;z-index:99;
+  padding:.7rem 1.3rem;border-radius:100px;font-size:.8rem;letter-spacing:.05em;
+  color:var(--cream);text-decoration:none;
+  background:rgba(7,6,5,.55);border:1px solid var(--glass-border);
+  backdrop-filter:blur(14px);
+  transition:border-color .4s,box-shadow .4s;
+}
+.back-fix:hover{border-color:var(--gold);box-shadow:0 0 22px rgba(201,169,110,.35)}
+
+/* ---------- responsive ---------- */
+@media(max-width:760px){
+  nav.menu{display:none}
+  .hero{min-height:78vh;padding-top:7rem}
+  .grid{gap:1.1rem}
+}
+
+/* ---------- reduced motion ---------- */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .reveal{opacity:1;transform:none}
+  .blob{animation:none}
+}
+</style>
+</head>
+<body>
+
+<div class="blobs" aria-hidden="true">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="blob blob-4"></div>
+</div>
+<div class="vignette" aria-hidden="true"></div>
+
+<header>
+  <a class="logo" href="#">SVS <em>BEAUTY</em> SPACE</a>
+  <nav class="menu">
+    <a href="#catalog">Каталог</a>
+    <a href="#brands">Бренди</a>
+    <a href="#delivery">Доставка</a>
+    <a href="#contacts">Контакти</a>
+  </nav>
+  <button class="cart-btn">Кошик · 0</button>
+</header>
+
+<main>
+  <section class="hero">
+    <span class="eyebrow">Італійська професійна косметика</span>
+    <h1>Догляд, крізь який видно якість</h1>
+    <p>Raywell, Extremo, Envie, Invidia та Eterna — оригінальна професійна косметика для волосся з Італії. Кератин, ботокс, реконструкція та салонний блиск — тепер у вашій ванній.</p>
+    <div class="hero-cta">
+      <a class="btn btn-gold" href="#catalog">До каталогу</a>
+      <a class="btn btn-glass" href="#brands">Про бренди</a>
+    </div>
+  </section>
+
+  <section id="catalog">
+    <div class="sec-head reveal">
+      <h2>Бестселери <span>тижня</span></h2>
+      <span class="hint">Оригінал · офіційний імпорт з Італії</span>
+    </div>
+    <div class="grid">
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-1"></div><span class="badge">Хіт</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Raywell</div>
+          <h3>Bio Nature Шампунь відновлювальний, 250 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴1 250<small>250 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-2"></div><span class="badge">Салонний догляд</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Extremo</div>
+          <h3>Кератиновий філер для реконструкції волосся, 100 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴1 890<small>100 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-3"></div><span class="badge">Для блонду</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Invidia</div>
+          <h3>Blonde One маска для освітленого волосся, 500 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴1 480<small>500 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-4"></div><span class="badge">Новинка</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Eterna</div>
+          <h3>9.3 крем-фарба дуже світлий золотистий блонд, 100 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴560<small>100 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-5"></div><span class="badge">Люкс</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Envie</div>
+          <h3>Luxury арганова олія для сяйва та живлення, 100 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴990<small>100 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-7"></div><span class="badge">Ботокс-ефект</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Raywell</div>
+          <h3>Botox Hairgold набір для глибокого відновлення</h3>
+          <div class="card-foot">
+            <div class="price">₴2 940<small>150+150 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-8"></div><span class="badge">Захист кольору</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Invidia</div>
+          <h3>Color Care кондиціонер для фарбованого волосся, 300 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴1 120<small>300 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card reveal">
+        <div class="thumb"><div class="ph ph-1"></div><span class="badge">Термозахист</span><div class="bottle"></div></div>
+        <div class="card-body">
+          <div class="brand">Extremo</div>
+          <h3>Спрей-термозахист із кератином до 230°C, 200 мл</h3>
+          <div class="card-foot">
+            <div class="price">₴870<small>200 мл</small></div>
+            <button class="add" aria-label="Додати в кошик">+</button>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section id="brands">
+    <div class="sec-head reveal">
+      <h2>Чому <span>SVS Beauty Space</span></h2>
+    </div>
+    <div class="strip">
+      <div class="cell reveal"><b>100% оригінал</b><span>Прямі поставки від італійських виробників. Кожна партія — з сертифікатами.</span></div>
+      <div class="cell reveal"><b>Поради майстра</b><span>Підберемо догляд під ваш тип волосся — консультація технолога безкоштовна.</span></div>
+      <div class="cell reveal"><b>Швидка доставка</b><span>Відправка день у день по всій Україні. Нова Пошта та кур'єр по місту.</span></div>
+      <div class="cell reveal"><b>Салонна якість</b><span>Ті самі продукти, якими працюють майстри SVS Beauty Space у салоні.</span></div>
+    </div>
+  </section>
+</main>
+
+<footer id="contacts">
+  <div class="foot-inner">
+    <div>
+      <a class="logo" href="#">SVS <em>BEAUTY</em> SPACE</a>
+      <p>Салон краси та магазин італійської професійної косметики.<br>© 2026 SVS Beauty Space. Всі права захищено.</p>
+    </div>
+    <span class="concept-badge">Концепт · Liquid Glass</span>
+  </div>
+</footer>
+
+<a class="back-fix" href="index.html">← Всі концепти</a>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var els = document.querySelectorAll('.reveal');
+  if (reduced || !('IntersectionObserver' in window)) {
+    els.forEach(function(el){ el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, {threshold:.12, rootMargin:'0px 0px -40px 0px'});
+  els.forEach(function(el){ io.observe(el); });
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="shop-05-glass";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>

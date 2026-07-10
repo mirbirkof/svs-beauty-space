@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retro-Futurism — SVS Beauty Space Shop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9A96E;
+  --cream:#F3EDE4;
+  --ink:#070605;
+  --deep:#0d0716;
+  --pink:#FF006E;
+  --purple:#5D34D0;
+  --cyan:#00FFF5;
+  --f-display:'Russo One',sans-serif;
+  --f-mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--deep);
+  color:var(--cream);
+  font-family:var(--f-mono);
+  overflow-x:hidden;
+  line-height:1.55;
+}
+::selection{background:var(--pink);color:#fff}
+
+/* ---- VHS scanlines over everything, barely visible ---- */
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);
+  mix-blend-mode:overlay;
+}
+/* rolling VHS band */
+body::before{
+  content:"";position:fixed;left:0;right:0;height:90px;z-index:998;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(255,0,110,.03) 45%,rgba(0,255,245,.04) 55%,transparent);
+  animation:vhsRoll 9s linear infinite;opacity:.7;
+}
+@keyframes vhsRoll{from{top:-15%}to{top:110%}}
+
+/* ---------- NAV ---------- */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:1rem 2rem;
+  background:linear-gradient(180deg,rgba(13,7,22,.92),rgba(13,7,22,0));
+}
+.nav .logo{
+  font-family:var(--f-display);font-size:1.05rem;color:var(--cream);text-decoration:none;
+  text-shadow:0 0 12px rgba(255,0,110,.8),0 0 28px rgba(93,52,208,.6);
+}
+.nav .logo b{color:var(--pink)}
+.nav ul{display:flex;gap:1.6rem;list-style:none}
+.nav ul a{
+  color:rgba(243,237,228,.8);text-decoration:none;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.18em;transition:color .25s,text-shadow .25s;
+}
+.nav ul a:hover{color:var(--cyan);text-shadow:0 0 10px var(--cyan)}
+@media(max-width:700px){.nav ul{display:none}}
+
+/* ---------- BACK BUTTON ---------- */
+.back-btn{
+  position:fixed;bottom:1.2rem;left:1.2rem;z-index:1000;
+  background:var(--deep);color:var(--cyan);border:1px solid var(--cyan);
+  font-family:var(--f-mono);font-size:.78rem;
+  padding:.7rem 1.2rem;text-decoration:none;
+  box-shadow:0 0 12px rgba(0,255,245,.35),inset 0 0 8px rgba(0,255,245,.12);
+  transition:transform .25s,box-shadow .25s;
+}
+.back-btn:hover{transform:translateY(-3px);box-shadow:0 0 24px rgba(0,255,245,.7),inset 0 0 12px rgba(0,255,245,.25)}
+
+/* ---------- HERO ---------- */
+.hero{
+  min-height:100vh;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:7rem 1.5rem 9rem;
+}
+/* perspective horizon grid */
+.horizon{
+  position:absolute;left:-25%;right:-25%;bottom:0;height:46%;
+  transform:perspective(340px) rotateX(62deg);transform-origin:bottom center;
+  background:
+    linear-gradient(rgba(255,0,110,.5) 1.5px,transparent 1.5px),
+    linear-gradient(90deg,rgba(93,52,208,.55) 1.5px,transparent 1.5px);
+  background-size:64px 64px;
+  animation:gridMove 2.6s linear infinite;
+  mask-image:linear-gradient(180deg,transparent,#000 35%);
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 35%);
+}
+@keyframes gridMove{from{background-position:0 0,0 0}to{background-position:0 64px,0 0}}
+.sun{
+  position:absolute;bottom:38%;left:50%;transform:translateX(-50%);
+  width:min(42vw,340px);height:min(42vw,340px);border-radius:50%;
+  background:linear-gradient(180deg,var(--gold) 0%,var(--pink) 55%,var(--purple) 100%);
+  filter:blur(1px);opacity:.85;
+  mask-image:repeating-linear-gradient(180deg,#000 0 14px,transparent 14px 20px);
+  -webkit-mask-image:repeating-linear-gradient(180deg,#000 0 14px,transparent 14px 20px);
+  animation:sunPulse 5s ease-in-out infinite;
+}
+@keyframes sunPulse{0%,100%{opacity:.85}50%{opacity:.65}}
+.hero-inner{position:relative;z-index:2;animation:heroIn 1.1s cubic-bezier(.2,.8,.3,1) both}
+@keyframes heroIn{from{opacity:0;transform:translateY(50px) scale(.96)}to{opacity:1;transform:none}}
+.hero-tag{
+  font-size:.72rem;letter-spacing:.4em;text-transform:uppercase;color:var(--cyan);
+  text-shadow:0 0 10px rgba(0,255,245,.7);margin-bottom:1.2rem;display:block;
+}
+.glitch{
+  font-family:var(--f-display);
+  font-size:clamp(2.6rem,9vw,7rem);line-height:1.02;text-transform:uppercase;
+  position:relative;display:inline-block;
+  background:linear-gradient(180deg,#fff 0%,#cfd6e4 30%,#5c6474 48%,#f5f7fb 52%,#8b93a5 70%,#e8ecf4 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 18px rgba(255,0,110,.35));
+}
+.glitch::before,.glitch::after{
+  content:attr(data-text);position:absolute;inset:0;
+  background:inherit;-webkit-background-clip:text;background-clip:text;color:transparent;
+  opacity:0;pointer-events:none;
+}
+.glitch:hover::before{opacity:.85;transform:translate(-3px,2px);-webkit-text-fill-color:var(--pink);color:var(--pink);background:none;animation:glitchA .32s steps(2,end) infinite}
+.glitch:hover::after{opacity:.85;transform:translate(3px,-2px);-webkit-text-fill-color:var(--cyan);color:var(--cyan);background:none;animation:glitchB .28s steps(2,end) infinite reverse}
+@keyframes glitchA{0%{clip-path:inset(8% 0 62% 0)}25%{clip-path:inset(52% 0 12% 0)}50%{clip-path:inset(24% 0 40% 0)}75%{clip-path:inset(70% 0 4% 0)}100%{clip-path:inset(2% 0 78% 0)}}
+@keyframes glitchB{0%{clip-path:inset(64% 0 6% 0)}25%{clip-path:inset(10% 0 66% 0)}50%{clip-path:inset(42% 0 30% 0)}75%{clip-path:inset(4% 0 80% 0)}100%{clip-path:inset(58% 0 14% 0)}}
+.hero-sub{max-width:520px;margin:1.6rem auto 0;color:rgba(243,237,228,.72);font-size:.92rem}
+.hero-cta{
+  display:inline-block;margin-top:2rem;text-decoration:none;
+  font-family:var(--f-display);font-size:.9rem;text-transform:uppercase;letter-spacing:.12em;
+  color:var(--deep);padding:1rem 2.4rem;
+  background:linear-gradient(90deg,var(--cyan),var(--gold));
+  box-shadow:0 0 22px rgba(0,255,245,.5);
+  transition:transform .25s,box-shadow .25s;
+}
+.hero-cta:hover{transform:scale(1.05);box-shadow:0 0 40px rgba(0,255,245,.9)}
+
+/* ---------- CHROME DIVIDER ---------- */
+.chrome-bar{
+  height:10px;
+  background:linear-gradient(180deg,#fff 0%,#aeb6c6 30%,#3c4250 50%,#d8dee9 55%,#71798c 80%,#f2f4f8 100%);
+  box-shadow:0 0 18px rgba(255,255,255,.25);
+}
+
+/* ---------- SECTIONS ---------- */
+.section{padding:6rem 2rem;position:relative}
+.sec-head{
+  font-family:var(--f-display);text-transform:uppercase;
+  font-size:clamp(1.8rem,5vw,3.4rem);margin-bottom:.6rem;
+  color:var(--cream);text-shadow:0 0 16px rgba(93,52,208,.9),0 0 40px rgba(255,0,110,.4);
+}
+.sec-sub{color:rgba(243,237,228,.6);font-size:.85rem;max-width:520px;margin-bottom:3.5rem}
+.sec-sub b{color:var(--pink)}
+
+/* ---------- PODIUM GRID ---------- */
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+  gap:3.2rem 2rem;max-width:1240px;margin:0 auto;
+}
+.pod{
+  text-align:center;
+  opacity:0;transform:translateY(50px);
+  transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.3,1);
+}
+.pod.revealed{opacity:1;transform:translateY(0)}
+.pod-stage{position:relative;padding-bottom:4.4rem}
+.bottle{
+  width:64%;max-width:180px;aspect-ratio:2/3.4;margin:0 auto;position:relative;
+  border-radius:14px 14px 8px 8px;
+  transition:transform .5s cubic-bezier(.2,.8,.3,1),filter .5s;
+}
+.pod:hover .bottle{transform:translateY(-12px) rotate(-2deg);filter:brightness(1.15)}
+.b-1{background:linear-gradient(105deg,#2b1a3f 0%,var(--purple) 35%,var(--pink) 75%,#ffb3d1 100%)}
+.b-2{background:linear-gradient(160deg,#e8eef8 0%,#8f97a8 35%,#2e3340 55%,#cfd5e2 75%,#f6f8fc 100%)}
+.b-3{background:linear-gradient(120deg,var(--gold) 0%,#f4e3bd 40%,#7a5f34 75%,#1c1408 100%)}
+.b-4{background:linear-gradient(200deg,var(--cyan) 0%,#0a6d76 45%,var(--deep) 100%)}
+.b-5{background:linear-gradient(140deg,#ff7ab1 0%,var(--pink) 40%,#640b3a 90%)}
+.b-6{background:linear-gradient(170deg,#c9d2e6 0%,#5d6478 45%,var(--purple) 100%)}
+.b-7{background:linear-gradient(115deg,#f7ecd6 0%,var(--gold) 45%,var(--pink) 110%)}
+.b-8{background:linear-gradient(185deg,#8d67ff 0%,var(--purple) 45%,#12081f 100%)}
+.bottle::before{ /* cap */
+  content:"";position:absolute;top:-14px;left:50%;transform:translateX(-50%);
+  width:44%;height:16px;border-radius:5px 5px 0 0;
+  background:linear-gradient(180deg,#f7f9fd,#9aa2b4 55%,#40465a);
+}
+.bottle::after{ /* highlight stripe */
+  content:"";position:absolute;top:8%;bottom:8%;left:14%;width:9%;
+  background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,.05));
+  border-radius:99px;filter:blur(1px);
+}
+.bottle-label{
+  position:absolute;left:12%;right:12%;top:38%;
+  background:rgba(7,6,5,.78);border:1px solid rgba(255,255,255,.25);
+  font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;
+  padding:.45rem .2rem;color:var(--cream);
+}
+/* reflection via gradient mask */
+.reflection{
+  position:absolute;left:0;right:0;top:100%;height:64px;overflow:hidden;pointer-events:none;
+}
+.reflection .bottle{
+  transform:scaleY(-1) translateY(-1px);margin:0 auto;height:170px;
+  mask-image:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.35) 100%);
+  -webkit-mask-image:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.35) 100%);
+  opacity:.8;filter:blur(.5px);transition:none;
+}
+/* podium disc */
+.disc{
+  position:absolute;left:50%;bottom:2.6rem;transform:translateX(-50%);
+  width:78%;height:20px;border-radius:50%;
+  background:radial-gradient(50% 50% at 50% 50%,rgba(255,0,110,.55),rgba(93,52,208,.25) 60%,transparent 75%);
+  filter:blur(2px);
+  animation:discGlow 4s ease-in-out infinite;
+}
+@keyframes discGlow{0%,100%{opacity:.9}50%{opacity:.5}}
+.pod-brand{font-size:.62rem;letter-spacing:.3em;text-transform:uppercase;color:var(--cyan);text-shadow:0 0 8px rgba(0,255,245,.6)}
+.pod-name{font-family:var(--f-display);font-size:.95rem;margin:.4rem 0 .6rem;line-height:1.35;color:var(--cream)}
+.pod-price{color:var(--gold);font-weight:700;font-size:1rem;text-shadow:0 0 10px rgba(201,169,110,.5)}
+.pod-buy{
+  display:inline-block;margin-top:.9rem;cursor:pointer;
+  background:transparent;border:1px solid var(--pink);color:var(--pink);
+  font-family:var(--f-mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.16em;
+  padding:.55rem 1.3rem;
+  box-shadow:0 0 10px rgba(255,0,110,.3),inset 0 0 6px rgba(255,0,110,.12);
+  transition:all .3s;
+}
+.pod-buy:hover{background:var(--pink);color:#fff;box-shadow:0 0 26px rgba(255,0,110,.8)}
+
+/* ---------- EXTREMO BANNER ---------- */
+.banner{
+  margin:2rem auto 0;max-width:1240px;
+  border:1px solid rgba(0,255,245,.35);
+  background:linear-gradient(120deg,rgba(93,52,208,.22),rgba(255,0,110,.12) 60%,rgba(0,255,245,.1));
+  padding:3.4rem 2rem;text-align:center;position:relative;overflow:hidden;
+}
+.banner::before{
+  content:"";position:absolute;top:0;bottom:0;width:40%;left:-45%;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.14),transparent);
+  animation:sweep 4.5s ease-in-out infinite;
+}
+@keyframes sweep{0%{left:-45%}60%,100%{left:110%}}
+.banner h3{font-family:var(--f-display);font-size:clamp(1.4rem,4vw,2.4rem);text-transform:uppercase;color:var(--cream);text-shadow:0 0 14px var(--pink)}
+.banner p{color:rgba(243,237,228,.7);font-size:.85rem;max-width:560px;margin:.9rem auto 0}
+
+/* ---------- FOOTER ---------- */
+footer{
+  border-top:1px solid rgba(255,0,110,.3);
+  padding:4rem 2rem 6rem;background:#080410;
+}
+.foot-grid{max-width:1240px;margin:0 auto;display:flex;flex-wrap:wrap;gap:3rem;justify-content:space-between}
+.foot-logo{font-family:var(--f-display);font-size:1.3rem;text-shadow:0 0 14px rgba(255,0,110,.8)}
+.foot-col h4{font-size:.68rem;text-transform:uppercase;letter-spacing:.26em;color:var(--cyan);margin-bottom:1rem;text-shadow:0 0 8px rgba(0,255,245,.5)}
+.foot-col a{display:block;color:rgba(243,237,228,.7);text-decoration:none;font-size:.82rem;margin-bottom:.5rem;transition:color .25s,text-shadow .25s}
+.foot-col a:hover{color:var(--pink);text-shadow:0 0 10px rgba(255,0,110,.7)}
+.badge{
+  display:inline-block;margin-top:1.4rem;
+  border:1px solid var(--gold);color:var(--gold);
+  font-size:.64rem;text-transform:uppercase;letter-spacing:.22em;
+  padding:.5rem 1rem;box-shadow:0 0 12px rgba(201,169,110,.35);
+}
+
+@media(max-width:700px){
+  .section{padding:4rem 1.2rem}
+  .hero{padding:6.5rem 1rem 8rem}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  body::before{display:none}
+  .pod{opacity:1!important;transform:none!important}
+  .glitch:hover::before,.glitch:hover::after{opacity:0!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="logo" href="#">SVS<b>//</b>SHOP</a>
+  <ul>
+    <li><a href="#products">Каталог</a></li>
+    <li><a href="#extremo">Extremo</a></li>
+    <li><a href="#contact">Контакти</a></li>
+  </ul>
+</nav>
+
+<a class="back-btn" href="index.html">&larr; Всі концепти</a>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="sun" aria-hidden="true"></div>
+  <div class="horizon" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <span class="hero-tag">/// system online &middot; italy 2086 ///</span>
+    <h1 class="glitch" data-text="EXTREMO LINE">EXTREMO LINE</h1>
+    <p class="hero-sub">Кератин майбутнього вже тут. Італійська професійна косметика Raywell, Extremo, Envie, Invidia та Eterna — у неоновому вимірі.</p>
+    <a class="hero-cta" href="#products">Увійти в каталог &rarr;</a>
+  </div>
+</header>
+
+<div class="chrome-bar" aria-hidden="true"></div>
+
+<!-- PRODUCTS -->
+<section class="section" id="products">
+  <h2 class="sec-head">Каталог // Подіуми</h2>
+  <p class="sec-sub">&gt; вісім флаконів на неонових подіумах. наведи — флакон злітає. <b>hover = левітація</b>_</p>
+  <div class="grid">
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-1"><span class="bottle-label">Raywell</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-1"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Raywell</div>
+      <h3 class="pod-name">Bio Nature Шампунь 250мл</h3>
+      <div class="pod-price">₴ 890</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-2"><span class="bottle-label">Extremo</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-2"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Extremo</div>
+      <h3 class="pod-name">Кератиновий філер 100мл</h3>
+      <div class="pod-price">₴ 1 450</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-3"><span class="bottle-label">Invidia</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-3"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Invidia</div>
+      <h3 class="pod-name">Blonde One маска 500мл</h3>
+      <div class="pod-price">₴ 1 180</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-4"><span class="bottle-label">Eterna</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-4"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Eterna</div>
+      <h3 class="pod-name">9.3 фарба для волосся 100мл</h3>
+      <div class="pod-price">₴ 420</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-5"><span class="bottle-label">Envie</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-5"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Envie</div>
+      <h3 class="pod-name">Luxury арганова олія 100мл</h3>
+      <div class="pod-price">₴ 760</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-6"><span class="bottle-label">Raywell</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-6"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Raywell</div>
+      <h3 class="pod-name">Botox Hairgold набір 3&times;150мл</h3>
+      <div class="pod-price">₴ 2 340</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-7"><span class="bottle-label">Extremo</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-7"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Extremo</div>
+      <h3 class="pod-name">Термозахисний спрей 200мл</h3>
+      <div class="pod-price">₴ 640</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+    <article class="pod">
+      <div class="pod-stage">
+        <div class="bottle b-8"><span class="bottle-label">Invidia</span></div>
+        <div class="reflection" aria-hidden="true"><div class="bottle b-8"></div></div>
+        <div class="disc" aria-hidden="true"></div>
+      </div>
+      <div class="pod-brand">Invidia</div>
+      <h3 class="pod-name">Blonde One шампунь 1000мл</h3>
+      <div class="pod-price">₴ 1 520</div>
+      <button class="pod-buy">Купити</button>
+    </article>
+  </div>
+</section>
+
+<!-- EXTREMO BANNER -->
+<section class="section" id="extremo" style="padding-top:0">
+  <div class="banner">
+    <h3>Extremo: кератин, що пережив 2086 рік</h3>
+    <p>Лінія для тих, хто хоче гладкість без компромісів. Філер + термозахист = дзеркальне полотно замість волосся. Знижка -15% на комплект до кінця місяця.</p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer id="contact">
+  <div class="foot-grid">
+    <div class="foot-col">
+      <div class="foot-logo">SVS//SHOP</div>
+      <a href="#">Київ, вул. Прикладна, 12</a>
+      <a href="tel:+380000000000">+38 (000) 000 00 00</a>
+      <span class="badge">Концепт: Retro-Futurism</span>
+    </div>
+    <div class="foot-col">
+      <h4>Магазин</h4>
+      <a href="#products">Каталог</a>
+      <a href="#">Доставка і оплата</a>
+      <a href="#">Повернення</a>
+    </div>
+    <div class="foot-col">
+      <h4>Бренди</h4>
+      <a href="#">Raywell</a>
+      <a href="#">Extremo</a>
+      <a href="#">Envie</a>
+      <a href="#">Invidia</a>
+      <a href="#">Eterna</a>
+    </div>
+    <div class="foot-col">
+      <h4>Соцмережі</h4>
+      <a href="#">Instagram</a>
+      <a href="#">Telegram</a>
+      <a href="#">TikTok</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  /* scroll-reveal podiums with stagger */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if (en.isIntersecting){ en.target.classList.add('revealed'); io.unobserve(en.target); }
+    });
+  }, {threshold:0.15});
+  document.querySelectorAll('.pod').forEach(function(p,i){
+    p.style.transitionDelay = (i % 4) * 0.09 + 's';
+    io.observe(p);
+  });
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="shop-08-chrome";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>

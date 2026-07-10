@@ -7,7 +7,13 @@
 -- записою. Власник у картці майстра може підняти до 2+, і тоді на той самий час
 -- дозволяється відповідна кількість записів.
 ALTER TABLE masters ADD COLUMN IF NOT EXISTS max_parallel INT NOT NULL DEFAULT 1;
-ALTER TABLE masters ADD CONSTRAINT masters_max_parallel_chk CHECK (max_parallel >= 1) NOT VALID;
+-- ідемпотентно: на primary констрейнт уже додано ad-hoc (10.07), повторний прогін не має падати
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'masters_max_parallel_chk') THEN
+    ALTER TABLE masters ADD CONSTRAINT masters_max_parallel_chk CHECK (max_parallel >= 1) NOT VALID;
+  END IF;
+END $$;
 
 -- Фізичний EXCLUDE на online_bookings забороняв будь-яке перекриття confirmed-записів,
 -- що робило паралельні брони неможливими навіть у публічному каналі. Прибираємо його —

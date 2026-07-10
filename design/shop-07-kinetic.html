@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kinetic Typography — SVS Beauty Space Shop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;500;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9A96E;
+  --cream:#F3EDE4;
+  --ink:#070605;
+  --f-display:'Unbounded',sans-serif;
+  --f-body:'Inter',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--cream);
+  color:var(--ink);
+  font-family:var(--f-body);
+  overflow-x:hidden;
+  line-height:1.5;
+}
+::selection{background:var(--gold);color:var(--ink)}
+
+/* ---------- NAV ---------- */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:1.1rem 2rem;
+  mix-blend-mode:difference;color:#fff;
+}
+.nav a{color:inherit;text-decoration:none}
+.nav .logo{font-family:var(--f-display);font-weight:900;font-size:1rem;letter-spacing:.08em}
+.nav ul{display:flex;gap:1.8rem;list-style:none}
+.nav ul a{font-size:.78rem;text-transform:uppercase;letter-spacing:.14em;font-weight:600;position:relative}
+.nav ul a::after{content:"";position:absolute;left:0;bottom:-4px;width:0;height:2px;background:#fff;transition:width .3s}
+.nav ul a:hover::after{width:100%}
+@media(max-width:700px){.nav ul{display:none}}
+
+/* ---------- BACK BUTTON ---------- */
+.back-btn{
+  position:fixed;bottom:1.2rem;left:1.2rem;z-index:200;
+  background:var(--ink);color:var(--cream);
+  font-family:var(--f-body);font-size:.8rem;font-weight:600;
+  padding:.7rem 1.2rem;border-radius:99px;text-decoration:none;
+  box-shadow:0 6px 20px rgba(7,6,5,.25);
+  transition:transform .25s,background .25s;
+}
+.back-btn:hover{transform:translateY(-3px);background:var(--gold);color:var(--ink)}
+
+/* ---------- HERO ---------- */
+.hero{
+  min-height:100vh;position:relative;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:7rem 2rem 4rem;
+}
+.hero-line{
+  font-family:var(--f-display);font-weight:900;
+  font-size:clamp(3rem,12.5vw,11.5rem);
+  line-height:.95;letter-spacing:-.02em;text-transform:uppercase;
+  display:block;white-space:nowrap;
+}
+.hero-line .ch{
+  display:inline-block;
+  opacity:0;transform:translateY(110%) rotate(6deg);
+  animation:chIn .7s cubic-bezier(.2,.9,.2,1) forwards;
+}
+.hero-line.outline .ch{
+  color:transparent;
+  -webkit-text-stroke:2px var(--ink);
+}
+.hero-line.gold{color:var(--gold)}
+@keyframes chIn{to{opacity:1;transform:translateY(0) rotate(0)}}
+.hero-sub{
+  max-width:420px;margin-top:2.2rem;font-size:1rem;color:rgba(7,6,5,.72);
+  opacity:0;animation:fadeUp .8s .9s ease forwards;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.hero-cta{
+  display:inline-block;margin-top:1.6rem;
+  background:var(--ink);color:var(--cream);text-decoration:none;
+  font-weight:600;font-size:.85rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:1rem 2.2rem;border-radius:99px;
+  opacity:0;animation:fadeUp .8s 1.1s ease forwards;
+  transition:background .3s,transform .3s;
+}
+.hero-cta:hover{background:var(--gold);color:var(--ink);transform:scale(1.05)}
+.hero-vertical{
+  position:absolute;right:1.4rem;top:50%;transform:translateY(-50%);
+  writing-mode:vertical-rl;
+  font-family:var(--f-display);font-weight:300;font-size:.72rem;
+  letter-spacing:.5em;text-transform:uppercase;color:rgba(7,6,5,.45);
+}
+@media(max-width:700px){.hero-vertical{display:none}}
+
+/* ---------- MARQUEE ---------- */
+.marquee{
+  overflow:hidden;white-space:nowrap;
+  border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);
+  padding:1rem 0;background:var(--ink);color:var(--cream);
+}
+.marquee.light{background:var(--gold);color:var(--ink)}
+.marquee-track{display:inline-block;animation:marquee 22s linear infinite}
+.marquee.light .marquee-track{animation-duration:28s;animation-direction:reverse}
+.marquee span{
+  font-family:var(--f-display);font-weight:700;font-size:1.1rem;
+  text-transform:uppercase;letter-spacing:.1em;margin-right:3rem;
+}
+.marquee span em{font-style:normal;color:var(--gold)}
+.marquee.light span em{color:var(--cream)}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---------- KINETIC SCROLL WORDS ---------- */
+.kinetic-zone{position:relative;padding:8rem 0;overflow:hidden}
+.k-word{
+  font-family:var(--f-display);font-weight:900;text-transform:uppercase;
+  font-size:clamp(4rem,16vw,15rem);line-height:1;white-space:nowrap;
+  will-change:transform;user-select:none;
+}
+.k-word.stroke{color:transparent;-webkit-text-stroke:2px var(--gold)}
+.k-word.solid{color:var(--ink)}
+.k-word.faded{color:rgba(201,169,110,.35)}
+.kinetic-note{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--cream);border:1px solid var(--ink);
+  padding:1.4rem 2rem;max-width:340px;text-align:center;z-index:2;
+  font-size:.95rem;box-shadow:8px 8px 0 var(--gold);
+}
+.kinetic-note strong{font-family:var(--f-display);display:block;margin-bottom:.4rem;font-size:.85rem;letter-spacing:.1em}
+
+/* ---------- SECTION HEADS (stagger reveal) ---------- */
+.section{padding:6rem 2rem}
+.section-head{
+  font-family:var(--f-display);font-weight:900;text-transform:uppercase;
+  font-size:clamp(2.2rem,7vw,5.5rem);line-height:1.02;letter-spacing:-.01em;
+  margin-bottom:.8rem;overflow:hidden;
+}
+.section-head .ch{display:inline-block;transform:translateY(115%);transition:transform .6s cubic-bezier(.2,.9,.25,1)}
+.section-head.revealed .ch{transform:translateY(0)}
+.section-sub{color:rgba(7,6,5,.65);max-width:480px;margin-bottom:3.5rem}
+
+/* ---------- PRODUCT GRID ---------- */
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:2.5rem 2rem;max-width:1280px;margin:0 auto;
+}
+.card{
+  opacity:0;transform:translateY(40px);
+  transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.3,1);
+}
+.card.revealed{opacity:1;transform:translateY(0)}
+.card-img{
+  aspect-ratio:3/4;position:relative;overflow:hidden;
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.card-img::before{
+  content:"";position:absolute;inset:0;
+  transition:transform .6s cubic-bezier(.2,.8,.3,1);
+}
+.card:hover .card-img::before{transform:scale(1.06)}
+.ph-1::before{background:linear-gradient(160deg,#C9A96E 0%,#8a6d3f 55%,#070605 130%)}
+.ph-2::before{background:linear-gradient(200deg,#F3EDE4 0%,#C9A96E 60%,#6e5631 120%)}
+.ph-3::before{background:linear-gradient(145deg,#e9dfcf 0%,#d8bd8d 40%,#070605 140%)}
+.ph-4::before{background:linear-gradient(210deg,#b08c53 0%,#070605 90%)}
+.ph-5::before{background:radial-gradient(120% 120% at 20% 15%,#f0e3cc 0%,#C9A96E 55%,#3a2e1a 120%)}
+.ph-6::before{background:linear-gradient(170deg,#070605 0%,#5c4a2c 55%,#C9A96E 120%)}
+.ph-7::before{background:linear-gradient(120deg,#dcc9a4 0%,#8f7444 60%,#070605 135%)}
+.ph-8::before{background:radial-gradient(100% 140% at 80% 10%,#C9A96E 0%,#493a20 70%,#070605 110%)}
+.card-word{
+  position:relative;z-index:1;
+  font-family:var(--f-display);font-weight:900;
+  font-size:clamp(1.6rem,3.2vw,2.4rem);text-transform:uppercase;
+  color:var(--cream);mix-blend-mode:overlay;
+  writing-mode:vertical-rl;padding:1rem .4rem;line-height:1;
+  transform:translateY(12px);opacity:.85;
+  transition:transform .5s ease,opacity .5s;
+}
+.card:hover .card-word{transform:translateY(0);opacity:1}
+.card-brand{
+  font-size:.68rem;text-transform:uppercase;letter-spacing:.22em;
+  color:var(--gold);font-weight:600;margin-top:1rem;
+}
+.card-name{
+  font-family:var(--f-display);font-weight:500;font-size:1rem;
+  margin:.3rem 0 .5rem;line-height:1.3;
+}
+.card-row{display:flex;justify-content:space-between;align-items:center}
+.card-price{font-weight:600;font-size:1.05rem}
+.card-buy{
+  border:1px solid var(--ink);background:transparent;color:var(--ink);
+  font-family:var(--f-body);font-weight:600;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.12em;
+  padding:.55rem 1.1rem;border-radius:99px;cursor:pointer;
+  transition:background .3s,color .3s,transform .2s;
+}
+.card-buy:hover{background:var(--ink);color:var(--cream);transform:scale(1.06)}
+
+/* ---------- MANIFEST ---------- */
+.manifest{background:var(--ink);color:var(--cream);text-align:center;padding:8rem 2rem}
+.manifest p{
+  font-family:var(--f-display);font-weight:700;
+  font-size:clamp(1.4rem,4vw,3rem);line-height:1.25;max-width:900px;margin:0 auto;
+}
+.manifest .w{display:inline-block;transform:translateY(60%);opacity:0;transition:transform .6s cubic-bezier(.2,.9,.25,1),opacity .6s}
+.manifest.revealed .w{transform:translateY(0);opacity:1}
+.manifest em{font-style:normal;color:var(--gold)}
+
+/* ---------- FOOTER ---------- */
+footer{background:var(--ink);color:var(--cream);padding:4rem 2rem 6rem;border-top:1px solid rgba(243,237,228,.15)}
+.foot-grid{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:3rem;justify-content:space-between}
+.foot-logo{font-family:var(--f-display);font-weight:900;font-size:1.4rem}
+.foot-col h4{font-size:.72rem;text-transform:uppercase;letter-spacing:.2em;color:var(--gold);margin-bottom:1rem}
+.foot-col a{display:block;color:rgba(243,237,228,.75);text-decoration:none;font-size:.9rem;margin-bottom:.5rem;transition:color .25s}
+.foot-col a:hover{color:var(--gold)}
+.badge{
+  display:inline-block;margin-top:1.4rem;
+  border:1px solid var(--gold);color:var(--gold);
+  font-size:.68rem;text-transform:uppercase;letter-spacing:.2em;
+  padding:.5rem 1rem;border-radius:99px;
+}
+
+@media(max-width:700px){
+  .section{padding:4rem 1.2rem}
+  .hero{padding:6rem 1.2rem 3rem}
+  .kinetic-note{position:static;transform:none;margin:2rem auto 0;display:block}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .hero-line .ch,.section-head .ch,.card,.manifest .w{opacity:1!important;transform:none!important}
+  .k-word{transform:none!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="logo" href="#">SVS SHOP</a>
+  <ul>
+    <li><a href="#products">Каталог</a></li>
+    <li><a href="#brands">Бренди</a></li>
+    <li><a href="#manifest">Про нас</a></li>
+    <li><a href="#contact">Контакти</a></li>
+  </ul>
+</nav>
+
+<a class="back-btn" href="index.html">&larr; Всі концепти</a>
+
+<!-- HERO -->
+<header class="hero">
+  <span class="hero-line" data-split>ІТАЛІЙСЬКА</span>
+  <span class="hero-line outline" data-split>ПРОФЕСІЙНА</span>
+  <span class="hero-line gold" data-split>КОСМЕТИКА</span>
+  <p class="hero-sub">Raywell &middot; Extremo &middot; Envie &middot; Invidia &middot; Eterna. П&rsquo;ять брендів з Італії — для волосся, яке говорить голосніше за слова.</p>
+  <div><a class="hero-cta" href="#products">До каталогу</a></div>
+  <span class="hero-vertical">SVS Beauty Space &middot; Kyiv</span>
+</header>
+
+<!-- MARQUEE 1 -->
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-track">
+    <span>Raywell <em>&#10022;</em> Extremo <em>&#10022;</em> Envie <em>&#10022;</em> Invidia <em>&#10022;</em> Eterna <em>&#10022;</em> Made in Italy <em>&#10022;</em></span><span>Raywell <em>&#10022;</em> Extremo <em>&#10022;</em> Envie <em>&#10022;</em> Invidia <em>&#10022;</em> Eterna <em>&#10022;</em> Made in Italy <em>&#10022;</em></span>
+  </div>
+</div>
+
+<!-- KINETIC SCROLL ZONE -->
+<section class="kinetic-zone" id="brands" aria-label="Кінетичні слова">
+  <div class="k-word stroke" data-speed="0.35">ВОЛОССЯ ВОЛОССЯ ВОЛОССЯ</div>
+  <div class="k-word solid" data-speed="-0.25">КЕРАТИН КЕРАТИН КЕРАТИН</div>
+  <div class="k-word faded" data-speed="0.55">БЛОНД БЛОНД БЛОНД БЛОНД</div>
+  <div class="kinetic-note">
+    <strong>ТИПОГРАФІКА = ГЕРОЙ</strong>
+    Слова рухаються з різною швидкістю, поки ви скролите. Кожен рядок — окремий шар глибини.
+  </div>
+</section>
+
+<!-- MARQUEE 2 -->
+<div class="marquee light" aria-hidden="true">
+  <div class="marquee-track">
+    <span>Кератин <em>/</em> Ботокс <em>/</em> Філери <em>/</em> Фарбування <em>/</em> Догляд <em>/</em> Арганова олія <em>/</em></span><span>Кератин <em>/</em> Ботокс <em>/</em> Філери <em>/</em> Фарбування <em>/</em> Догляд <em>/</em> Арганова олія <em>/</em></span>
+  </div>
+</div>
+
+<!-- PRODUCTS -->
+<section class="section" id="products">
+  <h2 class="section-head" data-split-scroll>КАТАЛОГ</h2>
+  <p class="section-sub">Вісім позицій, які купують найчастіше. Мінімальні картки — щоб шрифт і продукт дихали.</p>
+  <div class="grid">
+    <article class="card">
+      <div class="card-img ph-1"><span class="card-word">SHAMPOO</span></div>
+      <div class="card-brand">Raywell</div>
+      <h3 class="card-name">Bio Nature Шампунь 250мл</h3>
+      <div class="card-row"><span class="card-price">₴ 890</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-2"><span class="card-word">KERATIN</span></div>
+      <div class="card-brand">Extremo</div>
+      <h3 class="card-name">Кератиновий філер 100мл</h3>
+      <div class="card-row"><span class="card-price">₴ 1 450</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-3"><span class="card-word">BLONDE</span></div>
+      <div class="card-brand">Invidia</div>
+      <h3 class="card-name">Blonde One маска 500мл</h3>
+      <div class="card-row"><span class="card-price">₴ 1 180</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-4"><span class="card-word">COLOR</span></div>
+      <div class="card-brand">Eterna</div>
+      <h3 class="card-name">9.3 фарба для волосся 100мл</h3>
+      <div class="card-row"><span class="card-price">₴ 420</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-5"><span class="card-word">ARGAN</span></div>
+      <div class="card-brand">Envie</div>
+      <h3 class="card-name">Luxury арганова олія 100мл</h3>
+      <div class="card-row"><span class="card-price">₴ 760</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-6"><span class="card-word">BOTOX</span></div>
+      <div class="card-brand">Raywell</div>
+      <h3 class="card-name">Botox Hairgold набір 3&times;150мл</h3>
+      <div class="card-row"><span class="card-price">₴ 2 340</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-7"><span class="card-word">THERMO</span></div>
+      <div class="card-brand">Extremo</div>
+      <h3 class="card-name">Термозахисний спрей 200мл</h3>
+      <div class="card-row"><span class="card-price">₴ 640</span><button class="card-buy">У кошик</button></div>
+    </article>
+    <article class="card">
+      <div class="card-img ph-8"><span class="card-word">SILVER</span></div>
+      <div class="card-brand">Invidia</div>
+      <h3 class="card-name">Blonde One шампунь 1000мл</h3>
+      <div class="card-row"><span class="card-price">₴ 1 520</span><button class="card-buy">У кошик</button></div>
+    </article>
+  </div>
+</section>
+
+<!-- MANIFEST -->
+<section class="manifest" id="manifest" data-words>
+  <p>Ми не продаємо банки. Ми продаємо <em>результат</em> — блиск, щільність і колір, який тримається <em>місяцями</em>.</p>
+</section>
+
+<!-- FOOTER -->
+<footer id="contact">
+  <div class="foot-grid">
+    <div class="foot-col">
+      <div class="foot-logo">SVS SHOP</div>
+      <a href="#">Київ, вул. Прикладна, 12</a>
+      <a href="tel:+380000000000">+38 (000) 000 00 00</a>
+      <span class="badge">Концепт: Kinetic Typography</span>
+    </div>
+    <div class="foot-col">
+      <h4>Магазин</h4>
+      <a href="#products">Каталог</a>
+      <a href="#">Доставка і оплата</a>
+      <a href="#">Повернення</a>
+    </div>
+    <div class="foot-col">
+      <h4>Бренди</h4>
+      <a href="#">Raywell</a>
+      <a href="#">Extremo</a>
+      <a href="#">Envie</a>
+      <a href="#">Invidia</a>
+      <a href="#">Eterna</a>
+    </div>
+    <div class="foot-col">
+      <h4>Соцмережі</h4>
+      <a href="#">Instagram</a>
+      <a href="#">Telegram</a>
+      <a href="#">TikTok</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* --- split hero lines into chars with stagger --- */
+  document.querySelectorAll('[data-split]').forEach(function(line, li){
+    var text = line.textContent;
+    line.textContent = '';
+    line.setAttribute('aria-label', text);
+    Array.prototype.forEach.call(text, function(c, i){
+      var s = document.createElement('span');
+      s.className = 'ch';
+      s.setAttribute('aria-hidden','true');
+      s.textContent = c === ' ' ? ' ' : c;
+      s.style.animationDelay = (li * 0.12 + i * 0.035) + 's';
+      line.appendChild(s);
+    });
+  });
+
+  /* --- split scroll-revealed section heads --- */
+  document.querySelectorAll('[data-split-scroll]').forEach(function(h){
+    var text = h.textContent;
+    h.textContent = '';
+    h.setAttribute('aria-label', text);
+    Array.prototype.forEach.call(text, function(c, i){
+      var s = document.createElement('span');
+      s.className = 'ch';
+      s.setAttribute('aria-hidden','true');
+      s.textContent = c === ' ' ? ' ' : c;
+      s.style.transitionDelay = (i * 0.045) + 's';
+      h.appendChild(s);
+    });
+  });
+
+  /* --- split manifest into words --- */
+  document.querySelectorAll('[data-words] p').forEach(function(p){
+    var nodes = Array.prototype.slice.call(p.childNodes);
+    p.textContent = '';
+    var idx = 0;
+    nodes.forEach(function(node){
+      var isEm = node.nodeName === 'EM';
+      var words = (node.textContent || '').split(/\s+/).filter(Boolean);
+      words.forEach(function(w){
+        var s = document.createElement('span');
+        s.className = 'w';
+        s.style.transitionDelay = (idx * 0.05) + 's';
+        if (isEm){ var e = document.createElement('em'); e.textContent = w; s.appendChild(e); }
+        else s.textContent = w;
+        p.appendChild(s);
+        p.appendChild(document.createTextNode(' '));
+        idx++;
+      });
+    });
+  });
+
+  /* --- IntersectionObserver reveals --- */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if (en.isIntersecting){ en.target.classList.add('revealed'); io.unobserve(en.target); }
+    });
+  }, {threshold: 0.18});
+  document.querySelectorAll('.card, [data-split-scroll], [data-words]').forEach(function(el){ io.observe(el); });
+
+  /* --- scroll-driven kinetic words via rAF --- */
+  if (!reduced){
+    var words = Array.prototype.slice.call(document.querySelectorAll('.k-word'));
+    var lastY = -1, ticking = false;
+    function update(){
+      var y = window.scrollY || window.pageYOffset;
+      words.forEach(function(w){
+        var speed = parseFloat(w.dataset.speed || '0.3');
+        var rect = w.parentElement.getBoundingClientRect();
+        var progress = (window.innerHeight - rect.top) * speed;
+        w.style.transform = 'translateX(' + (-progress % (window.innerWidth * 2)) + 'px)';
+      });
+      ticking = false;
+    }
+    window.addEventListener('scroll', function(){
+      if (!ticking){ requestAnimationFrame(update); ticking = true; }
+    }, {passive:true});
+    update();
+  }
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="shop-07-kinetic";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>

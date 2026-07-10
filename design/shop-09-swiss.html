@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Магазин · Swiss Modernism 2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#070605; --paper:#FFFFFF; --grey:#F5F5F3; --line:#E3E0DA;
+  --red:#E30613; --gold:#C9A96E; --cream:#F3EDE4;
+  --u:8px; /* базовий модуль */
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',Helvetica,Arial,sans-serif;
+  background:var(--paper); color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+/* ===== ВИДИМА 12-КОЛОНКОВА СІТКА (фон) ===== */
+.grid-overlay{
+  position:fixed; inset:0; pointer-events:none; z-index:0;
+  display:grid; grid-template-columns:repeat(12,1fr);
+  max-width:1440px; margin:0 auto; padding:0 calc(var(--u)*3);
+}
+.grid-overlay span{
+  border-left:1px solid var(--line);
+  transform-origin:top; transform:scaleY(0);
+  animation:drawline .9s cubic-bezier(.22,1,.36,1) forwards;
+}
+.grid-overlay span:last-child{border-right:1px solid var(--line)}
+.grid-overlay span:nth-child(1){animation-delay:.05s}
+.grid-overlay span:nth-child(2){animation-delay:.10s}
+.grid-overlay span:nth-child(3){animation-delay:.15s}
+.grid-overlay span:nth-child(4){animation-delay:.20s}
+.grid-overlay span:nth-child(5){animation-delay:.25s}
+.grid-overlay span:nth-child(6){animation-delay:.30s}
+.grid-overlay span:nth-child(7){animation-delay:.35s}
+.grid-overlay span:nth-child(8){animation-delay:.40s}
+.grid-overlay span:nth-child(9){animation-delay:.45s}
+.grid-overlay span:nth-child(10){animation-delay:.50s}
+.grid-overlay span:nth-child(11){animation-delay:.55s}
+.grid-overlay span:nth-child(12){animation-delay:.60s}
+@keyframes drawline{to{transform:scaleY(1)}}
+
+.wrap{max-width:1440px;margin:0 auto;padding:0 calc(var(--u)*3);position:relative;z-index:1}
+.grid12{display:grid;grid-template-columns:repeat(12,1fr);gap:0}
+
+/* ===== NAV ===== */
+nav{
+  border-bottom:1px solid var(--ink);
+  background:rgba(255,255,255,.92); backdrop-filter:blur(8px);
+  position:sticky;top:0;z-index:50;
+  animation:slidedown .7s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes slidedown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+nav .grid12{align-items:stretch}
+.nav-logo{grid-column:1/4;padding:calc(var(--u)*2) 0;font-weight:900;font-size:18px;letter-spacing:-.02em;display:flex;align-items:center;gap:var(--u)}
+.nav-logo .dot{width:10px;height:10px;background:var(--red)}
+.nav-links{grid-column:4/10;display:flex;align-items:center;gap:calc(var(--u)*4)}
+.nav-links a{color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;position:relative}
+.nav-links a::after{content:"";position:absolute;left:0;bottom:-4px;width:0;height:2px;background:var(--red);transition:width .25s}
+.nav-links a:hover::after{width:100%}
+.nav-cart{grid-column:10/13;display:flex;align-items:center;justify-content:flex-end;gap:calc(var(--u)*2);font-size:13px;font-weight:700}
+.nav-cart .badge-n{background:var(--ink);color:#fff;padding:2px 8px;font-variant-numeric:tabular-nums}
+
+/* ===== HERO ===== */
+header{border-bottom:1px solid var(--ink);position:relative;z-index:1}
+.hero{padding:calc(var(--u)*10) 0 calc(var(--u)*8)}
+.hero-index{grid-column:1/3;font-size:12px;font-weight:700;color:var(--red);letter-spacing:.15em;text-transform:uppercase;padding-top:var(--u);animation:fadeup .8s .3s both}
+.hero-title{grid-column:3/11;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(2.6rem,7vw,6.4rem);line-height:.95;letter-spacing:-.03em;animation:fadeup .8s .45s both}
+.hero-title em{font-style:normal;color:var(--gold)}
+.hero-title .red{color:var(--red)}
+.hero-meta{grid-column:11/13;font-size:12px;line-height:1.7;color:#666;animation:fadeup .8s .6s both}
+.hero-stats{margin-top:calc(var(--u)*8)}
+.stat{border-top:1px solid var(--ink);padding:calc(var(--u)*2) calc(var(--u)*2) calc(var(--u)*2) 0}
+.stat:nth-child(1){grid-column:1/4}.stat:nth-child(2){grid-column:4/7}
+.stat:nth-child(3){grid-column:7/10}.stat:nth-child(4){grid-column:10/13}
+.stat b{display:block;font-size:clamp(1.6rem,3vw,2.6rem);font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat span{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#888}
+@keyframes fadeup{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== ФІЛЬТРИ / СОРТУВАННЯ ===== */
+.toolbar{border-bottom:1px solid var(--ink);position:sticky;top:57px;background:#fff;z-index:40}
+.toolbar .grid12{align-items:stretch}
+.filters{grid-column:1/9;display:flex;flex-wrap:wrap}
+.fbtn{
+  font-family:inherit;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  background:none;border:none;border-right:1px solid var(--line);
+  padding:calc(var(--u)*2) calc(var(--u)*3);cursor:pointer;color:#888;transition:color .2s,background .2s;
+}
+.fbtn:hover{color:var(--ink);background:var(--grey)}
+.fbtn.active{color:#fff;background:var(--ink)}
+.fbtn.active::before{content:"● ";color:var(--red)}
+.sorter{grid-column:9/13;display:flex;justify-content:flex-end;align-items:center;gap:var(--u);padding-right:0}
+.sorter label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#888}
+.sorter select{
+  font-family:inherit;font-size:12px;font-weight:700;border:1px solid var(--ink);
+  background:#fff;padding:var(--u) calc(var(--u)*1.5);cursor:pointer;
+}
+
+/* ===== КАТАЛОГ ===== */
+.catalog{padding:0;border-bottom:1px solid var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(12,1fr)}
+.card{
+  grid-column:span 3;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:calc(var(--u)*3);display:flex;flex-direction:column;min-height:420px;
+  background:#fff;position:relative;
+  opacity:0;transform:translateY(30px);
+  transition:opacity .6s cubic-bezier(.22,1,.36,1),transform .6s cubic-bezier(.22,1,.36,1),box-shadow .25s;
+}
+.card.inview{opacity:1;transform:translateY(0)}
+.card:hover{box-shadow:inset 0 0 0 2px var(--ink);z-index:2}
+.card:hover .thumb::after{transform:translate(0,0)}
+.card:hover .buy{background:var(--red);border-color:var(--red);color:#fff}
+.sku{font-size:10px;font-weight:700;letter-spacing:.12em;color:#999;display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+.sku .vol{color:var(--ink)}
+.thumb{
+  margin:calc(var(--u)*2) 0;aspect-ratio:1/1.05;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--cream) 0%,#E8DCC8 45%,var(--gold) 130%);
+}
+.thumb.dark{background:linear-gradient(160deg,#2A2622 0%,var(--ink) 60%,#4A3F30 130%)}
+.thumb.blonde{background:linear-gradient(160deg,#F7F1E4 0%,#EFE2C4 50%,#D8BE8C 130%)}
+.thumb.red{background:linear-gradient(160deg,var(--cream) 0%,#E9D5CB 55%,#B8654A 140%)}
+.thumb::before{ /* силует флакона */
+  content:"";position:absolute;left:50%;bottom:14%;transform:translateX(-50%);
+  width:34%;height:62%;background:rgba(7,6,5,.82);
+  border-radius:6px 6px 3px 3px;
+}
+.thumb.dark::before{background:rgba(243,237,228,.9)}
+.thumb::after{ /* червона мітка-хрестик у куті */
+  content:"+";position:absolute;top:8px;right:10px;color:var(--red);
+  font-size:20px;font-weight:900;transform:translate(30px,-30px);transition:transform .3s cubic-bezier(.22,1,.36,1);
+}
+.brandline{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--gold)}
+.pname{font-size:15px;font-weight:700;line-height:1.3;margin:calc(var(--u)*.75) 0 auto}
+.price-row{display:flex;align-items:flex-end;justify-content:space-between;margin-top:calc(var(--u)*2)}
+.price{font-size:clamp(1.5rem,2vw,1.9rem);font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.price small{font-size:.55em;font-weight:700;color:#888;margin-left:2px}
+.buy{
+  font-family:inherit;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  border:1px solid var(--ink);background:#fff;color:var(--ink);
+  padding:var(--u) calc(var(--u)*2);cursor:pointer;transition:all .2s;
+}
+.buy:active{transform:scale(.96)}
+
+/* ===== FOOTER ===== */
+footer{padding:calc(var(--u)*8) 0 calc(var(--u)*4);background:var(--ink);color:var(--cream)}
+footer .grid12{row-gap:calc(var(--u)*4)}
+.f-brand{grid-column:1/5;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:26px;letter-spacing:-.02em}
+.f-brand .dot{color:var(--red)}
+.f-col{font-size:12px;line-height:2;color:#A79E90}
+.f-col h4{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);margin-bottom:var(--u)}
+.f-col:nth-of-type(2){grid-column:5/8}.f-col:nth-of-type(3){grid-column:8/11}.f-col:nth-of-type(4){grid-column:11/13}
+.f-col a{color:inherit;text-decoration:none}
+.f-col a:hover{color:#fff}
+.f-bottom{grid-column:1/13;border-top:1px solid #2E2A25;padding-top:calc(var(--u)*2);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#7A7266}
+.badge{
+  display:inline-flex;align-items:center;gap:var(--u);
+  border:1px solid var(--gold);color:var(--gold);
+  padding:6px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;
+}
+.badge::before{content:"";width:8px;height:8px;background:var(--red)}
+
+/* ===== ФІКС-КНОПКИ ===== */
+.back-btn{
+  position:fixed;left:16px;bottom:16px;z-index:100;
+  font-size:12px;font-weight:700;text-decoration:none;text-transform:uppercase;letter-spacing:.08em;
+  background:var(--ink);color:#fff;padding:12px 18px;border:1px solid var(--ink);
+  transition:background .2s,color .2s;
+}
+.back-btn:hover{background:#fff;color:var(--ink)}
+.pick-btn{
+  position:fixed;right:16px;bottom:16px;z-index:100;
+  font-family:inherit;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;
+  background:var(--red);color:#fff;border:1px solid var(--red);
+  padding:14px 22px;cursor:pointer;box-shadow:0 6px 24px rgba(227,6,19,.35);
+  transition:transform .2s,box-shadow .2s;
+}
+.pick-btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(227,6,19,.45)}
+.pick-btn.picked{background:var(--ink);border-color:var(--ink);box-shadow:none}
+.toast{
+  position:fixed;right:16px;bottom:76px;z-index:100;background:var(--ink);color:var(--cream);
+  padding:12px 18px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);
+  transition:opacity .3s,transform .3s;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* ===== АДАПТИВ ===== */
+@media(max-width:1024px){
+  .card{grid-column:span 4;min-height:380px}
+  .nav-links{display:none}
+  .nav-logo{grid-column:1/7}.nav-cart{grid-column:7/13}
+}
+@media(max-width:720px){
+  .grid-overlay{grid-template-columns:repeat(4,1fr)}
+  .grid-overlay span:nth-child(n+6){display:none}
+  .hero-index{grid-column:1/13}
+  .hero-title{grid-column:1/13}
+  .hero-meta{grid-column:1/13;margin-top:calc(var(--u)*2)}
+  .stat:nth-child(odd){grid-column:1/7}.stat:nth-child(even){grid-column:7/13}
+  .filters{grid-column:1/13;overflow-x:auto}
+  .sorter{grid-column:1/13;justify-content:flex-start;padding:var(--u) 0}
+  .toolbar{position:static}
+  .card{grid-column:span 6;min-height:340px;padding:calc(var(--u)*2)}
+  .f-brand,.f-col:nth-of-type(2),.f-col:nth-of-type(3),.f-col:nth-of-type(4){grid-column:1/13}
+  .f-bottom{flex-direction:column;gap:var(--u);align-items:flex-start}
+}
+@media(max-width:460px){.card{grid-column:span 12}}
+
+/* ===== REDUCED MOTION ===== */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}
+  html{scroll-behavior:auto}
+  .card{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<div class="grid-overlay" aria-hidden="true">
+<span></span><span></span><span></span><span></span><span></span><span></span>
+<span></span><span></span><span></span><span></span><span></span><span></span>
+</div>
+
+<nav>
+  <div class="wrap grid12">
+    <div class="nav-logo"><span class="dot"></span>SVS BEAUTY SPACE</div>
+    <div class="nav-links">
+      <a href="#catalog">Каталог</a><a href="#catalog">Бренди</a><a href="#catalog">Догляд</a><a href="#contact">Контакти</a>
+    </div>
+    <div class="nav-cart">КОШИК <span class="badge-n" id="cartN">0</span></div>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <div class="grid12 hero">
+      <div class="hero-index">Каталог / 01—08</div>
+      <h1 class="hero-title">Італійська косметика.<br><span class="red">Точність</span> салонного <em>рівня</em>.</h1>
+      <div class="hero-meta">Raywell · Extremo · Envie · Invidia · Eterna<br><br>Офіційний дистриб'ютор.<br>Сертифіковано в Україні.</div>
+    </div>
+    <div class="grid12 hero-stats">
+      <div class="stat"><b data-count="5">0</b><span>Брендів Італії</span></div>
+      <div class="stat"><b data-count="128">0</b><span>Позицій у каталозі</span></div>
+      <div class="stat"><b data-count="1240">0</b><span>Задоволених клієнтів</span></div>
+      <div class="stat"><b data-count="100">0</b><span>% оригінал</span></div>
+    </div>
+  </div>
+</header>
+
+<section class="toolbar" id="catalog">
+  <div class="wrap grid12">
+    <div class="filters" role="tablist" aria-label="Фільтр категорій">
+      <button class="fbtn active" data-f="all">Всі</button>
+      <button class="fbtn" data-f="shampoo">Шампуні</button>
+      <button class="fbtn" data-f="care">Догляд</button>
+      <button class="fbtn" data-f="color">Фарбування</button>
+    </div>
+    <div class="sorter">
+      <label for="sort">Сортувати:</label>
+      <select id="sort">
+        <option value="default">За замовчуванням</option>
+        <option value="asc">Ціна ↑</option>
+        <option value="desc">Ціна ↓</option>
+        <option value="name">За назвою</option>
+      </select>
+    </div>
+  </div>
+</section>
+
+<main class="catalog">
+  <div class="wrap">
+    <div class="cards" id="cards">
+
+      <article class="card" data-cat="shampoo" data-price="890" data-name="Raywell Bio Nature Шампунь">
+        <div class="sku"><span>АРТ. RW-BN-2501</span><span class="vol">250 мл</span></div>
+        <div class="thumb"></div>
+        <div class="brandline">Raywell</div>
+        <h3 class="pname">Bio Nature Шампунь відновлюючий</h3>
+        <div class="price-row"><div class="price">₴890<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="care" data-price="2450" data-name="Extremo Кератиновий філер">
+        <div class="sku"><span>АРТ. EX-KF-1002</span><span class="vol">100 мл</span></div>
+        <div class="thumb dark"></div>
+        <div class="brandline">Extremo</div>
+        <h3 class="pname">Кератиновий філер глибокої дії</h3>
+        <div class="price-row"><div class="price">₴2450<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="care" data-price="1350" data-name="Invidia Blonde One маска">
+        <div class="sku"><span>АРТ. IN-B1-5003</span><span class="vol">500 мл</span></div>
+        <div class="thumb blonde"></div>
+        <div class="brandline">Invidia</div>
+        <h3 class="pname">Blonde One маска для блонду</h3>
+        <div class="price-row"><div class="price">₴1350<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="color" data-price="465" data-name="Eterna 9.3 фарба">
+        <div class="sku"><span>АРТ. ET-93-1004</span><span class="vol">100 мл</span></div>
+        <div class="thumb red"></div>
+        <div class="brandline">Eterna</div>
+        <h3 class="pname">9.3 фарба крем-стійка, золотистий блонд</h3>
+        <div class="price-row"><div class="price">₴465<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="care" data-price="1180" data-name="Envie Luxury арганова олія">
+        <div class="sku"><span>АРТ. EN-LX-1005</span><span class="vol">100 мл</span></div>
+        <div class="thumb"></div>
+        <div class="brandline">Envie</div>
+        <h3 class="pname">Luxury арганова олія для сяйва</h3>
+        <div class="price-row"><div class="price">₴1180<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="care" data-price="3200" data-name="Raywell Botox Hairgold набір">
+        <div class="sku"><span>АРТ. RW-BX-4506</span><span class="vol">3×150 мл</span></div>
+        <div class="thumb dark"></div>
+        <div class="brandline">Raywell</div>
+        <h3 class="pname">Botox Hairgold набір реконструкції</h3>
+        <div class="price-row"><div class="price">₴3200<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="shampoo" data-price="920" data-name="Extremo Illuminating кондиціонер">
+        <div class="sku"><span>АРТ. EX-IL-2507</span><span class="vol">250 мл</span></div>
+        <div class="thumb blonde"></div>
+        <div class="brandline">Extremo</div>
+        <h3 class="pname">Illuminating кондиціонер-блиск</h3>
+        <div class="price-row"><div class="price">₴920<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+      <article class="card" data-cat="shampoo" data-price="1540" data-name="Invidia Color шампунь">
+        <div class="sku"><span>АРТ. IN-CL-1008</span><span class="vol">1000 мл</span></div>
+        <div class="thumb red"></div>
+        <div class="brandline">Invidia</div>
+        <h3 class="pname">Color шампунь для фарбованого волосся</h3>
+        <div class="price-row"><div class="price">₴1540<small>.00</small></div><button class="buy">У кошик</button></div>
+      </article>
+
+    </div>
+  </div>
+</main>
+
+<footer id="contact">
+  <div class="wrap grid12">
+    <div class="f-brand">SVS<span class="dot">.</span>SHOP</div>
+    <div class="f-col"><h4>Магазин</h4><a href="#catalog">Каталог</a><br><a href="#catalog">Бренди</a><br><a href="#catalog">Доставка та оплата</a></div>
+    <div class="f-col"><h4>Салон</h4>м. Київ, вул. Хрещатик, 1<br>Пн–Нд 09:00–21:00</div>
+    <div class="f-col"><h4>Зв'язок</h4><a href="tel:+380001112233">+38 (000) 111-22-33</a><br><a href="#">Instagram</a></div>
+    <div class="f-bottom">
+      <span>© 2026 SVS Beauty Space. Всі права захищено.</span>
+      <span class="badge">Концепт: Swiss Modernism 2.0</span>
+    </div>
+  </div>
+</footer>
+
+<a class="back-btn" href="index.html">← Всі концепти</a>
+<button class="pick-btn" id="pickBtn">✓ Обрати цей дизайн</button>
+<div class="toast" id="toast">Вибір збережено: Swiss Modernism 2.0</div>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Числа, що тікають */
+  function tick(el){
+    var target = +el.dataset.count, dur = 1400, t0 = null;
+    if(reduced){ el.textContent = target.toLocaleString('uk-UA'); return; }
+    function step(t){
+      if(!t0) t0 = t;
+      var p = Math.min((t - t0)/dur, 1), e = 1 - Math.pow(1-p, 3);
+      el.textContent = Math.round(target*e).toLocaleString('uk-UA');
+      if(p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var statIO = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ tick(e.target); statIO.unobserve(e.target); } });
+  },{threshold:.6});
+  document.querySelectorAll('[data-count]').forEach(function(el){ statIO.observe(el); });
+
+  /* Scroll-reveal карток */
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  var cardIO = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting){
+        var i = cards.indexOf(e.target);
+        e.target.style.transitionDelay = (reduced ? 0 : (i % 4) * 80) + 'ms';
+        e.target.classList.add('inview');
+        cardIO.unobserve(e.target);
+      }
+    });
+  },{threshold:.15});
+  cards.forEach(function(c){ cardIO.observe(c); });
+
+  /* Фільтри */
+  var btns = document.querySelectorAll('.fbtn');
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      btns.forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+      var f = b.dataset.f;
+      cards.forEach(function(c){
+        var show = (f === 'all' || c.dataset.cat === f);
+        c.style.display = show ? '' : 'none';
+        if(show) c.classList.add('inview');
+      });
+    });
+  });
+
+  /* Сортування */
+  document.getElementById('sort').addEventListener('change', function(){
+    var v = this.value, box = document.getElementById('cards');
+    var sorted = cards.slice().sort(function(a,b){
+      if(v==='asc') return a.dataset.price - b.dataset.price;
+      if(v==='desc') return b.dataset.price - a.dataset.price;
+      if(v==='name') return a.dataset.name.localeCompare(b.dataset.name,'uk');
+      return 0;
+    });
+    sorted.forEach(function(c){ box.appendChild(c); c.classList.add('inview'); });
+  });
+
+  /* Кошик */
+  var n = 0, cartN = document.getElementById('cartN');
+  document.querySelectorAll('.buy').forEach(function(b){
+    b.addEventListener('click', function(){
+      n++; cartN.textContent = n;
+      cartN.style.background = 'var(--red)';
+      setTimeout(function(){ cartN.style.background = ''; }, 350);
+    });
+  });
+
+  /* Кнопка вибору дизайну */
+  var pick = document.getElementById('pickBtn'), toast = document.getElementById('toast');
+  try{ if(localStorage.getItem('svs_design_choice') === 'shop-09-swiss'){ pick.classList.add('picked'); pick.textContent = '✓ Обрано'; } }catch(e){}
+  pick.addEventListener('click', function(){
+    try{ localStorage.setItem('svs_design_choice','shop-09-swiss'); localStorage.setItem('svs_design_choice_title','Swiss Modernism 2.0'); }catch(e){}
+    pick.classList.add('picked'); pick.textContent = '✓ Обрано';
+    toast.classList.add('show');
+    setTimeout(function(){ toast.classList.remove('show'); }, 2400);
+  });
+})();
+</script>
+</body>
+</html>

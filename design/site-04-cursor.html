@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Cursor — SVS Beauty Space</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9A96E;
+  --cream:#F3EDE4;
+  --ink:#070605;
+  --f-serif:'Cormorant Garamond',serif;
+  --f-sans:'Manrope',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--ink);
+  color:var(--cream);
+  font-family:var(--f-sans);
+  line-height:1.6;
+  overflow-x:hidden;
+}
+::selection{background:var(--gold);color:var(--ink)}
+body.has-cursor, body.has-cursor a, body.has-cursor button{cursor:none}
+
+/* ---------- CUSTOM CURSOR ---------- */
+#cursor{
+  position:fixed;top:0;left:0;z-index:9999;pointer-events:none;
+  width:36px;height:36px;border-radius:50%;
+  border:1.5px solid var(--gold);
+  display:none;align-items:center;justify-content:center;
+  transform:translate(-50%,-50%);
+  transition:width .35s cubic-bezier(.2,.8,.3,1),height .35s cubic-bezier(.2,.8,.3,1),
+             background-color .3s,border-color .3s,opacity .3s;
+  mix-blend-mode:normal;
+}
+#cursor .cursor-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--gold);
+  transition:transform .3s,opacity .3s;
+}
+#cursor .cursor-text{
+  position:absolute;font-size:.6rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink);opacity:0;white-space:nowrap;
+  transition:opacity .25s;
+}
+body.has-cursor #cursor{display:flex}
+#cursor.is-photo{width:90px;height:90px;background:rgba(201,169,110,.15);backdrop-filter:blur(2px)}
+#cursor.is-photo .cursor-dot{transform:scale(0);opacity:0}
+#cursor.is-view{width:86px;height:86px;background:var(--gold);border-color:var(--gold)}
+#cursor.is-view .cursor-dot{transform:scale(0);opacity:0}
+#cursor.is-view .cursor-text{opacity:1}
+#cursor.is-arrow{width:56px;height:56px;background:var(--cream);border-color:var(--cream)}
+#cursor.is-arrow .cursor-dot{transform:scale(0);opacity:0}
+#cursor.is-arrow .cursor-arrow{opacity:1;transform:rotate(-45deg) scale(1)}
+#cursor .cursor-arrow{
+  position:absolute;font-size:1.3rem;color:var(--ink);opacity:0;
+  transform:rotate(-45deg) scale(.4);transition:opacity .25s,transform .3s;
+}
+#cursor.is-down{transform:translate(-50%,-50%) scale(.82)}
+
+/* ---------- NAV ---------- */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:1.3rem 2.2rem;
+  background:linear-gradient(180deg,rgba(7,6,5,.9),rgba(7,6,5,0));
+}
+.nav .logo{
+  font-family:var(--f-serif);font-weight:600;font-size:1.25rem;
+  color:var(--cream);text-decoration:none;letter-spacing:.06em;
+}
+.nav .logo em{color:var(--gold);font-style:italic}
+.nav ul{display:flex;gap:2rem;list-style:none}
+.nav ul a{
+  color:rgba(243,237,228,.8);text-decoration:none;font-size:.74rem;
+  text-transform:uppercase;letter-spacing:.18em;font-weight:500;
+  position:relative;transition:color .3s;
+}
+.nav ul a::after{content:"";position:absolute;left:0;bottom:-5px;width:0;height:1px;background:var(--gold);transition:width .35s}
+.nav ul a:hover{color:var(--gold)}
+.nav ul a:hover::after{width:100%}
+@media(max-width:760px){.nav ul{display:none}}
+
+/* ---------- BACK BUTTON ---------- */
+.back-btn{
+  position:fixed;bottom:1.2rem;left:1.2rem;z-index:500;
+  background:var(--cream);color:var(--ink);
+  font-size:.78rem;font-weight:700;
+  padding:.7rem 1.2rem;border-radius:99px;text-decoration:none;
+  box-shadow:0 6px 22px rgba(0,0,0,.4);
+  transition:transform .25s,background .25s;
+}
+.back-btn:hover{transform:translateY(-3px);background:var(--gold)}
+
+/* ---------- HERO ---------- */
+.hero{
+  min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  padding:7rem 2.2rem 4rem;position:relative;overflow:hidden;
+}
+.hero::before{
+  content:"";position:absolute;top:-20%;right:-15%;width:60vw;height:60vw;border-radius:50%;
+  background:radial-gradient(circle,rgba(201,169,110,.22),transparent 65%);
+  animation:blob 12s ease-in-out infinite;
+}
+@keyframes blob{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-6%,8%) scale(1.12)}}
+.hero h1{
+  font-family:var(--f-serif);font-weight:400;
+  font-size:clamp(2.6rem,8.5vw,7rem);line-height:1.04;max-width:14ch;
+}
+.hero h1 .line{display:block;overflow:hidden}
+.hero h1 .line span{display:inline-block;transform:translateY(110%);animation:lineUp 1s cubic-bezier(.2,.85,.25,1) forwards}
+.hero h1 .line:nth-child(2) span{animation-delay:.15s}
+.hero h1 .line:nth-child(3) span{animation-delay:.3s}
+.hero h1 em{font-style:italic;color:var(--gold)}
+@keyframes lineUp{to{transform:translateY(0)}}
+.hero-sub{
+  max-width:420px;margin-top:2rem;color:rgba(243,237,228,.7);font-size:.95rem;
+  opacity:0;animation:fadeIn 1s .7s ease forwards;
+}
+@keyframes fadeIn{to{opacity:1}}
+.hero-actions{display:flex;gap:1.2rem;margin-top:2.4rem;flex-wrap:wrap;opacity:0;animation:fadeIn 1s .9s ease forwards}
+
+/* magnetic buttons */
+.btn{
+  display:inline-block;text-decoration:none;font-weight:700;font-size:.8rem;
+  text-transform:uppercase;letter-spacing:.14em;border-radius:99px;
+  padding:1.05rem 2.3rem;will-change:transform;
+  transition:background .3s,color .3s,border-color .3s;
+}
+.btn-gold{background:var(--gold);color:var(--ink)}
+.btn-gold:hover{background:var(--cream)}
+.btn-ghost{border:1px solid rgba(243,237,228,.4);color:var(--cream)}
+.btn-ghost:hover{border-color:var(--gold);color:var(--gold)}
+
+.scroll-hint{
+  position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);
+  font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;color:rgba(243,237,228,.45);
+  animation:hintBob 2.4s ease-in-out infinite;
+}
+@keyframes hintBob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,8px)}}
+
+/* ---------- SECTIONS ---------- */
+.section{padding:6.5rem 2.2rem;max-width:1240px;margin:0 auto}
+.sec-label{font-size:.68rem;letter-spacing:.34em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:1rem}
+.sec-title{font-family:var(--f-serif);font-weight:400;font-size:clamp(2rem,5vw,3.6rem);line-height:1.1;margin-bottom:3rem;max-width:18ch}
+.sec-title em{font-style:italic;color:var(--gold)}
+.reveal{opacity:0;transform:translateY(36px);transition:opacity .8s ease,transform .8s cubic-bezier(.2,.8,.3,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* ---------- GALLERY ---------- */
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.6rem}
+.work{
+  position:relative;aspect-ratio:4/5;overflow:hidden;border-radius:6px;
+}
+.work .ph{
+  position:absolute;inset:0;transition:transform .7s cubic-bezier(.2,.8,.3,1),filter .7s;
+}
+.work:hover .ph{transform:scale(1.07) skewY(-1.2deg);filter:saturate(1.2) brightness(1.08)}
+.g-1{background:linear-gradient(150deg,#C9A96E 0%,#6e5631 60%,#070605 130%)}
+.g-2{background:radial-gradient(120% 110% at 25% 20%,#f0e2c8 0%,#C9A96E 50%,#241a0c 115%)}
+.g-3{background:linear-gradient(200deg,#F3EDE4 0%,#c2a06a 55%,#070605 140%)}
+.work-cap{
+  position:absolute;left:1.2rem;bottom:1.1rem;z-index:2;
+  font-family:var(--f-serif);font-size:1.25rem;font-style:italic;
+  text-shadow:0 2px 12px rgba(0,0,0,.5);
+}
+
+/* ---------- BEFORE / AFTER ---------- */
+.ba-wrap{max-width:880px;margin:0 auto}
+.ba{
+  position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;
+  user-select:none;touch-action:none;
+}
+.ba-before,.ba-after{position:absolute;inset:0}
+.ba-before{background:linear-gradient(140deg,#3a3128 0%,#241d15 55%,#0d0a06 110%)}
+.ba-after{
+  background:linear-gradient(140deg,#f2e6cd 0%,#C9A96E 55%,#7c6236 115%);
+  clip-path:inset(0 0 0 50%);
+}
+.ba-tag{
+  position:absolute;top:1rem;font-size:.62rem;font-weight:700;letter-spacing:.2em;
+  text-transform:uppercase;padding:.4rem .9rem;border-radius:99px;background:rgba(7,6,5,.55);
+}
+.ba-before .ba-tag{left:1rem;color:rgba(243,237,228,.85)}
+.ba-after .ba-tag{right:1rem;color:var(--ink);background:rgba(243,237,228,.8)}
+.ba-handle{
+  position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--cream);
+  transform:translateX(-50%);z-index:3;
+}
+.ba-handle::after{
+  content:"⟷";display:flex;align-items:center;justify-content:center;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:46px;height:46px;border-radius:50%;
+  background:var(--cream);color:var(--ink);font-size:1.1rem;
+  box-shadow:0 4px 18px rgba(0,0,0,.45);
+}
+.ba-note{text-align:center;margin-top:1.1rem;font-size:.78rem;color:rgba(243,237,228,.5);letter-spacing:.08em}
+
+/* ---------- SERVICES ---------- */
+.services{border-top:1px solid rgba(243,237,228,.12)}
+.srv{
+  display:flex;justify-content:space-between;align-items:baseline;gap:1.5rem;
+  padding:1.8rem .4rem;border-bottom:1px solid rgba(243,237,228,.12);
+  transition:padding .35s,background .35s;
+}
+.srv:hover{background:rgba(201,169,110,.06);padding-left:1.2rem}
+.srv-name{font-family:var(--f-serif);font-size:clamp(1.3rem,3vw,1.9rem)}
+.srv-desc{flex:1;font-size:.82rem;color:rgba(243,237,228,.55);max-width:340px}
+.srv-price{color:var(--gold);font-weight:700;white-space:nowrap}
+@media(max-width:700px){.srv{flex-wrap:wrap;gap:.5rem}.srv-desc{max-width:none;flex-basis:100%}}
+
+/* ---------- BOOKING ---------- */
+.booking{
+  text-align:center;padding:7rem 2.2rem;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,var(--ink),#141008 60%,var(--ink));
+}
+.booking h2{font-family:var(--f-serif);font-weight:400;font-size:clamp(2.2rem,6vw,4.4rem);max-width:16ch;margin:0 auto 1.4rem}
+.booking h2 em{font-style:italic;color:var(--gold)}
+.booking p{color:rgba(243,237,228,.65);max-width:440px;margin:0 auto 2.4rem;font-size:.92rem}
+
+/* ---------- FOOTER ---------- */
+footer{border-top:1px solid rgba(243,237,228,.12);padding:4rem 2.2rem 6.5rem}
+.foot-grid{max-width:1240px;margin:0 auto;display:flex;flex-wrap:wrap;gap:3rem;justify-content:space-between}
+.foot-logo{font-family:var(--f-serif);font-size:1.5rem}
+.foot-logo em{color:var(--gold);font-style:italic}
+.foot-col h4{font-size:.68rem;text-transform:uppercase;letter-spacing:.26em;color:var(--gold);margin-bottom:1rem}
+.foot-col a{display:block;color:rgba(243,237,228,.7);text-decoration:none;font-size:.86rem;margin-bottom:.55rem;transition:color .25s}
+.foot-col a:hover{color:var(--gold)}
+.badge{
+  display:inline-block;margin-top:1.4rem;
+  border:1px solid var(--gold);color:var(--gold);
+  font-size:.64rem;text-transform:uppercase;letter-spacing:.22em;
+  padding:.5rem 1rem;border-radius:99px;
+}
+
+@media(max-width:700px){.section{padding:4.5rem 1.3rem}.hero{padding:6rem 1.3rem 4rem}}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .hero h1 .line span{transform:none!important}
+  .hero-sub,.hero-actions{opacity:1!important}
+  .reveal{opacity:1!important;transform:none!important}
+  #cursor{display:none!important}
+  body.has-cursor,body.has-cursor a,body.has-cursor button{cursor:auto}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<div id="cursor" aria-hidden="true">
+  <span class="cursor-dot"></span>
+  <span class="cursor-text">Дивитись</span>
+  <span class="cursor-arrow">&rarr;</span>
+</div>
+
+<nav class="nav">
+  <a class="logo" href="#">SVS <em>Beauty Space</em></a>
+  <ul>
+    <li><a href="#works">Роботи</a></li>
+    <li><a href="#services">Послуги</a></li>
+    <li><a href="#booking">Запис</a></li>
+  </ul>
+</nav>
+
+<a class="back-btn" href="index.html" data-magnetic>&larr; Всі концепти</a>
+
+<!-- HERO -->
+<header class="hero">
+  <h1>
+    <span class="line"><span>Краса, яку</span></span>
+    <span class="line"><span>відчуваєш <em>на</em></span></span>
+    <span class="line"><span><em>дотик</em> курсора</span></span>
+  </h1>
+  <p class="hero-sub">Салон SVS Beauty Space у Києві. Кератин, ботокс волосся, фарбування та догляд на італійській косметиці Raywell, Extremo, Envie, Invidia, Eterna.</p>
+  <div class="hero-actions">
+    <a class="btn btn-gold" href="#booking" data-magnetic data-cursor="arrow">Записатись</a>
+    <a class="btn btn-ghost" href="#works" data-magnetic data-cursor="arrow">Наші роботи</a>
+  </div>
+  <span class="scroll-hint">скрольте</span>
+</header>
+
+<!-- GALLERY -->
+<section class="section" id="works">
+  <span class="sec-label reveal">Портфоліо</span>
+  <h2 class="sec-title reveal">Роботи, що <em>говорять</em> самі за себе</h2>
+  <div class="gallery">
+    <figure class="work reveal" data-cursor="view"><div class="ph g-1"></div><figcaption class="work-cap">Кератинове вирівнювання</figcaption></figure>
+    <figure class="work reveal" data-cursor="view"><div class="ph g-2"></div><figcaption class="work-cap">Холодний блонд Invidia</figcaption></figure>
+    <figure class="work reveal" data-cursor="view"><div class="ph g-3"></div><figcaption class="work-cap">Фарбування Eterna 9.3</figcaption></figure>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section class="section">
+  <span class="sec-label reveal">До / Після</span>
+  <h2 class="sec-title reveal">Потягніть повзунок — <em>побачите різницю</em></h2>
+  <div class="ba-wrap reveal">
+    <div class="ba" id="ba" data-cursor="photo">
+      <div class="ba-before"><span class="ba-tag">До</span></div>
+      <div class="ba-after" id="baAfter"><span class="ba-tag">Після</span></div>
+      <div class="ba-handle" id="baHandle"></div>
+    </div>
+    <p class="ba-note">Кератиновий філер Extremo, 1 процедура</p>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="section services" id="services">
+  <span class="sec-label reveal">Послуги</span>
+  <h2 class="sec-title reveal">Що ми робимо <em>найкраще</em></h2>
+  <div class="srv reveal" data-cursor="arrow">
+    <span class="srv-name">Кератинове вирівнювання</span>
+    <span class="srv-desc">Extremo Кератиновий філер — гладкість до 4 місяців</span>
+    <span class="srv-price">від ₴ 2 800</span>
+  </div>
+  <div class="srv reveal" data-cursor="arrow">
+    <span class="srv-name">Ботокс волосся</span>
+    <span class="srv-desc">Raywell Botox Hairgold — відновлення структури</span>
+    <span class="srv-price">від ₴ 2 200</span>
+  </div>
+  <div class="srv reveal" data-cursor="arrow">
+    <span class="srv-name">Фарбування</span>
+    <span class="srv-desc">Eterna — стійкий колір без агресії, повна палітра</span>
+    <span class="srv-price">від ₴ 1 500</span>
+  </div>
+  <div class="srv reveal" data-cursor="arrow">
+    <span class="srv-name">Догляд для блонду</span>
+    <span class="srv-desc">Invidia Blonde One — нейтралізація жовтизни + маска</span>
+    <span class="srv-price">від ₴ 900</span>
+  </div>
+  <div class="srv reveal" data-cursor="arrow">
+    <span class="srv-name">SPA-догляд з аргановою олією</span>
+    <span class="srv-desc">Envie Luxury — блиск і живлення за 40 хвилин</span>
+    <span class="srv-price">від ₴ 750</span>
+  </div>
+</section>
+
+<!-- BOOKING -->
+<section class="booking" id="booking">
+  <h2 class="reveal">Ваше волосся заслуговує на <em>найкраще</em></h2>
+  <p class="reveal">Запишіться на безкоштовну консультацію — підберемо догляд і процедуру саме під ваш тип волосся.</p>
+  <a class="btn btn-gold reveal" href="#" data-magnetic data-cursor="arrow">Записатись онлайн</a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-grid">
+    <div class="foot-col">
+      <div class="foot-logo">SVS <em>Beauty Space</em></div>
+      <a href="#">Київ, вул. Прикладна, 12</a>
+      <a href="tel:+380000000000">+38 (000) 000 00 00</a>
+      <span class="badge">Концепт: Interactive Cursor Design</span>
+    </div>
+    <div class="foot-col">
+      <h4>Салон</h4>
+      <a href="#works">Роботи</a>
+      <a href="#services">Послуги</a>
+      <a href="#booking">Запис</a>
+    </div>
+    <div class="foot-col">
+      <h4>Косметика</h4>
+      <a href="#">Raywell</a>
+      <a href="#">Extremo</a>
+      <a href="#">Envie</a>
+      <a href="#">Invidia</a>
+      <a href="#">Eterna</a>
+    </div>
+    <div class="foot-col">
+      <h4>Соцмережі</h4>
+      <a href="#">Instagram</a>
+      <a href="#">Telegram</a>
+      <a href="#">TikTok</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var isTouch = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+  /* ============ CUSTOM CURSOR (desktop only) ============ */
+  if (!isTouch && !reduced){
+    document.body.classList.add('has-cursor');
+    var cursor = document.getElementById('cursor');
+    var mx = innerWidth/2, my = innerHeight/2, cx = mx, cy = my;
+
+    document.addEventListener('mousemove', function(e){ mx = e.clientX; my = e.clientY; });
+    document.addEventListener('mousedown', function(){ cursor.classList.add('is-down'); });
+    document.addEventListener('mouseup', function(){ cursor.classList.remove('is-down'); });
+
+    (function loop(){
+      cx += (mx - cx) * 0.16;   /* lerp inertia */
+      cy += (my - cy) * 0.16;
+      cursor.style.left = cx + 'px';
+      cursor.style.top  = cy + 'px';
+      requestAnimationFrame(loop);
+    })();
+
+    /* cursor morphing per target */
+    var map = {photo:'is-photo', view:'is-view', arrow:'is-arrow'};
+    document.querySelectorAll('[data-cursor]').forEach(function(el){
+      var cls = map[el.dataset.cursor];
+      if (!cls) return;
+      el.addEventListener('mouseenter', function(){ cursor.classList.add(cls); });
+      el.addEventListener('mouseleave', function(){ cursor.classList.remove(cls); });
+    });
+
+    /* ============ MAGNETIC BUTTONS ============ */
+    document.querySelectorAll('[data-magnetic]').forEach(function(btn){
+      var strength = 0.35;
+      btn.addEventListener('mousemove', function(e){
+        var r = btn.getBoundingClientRect();
+        var dx = e.clientX - (r.left + r.width/2);
+        var dy = e.clientY - (r.top + r.height/2);
+        btn.style.transform = 'translate(' + dx*strength + 'px,' + dy*strength + 'px)';
+      });
+      btn.addEventListener('mouseleave', function(){
+        btn.style.transition = 'transform .5s cubic-bezier(.2,.8,.3,1)';
+        btn.style.transform = 'translate(0,0)';
+        setTimeout(function(){ btn.style.transition = ''; }, 500);
+      });
+    });
+  }
+
+  /* ============ SCROLL REVEAL ============ */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if (en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, {threshold:0.14});
+  document.querySelectorAll('.reveal').forEach(function(el,i){
+    el.style.transitionDelay = (i % 3) * 0.08 + 's';
+    io.observe(el);
+  });
+
+  /* ============ BEFORE / AFTER DRAG SLIDER ============ */
+  var ba = document.getElementById('ba');
+  var after = document.getElementById('baAfter');
+  var handle = document.getElementById('baHandle');
+  var dragging = false;
+
+  function setPos(clientX){
+    var r = ba.getBoundingClientRect();
+    var p = Math.min(Math.max((clientX - r.left) / r.width, 0.03), 0.97) * 100;
+    after.style.clipPath = 'inset(0 0 0 ' + p + '%)';
+    handle.style.left = p + '%';
+  }
+  function start(e){ dragging = true; setPos(e.touches ? e.touches[0].clientX : e.clientX); }
+  function move(e){ if (dragging) setPos(e.touches ? e.touches[0].clientX : e.clientX); }
+  function end(){ dragging = false; }
+
+  ba.addEventListener('mousedown', start);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  ba.addEventListener('touchstart', start, {passive:true});
+  ba.addEventListener('touchmove', move, {passive:true});
+  ba.addEventListener('touchend', end);
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="site-04-cursor";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>

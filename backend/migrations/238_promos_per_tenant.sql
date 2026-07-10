@@ -33,7 +33,8 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM pg_constraint
        WHERE conrelid='promos'::regclass AND contype='p'
-         AND (SELECT array_agg(attname ORDER BY attname)
+         -- attname имеет тип name → приводим к text, иначе "operator does not exist: name[] = text[]"
+         AND (SELECT array_agg(attname::text ORDER BY attname)
                 FROM pg_attribute
                WHERE attrelid='promos'::regclass AND attnum = ANY(conkey))
              = ARRAY['code','tenant_id']

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Салон · Hero-Centric Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C9A96E; --gold-soft:#E3D3B4; --gold-deep:#8F6F3D;
+  --cream:#F3EDE4; --ink:#070605;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Manrope',sans-serif; background:var(--ink); color:var(--cream); -webkit-font-smoothing:antialiased; overflow-x:hidden}
+h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif}
+
+/* back link */
+.back-link{
+  position:fixed; top:16px; left:16px; z-index:1000;
+  background:rgba(243,237,228,.1); border:1px solid rgba(243,237,228,.3); backdrop-filter:blur(10px);
+  color:var(--cream); text-decoration:none; font-size:13px; font-weight:600;
+  padding:10px 16px; border-radius:100px; transition:all .3s;
+}
+.back-link:hover{background:var(--gold); color:var(--ink); border-color:var(--gold)}
+
+/* NAV */
+nav{
+  position:fixed; top:0; left:0; right:0; z-index:900;
+  display:flex; align-items:center; justify-content:center; gap:34px;
+  padding:20px; font-size:13.5px; font-weight:600; letter-spacing:.06em;
+  background:linear-gradient(rgba(7,6,5,.55), transparent);
+}
+nav a{color:rgba(243,237,228,.85); text-decoration:none; text-transform:uppercase; font-size:12px; letter-spacing:.18em; transition:color .3s}
+nav a:hover{color:var(--gold)}
+@media(max-width:640px){nav{gap:18px} nav a{font-size:10.5px; letter-spacing:.1em}}
+
+/* HERO */
+.hero{position:relative; min-height:100vh; min-height:100svh; display:flex; align-items:center; justify-content:center; text-align:center; overflow:hidden}
+#goldCanvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.hero::after{content:""; position:absolute; inset:0; background:radial-gradient(90% 70% at 50% 55%, transparent 30%, rgba(7,6,5,.55) 100%); pointer-events:none}
+.hero-inner{position:relative; z-index:2; padding:20px}
+.hero .eyebrow{
+  display:inline-block; font-size:12px; letter-spacing:.34em; text-transform:uppercase; font-weight:700;
+  color:var(--gold-soft); margin-bottom:26px; opacity:0; animation:fadeUp 1s .3s ease forwards;
+}
+.hero h1{
+  font-size:clamp(3rem,11vw,9.5rem); font-weight:600; line-height:.98; letter-spacing:.01em;
+  color:var(--cream); text-shadow:0 4px 40px rgba(7,6,5,.5);
+}
+.hero h1 .word{display:inline-block; white-space:nowrap; margin:0 .12em}
+.hero h1 .ch{display:inline-block; opacity:0; transform:translateY(.55em) rotate(4deg); animation:chIn .8s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes chIn{to{opacity:1; transform:none}}
+.hero .sub{
+  max-width:520px; margin:26px auto 0; font-size:16.5px; line-height:1.75; color:rgba(243,237,228,.85);
+  opacity:0; animation:fadeUp 1s 1.5s ease forwards;
+}
+@keyframes fadeUp{from{opacity:0; transform:translateY(22px)}to{opacity:1; transform:none}}
+.cta{
+  display:inline-block; margin-top:38px; background:var(--gold); color:var(--ink);
+  font-weight:800; font-size:15px; letter-spacing:.1em; text-transform:uppercase; text-decoration:none;
+  padding:20px 54px; border-radius:100px; position:relative;
+  opacity:0; animation:fadeUp 1s 1.8s ease forwards;
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1), background .3s;
+  box-shadow:0 0 0 0 rgba(201,169,110,.55);
+}
+.cta:hover{transform:scale(1.06); background:var(--gold-soft)}
+.cta.pulse{animation:fadeUp 1s 1.8s ease forwards, glowPulse 2.6s 3s ease-out infinite}
+@keyframes glowPulse{
+  0%{box-shadow:0 0 0 0 rgba(201,169,110,.5)}
+  60%{box-shadow:0 0 0 26px rgba(201,169,110,0)}
+  100%{box-shadow:0 0 0 0 rgba(201,169,110,0)}
+}
+.scroll-hint{
+  position:absolute; bottom:28px; left:50%; transform:translateX(-50%); z-index:2;
+  font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:rgba(243,237,228,.55);
+  animation:bob 2.4s ease-in-out infinite;
+}
+@keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,10px)}}
+
+/* SERVICES */
+.services{background:var(--cream); color:var(--ink); padding:clamp(72px,10vw,130px) clamp(20px,5vw,72px)}
+.services .sec-title{text-align:center; margin-bottom:clamp(44px,6vw,72px)}
+.sec-title .kicker{font-size:12px; letter-spacing:.3em; text-transform:uppercase; font-weight:700; color:var(--gold-deep)}
+.sec-title h2{font-size:clamp(2.2rem,5vw,3.8rem); font-weight:600; margin-top:12px}
+.svc-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:26px; max-width:1180px; margin:0 auto}
+.svc{
+  background:#fff; border-radius:22px; padding:38px 32px; box-shadow:0 6px 24px rgba(7,6,5,.06);
+  opacity:0; transform:translateY(44px);
+  transition:opacity .9s cubic-bezier(.16,1,.3,1), transform .9s cubic-bezier(.16,1,.3,1), box-shadow .4s;
+}
+.svc.visible{opacity:1; transform:none}
+.svc:hover{box-shadow:0 18px 48px rgba(201,169,110,.28); transform:translateY(-6px)}
+.svc .num{font-family:'Cormorant Garamond',serif; font-style:italic; font-size:44px; color:var(--gold); line-height:1}
+.svc h3{font-size:26px; font-weight:700; margin:16px 0 12px}
+.svc p{font-size:14.5px; line-height:1.75; opacity:.72}
+.svc .from{display:inline-block; margin-top:20px; font-weight:800; font-size:14px; color:var(--gold-deep);
+  border:1.5px solid var(--gold); border-radius:100px; padding:8px 18px}
+@media(max-width:880px){.svc-grid{grid-template-columns:1fr; max-width:520px}}
+
+/* COUNTERS */
+.stats{
+  background:var(--ink); color:var(--cream); text-align:center;
+  padding:clamp(72px,9vw,110px) clamp(20px,5vw,72px);
+  background-image:radial-gradient(60% 90% at 50% 120%, rgba(201,169,110,.22), transparent 70%);
+}
+.stats-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:32px; max-width:980px; margin:0 auto}
+.stat .n{
+  font-family:'Cormorant Garamond',serif; font-size:clamp(3.4rem,7vw,5.6rem); font-weight:600; color:var(--gold);
+  font-variant-numeric:tabular-nums; line-height:1;
+}
+.stat .n em{font-style:normal; font-size:.55em; vertical-align:.35em}
+.stat .lbl{margin-top:10px; font-size:12.5px; letter-spacing:.24em; text-transform:uppercase; font-weight:700; color:rgba(243,237,228,.7)}
+@media(max-width:640px){.stats-grid{grid-template-columns:1fr; gap:44px}}
+
+/* generic reveal */
+.reveal{opacity:0; transform:translateY(36px); transition:opacity .9s cubic-bezier(.16,1,.3,1), transform .9s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1; transform:none}
+
+/* FOOTER */
+footer{background:#0d0b08; color:var(--cream); padding:56px clamp(20px,5vw,72px) 30px; border-top:1px solid rgba(201,169,110,.25)}
+.f-grid{display:grid; grid-template-columns:2fr 1fr 1fr; gap:40px; max-width:1180px; margin:0 auto}
+.f-logo{font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:700}
+.f-logo em{color:var(--gold); font-style:italic}
+.f-grid h4{font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:var(--gold); margin-bottom:16px}
+.f-grid p,.f-grid a{font-size:14px; line-height:1.9; color:rgba(243,237,228,.65); text-decoration:none; display:block}
+.f-grid a:hover{color:var(--gold)}
+.f-bottom{max-width:1180px; margin:44px auto 0; padding-top:22px; border-top:1px solid rgba(243,237,228,.1);
+  display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; font-size:12.5px; color:rgba(243,237,228,.5)}
+.concept-badge{
+  background:rgba(201,169,110,.14); border:1px solid rgba(201,169,110,.45); color:var(--gold-soft);
+  padding:7px 16px; border-radius:100px; font-size:11.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+}
+@media(max-width:640px){.f-grid{grid-template-columns:1fr}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important}
+  .hero h1 .ch,.hero .eyebrow,.hero .sub,.cta,.svc,.reveal{opacity:1 !important; transform:none !important}
+}
+</style>
+</head>
+<body>
+
+<a class="back-link" href="index.html">← Всі концепти</a>
+
+<nav>
+  <a href="#hero">Головна</a>
+  <a href="#services">Послуги</a>
+  <a href="#stats">Про нас</a>
+  <a href="#contacts">Контакти</a>
+</nav>
+
+<header class="hero" id="hero">
+  <canvas id="goldCanvas" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <span class="eyebrow">Салон краси · Італійська косметика</span>
+    <h1 id="heroTitle" aria-label="SVS Beauty Space">SVS Beauty Space</h1>
+    <p class="sub">Місце, де волосся отримує те, на що заслуговує: майстри з досвідом і професійні формули Raywell, Extremo, Envie, Invidia та Eterna.</p>
+    <a class="cta pulse" href="#services">Записатись</a>
+  </div>
+  <div class="scroll-hint">Гортайте ↓</div>
+</header>
+
+<section class="services" id="services">
+  <div class="sec-title reveal">
+    <span class="kicker">Що ми робимо</span>
+    <h2>Три речі, які ми робимо бездоганно</h2>
+  </div>
+  <div class="svc-grid">
+    <article class="svc">
+      <div class="num">01</div>
+      <h3>Кератинове відновлення</h3>
+      <p>Глибока реконструкція волосся на філерах Extremo. Гладкість і щільність, які тримаються місяцями — без ефекту «перепаленого» блиску.</p>
+      <span class="from">від 1 800 ₴</span>
+    </article>
+    <article class="svc">
+      <div class="num">02</div>
+      <h3>Фарбування та блонд</h3>
+      <p>Складні техніки на фарбах Eterna і лінійці Invidia Blonde. Чистий колір без жовтизни та передбачуваний результат з першого візиту.</p>
+      <span class="from">від 1 400 ₴</span>
+    </article>
+    <article class="svc">
+      <div class="num">03</div>
+      <h3>Ритуали догляду</h3>
+      <p>SPA-програми для волосся: ботокс Raywell, арганові ритуали Envie, персональний підбір домашнього догляду з нашого магазину.</p>
+      <span class="from">від 900 ₴</span>
+    </article>
+  </div>
+</section>
+
+<section class="stats" id="stats">
+  <div class="sec-title reveal" style="margin-bottom:56px">
+    <span class="kicker" style="color:var(--gold)">SVS у цифрах</span>
+    <h2 style="color:var(--cream)">Нам довіряють роками</h2>
+  </div>
+  <div class="stats-grid">
+    <div class="stat reveal"><div class="n"><span data-count="9"></span><em>+</em></div><div class="lbl">Років досвіду</div></div>
+    <div class="stat reveal"><div class="n"><span data-count="4200"></span><em>+</em></div><div class="lbl">Задоволених клієнтів</div></div>
+    <div class="stat reveal"><div class="n"><span data-count="7"></span></div><div class="lbl">Майстрів у команді</div></div>
+  </div>
+</section>
+
+<footer id="contacts">
+  <div class="f-grid">
+    <div>
+      <div class="f-logo">SVS <em>Beauty</em> Space</div>
+      <p style="margin-top:14px">Салон краси та магазин італійської професійної косметики для волосся. Понад 267 товарів у наявності.</p>
+    </div>
+    <div>
+      <h4>Меню</h4>
+      <a href="#services">Послуги</a><a href="#stats">Про нас</a><a href="#">Магазин</a>
+    </div>
+    <div>
+      <h4>Контакти</h4>
+      <a href="#">Instagram</a><a href="#">Telegram</a><a href="#">+38 (0__) ___-__-__</a>
+    </div>
+  </div>
+  <div class="f-bottom">
+    <span>© 2026 SVS Beauty Space. Всі права захищені.</span>
+    <span class="concept-badge">Концепт · Hero-Centric Design</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* 1. Letter-by-letter hero title */
+  var title = document.getElementById('heroTitle');
+  var words = title.textContent.trim().split(' ');
+  title.textContent = '';
+  var idx = 0;
+  words.forEach(function(w){
+    var wEl = document.createElement('span'); wEl.className = 'word';
+    w.split('').forEach(function(ch){
+      var s = document.createElement('span'); s.className = 'ch';
+      s.textContent = ch;
+      s.style.animationDelay = (0.45 + idx*0.06) + 's';
+      idx++;
+      wEl.appendChild(s);
+    });
+    title.appendChild(wEl);
+    title.appendChild(document.createTextNode(' '));
+  });
+
+  /* 2. WOW: animated golden canvas — flowing metallic waves */
+  var cv = document.getElementById('goldCanvas'), ctx = cv.getContext('2d');
+  var W, H, t = 0;
+  function resize(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W*dpr; cv.height = H*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resize(); window.addEventListener('resize', resize);
+
+  var blobs = [
+    {x:.25, y:.35, r:.55, hue:[201,169,110], sp:.7,  ph:0},
+    {x:.75, y:.55, r:.6,  hue:[143,111,61],  sp:.5,  ph:2.1},
+    {x:.5,  y:.85, r:.7,  hue:[227,211,180], sp:.35, ph:4.2},
+    {x:.15, y:.8,  r:.45, hue:[80,60,30],    sp:.6,  ph:1.3}
+  ];
+  function frame(){
+    t += 0.004;
+    ctx.fillStyle = '#0c0a07';
+    ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation = 'lighter';
+    blobs.forEach(function(b){
+      var bx = (b.x + Math.sin(t*b.sp + b.ph)*0.14) * W;
+      var by = (b.y + Math.cos(t*b.sp*1.3 + b.ph)*0.12) * H;
+      var br = b.r * Math.max(W,H) * (0.85 + Math.sin(t + b.ph)*0.1);
+      var g = ctx.createRadialGradient(bx,by,0,bx,by,br);
+      g.addColorStop(0, 'rgba('+b.hue[0]+','+b.hue[1]+','+b.hue[2]+',0.34)');
+      g.addColorStop(1, 'rgba('+b.hue[0]+','+b.hue[1]+','+b.hue[2]+',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2); ctx.fill();
+    });
+    /* golden shimmering waves */
+    ctx.globalCompositeOperation = 'source-over';
+    for(var l=0;l<3;l++){
+      ctx.beginPath();
+      var amp = 26 + l*18, base = H*(0.62 + l*0.1);
+      for(var x=0;x<=W;x+=8){
+        var y = base + Math.sin(x*0.006 + t*(1.4+l*0.5) + l*2) * amp
+                     + Math.sin(x*0.013 - t*1.1) * amp*0.4;
+        x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = 'rgba(201,169,110,'+(0.28 - l*0.07)+')';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  if(reduce){
+    /* static frame for reduced motion */
+    ctx.fillStyle = '#0c0a07'; ctx.fillRect(0,0,W,H);
+    var g = ctx.createRadialGradient(W*.5,H*.6,0,W*.5,H*.6,Math.max(W,H)*.7);
+    g.addColorStop(0,'rgba(201,169,110,.35)'); g.addColorStop(1,'rgba(201,169,110,0)');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  } else {
+    frame();
+  }
+
+  /* 3. Scroll reveal (services + generic) */
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(!e.isIntersecting) return;
+      var el = e.target;
+      if(el.classList.contains('svc') && !reduce){
+        var sib = Array.prototype.slice.call(el.parentNode.children);
+        el.style.transitionDelay = sib.indexOf(el)*0.14+'s';
+      }
+      el.classList.add('visible');
+      if(el.hasAttribute('data-stats')) runCounters();
+      io.unobserve(el);
+    });
+  },{threshold:.18});
+  document.querySelectorAll('.svc, .reveal').forEach(function(el){ io.observe(el); });
+
+  /* 4. Counter animation */
+  var counted = false;
+  function animateCount(el){
+    var target = +el.getAttribute('data-count');
+    if(reduce){ el.textContent = target.toLocaleString('uk-UA'); return; }
+    var dur = 1800, start = null;
+    function step(ts){
+      if(!start) start = ts;
+      var p = Math.min((ts-start)/dur, 1);
+      var eased = 1 - Math.pow(1-p, 3);
+      el.textContent = Math.round(target*eased).toLocaleString('uk-UA');
+      if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var statIO = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting && !counted){
+        counted = true;
+        document.querySelectorAll('[data-count]').forEach(animateCount);
+        statIO.disconnect();
+      }
+    });
+  },{threshold:.3});
+  statIO.observe(document.getElementById('stats'));
+})();
+</script>
+
+<!-- SVS pick-design widget (auto-added) -->
+<style>
+#svsPickBtn{position:fixed;right:16px;bottom:16px;z-index:99999;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:#C9A96E;color:#070605;border:2px solid #070605;border-radius:30px;padding:14px 22px;cursor:pointer;box-shadow:0 8px 26px rgba(7,6,5,.35);transition:transform .2s}
+#svsPickBtn:hover{transform:translateY(-2px)}
+#svsPickBtn.picked{background:#070605;color:#F3EDE4;border-color:#C9A96E}
+#svsPickToast{position:fixed;right:16px;bottom:78px;z-index:99999;font-family:Inter,Arial,sans-serif;background:#070605;color:#F3EDE4;padding:12px 18px;border-radius:8px;font-size:12px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;pointer-events:none}
+#svsPickToast.show{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){#svsPickBtn,#svsPickToast{transition:none}}
+</style>
+<script>
+(function(){
+  var slug="site-02-hero";
+  var title=(document.title.split("\u00b7")[1]||document.title).trim();
+  var b=document.createElement("button");b.id="svsPickBtn";b.type="button";b.textContent="\u2713 \u041e\u0431\u0440\u0430\u0442\u0438 \u0446\u0435\u0439 \u0434\u0438\u0437\u0430\u0439\u043d";
+  var t=document.createElement("div");t.id="svsPickToast";t.textContent="\u0412\u0438\u0431\u0456\u0440 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e: "+title;
+  document.body.appendChild(b);document.body.appendChild(t);
+  try{if(localStorage.getItem("svs_design_choice")===slug){b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";}}catch(e){}
+  b.addEventListener("click",function(){
+    try{localStorage.setItem("svs_design_choice",slug);localStorage.setItem("svs_design_choice_title",title);}catch(e){}
+    b.classList.add("picked");b.textContent="\u2713 \u041e\u0431\u0440\u0430\u043d\u043e";
+    t.classList.add("show");setTimeout(function(){t.classList.remove("show");},2400);
+  });
+})();
+</script>
+</body>
+</html>
