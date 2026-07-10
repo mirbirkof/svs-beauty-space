@@ -1,5 +1,7 @@
 {
-  "active": "primary",
-  "active_db_host": "ep-old-forest-agfkm5q1.c-2.eu-central-1.aws.neon.tech",
-  "updated_at": "2026-07-06T11:09:23.230Z"
+  "active": "supabase",
+  "active_db_host": "aws-0-eu-west-1.pooler.supabase.com",
+  "project_ref": "mbbahbprldketnlostvo",
+  "updated_at": "2026-07-10T13:29:51.000Z",
+  "note": "переезд с Neon (квоты free-tier) 10.07.2026; neon-failover decommission pending"
 }
