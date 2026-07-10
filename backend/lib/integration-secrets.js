@@ -12,6 +12,7 @@
  */
 const crypto = require('crypto');
 const { getPool } = require('../db-pg');
+const { getTenantId, DEFAULT_TENANT_ID } = require('./tenant');
 
 // ── Шифрування секретів у спокої (at rest) ───────────────────────────────
 // Ключ беремо з виділеної змінної INTEGRATION_ENC_KEY, а якщо її нема —
@@ -95,6 +96,12 @@ async function loadIntegrationSecrets() {
 async function saveIntegrationSecret(name, value, userId = null) {
   name = String(name || '').trim();
   if (!isAllowed(name)) throw new Error('unknown integration key: ' + name);
+  // Defense-in-depth: ці ключі пишуться в глобальний process.env усього інстансу.
+  // Якщо є tenant-контекст і він НЕ платформенний — заборонити (щоб орендар не
+  // перехопив платіжні/бот-ключі платформи навіть в обхід маршруту). Виклик без
+  // контексту (скрипти, старт сервера) — дозволений.
+  const tid = getTenantId();
+  if (tid && tid !== DEFAULT_TENANT_ID) throw new Error('platform_only: integration secrets are platform-scoped');
   const pool = getPool();
   const v = (value == null ? '' : String(value)).trim();
   if (!v) {

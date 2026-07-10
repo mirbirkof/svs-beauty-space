@@ -7,7 +7,7 @@
  * GET /api/integrations/status — список интеграций со статусом
  */
 const express = require('express');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, requirePlatform } = require('../lib/rbac');
 const { isAllowed, saveIntegrationSecret } = require('../lib/integration-secrets');
 const router = express.Router();
 
@@ -95,7 +95,10 @@ router.get('/status', requirePerm('integrations.read'), (req, res) => {
 // POST /api/integrations/configure — зберегти ключі інтеграції з UI.
 // body: { values: { ENV_NAME: "значення", ... } }  (порожнє значення → очистити ключ)
 // Значення пишуться в app_settings + одразу в process.env. Назовні нічого не повертаємо.
-router.post('/configure', requirePerm('integrations.write'), async (req, res) => {
+// requirePlatform: ключі з цього каталогу — платформенні (пишуться в глобальний process.env
+// усього інстансу), тож редагувати їх може ЛИШЕ платформенний тенант. Інакше орендар міг би
+// перезаписати MONO_TOKEN/TELEGRAM_BOT_TOKEN усієї платформи і перехопити платежі.
+router.post('/configure', requirePlatform(), requirePerm('integrations.write'), async (req, res) => {
   try {
     const values = (req.body && req.body.values) || {};
     const names = Object.keys(values).filter(isAllowed);
