@@ -60,7 +60,10 @@ const PUBLISH_FILE = path.join(__dirname, 'active-db.json');
 const LOG_FILE = '/tmp/neon-failover.log';
 
 const CHECK_INTERVAL_MS = 120000;   // 2 min health checks
-const SYNC_INTERVAL_MS = 1800000;   // 30 min snapshots
+// Раньше 30 мин: полный снапшот ~63МБ × 48/сутки ≈ 3ГБ/сутки → выжигал free-tier квоту
+// трафика Neon за дни (что и вызвало фейловер и деградацию). 6ч ≈ 250МБ/сутки (в 12 раз
+// меньше). RPO вырос до 6ч — приемлемо для резерва; конфигурируется через env.
+const SYNC_INTERVAL_MS = Number(process.env.NEON_SYNC_INTERVAL_MS || 21600000);   // 6h snapshots
 const FAIL_THRESHOLD = 3;           // consecutive failed checks -> failover
 const HEALTH_TIMEOUT_MS = 8000;
 
