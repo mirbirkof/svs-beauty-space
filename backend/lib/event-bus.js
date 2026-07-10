@@ -18,7 +18,16 @@
 const { EventEmitter } = require('events');
 const { getPool } = require('../db-pg');
 
-const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000000';
+// SRE-фикс 10.07 (после переезда на Supabase): раньше здесь был хардкод
+// '0000…0000' — НЕсуществующий тенант (платформенный = …0001). Под FORCE RLS
+// вставка с tenant_id ≠ контексту режется политикой → domain_events молчал,
+// весь durable-журнал событий терялся. Правильно: тенант из ТЕКУЩЕГО контекста
+// запроса (getTenantId), fallback — реальный платформенный DEFAULT_TENANT_ID.
+const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
+function currentTenant() {
+  try { return require('./tenant').getTenantId() || DEFAULT_TENANT; }
+  catch (_) { return DEFAULT_TENANT; }
+}
 
 const emitter = new EventEmitter();
 emitter.setMaxListeners(100); // много модулей-подписчиков — это норма
@@ -45,7 +54,7 @@ async function emit(eventType, payload = {}, opts = {}) {
     entityType = null,
     entityId = null,
     actor = 'system',
-    tenantId = DEFAULT_TENANT,
+    tenantId = currentTenant(),
   } = opts;
 
   let evt = null;
