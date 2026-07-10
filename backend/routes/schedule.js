@@ -1080,14 +1080,15 @@ router.patch('/appointments/:id', async (req, res) => {
     // Фактичні оплати в продажах не чіпаємо.
     const newPrice = price !== undefined ? Number(price) : (svcRow ? Number(svcRow.price) : null);
 
-    // защита от двойного бронирования при переносе времени/смене мастера
-    if (newStart || newEnd || master_id != null) {
+    // защита от двойного бронирования при переносе времени/смене мастера.
+    // force_parallel=true — админ осознанно ставит поверх существующей записи.
+    if ((newStart || newEnd || master_id != null) && !req.body.force_parallel) {
       const effMaster = master_id != null ? Number(master_id) : curRow.master_id;
       const effStart = newStart || curRow.starts_at;
       const effEnd = newEnd || curRow.ends_at;
       const cap = await wouldExceedParallel({ masterId: effMaster, startsAt: effStart, endsAt: effEnd, excludeId: Number(req.params.id) });
       if (cap.exceeds) {
-        return res.status(409).json({ error: 'slot-busy', conflict_id: cap.conflict && cap.conflict.id,
+        return res.status(409).json({ error: 'slot-busy', can_force: true, conflict_id: cap.conflict && cap.conflict.id,
           message: cap.cap > 1
             ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
             : 'У майстра вже є запис на цей час' });
@@ -1312,10 +1313,13 @@ router.patch('/appointments/:id/services/:rowId', async (req, res) => {
 router.post('/appointments', async (req, res) => {
   try {
     const pool = getPool();
-    let { master_id, service_id, starts_at, ends_at, client_id, client_name, client_phone, room_id, notes } = req.body || {};
+    let { master_id, service_id, starts_at, ends_at, client_id, client_name, client_phone, room_id, notes, force_parallel } = req.body || {};
     if (!master_id || !service_id || !starts_at) {
       return res.status(400).json({ error: 'master_id, service_id, starts_at обовʼязкові' });
     }
+    // force_parallel: адмін свідомо ставить ЩЕ одного клієнта на зайнятий час
+    // (напр. поки «схоплюється» фарба). Пропускає перевірку вмістимості майстра.
+    force_parallel = !!force_parallel;
     // послуга → ціна + тривалість
     const sv = await pool.query('SELECT price, duration_min, name FROM services WHERE id=$1', [Number(service_id)]);
     if (!sv.rows[0]) return res.status(400).json({ error: 'service-not-found' });
@@ -1331,12 +1335,15 @@ router.post('/appointments', async (req, res) => {
 
     // Защита от переполнения: число пересекающихся записей не должно превышать
     // вместимость мастера (max_parallel). При max_parallel=1 — прежнее поведение.
-    const cap = await wouldExceedParallel({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });
-    if (cap.exceeds) {
-      return res.status(409).json({ error: 'slot-busy', conflict_id: cap.conflict && cap.conflict.id,
-        message: cap.cap > 1
-          ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
-          : 'У майстра вже є запис на цей час' });
+    // force_parallel=true (осознанный клик админа) — ставим поверх без ограничений.
+    if (!force_parallel) {
+      const cap = await wouldExceedParallel({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });
+      if (cap.exceeds) {
+        return res.status(409).json({ error: 'slot-busy', can_force: true, conflict_id: cap.conflict && cap.conflict.id,
+          message: cap.cap > 1
+            ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
+            : 'У майстра вже є запис на цей час' });
+      }
     }
 
     // клієнт: за id, або за телефоном (знайти/створити), або тільки імʼя
@@ -1373,17 +1380,17 @@ router.post('/appointments', async (req, res) => {
     const r = await pool.query(
       `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
        SELECT $1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8
-        WHERE (
+        WHERE $9::boolean OR (
           SELECT count(*) FROM appointments
            WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
              AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz)
         ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
        RETURNING id`,
       [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
-       sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]
+       sv.rows[0].price, room_id ? Number(room_id) : null, notes || null, force_parallel]
     );
     if (!r.rows[0]) {
-      return res.status(409).json({ error: 'slot-busy', message: 'У майстра вже є запис на цей час (щойно зайняли)' });
+      return res.status(409).json({ error: 'slot-busy', can_force: true, message: 'У майстра вже є запис на цей час (щойно зайняли)' });
     }
     await emitAppt('appointment.created', r.rows[0].id, Number(master_id)); // в журнал событий + вебхуки
     // Подтверждение клиенту через Notification Hub (не блокирует ответ).

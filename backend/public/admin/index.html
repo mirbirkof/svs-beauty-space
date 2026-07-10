@@ -8592,7 +8592,10 @@ async function jDrop(ev) {
   const starts_at = new Date(`${dateStr}T${_toHHMM(mins)}:00`).toISOString();
   const id = _dragId; _dragId = null;
   try {
-    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });
+    let r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId }) });
+    if (!r.ok && r.can_force && confirm((r.message || 'У майстра вже є запис на цей час') + '\n\nПеренести ПАРАЛЕЛЬНО до існуючого запису?')) {
+      r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ starts_at, master_id: masterId, force_parallel: true }) });
+    }
     if (r.ok) loadJournal();
     else alert(r.message || r.error || 'Не вдалося перенести запис');
   } catch { alert('Помилка мережі'); }
@@ -9262,7 +9265,10 @@ async function transferAppt(id) {
   try {
     const body = { starts_at };
     if (masterId) body.master_id = masterId;
-    const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify(body) });
+    let r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify(body) });
+    if (!r.ok && r.can_force && confirm((r.message || 'У майстра вже є запис на цей час') + '\n\nПеренести ПАРАЛЕЛЬНО до існуючого запису?')) {
+      r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ ...body, force_parallel: true }) });
+    }
     if (r.ok) { msg.style.color='#10b981'; msg.textContent='Запис перенесено ✓'; setTimeout(()=>{ closeAppt(); loadJournal(); }, 700); }
     else { msg.style.color='#ef4444'; msg.textContent=r.message||r.error||'Не вдалося перенести запис'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
@@ -9709,7 +9715,12 @@ async function saveCreate() {
   if (_createCtx.clientId) body.client_id = _createCtx.clientId;
   else { body.client_name = newName; body.client_phone = newPhone; }
   try {
-    const r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify(body) });
+    let r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify(body) });
+    // Час зайнятий → адмін може свідомо поставити клієнта ПАРАЛЕЛЬНО (напр. поки схоплюється фарба)
+    if (!r.ok && r.can_force && confirm((r.message || 'У майстра вже є запис на цей час') + '\n\nПоставити цього клієнта ПАРАЛЕЛЬНО (двоє в роботі одночасно)?')) {
+      msg.textContent = 'Ставлю паралельно…';
+      r = await api('/api/schedule/appointments', { method:'POST', body: JSON.stringify({ ...body, force_parallel: true }) });
+    }
     if (r.ok) {
       // #104: додаткові послуги — у склад візиту одна за одною (час/сума перерахуються на бекенді)
       let warn = '';
