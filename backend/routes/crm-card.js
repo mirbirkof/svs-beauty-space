@@ -51,7 +51,7 @@ router.get('/:id(\\d+)/card', async (req, res) => {
         `SELECT t.name, t.min_spent FROM loyalty_tiers t
           WHERE t.min_spent <= COALESCE((SELECT total_spent FROM clients WHERE id=$1),0)
           ORDER BY t.min_spent DESC LIMIT 1`, [id]), []),
-      safe(q(`SELECT * FROM client_preferences WHERE client_id=$1`, [id]), []),
+      safe(q(`SELECT * FROM client_preferences WHERE client_id=$1 AND tenant_id = current_tenant_id()`, [id]), []),
     ]);
 
     const s = stats[0] || {};
@@ -197,7 +197,7 @@ router.get('/:id(\\d+)/communications', async (req, res) => {
 // ── ПРЕДПОЧТЕНИЯ ──
 router.get('/:id(\\d+)/preferences', async (req, res) => {
   try {
-    const r = await q(`SELECT * FROM client_preferences WHERE client_id=$1`, [+req.params.id]);
+    const r = await q(`SELECT * FROM client_preferences WHERE client_id=$1 AND tenant_id = current_tenant_id()`, [+req.params.id]);
     res.json({ preferences: r[0] || null });
   } catch (e) { err(res, e); }
 });
@@ -225,7 +225,7 @@ router.put('/:id(\\d+)/preferences', async (req, res) => {
 // ── ЗАМІТКИ ──
 router.get('/:id(\\d+)/notes', async (req, res) => {
   try {
-    res.json({ items: await q(`SELECT * FROM client_notes WHERE client_id=$1 ORDER BY pinned DESC, created_at DESC`, [+req.params.id]) });
+    res.json({ items: await q(`SELECT * FROM client_notes WHERE client_id=$1 AND tenant_id = current_tenant_id() ORDER BY pinned DESC, created_at DESC`, [+req.params.id]) });
   } catch (e) { err(res, e); }
 });
 router.post('/:id(\\d+)/notes', async (req, res) => {
@@ -244,14 +244,14 @@ router.patch('/:id(\\d+)/notes/:noteId(\\d+)', async (req, res) => {
     for (const k of allowed) if (k in (req.body || {})) { vals.push(req.body[k]); sets.push(`${k}=$${vals.length}`); }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(+req.params.noteId, +req.params.id);
-    const r = await q(`UPDATE client_notes SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length - 1} AND client_id=$${vals.length} RETURNING *`, vals);
+    const r = await q(`UPDATE client_notes SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length - 1} AND client_id=$${vals.length} AND tenant_id = current_tenant_id() RETURNING *`, vals);
     if (!r[0]) return res.status(404).json({ error: 'not found' });
     res.json({ ok: true, note: r[0] });
   } catch (e) { err(res, e); }
 });
 router.delete('/:id(\\d+)/notes/:noteId(\\d+)', async (req, res) => {
   try {
-    await q(`DELETE FROM client_notes WHERE id=$1 AND client_id=$2`, [+req.params.noteId, +req.params.id]);
+    await q(`DELETE FROM client_notes WHERE id=$1 AND client_id=$2 AND tenant_id = current_tenant_id()`, [+req.params.noteId, +req.params.id]);
     res.json({ ok: true });
   } catch (e) { err(res, e); }
 });
