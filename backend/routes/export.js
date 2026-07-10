@@ -27,6 +27,16 @@ const { requirePerm, logAction } = require('../lib/rbac');
 
 router.use(requirePerm('export.read'));
 
+// Аудит (QA): 14 async-хендлерів без try/catch — Express 4 не ловить reject
+// async-функції, запит висів вічно (напр. ?from=abc → помилка PG → тиша).
+// Санація КОРЕНЕМ: обгортаємо router.get так, що будь-який async-хендлер
+// автоматично отримує .catch → next(err) → штатний error-middleware (500 JSON).
+const _get = router.get.bind(router);
+router.get = (path, ...handlers) => _get(path, ...handlers.map(h =>
+  typeof h === 'function'
+    ? (req, res, next) => { Promise.resolve(h(req, res, next)).catch(next); }
+    : h));
+
 function toCsv(rows, columns) {
   const escape = (v) => {
     if (v == null) return '';
