@@ -191,6 +191,37 @@ async function syncLicense(tenantId, planCode, status, expiresAt) {
      ON CONFLICT (tenant_id) DO UPDATE SET plan_code=EXCLUDED.plan_code, status=EXCLUDED.status,
        expires_at=EXCLUDED.expires_at, updated_at=NOW()`,
     [tenantId, planCode, licStatus, expiresAt]);
+  // ПРЕСЕЙЛ-БЛОКЕР #4: рантайм-доступ к модулям (online_booking и др.) проверяется
+  // isLicensed() ТОЛЬКО по таблице `licenses`, а не tenant_licenses. Регистрация кладёт
+  // туда trial с expires_at=+14д, и оплата плана её НЕ продлевала → крон гасил онлайн-запись
+  // у заплатившего салона через ~17 дней. Теперь при активной подписке конвертируем/продлеваем
+  // строки `licenses` для всех модулей плана в subscription с датой конца периода подписки.
+  if (licStatus === 'active') {
+    try { await syncModuleLicenses(tenantId, planCode, expiresAt); }
+    catch (e) { console.error('[billing] syncModuleLicenses failed:', e.message); }
+  }
+}
+
+// Продлить/выдать строки в `licenses` для модулей, входящих в оплаченный план.
+// saas_plans.features — JSONB-массив кодов; пересечение с module_catalog.code = модули
+// под лицензией. '*' → все модули. expiresAt = конец текущего периода подписки: каждая
+// оплата двигает его вперёд, при неоплате лицензия истекает штатно (крон + grace).
+async function syncModuleLicenses(tenantId, planCode, expiresAt) {
+  const pr = await getPool().query(`SELECT features FROM saas_plans WHERE code=$1`, [planCode]);
+  if (!pr.rows.length) return;
+  const feats = Array.isArray(pr.rows[0].features) ? pr.rows[0].features : [];
+  const all = feats.includes('*');
+  const mc = await getPool().query(`SELECT id, code FROM module_catalog`);
+  const modules = mc.rows.filter(m => all || feats.includes(m.code));
+  for (const m of modules) {
+    await getPool().query(
+      `INSERT INTO licenses (tenant_id, module_id, license_type, status, activated_at, expires_at, renewed_at)
+       VALUES ($1,$2,'subscription','active',NOW(),$3,NOW())
+       ON CONFLICT (tenant_id, module_id) WHERE status IN ('active','grace_period')
+       DO UPDATE SET license_type='subscription', status='active',
+         expires_at=EXCLUDED.expires_at, renewed_at=NOW(), updated_at=NOW()`,
+      [tenantId, m.id, expiresAt || null]);
+  }
 }
 
 // ── Счета ────────────────────────────────────────────────────────────
