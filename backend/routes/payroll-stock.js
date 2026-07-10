@@ -234,6 +234,23 @@ router.post('/payroll/calculate', async (req, res) => {
     const advance_sum = advanceRows.rows.reduce((a, r) => a + parseFloat(r.amount || 0), 0);
     const deduction   = penalty_sum + advance_sum; // штрафы + ранее выданные авансы
 
+    // 3d. Захист від подвійного нарахування (хвіст аудиту): якщо за майстром уже є
+    // НЕскасований розрахунок з періодом, що ПЕРЕТИНАЄТЬСЯ (у т.ч. автоматичний
+    // status='auto', де гроші вже проведені в касу) — новий створювати не можна,
+    // інакше друга виплата за той самий період.
+    const dup = await pool.query(
+      `SELECT id, period_start, period_end, status, total FROM payroll_records
+        WHERE master_id = $1::text AND status <> 'cancelled'
+          AND period_start <= $3::date AND period_end >= $2::date
+        LIMIT 1`,
+      [String(master_id), period_start, period_end]);
+    if (dup.rows[0]) {
+      const d = dup.rows[0];
+      return res.status(409).json({ error: 'period-overlap',
+        existing_record_id: d.id,
+        message: `За цей період вже є розрахунок #${d.id} (${String(d.period_start).slice(0,10)}–${String(d.period_end).slice(0,10)}, статус: ${d.status}, ${Math.round(d.total)}₴). Скасуйте його або оберіть інший період.` });
+    }
+
     // 4. записать в payroll_records (draft)
     const rec = await pool.query(
       `INSERT INTO payroll_records (master_id, master_name, period_start, period_end,

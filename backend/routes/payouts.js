@@ -350,6 +350,20 @@ router.post('/records/:id/pay', async (req, res) => {
     // Розрахунок уже повністю виплачено (повна виплата через payroll-stock) — новий транш
     // = подвійна витрата. Блокуємо (зворотний бік захисту 2.2: full→partial).
     if (r0.status === 'paid') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'already_paid', message: 'Розрахунок уже повністю виплачено' }); }
+    // Хвіст аудиту: виплата по розрахунку, чий період ПЕРЕТИНАЄТЬСЯ з іншим уже
+    // сплаченим/автоматичним розрахунком того ж майстра (auto проводить касу одразу) —
+    // це друга виплата за той самий період. Блокуємо з підказкою.
+    const twin = (await client.query(
+      `SELECT id, status, period_start, period_end FROM payroll_records
+        WHERE master_id = $1::text AND id <> $2 AND status IN ('auto','paid')
+          AND period_start <= $4::date AND period_end >= $3::date
+        LIMIT 1`,
+      [String(r0.master_id), r0.id, r0.period_start, r0.period_end])).rows[0];
+    if (twin) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'period-already-paid', twin_record_id: twin.id,
+        message: `За цей період майстру вже виплачено розрахунком #${twin.id} (статус: ${twin.status}). Скасуйте один із розрахунків.` });
+    }
 
     const paidBefore = num((await client.query(
       `SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_partial_payments WHERE record_id=$1`, [r0.id])).rows[0].s);
