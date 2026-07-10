@@ -6,7 +6,7 @@ const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone, shouldMaskPhones } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid } = require('../lib/schedule-month');
-const { findOverlap } = require('../lib/booking-guard');
+const { findOverlap, wouldExceedParallel } = require('../lib/booking-guard');
 const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
 const router = express.Router();
@@ -209,6 +209,8 @@ router.patch('/masters/:id/profile', async (req, res) => {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
     const allowed = ['name', 'surname', 'email', 'category', 'specialty', 'bio', 'phone', 'avatar', 'commission_pct', 'provides_services', 'staff_role',
+      // паралельні записи (овербукінг): скільки клієнтів майстер веде одночасно
+      'max_parallel',
       // онлайн-запис
       'online_booking_enabled', 'online_rank', 'online_title', 'online_description',
       // оповіщення
@@ -225,6 +227,7 @@ router.patch('/masters/:id/profile', async (req, res) => {
         let v = req.body[f];
         if (f === 'commission_pct' && (v === '' || v == null)) v = null;
         if (f === 'online_rank') v = (v === '' || v == null) ? 0 : parseInt(v, 10) || 0;
+        if (f === 'max_parallel') v = Math.max(1, parseInt(v, 10) || 1);
         if (boolFields.has(f)) v = !!v;
         if (nullIfEmpty.has(f) && typeof v === 'string' && v.trim() === '') v = null;
         vals.push(v); sets.push(`${f} = $${vals.length}`);
@@ -1082,10 +1085,12 @@ router.patch('/appointments/:id', async (req, res) => {
       const effMaster = master_id != null ? Number(master_id) : curRow.master_id;
       const effStart = newStart || curRow.starts_at;
       const effEnd = newEnd || curRow.ends_at;
-      const conflict = await findOverlap({ masterId: effMaster, startsAt: effStart, endsAt: effEnd, excludeId: Number(req.params.id) });
-      if (conflict) {
-        return res.status(409).json({ error: 'slot-busy', conflict_id: conflict.id,
-          message: 'У майстра вже є запис на цей час' });
+      const cap = await wouldExceedParallel({ masterId: effMaster, startsAt: effStart, endsAt: effEnd, excludeId: Number(req.params.id) });
+      if (cap.exceeds) {
+        return res.status(409).json({ error: 'slot-busy', conflict_id: cap.conflict && cap.conflict.id,
+          message: cap.cap > 1
+            ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
+            : 'У майстра вже є запис на цей час' });
       }
     }
 
@@ -1324,11 +1329,14 @@ router.post('/appointments', async (req, res) => {
       return res.status(400).json({ error: 'ends_at має бути пізніше starts_at' });
     }
 
-    // защита от двойного бронирования: слот мастера не должен пересекаться
-    const conflict = await findOverlap({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });
-    if (conflict) {
-      return res.status(409).json({ error: 'slot-busy', conflict_id: conflict.id,
-        message: 'У майстра вже є запис на цей час' });
+    // Защита от переполнения: число пересекающихся записей не должно превышать
+    // вместимость мастера (max_parallel). При max_parallel=1 — прежнее поведение.
+    const cap = await wouldExceedParallel({ masterId: Number(master_id), startsAt: startDate, endsAt: endDate });
+    if (cap.exceeds) {
+      return res.status(409).json({ error: 'slot-busy', conflict_id: cap.conflict && cap.conflict.id,
+        message: cap.cap > 1
+          ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
+          : 'У майстра вже є запис на цей час' });
     }
 
     // клієнт: за id, або за телефоном (знайти/створити), або тільки імʼя
@@ -1365,10 +1373,11 @@ router.post('/appointments', async (req, res) => {
     const r = await pool.query(
       `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
        SELECT $1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8
-        WHERE NOT EXISTS (
-          SELECT 1 FROM appointments
+        WHERE (
+          SELECT count(*) FROM appointments
            WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
-             AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz))
+             AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz)
+        ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
        RETURNING id`,
       [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
        sv.rows[0].price, room_id ? Number(room_id) : null, notes || null]

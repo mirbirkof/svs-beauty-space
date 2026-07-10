@@ -428,14 +428,16 @@ async function processUpdate(upd, tg, salon) {
       try {
         // слот мог занять кто-то другой пока клиент подтверждал — проверяем пересечение
         try {
+          // Число паралельних confirmed-записів мастера не має перевищувати його
+          // вмістимість (max_parallel; дефолт 1). Овербукінг дозволено настройкою.
           const busy = await getPool().query(
-            `SELECT 1 FROM online_bookings
-             WHERE master_id = $1 AND status = 'confirmed'
-               AND date_from < $3 AND date_to > $2
-             LIMIT 1`,
+            `SELECT (SELECT count(*) FROM online_bookings
+                      WHERE master_id = $1 AND status = 'confirmed'
+                        AND date_from < $3 AND date_to > $2) AS cnt,
+                    COALESCE((SELECT max_parallel FROM masters WHERE id = $1), 1) AS cap`,
             [row.employee_id, row.date_from, row.date_to]
           );
-          if (busy.rowCount) {
+          if (busy.rows[0] && Number(busy.rows[0].cnt) >= Number(busy.rows[0].cap)) {
             await db.update(row.token, { status: 'error', error: 'slot-taken' });
             return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 На жаль, цей час щойно зайняли. Поверніться на сайт і оберіть інший слот.' });
           }

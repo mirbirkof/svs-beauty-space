@@ -6,7 +6,7 @@
    Импорт в роут и в seed каталога ai_agent_tools. */
 const { getPool } = require('../db-pg');
 const llm = require('./llm');
-const { findOverlap } = require('./booking-guard');
+const { findOverlap, wouldExceedParallel } = require('./booking-guard');
 
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -169,8 +169,10 @@ const TOOLS = {
       const mid = args.master_id ? parseInt(args.master_id, 10) : null;
       // защита от двойного бронирования (ends_at обязателен — колонка NOT NULL)
       if (mid) {
-        const conflict = await findOverlap({ masterId: mid, startsAt: startDate, endsAt: endDate });
-        if (conflict) return { error: 'slot-busy', message: 'У майстра вже є запис на цей час' };
+        const cap = await wouldExceedParallel({ masterId: mid, startsAt: startDate, endsAt: endDate });
+        if (cap.exceeds) return { error: 'slot-busy', message: cap.cap > 1
+          ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
+          : 'У майстра вже є запис на цей час' };
       }
       const r = await q(
         `INSERT INTO appointments (client_id, service_id, master_id, starts_at, ends_at, status, price)

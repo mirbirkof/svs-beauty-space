@@ -93,6 +93,16 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
     busyBy.get(b.master_id).push(b);
   }
 
+  // Вместимость мастеров (max_parallel): сколько клиентов одновременно ведёт мастер.
+  // Слот свободен, пока пересечений меньше вместимости. Дефолт 1 = прежнее поведение;
+  // если колонки ещё нет (миграция 239 не накатилась) — тоже 1.
+  const capBy = new Map();
+  try {
+    const capQ = await pool.query(
+      `SELECT id, COALESCE(max_parallel, 1) AS mp FROM masters WHERE id = ANY($1::int[])`, [masterIds]);
+    for (const r of capQ.rows) capBy.set(Number(r.id), Math.max(1, Number(r.mp) || 1));
+  } catch (_) { /* колонки max_parallel нет — все мастера вместимостью 1 */ }
+
   // порядок пріоритету майстрів = порядок masterIds
   const prio = new Map(masterIds.map((id, i) => [Number(id), i]));
   const schedBy = new Map(sched.rows.map(r => [Number(r.master_id), r]));
@@ -102,10 +112,11 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
     const s = schedBy.get(mid);
     if (!s) continue;
     const busy = busyBy.get(mid) || [];
+    const cap = capBy.get(mid) || 1;
     const first = Math.max(Math.ceil(s.s_min / st.stepMin) * st.stepMin, minStart);
     for (let t = first; t + durationMin <= s.e_min; t += st.stepMin) {
-      const clash = busy.some(b => b.s_min < t + durationMin && b.e_min > t);
-      if (!clash) out.push({ date, label: minToLabel(t), startMin: t, endMin: t + durationMin, masterId: mid });
+      const overlaps = busy.reduce((n, b) => n + ((b.s_min < t + durationMin && b.e_min > t) ? 1 : 0), 0);
+      if (overlaps < cap) out.push({ date, label: minToLabel(t), startMin: t, endMin: t + durationMin, masterId: mid });
     }
   }
   out.sort((a, b) => a.startMin - b.startMin || prio.get(a.masterId) - prio.get(b.masterId));
