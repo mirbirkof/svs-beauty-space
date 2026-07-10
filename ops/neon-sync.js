@@ -25,6 +25,10 @@
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+// Пресейл-блокер #2: после пересборки схемы на backup надо ЗАНОВО навесить RLS —
+// createMissingTables создаёт «голые» таблицы без политик, иначе фейловер оставляет
+// backup без изоляции тенантов. Переиспользуем тот же ассерт, что и boot-time.
+const { ENSURE_SQL: ENSURE_RLS_SQL } = require('../backend/lib/ensure-rls');
 
 // ---- load env without extra deps ----
 for (const p of [
@@ -313,6 +317,10 @@ async function main() {
     await ensureColumns(primary, backup, pTables);
     await makeFKsDeferrable(backup);
     await reconcileConstraints(primary, backup);
+    // Восстановить RLS/политики на backup (createMissingTables их не переносит).
+    // Идемпотентно; без этого второй салон читал бы чужие данные после фейловера.
+    try { await backup.query(ENSURE_RLS_SQL); log('RLS ensured on backup'); }
+    catch (e) { log(`RLS ensure WARN: ${e.message}`); }
 
     const tables = pTables; // primary is source of truth
     await backup.query('BEGIN');

@@ -563,6 +563,13 @@ if (process.env.DATABASE_URL) {
       if (stdout) console.log('[migrate]', stdout.trim());
       if (err) console.error('[migrate] FAILED (сервис продолжает работать):', (stderr || err.message).trim());
       else console.log('[migrate] схема БД актуальна');
+      // Пресейл-блокер #2: после миграций — self-healing RLS. Независимо от _migrations
+      // (которая копируется при фейловере и скрывает пропущенные политики) на каждом
+      // старте гарантируем tenant_isolation на всех таблицах с tenant_id.
+      try {
+        require('./lib/ensure-rls').ensureTenantRls().catch((e) =>
+          console.error('[ensure-rls] boot check failed:', e.message));
+      } catch (e) { console.error('[ensure-rls] boot init failed:', e.message); }
     });
 }
 
