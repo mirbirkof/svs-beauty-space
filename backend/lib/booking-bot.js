@@ -456,27 +456,33 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
   // записи в журнал салону: послідовні послуги одного майстра
   const apptIds = [];
   try {
-    let cur = slot.startMin;
-    for (const s of chosen) {
-      const d = Number(s.duration_min) || 60;
-      // Блокер B1/B2: бот раніше ВСТАВЛЯВ без перевірки вмістимості → подвійне бронювання
-      // (в т.ч. крос-канальне: веб теж пише в appointments). Тепер атомарний guarded-insert
-      // (той самий патерн, що в адмінці schedule.js): вставляємо, лише якщо активних перетинів
-      // менше за max_parallel. Гейт у ОДНОМУ statement закриває гонку. Овербукінг до max_parallel.
-      const r = await ctx.pool.query(
-        `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, price, status, source, client_name)
-         SELECT $1,$2,$3, ${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)}, $7, 'confirmed', 'bot-chat', $8
-          WHERE (
-            SELECT count(*) FROM appointments
-             WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
-               AND tstzrange(starts_at, ends_at) && tstzrange(${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)})
-          ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
-         RETURNING id`,
-        [clientId, masterId, s.id, date, cur, cur + d, Number(s.price) || null, name]);
-      if (!r.rows[0]) { const err = new Error('slot-taken'); err.slotTaken = true; throw err; }
-      apptIds.push(r.rows[0].id);
-      cur += d;
-    }
+    // B2 (регрес-фікс від верифікації): guarded-insert `WHERE count < max_parallel` під
+    // READ COMMITTED все одно ловив гонку — два паралельні запити бачили «вільно» й обидва
+    // вставляли (підзапит count не блокує рядки). Тепер весь блок у транзакції з
+    // advisory-lock на (тенант+майстер): лок тримається до COMMIT, тож перевірка вмістимості
+    // й вставка атомарні між конкурентними бронями. Овербукінг до max_parallel збережено.
+    const { withTx } = require('./db-pg');
+    await withTx(async (client) => {
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,
+        [String(getTenantId() || '') + ':' + String(masterId)]);
+      let cur = slot.startMin;
+      for (const s of chosen) {
+        const d = Number(s.duration_min) || 60;
+        const r = await client.query(
+          `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, price, status, source, client_name)
+           SELECT $1,$2,$3, ${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)}, $7, 'confirmed', 'bot-chat', $8
+            WHERE (
+              SELECT count(*) FROM appointments
+               WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
+                 AND tstzrange(starts_at, ends_at) && tstzrange(${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)})
+            ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
+           RETURNING id`,
+          [clientId, masterId, s.id, date, cur, cur + d, Number(s.price) || null, name]);
+        if (!r.rows[0]) { const err = new Error('slot-taken'); err.slotTaken = true; throw err; }
+        apptIds.push(r.rows[0].id);
+        cur += d;
+      }
+    });
   } catch (e) {
     console.error('[bookbot/appt]', e.message);
     // відкат уже створених записів цього бронювання (щоб не лишити «хвіст» послуг)
