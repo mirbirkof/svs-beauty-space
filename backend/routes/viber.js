@@ -27,20 +27,45 @@ const { requirePerm, logAction } = require('../lib/rbac');
 const viber = require('../lib/channels/viber-channel');
 
 // ── Webhook (публичный — вызывает Viber платформа) ───────────────────
-// Viber подписывает запросы заголовком X-Viber-Auth-Token совпадающим с нашим.
-// Идентификация тенанта: по auth_token из viber_bot_config.
+// Viber подписывает КАЖДЫЙ callback: X-Viber-Content-Signature (и query ?sig=)
+// = HMAC-SHA256(rawBody, auth_token) hex. Токен сам в запросе НЕ приходит.
+// Идентификация тенанта: перебор активных конфигов по совпадению HMAC.
+// Fallback на X-Viber-Auth-Token оставлен для ручных тестов /config/test.
+
+const crypto = require('crypto');
+
+function viberSigMatch(rawBody, sig, token) {
+  try {
+    const h = crypto.createHmac('sha256', token).update(rawBody).digest('hex');
+    const a = Buffer.from(h, 'utf8');
+    const b = Buffer.from(String(sig).toLowerCase(), 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch { return false; }
+}
 
 router.post('/webhook', async (req, res) => {
   try {
     const pool = getPool();
-    const incomingToken = req.headers['x-viber-auth-token'] || '';
+    const sig = req.headers['x-viber-content-signature'] || req.query.sig || '';
+    let cfg = null;
 
-    // Найти тенанта по токену (без RLS — публичный эндпоинт)
-    const cfgRow = await pool.query(
-      `SELECT * FROM viber_bot_config WHERE auth_token = $1 AND is_active = TRUE LIMIT 1`,
-      [incomingToken]
-    );
-    const cfg = cfgRow.rows[0];
+    if (sig && req.rawBody) {
+      // Штатный путь Viber: находим тенанта по валидной HMAC-подписи
+      const cfgs = await pool.query(
+        `SELECT * FROM viber_bot_config WHERE is_active = TRUE`
+      );
+      cfg = cfgs.rows.find(c => c.auth_token && viberSigMatch(req.rawBody, sig, c.auth_token)) || null;
+    } else {
+      // Fallback (ручной тест из админки): токен в заголовке = знание секрета
+      const incomingToken = req.headers['x-viber-auth-token'] || '';
+      if (incomingToken) {
+        const cfgRow = await pool.query(
+          `SELECT * FROM viber_bot_config WHERE auth_token = $1 AND is_active = TRUE LIMIT 1`,
+          [incomingToken]
+        );
+        cfg = cfgRow.rows[0] || null;
+      }
+    }
 
     // Отвечаем 200 немедленно — Viber требует быстрый ответ
     res.json({ status: 0 });
