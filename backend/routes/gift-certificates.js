@@ -499,30 +499,33 @@ router.post('/:id/refund', async (req, res) => {
 
 // ── POST /:id/cancel — анулювати ──
 router.post('/:id/cancel', async (req, res) => {
+  const client = await pool.connect();
   try {
-    const gc = (await pool.query(`SELECT * FROM gift_certificates WHERE id=$1`, [+req.params.id])).rows[0];
-    if (!gc) return res.status(404).json({ error: 'not found' });
-    if (gc.status === 'cancelled') return res.json({ ok: true, certificate: gc });
-    const upd = await pool.query(`UPDATE gift_certificates SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING *`, [gc.id]);
-    await pool.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'cancellation',$2,$2,$3,$4)`,
+    // Блокер E1: раніше cancel читав сертифікат без FOR UPDATE і працював поза транзакцією —
+    // гонка з погашенням/паралельним cancel брала стейл remaining_amount → невірне повернення
+    // грошей. Тепер усе в одній транзакції з блокуванням рядка; сторно каси — тут же (db: client),
+    // щоб при відкаті не лишалось «висячого» повернення. ext_ref 'gc:cancel:<id>' — ідемпотентність.
+    await client.query('BEGIN'); await applyTenant(client);
+    const gc = (await client.query(`SELECT * FROM gift_certificates WHERE id=$1 FOR UPDATE`, [+req.params.id])).rows[0];
+    if (!gc) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not found' }); }
+    if (gc.status === 'cancelled') { await client.query('ROLLBACK'); return res.json({ ok: true, certificate: gc }); }
+    const upd = await client.query(`UPDATE gift_certificates SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING *`, [gc.id]);
+    await client.query(`INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,performed_by,notes) VALUES ($1,'cancellation',$2,$2,$3,$4)`,
       [gc.id, gc.remaining_amount, req.user?.display_name || null, req.body?.reason || 'анульовано']);
-    // Сторно каси: гроші зайшли або при випуску (recordCashIn ext_ref 'gc:issue:<id>'),
-    // або при продажу тиражного (ext_ref 'gc:sell:<id>'). Анулювання повертає покупцю
-    // невикористаний залишок — компенсуюча операція type='out', ідемпотентна по
-    // ext_ref 'gc:cancel:<id>' (повторний /cancel не задвоїть).
-    // Якщо каси не торкались (непроданий тираж серії) — сторнувати нічого.
-    try {
-      const issueOp = (await pool.query(`SELECT method, amount FROM cash_operations WHERE ext_ref IN ($1,$2) LIMIT 1`, [`gc:issue:${gc.id}`, `gc:sell:${gc.id}`])).rows[0];
-      const back = Math.min(Number(gc.remaining_amount) || 0, issueOp ? Number(issueOp.amount) : 0);
-      if (issueOp && back > 0) {
-        await recordCashOut({ category: 'refund', amount: back, method: issueOp.method,
-          ref_type: 'gift_certificate', ref_id: gc.id,
-          description: `Повернення за анульований сертифікат ${gc.code}`, ext_ref: `gc:cancel:${gc.id}` });
-      }
-    } catch (e) { console.error('cash-ledger gc cancel:', e.message); }
+    const issueOp = (await client.query(`SELECT method, amount FROM cash_operations WHERE ext_ref IN ($1,$2) LIMIT 1`, [`gc:issue:${gc.id}`, `gc:sell:${gc.id}`])).rows[0];
+    const back = Math.min(Number(gc.remaining_amount) || 0, issueOp ? Number(issueOp.amount) : 0);
+    if (issueOp && back > 0) {
+      await recordCashOut({ category: 'refund', amount: back, method: issueOp.method,
+        ref_type: 'gift_certificate', ref_id: gc.id,
+        description: `Повернення за анульований сертифікат ${gc.code}`, ext_ref: `gc:cancel:${gc.id}`, db: client });
+    }
+    await client.query('COMMIT');
     logAction({ user: req.user, action: 'gc.cancel', entity: 'gift_certificate', entity_id: gc.id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, certificate: upd.rows[0] });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
 });
 
 module.exports = router;
