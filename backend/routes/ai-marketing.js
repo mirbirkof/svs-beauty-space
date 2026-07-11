@@ -45,9 +45,14 @@ const PURPOSE_HINT = {
 };
 
 /** Снимок каталога для промо-текстов (услуги+цены, активные акции). Кеш 5 мин. */
-let _cat = null, _catTs = 0;
+// Крос-тенантний фікс (верифікація): кеш каталогу ПЕР-ТЕНАНТ, інакше перший салон
+// віддавав свій каталог/промо решті. Ключ — getTenantId() з AsyncLocalStorage.
+const { getTenantId: _tid } = require('../lib/tenant');
+const _catCache = new Map();
 async function catalog() {
-  if (_cat && Date.now() - _catTs < 5 * 60 * 1000) return _cat;
+  const tid = String(_tid() || 'default');
+  const _hit = _catCache.get(tid);
+  if (_hit && Date.now() - _hit.at < 5 * 60 * 1000) return _hit.data;
   const [services, promotions, codes] = await Promise.all([
     q(`SELECT name, category, price FROM services
         WHERE COALESCE(active,true)=true AND deleted_at IS NULL
@@ -60,7 +65,7 @@ async function catalog() {
         WHERE active=true AND (valid_until IS NULL OR valid_until > NOW())
           AND tenant_id = current_tenant_id() LIMIT 30`).catch(() => []),
   ]);
-  _cat = {
+  const data = {
     services: services.map(s => ({ назва: s.name, ціна: Number(s.price) || null })),
     promos: promotions.map(p => ({
       назва: p.title, опис: p.description,
@@ -70,8 +75,8 @@ async function catalog() {
       код: c.code, тип: c.type, значення: c.value, мін_сума: c.min_total,
     })),
   };
-  _catTs = Date.now();
-  return _cat;
+  _catCache.set(tid, { data, at: Date.now() });
+  return data;
 }
 
 /** Загрузить brand voice по id (или default). Возвращает объект или null. */

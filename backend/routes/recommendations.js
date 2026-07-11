@@ -178,10 +178,14 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
 });
 
 // ── GET /pairs — топ пар послуг (для маркетингу/бандлів) ────
-let _pairsCache = { at: 0, data: null };
+// Крос-тенантний фікс: кеш пар послуг ПЕР-ТЕНАНТ (був глобальний → салон Б бачив пари салону А).
+const { getTenantId: _tidPairs } = require('../lib/tenant');
+const _pairsCache = new Map();
 router.get('/pairs', requirePerm('reports.read'), async (req, res) => {
   try {
-    if (_pairsCache.data && Date.now() - _pairsCache.at < 10 * 60 * 1000) return res.json({ ..._pairsCache.data, cached: true });
+    const _pk = String(_tidPairs() || 'default');
+    const _ph = _pairsCache.get(_pk);
+    if (_ph && Date.now() - _ph.at < 10 * 60 * 1000) return res.json({ ..._ph.data, cached: true });
     const rows = await pool.query(`${COOC}
       SELECT a.service_id s1, b.service_id s2,
              sa.name n1, sb.name n2,
@@ -196,7 +200,7 @@ router.get('/pairs', requirePerm('reports.read'), async (req, res) => {
       a: r.n1 || `#${r.s1}`, b: r.n2 || `#${r.s2}`, together: r.together,
     }));
     const payload = { ok: true, pairs: out, cached: false };
-    _pairsCache = { at: Date.now(), data: payload };
+    _pairsCache.set(_pk, { at: Date.now(), data: payload });
     res.json(payload);
   } catch (e) {
     console.error('[rec:pairs]', e); res.status(500).json({ error: 'internal' });

@@ -59,13 +59,17 @@ function maskPhone(phone) {
    - маскуємо ТІЛЬКИ роль master;
    - майстер-одиночка (єдиний активний майстер у салоні) бачить номери завжди;
    - салон може відкрити номери тумблером masters_see_phone. */
-let _mcCache = { n: null, exp: 0 };
+// Крос-тенантний фікс: кеш кількості майстрів ПЕР-ТЕНАНТ. Був глобальний → «майстер-одиночка»
+// vs «салон» визначалось числом ПЕРШОГО салону і застосовувалось до всіх (витік/невірна маска номерів).
+const _mcCache = new Map();
 async function activeMastersCount() {
-  if (_mcCache.exp > Date.now() && _mcCache.n !== null) return _mcCache.n;
+  const tid = String(getTenantId() || 'default');
+  const hit = _mcCache.get(tid);
+  if (hit && hit.exp > Date.now() && hit.n !== null) return hit.n;
   try {
     const r = await getPool().query(`SELECT COUNT(*)::int AS n FROM masters WHERE active IS DISTINCT FROM false`);
-    _mcCache = { n: r.rows[0].n, exp: Date.now() + 60 * 1000 };
-    return _mcCache.n;
+    _mcCache.set(tid, { n: r.rows[0].n, exp: Date.now() + 60 * 1000 });
+    return r.rows[0].n;
   } catch { return 2; } // невідомо → консервативно вважаємо салоном (маскуємо)
 }
 

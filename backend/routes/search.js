@@ -66,21 +66,24 @@ function highlight(text, raw) {
 
 // Расширение запроса синонимами: возвращает список вариантов (включая исходный).
 // both → все слова группы; one-way → только если запрос == первое слово группы.
-let _synCache = { at: 0, rows: null };
+// Крос-тенантний фікс: кеш синонімів ПЕР-ТЕНАНТ (був глобальний → синоніми салону А впливали
+// на пошук салону Б). Ключ — getTenantId(); інвалідація нижче чистить весь Map (clear).
+const { getTenantId: _tidSyn } = require('../lib/tenant');
+const _synCache = new Map();
 async function synonymVariants(raw) {
   const base = norm(raw);
   if (base.length < 2) return [base].filter(Boolean);
   const now = Date.now();
-  if (!_synCache.rows || now - _synCache.at > 60000) {
+  const _sk = String(_tidSyn() || 'default');
+  let _se = _synCache.get(_sk);
+  if (!_se || !_se.rows || now - _se.at > 60000) {
     try {
-      _synCache = {
-        at: now,
-        rows: await q(`SELECT words, direction FROM search_synonyms WHERE is_active = TRUE`),
-      };
-    } catch { _synCache = { at: now, rows: [] }; }
+      _se = { at: now, rows: await q(`SELECT words, direction FROM search_synonyms WHERE is_active = TRUE`) };
+    } catch { _se = { at: now, rows: [] }; }
+    _synCache.set(_sk, _se);
   }
   const out = new Set([base]);
-  for (const r of _synCache.rows || []) {
+  for (const r of _se.rows || []) {
     const words = (r.words || []).map(w => String(w).toLowerCase());
     if (!words.length) continue;
     const hit = words.some(w => w === base || base.includes(w) || w.includes(base));
@@ -554,7 +557,7 @@ router.post('/synonyms', async (req, res) => {
        words.map(w => String(w).slice(0, 128)),
        direction === 'one-way' ? 'one-way' : 'both',
        ['uk', 'ru', 'en'].includes(language) ? language : 'uk']);
-    _synCache.rows = null;
+    _synCache.clear();
     res.status(201).json({ data: row });
   } catch (e) { res.status(500).json({ error: 'create_failed', detail: dbErr(e) }); }
 });
@@ -576,7 +579,7 @@ router.put('/synonyms/:id', async (req, res) => {
        direction || null, language || null,
        typeof is_active === 'boolean' ? is_active : null]);
     if (!row) return res.status(404).json({ error: 'not_found' });
-    _synCache.rows = null;
+    _synCache.clear();
     res.json({ data: row });
   } catch (e) { res.status(500).json({ error: 'update_failed', detail: dbErr(e) }); }
 });
@@ -585,7 +588,7 @@ router.delete('/synonyms/:id', async (req, res) => {
   try {
     const row = await one(`DELETE FROM search_synonyms WHERE id = $1 AND tenant_id = current_tenant_id() AND is_system = FALSE RETURNING id`, [req.params.id]);
     if (!row) return res.status(404).json({ error: 'not_found_or_system' });
-    _synCache.rows = null;
+    _synCache.clear();
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'delete_failed', detail: dbErr(e) }); }
 });
@@ -610,7 +613,7 @@ router.post('/synonyms/import', async (req, res) => {
                  DO UPDATE SET words=EXCLUDED.words, updated_at=NOW()`,
         [grp.slice(0, 128), words.map(w => w.slice(0, 128)), direction, language]).then(() => imported++).catch(() => {});
     }
-    _synCache.rows = null;
+    _synCache.clear();
     logAction({ user: req.user, action: 'search.synonyms.import', entity: 'search_synonyms', ip: req.ip, meta: { imported } });
     res.json({ imported });
   } catch (e) { res.status(500).json({ error: 'import_failed', detail: dbErr(e) }); }
