@@ -692,6 +692,9 @@ router.post('/clients/:id/erase', async (req, res) => {
     await client.query(`UPDATE ai_call_recordings SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
     await client.query(`UPDATE reviews           SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
     await client.query(`UPDATE favorites         SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    // Раунд2: ще дві PII-колонки — ім'я клієнта в записах і підпис у фото-згодах.
+    await client.query(`UPDATE appointments      SET client_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE photo_consents    SET signed_by_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
     res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });
