@@ -128,7 +128,7 @@ router.get('/', async (req, res) => {
     // % з продажу продукції по майстру (банки по продавцю + POS) — щоб сума залів = Фінцентр (аудит 06.07)
     const salesCommR = await pool.query(`
       WITH bottles AS (
-        SELECT COALESCE(am.seller_master_id, a.master_id) AS mid, SUM(ROUND(am.qty_used*pv.price,2)) AS rev
+        SELECT COALESCE(am.seller_master_id, a.master_id) AS mid, SUM(ROUND(am.qty_used*pv.price/NULLIF(GREATEST(pv.unit_ml,1),0),2)) AS rev
           FROM appointment_materials am JOIN appointments a ON a.id=am.appointment_id
           JOIN product_variants pv ON pv.id=am.variant_id
           LEFT JOIN products p ON p.id=pv.product_id LEFT JOIN categories c ON c.id=p.category_id

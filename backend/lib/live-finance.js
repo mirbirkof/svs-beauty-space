@@ -75,7 +75,7 @@ async function liveFinance(pool, from, to) {
     // майстра × sales_commission_pct (та сама формула, що ЗП і «Підтвердження витрат»)
     q(`WITH bottles AS (
           SELECT COALESCE(am.seller_master_id, a.master_id) AS mid,
-                 SUM(ROUND(am.qty_used * pv.price, 2)) AS rev
+                 SUM(ROUND(am.qty_used * pv.price / NULLIF(GREATEST(pv.unit_ml,1),0), 2)) AS rev
             FROM appointment_materials am
             JOIN appointments a ON a.id = am.appointment_id
             JOIN product_variants pv ON pv.id = am.variant_id
