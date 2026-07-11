@@ -176,6 +176,8 @@ function stars(n) {
   for (let i=1; i<=5; i++) s += `<span class="star ${i<=n?'':'dim'}">★</span>`;
   return s;
 }
+// XSS-захист: імена клієнта/майстра з Dikidi можуть містити HTML — екрануємо все.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // === REVIEWS ===
 async function loadReviews() {
@@ -191,10 +193,10 @@ async function loadReviews() {
     r.items.map(x => `
       <tr>
         <td>${new Date(x.created_at).toLocaleString('ru-UA')}</td>
-        <td>${x.display_name}</td>
-        <td>${x.master_name || x.master_id || '—'}</td>
+        <td>${esc(x.display_name)}</td>
+        <td>${esc(x.master_name || x.master_id || '—')}</td>
         <td>${stars(x.rating)}</td>
-        <td>${(x.text||'').replace(/</g,'&lt;')}</td>
+        <td>${esc(x.text||'')}</td>
         <td><span class="badge b-pub">опубліковано</span></td>
         <td><button onclick="modReview(${x.id}, 'hidden')" class="text-red-600 text-xs hover:underline">Сховати</button></td>
       </tr>

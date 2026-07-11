@@ -151,13 +151,14 @@ async function loadRules(){
   const tb=document.querySelector('#rulesTbl tbody');
   try{
     const r=await adminFetch('/api/bonus/rules'); const items=r.items||[];
+    _bonusRules = items; // XSS-фікс: тримаємо об'єкти в пам'яті, у onclick — тільки id
     if(!items.length){ tb.innerHTML='<tr><td colspan="6" class="muted">Правил ще немає. Додайте перше.</td></tr>'; return; }
     tb.innerHTML=items.map(x=>{
       const val=x.type==='percent_check'?Number(x.percent)+'%':Number(x.fixed_amount)+' б';
       return `<tr><td>${esc(x.name)} ${x.is_active?'<span class="pill on">on</span>':'<span class="pill off">off</span>'}</td>
         <td>${EV[x.trigger_event]||x.trigger_event}</td><td>${val}</td><td>${CAT[x.category]||x.category}</td>
-        <td><button class="btn sm" onclick='editRule(${JSON.stringify(x)})'>✎</button></td>
-        <td><button class="btn sm" onclick="delRule(${x.id})">🗑</button></td></tr>`;
+        <td><button class="btn sm" onclick="editRuleById(${Number(x.id)})">✎</button></td>
+        <td><button class="btn sm" onclick="delRule(${Number(x.id)})">🗑</button></td></tr>`;
     }).join('');
   }catch(e){ tb.innerHTML='<tr><td colspan="6" class="muted">Помилка</td></tr>'; }
 }
@@ -190,7 +191,9 @@ async function saveSettings(){
 
 // ── Правила: модалка ──
 function newRule(){ openRule({id:'',name:'',type:'percent_check',trigger_event:'payment',percent:5,fixed_amount:0,category:'all',min_check_amount:0,max_accrual:'',expiry_days:'',loyalty_multipliers:{bronze:1,silver:1.5,gold:2},is_active:true}); document.getElementById('ruleTitle').textContent='Нове правило'; }
+let _bonusRules = []; // кеш правил у пам'яті (замість JSON у onclick — захист від XSS)
 function editRule(x){ openRule(x); document.getElementById('ruleTitle').textContent='Редагувати правило'; }
+function editRuleById(id){ const x=_bonusRules.find(r=>Number(r.id)===Number(id)); if(x) editRule(x); }
 function openRule(x){
   const lm=x.loyalty_multipliers||{bronze:1,silver:1.5,gold:2};
   document.getElementById('r_id').value=x.id||'';
