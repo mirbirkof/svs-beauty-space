@@ -198,7 +198,7 @@ async function loadReviews() {
         <td>${stars(x.rating)}</td>
         <td>${esc(x.text||'')}</td>
         <td><span class="badge b-pub">опубліковано</span></td>
-        <td><button onclick="modReview(${x.id}, 'hidden')" class="text-red-600 text-xs hover:underline">Сховати</button></td>
+        <td><button onclick="modReview(${Number(x.id)}, 'hidden')" class="text-red-600 text-xs hover:underline">Сховати</button></td>
       </tr>
     `).join('')
   }</tbody></table>`;

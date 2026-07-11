@@ -160,14 +160,21 @@ router.get('/summary', authClient(), async (req, res) => {
 // ── Отмена и перенос визита клиентом ─────────────────────────────────────────
 // Правила: только свой визит, только будущий, только booked/confirmed.
 // Окно «не позднее чем за N минут» настраивается в booking_settings.cancel_notice_minutes (дефолт 120).
-let _noticeCache = { ms: 120 * 60000, at: 0 };
+// Крос-тенантний фікс (раунд3): кеш вікна скасування ПЕР-ТЕНАНТ (був глобальний →
+// салон Б брав налаштування салону А).
+const { getTenantId: _tidNotice } = require('../lib/tenant');
+const _noticeCache = new Map();
 async function cancelNoticeMs(pool) {
-  if (Date.now() - _noticeCache.at < 60000) return _noticeCache.ms; // кэш на минуту
+  const tid = String(_tidNotice() || 'default');
+  const hit = _noticeCache.get(tid);
+  if (hit && Date.now() - hit.at < 60000) return hit.ms; // кэш на минуту
+  let ms = 120 * 60000;
   try {
     const r = await pool.query(`SELECT cancel_notice_minutes FROM booking_settings WHERE id = 1`);
-    if (r.rows[0]) _noticeCache = { ms: Number(r.rows[0].cancel_notice_minutes) * 60000, at: Date.now() };
+    if (r.rows[0]) ms = Number(r.rows[0].cancel_notice_minutes) * 60000;
   } catch (_) { /* колонки ещё нет — работаем на дефолте 120 мин */ }
-  return _noticeCache.ms;
+  _noticeCache.set(tid, { ms, at: Date.now() });
+  return ms;
 }
 
 async function ownFutureVisit(pool, clientId, visitId) {
