@@ -124,6 +124,7 @@
       email: document.getElementById('email').value.trim() || null,
       account_type: acct,
       plan_code: acct === 'solo' ? 'solo' : plan,
+      consent: !!document.getElementById('consent').checked, // GDPR: явна згода → доказ на сервері
     };
     try {
       const r = await fetch(API + '/api/public/signup', {
