@@ -37,10 +37,15 @@ function fmtDur(min) {
   return h ? (m ? `${h} год ${m} хв` : `${h} год`) : `${m} хв`;
 }
 
-// ── каталог послуг (кеш 5 хв) ──────────────────────────────────
-let _catCache = null, _catAt = 0;
+// ── каталог послуг (кеш 5 хв, ПЕР-ТЕНАНТ) ──────────────────────────────────
+// Major-фікс: раніше кеш каталогу був глобальний → бот першого салону віддавав
+// послуги першого салону всім іншим (витік каталогу між тенантами).
+const { getTenantId } = require('./tenant');
+const _catCache = new Map(); // tenantId → { data, at }
 async function loadCatalog(pool) {
-  if (_catCache && Date.now() - _catAt < 5 * 60 * 1000) return _catCache;
+  const tid = String(getTenantId() || 'default');
+  const hit = _catCache.get(tid);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
   const r = await pool.query(
     `SELECT id, beautypro_id AS bp_id, name,
             COALESCE(duration_min, 60) AS duration_min, price::float AS price, category
@@ -53,9 +58,9 @@ async function loadCatalog(pool) {
   }));
   const indexed = matcher.buildIndex(services);
   const byId = new Map(services.map(s => [s.id, s]));
-  _catCache = { services, indexed, byId };
-  _catAt = Date.now();
-  return _catCache;
+  const data = { services, indexed, byId };
+  _catCache.set(tid, { data, at: Date.now() });
+  return data;
 }
 
 // майстри, що надають УСІ вибрані послуги (внутрішні id — движок слотів працює по нашій CRM)

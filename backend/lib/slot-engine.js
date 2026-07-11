@@ -32,19 +32,23 @@ function addDays(dateStr, days) {
   return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
 }
 
-// налаштування запису (кеш 5 хв)
-let _setCache = null, _setAt = 0;
+// налаштування запису (кеш 5 хв, ПЕР-ТЕНАНТ). Major-фікс: раніше кеш був глобальний —
+// перший салон «отруював» решту своїми налаштуваннями бронювання (lead/step/horizon).
+const { getTenantId } = require('./tenant');
+const _setCache = new Map(); // tenantId → { data, at }
 async function getSettings(pool) {
-  if (_setCache && Date.now() - _setAt < 5 * 60 * 1000) return _setCache;
+  const tid = String(getTenantId() || 'default');
+  const hit = _setCache.get(tid);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
   let row = {};
   try { row = (await pool.query(`SELECT * FROM booking_settings LIMIT 1`)).rows[0] || {}; } catch (_) {}
-  _setCache = {
+  const data = {
     leadMin: Number(row.min_lead_minutes) > 0 ? Number(row.min_lead_minutes) : 30,
     stepMin: Number(row.slot_step_minutes) > 0 ? Number(row.slot_step_minutes) : 15,
     horizonDays: Number(row.max_horizon_days) > 0 ? Number(row.max_horizon_days) : 90,
   };
-  _setAt = Date.now();
-  return _setCache;
+  _setCache.set(tid, { data, at: Date.now() });
+  return data;
 }
 
 /**
