@@ -584,6 +584,9 @@ router.get('/clients/:id', async (req, res) => {
                                 .reduce((s, o) => s + Number(o.total || 0), 0),
       last_visit_at: visits[0] ? visits[0].starts_at : (c.rows[0].last_visit_at || null),
     };
+    // Major #20: audit trail доступу до ПД — читання повної картки клієнта (ПІБ/телефон/
+    // email/візити) логуємо, як і мутації. GDPR Art.30: доступ до ПД має бути підзвітним.
+    logAction({ user: req.user, action: 'client.view', entity: 'client', entity_id: id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, product_sales: productSales, stats, tags: tagsRows.rows } });
   } catch (e) { console.error('[admin:client]', e); res.status(500).json({ error: 'internal' }); }
 });

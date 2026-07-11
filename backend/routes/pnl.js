@@ -153,7 +153,8 @@ async function aggregate(start, end, branchId) {
     `SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric s
        FROM stock_movements sm JOIN product_variants pv ON pv.id = sm.variant_id
       WHERE sm.delta < 0
-        AND (sm.reason IN ('sale','order','consumption','writeoff') OR sm.reason LIKE 'order:%')
+        AND (sm.reason IN ('sale','order','consumption','writeoff') OR sm.reason LIKE 'order:%'
+             OR sm.reason LIKE 'service:%')
         AND sm.created_at >= $1 AND sm.created_at < $2`, [start, end]);
   // ЗП відрядна (percent_part) — перетин періоду нарахування з [start,end)
   const salPiece = await safeRows(
