@@ -251,14 +251,23 @@ router.post('/payroll/calculate', async (req, res) => {
         message: `За цей період вже є розрахунок #${d.id} (${String(d.period_start).slice(0,10)}–${String(d.period_end).slice(0,10)}, статус: ${d.status}, ${Math.round(d.total)}₴). Скасуйте його або оберіть інший період.` });
     }
 
-    // 4. записать в payroll_records (draft)
-    const rec = await pool.query(
-      `INSERT INTO payroll_records (master_id, master_name, period_start, period_end,
-                                    services_count, services_revenue, percent_part, fixed_part,
-                                    sales_revenue, sales_part, bonus, deduction, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft') RETURNING id, total`,
-      [master_id, s.master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, sales_revenue, sales_part, bonus_sum, deduction]
-    );
+    // 4. записать в payroll_records (draft). Major #8: ловимо гонку на UNIQUE-індексі
+    // ux_payroll_active_period (23505) → повертаємо той самий 409 period-overlap, а не 500.
+    let rec;
+    try {
+      rec = await pool.query(
+        `INSERT INTO payroll_records (master_id, master_name, period_start, period_end,
+                                      services_count, services_revenue, percent_part, fixed_part,
+                                      sales_revenue, sales_part, bonus, deduction, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft') RETURNING id, total`,
+        [master_id, s.master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, sales_revenue, sales_part, bonus_sum, deduction]
+      );
+    } catch (insErr) {
+      if (insErr.code === '23505') {
+        return res.status(409).json({ error: 'period-overlap', message: 'За цей період розрахунок щойно створено (паралельний запит). Оновіть сторінку.' });
+      }
+      throw insErr;
+    }
     const record_id = rec.rows[0].id;
 
     // 5. пометить учтённые начисления как применённые к этому расчёту
