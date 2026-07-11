@@ -461,10 +461,12 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
     // вставляли (підзапит count не блокує рядки). Тепер весь блок у транзакції з
     // advisory-lock на (тенант+майстер): лок тримається до COMMIT, тож перевірка вмістимості
     // й вставка атомарні між конкурентними бронями. Овербукінг до max_parallel збережено.
-    const { withTx } = require('./db-pg');
+    const { withTx } = require('../db-pg');
     await withTx(async (client) => {
-      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`,
-        [String(getTenantId() || '') + ':' + String(masterId)]);
+      // Ключ лока ЄДИНИЙ з адмін-каналом (schedule.js): hashtext(String(Number(master_id))).
+      // masters.id глобально унікальний → тенант у ключі не потрібен; головне — щоб бот і
+      // адмінка бралися за ОДИН лок на цього майстра, інакше крос-канальна гонка не закрита.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(Number(masterId))]);
       let cur = slot.startMin;
       for (const s of chosen) {
         const d = Number(s.duration_min) || 60;
