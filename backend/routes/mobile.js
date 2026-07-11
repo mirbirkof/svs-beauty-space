@@ -844,10 +844,18 @@ router.post('/sync', mobileAuth, needPerm('mobile.access'), async (req, res) => 
           const { client_id, service_id, employee_id, date, time, notes } = payload || {};
           if (date && time) {
             const startsAt = new Date(`${date}T${time}:00+03:00`).toISOString();
+            // РАУНД3-FIX (BLOCKER-R2): ends_at обязателен (NOT NULL + без него триггер
+            // защиты от овербукинга пропускал оффлайн-путь). Считаем из длительности услуги.
+            let durMin = 60;
+            if (service_id) {
+              const svc = await pool.query(`SELECT duration_min FROM services WHERE id=$1`, [service_id]);
+              if (svc.rowCount && svc.rows[0].duration_min > 0) durMin = svc.rows[0].duration_min;
+            }
+            const endsAt = new Date(new Date(startsAt).getTime() + durMin * 60000).toISOString();
             await pool.query(
-              `INSERT INTO appointments (client_id, master_id, service_id, starts_at, notes, status)
-               VALUES ($1,$2,$3,$4,$5,'pending')`,
-              [client_id || null, employee_id || null, service_id || null, startsAt, notes || null]
+              `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, notes, status)
+               VALUES ($1,$2,$3,$4,$5,$6,'pending')`,
+              [client_id || null, employee_id || null, service_id || null, startsAt, endsAt, notes || null]
             );
           }
         } else if (action_type === 'appointment.update' || action_type === 'appointment.cancel') {

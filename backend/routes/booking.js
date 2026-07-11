@@ -491,9 +491,13 @@ async function processUpdate(upd, tg, salon) {
               [normalizePhoneDb(phoneDigits), row.client_name || tgFirst, msg.from.id, tgFirst, tgLast, tgUser]
             );
           }
-          let ob;
+          // РАУНД3-FIX (ghost-booking): бронь + её тень в журнале = ОДНА транзакция.
+          // Раньше тень вставлялась отдельно и catch глотал ЛЮБУЮ ошибку (включая 23P01)
+          // → клиент получал ✅, а в расписании мастера было пусто.
+          const txc = await getPool().connect();
           try {
-            ob = await getPool().query(
+            await txc.query('BEGIN');
+            const ob = await txc.query(
               `INSERT INTO online_bookings
                 (client_id, client_phone, client_name, service_id, master_id,
                  date_from, date_to, channel, bp_appointment_id, status,
@@ -504,37 +508,49 @@ async function processUpdate(upd, tg, salon) {
                row.service_id, row.employee_id, row.date_from, row.date_to,
                row.channel || 'bot', bp_id, row.token, msg.from.id]
             );
-          } catch (exErr) {
-            // 23P01 = EXCLUDE ob_no_overlap_confirmed: слот заняли между проверкой и вставкой
-            // (гонка двух паралельних підтверджень). БД-гарантія проти подвійного бронювання.
-            if (exErr.code === '23P01') {
-              await db.update(row.token, { status: 'error', error: 'slot-taken' }).catch(() => {});
-              return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 На жаль, цей час щойно зайняли. Поверніться на сайт і оберіть інший слот.' });
-            }
-            throw exErr;
-          }
-          bookingId = ob.rows[0].id;
+            bookingId = ob.rows[0].id;
 
-          // САМОСТОЯТЕЛЬНОСТЬ ОТ BEAUTYPRO (02.07): пишем визит в НАШ журнал appointments,
-          // иначе без BP-синка мастер не увидит онлайн-запись в расписании дня.
-          // best-effort: не роняем подтверждение, если резолв не удался (запись всё равно в online_bookings).
-          try {
-            const ids = await resolveBookingIds(getPool(), row.service_id, row.employee_id);
+            // Тень в НАШЕМ журнале appointments (самостоятельность от BeautyPro, 02.07):
+            // без неё мастер не видит онлайн-запись в расписании дня.
+            const ids = await resolveBookingIds(txc, row.service_id, row.employee_id);
             if (ids.masterId && ids.serviceId) {
-              const dup = await getPool().query(
+              const dup = await txc.query(
                 `SELECT 1 FROM appointments WHERE master_id=$1 AND starts_at=$2 AND client_id=$3 LIMIT 1`,
                 [ids.masterId, row.date_from, cl.rows[0].id]);
               if (!dup.rowCount) {
-                await getPool().query(
+                // Слот уже проверен триггером брони в ЭТОЙ ЖЕ транзакции под тем же замком.
+                // Повторная проверка тени дала бы ложный отказ (бронь уже видна счётчику),
+                // поэтому тень идёт с локальным обходом (set_config is_local=true умирает с транзакцией).
+                await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+                const ap = await txc.query(
                   `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, notes)
-                   VALUES ($1,$2,$3,$4,$5,'booked',$6,'online',$7)`,
+                   VALUES ($1,$2,$3,$4,$5,'booked',$6,'online',$7)
+                   RETURNING id`,
                   [cl.rows[0].id, ids.masterId, ids.serviceId, row.date_from, row.date_to,
                    ids.price, `Онлайн-запис #${bookingId}${bp_id ? ' / BP ' + bp_id : ''}`]);
+                // РЕАЛЬНАЯ связь бронь→запись (миграция 247): для cancel-sync и анти-двойного счёта
+                await txc.query(`UPDATE online_bookings SET appointment_id=$1 WHERE id=$2`,
+                  [ap.rows[0].id, bookingId]);
               }
             } else {
-              console.warn('[booking/appt] не резолвнулись id услуги/мастера — запись только в online_bookings');
+              console.warn('[booking/appt] не резолвнулись id услуги/мастера — запись только в online_bookings (слот держит кросс-подсчёт триггера 247)');
             }
-          } catch (apptErr) { console.error('[booking/appt]', apptErr.message); }
+            await txc.query('COMMIT');
+          } catch (exErr) {
+            await txc.query('ROLLBACK').catch(() => {});
+            bookingId = null;
+            if (exErr.code === '23P01') {
+              // слот заняли між перевіркою і вставкою (гонка двох паралельних підтверджень)
+              await db.update(row.token, { status: 'error', error: 'slot-taken' }).catch(() => {});
+              return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 На жаль, цей час щойно зайняли. Поверніться на сайт і оберіть інший слот.' });
+            }
+            // НЕ глотаем: раньше отсюда ушло бы ✅ без сохранённой записи
+            await db.update(row.token, { status: 'error', error: 'db-error' }).catch(() => {});
+            console.error('[booking/tx]', exErr.message);
+            return tg('sendMessage', { chat_id: msg.chat.id, text: '😔 Технічна помилка при збереженні запису. Спробуйте ще раз за хвилину.' });
+          } finally {
+            txc.release();
+          }
         } catch (logErr) {
           console.error('[booking/log]', logErr.message);
         }

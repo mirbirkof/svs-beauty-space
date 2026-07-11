@@ -1851,11 +1851,12 @@ router.delete('/appointments/:id', async (req, res) => {
         await client.query(`DELETE FROM appointments WHERE id=$1`, [id]);
       }
       // Синхронізуємо привʼязану онлайн-запис: якщо візит скасовано в журналі, онлайн-запис
-      // теж має стати 'cancelled' (інакше залишається 'confirmed' → криві звіти по онлайн-записах).
-      // Звʼязок: online_bookings.bp_appointment_id зберігає id створеного appointment.
+      // теж має стати 'cancelled' (інакше слот назавжди заблокований тригером 241/247).
+      // РАУНД3-FIX (MAJOR-R1): справжній звʼязок — online_bookings.appointment_id (міграція 247).
+      // bp_appointment_id залишаємо як legacy-fallback для старих записів до бекфілу.
       await client.query(
         `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
-           WHERE bp_appointment_id = $1::text AND status <> 'cancelled'`, [id]
+           WHERE (appointment_id = $1 OR bp_appointment_id = $1::text) AND status <> 'cancelled'`, [id]
       );
       await client.query('COMMIT');
     } catch (e) {
