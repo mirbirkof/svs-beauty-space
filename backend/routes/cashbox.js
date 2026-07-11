@@ -533,6 +533,18 @@ router.patch('/operations/:id', async (req, res) => {
     if (op.rows[0].shift_id != null && op.rows[0].shift_status !== 'open') {
       return res.status(400).json({ error: 'shift-closed' });
     }
+    // Блокер C2: у системних операцій (Mono/онлайн/ЗП/кешбек — ext_ref != null) фінансові
+    // поля НЕ редагуються. Раніше вони мали shift_id=NULL → перевірка закритої зміни їх не
+    // чіпала, і можна було змінити суму/тип/категорію/метод реальної транзакції (фальсифікація
+    // обліку без сліду). Опис/майстер правити можна, гроші — ні.
+    {
+      const bb = req.body || {};
+      if (op.rows[0].ext_ref != null &&
+          (bb.type !== undefined || bb.amount !== undefined || bb.category !== undefined ||
+           bb.method !== undefined || bb.date !== undefined)) {
+        return res.status(400).json({ error: 'system-operation', message: 'Фінансові поля системної операції (онлайн/Mono/ЗП/кешбек) не редагуються.' });
+      }
+    }
 
     const b = req.body || {};
     const sets = []; const params = [];
@@ -581,6 +593,13 @@ router.delete('/operations/:id', async (req, res) => {
        LEFT JOIN cash_shifts s ON s.id=o.shift_id WHERE o.id=$1`, [id]
     );
     if (!op.rows[0]) return res.status(404).json({ error: 'not-found' });
+    // Блокер C1: системні операції (Mono/онлайн/передоплата/ЗП/кешбек — ext_ref != null)
+    // привʼязані до реальної транзакції. Раніше вони мали shift_id=NULL → умова закритої
+    // зміни їх не чіпала → рядок можна було безслідно видалити (обхід обліку). Забороняємо;
+    // повернення грошей — через unpay/refund, не видаленням касового рядка.
+    if (op.rows[0].ext_ref != null) {
+      return res.status(400).json({ error: 'system-operation', message: 'Системну операцію (онлайн/Mono/ЗП/кешбек) не можна видалити вручну. Скористайтесь поверненням оплати.' });
+    }
     if (op.rows[0].shift_id != null && op.rows[0].shift_status !== 'open') {
       return res.status(400).json({ error: 'shift-closed' });
     }
