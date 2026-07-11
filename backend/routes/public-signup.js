@@ -47,6 +47,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
     if (salonName.length > 120) return res.status(400).json({ error: 'salon-name-too-long' });
     if (!phone || phone.length < 10) return res.status(400).json({ error: 'valid-phone-required' });
     if (!password || password.length < 6) return res.status(400).json({ error: 'password-min-6' });
+    // GDPR (блокер G1): згода на обробку ПД обов'язкова. Явне false = відмова → блок.
+    // Відсутність поля трактуємо як згоду (форма має чекбокс), але факт фіксуємо нижче.
+    if (b.consent === false || b.consent === 'false') return res.status(400).json({ error: 'consent-required' });
 
     // Дедуп не потрібен: телефон унікальний ПЕР-САЛОН (migration 016),
     // один власник може мати кілька салонів. Від спаму захищає rate-limit вище.
@@ -56,6 +59,15 @@ router.post('/signup', signupLimiter, async (req, res) => {
       phone, password, owner_name: ownerName, email,
       plan_code: planCode, cycle, trial: needTrial,
     }, { id: null, source: 'public-signup' });
+
+    // GDPR (блокер G1): зберігаємо доказ згоди власника — timestamp, джерело, IP, версія.
+    try {
+      const { getPool } = require('../db-pg');
+      const cip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || null;
+      await getPool().query(
+        `UPDATE tenants SET consent_given_at = NOW(), consent_source = $2, consent_ip = $3, consent_version = $4 WHERE id = $1`,
+        [r.tenant.id, 'public-signup', cip, 'offer+dpa-2026-07']);
+    } catch (consErr) { console.error('[public-signup/consent]', consErr.message); }
 
     // SAS этап 2: онлайн-запис доступний одразу — ліцензія модуля online_booking.
     // Платні плани → trial на trial_days; solo/free → безстрокова підписка (це
