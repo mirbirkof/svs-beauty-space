@@ -3126,6 +3126,7 @@ async function checkToken() {
 
 function toggleTokenLogin(){ const b=document.getElementById('tokenLoginBox'); b.style.display = b.style.display==='none'?'':'none'; }
 function _loginErr(msg){ const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display=''; }
+let PANEL_2FA_TOKEN = null; // pre-auth токен, коли panel-login вимагає 2FA-код
 
 // Основний вхід: логін + пароль
 function login() {
@@ -3146,6 +3147,11 @@ function login() {
       localStorage.setItem('svs_admin_token', TOKEN);
       if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
       applyRoleUI(); showApp();
+    } else if (r.status === 200 && j.ok && j.requires_2fa && j.pre_auth_token) {
+      // Блокер A1: panel-login тепер вимагає 2FA-код. Показуємо поле коду і підтверджуємо через verify-2fa.
+      PANEL_2FA_TOKEN = j.pre_auth_token;
+      document.getElementById('tgCodeBox').style.display='';
+      try { document.getElementById('tgCodeInput').focus(); } catch {}
     } else if (r.status === 423) { _loginErr('Акаунт тимчасово заблоковано через невдалі спроби. Спробуйте за 15 хв');
     } else if (r.status === 403) { _loginErr('Акаунт неактивний. Зверніться до власника');
     } else if (r.status === 429) { _loginErr('Забагато спроб. Спробуйте пізніше');
@@ -3188,11 +3194,18 @@ function tgLoginVerify() {
   (async () => {
     let r, j;
     try {
-      r = await fetch(API + '/api/auth/tg-login-verify', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
-        body: JSON.stringify({ identifier, code, remember_me: remember }) });
+      // Дві гілки одним полем коду: panel-login 2FA (verify-2fa з pre_auth_token) або tg-login.
+      if (PANEL_2FA_TOKEN) {
+        r = await fetch(API + '/api/auth/verify-2fa', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
+          body: JSON.stringify({ pre_auth_token: PANEL_2FA_TOKEN, code, remember_me: remember }) });
+      } else {
+        r = await fetch(API + '/api/auth/tg-login-verify', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
+          body: JSON.stringify({ identifier, code, remember_me: remember }) });
+      }
       j = await r.json();
     } catch { errEl.textContent='Сервер недоступний'; errEl.style.display=''; return; }
     if (r.status === 200 && j.ok && j.token) {
+      PANEL_2FA_TOKEN = null;
       TOKEN = j.token; USER = j.user || null;
       localStorage.setItem('svs_admin_token', TOKEN);
       if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
