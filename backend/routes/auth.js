@@ -369,6 +369,23 @@ router.post('/verify-2fa', async (req, res) => {
     }
     await pool.query(`UPDATE two_factor_codes SET used_at=NOW() WHERE id=$1`, [row.id]);
 
+    // Панельний потік (panel-login з 2FA): видаємо довгоживучий svs_-токен, як у panel-login.
+    if (decoded.panel) {
+      const rememberPanel = decoded.remember ?? remember_me;
+      const panelToken = 'svs_' + require('crypto').randomBytes(24).toString('hex');
+      const panelHash = sha256(panelToken);
+      const panelExpires = rememberPanel ? null : new Date(Date.now() + 90 * 86400 * 1000);
+      await pool.query(
+        `INSERT INTO user_tokens (user_id, token_hash, label, expires_at) VALUES ($1,$2,$3,$4)`,
+        [user.id, panelHash, deviceLabelFromUA(ua).slice(0, 120), panelExpires]
+      );
+      await recordAttempt(pool, { identifier: String(user.id), kind: 'verify_2fa', success: true, ip, ua, meta: { panel: true } });
+      return res.json({ ok: true, token: panelToken, user: {
+        id: user.id, display_name: user.display_name, role: user.role_code,
+        permissions: effectivePerms(user), master_id: user.master_id, branch_id: user.branch_id,
+      }});
+    }
+
     const { accessToken, refreshToken, refreshTtlMs: ttlMs, expiresAt } = await issueSession(pool, { user, req, rememberMe: remember_me });
     setRefreshCookie(res, refreshToken, ttlMs);
     await recordAttempt(pool, { identifier: String(user.id), kind: 'verify_2fa', success: true, ip, ua, meta: {} });
@@ -770,6 +787,28 @@ router.post('/panel-login', async (req, res) => {
       return res.status(401).json({ ok: false, error: 'bad-credentials' });
     }
     await pool.query(`UPDATE users SET failed_login_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1`, [user.id]);
+
+    // 2FA branch — panel-login раніше видавав токен одразу після пароля, повністю
+    // обходячи двофакторку. Тепер при two_factor_enabled вимагаємо код (як /login),
+    // прапорець panel у pre-auth токені → verify-2fa видасть довгоживучий панельний токен.
+    if (user.two_factor_enabled) {
+      const code = gen6digit();
+      const codeHash = sha256(code);
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      await pool.query(
+        `INSERT INTO two_factor_codes (user_id, code_hash, channel, expires_at) VALUES ($1,$2,$3,$4)`,
+        [user.id, codeHash, user.two_factor_channel || 'telegram', expiresAt]
+      );
+      await deliverViaTelegram(user, `🔐 <b>SVS CRM</b>\nКод підтвердження: <code>${code}</code>\nДіє 5 хв.`);
+      const preToken = jwt.sign(
+        { sub: user.id, typ: '2fa_pending', panel: true, remember: !!remember_me },
+        PRE_AUTH_SECRET,
+        { expiresIn: 600, issuer: 'svs-crm' }
+      );
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: true, ip, ua, meta: { stage: '2fa-required' } });
+      return res.json({ ok: true, requires_2fa: true, pre_auth_token: preToken, channel: user.two_factor_channel || 'telegram' });
+    }
+
     // довгоживучий токен для панелі (90 днів, або null=безстроково при remember)
     const token = 'svs_' + require('crypto').randomBytes(24).toString('hex');
     const hash = sha256(token);
