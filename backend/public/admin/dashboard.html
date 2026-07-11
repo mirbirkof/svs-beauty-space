@@ -165,7 +165,11 @@ async function loadLow() {
 async function loadAll() {
   showErr('');
   if (!adminToken()) { showErr('Введи admin token зверху'); return; }
-  await Promise.all([loadKpi(), loadReadiness(), loadRevenue(), loadTop(), loadLow()]);
+  // Major #21/#25: allSettled — збій одного віджета (напр. readiness) НЕ ламає весь дашборд
+  // і не дає unhandled rejection. Кожен віджет вантажиться незалежно.
+  const rs = await Promise.allSettled([loadKpi(), loadReadiness(), loadRevenue(), loadTop(), loadLow()]);
+  const failed = rs.filter(x => x.status === 'rejected').length;
+  if (failed) showErr('Частина даних тимчасово недоступна (' + failed + ') — повтор за 30с');
 }
 
 loadAll();
