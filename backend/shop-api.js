@@ -391,9 +391,9 @@ try {
   if (process.env.DATABASE_URL) {
     const kyivHour = () => Number(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kiev', hour: '2-digit', hour12: false }).slice(0, 2));
     const tick = async () => {
-      try { const n = await vm.autoReviewRequests(); if (n) console.log(`[vm] запитано відгуків: ${n}`); } catch (e) { console.error('[vm] reviews tick:', e.message); }
-      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.masterDailySchedules(); if (n) console.log(`[vm] розклад майстрам: ${n}`); } } catch (e) { console.error('[vm] sched tick:', e.message); }
-      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.ownerDailyReportAll(); if (n) console.log(`[vm] ранковий фінзвіт власникам надіслано: ${n}`); } } catch (e) { console.error('[vm] owner-report tick:', e.message); }
+      try { const n = await vm.autoReviewRequests(); if (n) console.log(`[vm] запитано відгуків: ${n}`); } catch (e) { console.error('[vm] reviews tick:', e.message); sentry.capture(e, { kind: 'cron', job: 'vm.reviews' }); }
+      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.masterDailySchedules(); if (n) console.log(`[vm] розклад майстрам: ${n}`); } } catch (e) { console.error('[vm] sched tick:', e.message); sentry.capture(e, { kind: 'cron', job: 'vm.schedules' }); }
+      try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.ownerDailyReportAll(); if (n) console.log(`[vm] ранковий фінзвіт власникам надіслано: ${n}`); } } catch (e) { console.error('[vm] owner-report tick:', e.message); sentry.capture(e, { kind: 'cron', job: 'vm.owner-report' }); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.adminDayPlan(); if (n) console.log('[vm] план дня адміну надіслано'); } } catch (e) { console.error('[vm] day-plan tick:', e.message); }
       try { const h = kyivHour(); if (h >= 8 && h < 12) { const n = await vm.weeklyMonthlyReminders(); if (n) console.log(`[vm] тижневі/місячні нагадування: ${n}`); } } catch (e) { console.error('[vm] reminders tick:', e.message); }
     };
@@ -452,7 +452,7 @@ if (process.env.DATABASE_URL) {
           } catch (e) { console.error('[licenses] notify:', e.message); }
         }
       });
-    } catch (e) { console.error('[licenses] expiry tick:', e.message); }
+    } catch (e) { console.error('[licenses] expiry tick:', e.message); sentry.capture(e, { kind: 'cron', job: 'licenses.expiry' }); }
   };
   setInterval(licenseExpiryTick, 60 * 60 * 1000);
   setTimeout(licenseExpiryTick, 90 * 1000);
@@ -599,7 +599,7 @@ if (process.env.DATABASE_URL) {
           console.log('[dwh-cron] нічний ETL виконано:', r.length, 'джобів');
         }
       }
-    } catch (e) { console.error('[dwh-cron]', e.message); }
+    } catch (e) { console.error('[dwh-cron]', e.message); sentry.capture(e, { kind: 'cron', job: 'dwh' }); }
   }, 20 * 60 * 1000).unref();
 }
 
@@ -642,11 +642,11 @@ if (process.env.DATABASE_URL) {
     const tm = require('./lib/tenant-mgmt');
     const runBillingCycle = async () => {
       try { const r = await billing.runRecurring(); if (r.renewed || r.cancelled) console.log('[billing] recurring', r); }
-      catch (e) { console.error('[billing] recurring:', e.message); }
+      catch (e) { console.error('[billing] recurring:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.recurring' }); }
       try { const d = await billing.processDunning(); if (d.attempted || d.suspended) console.log('[billing] dunning', d); }
-      catch (e) { console.error('[billing] dunning:', e.message); }
+      catch (e) { console.error('[billing] dunning:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.dunning' }); }
       try { const b = await require('./lib/bonus').expireBonuses(); if (b.expired) console.log('[bonus] expired', b); }
-      catch (e) { console.error('[bonus] expiry:', e.message); }
+      catch (e) { console.error('[bonus] expiry:', e.message); sentry.capture(e, { kind: 'cron', job: 'bonus.expiry' }); }
       try { const m = await require('./lib/meta-ads').syncAllAccounts(); if (m.synced) console.log('[meta-ads] synced', m); }
       catch (e) { console.error('[meta-ads] sync:', e.message); }
       try { const g = await require('./lib/google-ads').syncAllAccounts(); if (g.synced) console.log('[google-ads] synced', g); }
