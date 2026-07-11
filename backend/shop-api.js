@@ -221,6 +221,9 @@ app.get('/api/shop/db-health', async (req, res) => {
 // ig_user_id из payload (Meta шлёт все салоны на один URL), не по запросу.
 try { app.use('/api/instagram', require('./routes/instagram-webhook')); } catch(e) { console.error('[instagram-webhook] mount failed:', e.message); }
 
+// Живой дашборд аудита — публичный, ДО tenantMiddleware (не тенантный, эфемерный снимок в памяти)
+try { app.use('/api/audit-dash', require('./routes/audit-dash')); } catch(e) { console.error('[audit-dash] mount failed:', e.message); }
+
 // Tenant context (SAS-01): резолв тенанта до всех роутов; текущий трафик → дефолтный тенант
 const { tenantMiddleware } = require('./lib/tenant');
 app.use(tenantMiddleware());
