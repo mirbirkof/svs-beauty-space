@@ -630,9 +630,10 @@ async function autoPayrollRun({ force = false, dry = false } = {}) {
          VALUES ($1::text,$2,$3::date,($4::date - interval '1 day'),$5,$6,$7,$8,$9,'auto') RETURNING id`,
         [String(mst.id), mst.name, from, to, est.services_count, est.services_revenue, Math.round(est.percent_part), Math.round(est.fixed_part), Math.round(est.total)]);
       await client.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description)
-         VALUES (NULL,'out','salary',$1,'cash','auto_payroll',$2,$3,$4)`,
-        [Math.round(est.total), pr.rows[0].id, mst.id, `ЗП ${mst.name} (авто, ${label})`]);
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, ext_ref)
+         VALUES (NULL,'out','salary',$1,'cash','auto_payroll',$2,$3,$4,$5)
+         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`,
+        [Math.round(est.total), pr.rows[0].id, mst.id, `ЗП ${mst.name} (авто, ${label})`, `auto_payroll:${pr.rows[0].id}`]);
       await client.query('COMMIT'); posted++;
     } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error('[auto-payroll]', mst.name, e.message); }
     finally { client.release(); }
