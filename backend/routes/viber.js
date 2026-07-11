@@ -24,6 +24,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { runAs } = require('../lib/tenant');
 const viber = require('../lib/channels/viber-channel');
 
 // ── Webhook (публичный — вызывает Viber платформа) ───────────────────
@@ -74,9 +75,12 @@ router.post('/webhook', async (req, res) => {
     const ev = req.body || {};
     const eventType = ev.event; // message|delivered|seen|failed|subscribed|unsubscribed|conversation_started
 
-    // Установка app.tenant_id для RLS в этой сессии не нужна — работаем напрямую
-    // через явный WHERE salon_id = cfg.salon_id
-
+    // Блокер F1: viber_subscribers має FORCE RLS (tenant_id = app.tenant_id). Вебхук іде
+    // ПІСЛЯ tenantMiddleware, який ставить DEFAULT_TENANT_ID → вставка підписника чужого
+    // салону або блокувалась, або писалась із неправильним tenant_id. Виконуємо всю обробку
+    // під runAs(cfg.salon_id) (salon_id = tenant uuid) — AsyncLocalStorage прокидає тенант
+    // у всі pool.query, RLS проходить і tenant_id проставляється вірно.
+    await runAs(cfg.salon_id, async () => {
     switch (eventType) {
       case 'subscribed':
       case 'conversation_started': {
@@ -208,6 +212,7 @@ router.post('/webhook', async (req, res) => {
       default:
         // неизвестное событие — игнорируем
     }
+    });
   } catch (e) {
     console.error('[viber-webhook]', e.message);
     // Всегда 200 — Viber не должен ретраить
