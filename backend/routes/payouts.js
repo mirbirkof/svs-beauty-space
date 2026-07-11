@@ -23,6 +23,7 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { MATLINES_CTE } = require('../lib/payroll-base');
+const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
 const router = express.Router();
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
@@ -227,7 +228,24 @@ async function liveEstimate(masterId, from, to) {
   if (s) {
     const base = (s.percent_base === 'gross') ? revenueFull : revenue;
     if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = +(base * (num(s.percent) / 100)).toFixed(2);
-    if ((s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') && s.fixed_per_month) fixed_part = num(s.fixed_per_month);
+    if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
+      if (s.fixed_per_month) fixed_part = num(s.fixed_per_month);
+      else if (s.fixed_per_day) {
+        // Блокер D2: fixed_per_day раніше ігнорувався тут → hybrid-майстер (% + ставка/день)
+        // отримував авто-нарахування без фіксованої частини. Платимо за РОБОЧІ зміни з графіка
+        // (fallback — фактичні робочі дні), як у payroll-stock/«Підтвердженні».
+        const fromStr = String(from).slice(0, 10), toStr = String(to).slice(0, 10);
+        let shifts = await shiftDaysForMasterInRange(getPool(), masterId, fromStr, toStr).catch(() => 0);
+        if (!shifts) {
+          const wd = await q(
+            `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
+               FROM appointments WHERE master_id=$1::int AND status NOT IN ('cancelled','noshow')
+                AND starts_at >= $2::date AND starts_at < ($3::date + 1)`, [masterId, fromStr, toStr]);
+          shifts = wd[0]?.d || 0;
+        }
+        fixed_part = +(num(s.fixed_per_day) * shifts).toFixed(2);
+      }
+    }
     // % з продажу продукції — банки по продавцю + POS (та сама формула, що «Підтвердження»)
     if (num(s.sales_commission_pct) > 0) {
       const sold = (await q(
