@@ -1377,18 +1377,32 @@ router.post('/appointments', async (req, res) => {
     // (подвійний клік оператора / два оператори). WHERE NOT EXISTS закриває його в одному
     // statement. EXCLUDE-констрейнт на appointments не ставимо — 233 історичних перетини
     // з BP-імпорту (майбутніх 0), він би не встав; тут — захист на рівні запиту.
-    const r = await pool.query(
-      `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
-       SELECT $1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8
-        WHERE $9::boolean OR (
-          SELECT count(*) FROM appointments
-           WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
-             AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz)
-        ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
-       RETURNING id`,
-      [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
-       sv.rows[0].price, room_id ? Number(room_id) : null, notes || null, force_parallel]
-    );
+    // Регрес-клас B2 (той самий, що знайшла верифікація в боті): guarded-insert
+    // `WHERE count<max` під READ COMMITTED ловив гонку — два оператори / подвійний клік
+    // бачили «вільно» й обидва вставляли. Advisory-lock(майстер) у транзакції серіалізує
+    // конкурентні брони цього майстра; force_parallel обходить лічильник як і раніше.
+    const _apptClient = await pool.connect();
+    let r;
+    try {
+      await _apptClient.query('BEGIN'); await applyTenant(_apptClient);
+      await _apptClient.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(Number(master_id))]);
+      r = await _apptClient.query(
+        `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
+         SELECT $1,$2,$3,$4,$5,'booked',$6,'admin',$7,$8
+          WHERE $9::boolean OR (
+            SELECT count(*) FROM appointments
+             WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
+               AND tstzrange(starts_at, ends_at) && tstzrange($4::timestamptz, $5::timestamptz)
+          ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
+         RETURNING id`,
+        [cid, Number(master_id), Number(service_id), startDate.toISOString(), endDate.toISOString(),
+         sv.rows[0].price, room_id ? Number(room_id) : null, notes || null, force_parallel]
+      );
+      await _apptClient.query('COMMIT');
+    } catch (e) {
+      await _apptClient.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { _apptClient.release(); }
     if (!r.rows[0]) {
       return res.status(409).json({ error: 'slot-busy', can_force: true, message: 'У майстра вже є запис на цей час (щойно зайняли)' });
     }
