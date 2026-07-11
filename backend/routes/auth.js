@@ -854,6 +854,13 @@ router.post('/tg-login-request', async (req, res) => {
     if (user.is_active === false) {
       return res.status(403).json({ ok: false, error: 'account-inactive' });
     }
+    // Major #1/#5 (верифікація): якщо у користувача увімкнена 2FA — passwordless-вхід по
+    // Telegram-коду обходив би пароль (фактор 1). Такий користувач свідомо обрав посилений
+    // захист, тож перенаправляємо його на вхід паролем + 2FA, а не даємо слабший шлях.
+    if (user.two_factor_enabled) {
+      return res.status(403).json({ ok: false, error: '2fa-requires-password',
+        message: 'Для цього акаунта увімкнено двофакторну автентифікацію — увійдіть за паролем.' });
+    }
     if (!user.telegram_id) {
       return res.status(400).json({ ok: false, error: 'no-telegram-linked' });
     }
@@ -891,6 +898,8 @@ router.post('/tg-login-verify', async (req, res) => {
     const user = await findUserByIdentifier(pool, identifier);
     if (!user) return res.status(404).json({ ok: false, error: 'user-not-found' });
     if (user.is_active === false) return res.status(403).json({ ok: false, error: 'account-inactive' });
+    // Major #1/#5: passwordless-вхід заборонений для 2FA-акаунтів (обходив би пароль).
+    if (user.two_factor_enabled) return res.status(403).json({ ok: false, error: '2fa-requires-password' });
 
     // Major M1: захист від перебору 6-значного коду на акаунт (1M комбінацій).
     // Раніше tg-login-verify не мав per-account throttle → ~1500 спроб за 5 хв.
