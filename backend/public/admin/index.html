@@ -3161,6 +3161,7 @@ function login() {
 
 // Вхід через Telegram: крок 1 — запит коду
 function tgLoginRequest() {
+  PANEL_2FA_TOKEN = null; // раунд3: скидаємо panel-2FA токен при переході на Telegram-вхід (не плутати гілки)
   const identifier = document.getElementById('loginIdent').value.trim();
   document.getElementById('loginErr').style.display='none';
   if (!identifier) return _loginErr('Введіть телефон, email або логін — на цей акаунт прийде код');
