@@ -38,7 +38,9 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
 
     const items = await client.query(
       `SELECT v.id AS variant_id, p.name AS product_name, v.sku, COALESCE(v.stock_qty,0) AS expected_qty,
-              COALESCE(v.wholesale,0) AS cost
+              -- Major #14: expected_qty у мл для товарів unit_ml>1, а wholesale — за пляшку.
+              -- Ділимо на об'єм → cost_per_unit стає ціною за мл, інакше diff_value завищений у unit_ml разів.
+              COALESCE(v.wholesale,0) / NULLIF(GREATEST(v.unit_ml,1),0) AS cost
          FROM product_variants v
          JOIN products p ON p.id = v.product_id
         WHERE ${where}`,
