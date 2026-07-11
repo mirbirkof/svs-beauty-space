@@ -96,7 +96,10 @@ const rateLimit = require('express-rate-limit');
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000, max: 300,            // 300 req/мин с IP
   standardHeaders: true, legacyHeaders: false,
-  skip: (req) => req.path === '/health' || req.path === '/' || req.path.startsWith('/p/') || req.path.startsWith('/admin'),
+  // ВАЖЛИВО: лимітер змонтований на '/api', тож req.path тут БЕЗ префікса '/api'.
+  // Старий skip('/admin') ненавмисно звільняв від ліміту ВСІ /api/admin/* (req.path='/admin/...').
+  // Статика адмінки віддається окремим app.use('/admin', static) і під цим лимітером не проходить.
+  skip: (req) => req.path === '/health' || req.path === '/',
   message: { error: 'too-many-requests' },
 });
 const authLimiter = rateLimit({
