@@ -661,14 +661,24 @@ router.post('/clients/:id/erase', async (req, res) => {
     const r = await client.query(
       `UPDATE clients SET
          name = 'Видалений клієнт', phone = NULL, email = NULL,
+         phone_enc = NULL, phone_bidx = NULL,
          telegram_id = NULL, tg_first_name = NULL, tg_last_name = NULL, tg_username = NULL,
          birthday = NULL, notes = NULL, deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
        WHERE id = $1 RETURNING id`, [id]);
     if (!r.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
-    // чисті ПД — фізичне видалення
-    for (const t of ['client_notes', 'client_preferences', 'medical_cards']) {
+    // чисті ПД — фізичне видалення (в т.ч. медичні: алергії, формули, згоди, журнал доступу)
+    for (const t of ['client_notes', 'client_preferences', 'medical_cards',
+                     'allergy_tests', 'coloring_formulas', 'procedure_consents', 'medical_access_log']) {
       await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id]).catch(() => {});
     }
+    // Журнали подій/аудиту зберігаємо (цілісність), але знеособлюємо PII в payload/meta
+    // саме цього клієнта — інакше ПІБ/телефон відновлюються з payload за незмінним id.
+    await client.query(
+      `UPDATE domain_events SET payload = '{"redacted":"gdpr-erase"}'::jsonb
+        WHERE entity_type = 'client' AND entity_id = $1::text`, [String(id)]).catch(() => {});
+    await client.query(
+      `UPDATE audit_log SET meta = '{"redacted":"gdpr-erase"}'::jsonb
+        WHERE entity = 'client' AND entity_id = $1`, [id]).catch(() => {});
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
     res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });
