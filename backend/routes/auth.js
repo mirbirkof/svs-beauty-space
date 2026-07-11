@@ -891,6 +891,15 @@ router.post('/tg-login-verify', async (req, res) => {
     if (!user) return res.status(404).json({ ok: false, error: 'user-not-found' });
     if (user.is_active === false) return res.status(403).json({ ok: false, error: 'account-inactive' });
 
+    // Major M1: захист від перебору 6-значного коду на акаунт (1M комбінацій).
+    // Раніше tg-login-verify не мав per-account throttle → ~1500 спроб за 5 хв.
+    // Дзеркало verify-2fa (#28): >=8 невдалих за 15 хв → блок.
+    const codeFailures = await countRecentFailures(pool, String(user.id), 'tg-login-verify', 15);
+    if (codeFailures >= 8) {
+      await recordAttempt(pool, { identifier, kind: 'tg-login-verify', success: false, ip, ua, meta: { reason: 'too-many-code-attempts' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    }
+
     const codeHash = sha256(String(code).trim());
     const r = await pool.query(
       `SELECT * FROM two_factor_codes
