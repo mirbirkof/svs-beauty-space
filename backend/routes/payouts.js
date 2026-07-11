@@ -448,20 +448,17 @@ router.post('/records/:id/recalculate', async (req, res) => {
     const s = (await client.query(`SELECT * FROM payroll_schemes WHERE master_id=$1 AND is_active=TRUE LIMIT 1`, [r0.master_id])).rows[0];
     if (!s) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'no active scheme for master' }); }
 
-    const ob = (await client.query(
-      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(COALESCE(real_amount, price)),0)::numeric AS revenue
-         FROM appointments
-        WHERE master_id=$1::int AND starts_at >= $2::date AND starts_at < $3::date
-          AND (status IN ('done','completed') OR (status='confirmed' AND real_synced_at IS NOT NULL))`,
-      [r0.master_id, from, toExcl])).rows[0];
-    const services_count = ob.cnt || 0, services_revenue = num(ob.revenue);
-    let percent_part = 0, fixed_part = num(r0.fixed_part);
-    if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = services_revenue * (num(s.percent) / 100);
+    // Major #7: пересчёт раньше брал gross-чек (SUM(real_amount||price)) без вычета материалов
+    // и игнорировал percent_base → для net-схемы завышал базу и percent_part. Теперь единая
+    // формула через liveEstimate (net-база с MATLINES_CTE + percent_base + fixed_per_day/month).
+    const est = await liveEstimate(r0.master_id, from, String(toExcl).slice(0, 10));
+    const services_count = est.services_count, services_revenue = est.services_revenue;
+    const percent_part = est.percent_part, fixed_part = est.fixed_part;
 
     const oldTotal = num(r0.total);
     await client.query(
-      `UPDATE payroll_records SET services_count=$2, services_revenue=$3, percent_part=$4 WHERE id=$1`,
-      [r0.id, services_count, services_revenue, percent_part]);
+      `UPDATE payroll_records SET services_count=$2, services_revenue=$3, percent_part=$4, fixed_part=$5 WHERE id=$1`,
+      [r0.id, services_count, services_revenue, Math.round(percent_part), Math.round(fixed_part)]);
     const newTotal = num((await client.query(`SELECT total FROM payroll_records WHERE id=$1`, [r0.id])).rows[0].total);
 
     await client.query(
