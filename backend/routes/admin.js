@@ -682,6 +682,16 @@ router.post('/clients/:id/erase', async (req, res) => {
     await client.query(
       `UPDATE audit_log SET meta = '{"redacted":"gdpr-erase"}'::jsonb
         WHERE entity = 'client' AND entity_id = $1`, [id]).catch(() => {});
+    // Major #6/#7 (верифікація): решта таблиць з телефоном клієнта — знеособлюємо PII
+    // (записи лишаємо як історію/фінанси, але телефон/ім'я/telegram стираємо).
+    await client.query(`UPDATE online_bookings  SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE waitlist          SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE callback_requests SET phone=NULL, name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE meta_leads        SET phone=NULL, client_name='Видалений', email=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE review_request_log SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE reviews           SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE favorites         SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
     res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });
