@@ -87,6 +87,17 @@ router.post('/clients', async (req, res) => {
   const pool = getPool();
   const report = { total: rows.length - 1, imported: 0, updated: 0, skipped: 0, errors: [] };
 
+  // Блокер F2: CSV-імпорт обходив ліміт плану max_clients (заливка 10k на Free/Solo).
+  // Рахуємо залишок місткості й не даємо додавати НОВИХ понад ліміт; оновлення існуючих — дозволені.
+  let remainingCap = Infinity;
+  try {
+    const planLimit = await require('../lib/plan-limits').getPlanLimit('max_clients');
+    if (planLimit != null) {
+      const cnt = await pool.query("SELECT COUNT(*)::int AS n FROM clients WHERE deleted_at IS NULL");
+      remainingCap = Math.max(0, planLimit - Number(cnt.rows[0].n));
+    }
+  } catch (e) { /* fail-open, як і enforcePlanLimit */ }
+
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];
     const rec = {};
@@ -97,28 +108,44 @@ router.post('/clients', async (req, res) => {
     if (!phone && !name) { report.skipped++; continue; }
     if (!phone) {
       // Без телефона апсертить по уникальному ключу нельзя — заносим как нового без дедупа
+      if (remainingCap <= 0) { report.skipped++; report.errors.push({ line: r + 1, error: 'plan-limit' }); continue; }
       try {
         await pool.query(
           `INSERT INTO clients (phone, name, email, birthday, source, notes) VALUES (NULL,$1,$2,$3,$4,$5)`,
           [name, rec.email || null, toDateOrNull(rec.birthday), rec.source || 'import', rec.notes || null]);
-        report.imported++;
+        report.imported++; remainingCap--;
       } catch (e) { report.errors.push({ line: r + 1, error: e.code || e.message }); }
       continue;
     }
 
     try {
-      const q = await pool.query(
-        `INSERT INTO clients (phone, name, email, birthday, source, notes)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (tenant_id, phone) DO UPDATE SET
-           name      = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
-           email     = COALESCE(clients.email, EXCLUDED.email),
-           birthday  = COALESCE(clients.birthday, EXCLUDED.birthday),
-           notes     = COALESCE(NULLIF(clients.notes,''), EXCLUDED.notes),
-           updated_at = NOW()
-         RETURNING (xmax = 0) AS inserted`,
-        [phone, name || null, rec.email || null, toDateOrNull(rec.birthday), rec.source || 'import', rec.notes || null]);
-      if (q.rows[0] && q.rows[0].inserted) report.imported++; else report.updated++;
+      if (remainingCap <= 0) {
+        // Ліміт вичерпано: лише оновлюємо існуючого (RLS скоупить за тенантом), нового не створюємо.
+        const upd = await pool.query(
+          `UPDATE clients SET
+             name      = COALESCE(NULLIF(name,''), $2),
+             email     = COALESCE(email, $3),
+             birthday  = COALESCE(birthday, $4),
+             notes     = COALESCE(NULLIF(notes,''), $5),
+             updated_at = NOW()
+           WHERE phone = $1`,
+          [phone, name || null, rec.email || null, toDateOrNull(rec.birthday), rec.notes || null]);
+        if (upd.rowCount) report.updated++;
+        else { report.skipped++; report.errors.push({ line: r + 1, phone, error: 'plan-limit' }); }
+      } else {
+        const q = await pool.query(
+          `INSERT INTO clients (phone, name, email, birthday, source, notes)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (tenant_id, phone) DO UPDATE SET
+             name      = COALESCE(NULLIF(clients.name,''), EXCLUDED.name),
+             email     = COALESCE(clients.email, EXCLUDED.email),
+             birthday  = COALESCE(clients.birthday, EXCLUDED.birthday),
+             notes     = COALESCE(NULLIF(clients.notes,''), EXCLUDED.notes),
+             updated_at = NOW()
+           RETURNING (xmax = 0) AS inserted`,
+          [phone, name || null, rec.email || null, toDateOrNull(rec.birthday), rec.source || 'import', rec.notes || null]);
+        if (q.rows[0] && q.rows[0].inserted) { report.imported++; remainingCap--; } else report.updated++;
+      }
     } catch (e) {
       report.errors.push({ line: r + 1, phone, error: e.code || e.message });
     }
