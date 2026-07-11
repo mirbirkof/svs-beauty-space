@@ -80,3 +80,11 @@
 - mobile.js/agent-tools.js получат 23P01 — обработать gracefully (или 500 приемлем как защита от двойной записи).
 - После — убрать посточечные app-локи как избыточные ИЛИ оставить (re-entrant, безвредно).
 РИСК: ошибка в фильтре статусов/обходе ломает ВСЕ записи или админ-овербукинг. Тестировать каждый шаг. Проверить раундом верификации.
+
+## ⚠️ ЗАДАЧА №1 — РАСШИРЕНИЕ (раунд 3, 18:45): триггер 246 покрыл основной INSERT, но найдены edge-cases (ЖДУТ проверки скептиком, чинить holistic, НЕ наспех):
+- триггер 246 пропускает INSERT с ends_at IS NULL (mobile offline-sync) → обойти проверку
+- триггер INSERT-only → reschedule PATCH (UPDATE) без защиты (TOCTOU wouldExceedParallel)
+- кросс-табличный: 241(online_bookings) и 246(appointments) не видят друг друга — real ТОЛЬКО если канал пишет в одну таблицу без второй; проверить пишет ли web всегда appointments
+- booking.js shadow-INSERT appointments после ob_insert — проверить не глотает ли 23P01 (иначе ob есть, appt нет)
+- cancel-синк online_bookings↔appointments для нативных броней
+РЕШЕНИЕ: holistic — либо расширить триггер (ends_at coalesce, покрыть UPDATE с исключением self), либо унифицировать online_bookings+appointments. С тестом каждого. НЕ патчить по одному (2 регресса уже было).
