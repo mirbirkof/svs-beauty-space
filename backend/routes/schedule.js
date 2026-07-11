@@ -1576,6 +1576,25 @@ router.post('/appointments/:id/pay', async (req, res) => {
         return res.status(400).json({ error: 'bonus-redeem-failed', message: 'Не вдалося списати бонуси: ' + e.message });
       }
     }
+    // 4) передоплата (Major #4): якщо за цей візит уже внесено передоплату (Mono online,
+    // вже лежить у касі як 'prepayment') — віднімаємо її з готівки, інакше каса рахує гроші
+    // двічі. Жорсткий матч: той самий клієнт + час візиту в межах слоту брони, ще не спожита.
+    let prepaidBookingId = null, prepaidApplied = 0;
+    if (appt.client_id && remaining > 0) {
+      try {
+        const pb = await pool.query(
+          `SELECT id, prepaid_amount FROM online_bookings
+            WHERE client_id = $1 AND prepaid_amount > 0 AND prepaid_at IS NOT NULL AND prepaid_consumed_at IS NULL
+              AND date_from <= $2 AND date_to > $2
+            ORDER BY prepaid_at DESC LIMIT 1`, [appt.client_id, appt.starts_at]);
+        if (pb.rows[0]) {
+          prepaidBookingId = pb.rows[0].id;
+          prepaidApplied = Math.min(round2(pb.rows[0].prepaid_amount), remaining);
+          remaining = round2(remaining - prepaidApplied);
+        }
+      } catch (e) { console.error('[pay/prepaid]', e.message); }
+    }
+
     const finalCash = Math.max(0, round2(remaining));
     const totalDiscount = round2(discountMoney + certMoney + bonusMoney);
     // сумісність зі старим кодом нижче: amount = скільки реально в касу
@@ -1712,6 +1731,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
             WHERE id=$1`,
           [id, discountMoney || null, certMoney > 0 ? certRow.code : null, certMoney || null,
            bonusRedeemed || null, bonusMoney || null, realServiceAmount]);
+        // Major #4: позначаємо передоплату спожитою в тій самій транзакції (idempotent —
+        // WHERE prepaid_consumed_at IS NULL), щоб її не відняли вдруге при повторній оплаті.
+        if (prepaidBookingId && prepaidApplied > 0) {
+          await client.query(
+            `UPDATE online_bookings SET prepaid_consumed_at = NOW(), updated_at = NOW()
+              WHERE id = $1 AND prepaid_consumed_at IS NULL`, [prepaidBookingId]);
+        }
       }
       await client.query(raceLost ? 'ROLLBACK' : 'COMMIT');
     } catch (e) {
