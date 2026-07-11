@@ -1794,6 +1794,13 @@ router.delete('/appointments/:id', async (req, res) => {
     if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     // #95: видалення записів минулих днів — лише коли увімкнено allow_edit_past
     if (await pastEditDenied(req, chk.rows[0].starts_at)) return res.status(403).json(PAST_LOCKED);
+    // Major #15: повертаємо списані матеріали на склад ПЕРЕД видаленням запису. Для hard-delete
+    // рядок зникне і reverseWriteOff по ньому вже не спрацює, тож робимо це першим кроком.
+    // Ідемпотентно (флаг stock_written_off) — повторний DELETE не задвоїть повернення.
+    try {
+      const { reverseWriteOffForAppointment } = require('../lib/consumables');
+      await reverseWriteOffForAppointment(id);
+    } catch (e) { console.error('[appt-delete/stock-return]', e.message); }
     // Возврат кассы + удаление/отмена записи — АТОМАРНО. Иначе при падении между ними
     // деньги вернулись, а запись осталась (или наоборот) → рассинхрон кассы.
     const soft = !!chk.rows[0].beautypro_id;
