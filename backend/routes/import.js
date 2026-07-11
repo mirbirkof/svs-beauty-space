@@ -128,7 +128,7 @@ router.post('/clients', async (req, res) => {
              birthday  = COALESCE(birthday, $4),
              notes     = COALESCE(NULLIF(notes,''), $5),
              updated_at = NOW()
-           WHERE phone = $1`,
+           WHERE phone = $1 AND deleted_at IS NULL`,
           [phone, name || null, rec.email || null, toDateOrNull(rec.birthday), rec.notes || null]);
         if (upd.rowCount) report.updated++;
         else { report.skipped++; report.errors.push({ line: r + 1, phone, error: 'plan-limit' }); }
@@ -142,6 +142,7 @@ router.post('/clients', async (req, res) => {
              birthday  = COALESCE(clients.birthday, EXCLUDED.birthday),
              notes     = COALESCE(NULLIF(clients.notes,''), EXCLUDED.notes),
              updated_at = NOW()
+           WHERE clients.deleted_at IS NULL
            RETURNING (xmax = 0) AS inserted`,
           [phone, name || null, rec.email || null, toDateOrNull(rec.birthday), rec.source || 'import', rec.notes || null]);
         if (q.rows[0] && q.rows[0].inserted) { report.imported++; remainingCap--; } else report.updated++;

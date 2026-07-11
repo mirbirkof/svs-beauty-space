@@ -23,6 +23,17 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
+
+// РАУНД3-m1: часовой пояс салона БЕЗ хардкода +03:00 (зимой Киев = +02, был сдвиг на час).
+// Интерпретирует "YYYY-MM-DD" + "HH:mm" как локальное время Europe/Kyiv в любой сезон.
+function kyivToUtcIso(date, time) {
+  const guess = new Date(`${date}T${time}:00Z`);
+  const tzName = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv', timeZoneName: 'longOffset' })
+    .formatToParts(guess).find(p => p.type === 'timeZoneName').value; // напр. "GMT+02:00"
+  const m = tzName.match(/([+-])(\d{2}):?(\d{2})/);
+  const offMin = m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 180;
+  return new Date(guess.getTime() - offMin * 60000).toISOString();
+}
 const { requirePerm, logAction } = require('../lib/rbac');
 const {
   signAccessToken,
@@ -382,7 +393,7 @@ router.post('/appointments', mobileAuth, needPerm('mobile.appointments.create'),
       clientName = cl.rows[0]?.name || null;
     }
 
-    const startsAt = new Date(`${date}T${time}:00+03:00`).toISOString();
+    const startsAt = kyivToUtcIso(date, time);
     const endsAt = new Date(new Date(startsAt).getTime() + durationMin * 60000).toISOString();
 
     const r = await pool.query(
@@ -419,17 +430,17 @@ router.put('/appointments/:id', mobileAuth, needPerm('mobile.appointments.update
     const push = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length}`); };
 
     if (date && time) {
-      const startsAt = new Date(`${date}T${time}:00+03:00`).toISOString();
+      const startsAt = kyivToUtcIso(date, time);
       push('starts_at', startsAt);
     } else if (date) {
       // Только дата, время берём из существующей записи
       const existingTime = new Date(existing.rows[0].starts_at).toTimeString().slice(0, 5);
-      const startsAt = new Date(`${date}T${existingTime}:00+03:00`).toISOString();
+      const startsAt = kyivToUtcIso(date, existingTime);
       push('starts_at', startsAt);
     }
     if (time && !date) {
       const existingDate = new Date(existing.rows[0].starts_at).toISOString().slice(0, 10);
-      const startsAt = new Date(`${existingDate}T${time}:00+03:00`).toISOString();
+      const startsAt = kyivToUtcIso(existingDate, time);
       push('starts_at', startsAt);
     }
     if (service_id !== undefined) push('service_id', service_id);
@@ -843,7 +854,7 @@ router.post('/sync', mobileAuth, needPerm('mobile.access'), async (req, res) => 
         if (action_type === 'appointment.create') {
           const { client_id, service_id, employee_id, date, time, notes } = payload || {};
           if (date && time) {
-            const startsAt = new Date(`${date}T${time}:00+03:00`).toISOString();
+            const startsAt = kyivToUtcIso(date, time);
             // РАУНД3-FIX (BLOCKER-R2): ends_at обязателен (NOT NULL + без него триггер
             // защиты от овербукинга пропускал оффлайн-путь). Считаем из длительности услуги.
             let durMin = 60;

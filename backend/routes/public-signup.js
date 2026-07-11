@@ -47,9 +47,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
     if (salonName.length > 120) return res.status(400).json({ error: 'salon-name-too-long' });
     if (!phone || phone.length < 10) return res.status(400).json({ error: 'valid-phone-required' });
     if (!password || password.length < 6) return res.status(400).json({ error: 'password-min-6' });
-    // GDPR (блокер G1): згода на обробку ПД обов'язкова. Явне false = відмова → блок.
-    // Відсутність поля трактуємо як згоду (форма має чекбокс), але факт фіксуємо нижче.
-    if (b.consent === false || b.consent === 'false') return res.status(400).json({ error: 'consent-required' });
+    // GDPR (блокер G1, ужесточено РАУНД3-m5): згода має бути ЯВНОЮ — сервер не довіряє
+    // «мовчазній» згоді. Форма шле consent:true з 11.07 (commit 67aa4ea), API-клієнти зобовʼязані теж.
+    if (b.consent !== true && b.consent !== 'true') return res.status(400).json({ error: 'consent-required' });
 
     // Дедуп не потрібен: телефон унікальний ПЕР-САЛОН (migration 016),
     // один власник може мати кілька салонів. Від спаму захищає rate-limit вище.
