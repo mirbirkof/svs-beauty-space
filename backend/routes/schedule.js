@@ -1385,6 +1385,9 @@ router.post('/appointments', async (req, res) => {
     let r;
     try {
       await _apptClient.query('BEGIN'); await applyTenant(_apptClient);
+      // Задача №1: тригер appt_enforce_capacity (246) блокує овербукінг на рівні БД.
+      // При свідомому force_parallel адміна — вимикаємо тригер у цій транзакції (обхід).
+      if (force_parallel) await _apptClient.query(`SET LOCAL app.skip_overbook = 'on'`);
       await _apptClient.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(Number(master_id))]);
       r = await _apptClient.query(
         `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, room_id, notes)
