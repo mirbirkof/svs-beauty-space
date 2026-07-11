@@ -56,8 +56,10 @@ router.post('/webhook', async (req, res) => {
         `SELECT * FROM viber_bot_config WHERE is_active = TRUE`
       );
       cfg = cfgs.rows.find(c => c.auth_token && viberSigMatch(req.rawBody, sig, c.auth_token)) || null;
-    } else {
-      // Fallback (ручной тест из админки): токен в заголовке = знание секрета
+    } else if (process.env.NODE_ENV !== 'production') {
+      // Major #17: токен-fallback ТІЛЬКИ поза продакшеном (ручний тест з адмінки).
+      // У проді приймаємо лише HMAC-підпис реального Viber — інакше витік auth_token
+      // дозволяв би підробити вебхук-події в обхід підпису.
       const incomingToken = req.headers['x-viber-auth-token'] || '';
       if (incomingToken) {
         const cfgRow = await pool.query(
