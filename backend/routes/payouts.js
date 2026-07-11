@@ -501,6 +501,10 @@ router.post('/records/:id/cancel', async (req, res) => {
     await client.query(`UPDATE payroll_bonuses   SET applied_record_id=NULL WHERE applied_record_id=$1`, [r0.id]);
     await client.query(`UPDATE payroll_penalties SET applied_record_id=NULL WHERE applied_record_id=$1`, [r0.id]);
     await client.query(`UPDATE payroll_advances  SET settled=FALSE, settled_record_id=NULL WHERE settled_record_id=$1`, [r0.id]);
+    // Блокер D1: авто-нарахування пише провізорну витрату в касу (ref_type='auto_payroll',
+    // ref_id=record). Раніше cancel її НЕ сторнував → каса лишалась із витратою, а ручна
+    // виплата зверху давала ПОДВІЙНИЙ розхід. Прибираємо авто-витрату цього ж record.
+    await client.query(`DELETE FROM cash_operations WHERE ref_type='auto_payroll' AND ref_id=$1`, [r0.id]);
     await client.query(`UPDATE payroll_records SET status='cancelled' WHERE id=$1`, [r0.id]);
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'payroll.cancelled', entity: 'payroll_records', entity_id: r0.id, ip: req.ip });
