@@ -661,6 +661,8 @@ router.post('/clients/:id/erase', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'bad-id' });
     await client.query('BEGIN'); await applyTenant(client);
+    // Раунд3: захоплюємо старий телефон ДО зануління — деякі таблиці ключовані по client_phone.
+    const _oldPhone = (await client.query('SELECT phone FROM clients WHERE id=$1', [id])).rows[0]?.phone || null;
     const r = await client.query(
       `UPDATE clients SET
          name = 'Видалений клієнт', phone = NULL, email = NULL,
@@ -695,6 +697,11 @@ router.post('/clients/:id/erase', async (req, res) => {
     // Раунд2: ще дві PII-колонки — ім'я клієнта в записах і підпис у фото-згодах.
     await client.query(`UPDATE appointments      SET client_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
     await client.query(`UPDATE photo_consents    SET signed_by_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
+    // Раунд3: phone-keyed таблиці (без client_id) — чистимо за старим телефоном.
+    if (_oldPhone) {
+      await client.query(`UPDATE birthday_bonuses SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch(() => {});
+      await client.query(`UPDATE client_loyalty   SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch(() => {});
+    }
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
     res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });

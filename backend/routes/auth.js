@@ -571,6 +571,9 @@ router.post('/reset-password', validateBody({
       await client.query('BEGIN'); await applyTenant(client);
       await client.query(`UPDATE users SET password_hash=$1, password_changed_at=NOW(), failed_login_attempts=0, locked_until=NULL WHERE id=$2`, [newHash, row.user_id]);
       await client.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [row.user_id, newHash]);
+      // Раунд3: скидання пароля відкликає ВСІ панельні токени (svs_) — інакше стара сесія
+      // зловмисника лишалась би дійсною після зміни пароля.
+      await client.query(`DELETE FROM user_tokens WHERE user_id=$1`, [row.user_id]).catch(() => {});
       await client.query(`UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1`, [row.id]);
       // revoke all sessions (force re-login)
       await client.query(`UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL`, [row.user_id]);
@@ -618,6 +621,9 @@ router.post('/change-password', authRequired, async (req, res) => {
       await client.query('BEGIN'); await applyTenant(client);
       await client.query(`UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE id=$2`, [newHash, req.user.id]);
       await client.query(`INSERT INTO password_history (user_id, password_hash) VALUES ($1,$2)`, [req.user.id, newHash]);
+      // Раунд3: зміна пароля відкликає панельні токени (svs_) — вони не привʼязані до сесії,
+      // тож без цього стара панель-сесія лишалась би активною після зміни пароля.
+      await client.query(`DELETE FROM user_tokens WHERE user_id=$1`, [req.user.id]).catch(() => {});
       // keep current session, revoke others
       await client.query(`UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=$1 AND id <> $2 AND revoked_at IS NULL`, [req.user.id, req.sessionId || 0]);
       await client.query('COMMIT');

@@ -196,8 +196,12 @@ router.post('/verify', validateBody({
 
     // апсёрт клиента
     const cl = await pool.query(
-      `INSERT INTO clients (phone, source) VALUES ($1, 'cabinet')
-       ON CONFLICT (tenant_id, phone) DO UPDATE SET phone = EXCLUDED.phone
+      `INSERT INTO clients (phone, source, consent_given_at, consent_source)
+       VALUES ($1, 'cabinet', NOW(), 'cabinet')
+       ON CONFLICT (tenant_id, phone) DO UPDATE SET
+         phone = EXCLUDED.phone,
+         consent_given_at = COALESCE(clients.consent_given_at, NOW()),
+         consent_source = COALESCE(clients.consent_source, 'cabinet')
        RETURNING id, phone, name, email, loyalty_points`,
       [phone]
     );
