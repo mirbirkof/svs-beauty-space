@@ -103,6 +103,10 @@ async function accrue(opts = {}) {
     const days = expiryDays != null ? Number(expiryDays)
       : (settings.vip_no_expiry ? null : Number(settings.expiry_days || 365));
     const expiresAt = days && days > 0 ? `now() + interval '${days} days'` : 'NULL';
+    // Major #10: hold-період — нараховані бонуси «відлежуються» перед списанням (анти-фрод:
+    // не можна нарахувати й одразу списати, напр. з подальшим поверненням покупки).
+    const holdDays = Math.max(0, Number(settings.hold_period_days) || 0);
+    const availableAt = holdDays > 0 ? `now() + interval '${holdDays} days'` : 'now()';
 
     await _ensureBalanceRow(client, clientId);
     // FOR UPDATE на балансі серіалізує конкурентні accrue одного клієнта
@@ -124,8 +128,8 @@ async function accrue(opts = {}) {
 
     const ins = await client.query(
       `INSERT INTO bonus_transactions
-        (client_id, branch_id, type, amount, balance_after, remaining, rule_id, source_type, source_id, description, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, ${expiresAt})
+        (client_id, branch_id, type, amount, balance_after, remaining, rule_id, source_type, source_id, description, expires_at, available_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, ${expiresAt}, ${availableAt})
        ON CONFLICT (tenant_id, client_id, source_type, source_id)
          WHERE source_id IS NOT NULL AND type='accrual' DO NOTHING
        RETURNING *`,
@@ -169,8 +173,11 @@ async function previewRedeem(opts = {}) {
     }
     if (amount <= 0) return 0;
     await _ensureBalanceRow(client, clientId);
-    const bal = (await client.query('SELECT balance FROM bonus_balances WHERE client_id=$1', [clientId])).rows[0];
-    const b = Number(bal?.balance || 0);
+    // Major #10: оцінка каси має рахувати ЛИШЕ відлежані бонуси (як redeem), інакше касир
+    // покаже знижку на заморожені бонуси, а redeem їх не спише → грошова діра в чеку.
+    const b = Number((await client.query(
+      `SELECT COALESCE(SUM(remaining),0)::numeric a FROM bonus_transactions
+        WHERE client_id=$1 AND remaining > 0 AND (available_at IS NULL OR available_at <= now())`, [clientId])).rows[0].a);
     if (b < amount) amount = round2(b);
     return amount > 0 ? amount : 0;
   }).catch(() => 0);
@@ -197,12 +204,17 @@ async function redeem(opts = {}) {
 
     await _ensureBalanceRow(client, clientId);
     const bal = (await client.query('SELECT balance FROM bonus_balances WHERE client_id=$1 FOR UPDATE', [clientId])).rows[0];
-    if (Number(bal.balance) < amount) throw new Error('insufficient-balance');
+    // Major #10: доступно до списання = лише «відлежані» нарахування (available_at<=now),
+    // а не повний balance (у ньому можуть бути ще заморожені бонуси на hold-періоді).
+    const avail = Number((await client.query(
+      `SELECT COALESCE(SUM(remaining),0)::numeric a FROM bonus_transactions
+        WHERE client_id=$1 AND remaining > 0 AND (available_at IS NULL OR available_at <= now())`, [clientId])).rows[0].a);
+    if (avail < amount) throw new Error('insufficient-balance');
 
-    // FIFO: гасимо найраніше сгораючі нарахування (NULL expires_at — в кінець)
+    // FIFO: гасимо найраніше сгораючі нарахування (NULL expires_at — в кінець); лише відлежані.
     const lots = (await client.query(
       `SELECT id, remaining FROM bonus_transactions
-       WHERE client_id=$1 AND remaining > 0
+       WHERE client_id=$1 AND remaining > 0 AND (available_at IS NULL OR available_at <= now())
        ORDER BY expires_at ASC NULLS LAST, created_at ASC FOR UPDATE`, [clientId])).rows;
     let left = amount;
     for (const lot of lots) {
