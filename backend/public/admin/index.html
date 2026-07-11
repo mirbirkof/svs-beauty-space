@@ -8520,7 +8520,10 @@ let _tDrag = null;
 const TOUCH_HOLD_MS = 500;
 function jBindTouchDrag(container){
   container.querySelectorAll('.jcol-body .jappt').forEach(el => {
-    const mm = (el.getAttribute('onclick')||'').match(/openAppt\((\d+)\)/);
+    // Картки денного журналу мають onclick="openAppt(id, master_id)" — ДВА аргументи.
+    // Стара регулярка вимагала ')' одразу після числа → на них НЕ спрацьовувала, тож
+    // ні тач-перенос, ні глушилка нативного меню (Скачати/Поділитися) не навішувались.
+    const mm = (el.getAttribute('onclick')||'').match(/openAppt\((\d+)/);
     if (!mm) return;
     const id = Number(mm[1]);
     el.addEventListener('touchstart', (ev)=>jTouchStart(ev, id, el), { passive:false });
@@ -8531,6 +8534,14 @@ function jBindTouchDrag(container){
     // воно перехоплювало жест і не давало спрацювати нашому перетягуванню.
     el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); return false; });
   });
+  // Підстраховка на рівні контейнера: глушимо нативне меню на будь-якому довгому
+  // натисканні по картці журналу — навіть якщо якийсь шлях рендера пропустив прив'язку.
+  if (!container._ctxGuard) {
+    container._ctxGuard = true;
+    container.addEventListener('contextmenu', (e)=>{
+      if (e.target && e.target.closest && e.target.closest('.jappt')) { e.preventDefault(); e.stopPropagation(); return false; }
+    });
+  }
 }
 function _colAtPoint(x,y){ const el=document.elementFromPoint(x,y); return el?el.closest('.jcol-body[data-master]'):null; }
 function jTouchStart(ev, id, el){
