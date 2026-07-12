@@ -486,13 +486,19 @@ router.post('/invoice', async (req, res) => {
 // ── HTTP: вебхук от Mono (требует req.rawBody — см. shop-api.js) ──
 router.post('/webhook', async (req, res) => {
   try {
-    const ok = await mono.verifyWebhook(req.rawBody, req.get('X-Sign'));
-    if (!ok) {
-      console.error('[mono:webhook] bad signature, ip=', req.ip);
-      return res.status(403).json({ error: 'bad-signature' });
-    }
-    const result = await applyInvoiceStatus(req.body || {});
-    res.json(result); // 200 всегда при валидной подписи — иначе Mono ретраит
+    // Подпись per-мерчант: если инвойс создан салоном-арендатором, вебхук помечен ?t=<tenantId>
+    // (mono.createInvoice) → поднимаем его контекст, чтобы verifyWebhook взял ЕГО pubkey/токен.
+    // Без метки (платформа/салон Босса) — прежнее поведение на env-токене.
+    const { runAs } = require('../lib/tenant');
+    const tid = req.query && req.query.t ? String(req.query.t) : null;
+    const verifyAndApply = async () => {
+      const ok = await mono.verifyWebhook(req.rawBody, req.get('X-Sign'));
+      if (!ok) { console.error('[mono:webhook] bad signature, ip=', req.ip, 't=', tid || '-'); return { bad: true }; }
+      return { result: await applyInvoiceStatus(req.body || {}) };
+    };
+    const out = tid ? await runAs(tid, verifyAndApply) : await verifyAndApply();
+    if (out.bad) return res.status(403).json({ error: 'bad-signature' });
+    res.json(out.result); // 200 всегда при валидной подписи — иначе Mono ретраит
   } catch (e) {
     console.error('[mono:webhook]', e);
     res.status(500).json({ error: 'internal' });

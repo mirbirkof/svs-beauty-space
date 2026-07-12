@@ -386,9 +386,17 @@ try {
     // Блокер #5: проводим постоянные расходы ПО КАЖДОМУ салону под его RLS-контекстом,
     // иначе расходы всех салонов сваливались в кассу Босса (дефолтный тенант).
     const { forEachTenant } = require('./lib/tenant');
-    const tick = () => forEachTenant(() => recExp.postDue())
-      .then(r => { if (r.ok) console.log(`[recurring-exp] тік по ${r.tenants} салонах (ok ${r.ok}, fail ${r.fail})`); })
-      .catch(e => console.error('[recurring-exp] tick:', e.message));
+    // Guard от наложения (аудит-контроль): если проход по всем салонам занял >12ч, следующий
+    // tick не должен стартовать поверх — иначе постоянные расходы провелись бы дважды за период.
+    let _recExpRunning = false;
+    const tick = () => {
+      if (_recExpRunning) { console.warn('[recurring-exp] попередній тік ще йде — пропуск'); return Promise.resolve(); }
+      _recExpRunning = true;
+      return forEachTenant(() => recExp.postDue())
+        .then(r => { if (r.ok) console.log(`[recurring-exp] тік по ${r.tenants} салонах (ok ${r.ok}, fail ${r.fail})`); })
+        .catch(e => console.error('[recurring-exp] tick:', e.message))
+        .finally(() => { _recExpRunning = false; });
+    };
     setTimeout(tick, 30000);
     setInterval(tick, 12 * 60 * 60 * 1000);
   }

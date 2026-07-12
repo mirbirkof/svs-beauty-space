@@ -118,10 +118,24 @@ async function createInvoice({ amountUah, orderId, destination, basket }) {
     validity: 24 * 3600, // сутки на оплату
     ...(base ? {
       redirectUrl: `${base}/p/order-paid.html?order=${orderId}`,
-      webHookUrl: `${base}/api/pay/mono/webhook`,
+      // Метка салона в webhook-URL (аудит-контроль): вебхук Mono не несёт tenant, а подпись
+      // проверяется pubkey КОНКРЕТНОГО мерчанта. Для салона-арендатора кладём ?t=<tenantId>,
+      // чтобы обработчик поднял его контекст и проверил подпись ЕГО токеном. Платформа
+      // (салон Босса, дефолтный тенант) — без метки, как раньше.
+      webHookUrl: `${base}/api/pay/mono/webhook${_tenantTag()}`,
     } : {}),
   };
   return monoRequest('POST', '/api/merchant/invoice/create', payload);
+}
+
+// Тег текущего тенанта для webhook-URL (пусто для платформы/вне контекста).
+function _tenantTag() {
+  try {
+    const t = require('./tenant');
+    const tid = t.getTenantId();
+    if (tid && tid !== t.DEFAULT_TENANT_ID) return '?t=' + encodeURIComponent(tid);
+  } catch (_) {}
+  return '';
 }
 
 function getInvoiceStatus(invoiceId) {
