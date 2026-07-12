@@ -62,10 +62,8 @@
 
         <div id="plan_block">
           <label>Тариф</label>
-          <div class="plans">
-            <div class="plan" data-plan="free"><b>Free</b><small>базовий</small></div>
-            <div class="plan active" data-plan="pro"><b>Pro</b><small>популярний</small></div>
-            <div class="plan" data-plan="enterprise"><b>Enterprise</b><small>мережа</small></div>
+          <div class="plans" id="plans_list">
+            <div class="plan active" data-plan="professional"><b>Professional</b><small>популярний</small></div>
           </div>
         </div>
         <div class="trial" id="trial_note">14 днів безкоштовно · оплата пізніше · картка не потрібна</div>
@@ -84,12 +82,35 @@
 
 <script>
   const API = location.origin;
-  let plan = 'pro';
+  let plan = 'professional';
   let acct = 'salon';
-  document.querySelectorAll('.plan').forEach(p => p.addEventListener('click', () => {
-    document.querySelectorAll('.plan').forEach(x => x.classList.remove('active'));
-    p.classList.add('active'); plan = p.dataset.plan;
-  }));
+
+  function bindPlanClicks() {
+    document.querySelectorAll('.plan').forEach(p => p.addEventListener('click', () => {
+      document.querySelectorAll('.plan').forEach(x => x.classList.remove('active'));
+      p.classList.add('active'); plan = p.dataset.plan;
+    }));
+  }
+  // Реальные тарифы из saas_plans_v2 (единая истина цен) — вместо хардкода, чтобы
+  // витрина, биллинг и enforcement показывали одно и то же (аудит-контроль).
+  (async () => {
+    try {
+      const r = await fetch(API + '/api/v2/public/plans?currency=UAH');
+      const d = await r.json();
+      const rows = (d && d.rows) || [];
+      if (!rows.length) { bindPlanClicks(); return; }
+      const list = document.getElementById('plans_list');
+      list.innerHTML = rows.map(p => {
+        const pr = p.prices || {};
+        const mv = pr.monthly != null ? Number(pr.monthly) : null;
+        const price = mv == null ? '' : (mv === 0 ? 'безкоштовно' : Math.round(mv) + ' грн/міс');
+        if (p.is_popular) plan = p.slug;
+        return `<div class="plan${p.is_popular ? ' active' : ''}" data-plan="${p.slug}"><b>${p.name}</b><small>${price}</small></div>`;
+      }).join('');
+      if (!rows.some(p => p.is_popular)) { list.querySelector('.plan')?.classList.add('active'); plan = rows[0].slug; }
+      bindPlanClicks();
+    } catch (_) { bindPlanClicks(); }
+  })();
 
   const planBlock = document.getElementById('plan_block');
   const trialNote = document.getElementById('trial_note');

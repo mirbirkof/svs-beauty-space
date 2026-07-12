@@ -24,7 +24,10 @@ const signupLimiter = rateLimit({
   message: { error: 'Забагато реєстрацій з цієї адреси. Спробуйте за годину.' },
 });
 
-const ALLOWED_PLANS = ['solo', 'free', 'pro', 'enterprise'];
+// Канонические слаги saas_plans_v2 + legacy-коды (solo/pro) для обратной совместимости.
+// Аудит: раньше здесь не было 'starter'/'professional' → выбор Starter (490) молча
+// подменялся на 'pro' (990) — салон платил бы за не тот тариф.
+const ALLOWED_PLANS = ['free', 'starter', 'professional', 'enterprise', 'solo', 'pro'];
 
 router.post('/signup', signupLimiter, async (req, res) => {
   try {
