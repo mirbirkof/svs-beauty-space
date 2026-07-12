@@ -467,6 +467,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
 
   // записи в журнал салону: послідовні послуги одного майстра
   const apptIds = [];
+  let bookingId = null;
   try {
     // B2 (регрес-фікс від верифікації): guarded-insert `WHERE count < max_parallel` під
     // READ COMMITTED все одно ловив гонку — два паралельні запити бачили «вільно» й обидва
@@ -496,6 +497,24 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
         apptIds.push(r.rows[0].id);
         cur += d;
       }
+      // Журнал online_bookings — В ЭТОЙ ЖЕ транзакции (аудит v6): раньше бронь вставлялась
+      // отдельным запросом ПОСЛЕ коммита записей, и capacity-триггер считал только что
+      // созданные appointments как чужие (связь NEW.appointment_id ещё не видна таблице)
+      // → ложный 23P01, журнальная бронь молча терялась вместе с Mono-предоплатой.
+      // Вместимость уже проверена guarded-insert'ами под advisory-локом выше →
+      // тень идёт с локальным обходом (set_config is_local умирает с транзакцией).
+      await client.query(`SELECT set_config('app.skip_overbook','on', true)`);
+      const ob = await client.query(
+        `INSERT INTO online_bookings
+           (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
+            date_from, date_to, channel, bp_appointment_id, status, telegram_id, appointment_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
+                 'bot',$11,'confirmed',$12,$13) RETURNING id`,
+        [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
+         String(masterId), masterNameOf(session, masterId),
+         date, slot.startMin, slot.startMin + chosen.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
+         String(apptIds[0] || ''), uid, Number(apptIds[0]) || null]);
+      bookingId = ob.rows[0].id;
     });
   } catch (e) {
     console.error('[bookbot/appt]', e.message);
@@ -509,24 +528,6 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
       : '⚠️ Не вдалось створити запис. Адміністратор звʼяжеться з вами.';
     return ctx.tg('sendMessage', { chat_id: chatId, text: txt });
   }
-
-  // журнал online_bookings (історія онлайн-каналу)
-  let bookingId = null;
-  try {
-    const ob = await ctx.pool.query(
-      `INSERT INTO online_bookings
-         (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
-          date_from, date_to, channel, bp_appointment_id, status, telegram_id, appointment_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
-               'bot',$11,'confirmed',$12,$13) RETURNING id`,
-      [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
-       String(masterId), masterNameOf(session, masterId),
-       date, slot.startMin, slot.startMin + chosen.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
-       // appointment_id (мігр. 247): без зв'язку бронь + її тінь рахуються тригером
-       // ДВІЧІ → місткість майстра хибно вичерпана (аудит v8, регрес)
-       String(apptIds[0] || ''), uid, Number(apptIds[0]) || null]);
-    bookingId = ob.rows[0].id;
-  } catch (e) { console.error('[bookbot/log]', e.message); }
 
   // перенос: нова бронь створена → старі записи скасовуємо
   let moved = false;

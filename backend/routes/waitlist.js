@@ -10,7 +10,8 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
+const { resolveBookingIds } = require('./booking');
 const bp = require('../beautyproClient');
 const { requirePerm } = require('../lib/rbac');
 const { authClient } = require('./cabinet-auth');
@@ -199,37 +200,52 @@ router.post('/booking/confirm', async (req, res) => {
     );
     if (busy.rowCount) return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
 
-    // Джерело правди — НАША БД (салон відвʼязаний від BeautyPro 03.07). Раніше
-    // status='confirmed' ставився ЛИШЕ якщо BP відповів → з мертвим BP всі брони
-    // з листа очікування падали в 'pending': клієнт думав що записаний, а слот
-    // лишався «вільним» (аудит v8 + приказ Босса 12.07). Тепер підтверджуємо
-    // локально завжди; від овербукінга захищає capacity-тригер 247 на INSERT.
-    let bp_appointment_id = null;
-    const status = 'confirmed';
+    // Аудит v6: бронь + тень в журнале = ОДНА транзакция (как в bot-потоке, раунд 3).
+    // Раньше: (а) между busy-проверкой и INSERT не было лока — гонка давала 500 от
+    // триггера вместо 409; (б) тень в appointments не создавалась вовсе — бронь была
+    // НЕВИДИМА в календаре админа. BeautyPro отвязан 03.07 — мёртвый вызов BP убран.
+    const txc = await pool.connect();
+    let out;
     try {
-      const bpClient = await bp.createClient({ phone: ph, name: name || 'Клієнт' });
-      const appt = await bp.createAppointment({
-        client_id: bpClient.id || bpClient.client_id,
-        service_id, employee_id: master_id,
-        date_from, date_to, note: note || `Онлайн-запис (${channel || 'site'})`,
-      });
-      bp_appointment_id = String(appt.id || appt.appointment_id || '');
-    } catch (bpErr) {
-      if (!/bp-disabled/.test(bpErr.message)) console.error('[booking/confirm bp]', bpErr.message);
+      await txc.query('BEGIN');
+      await applyTenant(txc);
+      const r = await txc.query(`
+        INSERT INTO online_bookings
+          (client_id, client_phone, client_name, service_id, service_name,
+           master_id, master_name, date_from, date_to, channel,
+           bp_appointment_id, status, source_token, telegram_id, note)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmed',$12,$13,$14)
+        RETURNING id, status, bp_appointment_id
+      `, [client_id, ph, name || null, service_id, service_name || null,
+          master_id, master_name || null, date_from, date_to, channel || 'site_salon',
+          null, source_token || null, telegram_id || null, note || null]);
+      out = r.rows[0];
+
+      // Тень в журнале appointments — иначе мастер/админ не видят бронь в расписании.
+      const ids = await resolveBookingIds(txc, service_id, master_id);
+      if (ids.masterId && ids.serviceId) {
+        // Слот уже проверен триггером брони в ЭТОЙ ЖЕ транзакции под тем же замком —
+        // повторная проверка тени дала бы ложный отказ (бронь уже видна счётчику).
+        await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+        const ap = await txc.query(
+          `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, notes)
+           VALUES ($1,$2,$3,$4,$5,'booked',$6,'online',$7) RETURNING id`,
+          [client_id, ids.masterId, ids.serviceId, date_from, date_to, ids.price,
+           `Онлайн-запис #${out.id} (${channel || 'site'})`]);
+        await txc.query(`UPDATE online_bookings SET appointment_id=$1 WHERE id=$2`, [ap.rows[0].id, out.id]);
+      }
+      await txc.query('COMMIT');
+    } catch (txErr) {
+      await txc.query('ROLLBACK').catch(() => {});
+      if (txErr.code === '23P01') {
+        return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
+      }
+      throw txErr;
+    } finally {
+      txc.release();
     }
 
-    const r = await pool.query(`
-      INSERT INTO online_bookings
-        (client_id, client_phone, client_name, service_id, service_name,
-         master_id, master_name, date_from, date_to, channel,
-         bp_appointment_id, status, source_token, telegram_id, note)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-      RETURNING id, status, bp_appointment_id
-    `, [client_id, ph, name || null, service_id, service_name || null,
-        master_id, master_name || null, date_from, date_to, channel || 'site_salon',
-        bp_appointment_id, status, source_token || null, telegram_id || null, note || null]);
-
-    res.json({ ok: true, ...r.rows[0] });
+    res.json({ ok: true, ...out });
   } catch (e) {
     console.error('[booking/confirm]', e.message);
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });

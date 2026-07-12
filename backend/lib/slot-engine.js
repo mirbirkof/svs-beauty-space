@@ -100,7 +100,21 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
       WHERE ob.master_id ~ '^[0-9]+$' AND ob.master_id::int = ANY($2::int[])
         AND ob.status = 'confirmed' AND ob.appointment_id IS NULL
         AND ob.date_to IS NOT NULL
-        AND ob.date_from < day.d1 AND ob.date_to > day.d0`,
+        AND ob.date_from < day.d1 AND ob.date_to > day.d0
+     UNION ALL
+     -- блокування часу (перерва/відпустка, CRM-06): раніше time_blocks бачив ЛИШЕ
+     -- адмін-календар, а онлайн-канали пропонували слоти в перерву майстра (аудит v6).
+     -- Блок займає ВСЮ місткість → рядок повторюється max_parallel разів.
+     SELECT m.mid AS master_id,
+            GREATEST(0,    FLOOR(EXTRACT(EPOCH FROM (tb.starts_at - day.d0)) / 60))::int AS s_min,
+            LEAST(1440, CEIL(EXTRACT(EPOCH FROM (tb.ends_at   - day.d0)) / 60))::int AS e_min
+       FROM time_blocks tb
+       CROSS JOIN day
+       CROSS JOIN unnest($2::int[]) AS m(mid)
+       JOIN masters ma ON ma.id = m.mid
+       CROSS JOIN generate_series(1, GREATEST(1, COALESCE(ma.max_parallel, 1)))
+      WHERE (tb.master_id = m.mid OR tb.master_id IS NULL)
+        AND tb.starts_at < day.d1 AND tb.ends_at > day.d0`,
     [date, masterIds, BUSY_STATUSES]
   );
   const busyBy = new Map();

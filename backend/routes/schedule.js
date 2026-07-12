@@ -1101,41 +1101,66 @@ router.patch('/appointments/:id', async (req, res) => {
     // Ручний перенос (час/майстер/тривалість/послуга/сума) → позначаємо manual_override,
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
     const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined || price !== undefined);
-    const r = await pool.query(
-      `UPDATE appointments
-          SET notes = COALESCE($2, notes),
-              status = COALESCE($3, status),
-              room_id = COALESCE($4, room_id),
-              master_id = COALESCE($5, master_id),
-              starts_at = COALESCE($6, starts_at),
-              ends_at = COALESCE($7, ends_at),
-              service_id = COALESCE($9, service_id),
-              price = COALESCE($10, price),
-              manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
-              updated_at = NOW()
-        WHERE id = $1
-        RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price, real_amount`,
-      [req.params.id, notes ?? null, status ?? null, room_id ?? null,
-       master_id != null ? Number(master_id) : null, newStart, newEnd, markManual,
-       service_id != null ? Number(service_id) : null, newPrice]
-    );
-    if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
-
-    // Перенос запису → синхронізуємо дати ПОВʼЯЗАНОЇ онлайн-брони (звʼязок appointment_id,
-    // мігр. 247). Інакше вікно date_from/date_to лишається старим і матч передоплати в /pay
-    // (date_from<=starts_at<date_to) рветься — передоплата не зараховується (аудит v8, блокер).
-    // skip_overbook: перенос уже перевірено capacity-тригером на appointments вище.
-    if (newStart != null || newEnd != null || (master_id != null)) {
-      await pool.query(`SELECT set_config('app.skip_overbook','on', true)`).catch(() => {});
-      await pool.query(
-        `UPDATE online_bookings
-            SET date_from = COALESCE($2, date_from),
-                date_to   = COALESCE($3, date_to),
-                master_id = COALESCE($4, master_id),
+    // Аудит v6: UPDATE записи + синк её онлайн-брони = ОДНА транзакция.
+    // Раньше: (а) set_config шёл отдельным pool.query — движок оборачивает каждый запрос
+    // в свою транзакцию, is_local-флаг умирал до UPDATE online_bookings (мёртвый обход);
+    // (б) при force_parallel app-проверка пропускалась, но БД-триггер всё равно валил 500 —
+    // осознанный овербук нельзя было ни поставить, ни отредактировать.
+    const txc = await pool.connect();
+    let r;
+    try {
+      await txc.query('BEGIN');
+      await applyTenant(txc);
+      // force_parallel: вместимость уже осознанно подтверждена админом (app-проверка выше
+      // пропущена) → локальный обход триггера. Без force триггер остаётся боевым (TOCTOU).
+      if (req.body.force_parallel) await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+      r = await txc.query(
+        `UPDATE appointments
+            SET notes = COALESCE($2, notes),
+                status = COALESCE($3, status),
+                room_id = COALESCE($4, room_id),
+                master_id = COALESCE($5, master_id),
+                starts_at = COALESCE($6, starts_at),
+                ends_at = COALESCE($7, ends_at),
+                service_id = COALESCE($9, service_id),
+                price = COALESCE($10, price),
+                manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
                 updated_at = NOW()
-          WHERE appointment_id = $1 AND status = 'confirmed'`,
-        [req.params.id, newStart, newEnd,
-         master_id != null ? String(master_id) : null]).catch((e) => console.error('[reschedule/ob-sync]', e.message));
+          WHERE id = $1
+          RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price, real_amount`,
+        [req.params.id, notes ?? null, status ?? null, room_id ?? null,
+         master_id != null ? Number(master_id) : null, newStart, newEnd, markManual,
+         service_id != null ? Number(service_id) : null, newPrice]
+      );
+      if (!r.rows[0]) { await txc.query('ROLLBACK'); return res.status(404).json({ error: 'appointment-not-found' }); }
+
+      // Перенос запису → синхронізуємо дати ПОВʼЯЗАНОЇ онлайн-брони (звʼязок appointment_id,
+      // мігр. 247). Інакше вікно date_from/date_to лишається старим і матч передоплати в /pay
+      // (date_from<=starts_at<date_to) рветься — передоплата не зараховується (аудит v8, блокер).
+      // skip_overbook: перенос уже перевірено тригером на appointments вище (в ЦІЙ транзакції).
+      if (newStart != null || newEnd != null || (master_id != null)) {
+        await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+        await txc.query(
+          `UPDATE online_bookings
+              SET date_from = COALESCE($2, date_from),
+                  date_to   = COALESCE($3, date_to),
+                  master_id = COALESCE($4, master_id),
+                  updated_at = NOW()
+            WHERE appointment_id = $1 AND status = 'confirmed'`,
+          [req.params.id, newStart, newEnd,
+           master_id != null ? String(master_id) : null]);
+      }
+      await txc.query('COMMIT');
+    } catch (txErr) {
+      await txc.query('ROLLBACK').catch(() => {});
+      if (txErr.code === '23P01') {
+        // гонка: слот заняли между app-проверкой и UPDATE — триггер отработал
+        return res.status(409).json({ error: 'slot-busy', can_force: true,
+          message: 'У майстра вже є запис на цей час' });
+      }
+      throw txErr;
+    } finally {
+      txc.release();
     }
 
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).

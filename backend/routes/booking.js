@@ -800,3 +800,4 @@ router.get('/catalog', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.resolveBookingIds = resolveBookingIds;
