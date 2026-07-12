@@ -430,12 +430,15 @@ async function processUpdate(upd, tg, salon) {
         try {
           // Число паралельних confirmed-записів мастера не має перевищувати його
           // вмістимість (max_parallel; дефолт 1). Овербукінг дозволено настройкою.
+          // canon_master_id (мігр. 248): employee_id приходить як 'mst-N'/GUID —
+          // порівняння masters.id = 'mst-N' кидало cast-помилку і пре-чек мовчки пропускався
           const busy = await getPool().query(
             `SELECT (SELECT count(*) FROM online_bookings
-                      WHERE master_id = $1 AND status = 'confirmed'
+                      WHERE master_id = canon_master_id($1) AND status = 'confirmed'
                         AND date_from < $3 AND date_to > $2) AS cnt,
-                    COALESCE((SELECT max_parallel FROM masters WHERE id = $1), 1) AS cap`,
-            [row.employee_id, row.date_from, row.date_to]
+                    COALESCE((SELECT max_parallel FROM masters
+                               WHERE id::text = canon_master_id($1)), 1) AS cap`,
+            [String(row.employee_id || ''), row.date_from, row.date_to]
           );
           if (busy.rows[0] && Number(busy.rows[0].cnt) >= Number(busy.rows[0].cap)) {
             await db.update(row.token, { status: 'error', error: 'slot-taken' });

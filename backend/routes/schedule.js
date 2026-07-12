@@ -1468,7 +1468,8 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       if (appt.pay_cert_code && Number(appt.pay_cert_amount) > 0) {
         const gc = await client.query(
           `UPDATE gift_certificates SET remaining_amount = remaining_amount + $2,
-                  status = CASE WHEN status='fully_used' THEN 'partially_used' ELSE status END, updated_at=NOW()
+                  status = CASE WHEN remaining_amount + $2 >= original_amount THEN 'active'
+                                WHEN status='fully_used' THEN 'partially_used' ELSE status END, updated_at=NOW()
             WHERE UPPER(code)=UPPER($1) RETURNING id, remaining_amount`, [appt.pay_cert_code, appt.pay_cert_amount]);
         if (gc.rows[0]) await client.query(
           `INSERT INTO gift_certificate_transactions (gc_id,type,amount,balance_after,appointment_id,notes)
@@ -1497,7 +1498,17 @@ router.post('/appointments/:id/unpay', async (req, res) => {
     // бонуси: повертаємо списані, знімаємо нараховані (поза транзакцією — власні tx у lib/bonus)
     if (appt.client_id) {
       if (Number(appt.pay_bonus_redeemed) > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: Number(appt.pay_bonus_redeemed), description: `Повернення бонусів: скасування оплати візиту #${id}` }).catch(() => {});
-      if (Number(appt.pay_bonus_accrued) > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: -Number(appt.pay_bonus_accrued), description: `Зняття нарахування: скасування оплати візиту #${id}` }).catch(() => {});
+      if (Number(appt.pay_bonus_accrued) > 0) {
+        await bonusLib.manualAdjust({ clientId: appt.client_id, amount: -Number(appt.pay_bonus_accrued), description: `Зняття нарахування: скасування оплати візиту #${id}` }).catch(() => {});
+        // відв'язуємо старе нарахування від візиту: інакше dup-guard accrue() при
+        // повторній оплаті поверне старий TX і клієнт ВТРАТИТЬ бонуси (аудит v8, блокер).
+        // Рядок в історії лишається — слід не губиться.
+        await pool.query(
+          `UPDATE bonus_transactions SET source_id = NULL,
+                  description = COALESCE(description,'') || ' (скасовано, unpay візиту #' || $2::text || ')'
+            WHERE client_id = $1 AND type='accrual' AND source_type='appointment' AND source_id = $2`,
+          [appt.client_id, id]).catch(() => {});
+      }
     }
     // повертаємо матеріали на склад (best-effort, ідемпотентно)
     let stock = null;
@@ -1557,6 +1568,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
       await emitAppointmentCompleted(id, appt.master_id);
       return res.json({ ok: true, already_paid: true, operation_id: dup.rows[0].op_id || null });
     }
+    // атомарний захват: два ПАРАЛЕЛЬНІ /pay проходили check-then-act одночасно —
+    // при finalCash=0 (чек повністю закритий сертифікатом/бонусами) каси немає і
+    // унікальний індекс не рятує → подвійне списання сертифіката (аудит v8, блокер).
+    const claim = await pool.query(
+      `UPDATE appointments SET pay_settled_at = NOW()
+        WHERE id=$1 AND pay_settled_at IS NULL RETURNING pay_settled_at`, [id]);
+    if (!claim.rows[0]) return res.json({ ok: true, already_paid: true, operation_id: null });
+    res.locals._payClaim = claim.rows[0].pay_settled_at;
 
     // ── ЗНИЖКИ: ручна знижка → сертифікат → бонуси. Каса отримує РЕШТУ (реальні гроші). ──
     const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -1801,6 +1820,10 @@ router.post('/appointments/:id/pay', async (req, res) => {
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount }, bonus_accrued: accrued });
   } catch (e) {
+    // оплата зірвалась — знімаємо атомарний захват, інакше запис назавжди «оплачений»
+    if (res.locals._payClaim) await getPool().query(
+      `UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2`,
+      [Number(req.params.id), res.locals._payClaim]).catch(() => {});
     if (e && e.code === 'CERT_RACE')
       return res.status(409).json({ error: 'cert-race', message: 'Сертифікат уже використано або на ньому недостатньо коштів. Оновіть сторінку й перевірте баланс.' });
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });

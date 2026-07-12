@@ -344,8 +344,9 @@ router.get('/consumption/forecast', R, async (req, res) => {
         GROUP BY mcl.variant_id, p.name, pv.stock_qty, pv.volume`);
     const items = rows.map(r => {
       const perDay = Number(r.used_30d) / 30;
-      const pkg = parseVol(r.volume) || 1;
-      const stockUnits = Number(r.stock_qty) * pkg; // запас в тех же единицах что расход
+      // stock_qty ВЖЕ в мл (мігр. 199, накладні пишуть qty×unit_ml) — множення на pkg
+      // давало мл² і завищувало прогноз запасу в ~1000× (аудит v8)
+      const stockUnits = Number(r.stock_qty);
       const forecastQty = +(perDay * days).toFixed(2);
       const daysUntilEmpty = perDay > 0 ? Math.floor(stockUnits / perDay) : null;
       return { product_id: r.variant_id, product_name: r.product_name, forecast_qty: forecastQty, stock_qty: Number(r.stock_qty), days_until_empty: daysUntilEmpty };
