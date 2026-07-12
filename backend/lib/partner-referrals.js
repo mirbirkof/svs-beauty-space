@@ -9,14 +9,28 @@ async function getSettings() {
   return r.rows[0] || { enabled: true, reward_type: 'days', reward_value: 30, referred_bonus_days: 14 };
 }
 
-// Реф-код салона (для ссылки /signup?ref=CODE). Бэкфилл в 259, но добираем на лету.
+// Реф-код салона (для ссылки /signup?ref=CODE). СЛУЧАЙНЫЙ (аудит-пентест): раньше был
+// первыми 8 hex символами UUID салона → предсказуем и перебираем. Теперь crypto-случайный,
+// не выводится из id. Проверяем уникальность (UNIQUE-индекс) с ретраем.
 async function getReferralCode(tenantId) {
   const pool = getPool();
   let r = (await pool.query(`SELECT referral_code FROM tenants WHERE id=$1`, [tenantId])).rows[0];
   if (r && r.referral_code) return r.referral_code;
-  const code = String(tenantId).replace(/-/g, '').slice(0, 8).toUpperCase();
-  await pool.query(`UPDATE tenants SET referral_code=$2 WHERE id=$1 AND referral_code IS NULL`, [tenantId, code]);
-  return code;
+  const crypto = require('crypto');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    // 8 символов A-Z2-9 (без похожих 0/O/1/I) из случайных байт
+    const alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const buf = crypto.randomBytes(8);
+    let code = ''; for (let i = 0; i < 8; i++) code += alpha[buf[i] % alpha.length];
+    const upd = await pool.query(
+      `UPDATE tenants SET referral_code=$2 WHERE id=$1 AND referral_code IS NULL RETURNING referral_code`,
+      [tenantId, code]).catch(() => ({ rows: [] }));
+    if (upd.rows[0]) return upd.rows[0].referral_code;
+    // строку уже успели заполнить конкурентно ИЛИ коллизия кода — перечитываем/повторяем
+    const cur = (await pool.query(`SELECT referral_code FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+    if (cur && cur.referral_code) return cur.referral_code;
+  }
+  return null;
 }
 
 // Разрешить реф-код в tenant_id реферера.
