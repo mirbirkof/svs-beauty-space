@@ -833,7 +833,7 @@ router.get('/stats', async (req, res) => {
       pool.query(`SELECT COUNT(*)::int AS total, COALESCE(SUM(total),0)::float AS revenue
                   FROM orders WHERE status IN ('paid','packing','shipped','delivered')`),
       pool.query(`SELECT COUNT(*)::int AS pending FROM orders WHERE status = 'new'`),
-      pool.query(`SELECT COUNT(*)::int AS clients FROM clients`),
+      pool.query(`SELECT COUNT(*)::int AS clients FROM clients WHERE deleted_at IS NULL`),
       pool.query(`SELECT COUNT(*)::int AS products FROM products WHERE active = true`),
     ]);
     res.json({

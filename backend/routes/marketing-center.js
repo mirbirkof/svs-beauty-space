@@ -754,7 +754,7 @@ async function generateInsights() {
         suggested_action: 'increase_budget', action_module: 'MKT-01', data: { channel: best.channel, ltv: Math.round(best.ltv) } });
   }
   // 2) сплячі клієнти
-  const dormant = (await q(`SELECT COUNT(*)::int n FROM clients WHERE last_visit_at < CURRENT_DATE - INTERVAL '90 days' AND total_spent > 0`))[0].n;
+  const dormant = (await q(`SELECT COUNT(*)::int n FROM clients WHERE deleted_at IS NULL AND last_visit_at < CURRENT_DATE - INTERVAL '90 days' AND total_spent > 0`))[0].n;
   if (dormant > 0)
     await upsert({ type: 'retention', priority: dormant > 50 ? 2 : 1, dedup_key: 'retention_dormant',
       title: `${dormant} сплячих клієнтів`, description: `${dormant} клієнтів не відвідували понад 90 днів. Запусти реактиваційну кампанію.`,

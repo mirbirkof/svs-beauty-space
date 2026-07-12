@@ -926,7 +926,9 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
     const yTo   = kyivDayBound(yStr, true).toISOString();
 
     const [clientsTotal, revYesterday, doneMonth, churnQ, lowStockQ] = await Promise.all([
-      pool.query(`SELECT COUNT(*)::int AS n FROM clients`),
+      // Аудит: считали ВСЕХ клиентов включая удалённых → дашборд завышал число.
+      // Только живые (deleted_at IS NULL), как и остальные экраны.
+      pool.query(`SELECT COUNT(*)::int AS n FROM clients WHERE deleted_at IS NULL`),
       // каса вчора (для тренду ±%) — рахуємо завжди, віддаємо лише при фінансах
       pool.query(`SELECT COALESCE(SUM(amount),0)::numeric AS total
                   FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
