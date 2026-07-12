@@ -52,7 +52,18 @@ function gatewayStatus() {
 }
 
 // ── Цены / номера ────────────────────────────────────────────────────
+// Каноническая таблица тарифов — saas_plans_v2 (мультивалюта, тиры, триалы). Старые коды
+// (solo/pro) маппятся на новые слаги — тем же словарём, что feature-gate (единая истина).
+// Аудит: раньше planPrice читал старую saas_plans, а feature-gate — v2 → биллинг не находил
+// тариф 'professional' (в старой он 'pro') и счёт на платный план не выставлялся.
+const LEGACY_SLUG = { solo: 'free', pro: 'professional' };
+const CYCLES_V2 = { monthly: 'price_monthly_uah', yearly: 'price_yearly_uah' };
 async function planPrice(planCode, cycle = 'monthly') {
+  const slug = LEGACY_SLUG[planCode] || planCode;
+  const colV2 = CYCLES_V2[cycle] || 'price_monthly_uah';
+  const v2 = (await getPool().query(`SELECT ${colV2} AS price FROM saas_plans_v2 WHERE slug=$1`, [slug])).rows[0];
+  if (v2) return Number(v2.price) || 0;
+  // fallback на legacy-таблицу (план ещё не перенесён в v2)
   const col = CYCLES[cycle] || 'price_month';
   const r = (await getPool().query(`SELECT ${col} AS price FROM saas_plans WHERE code=$1`, [planCode])).rows[0];
   if (!r) throw new Error('plan-not-found');
