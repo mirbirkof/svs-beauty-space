@@ -42,6 +42,10 @@ async function scheduleReminders() {
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '23 hours' AND NOW() + interval '25 hours'
       AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_24h')
+      -- Аудит v6: клієнтів з Telegram покриває бот-система (booking-reminders, з кнопками
+      -- підтвердження) — Hub слав ДРУГЕ таке саме нагадування. Hub лишається для клієнтів
+      -- БЕЗ Telegram (майбутні канали sms/email).
+      AND c.telegram_id IS NULL
   `);
   for (const row of in24h.rows) {
     await hub.enqueue({
@@ -60,6 +64,7 @@ async function scheduleReminders() {
     WHERE a.status IN ('confirmed', 'pending', 'booked')
       AND a.starts_at BETWEEN NOW() + interval '90 minutes' AND NOW() + interval '150 minutes'
       AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup_key = 'appt:' || a.id || ':remind_2h')
+      AND c.telegram_id IS NULL -- дубль з бот-системою (аудит v6), див. коментар у 24h
   `);
   for (const row of in2h.rows) {
     await hub.enqueue({

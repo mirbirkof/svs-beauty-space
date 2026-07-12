@@ -694,6 +694,36 @@ router.post('/clients/:id/erase', async (req, res) => {
                      'allergy_tests', 'coloring_formulas', 'procedure_consents', 'medical_access_log']) {
       await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id]).catch(() => {});
     }
+    // Портфоліо клієнта (аудит v6): фото before/after — ПД. Рядки видаляємо в транзакції,
+    // самі файли з S3 — best-effort у фоні (посилання на них гинуть разом із рядками).
+    try {
+      const pf = await client.query(`SELECT before_url, after_url, photo_urls FROM portfolio_items WHERE client_id=$1`, [id]);
+      await client.query(`DELETE FROM portfolio_items WHERE client_id=$1`, [id]);
+      const s3 = require('../lib/s3-upload');
+      if (pf.rowCount && s3.isConfigured()) {
+        const c3 = s3._cfg();
+        const keys = [];
+        for (const row of pf.rows) {
+          const urls = [row.before_url, row.after_url, ...(Array.isArray(row.photo_urls) ? row.photo_urls : [])];
+          for (const u of urls) {
+            if (!u) continue;
+            try {
+              const p = new URL(u).pathname;
+              const marker = '/' + c3.bucket + '/';
+              const i = p.indexOf(marker);
+              if (i >= 0) {
+                let k = decodeURIComponent(p.slice(i + marker.length));
+                if (c3.prefix && k.startsWith(c3.prefix)) k = k.slice(c3.prefix.length);
+                keys.push(k);
+              }
+            } catch (_) {}
+          }
+        }
+        if (keys.length) setImmediate(() =>
+          Promise.allSettled(keys.map(k => s3.deleteObject(k)))
+            .then(rs => console.log(`[gdpr:erase] S3-файлів видалено: ${rs.filter(x => x.status === 'fulfilled').length}/${keys.length}`)));
+      }
+    } catch (e) { console.error('[gdpr:erase:portfolio]', e.message); }
     // Журнали подій/аудиту зберігаємо (цілісність), але знеособлюємо PII в payload/meta
     // саме цього клієнта — інакше ПІБ/телефон відновлюються з payload за незмінним id.
     await client.query(

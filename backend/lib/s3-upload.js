@@ -196,4 +196,71 @@ function getObject(objectKey) {
   });
 }
 
-module.exports = { isConfigured, uploadObject, getObject, _cfg: cfg };
+/**
+ * Удаляет объект (SigV4 DELETE). GDPR-очистка файлов (аудит v6): фото портфолио
+ * стёртого клиента и файлы purged-салона не должны жить в хранилище вечно.
+ * @param {string} objectKey ключ без префикса; 404 считается успехом (уже нет)
+ */
+function deleteObject(objectKey) {
+  return new Promise((resolve, reject) => {
+    if (!isConfigured()) return reject(new Error('s3-not-configured'));
+    const c = cfg();
+    const fullKey = (c.prefix + objectKey).replace(/^\/+/, '');
+    const base = new URL(c.endpoint);
+    const host = base.host;
+    const canonicalUri = '/' + enc(c.bucket, true) + '/' + enc(fullKey, true);
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const payloadHash = sha256hex('');
+
+    const canonicalHeaders =
+      `host:${host}\n` +
+      `x-amz-content-sha256:${payloadHash}\n` +
+      `x-amz-date:${amzDate}\n`;
+    const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+
+    const canonicalRequest = ['DELETE', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+    const scope = `${dateStamp}/${c.region}/s3/aws4_request`;
+    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256hex(canonicalRequest)].join('\n');
+
+    const kDate = hmac('AWS4' + c.secret, dateStamp);
+    const kRegion = hmac(kDate, c.region);
+    const kService = hmac(kRegion, 's3');
+    const kSigning = hmac(kService, 'aws4_request');
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+    const authorization =
+      `AWS4-HMAC-SHA256 Credential=${c.key}/${scope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const req = https.request({
+      method: 'DELETE',
+      host: base.hostname,
+      port: base.port || 443,
+      path: canonicalUri,
+      headers: {
+        'Host': host,
+        'x-amz-content-sha256': payloadHash,
+        'x-amz-date': amzDate,
+        'Authorization': authorization,
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (d) => { data += d; });
+      res.on('end', () => {
+        if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
+          resolve({ key: fullKey, deleted: true });
+        } else {
+          reject(new Error(`s3-delete-failed ${res.statusCode}: ${String(data).slice(0, 300)}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => req.destroy(new Error('s3-delete-timeout')));
+    req.end();
+  });
+}
+
+module.exports = { isConfigured, uploadObject, getObject, deleteObject, _cfg: cfg };
