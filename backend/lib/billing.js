@@ -135,7 +135,10 @@ async function createSubscription(tenantId, { plan_code, cycle = 'monthly', prom
      VALUES ($1,$2,$3,$4,NOW(), NOW()+($5||' days')::interval, $6, $7, $8)
      ON CONFLICT (tenant_id) DO UPDATE SET plan_code=EXCLUDED.plan_code, status=EXCLUDED.status,
        billing_cycle=EXCLUDED.billing_cycle, current_period_start=NOW(),
-       current_period_end=EXCLUDED.current_period_end, trial_ends_at=EXCLUDED.trial_ends_at,
+       current_period_end=EXCLUDED.current_period_end,
+       -- НЕ затираем факт использованного триала: при смене плана (trial=false → EXCLUDED=null)
+       -- сохраняем прежний trial_ends_at, иначе одноразовость триала сбрасывается (регресс).
+       trial_ends_at=COALESCE(EXCLUDED.trial_ends_at, subscriptions_saas.trial_ends_at),
        payment_gateway=EXCLUDED.payment_gateway, promo_code_id=EXCLUDED.promo_code_id,
        cancelled_at=NULL, cancel_reason=NULL, cancel_at_period_end=FALSE, updated_at=NOW()
      RETURNING *`,
@@ -482,6 +485,9 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
         await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
         await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1`, [sub.tenant_id]).catch(() => {});
         _invalidateTenantCache(sub.tenant_id);
+        try { require('./feature-gate').invalidateFeatureCache(sub.tenant_id); } catch (_) {}
+        // Партнёрка: Mono-оплата тоже должна награждать реферера (как recordPayment).
+        try { await require('./partner-referrals').onReferredPaid(sub.tenant_id); } catch (e) { console.error('[mono:partner]', e.message); }
       }
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [pay.invoice_id]).catch(() => {});
     } else if (inv) {

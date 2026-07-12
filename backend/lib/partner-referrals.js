@@ -50,11 +50,14 @@ async function registerReferral(refCode, newTenantId, newTenantName) {
 // Вызывается из billing.recordPayment при первой успешной оплате подписки.
 async function onReferredPaid(referredTenantId) {
   const pool = getPool();
+  // Атомарно захватываем реферал: UPDATE ... WHERE status='pending' RETURNING — только ОДИН
+  // из параллельных вызовов переведёт pending→qualified и получит строку. Второй получит
+  // 0 строк и выйдет → награда не начисляется дважды (гонка двух Mono-вебхуков одного салона).
   const ref = (await pool.query(
-    `SELECT * FROM partner_referrals WHERE referred_tenant_id=$1 AND status='pending' LIMIT 1`,
+    `UPDATE partner_referrals SET status='qualified', qualified_at=now()
+      WHERE referred_tenant_id=$1 AND status='pending' RETURNING *`,
     [referredTenantId])).rows[0];
   if (!ref) return null;
-  await pool.query(`UPDATE partner_referrals SET status='qualified', qualified_at=now() WHERE id=$1`, [ref.id]);
   try {
     if (ref.reward_type === 'days') {
       // +N дней к текущему периоду подписки реферера (и к лицензии — доступ)
