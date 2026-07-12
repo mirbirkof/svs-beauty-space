@@ -433,6 +433,30 @@ async function purgeTenant(tenantId, { confirmName } = {}, actor = null) {
       WHERE table_schema='public' AND column_name='tenant_id' AND data_type='uuid'
         AND table_name <> 'tenants'`)).rows.map(r => r.table_name);
 
+  // S3-файлы салона (аудит-контроль GDPR): портфолио, аватары мастеров, фото услуг/товаров.
+  // Собираем ключи ДО удаления строк (под явным фильтром tenant_id — purge идёт от платформы),
+  // удаляем из облака в фоне ПОСЛЕ успешного purge, иначе файлы салона живут вечно.
+  let s3keys = [];
+  try {
+    const s3 = require('./s3-upload');
+    if (s3.isConfigured()) {
+      const c3 = s3._cfg();
+      const urlToKey = (u) => {
+        try { const p = new URL(u).pathname; const m = '/' + c3.bucket + '/'; const i = p.indexOf(m);
+          if (i < 0) return null; let k = decodeURIComponent(p.slice(i + m.length));
+          if (c3.prefix && k.startsWith(c3.prefix)) k = k.slice(c3.prefix.length); return k; } catch (_) { return null; }
+      };
+      const collect = async (sql) => { try { const r = await pool.query(sql, [tenantId]); for (const row of r.rows)
+        for (const u of Object.values(row)) { if (typeof u === 'string' && /^https?:/.test(u)) { const k = urlToKey(u); if (k) s3keys.push(k); }
+          else if (Array.isArray(u)) for (const uu of u) { if (typeof uu === 'string') { const k = urlToKey(uu); if (k) s3keys.push(k); } } } } catch (_) {} };
+      await collect(`SELECT before_url, after_url, photo_urls FROM portfolio_items WHERE tenant_id=$1`);
+      await collect(`SELECT avatar FROM masters WHERE tenant_id=$1`);
+      await collect(`SELECT photo_urls FROM services WHERE tenant_id=$1`);
+      await collect(`SELECT photo FROM products WHERE tenant_id=$1`);
+      s3keys = Array.from(new Set(s3keys.filter(Boolean)));
+    }
+  } catch (_) {}
+
   const client = await pool.connect();
   const deleted = {};
   try {
@@ -465,8 +489,14 @@ async function purgeTenant(tenantId, { confirmName } = {}, actor = null) {
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
   finally { client.release(); }
+  // Файлы салона из S3 — фоном после успешного purge (best-effort, не блокирует ответ)
+  if (s3keys.length) {
+    const s3 = require('./s3-upload');
+    setImmediate(() => Promise.allSettled(s3keys.map(k => s3.deleteObject(k)))
+      .then(rs => console.log(`[tenant-mgmt:purge:s3] tenant=${tenantId} файлів видалено: ${rs.filter(x => x.status === 'fulfilled').length}/${s3keys.length}`)));
+  }
   const totalRows = Object.values(deleted).reduce((s, n) => s + n, 0);
-  console.log(`[tenant-mgmt:purge] tenant=${tenantId} name="${t.name}" by=${actor && actor.id || '?'} tables=${Object.keys(deleted).length} rows=${totalRows}`);
+  console.log(`[tenant-mgmt:purge] tenant=${tenantId} name="${t.name}" by=${actor && actor.id || '?'} tables=${Object.keys(deleted).length} rows=${totalRows} s3files=${s3keys.length}`);
   return { purged: tenantId, name: t.name, tables_cleared: Object.keys(deleted).length, rows_deleted: totalRows, detail: deleted };
 }
 

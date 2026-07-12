@@ -694,6 +694,14 @@ router.post('/clients/:id/erase', async (req, res) => {
                      'allergy_tests', 'coloring_formulas', 'procedure_consents', 'medical_access_log']) {
       await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id]).catch(() => {});
     }
+    // Транскрипты и AI-анализ звонков клиента (аудит-контроль GDPR): содержат речь/ПД,
+    // связаны через recording_id → calls.client_id. Чистим физически.
+    await client.query(
+      `DELETE FROM ai_call_transcripts WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch(() => {});
+    await client.query(
+      `DELETE FROM ai_call_analysis WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch(() => {});
+    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL, client_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE calls SET caller_number=NULL, called_number=NULL WHERE client_id=$1`, [id]).catch(() => {});
     // Портфоліо клієнта (аудит v6): фото before/after — ПД. Рядки видаляємо в транзакції,
     // самі файли з S3 — best-effort у фоні (посилання на них гинуть разом із рядками).
     try {

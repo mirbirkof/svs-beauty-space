@@ -116,7 +116,9 @@ function channelStatus() {
 }
 
 async function getSettings(pool) {
-  const r = await pool.query(`SELECT * FROM notification_settings WHERE tenant_id = $1`, [DEFAULT_TENANT]);
+  // Настройки ТЕКУЩЕГО салона (RLS скоупит по контексту). Раньше всегда читались из
+  // DEFAULT_TENANT — салон-арендатор жил по чужим лимитам/тихим часам (аудит-контроль).
+  const r = await pool.query(`SELECT * FROM notification_settings WHERE tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, tenant_id) LIMIT 1`);
   return r.rows[0] || { paused: false, daily_limit_client: 5, cooldown_minutes: 5, dnd_start: 22, dnd_end: 9, default_chain: ['telegram', 'sms', 'email'] };
 }
 
@@ -205,15 +207,19 @@ async function enqueue(opts = {}) {
   const ttlAt = opts.ttlMinutes ? new Date(Date.now() + opts.ttlMinutes * 60000) : null;
 
   try {
+    // Аудит-контроль: НЕ передаём tenant_id — колонка имеет DEFAULT current_tenant_id()
+    // и RLS. В HTTP-контексте салона подставится ЕГО tenant, в кроне (forEachTenant) —
+    // тоже правильный. Раньше хардкод DEFAULT_TENANT сваливал уведомления всех салонов
+    // в дефолтный тенант (утечка данных между арендаторами).
     const r = await pool.query(
       `INSERT INTO notifications
-         (tenant_id, client_id, template_key, category, priority, channel, fallback_chain,
+         (client_id, template_key, category, priority, channel, fallback_chain,
           recipient, subject, body, payload, dedup_key, status, scheduled_at, ttl_at,
           max_attempts, next_attempt_at, source, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'queued',$13,$14,$15,$13,$16,$17)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'queued',$12,$13,$14,$12,$15,$16)
        ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
        RETURNING id`,
-      [DEFAULT_TENANT, opts.clientId || null, opts.templateKey || null, category, priority,
+      [opts.clientId || null, opts.templateKey || null, category, priority,
        channel, chain, recipient, subject, body, JSON.stringify(opts.vars || opts.payload || {}),
        opts.dedupKey || null, scheduledAt, ttlAt, opts.maxAttempts || 3, opts.source || null, opts.createdBy || null]
     );
