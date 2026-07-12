@@ -563,8 +563,9 @@ router.patch('/operations/:id', async (req, res) => {
       setCol('type', b.type);
     }
     if (b.amount !== undefined) {
-      if (Number(b.amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
-      setCol('amount', b.amount);
+      // Аудит: Number(x)<=0 не ловит NaN — нечисловая сумма проходила в правку операции кассы.
+      if (!Number.isFinite(Number(b.amount)) || Number(b.amount) <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+      setCol('amount', Number(b.amount));
     }
     if (b.category !== undefined) {
       if (!String(b.category).trim()) return res.status(400).json({ error: 'category required' });

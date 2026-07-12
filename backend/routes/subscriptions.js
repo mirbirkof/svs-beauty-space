@@ -69,7 +69,12 @@ router.post('/plans', async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.name) return res.status(400).json({ error: 'name required' });
-    if (!b.price || Number(b.price) <= 0) return res.status(400).json({ error: 'price required (> 0)' });
+    // Аудит: Number(x)<=0 НЕ ловит NaN (NaN<=0===false) → нечисловая цена проходила и уходила
+    // в БД как NaN, ломая продажу абонемента. Требуем настоящее конечное положительное число.
+    if (!Number.isFinite(Number(b.price)) || Number(b.price) <= 0) return res.status(400).json({ error: 'price required (> 0)' });
+    // доп.цены — только если конечное число, иначе null (не NaN)
+    const priceMonthly = (b.price_monthly != null && Number.isFinite(Number(b.price_monthly))) ? Number(b.price_monthly) : null;
+    const trialPrice = (b.trial_price != null && Number.isFinite(Number(b.trial_price))) ? Number(b.trial_price) : null;
     const type = ['visits', 'time', 'minutes', 'combo'].includes(b.type) ? b.type : 'visits';
     const r = await pool.query(
       `INSERT INTO subscription_plans
@@ -79,7 +84,7 @@ router.post('/plans', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [b.name, b.description || null, type, b.visits_included || null, b.minutes_included || null,
        Number(b.duration_days) > 0 ? Number(b.duration_days) : 365, Number(b.price),
-       b.price_monthly != null ? Number(b.price_monthly) : null, b.trial_price != null ? Number(b.trial_price) : null,
+       priceMonthly, trialPrice,
        Number(b.trial_days) > 0 ? Number(b.trial_days) : null,
        Array.isArray(b.service_ids) ? b.service_ids : [], Array.isArray(b.category_ids) ? b.category_ids : [],
        b.master_restriction === 'specific' ? 'specific' : 'any', Array.isArray(b.master_ids) ? b.master_ids : [],
