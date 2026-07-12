@@ -806,11 +806,13 @@ async function billingMetrics() {
   const pool = getPool();
   // MRR: місячний еквівалент підписок, що РЕАЛЬНО платять (active/past_due + є успішна оплата),
   // тільки справжні клієнти (is_internal=false). Тріал у MRR не входить (#56/#57).
+  // MRR из saas_plans_v2 (единая истина цен) с маппингом legacy-кодов — иначе салоны на
+  // тарифах starter/professional выпадали из INNER JOIN saas_plans и MRR был занижен.
   const subs = (await pool.query(
-    `SELECT s.plan_code, s.billing_cycle, p.price_month, p.price_year
+    `SELECT s.plan_code, s.billing_cycle, p.price_monthly_uah AS price_month, p.price_yearly_uah AS price_year
        FROM subscriptions_saas s
        JOIN tenants t ON t.id=s.tenant_id AND t.is_internal=FALSE
-       JOIN saas_plans p ON p.code=s.plan_code
+       JOIN saas_plans_v2 p ON p.slug = CASE s.plan_code WHEN 'pro' THEN 'professional' WHEN 'solo' THEN 'free' ELSE s.plan_code END
       WHERE s.status IN ('active','past_due')
         AND EXISTS (SELECT 1 FROM payments_saas pay WHERE pay.tenant_id=s.tenant_id AND pay.status='succeeded')`)).rows;
   let mrr = 0;
