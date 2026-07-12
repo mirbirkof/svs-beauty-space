@@ -61,6 +61,27 @@
   <div class="intro">Всі зовнішні сервіси, які можна підключити до CRM. Зелений статус — працює, сірий — чекає підключення.</div>
 
   <div class="sumbar" id="sumbar"></div>
+
+  <!-- Per-tenant еквайринг (аудит v6): салон-орендар вводить ВЛАСНИЙ токен Mono.
+       Показується лише в контексті салона (?tenant=slug). Гроші клієнтів салону
+       йдуть на ЙОГО рахунок; без токена онлайн-оплати салону вимкнені. -->
+  <div id="tenantMono" style="display:none;margin:0 0 18px;padding:16px;border:1px solid var(--border,#2a2f3a);border-radius:12px">
+    <div style="display:flex;align-items:center;gap:8px;font-weight:600">
+      <span class="material-icons-round">credit_card</span> Mono-еквайринг вашого салону
+      <span id="tmState" style="font-size:12px;opacity:.7"></span>
+    </div>
+    <div style="font-size:13px;opacity:.75;margin:6px 0 10px">
+      Токен мерчанта з <b>web.monobank.ua/acquiring</b>. Оплати ваших клієнтів надходитимуть на ваш рахунок.
+      Без токена онлайн-оплати вимкнені.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="password" id="tmToken" autocomplete="off" placeholder="Вставте X-Token мерчанта Mono" style="flex:1;min-width:240px" class="input">
+      <button class="btn primary" id="tmSave" onclick="tenantMonoSave()">Зберегти</button>
+      <button class="btn" onclick="tenantMonoSave(true)">Вимкнути</button>
+    </div>
+    <div id="tmMsg" style="font-size:13px;margin-top:8px"></div>
+  </div>
+
   <div id="groups"></div>
 
 </div>
@@ -177,6 +198,40 @@ async function cfgSaveDo() {
     msg.style.color = '#B23B2E'; msg.textContent = 'Помилка: ' + e.message;
   } finally { btn.disabled = false; }
 }
+
+// ── Per-tenant Mono (лише для салона-орендаря: є svs_tenant_slug) ──
+async function tenantMonoInit() {
+  let slug = '';
+  try { slug = localStorage.getItem('svs_tenant_slug') || ''; } catch (_) {}
+  if (!slug) return; // платформа/салон Босса — блок не потрібен
+  const box = document.getElementById('tenantMono');
+  box.style.display = 'block';
+  try {
+    const r = await adminFetch('/api/integrations/tenant-status');
+    const d = await r.json();
+    const set = d && d.keys && d.keys.MONO_TOKEN && d.keys.MONO_TOKEN.set;
+    document.getElementById('tmState').textContent = set ? '· підключено ✓' : '· не задано';
+  } catch (_) {}
+}
+async function tenantMonoSave(clear) {
+  const msg = document.getElementById('tmMsg');
+  const val = clear ? '' : document.getElementById('tmToken').value.trim();
+  if (!clear && !val) { msg.style.color = '#B23B2E'; msg.textContent = 'Вставте токен.'; return; }
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Зберігаю…';
+  try {
+    const r = await adminFetch('/api/integrations/configure-tenant', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: { MONO_TOKEN: val } })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    msg.style.color = '#1B7A3D';
+    msg.textContent = clear ? 'Еквайринг вимкнено.' : 'Збережено ✓ Оплати підуть на ваш рахунок.';
+    document.getElementById('tmToken').value = '';
+    tenantMonoInit();
+  } catch (e) { msg.style.color = '#B23B2E'; msg.textContent = 'Помилка: ' + e.message; }
+}
+tenantMonoInit();
 
 load();
 </script>

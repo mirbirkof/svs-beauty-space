@@ -113,6 +113,19 @@ router.post('/configure', requirePlatform(), requirePerm('integrations.write'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/integrations/tenant-status — стан per-tenant ключів ПОТОЧНОГО салону
+// (лише факт «задано/ні», без значень; RLS скоупить по контексту).
+router.get('/tenant-status', requirePerm('integrations.read'), async (req, res) => {
+  try {
+    const { TENANT_ALLOWED, getTenantIntegrationSecret } = require('../lib/integration-secrets');
+    const out = {};
+    for (const name of TENANT_ALLOWED) {
+      out[name] = { set: !!(await getTenantIntegrationSecret(name)) };
+    }
+    res.json({ ok: true, keys: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/integrations/configure-tenant — салон-орендар зберігає ВЛАСНИЙ токен
 // еквайрингу (аудит v6, блокер аренды): гроші його клієнтів мають іти на ЙОГО
 // рахунок Mono, а не на рахунок платформи. Дозволені лише per-tenant ключі
