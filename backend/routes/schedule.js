@@ -1269,31 +1269,50 @@ router.post('/appointments/:id/services', async (req, res) => {
     const newDur = Number(sv.rows[0].duration_min) > 0 ? Number(sv.rows[0].duration_min) : 30;
     const newPrice = Number(sv.rows[0].price) || 0;
 
-    const cnt = await pool.query('SELECT COUNT(*)::int AS n FROM appointment_services WHERE appointment_id=$1', [apptId]);
-    // Якщо складу ще нема — заносимо базову послугу запису першим рядком (щоб перелік був повним)
-    if (cnt.rows[0].n === 0 && a.service_id) {
-      await pool.query(
+    // Аудит 12.07 (жалоба «не рахується ціна»): вставка послуги і перерахунок суми/часу
+    // були ОКРЕМИМИ запитами без транзакції. Подовження ends_at будило capacity-тригер
+    // (у майстра наступний запис) → UPDATE падав 23P01, а послуга ВЖЕ лишалась у складі:
+    // «Разом план» застигав на старій сумі. Тепер: одна транзакція; конфлікт графіка →
+    // повний відкат + зрозумілий 409 (послуга НЕ додається наполовину).
+    const txc = await pool.connect();
+    try {
+      await txc.query('BEGIN'); await applyTenant(txc);
+      const cnt = await txc.query('SELECT COUNT(*)::int AS n FROM appointment_services WHERE appointment_id=$1', [apptId]);
+      // Якщо складу ще нема — заносимо базову послугу запису першим рядком (щоб перелік був повним)
+      if (cnt.rows[0].n === 0 && a.service_id) {
+        await txc.query(
+          `INSERT INTO appointment_services (appointment_id, service_id, master_id, starts_at, duration_min, price)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [apptId, a.service_id, a.master_id, a.starts_at, Math.round(Number(a.dur) || 30), Number(a.price) || 0]);
+      }
+      // Нова послуга стартує після завершення поточного складу
+      await txc.query(
         `INSERT INTO appointment_services (appointment_id, service_id, master_id, starts_at, duration_min, price)
          VALUES ($1,$2,$3,$4,$5,$6)`,
-        [apptId, a.service_id, a.master_id, a.starts_at, Math.round(Number(a.dur) || 30), Number(a.price) || 0]);
-    }
-    // Нова послуга стартує після завершення поточного складу
-    await pool.query(
-      `INSERT INTO appointment_services (appointment_id, service_id, master_id, starts_at, duration_min, price)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [apptId, Number(service_id), a.master_id, a.ends_at, newDur, newPrice]);
+        [apptId, Number(service_id), a.master_id, a.ends_at, newDur, newPrice]);
 
-    // Перерахунок підсумків запису зі складу
-    const sum = await pool.query(
-      `SELECT COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
-         FROM appointment_services WHERE appointment_id=$1`, [apptId]);
-    const totalPrice = Number(sum.rows[0].total_price) || 0;
-    const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(a.dur) || 30);
-    const newEnd = new Date(new Date(a.starts_at).getTime() + totalDur * 60000).toISOString();
-    const upd = await pool.query(
-      `UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW()
-        WHERE id=$1 RETURNING id, price, starts_at, ends_at`, [apptId, totalPrice, newEnd]);
-    res.json({ ok: true, appointment: upd.rows[0], added: sv.rows[0].name });
+      // Перерахунок підсумків запису зі складу
+      const sum = await txc.query(
+        `SELECT COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
+           FROM appointment_services WHERE appointment_id=$1`, [apptId]);
+      const totalPrice = Number(sum.rows[0].total_price) || 0;
+      const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(a.dur) || 30);
+      const newEnd = new Date(new Date(a.starts_at).getTime() + totalDur * 60000).toISOString();
+      const upd = await txc.query(
+        `UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW()
+          WHERE id=$1 RETURNING id, price, starts_at, ends_at`, [apptId, totalPrice, newEnd]);
+      await txc.query('COMMIT');
+      res.json({ ok: true, appointment: upd.rows[0], added: sv.rows[0].name });
+    } catch (txErr) {
+      await txc.query('ROLLBACK').catch(() => {});
+      if (txErr.code === '23P01') {
+        return res.status(409).json({ error: 'slot-busy',
+          message: 'Послуга не додана: візит подовжується і не вміщується у графік майстра (конфлікт з наступним записом). Перенесіть наступний запис або скоротіть тривалість.' });
+      }
+      throw txErr;
+    } finally {
+      txc.release();
+    }
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -1310,17 +1329,31 @@ router.delete('/appointments/:id/services/:rowId', async (req, res) => {
     }
     // #95: склад візиту минулого дня — лише коли увімкнено allow_edit_past
     if (await pastEditDenied(req, aRes.rows[0].starts_at)) return res.status(403).json(PAST_LOCKED);
-    const del = await pool.query('DELETE FROM appointment_services WHERE id=$1 AND appointment_id=$2 RETURNING id', [rowId, apptId]);
-    if (!del.rows[0]) return res.status(404).json({ error: 'row-not-found' });
-    // Перерахунок підсумків (якщо склад спорожнів — лишаємо суму/час як є)
-    const sum = await pool.query(
-      `SELECT COUNT(*)::int AS n, COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
-         FROM appointment_services WHERE appointment_id=$1`, [apptId]);
-    if (sum.rows[0].n > 0) {
-      const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(aRes.rows[0].dur) || 30);
-      const newEnd = new Date(new Date(aRes.rows[0].starts_at).getTime() + totalDur * 60000).toISOString();
-      await pool.query('UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW() WHERE id=$1',
-        [apptId, Number(sum.rows[0].total_price) || 0, newEnd]);
+    // Одна транзакція (аудит 12.07, дзеркало POST /services): видалення + перерахунок разом.
+    // Скорочення візиту не створює нових перетинів → локальний обхід capacity-тригера,
+    // інакше овербукнутий (force_parallel) візит не можна було б «розукомплектувати».
+    const txc = await pool.connect();
+    try {
+      await txc.query('BEGIN'); await applyTenant(txc);
+      const del = await txc.query('DELETE FROM appointment_services WHERE id=$1 AND appointment_id=$2 RETURNING id', [rowId, apptId]);
+      if (!del.rows[0]) { await txc.query('ROLLBACK'); return res.status(404).json({ error: 'row-not-found' }); }
+      // Перерахунок підсумків (якщо склад спорожнів — лишаємо суму/час як є)
+      const sum = await txc.query(
+        `SELECT COUNT(*)::int AS n, COALESCE(SUM(price),0) AS total_price, COALESCE(SUM(duration_min),0) AS total_dur
+           FROM appointment_services WHERE appointment_id=$1`, [apptId]);
+      if (sum.rows[0].n > 0) {
+        const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(aRes.rows[0].dur) || 30);
+        const newEnd = new Date(new Date(aRes.rows[0].starts_at).getTime() + totalDur * 60000).toISOString();
+        await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+        await txc.query('UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW() WHERE id=$1',
+          [apptId, Number(sum.rows[0].total_price) || 0, newEnd]);
+      }
+      await txc.query('COMMIT');
+    } catch (txErr) {
+      await txc.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      txc.release();
     }
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
