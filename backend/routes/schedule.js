@@ -1118,6 +1118,23 @@ router.patch('/appointments/:id', async (req, res) => {
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
 
+    // Перенос запису → синхронізуємо дати ПОВʼЯЗАНОЇ онлайн-брони (звʼязок appointment_id,
+    // мігр. 247). Інакше вікно date_from/date_to лишається старим і матч передоплати в /pay
+    // (date_from<=starts_at<date_to) рветься — передоплата не зараховується (аудит v8, блокер).
+    // skip_overbook: перенос уже перевірено capacity-тригером на appointments вище.
+    if (newStart != null || newEnd != null || (master_id != null)) {
+      await pool.query(`SELECT set_config('app.skip_overbook','on', true)`).catch(() => {});
+      await pool.query(
+        `UPDATE online_bookings
+            SET date_from = COALESCE($2, date_from),
+                date_to   = COALESCE($3, date_to),
+                master_id = COALESCE($4, master_id),
+                updated_at = NOW()
+          WHERE appointment_id = $1 AND status = 'confirmed'`,
+        [req.params.id, newStart, newEnd,
+         master_id != null ? String(master_id) : null]).catch((e) => console.error('[reschedule/ob-sync]', e.message));
+    }
+
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
     // Сума в касі = ціна послуги + платні матеріали (фарба за грам). Продажі BP не чіпаємо.
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
@@ -1589,6 +1606,22 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const dVal = Number(req.body?.discount_value) || 0;
     const certCode = String(req.body?.certificate_code || '').trim().toUpperCase();
     const bonusReq = Number(req.body?.bonus_amount) || 0;
+    let bonusMoney = 0, bonusRedeemed = 0;
+    // helper: будь-який провал валідації ПІСЛЯ захвату pay_settled_at має зняти захват
+    // (інакше запис навічно «оплачений» — регрес v8) і повернути вже списані бонуси.
+    const failPay = async (status, body) => {
+      if (bonusRedeemed > 0 && appt.client_id) {
+        await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed,
+          description: `Повернення бонусів: скасована оплата візиту #${id}` }).catch(() => {});
+        bonusRedeemed = 0;
+      }
+      if (res.locals._payClaim) {
+        await pool.query(`UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2`,
+          [id, res.locals._payClaim]).catch(() => {});
+        res.locals._payClaim = null;
+      }
+      return res.status(status).json(body);
+    };
 
     let remaining = base;
     // 1) ручна знижка
@@ -1602,18 +1635,17 @@ router.post('/appointments/:id/pay', async (req, res) => {
     if (certCode && remaining > 0) {
       const gc = await pool.query(
         `SELECT id, code, remaining_amount, status, valid_until FROM gift_certificates WHERE UPPER(code)=$1`, [certCode]);
-      if (!gc.rows[0]) return res.status(400).json({ error: 'cert-not-found', message: 'Сертифікат не знайдено' });
+      if (!gc.rows[0]) return await failPay(400, { error: 'cert-not-found', message: 'Сертифікат не знайдено' });
       certRow = gc.rows[0];
       if (!['active', 'partially_used', 'issued', 'sold'].includes(certRow.status))
-        return res.status(400).json({ error: 'cert-not-usable', message: `Сертифікат недоступний (${certRow.status})` });
+        return await failPay(400, { error: 'cert-not-usable', message: `Сертифікат недоступний (${certRow.status})` });
       if (certRow.valid_until && String(certRow.valid_until).slice(0, 10) < new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date()))
-        return res.status(400).json({ error: 'cert-expired', message: 'Термін дії сертифіката минув' });
+        return await failPay(400, { error: 'cert-expired', message: 'Термін дії сертифіката минув' });
       certMoney = Math.min(round2(certRow.remaining_amount), remaining);
       remaining = round2(remaining - certMoney);
     }
 
     // 3) бонуси (redeem керує власною транзакцією — робимо ДО каси; при dup-гонці нижче повертаємо)
-    let bonusMoney = 0, bonusRedeemed = 0;
     if (bonusReq > 0 && appt.client_id && remaining > 0) {
       try {
         const r = await bonusLib.redeem({ clientId: appt.client_id, amount: bonusReq, checkAmount: remaining,
@@ -1621,7 +1653,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
         bonusMoney = round2(r.money); bonusRedeemed = round2(r.redeemed);
         remaining = round2(remaining - bonusMoney);
       } catch (e) {
-        return res.status(400).json({ error: 'bonus-redeem-failed', message: 'Не вдалося списати бонуси: ' + e.message });
+        return await failPay(400, { error: 'bonus-redeem-failed', message: 'Не вдалося списати бонуси: ' + e.message });
       }
     }
     // 4) передоплата (Major #4): якщо за цей візит уже внесено передоплату (Mono online,
@@ -1655,14 +1687,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
       const mc = round2(Number(req.body?.mixed_cash) || 0);
       const mk = round2(Number(req.body?.mixed_card) || 0);
       if (mc < 0 || mk < 0)
-        return res.status(400).json({ error: 'mixed-bad', message: 'Суми не можуть бути відʼємні' });
+        return await failPay(400, { error: 'mixed-bad', message: 'Суми не можуть бути відʼємні' });
       if (round2(mc + mk) !== finalCash)
-        return res.status(400).json({ error: 'mixed-sum-mismatch',
+        return await failPay(400, { error: 'mixed-sum-mismatch',
           message: `Готівка (${mc}) + картка (${mk}) = ${round2(mc + mk)} грн, а до сплати ${finalCash} грн. Поправте суми.`,
           expected: finalCash });
       payParts = [['cash', mc], ['card', mk]].filter(p => p[1] > 0);
       if (!payParts.length && finalCash > 0)
-        return res.status(400).json({ error: 'mixed-empty', message: 'Вкажіть суми готівки та/або картки' });
+        return await failPay(400, { error: 'mixed-empty', message: 'Вкажіть суми готівки та/або картки' });
     }
     // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
     // майстром того ж дня (точна привʼязка по GUID) — гроші вже в касі. Не дублюємо.

@@ -5587,10 +5587,10 @@ async function loadWaitlist() {
     document.getElementById('waitlistBody').innerHTML = items.length ? items.map(w => `
       <tr>
         <td style="white-space:nowrap">${new Date(w.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
-        <td>${w.client_name || '—'}</td>
-        <td><a href="tel:${w.client_phone}">${w.client_phone||''}</a></td>
-        <td>${w.service_name || w.service_id}</td>
-        <td>${w.master_name || '—'}</td>
+        <td>${escapeHtml(w.client_name) || '—'}</td>
+        <td><a href="tel:${encodeURIComponent(w.client_phone||'')}">${escapeHtml(w.client_phone)||''}</a></td>
+        <td>${escapeHtml(w.service_name) || w.service_id}</td>
+        <td>${escapeHtml(w.master_name) || '—'}</td>
         <td style="font-size:11px">${new Date(w.preferred_from).toLocaleDateString('uk-UA')}<br>—<br>${new Date(w.preferred_to).toLocaleDateString('uk-UA')}</td>
         <td>${w.channel || '—'}</td>
         <td><span class="badge b-${w.status}">${w.status}</span></td>
@@ -5630,7 +5630,7 @@ async function loadReminders() {
     ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
     const items = pend.items || [];
     document.getElementById('remBody').innerHTML = items.length ? items.map(r => `
-      <tr><td>${new Date(r.scheduled_at).toLocaleString('uk-UA')}</td><td>${r.client_name||'—'}</td><td>${r.client_phone||''}</td><td>${r.type}</td><td>${r.channel}</td><td><span class="badge b-${r.status}">${r.status}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty">Запланованих нагадувань немає</td></tr>';
+      <tr><td>${new Date(r.scheduled_at).toLocaleString('uk-UA')}</td><td>${escapeHtml(r.client_name)||'—'}</td><td>${escapeHtml(r.client_phone)||''}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.channel)}</td><td><span class="badge b-${escapeHtml(r.status)}">${escapeHtml(r.status)}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty">Запланованих нагадувань немає</td></tr>';
   } catch(e) { document.getElementById('remBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
 }
 async function runReminders() {
@@ -5656,7 +5656,7 @@ async function loadRepeat() {
     ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
     const items = cand.items || [];
     document.getElementById('repBody').innerHTML = items.length ? items.map(c => `
-      <tr><td>${c.client_name||'—'}</td><td>${c.client_phone||''}</td><td>${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'}</td><td>${c.service_name||'—'}</td><td>${(c.total||0).toLocaleString()} ₴</td><td>${c.days_since||'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Кандидатів немає</td></tr>';
+      <tr><td>${escapeHtml(c.client_name)||'—'}</td><td>${escapeHtml(c.client_phone)||''}</td><td>${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'}</td><td>${escapeHtml(c.service_name)||'—'}</td><td>${(c.total||0).toLocaleString()} ₴</td><td>${c.days_since||'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Кандидатів немає</td></tr>';
   } catch(e) { document.getElementById('repBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
 }
 async function runRepeat() {
