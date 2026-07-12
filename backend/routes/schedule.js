@@ -1474,9 +1474,15 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       await client.query('BEGIN'); await applyTenant(client);
       // застосовані знижки/бонуси/сертифікат — для точного відкату
       const a = await client.query(
-        `SELECT client_id, starts_at, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
+        `SELECT client_id, starts_at, status, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
            FROM appointments WHERE id=$1 FOR UPDATE`, [id]);
       appt = a.rows[0] || {};
+      // скасований візит уже сторновано в DELETE (каса+бонуси+серт). Повторний /unpay
+      // прочитав би стале pay_bonus_accrued і списав бонуси ВДРУГЕ (аудит v8).
+      if (appt.status === 'cancelled') {
+        await client.query('ROLLBACK');
+        return res.json({ ok: true, nothing_to_cancel: true, already_cancelled: true });
+      }
       removed = await client.query(
         `DELETE FROM cash_operations
           WHERE ref_type='appointment' AND ref_id=$1 AND type='in'

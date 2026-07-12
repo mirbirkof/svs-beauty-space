@@ -140,6 +140,11 @@ async function reverseWriteOffForAppointment(apptId) {
         [m.variant_id, qty, String(apptId), Number(apptId)]);
       items++;
     }
+    // синхронізуємо норм-журнал: рухи 'service:<id>' від material-norms уже повернуто вище
+    // (той самий reason). Без цього POST /consumption/reverse знайде MCL з reversed=FALSE
+    // і поверне ті самі обсяги ВДРУГЕ — фантомний надлишок складу (аудит v8, регрес).
+    await client.query(
+      `UPDATE material_consumption_log SET reversed=TRUE WHERE appointment_id=$1 AND reversed=FALSE`, [apptId]).catch(() => {});
     await client.query(`UPDATE appointments SET stock_written_off=FALSE WHERE id=$1`, [apptId]);
     await client.query('COMMIT');
     return { reversed: true, items };
