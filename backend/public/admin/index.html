@@ -12497,13 +12497,15 @@ async function loadMySub(){
   const box = document.getElementById('mysubBody');
   box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Завантаження…</div>';
   try {
-    const [sub, plansR, invR, gw, addR] = await Promise.all([
+    const [sub, plansR, invR, gw, addR, refR] = await Promise.all([
       api('/api/billing/subscription'),
       api('/api/billing/plans'),
       api('/api/billing/invoices?limit=20'),
       api('/api/billing/gateways'),
       api('/api/saas/addons').catch(()=>({addons:[]})),
+      api('/api/saas/referral').catch(()=>null),
     ]);
+    _mysub.referral = (refR && !refR.error) ? refR : null;
     if (sub && sub.error === 'forbidden') { box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Керування підпискою доступне лише власнику салону.</div>'; return; }
     _mysub.sub = (sub && !sub.error) ? sub : null;
     _mysub.plans = (plansR && plansR.rows) || [];
@@ -12633,7 +12635,27 @@ function renderMySub(){
       </tr></thead><tbody>${invRows}</tbody></table></div>
     ${!monoOn?'<div style="margin-top:10px;font-size:12.5px;color:#d9863b">Онлайн-оплата картою тимчасово недоступна — зверніться до підтримки для офлайн-оплати.</div>':''}`;
 
-  box.innerHTML = cur + plansBlock + addonsBlock + invBlock;
+  // ── Партнёрська програма «приведи салон» ──
+  let refBlock = '';
+  const rf = _mysub.referral;
+  if (rf && rf.enabled) {
+    const e = (typeof escapeHtml === 'function') ? escapeHtml : (x => String(x||''));
+    refBlock = `<div class="card" style="margin-top:16px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#eef2ff,#faf5ff)">
+      <div class="card-body" style="padding:18px 20px">
+        <div style="font-weight:800;font-size:16px;margin-bottom:4px">🎁 Приведи салон — отримай бонус</div>
+        <div style="font-size:13.5px;color:#4b5563;margin-bottom:12px">${e(rf.reward_text)}. Поділіться посиланням із колегами — коли запрошений салон оплатить підписку, бонус нарахується автоматично.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+          <input id="refLink" readonly value="${e(rf.link)}" style="flex:1;min-width:220px;padding:9px 12px;border:1px solid #c7d2fe;border-radius:9px;font-size:13px;background:#fff">
+          <button class="btn btn-sm" style="background:#4f46e5;color:#fff;border:0;font-weight:700" onclick="(function(){var i=document.getElementById('refLink');i.select();document.execCommand('copy');toast('Посилання скопійовано');})()">Копіювати</button>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px">
+          <div><b style="font-size:18px">${rf.invited||0}</b><br><span style="color:#6b7280">запрошено</span></div>
+          <div><b style="font-size:18px">${rf.qualified||0}</b><br><span style="color:#6b7280">оплатили</span></div>
+          <div><b style="font-size:18px;color:#0a8f5f">+${rf.rewarded_days||0}</b><br><span style="color:#6b7280">днів бонусу</span></div>
+        </div>
+      </div></div>`;
+  }
+  box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;
 }
 
 async function mysubToggleAddon(key, enable){
