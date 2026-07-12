@@ -25,7 +25,9 @@ function sentimentOf(rating) {
   return rating >= 4 ? 'positive' : (rating === 3 ? 'neutral' : 'negative');
 }
 async function getSettings(pool) {
-  const r = await pool.query(`SELECT * FROM reputation_settings WHERE tenant_id=$1`, [TENANT]);
+  // Аудит: раньше читалось из захардкоженного нулевого тенанта → салон-арендатор не мог
+  // настроить свою репутацию. Теперь по текущему салону (current_tenant_id из контекста, RLS).
+  const r = await pool.query(`SELECT * FROM reputation_settings WHERE tenant_id=current_tenant_id()`);
   return r.rows[0] || { min_redirect_rating: 4, request_cooldown_days: 30, request_enabled: true, alert_low_rating: true };
 }
 async function alertManager(text) {
@@ -125,8 +127,15 @@ router.patch('/settings', requirePerm('reviews.write'), async (req, res) => {
     const sets = [], args = [];
     for (const k of allowed) if (k in req.body) { args.push(req.body[k]); sets.push(`${k}=$${args.length}`); }
     if (!sets.length) return res.status(400).json({ error: 'nothing-to-update' });
-    args.push(TENANT);
-    await pool.query(`UPDATE reputation_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE tenant_id=$${args.length}`, args);
+    // Настройки ТЕКУЩЕГО салона. Upsert: если строки ещё нет — создаём (раньше UPDATE 0 строк
+    // и настройки молча не сохранялись). tenant_id проставит DEFAULT current_tenant_id().
+    const upd = await pool.query(
+      `UPDATE reputation_settings SET ${sets.join(', ')}, updated_at=NOW() WHERE tenant_id=current_tenant_id()`, args);
+    if (!upd.rowCount) {
+      const cols = [], vals = [], ph = [];
+      for (const k of allowed) if (k in req.body) { cols.push(k); vals.push(req.body[k]); ph.push(`$${vals.length}`); }
+      if (cols.length) await pool.query(`INSERT INTO reputation_settings (${cols.join(',')}) VALUES (${ph.join(',')})`, vals).catch(() => {});
+    }
     res.json(await getSettings(pool));
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
