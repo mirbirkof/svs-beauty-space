@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тарифи — SVS Beauty CRM</title>
+<style>
+  :root{ --bg:#0f1020; --card:#1a1b33; --ink:#eef0ff; --muted:#9aa0c7; --acc:#7c5cff; --acc2:#b69bff; --ok:#37d39a; --line:#2b2d50; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Inter,sans-serif; background:radial-gradient(1200px 600px at 50% -10%,#23244a 0%,var(--bg) 60%); color:var(--ink); min-height:100vh; padding:32px 20px 60px; }
+  .wrap{ max-width:1080px; margin:0 auto; }
+  .head{ text-align:center; margin-bottom:26px; }
+  .head h1{ font-size:32px; margin:0 0 8px; letter-spacing:-.5px; }
+  .head p{ color:var(--muted); font-size:15px; margin:0; }
+  .toggle{ display:inline-flex; gap:4px; background:#13142a; border:1px solid var(--line); border-radius:12px; padding:4px; margin:22px 0 6px; }
+  .toggle button{ border:0; background:transparent; color:var(--muted); font-size:14px; font-weight:600; padding:9px 20px; border-radius:9px; cursor:pointer; transition:.15s; }
+  .toggle button.on{ background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; }
+  .savebadge{ display:inline-block; margin-left:8px; font-size:12px; color:var(--ok); font-weight:700; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-top:22px; }
+  .plan{ background:var(--card); border:1px solid var(--line); border-radius:18px; padding:24px 22px; display:flex; flex-direction:column; position:relative; transition:.15s; }
+  .plan.popular{ border-color:var(--acc); box-shadow:0 0 0 1px var(--acc) inset, 0 20px 50px rgba(124,92,255,.18); }
+  .pop-tag{ position:absolute; top:-11px; left:50%; transform:translateX(-50%); background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; }
+  .plan h3{ margin:0 0 4px; font-size:19px; }
+  .plan .desc{ color:var(--muted); font-size:13px; min-height:34px; margin-bottom:14px; }
+  .price{ font-size:34px; font-weight:800; letter-spacing:-1px; }
+  .price small{ font-size:14px; font-weight:500; color:var(--muted); }
+  .price-note{ font-size:12px; color:var(--ok); height:16px; margin:2px 0 14px; }
+  .feats{ list-style:none; padding:0; margin:0 0 20px; flex:1; }
+  .feats li{ font-size:13.5px; padding:6px 0 6px 24px; position:relative; color:#d6d9f5; }
+  .feats li:before{ content:'✓'; position:absolute; left:0; color:var(--ok); font-weight:800; }
+  .feats li.off{ color:#5a5f85; }
+  .feats li.off:before{ content:'—'; color:#40456b; }
+  .cta{ display:block; text-align:center; padding:13px; border-radius:12px; background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; font-weight:700; font-size:15px; text-decoration:none; transition:.15s; }
+  .cta.ghost{ background:transparent; border:1px solid var(--line); color:var(--ink); }
+  .cta:hover{ filter:brightness(1.08); }
+  .addons{ margin-top:44px; }
+  .addons h2{ text-align:center; font-size:22px; margin-bottom:6px; }
+  .addons .sub{ text-align:center; color:var(--muted); font-size:14px; margin-bottom:20px; }
+  .addon-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+  .addon{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .addon .an{ font-weight:700; font-size:15px; margin-bottom:2px; }
+  .addon .ad{ color:var(--muted); font-size:12.5px; margin-bottom:8px; line-height:1.4; }
+  .addon .ap{ color:var(--acc2); font-weight:700; font-size:14px; }
+  .foot{ text-align:center; margin-top:44px; color:var(--muted); font-size:13px; }
+  .foot a{ color:var(--acc2); }
+  .loading{ text-align:center; color:var(--muted); padding:50px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Тарифи SVS Beauty CRM</h1>
+    <p>Повноцінна CRM для салону: онлайн-запис, каса, склад, лояльність, аналітика та AI.</p>
+    <div class="toggle">
+      <button id="tg-month" class="on" onclick="setCycle('monthly')">Щомісяця</button>
+      <button id="tg-year" onclick="setCycle('yearly')">Щорічно <span class="savebadge" id="saveBadge"></span></button>
+    </div>
+  </div>
+  <div class="grid" id="plans"><div class="loading">Завантаження тарифів…</div></div>
+
+  <div class="addons">
+    <h2>Платні модулі</h2>
+    <div class="sub">Докупіть окремо будь-який модуль до вашого тарифу — платите лише за потрібне.</div>
+    <div class="addon-grid" id="addons"></div>
+  </div>
+
+  <div class="foot">
+    Усі тарифи — 14 днів безкоштовно, картка не потрібна. · <a href="/signup">Почати зараз</a> · <a href="/p/offer.html">Публічна оферта</a>
+  </div>
+</div>
+
+<script>
+  const API = location.origin;
+  let CYCLE = 'monthly';
+  let PLANS = [], ADDONS = [];
+
+  const FEATURE_LABELS = {
+    'calendar.online_booking': 'Онлайн-запис клієнтів',
+    'clients.crm': 'База клієнтів (CRM)',
+    'loyalty.program': 'Програма лояльності',
+    'mkt.campaigns': 'Маркетинг і розсилки',
+    'ai.recommendations': 'AI-рекомендації',
+    'ai.receptionist': 'AI-адміністратор',
+    'analytics.advanced': 'Розширена аналітика',
+    'api.public': 'API та інтеграції',
+  };
+
+  function money(v){ return Math.round(Number(v)).toLocaleString('uk-UA'); }
+
+  function priceFor(p){
+    const pr = p.prices || {};
+    if (CYCLE === 'yearly') {
+      const y = Number(pr.yearly || 0);
+      return { big: y === 0 ? '0' : money(y/12), unit: 'грн/міс', note: y > 0 ? 'при оплаті за рік' : '' };
+    }
+    const m = Number(pr.monthly || 0);
+    return { big: money(m), unit: 'грн/міс', note: '' };
+  }
+
+  function savePercent(){
+    const p = PLANS.find(x => (x.prices||{}).monthly > 0);
+    if (!p) return 0;
+    const m = Number(p.prices.monthly)*12, y = Number(p.prices.yearly);
+    return m > 0 && y > 0 ? Math.round((1 - y/m)*100) : 0;
+  }
+
+  function render(){
+    const sp = savePercent();
+    document.getElementById('saveBadge').textContent = sp > 0 ? '−'+sp+'%' : '';
+    const box = document.getElementById('plans');
+    box.innerHTML = PLANS.map(p => {
+      const pr = priceFor(p);
+      const feats = (p.features || []).slice(0, 8).map(f =>
+        `<li class="${f.enabled ? '' : 'off'}">${FEATURE_LABELS[f.feature_key] || f.feature_key}</li>`).join('');
+      const contact = p.contact_sales;
+      const cta = contact
+        ? `<a class="cta ghost" href="/signup?plan=${p.slug}">Звʼязатися</a>`
+        : `<a class="cta" href="/signup?plan=${p.slug}&cycle=${CYCLE}">${pr.big==='0'?'Почати безкоштовно':'Обрати тариф'}</a>`;
+      return `<div class="plan${p.is_popular?' popular':''}">
+        ${p.is_popular?'<div class="pop-tag">Популярний</div>':''}
+        <h3>${p.name}</h3>
+        <div class="desc">${p.description||''}</div>
+        <div class="price">${pr.big} <small>${pr.unit}</small></div>
+        <div class="price-note">${pr.note}</div>
+        <ul class="feats">${feats}</ul>
+        ${cta}
+      </div>`;
+    }).join('');
+  }
+
+  function renderAddons(){
+    const box = document.getElementById('addons');
+    if (!ADDONS.length) { box.innerHTML = ''; return; }
+    box.innerHTML = ADDONS.map(a => {
+      const m = Number(a.price_monthly_uah || 0), y = Number(a.price_yearly_uah || 0);
+      const one = Number(a.price_one_time_uah || 0);
+      let price;
+      if (one > 0 && !m && !y) price = money(one)+' грн разово';
+      else price = (CYCLE === 'yearly' && y) ? money(y/12)+' грн/міс' : money(m)+' грн/міс';
+      return `<div class="addon"><div class="an">${a.name}</div><div class="ad">${a.description||''}</div><div class="ap">${price}</div></div>`;
+    }).join('');
+  }
+
+  function setCycle(c){
+    CYCLE = c;
+    document.getElementById('tg-month').classList.toggle('on', c==='monthly');
+    document.getElementById('tg-year').classList.toggle('on', c==='yearly');
+    render(); renderAddons();
+  }
+
+  (async () => {
+    try {
+      const [pr, ar] = await Promise.all([
+        fetch(API+'/api/v2/public/plans?currency=UAH').then(r=>r.json()),
+        fetch(API+'/api/v2/public/addons').then(r=>r.json()).catch(()=>({rows:[]})),
+      ]);
+      PLANS = (pr && pr.rows) || [];
+      ADDONS = (ar && (ar.rows || ar.addons)) || [];
+      // догружаем фичи по каждому плану для галочек
+      await Promise.all(PLANS.map(async p => {
+        try { const d = await fetch(API+'/api/v2/public/plans/'+p.slug).then(r=>r.json());
+          p.features = (d && (d.features || d.plan?.features)) || []; } catch(_) { p.features = []; }
+      }));
+      render(); renderAddons();
+    } catch(e) {
+      document.getElementById('plans').innerHTML = '<div class="loading">Не вдалось завантажити тарифи. Спробуйте пізніше.</div>';
+    }
+  })();
+</script>
+</body>
+</html>
