@@ -626,9 +626,11 @@ async function autoPayrollRun({ force = false, dry = false } = {}) {
     try {
       await client.query('BEGIN'); await applyTenant(client);
       const pr = await client.query(
-        `INSERT INTO payroll_records (master_id, master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, total, status)
-         VALUES ($1::text,$2,$3::date,($4::date - interval '1 day'),$5,$6,$7,$8,$9,'auto') RETURNING id`,
-        [String(mst.id), mst.name, from, to, est.services_count, est.services_revenue, Math.round(est.percent_part), Math.round(est.fixed_part), Math.round(est.total)]);
+        // total — GENERATED ALWAYS (мігр. 005): явна вставка кидала помилку і
+        // ВЕСЬ авто-payroll мовчки падав у catch (аудит v8, блокер)
+        `INSERT INTO payroll_records (master_id, master_name, period_start, period_end, services_count, services_revenue, percent_part, fixed_part, status)
+         VALUES ($1::text,$2,$3::date,($4::date - interval '1 day'),$5,$6,$7,$8,'auto') RETURNING id`,
+        [String(mst.id), mst.name, from, to, est.services_count, est.services_revenue, Math.round(est.percent_part), Math.round(est.fixed_part)]);
       await client.query(
         `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, ext_ref)
          VALUES (NULL,'out','salary',$1,'cash','auto_payroll',$2,$3,$4,$5)

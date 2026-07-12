@@ -440,6 +440,17 @@ router.get('/drilldown', requirePerm('pnl.drilldown'), async (req, res) => {
         `SELECT created_at AS date, label AS description, amount, category AS method, 'pnl_adjustments' AS source
            FROM pnl_adjustments WHERE category=$3 AND period_start < $2 AND period_end >= $1
           ORDER BY created_at DESC LIMIT $4 OFFSET $5`, [start, end, category, limit, offset]);
+    } else if (section === 'cogs' && category === 'salary_confirmed') {
+      // ЗП через «Підтвердження витрат»: реальні рядки мають category='salary' +
+      // ref_type='expense_confirm' — загальна гілка шукала category='salary_confirmed'
+      // і повертала 0 рядків (аудит v8)
+      transactions = await safeRows(
+        `SELECT created_at AS date, COALESCE(description,'ЗП (підтвердження)') AS description,
+                amount, method, 'cash_operations' AS source
+           FROM cash_operations
+          WHERE type='out' AND category='salary' AND ref_type='expense_confirm'
+            AND created_at >= $1 AND created_at < $2
+          ORDER BY created_at DESC LIMIT $3 OFFSET $4`, [start, end, limit, offset]);
     } else {
       // OpEx по категорії з cash_operations (out)
       transactions = await safeRows(

@@ -1485,10 +1485,15 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       // передоплата: /pay позначає онлайн-передоплату спожитою (prepaid_consumed_at).
       // Без відкату мітки повторна оплата НЕ відніме передоплату — каса порахує
       // гроші двічі (аудит v7, регрес #4). Той самий жорсткий матч, що в /pay.
+      // рівно ОДНА бронь — остання спожита у вікні (дзеркало LIMIT 1 у /pay);
+      // масовий скид міг зачепити сусідню бронь клієнта (аудит v8)
       if (appt.client_id && appt.starts_at) await client.query(
         `UPDATE online_bookings SET prepaid_consumed_at = NULL, updated_at = NOW()
-          WHERE client_id = $1 AND prepaid_consumed_at IS NOT NULL
-            AND date_from <= $2 AND date_to > $2`, [appt.client_id, appt.starts_at]);
+          WHERE id = (SELECT id FROM online_bookings
+                       WHERE client_id = $1 AND prepaid_consumed_at IS NOT NULL
+                         AND date_from <= $2 AND date_to > $2
+                       ORDER BY prepaid_consumed_at DESC LIMIT 1)`,
+        [appt.client_id, appt.starts_at]);
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
