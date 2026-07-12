@@ -141,7 +141,12 @@ app.use('/admin', express.static(__dirname + '/public/admin', {
 app.use('/p', express.static(__dirname + '/public'));
 
 // Публічна онлайн-запис (INT-08 сайт / INT-06 TG Mini App) — короткий URL
-app.get('/book', (req, res) => res.redirect(302, '/p/book.html'));
+// Аудит v6: query (?tenant=slug) НАДО сохранить при редиректе — иначе клиент арендатора
+// теряет привязку к салону и бронирует в дефолтный (салон Босса).
+app.get('/book', (req, res) => {
+  const qs = req.url.indexOf('?');
+  res.redirect(302, '/p/book.html' + (qs >= 0 ? req.url.slice(qs) : ''));
+});
 app.get('/signup', (req, res) => res.redirect(302, '/p/signup.html'));
 app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
 

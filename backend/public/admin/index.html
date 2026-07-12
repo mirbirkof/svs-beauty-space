@@ -827,7 +827,7 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="subscriptions" onclick="go('subscriptions')">
             <span class="material-icons-round">card_membership</span> Абонементи
           </a>
-          <a class="sidebar-item" href="https://svs-shop-api.onrender.com/book" target="_blank" rel="noopener">
+          <a class="sidebar-item" id="sidebarBookLink" href="/book" target="_blank" rel="noopener">
             <span class="material-icons-round">language</span> Вітрина (сайт)
             <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:.4">open_in_new</span>
           </a>
@@ -3019,6 +3019,20 @@ let TENANT_SLUG = (() => {
   } catch { return ''; }
 })();
 function tenantHeader() { return TENANT_SLUG ? { 'X-Tenant-Slug': TENANT_SLUG } : {}; }
+// Клиентская ссылка на онлайн-запись ИМЕННО этого салона (аудит v6): без ?tenant=slug
+// клиенты арендатора уходили в дефолтный салон. Для салона Босса slug пуст → голый /book.
+function bookingUrl() {
+  const base = location.origin + '/book';
+  return TENANT_SLUG ? base + '?tenant=' + encodeURIComponent(TENANT_SLUG) : base;
+}
+function applyBookingLinks() {
+  try {
+    const url = bookingUrl();
+    const a = document.getElementById('sidebarBookLink'); if (a) a.href = url;
+    const f = document.getElementById('ob_url'); if (f && !f.value) f.placeholder = url;
+  } catch (_) {}
+}
+document.addEventListener('DOMContentLoaded', applyBookingLinks);
 // Телефон для відображення: БД зберігає цифри, показуємо у форматі +XXXXXXXXXXX
 function fmtPhone(p){ let d = String(p||'').replace(/\D/g,''); if(!d) return '—'; if(d.length===10&&d[0]==='0')d='38'+d; else if(d.length===9)d='380'+d; else if(d.length===11&&d.slice(0,2)==='80')d='3'+d; return '+'+d; }
 let currentPage = 'dashboard';
