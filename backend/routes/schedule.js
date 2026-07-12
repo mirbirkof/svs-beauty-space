@@ -378,6 +378,10 @@ router.post('/apply-pattern-batch', async (req, res) => {
     const dayMs = 86400000;
     let totalWork = 0, totalOff = 0, mastersDone = 0;
 
+    // B7 (аудит v8): раніше — 3 вкладені цикли з pool.query на КОЖЕН день
+    // (24 майстри × 12 міс × 31 день ≈ 18 600 роундтрипів, пул блокувався на хвилини).
+    // Тепер: рахуємо все в памʼяті і пишемо пачками unnest по 5000 рядків.
+    const bMid = [], bDate = [], bStart = [], bEnd = [];
     for (const mid of ids) {
       for (let mo = 0; mo < months_ahead; mo++) {
         const Y = FY + Math.floor((FM - 1 + mo) / 12);
@@ -387,24 +391,23 @@ router.post('/apply-pattern-batch', async (req, res) => {
           const cur = new Date(Date.UTC(Y, M - 1, d));
           const iso = cur.toISOString().slice(0, 10);
           let idx = Math.round((cur - anchorD) / dayMs) % cycle; if (idx < 0) idx += cycle;
-          if (idx < work_days) {
-            await pool.query(
-              `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
-                 VALUES ($1,$2,$3,$4,'manual',NOW())
-               ON CONFLICT (master_id, work_date) DO UPDATE SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
-              [mid, iso, start, end]);
-            totalWork++;
-          } else {
-            await pool.query(
-              `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
-                 VALUES ($1,$2,NULL,NULL,'manual',NOW())
-               ON CONFLICT (master_id, work_date) DO UPDATE SET start_time=NULL, end_time=NULL, source='manual', synced_at=NOW()`,
-              [mid, iso]);
-            totalOff++;
-          }
+          const isWork = idx < work_days;
+          bMid.push(mid); bDate.push(iso);
+          bStart.push(isWork ? start : null); bEnd.push(isWork ? end : null);
+          if (isWork) totalWork++; else totalOff++;
         }
       }
       mastersDone++;
+    }
+    const CHUNK = 5000;
+    for (let i = 0; i < bMid.length; i += CHUNK) {
+      await pool.query(
+        `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source, synced_at)
+         SELECT u.mid, u.wd, u.st::time, u.et::time, 'manual', NOW()
+           FROM unnest($1::int[], $2::date[], $3::text[], $4::text[]) AS u(mid, wd, st, et)
+         ON CONFLICT (master_id, work_date) DO UPDATE
+           SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
+        [bMid.slice(i, i + CHUNK), bDate.slice(i, i + CHUNK), bStart.slice(i, i + CHUNK), bEnd.slice(i, i + CHUNK)]);
     }
     res.json({ ok: true, masters: mastersDone, months: months_ahead, work_days: totalWork, off_days: totalOff });
   } catch (e) { console.error('[schedule/batch]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
