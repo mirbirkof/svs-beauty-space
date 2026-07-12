@@ -65,19 +65,33 @@ async function createTenant(name, opts = {}, actor = null) {
     [String(name).trim(), slug, planCode])).rows[0];
 
   // 2) Роли + владелец — в контексте нового тенанта (RLS WITH CHECK + DEFAULT tenant_id).
+  // Критичная связка: без владельца салон = «мёртвый» (войти нельзя). Аудит: если этот шаг
+  // упадёт, компенсируем — удаляем только что созданный tenant (+ его роли), чтобы не оставить
+  // orphan-салон с зарезервированным slug и без входа. Шаги 3+ (сиды/подписка) уже в try/catch.
   const hash = await hashPassword(password);
-  const owner = await runAs(tenant.id, async () => {
-    for (const [code, rname, level, perms] of ROLE_SEED) {
-      await pool.query(
-        `INSERT INTO roles (code, name, level, permissions) VALUES ($1,$2,$3,$4::jsonb)
-         ON CONFLICT (tenant_id, code) DO NOTHING`, [code, rname, level, perms]);
-    }
-    const roleId = (await pool.query(`SELECT id FROM roles WHERE code='owner' LIMIT 1`)).rows[0].id;
-    return (await pool.query(
-      `INSERT INTO users (phone, email, display_name, role_id, password_hash, is_active)
-       VALUES ($1,$2,$3,$4,$5,true) RETURNING id, phone, email, display_name`,
-      [phone, email, ownerName, roleId, hash])).rows[0];
-  });
+  let owner;
+  try {
+    owner = await runAs(tenant.id, async () => {
+      for (const [code, rname, level, perms] of ROLE_SEED) {
+        await pool.query(
+          `INSERT INTO roles (code, name, level, permissions) VALUES ($1,$2,$3,$4::jsonb)
+           ON CONFLICT (tenant_id, code) DO NOTHING`, [code, rname, level, perms]);
+      }
+      const roleId = (await pool.query(`SELECT id FROM roles WHERE code='owner' LIMIT 1`)).rows[0].id;
+      return (await pool.query(
+        `INSERT INTO users (phone, email, display_name, role_id, password_hash, is_active)
+         VALUES ($1,$2,$3,$4,$5,true) RETURNING id, phone, email, display_name`,
+        [phone, email, ownerName, roleId, hash])).rows[0];
+    });
+  } catch (ownerErr) {
+    console.error('[tenant-mgmt:createTenant:owner] откат orphan-tenant:', ownerErr.message);
+    try {
+      await pool.query(`DELETE FROM roles WHERE tenant_id=$1`, [tenant.id]).catch(() => {});
+      await pool.query(`DELETE FROM users WHERE tenant_id=$1`, [tenant.id]).catch(() => {});
+      await pool.query(`DELETE FROM tenants WHERE id=$1`, [tenant.id]).catch(() => {});
+    } catch (_) {}
+    throw new Error('owner-creation-failed');
+  }
 
   // 3) Подписка с авто-расчётом срока (trial 14д → monthly 30д / yearly 365д). RLS-free таблицы.
   let subscription = null;
