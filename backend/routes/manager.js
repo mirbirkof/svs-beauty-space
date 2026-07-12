@@ -119,6 +119,10 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const question = String((req.body && req.body.message) || '').trim().slice(0, 500);
     if (!question) return res.status(400).json({ error: 'no_message' });
 
+    // Язык салона (для мультиаренды в разных странах) — запасной, если язык вопроса неясен.
+    let salonLang = 'uk';
+    try { const lr = await getPool().query(`SELECT lang FROM tenants WHERE id=current_tenant_id()`); if (lr.rows[0] && lr.rows[0].lang) salonLang = lr.rows[0].lang; } catch (_) {}
+
     const u = req.user || { permissions: [], role: 'guest', display_name: '' };
     // RBAC: каталог лише з дозволених інструментів — модель навіть не бачить недоступне
     const catalog = ASSISTANT_TOOLS.filter(n => canUseTool(u, n)).map(n => `- ${n}: ${TOOLS[n].description}`).join('\n');
@@ -138,7 +142,8 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const ownerNote = fullAccess
       ? `\nВАЖЛИВО: цей користувач — ВЛАСНИК/керівник салону з ПОВНИМ доступом. Йому дозволено АБСОЛЮТНО ВСЕ. НІКОЛИ не кажи йому «доступно лише для керівника» чи «у вас немає прав» — він і є керівник. Якщо чогось немає в переліку інструментів/сторінок нижче — це просто ще не підключено в помічнику, так і скажи, але не як відмову по правах.`
       : '';
-    const system = `Ти — помічник у CRM салону краси. Відповідай українською, коротко, цифрами.
+    const system = `Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами.
+МОВА: відповідай ТІЄЮ САМОЮ мовою, якою написане питання (українською/польською/англійською/російською/литовською/казахською — якою запитали, такою й відповідай). Якщо мова питання неясна чи надто коротка — мовою салону «${salonLang}».
 
 ХТО З ТОБОЮ ГОВОРИТЬ: «${u.display_name || u.role}» — ${fullAccess
       ? 'ВЛАСНИК салону. Йому можна все, звертайся з повагою, показуй повну картину.'
