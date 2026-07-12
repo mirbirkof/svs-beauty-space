@@ -528,9 +528,27 @@ try { app.use('/api/v2', require('./routes/feature-flags')); } catch(e) { consol
 
 // (Mono routes смонтированы выше — до catch-all /api роутеров)
 
+// Дедуп алертов о 500-ках: одинаковую ошибку шлём не чаще раза в 10 мин (не спамим владельца).
+const _errAlertSeen = new Map();
+function alertServerError(err, req) {
+  const chat = process.env.ADMIN_TG_CHAT;
+  if (!chat) return;
+  try {
+    const sig = (req.method || '') + ' ' + (req.path || '') + ' :: ' + String(err && err.message || err).slice(0, 80);
+    const now = Date.now();
+    const last = _errAlertSeen.get(sig) || 0;
+    if (now - last < 10 * 60 * 1000) return; // уже алертили недавно
+    _errAlertSeen.set(sig, now);
+    if (_errAlertSeen.size > 500) _errAlertSeen.clear(); // защита памяти
+    const { tgSend } = require('./routes/telegram-notify');
+    tgSend(chat, `🔴 <b>Помилка сервера CRM (500)</b>\n<code>${req.method} ${req.path}</code>\n${String(err && err.message || err).slice(0, 200)}`).catch(() => {});
+  } catch (_) {}
+}
+
 app.use((err, req, res, next) => {
   console.error('[shop-api]', err);
   sentry.capture(err, { path: req.path, method: req.method });
+  alertServerError(err, req); // реальный сбой у живого салона → алерт владельцу в Telegram
   const { safeMessage } = require('./lib/safe-error');
   res.status(500).json({ error: safeMessage(err, 'internal') });
 });
