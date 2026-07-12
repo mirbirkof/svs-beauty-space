@@ -130,6 +130,14 @@ async function aggregate(start, end, branchId) {
   const cert = await safeRows(
     `SELECT COALESCE(SUM(amount),0)::numeric s FROM gift_certificate_transactions
       WHERE type='issue' AND created_at >= $1 AND created_at < $2`, [start, end]);
+  // Повернення (сторно продажів при видаленні оплаченого запису, category='refund',
+  // type='out'). Для закритих змін оригінальний прихід лишається в касі, а повернення
+  // не віднімалось ніде → прибуток завищений (аудит v8, M3). Віднімаємо з виручки.
+  const refunds = await safeRows(
+    `SELECT COALESCE(SUM(co.amount),0)::numeric s
+       FROM cash_operations co ${cb.join}
+      WHERE co.type='out' AND co.category='refund'
+        AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
   // Абонементи: продані у періоді × ціна плану
   const subs = await safeRows(
     `SELECT COALESCE(SUM(sp.price),0)::numeric s
@@ -212,6 +220,9 @@ async function aggregate(start, end, branchId) {
   add('memo', 'certificates', 'Сертифікати (аванси, не входять у виручку)', num(cert[0]?.s), 60, { source: 'gift_certificate_transactions', type: 'issue' });
   add('revenue', 'subscriptions', 'Виручка від абонементів', num(subs[0]?.s), 40, { source: 'subscriptions' });
   add('revenue', 'other_income', 'Інші доходи', num(otherIn[0]?.s), 50, { source: 'cash_operations', type: 'in', category: 'other_in' });
+  // повернення — відʼємний потік, зменшує total_revenue (M3)
+  if (num(refunds[0]?.s) > 0)
+    add('revenue', 'refund', 'Повернення (сторно продажів)', -num(refunds[0]?.s), 55, { source: 'cash_operations', type: 'out', category: 'refund' });
   // cogs
   add('cogs', 'materials', 'Розхідні матеріали', num(mat[0]?.s), 110, { source: 'stock_movements' });
   add('cogs', 'salary_piece', 'Зарплата майстрів (відрядна)', num(salPiece[0]?.s), 120, { source: 'payroll_records', part: 'percent_part' });
