@@ -37,6 +37,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const phone = String(b.phone || '').replace(/\D/g, '');
     const password = b.password ? String(b.password) : '';
     const email = b.email ? String(b.email).trim() : null;
+    // Страна (выбор) и язык (автоопределён из браузера) — запрос Босса.
+    const country = b.country ? String(b.country).slice(0, 8).toUpperCase() : null;
+    const lang = b.lang ? String(b.lang).slice(0, 5).toLowerCase() : 'uk';
     // account_type='solo' → майстер-одиночка: безкоштовний план solo
     const accountType = b.account_type === 'solo' ? 'solo' : 'salon';
     let planCode = ALLOWED_PLANS.includes(b.plan_code) ? b.plan_code : 'pro';
@@ -60,7 +63,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
     // solo/free → trial:false: одразу постійна безкоштовна active-підписка без рахунку.
     const r = await tm.createTenant(salonName, {
       phone, password, owner_name: ownerName, email,
-      plan_code: planCode, cycle, trial: needTrial,
+      plan_code: planCode, cycle, trial: needTrial, country, lang,
     }, { id: null, source: 'public-signup' });
 
     // GDPR (блокер G1): зберігаємо доказ згоди власника — timestamp, джерело, IP, версія.

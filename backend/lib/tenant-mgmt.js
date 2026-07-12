@@ -61,8 +61,8 @@ async function createTenant(name, opts = {}, actor = null) {
   const slug = await uniqueSlug(name);
   // 1) Тенант. status=active (доступ открыт; платёжный статус живёт в subscription).
   const tenant = (await pool.query(
-    `INSERT INTO tenants (name, slug, status, plan) VALUES ($1,$2,'active',$3) RETURNING *`,
-    [String(name).trim(), slug, planCode])).rows[0];
+    `INSERT INTO tenants (name, slug, status, plan, country, lang) VALUES ($1,$2,'active',$3,$4,COALESCE($5,'uk')) RETURNING *`,
+    [String(name).trim(), slug, planCode, opts.country || null, opts.lang || null])).rows[0];
 
   // 2) Роли + владелец — в контексте нового тенанта (RLS WITH CHECK + DEFAULT tenant_id).
   // Критичная связка: без владельца салон = «мёртвый» (войти нельзя). Аудит: если этот шаг

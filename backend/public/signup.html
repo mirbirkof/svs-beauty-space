@@ -60,6 +60,23 @@
         <label>E-mail (необов'язково)</label>
         <input id="email" type="email" placeholder="you@example.com">
 
+        <label>Країна</label>
+        <select id="country" class="input" style="width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);background:#13142a;color:var(--ink);font-size:15px">
+          <option value="UA">Україна</option>
+          <option value="PL">Польща (Polska)</option>
+          <option value="KZ">Казахстан</option>
+          <option value="MD">Молдова</option>
+          <option value="LT">Литва (Lietuva)</option>
+          <option value="LV">Латвія (Latvija)</option>
+          <option value="EE">Естонія (Eesti)</option>
+          <option value="CZ">Чехія (Česko)</option>
+          <option value="DE">Німеччина (Deutschland)</option>
+          <option value="GB">Велика Британія</option>
+          <option value="US">США</option>
+          <option value="OTHER">Інша країна</option>
+        </select>
+        <div id="langNote" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+
         <div id="plan_block">
           <label>Тариф</label>
           <div class="plans" id="plans_list">
@@ -91,6 +108,23 @@
   let acct = 'salon';
   // партнёрская ссылка «приведи салон»: ?ref=CODE — передаём на бэк при регистрации
   const REF = new URLSearchParams(location.search).get('ref') || '';
+
+  // Язык определяется АВТОМАТОМ из браузера (место жительства). Страну предугадываем
+  // из локали/таймзоны, но пользователь может сменить.
+  const LANG = (navigator.language || 'uk').slice(0, 2).toLowerCase();
+  (function autoGeo() {
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
+    const locale = (navigator.language || '').toUpperCase();
+    // страна из региона локали (uk-UA → UA) или по таймзоне
+    let cc = locale.includes('-') ? locale.split('-')[1] : '';
+    const tzMap = { 'kiev':'UA','kyiv':'UA','warsaw':'PL','almaty':'KZ','chisinau':'MD','vilnius':'LT','riga':'LV','tallinn':'EE','prague':'CZ','berlin':'DE','london':'GB' };
+    for (const k in tzMap) if (tz.includes(k)) { cc = cc || tzMap[k]; break; }
+    const sel = document.getElementById('country');
+    if (cc && [...sel.options].some(o => o.value === cc)) sel.value = cc;
+    const langNames = { uk:'українська', ru:'російська', pl:'польська', en:'англійська', de:'німецька', lt:'литовська', lv:'латиська', et:'естонська', cs:'чеська', kk:'казахська' };
+    const note = document.getElementById('langNote');
+    if (note) note.textContent = 'Мова інтерфейсу визначена автоматично: ' + (langNames[LANG] || LANG);
+  })();
 
   // переключатель периода оплаты (месяц/год)
   document.querySelectorAll('#cycle_block .plan').forEach(el => el.addEventListener('click', () => {
@@ -168,6 +202,8 @@
       plan_code: acct === 'solo' ? 'solo' : plan,
       cycle: acct === 'solo' ? 'monthly' : cycle,
       ref: REF || undefined,
+      country: document.getElementById('country')?.value || null,
+      lang: LANG,
       consent: !!document.getElementById('consent').checked, // GDPR: явна згода → доказ на сервері
     };
     try {
