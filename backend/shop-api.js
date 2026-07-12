@@ -149,6 +149,7 @@ app.get('/book', (req, res) => {
 });
 app.get('/signup', (req, res) => res.redirect(302, '/p/signup.html'));
 app.get('/pricing', (req, res) => res.redirect(302, '/p/pricing.html')); // публічна вітрина тарифів
+app.get('/help', (req, res) => res.redirect(302, '/p/help.html'));       // інструкція користувача
 app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
 
 // Render health check (root + /health)
