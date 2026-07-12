@@ -54,7 +54,7 @@ async function countOverlap({ masterId, startsAt, endsAt, excludeId = null }, db
         AND ($4::int IS NULL OR id <> $4)`,
     [Number(masterId), new Date(startsAt).toISOString(), new Date(endsAt).toISOString(), excludeId]
   );
-  return r.rows[0].c;
+  return r.rows[0]?.c ?? 0;
 }
 
 // Превысит ли добавление ещё одной записи вместимость мастера.

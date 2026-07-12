@@ -214,21 +214,25 @@ async function processScheduled() {
   if (_schedRunning) return { skipped: 'busy' };
   _schedRunning = true;
   try {
-    const due = await getPool().query(
-      `SELECT id, type FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20`);
-    let launched = 0;
-    for (const row of due.rows) {
-      try {
-        if (row.type === 'drip') await drip.enroll(row.id);
-        else await launchCampaign(row.id);
-        launched++;
-      } catch (e) { console.error('[campaigns] auto-launch', row.id, e.message); }
-    }
-    // продвигаем активные drip-цепочки (шаги, у которых наступил срок)
-    let dripTick = null;
-    try { dripTick = await drip.processDrip(200); }
-    catch (e) { console.error('[campaigns] drip tick', e.message); }
-    return { due: due.rowCount, launched, drip: dripTick };
+    // Аудит-ядро: крон работал БЕЗ tenant-контекста → RLS без GUC пропускала строки ВСЕХ
+    // салонов, рассылки/drip обрабатывались вперемешку (чужие шаблоны/каналы). Теперь обходим
+    // КАЖДЫЙ салон под его контекстом (как automations/billing/recurring-expenses).
+    const { forEachTenant } = require('../lib/tenant');
+    let launched = 0, dueTotal = 0;
+    await forEachTenant(async () => {
+      const due = await getPool().query(
+        `SELECT id, type FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT 20`);
+      dueTotal += due.rowCount;
+      for (const row of due.rows) {
+        try {
+          if (row.type === 'drip') await drip.enroll(row.id);
+          else await launchCampaign(row.id);
+          launched++;
+        } catch (e) { console.error('[campaigns] auto-launch', row.id, e.message); }
+      }
+      try { await drip.processDrip(200); } catch (e) { console.error('[campaigns] drip tick', e.message); }
+    });
+    return { due: dueTotal, launched };
   } finally { _schedRunning = false; }
 }
 

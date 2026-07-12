@@ -31,7 +31,7 @@ async function liveFinance(pool, from, to) {
        da AS (
          SELECT a.master_id,
                 GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
-                COALESCE(a.real_amount,a.price,0) rev_full
+                GREATEST(0, COALESCE(a.real_amount,a.price,0)) rev_full  -- симетрія з rev_labor: комісія не в мінус
            FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
           WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
