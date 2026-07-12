@@ -131,8 +131,12 @@ const BACKUP_TABLES = [
   'cash_operations', 'cash_shifts', 'shift_checklists', 'expense_confirmations',
   'payroll_records', 'payroll_payments', 'payroll_advances', 'payroll_bonuses',
   'payroll_penalties', 'payroll_partial_payments', 'payroll_rules', 'payroll_schemes',
-  // SaaS-биллинг
+  // SaaS-биллинг + сами салоны и их настройки (аудит: без них восстановление неполное —
+  // tenants=салоны, app_settings=токены интеграций/Mono, tenant_licenses=планы, партнёрка)
   'invoices_saas', 'subscriptions_saas', 'payments_saas',
+  'tenants', 'app_settings', 'tenant_licenses', 'tenant_bot_settings',
+  'saas_plans_v2', 'plan_features', 'plan_addons', 'tenant_addon_subscriptions',
+  'partner_referrals', 'partner_program_settings',
   // Доступы
   'users', 'roles',
   'sessions', 'sms_codes',
