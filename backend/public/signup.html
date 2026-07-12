@@ -65,6 +65,10 @@
           <div class="plans" id="plans_list">
             <div class="plan active" data-plan="professional"><b>Professional</b><small>популярний</small></div>
           </div>
+          <div class="plans" id="cycle_block" style="margin-top:8px">
+            <div class="plan active" data-cycle="monthly"><b>Щомісяця</b><small>гнучко</small></div>
+            <div class="plan" data-cycle="yearly"><b>Щорічно</b><small id="year_save">вигідніше</small></div>
+          </div>
         </div>
         <div class="trial" id="trial_note">14 днів безкоштовно · оплата пізніше · картка не потрібна</div>
 
@@ -83,7 +87,14 @@
 <script>
   const API = location.origin;
   let plan = 'professional';
+  let cycle = 'monthly';
   let acct = 'salon';
+
+  // переключатель периода оплаты (месяц/год)
+  document.querySelectorAll('#cycle_block .plan').forEach(el => el.addEventListener('click', () => {
+    document.querySelectorAll('#cycle_block .plan').forEach(x => x.classList.remove('active'));
+    el.classList.add('active'); cycle = el.dataset.cycle;
+  }));
 
   function bindPlanClicks() {
     document.querySelectorAll('.plan').forEach(p => p.addEventListener('click', () => {
@@ -108,6 +119,14 @@
         return `<div class="plan${p.is_popular ? ' active' : ''}" data-plan="${p.slug}"><b>${p.name}</b><small>${price}</small></div>`;
       }).join('');
       if (!rows.some(p => p.is_popular)) { list.querySelector('.plan')?.classList.add('active'); plan = rows[0].slug; }
+      // скидка за годовую оплату — в подпись переключателя
+      const paid = rows.find(p => (p.prices||{}).monthly > 0);
+      if (paid) {
+        const m = Number(paid.prices.monthly)*12, y = Number(paid.prices.yearly);
+        const save = m > 0 && y > 0 ? Math.round((1 - y/m)*100) : 0;
+        const el = document.getElementById('year_save');
+        if (el && save > 0) el.textContent = '−' + save + '%';
+      }
       bindPlanClicks();
     } catch (_) { bindPlanClicks(); }
   })();
@@ -145,6 +164,7 @@
       email: document.getElementById('email').value.trim() || null,
       account_type: acct,
       plan_code: acct === 'solo' ? 'solo' : plan,
+      cycle: acct === 'solo' ? 'monthly' : cycle,
       consent: !!document.getElementById('consent').checked, // GDPR: явна згода → доказ на сервері
     };
     try {
