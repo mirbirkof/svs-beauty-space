@@ -210,6 +210,13 @@ router.post('/visits/:id(\\d+)/cancel', authClient(), async (req, res) => {
               notes = COALESCE(notes,'') || ' [скасовано клієнтом ' || to_char(NOW(),'DD.MM HH24:MI') || ']'
         WHERE id = $1`, [v.id]);
     notifySalon(`🚫 <b>Клієнт скасував запис</b>\n${v.service || 'послуга'} · ${v.master || 'майстер'}\n${new Date(v.starts_at).toLocaleString('uk-UA')}\nКлієнт #${req.client.id}`);
+    // Слот звільнився → пропонуємо його клієнту з листа очікування (best-effort, не блокує відповідь)
+    try {
+      require('../lib/waitlist-fill').tryFillFromWaitlist({
+        masterId: v.master_id, masterName: v.master, serviceId: v.service_id,
+        startsAt: v.starts_at, endsAt: v.ends_at,
+      }).catch(() => {});
+    } catch (_) {}
     res.json({ ok: true });
   } catch (e) { console.error('[cabinet:cancel]', e.message); res.status(500).json({ error: 'internal' }); }
 });

@@ -1235,6 +1235,15 @@ router.patch('/appointments/:id', async (req, res) => {
         // в журнал событий + вебхуки. noshow → база для авто-тега/переслота (подписчик — отдельно)
         await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
       }
+      // Слот звільнився (скасовано/неявка) → пропонуємо його клієнту з листа очікування
+      if ((status === 'cancelled' || status === 'noshow') && r.rows[0]) {
+        try {
+          require('../lib/waitlist-fill').tryFillFromWaitlist({
+            masterId: r.rows[0].master_id, startsAt: r.rows[0].starts_at, endsAt: r.rows[0].ends_at,
+            serviceId: r.rows[0].service_id,
+          }).catch(() => {});
+        } catch (_) {}
+      }
     }
     res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

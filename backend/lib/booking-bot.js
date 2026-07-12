@@ -1046,8 +1046,41 @@ async function onCallback(cq, ctx) {
   const msgId = cq.message ? cq.message.message_id : null;
   const target = { chat_id: chatId, message_id: msgId };
   const data = cq.data || '';
-  if (!data.startsWith('bk:')) return false;
   const ack = () => ctx.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
+
+  // Лист очікування: клієнт відповідає на пропозицію вільного слота (wl:confirm/decline:ID)
+  if (data.startsWith('wl:')) {
+    const [, act, wid] = data.split(':');
+    await ack();
+    try {
+      const wl = (await ctx.pool.query(`SELECT * FROM waitlist WHERE id=$1 AND status='offered'`, [+wid])).rows[0];
+      if (!wl) { await respond(ctx.tg, target, 'Ця пропозиція вже неактуальна.'); return true; }
+      if (act === 'decline') {
+        await ctx.pool.query(`UPDATE waitlist SET status='waiting', offered_slot=NULL, offered_at=NULL, updated_at=NOW() WHERE id=$1`, [wl.id]);
+        await respond(ctx.tg, target, 'Гаразд, лишаємо вас у черзі — запропонуємо інший вільний час.');
+        return true;
+      }
+      // confirm → створюємо запис на запропонований слот, конкретний майстер, source='waitlist'
+      const ins = await ctx.pool.query(
+        `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, source, notes)
+         VALUES ($1,$2,$3,$4, COALESCE($5, $4::timestamptz + interval '1 hour'),'booked','waitlist',$6)
+         RETURNING id`,
+        [wl.client_id, Number(wl.offered_master_id) || null, wl.service_id, wl.offered_slot, wl.offered_ends,
+         `З листа очікування #${wl.id}`]).catch(e => { console.error('[wl:confirm:appt]', e.message); return null; });
+      if (!ins || !ins.rows[0]) { await respond(ctx.tg, target, 'На жаль, цей час щойно зайняли. Лишаємо вас у черзі.');
+        await ctx.pool.query(`UPDATE waitlist SET status='waiting', updated_at=NOW() WHERE id=$1`, [wl.id]).catch(()=>{}); return true; }
+      await ctx.pool.query(`UPDATE waitlist SET status='confirmed', confirmed_at=NOW(), appointment_id=$2, updated_at=NOW() WHERE id=$1`, [wl.id, ins.rows[0].id]);
+      await respond(ctx.tg, target, `✅ Записано! ${wl.service_name || 'Послуга'} у ${wl.offered_master_name || 'майстра'}, ${new Date(wl.offered_slot).toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}. Чекаємо вас!`);
+      // алерт адміну: підтверджено з черги (щоб підсвітити/підтвердити)
+      try {
+        const oc = (await ctx.pool.query(`SELECT owner_chat_id FROM tenant_bot_settings WHERE tenant_id=current_tenant_id() AND owner_chat_id IS NOT NULL LIMIT 1`)).rows[0];
+        if (oc) await ctx.tg('sendMessage', { chat_id: oc.owner_chat_id, text: `✅ Клієнт ${wl.client_name || wl.client_phone} записався З ЧЕРГИ на ${new Date(wl.offered_slot).toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} (${wl.offered_master_name || ''}). Підтвердіть у журналі.` });
+      } catch (_) {}
+    } catch (e) { console.error('[wl:callback]', e.message); await respond(ctx.tg, target, 'Помилка, спробуйте ще раз.'); }
+    return true;
+  }
+
+  if (!data.startsWith('bk:')) return false;
 
   try {
     // категорія з фолбеку "не впізнав"
