@@ -16,7 +16,15 @@ const LOCATION = process.env.BEAUTYPRO_LOCATION_ID || '88de9f7c-c225-02e0-597c-7
 let cache = { token: null, expiresAt: 0, refreshToken: null };
 let pendingAuth = null; // dedup concurrent getToken() calls
 
+// ═══ KILL-SWITCH (12.07.2026, приказ Босса: BeautyPro больше НЕТ) ═══
+// Салон самостоятельный с 03.07. Вызовы BP из рантайма (веб-запись, Mono,
+// waitlist) висели до 15с таймаута НА ПУТИ КЛИЕНТА и только потом продолжали.
+// Теперь любой вызов падает МГНОВЕННО с 'bp-disabled' — все call-sites уже
+// обрабатывают ошибку как best-effort. Вернуть BP: BEAUTYPRO_ENABLED=1 в env.
+const BP_DISABLED = process.env.BEAUTYPRO_ENABLED !== '1';
+
 function request(method, path, { token, body, query } = {}) {
+  if (BP_DISABLED) return Promise.reject(new Error('bp-disabled: салон відвʼязаний від BeautyPro (03.07)'));
   return new Promise((resolve, reject) => {
     const qs = query ? '?' + new URLSearchParams(query).toString() : '';
     const data = body ? JSON.stringify(body) : null;

@@ -467,7 +467,8 @@ async function processUpdate(upd, tg, salon) {
           });
           bp_id = String(appt.id || appt.appointment_id || '');
         } catch (bpErr) {
-          console.warn('[booking/bp-optional] BeautyPro недоступен, запись только в нашей БД:', bpErr.message);
+          if (!/bp-disabled/.test(bpErr.message))
+            console.warn('[booking/bp-optional] BeautyPro недоступен, запись только в нашей БД:', bpErr.message);
         }
         await db.update(row.token, { status: 'confirmed', phone, appointment_id: bp_id, verified_at: new Date().toISOString() });
 

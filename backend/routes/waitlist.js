@@ -199,9 +199,13 @@ router.post('/booking/confirm', async (req, res) => {
     );
     if (busy.rowCount) return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
 
-    // BP: ensure client + create appointment
+    // Джерело правди — НАША БД (салон відвʼязаний від BeautyPro 03.07). Раніше
+    // status='confirmed' ставився ЛИШЕ якщо BP відповів → з мертвим BP всі брони
+    // з листа очікування падали в 'pending': клієнт думав що записаний, а слот
+    // лишався «вільним» (аудит v8 + приказ Босса 12.07). Тепер підтверджуємо
+    // локально завжди; від овербукінга захищає capacity-тригер 247 на INSERT.
     let bp_appointment_id = null;
-    let status = 'pending';
+    const status = 'confirmed';
     try {
       const bpClient = await bp.createClient({ phone: ph, name: name || 'Клієнт' });
       const appt = await bp.createAppointment({
@@ -210,10 +214,8 @@ router.post('/booking/confirm', async (req, res) => {
         date_from, date_to, note: note || `Онлайн-запис (${channel || 'site'})`,
       });
       bp_appointment_id = String(appt.id || appt.appointment_id || '');
-      status = 'confirmed';
     } catch (bpErr) {
-      console.error('[booking/confirm bp]', bpErr.message);
-      // не падаем — сохраняем локально с статусом pending, админ обработает
+      if (!/bp-disabled/.test(bpErr.message)) console.error('[booking/confirm bp]', bpErr.message);
     }
 
     const r = await pool.query(`
