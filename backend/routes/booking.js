@@ -604,6 +604,13 @@ async function processUpdate(upd, tg, salon) {
 // бот сказав «отримав», а відповісти не встиг. При збої немає ack →
 // Telegram повторить апдейт, і клієнт таки отримає відповідь.
 router.post('/telegram', async (req, res) => {
+  // Захист вебхука від підробних апдейтів (аудит v8, M5). Увімкнеться АВТОМАТИЧНО,
+  // коли в env зʼявиться TG_WEBHOOK_SECRET і той самий secret_token буде виставлено
+  // в setWebhook. Поки змінна не задана — перевірка пропускається (бот не ламається).
+  if (process.env.TG_WEBHOOK_SECRET &&
+      req.headers['x-telegram-bot-api-secret-token'] !== process.env.TG_WEBHOOK_SECRET) {
+    return res.status(403).json({ ok: false, error: 'bad-secret' });
+  }
   try {
     await processUpdate(req.body, tg, { name: 'SVS Beauty Space' });
   } catch (e) {

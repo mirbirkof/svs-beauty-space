@@ -47,10 +47,17 @@ async function loadCatalog(pool) {
   const hit = _catCache.get(tid);
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
   const r = await pool.query(
-    `SELECT id, beautypro_id AS bp_id, name,
-            COALESCE(duration_min, 60) AS duration_min, price::float AS price, category
-       FROM services
-      WHERE active IS NOT FALSE AND deleted_at IS NULL AND beautypro_id IS NOT NULL`
+    // Паритет з веб-формою (booking-catalog.js): показуємо послугу, якщо вона активна
+    // і має хоча б одного онлайн-майстра. Раніше вимагали beautypro_id IS NOT NULL —
+    // залишок від залежності від BeautyPro; нативні послуги салону (без BP) були
+    // невидимі боту (аудит v8, M6). Движок слотів працює по внутрішніх id, BP не потрібен.
+    `SELECT s.id, s.beautypro_id AS bp_id, s.name,
+            COALESCE(s.duration_min, 60) AS duration_min, s.price::float AS price, s.category
+       FROM services s
+      WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM master_services ms JOIN masters m ON m.id = ms.master_id
+                     WHERE ms.service_id = s.id AND ms.active IS NOT FALSE
+                       AND m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE)`
   );
   const services = r.rows.map(s => ({
     id: s.id, bp_id: s.bp_id, name: s.name,
