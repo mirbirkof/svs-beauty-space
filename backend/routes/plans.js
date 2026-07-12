@@ -613,7 +613,9 @@ adminRouter.put('/plans/:id/limits', async (req, res) => {
 });
 
 // GET /admin/plans/:id/tenants — тенанти на цьому плані (через legacy tenant_licenses)
-adminRouter.get('/plans/:id/tenants', async (req, res) => {
+// Аудит v6: saas.read є в owner/admin КОЖНОГО салону (мігр. 096) — цей ендпоінт віддавав
+// список УСІХ салонів платформи та їхні плани будь-якому власнику. Тільки платформа.
+adminRouter.get('/plans/:id/tenants', platformOnly, async (req, res) => {
   try {
     const plan = (await q(`SELECT slug FROM saas_plans_v2 WHERE id=$1`, [req.params.id]))[0];
     if (!plan) return res.status(404).json({ error: 'plan_not_found' });
