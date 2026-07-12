@@ -80,6 +80,8 @@ function tenantMiddleware() {
           // CRM — 403. Оплата → вебхук Mono (без slug, не блокується) → салон active.
           const p = req.path || '';
           const billingRecovery = p === '/api/users/me'
+            || p.startsWith('/api/auth')      // аудит v6: без входу суспенд-салон не міг
+                                              //  отримати токен → не доходив до оплати (глухий кут)
             || p.startsWith('/api/billing')
             || p.startsWith('/api/pay');
           if (!billingRecovery) return res.status(403).json({ error: 'tenant-' + t.status, billing_blocked: true });

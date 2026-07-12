@@ -114,13 +114,28 @@ async function runBackup({ queryFn, tables, label = 'snapshot', localDir, keep =
 // бэкап молча писал {error} и НЕ сохранял баллы лояльности. Исправлено на реальные имена.
 // runBackup дополнительно пре-фильтрует список по факту существования (защита от дрейфа схемы).
 const BACKUP_TABLES = [
-  'brands', 'categories', 'service_categories',
-  'products', 'product_variants', 'stock_movements',
+  // Каталог/склад
+  'brands', 'categories', 'service_categories', 'services',
+  'products', 'product_variants', 'stock_movements', 'material_norms',
+  // Клиенты/лояльность
   'clients', 'client_loyalty', 'loyalty_ledger', 'loyalty_tiers',
-  'sessions', 'sms_codes',
+  'gift_certificates', 'gift_certificate_transactions',
+  'subscriptions', 'subscription_usage',
+  // Магазин
   'orders', 'order_items', 'payments',
-  'appointments',
   'promos', 'promotions', 'promo_codes_saas',
+  // Записи/расписание (аудит v6: раньше отсутствовали online_bookings/материалы)
+  'appointments', 'appointment_materials', 'online_bookings', 'waitlist',
+  'masters', 'master_schedule_days',
+  // ДЕНЬГИ — критично, раньше НЕ бэкапились (аудит v6):
+  'cash_operations', 'cash_shifts', 'shift_checklists', 'expense_confirmations',
+  'payroll_records', 'payroll_payments', 'payroll_advances', 'payroll_bonuses',
+  'payroll_penalties', 'payroll_partial_payments', 'payroll_rules', 'payroll_schemes',
+  // SaaS-биллинг
+  'invoices_saas', 'subscriptions_saas', 'payments_saas',
+  // Доступы
+  'users', 'roles',
+  'sessions', 'sms_codes',
 ];
 
 /**
