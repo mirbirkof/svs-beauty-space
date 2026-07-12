@@ -361,19 +361,15 @@ router.patch('/orders/:id/status', async (req, res) => {
           [it.variant_id, -it.qty, String(orderId), `Замовлення #${orderId}`]
         );
       }
-      // бонусы лояльности 3% от суммы → клиенту
+      // Бонусы: начисление идёт ТОЛЬКО в единый кошелёк (bonus.accrue после коммита ниже).
+      // Аудит v6: раньше здесь был ВТОРОЙ (+3% в loyalty_points/ledger) — заказ начислял
+      // бонусы дважды в двух системах. loyalty_points теперь зеркало кошелька (мигр. 257).
       await client.query(
         `UPDATE clients SET
-           loyalty_points = COALESCE(loyalty_points,0) + FLOOR($2 * 0.03)::int,
            total_spent = COALESCE(total_spent,0) + $2,
            last_visit_at = NOW()
          WHERE id = $1`,
         [cur.rows[0].client_id, cur.rows[0].total]
-      );
-      await client.query(
-        `INSERT INTO loyalty_ledger (client_id, delta, reason, ref_id)
-         VALUES ($1, FLOOR($2 * 0.03)::int, 'order-paid', $3)`,
-        [cur.rows[0].client_id, cur.rows[0].total, String(orderId)]
       );
       // авто-приход в открытую кассовую смену (если есть)
       try {
@@ -402,28 +398,14 @@ router.patch('/orders/:id/status', async (req, res) => {
           [it.variant_id, it.qty, String(orderId), `Повернення замовлення #${orderId}`]
         );
       }
-      // Аудит v6: слепые -3% без записи в loyalty_ledger — баланс в кабинете клиента
-      // не менялся, а при Mono-оплате (бонусы не начислялись) снимались чужие баллы.
-      // Эталон orders.js: отзываем РОВНО начисленное по ledger + компенсирующая запись.
-      const accr = await client.query(
-        `SELECT COALESCE(SUM(delta),0)::int AS pts FROM loyalty_ledger
-          WHERE ref_id = $1 AND reason = 'order-paid'`, [String(orderId)]);
-      const pts = accr.rows[0].pts;
+      // Возврат: total_spent корректируем в транзакции; отзыв бонусов — из ЕДИНОГО
+      // кошелька после коммита (bonus-refund-bg ниже): отзываем ровно начисленное
+      // по этому заказу в bonus_transactions (аудит v6, единый кошелёк 257).
       if (cur.rows[0].client_id) {
         await client.query(
-          `UPDATE clients SET
-             loyalty_points = GREATEST(0, COALESCE(loyalty_points,0) - $2),
-             total_spent = GREATEST(0, COALESCE(total_spent,0) - $3)
-           WHERE id = $1`,
-          [cur.rows[0].client_id, Math.max(0, pts), cur.rows[0].total]
+          `UPDATE clients SET total_spent = GREATEST(0, COALESCE(total_spent,0) - $2) WHERE id = $1`,
+          [cur.rows[0].client_id, cur.rows[0].total]
         );
-        if (pts > 0) {
-          await client.query(
-            `INSERT INTO loyalty_ledger (client_id, delta, reason, ref_id)
-             VALUES ($1, $2, 'order-refund', $3)`,
-            [cur.rows[0].client_id, -pts, String(orderId)]
-          );
-        }
       }
       // авто-расход (возврат денег) в открытую смену
       try {
@@ -455,6 +437,22 @@ router.patch('/orders/:id/status', async (req, res) => {
         triggerEvent: 'payment', category: 'products', sourceType: 'order', sourceId: orderId,
         description: `Замовлення #${orderId}`,
       }).catch(e => console.error('[bonus-accrue-bg]', e.message));
+    }
+
+    // Возврат: отозвать из единого кошелька ровно начисленное по заказу (аудит v6, 257)
+    if (prevStatus === 'paid' && status === 'refunded' && cur.rows[0].client_id) {
+      (async () => {
+        const bonus = require('../lib/bonus');
+        const acc = await getPool().query(
+          `SELECT COALESCE(SUM(amount),0) AS s FROM bonus_transactions
+            WHERE client_id=$1 AND type='accrual' AND source_type='order' AND source_id=$2`,
+          [cur.rows[0].client_id, orderId]);
+        const pts = Math.round(Number(acc.rows[0].s));
+        if (pts > 0) await bonus.manualAdjust({
+          clientId: cur.rows[0].client_id, amount: -pts,
+          description: `Повернення замовлення #${orderId}`,
+        });
+      })().catch(e => console.error('[bonus-refund-bg]', e.message));
     }
 
     res.json({ ok: true, order: r.rows[0], side_effects: { stock_updated: prevStatus === 'new' && status === 'paid' } });

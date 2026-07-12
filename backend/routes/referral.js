@@ -48,19 +48,24 @@ async function ensureCode(clientId) {
   return null;
 }
 
-// Нарахування винагороди отримувачу. bonus → loyalty_ledger; discount/free_service → фіксуємо як issued (застосує каса).
+// Нарахування винагороди отримувачу. bonus → ЄДИНИЙ кошельок (lib/bonus, аудит v6/257):
+// раніше писали у другий кошельок (loyalty_ledger/points) — клієнт не міг витратити
+// винагороду в касі. accrue ідемпотентний по (client, type, source) — дубль не задвоїть.
+// NB: accrue відкриває власну транзакцію (поза client-tx виклику) — шлях короткий, ризик прийнято.
 async function issueReward(client, referralId, recipientId, role, type, amount, level) {
   const amt = Number(amount) || 0;
   if (!recipientId || amt <= 0) return null;
   let ledgerId = null;
   if (type === 'bonus') {
     const pts = Math.round(amt);
-    const led = await client.query(
-      `INSERT INTO loyalty_ledger (client_id, delta, reason, ref_id, ref_type)
-       VALUES ($1,$2,$3,$4,'referral') RETURNING id`,
-      [recipientId, pts, `referral-${role}`, String(referralId)]);
-    ledgerId = led.rows[0].id;
-    await client.query(`UPDATE clients SET loyalty_points = COALESCE(loyalty_points,0) + $2 WHERE id=$1`, [recipientId, pts]);
+    try {
+      const tx = await require('../lib/bonus').accrue({
+        clientId: recipientId, amount: pts, type: 'referral', applyTier: false,
+        sourceType: `referral-${role}-l${level}`, sourceId: Number(referralId) || null,
+        description: `Реферальна винагорода (${role})`,
+      });
+      ledgerId = tx && tx.id ? tx.id : null;
+    } catch (e) { console.error('[referral:accrue]', e.message); }
   }
   const rw = await client.query(
     `INSERT INTO referral_rewards (referral_id, recipient_id, recipient_role, reward_type, reward_amount, level, status, ledger_id, issued_at)

@@ -77,9 +77,10 @@ async function loyaltyFor(client) {
   const pool = getPool();
   const phone = String(client.phone || '').replace(/\D/g, '');
 
-  // баланс бонусов из ledger
+  // Баланс — из ЕДИНОГО кошелька (аудит v6/257): раньше кабинет показывал SUM(loyalty_ledger),
+  // которого не существовало в кассе — клиент видел баланс, который негде потратить.
   const bal = await pool.query(
-    `SELECT COALESCE(SUM(delta), 0)::numeric AS balance FROM loyalty_ledger WHERE client_id = $1`,
+    `SELECT COALESCE(MAX(balance), 0)::numeric AS balance FROM bonus_balances WHERE client_id = $1`,
     [client.id]
   );
 
