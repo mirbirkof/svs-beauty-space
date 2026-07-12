@@ -72,6 +72,13 @@ router.post('/signup', signupLimiter, async (req, res) => {
         [r.tenant.id, 'public-signup', cip, 'offer+dpa-2026-07']);
     } catch (consErr) { console.error('[public-signup/consent]', consErr.message); }
 
+    // Партнёрська програма «приведи салон»: якщо реєстрація по реф-коду (?ref= / body.ref) —
+    // фіксуємо зв'язок. Нагорода рефереру нараховується при першій оплаті цього салону.
+    try {
+      const refCode = (b.ref || req.query.ref || '').toString().trim();
+      if (refCode) await require('../lib/partner-referrals').registerReferral(refCode, r.tenant.id, salonName);
+    } catch (refErr) { console.error('[public-signup/referral]', refErr.message); }
+
     // SAS этап 2: онлайн-запис доступний одразу — ліцензія модуля online_booking.
     // Платні плани → trial на trial_days; solo/free → безстрокова підписка (це
     // ключовий сценарій майстра-одиночки: CRM + запис + свій ТГ-бот безкоштовно).

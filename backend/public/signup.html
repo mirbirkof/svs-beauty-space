@@ -89,6 +89,8 @@
   let plan = 'professional';
   let cycle = 'monthly';
   let acct = 'salon';
+  // партнёрская ссылка «приведи салон»: ?ref=CODE — передаём на бэк при регистрации
+  const REF = new URLSearchParams(location.search).get('ref') || '';
 
   // переключатель периода оплаты (месяц/год)
   document.querySelectorAll('#cycle_block .plan').forEach(el => el.addEventListener('click', () => {
@@ -165,6 +167,7 @@
       account_type: acct,
       plan_code: acct === 'solo' ? 'solo' : plan,
       cycle: acct === 'solo' ? 'monthly' : cycle,
+      ref: REF || undefined,
       consent: !!document.getElementById('consent').checked, // GDPR: явна згода → доказ на сервері
     };
     try {

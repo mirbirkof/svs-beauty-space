@@ -367,6 +367,9 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
         await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1 AND status<>'active'`, [sub.tenant_id]).catch(() => {});
         _invalidateTenantCache(sub.tenant_id);
         try { require('./feature-gate').invalidateFeatureCache(sub.tenant_id); } catch (_) {} // фічі вмикаються одразу після оплати
+        // Партнёрська програма: перша оплата цього салону → нагорода рефереру (+днів підписки).
+        // onReferredPaid сам перевіряє чи є pending-реферал і не нараховує двічі.
+        try { await require('./partner-referrals').onReferredPaid(sub.tenant_id); } catch (e) { console.error('[billing:partner]', e.message); }
       }
       // снять dunning
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [invoiceId]).catch(() => {});
