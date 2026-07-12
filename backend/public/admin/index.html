@@ -3393,11 +3393,16 @@ async function api(path, opts = {}) {
     ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...tenantHeader(), ...(opts.headers || {}) },
   });
   // Major #24: протухла сесія mid-session → на екран логіну, а не «мертва» панель.
-  if (r.status === 401 && TOKEN) {
+  // Аудит: 401 від ендпоінтів з ІНШОЮ авторизацією (мобільний застосунок /api/mobile,
+  // клієнтський кабінет /api/cabinet) НЕ означає протухлу адмін-сесію — не викидаємо
+  // з CRM, просто повертаємо помилку (раніше такий 401 перезавантажував на логін).
+  const foreignAuth = /^\/api\/(mobile|cabinet|app)\b/.test(path);
+  if (r.status === 401 && TOKEN && !foreignAuth) {
     try { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); } catch {}
     location.reload();
     return { ok: false, error: 'session-expired' };
   }
+  if (r.status === 401 && foreignAuth) return { ok: false, error: 'foreign-auth', _status: 401 };
   // Захист від не-JSON відповіді (502/504 при холодному старті Render) — не роняємо проміс.
   try { return await r.json(); } catch { return { ok: false, error: 'bad-response', _status: r.status }; }
 }
