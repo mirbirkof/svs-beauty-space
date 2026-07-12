@@ -4555,7 +4555,7 @@ async function _svcRenderMp(id,mp){
     mp.map(m=>'<tr><td>'+escapeHtml(m.master_name)+'</td><td>'+(m.price!=null?_svcMoney(m.price):'базова')+'</td><td>'+(m.duration_min||'базова')+'</td>'+
       '<td><button class="btn btn-outline" style="padding:2px 7px" onclick="svcMpDel('+id+','+m.id+')">✕</button></td></tr>').join('')+'</tbody></table>':'<p style="opacity:.6;font-size:13px">Індивідуальних цін немає (діє базова)</p>')+
     '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
-      '<select id="svcMpMaster" class="input" style="flex:2;min-width:140px">'+_svcMasters.filter(m=>m.provides_services!==false).map(m=>'<option value="'+m.id+'">'+escapeHtml(m.name)+'</option>').join('')+'</select>'+
+      '<select id="svcMpMaster" class="input" style="flex:2;min-width:140px">'+_svcMasters.filter(m=>m.provides_services!==false && m.active!==false).map(m=>'<option value="'+m.id+'">'+escapeHtml(m.name)+'</option>').join('')+'</select>'+
       '<input id="svcMpPrice" class="input" type="number" placeholder="Ціна" style="width:90px">'+
       '<input id="svcMpDur" class="input" type="number" placeholder="Хв" style="width:70px">'+
       '<button class="btn btn-primary" onclick="svcMpAdd('+id+')">Додати</button>'+

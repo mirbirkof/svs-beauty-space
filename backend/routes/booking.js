@@ -742,11 +742,14 @@ router.get('/slots', async (req, res) => {
            JOIN services s ON s.id = ms.service_id
           WHERE (s.beautypro_id::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
             AND ms.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE
-            AND m.provides_services IS NOT FALSE`, [service_id])).rows;
+            AND m.provides_services IS NOT FALSE
+            AND m.active IS NOT FALSE`, [service_id])).rows;
     } else {
+      // аудит: звільнений майстер недоступний для онлайн-запису (не пропонуємо клієнту)
       masters = (await pool.query(
         `SELECT m.id, ${mGid} AS gid FROM masters m
-          WHERE m.online_booking_enabled IS NOT FALSE AND m.provides_services IS NOT FALSE`)).rows;
+          WHERE m.online_booking_enabled IS NOT FALSE AND m.provides_services IS NOT FALSE
+            AND m.active IS NOT FALSE`)).rows;
     }
     if (!masters.length) return res.json([]);
 
