@@ -119,9 +119,28 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const question = String((req.body && req.body.message) || '').trim().slice(0, 500);
     if (!question) return res.status(400).json({ error: 'no_message' });
 
-    // Язык салона (для мультиаренды в разных странах) — запасной, если язык вопроса неясен.
+    // Язык салона (для мультиаренды) — запасной, если язык вопроса не определился.
     let salonLang = 'uk';
     try { const lr = await getPool().query(`SELECT lang FROM tenants WHERE id=current_tenant_id()`); if (lr.rows[0] && lr.rows[0].lang) salonLang = lr.rows[0].lang; } catch (_) {}
+
+    // Определяем язык ВОПРОСА в коде (модель игнорирует текстовое правило в промпте →
+    // инжектим команду на самом целевом языке, её модель слушает надёжнее).
+    const detectLang = (t) => {
+      const s = String(t || '').toLowerCase();
+      if (/[іїєґ]/.test(s)) return 'uk';
+      if (/[ыэъё]/.test(s)) return 'ru';
+      if (/[а-я]/.test(s)) return 'uk';                 // прочая кириллица → язык салона украинский по умолч.
+      if (/[ąćęłńóśźż]/.test(s) || /\b(jak|gdzie|czy|dodac|wizyt|klient|platnosc)\b/.test(s)) return 'pl';
+      if (/[a-z]/.test(s)) return 'en';
+      return salonLang;
+    };
+    const qLang = detectLang(question) || salonLang;
+    const LANG_CMD = {
+      uk: 'ВІДПОВІДАЙ УКРАЇНСЬКОЮ.',
+      ru: 'CRITICAL: Write the "response" field in RUSSIAN (русский язык). Do NOT use Ukrainian.',
+      pl: 'CRITICAL: Write the "response" field in POLISH (język polski). Do NOT use Ukrainian or Russian.',
+      en: 'CRITICAL: Write the "response" field in ENGLISH. Do NOT use Ukrainian or Russian.',
+    }[qLang] || `Answer in language code "${qLang}".`;
 
     const u = req.user || { permissions: [], role: 'guest', display_name: '' };
     // RBAC: каталог лише з дозволених інструментів — модель навіть не бачить недоступне
@@ -142,8 +161,8 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const ownerNote = fullAccess
       ? `\nВАЖЛИВО: цей користувач — ВЛАСНИК/керівник салону з ПОВНИМ доступом. Йому дозволено АБСОЛЮТНО ВСЕ. НІКОЛИ не кажи йому «доступно лише для керівника» чи «у вас немає прав» — він і є керівник. Якщо чогось немає в переліку інструментів/сторінок нижче — це просто ще не підключено в помічнику, так і скажи, але не як відмову по правах.`
       : '';
-    const system = `Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами.
-МОВА: відповідай ТІЄЮ САМОЮ мовою, якою написане питання (українською/польською/англійською/російською/литовською/казахською — якою запитали, такою й відповідай). Якщо мова питання неясна чи надто коротка — мовою салону «${salonLang}».
+    const system = `${LANG_CMD}
+Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами. Мова поля "response" — визначена командою у першому рядку (мова питання користувача), незалежно від того, що цей промпт українською.
 
 ХТО З ТОБОЮ ГОВОРИТЬ: «${u.display_name || u.role}» — ${fullAccess
       ? 'ВЛАСНИК салону. Йому можна все, звертайся з повагою, показуй повну картину.'
