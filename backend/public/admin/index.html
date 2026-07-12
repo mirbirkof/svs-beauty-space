@@ -8540,10 +8540,11 @@ function renderJournalDay(container, data) {
       const okIcon = (a.status==='confirmed'||a.status==='done') ? '<span class="ok material-icons-round">check_circle</span>' : '';
       const tileFlag = a.client_id ? (Number(a.no_show_count)>0 ? '<span class="jflag warn" title="Є неявки">⚠</span>' : (Number(a.visit_count)===0 ? '<span class="jflag new" title="Новий клієнт">🆕</span>' : '')) : '';
       const _isOnline = /^(bot|site|online)/.test(a.source||'');
+      const _fromWaitlist = a.source==='waitlist'; // запис із листа очікування — окрема підсвітка
       const _noteFull = a.notes ? String(a.notes) : '';
       const _noteAttr = _noteFull.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}${_isOnline?' jonline':''}${_noteFull?' jhas-note':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id},${a.master_id!=null?a.master_id:'null'})"${_noteFull?` data-note="${_noteAttr}"`:''}>
-        ${_isOnline?'<span class="jonline-badge" title="Онлайн-запис">🌐 online</span>':''}
+      body += `<div class="jappt jst-${a.status||'booked'}${a.paid?' jpaid':''}${_isOnline?' jonline':''}${_fromWaitlist?' jwaitlist':''}${_noteFull?' jhas-note':''}" style="top:${top}px;height:${h}px;touch-action:manipulation" draggable="${IS_TOUCH?'false':'true'}" ondragstart="jDragStart(event,${a.id})" ondragend="jDragEnd(event)" onclick="openAppt(${a.id},${a.master_id!=null?a.master_id:'null'})"${_noteFull?` data-note="${_noteAttr}"`:''}>
+        ${_fromWaitlist?'<span class="jonline-badge" style="background:#f59e0b" title="Записався з листа очікування">📋 з черги</span>':(_isOnline?'<span class="jonline-badge" title="Онлайн-запис">🌐 online</span>':'')}
         ${a.client_wish?'<span class="wish-badge" title="Є повідомлення від клієнта">💬</span>':''}
         ${_noteFull?'<span class="note-dot material-icons-round" style="font-size:13px">sticky_note_2</span>':''}
         ${tileFlag}
