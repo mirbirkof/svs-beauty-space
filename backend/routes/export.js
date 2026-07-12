@@ -40,7 +40,12 @@ router.get = (path, ...handlers) => _get(path, ...handlers.map(h =>
 function toCsv(rows, columns) {
   const escape = (v) => {
     if (v == null) return '';
-    const s = String(v).replace(/"/g, '""');
+    let s = String(v);
+    // Аудит v6: нейтрализация formula-injection — имя клиента вида '=HYPERLINK(...)',
+    // '+...', '-...', '@...' исполнилось бы формулой при открытии CSV в Excel/Sheets.
+    // Префиксуем апострофом (стандартная защита OWASP), чтобы ячейка стала текстом.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
     return /[,"\n]/.test(s) ? `"${s}"` : s;
   };
   const header = columns.map(c => c.label).join(',');

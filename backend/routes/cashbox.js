@@ -34,7 +34,13 @@ async function rememberCustomCat(type, category) {
 // перекидав операцію на сусідній день). Дозволяє ставити витрату «заднім числом» (#72).
 function opDateParam(body) {
   const d = body && body.date;
-  return (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? `${d} 12:00:00+03` : null;
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  // Аудит v6: '2026-99-99' проходил regex и ронял Postgres (500). Проверяем реальную
+  // календарную дату (обратный разбор совпадает с вводом).
+  const [y, m, day] = d.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, day));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== day) return null;
+  return `${d} 12:00:00+03`;
 }
 
 // Авторизация: read на GET, write на мутации
@@ -417,7 +423,9 @@ router.post('/operations', async (req, res) => {
     const { shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, allow_no_shift, ext_ref } = req.body || {};
     if (!type || !category || !amount) return res.status(400).json({ error: 'type, category, amount required' });
     if (!['in', 'out'].includes(type)) return res.status(400).json({ error: 'bad type' });
-    if (Number(amount) <= 0) return res.status(400).json({ error: 'amount must be positive' });
+    // Аудит v6: '12,50' (запятая) / '5 000' (пробел) давали NaN, а NaN<=0 === false →
+    // кривая сумма проходила в кассу. Требуем настоящее конечное положительное число.
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
 
     await client.query('BEGIN'); await applyTenant(client);
 
