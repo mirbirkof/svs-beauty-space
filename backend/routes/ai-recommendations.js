@@ -261,7 +261,7 @@ router.get('/features/:entity_type/:entity_id(\\d+)', async (req, res) => {
     await q(
       `INSERT INTO ai_feature_store (entity_type, entity_id, features, computed_at, valid_until)
        VALUES ($1,$2,$3::jsonb, now(), now()+INTERVAL '24 hours')
-       ON CONFLICT (entity_type, entity_id) DO UPDATE SET features=EXCLUDED.features, computed_at=now(), valid_until=EXCLUDED.valid_until`,
+       ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE SET features=EXCLUDED.features, computed_at=now(), valid_until=EXCLUDED.valid_until`,
       [entity_type, entity_id, JSON.stringify(features)]);
     res.json({ entity_type, entity_id: Number(entity_id), features, computed_at: new Date().toISOString() });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }

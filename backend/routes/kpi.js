@@ -117,7 +117,7 @@ router.post('/metrics', async (req, res) => {
     const row = (await q(
       `INSERT INTO kpi_metrics (code, name, description, unit, direction, agg, applicable_roles, default_weight)
        VALUES ($1,$2,$3,COALESCE($4,'count'),COALESCE($5,'higher'),COALESCE($6,'sum'),$7,COALESCE($8,1.0))
-       ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description,
+       ON CONFLICT (tenant_id, code) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description,
          unit=EXCLUDED.unit, direction=EXCLUDED.direction, agg=EXCLUDED.agg,
          applicable_roles=EXCLUDED.applicable_roles, default_weight=EXCLUDED.default_weight, updated_at=now()
        RETURNING *`,

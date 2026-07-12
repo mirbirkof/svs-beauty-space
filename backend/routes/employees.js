@@ -81,7 +81,7 @@ router.post('/specializations', async (req, res) => {
   try {
     if (!req.body?.name) return res.status(400).json({ error: 'name required' });
     const r = await q(`INSERT INTO specializations (name, description, icon) VALUES ($1,$2,$3)
-       ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description, icon=EXCLUDED.icon, updated_at=NOW() RETURNING *`,
+       ON CONFLICT (tenant_id, name) DO UPDATE SET description=EXCLUDED.description, icon=EXCLUDED.icon, updated_at=NOW() RETURNING *`,
       [req.body.name, req.body.description || null, req.body.icon || null]);
     res.json({ ok: true, specialization: r[0] });
   } catch (e) { err(res, e); }
