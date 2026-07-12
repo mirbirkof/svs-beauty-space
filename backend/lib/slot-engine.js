@@ -88,7 +88,19 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
        FROM appointments a, day
       WHERE a.master_id = ANY($2::int[])
         AND a.status = ANY($3::text[])
-        AND a.starts_at < day.d1 AND a.ends_at > day.d0`,
+        AND a.starts_at < day.d1 AND a.ends_at > day.d0
+     UNION ALL
+     -- онлайн-броні БЕЗ тіні в журналі (appointment_id IS NULL): інакше движок їх не
+     -- бачив і показував слот вільним, хоча він зайнятий (аудит v8). З тінню — рахує
+     -- appointments вище, тут виключаємо, щоб не задвоїти.
+     SELECT ob.master_id::int,
+            GREATEST(0,    FLOOR(EXTRACT(EPOCH FROM (ob.date_from - day.d0)) / 60))::int AS s_min,
+            LEAST(1440, CEIL(EXTRACT(EPOCH FROM (ob.date_to   - day.d0)) / 60))::int AS e_min
+       FROM online_bookings ob, day
+      WHERE ob.master_id ~ '^[0-9]+$' AND ob.master_id::int = ANY($2::int[])
+        AND ob.status = 'confirmed' AND ob.appointment_id IS NULL
+        AND ob.date_to IS NOT NULL
+        AND ob.date_from < day.d1 AND ob.date_to > day.d0`,
     [date, masterIds, BUSY_STATUSES]
   );
   const busyBy = new Map();
