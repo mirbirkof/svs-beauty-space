@@ -424,6 +424,13 @@ async function processUpdate(upd, tg, salon) {
         }
       } catch (blErr) { console.error('[booking/blacklist]', blErr.message); }
 
+      // дата могла стати минулою, поки клієнт ділився контактом (перевірка при /init
+      // застаріла) — не створюємо бронь у минулому (аудит v8).
+      if (new Date(row.date_from) < new Date(Date.now() - 5 * 60 * 1000)) {
+        await db.update(row.token, { status: 'error', error: 'slot-past' }).catch(() => {});
+        return tg('sendMessage', { chat_id: msg.chat.id, text: '⏰ На жаль, час цього запису вже минув. Поверніться на сайт і оберіть новий вільний слот.' });
+      }
+
       let bookingId = null;
       try {
         // слот мог занять кто-то другой пока клиент подтверждал — проверяем пересечение
