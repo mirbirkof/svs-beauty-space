@@ -402,13 +402,29 @@ router.patch('/orders/:id/status', async (req, res) => {
           [it.variant_id, it.qty, String(orderId), `Повернення замовлення #${orderId}`]
         );
       }
-      await client.query(
-        `UPDATE clients SET
-           loyalty_points = GREATEST(0, COALESCE(loyalty_points,0) - FLOOR($2 * 0.03)::int),
-           total_spent = GREATEST(0, COALESCE(total_spent,0) - $2)
-         WHERE id = $1`,
-        [cur.rows[0].client_id, cur.rows[0].total]
-      );
+      // Аудит v6: слепые -3% без записи в loyalty_ledger — баланс в кабинете клиента
+      // не менялся, а при Mono-оплате (бонусы не начислялись) снимались чужие баллы.
+      // Эталон orders.js: отзываем РОВНО начисленное по ledger + компенсирующая запись.
+      const accr = await client.query(
+        `SELECT COALESCE(SUM(delta),0)::int AS pts FROM loyalty_ledger
+          WHERE ref_id = $1 AND reason = 'order-paid'`, [String(orderId)]);
+      const pts = accr.rows[0].pts;
+      if (cur.rows[0].client_id) {
+        await client.query(
+          `UPDATE clients SET
+             loyalty_points = GREATEST(0, COALESCE(loyalty_points,0) - $2),
+             total_spent = GREATEST(0, COALESCE(total_spent,0) - $3)
+           WHERE id = $1`,
+          [cur.rows[0].client_id, Math.max(0, pts), cur.rows[0].total]
+        );
+        if (pts > 0) {
+          await client.query(
+            `INSERT INTO loyalty_ledger (client_id, delta, reason, ref_id)
+             VALUES ($1, $2, 'order-refund', $3)`,
+            [cur.rows[0].client_id, -pts, String(orderId)]
+          );
+        }
+      }
       // авто-расход (возврат денег) в открытую смену
       try {
         const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);

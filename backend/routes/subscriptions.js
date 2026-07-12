@@ -317,6 +317,17 @@ router.post('/:id/use', async (req, res) => {
     if (!sub) return res.status(404).json({ error: 'not found' });
     sub = await refreshExpiry(sub);
     if (!['active', 'trial'].includes(sub.status)) return res.status(409).json({ error: 'not-active', status: sub.status });
+    // Аудит v6: двойной клик кассира с тем же appointment_id сжигал 2 визита.
+    // Идемпотентность: визит по этой записи уже списан → возвращаем ok без повторного списания.
+    if (req.body?.appointment_id) {
+      const dup = await pool.query(
+        `SELECT balance_after FROM subscription_usage
+          WHERE subscription_id=$1 AND appointment_id=$2 LIMIT 1`,
+        [sub.id, req.body.appointment_id]);
+      if (dup.rows[0]) {
+        return res.json({ ok: true, balance: Number(dup.rows[0].balance_after), status: sub.status, already_used: true });
+      }
+    }
     const isMinutes = sub.plan_type === 'minutes';
     const isTime = sub.plan_type === 'time';
     let balance = null, col = null, newStatus = sub.status;
@@ -355,7 +366,10 @@ router.post('/:id/freeze', async (req, res) => {
     if (!sub) return res.status(404).json({ error: 'not found' });
     if (sub.status !== 'active') return res.status(409).json({ error: 'not-active', status: sub.status });
     if (sub.freeze_count >= sub.max_freezes) return res.status(409).json({ error: 'max-freezes-reached', max: sub.max_freezes });
-    const unfreeze = req.body?.unfreeze_at || addDays(kyivToday(), Math.min(Number(req.body?.days) || sub.max_freeze_days, sub.max_freeze_days));
+    // Аудит v6: явный unfreeze_at из body обходил лимит max_freeze_days — клампим к потолку плана.
+    const maxUnfreeze = addDays(kyivToday(), sub.max_freeze_days);
+    let unfreeze = req.body?.unfreeze_at || addDays(kyivToday(), Math.min(Number(req.body?.days) || sub.max_freeze_days, sub.max_freeze_days));
+    if (String(unfreeze) > String(maxUnfreeze)) unfreeze = maxUnfreeze;
     await pool.query(`UPDATE subscriptions SET status='frozen', frozen_at=NOW(), unfreeze_at=$1, freeze_count=freeze_count+1, updated_at=NOW() WHERE id=$2`, [unfreeze, sub.id]);
     await pool.query(`INSERT INTO subscription_freezes (subscription_id,frozen_at,reason) VALUES ($1,NOW(),$2)`, [sub.id, req.body?.reason || null]);
     logAction({ user: req.user, action: 'subscription.freeze', entity: 'subscription', entity_id: sub.id, ip: req.ip }).catch(() => {});
