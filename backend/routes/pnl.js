@@ -398,7 +398,7 @@ router.get('/drilldown', requirePerm('pnl.drilldown'), async (req, res) => {
     } else if (section === 'revenue' && category === 'products') {
       transactions = await safeRows(
         `SELECT created_at AS date, ('Замовлення #'||id) AS description, total AS amount, payment_method AS method, 'orders' AS source
-           FROM orders WHERE status IN ('paid','delivered') AND created_at >= $1 AND created_at < $2
+           FROM orders WHERE status = 'paid' AND created_at >= $1 AND created_at < $2
           ORDER BY created_at DESC LIMIT $3 OFFSET $4`, [start, end, limit, offset]);
     } else if (category === 'certificates') { // секція 'memo' (раніше revenue)
       transactions = await safeRows(

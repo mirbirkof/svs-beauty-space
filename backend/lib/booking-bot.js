@@ -301,12 +301,17 @@ async function showDates(ctx, uid, target, session) {
     ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${fmtPrice(total)}</b>, ~${fmtDur(dur)}`
     : `${lines}\n~${fmtDur(dur)}`;
 
-  const base = new Date(); base.setHours(0, 0, 0, 0);
+  // «Сьогодні» рахуємо в київському поясі, а не в UTC сервера (Render крутиться на UTC):
+  // з 00:00 до 02:59 Kyiv UTC ще вчора → кнопка показувала вчорашню дату (аудит v8).
+  // Якір — полудень UTC київської дати (безпечно від переходів DST).
+  const kyivToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
+  const [ky, km, kd] = kyivToday.split('-').map(Number);
+  const base = new Date(Date.UTC(ky, km - 1, kd, 12, 0, 0));
   const btns = [];
   for (let i = 0; i < MAX_DAYS; i++) {
-    const d = new Date(base); d.setDate(base.getDate() + i);
-    const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const label = i === 0 ? 'Сьогодні' : i === 1 ? 'Завтра' : `${d.getDate()} ${MM[d.getMonth()]} (${DOW[d.getDay()]})`;
+    const d = new Date(base); d.setUTCDate(base.getUTCDate() + i);
+    const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    const label = i === 0 ? 'Сьогодні' : i === 1 ? 'Завтра' : `${d.getUTCDate()} ${MM[d.getUTCMonth()]} (${DOW[d.getUTCDay()]})`;
     btns.push({ text: label, callback_data: `bk:date:${key}` });
   }
   const kb = rows(btns, 2);
