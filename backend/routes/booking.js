@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const https = require('https');
 const router = express.Router();
 const bp = require('../beautyproClient');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const slotEngine = require('./../lib/slot-engine');
 const bookingBot = require('../lib/booking-bot');
 const { t, validateBody } = require('../lib/validate');
@@ -500,6 +500,11 @@ async function processUpdate(upd, tg, salon) {
           const txc = await getPool().connect();
           try {
             await txc.query('BEGIN');
+            // RLS-контекст тенанта на транзакцію: без нього бронь+тінь писались у
+            // DEFAULT-тенант незалежно від салону, а resolveBookingIds бачив чужі
+            // майстра/послуги (аудит v8, блокер мультитенантності). Для бота Босса
+            // контекст = DEFAULT_TENANT_ID → поведінка поточного салону не змінюється.
+            await applyTenant(txc);
             const ob = await txc.query(
               `INSERT INTO online_bookings
                 (client_id, client_phone, client_name, service_id, master_id,
