@@ -3550,13 +3550,48 @@ function showModal(title, bodyHtml, onOk) {
   // toast уже показав причину; закриваємо тільки після успішного збереження
   if (onOk) document.getElementById('genModalOk').onclick = async () => { try { await onOk(); } catch (_) { return; } document.getElementById('genModal')?.remove(); _unlockScroll(); };
 }
+// Аудит v6 (UX): машинні коди помилок → людська мова. Словник застосовується ЛИШЕ
+// при показі (toast) — логіка, що гілкується по кодах (r.error === 'slot-busy'), не зачеплена.
+const ERR_HUMAN = {
+  'internal': 'Внутрішня помилка сервера. Спробуйте ще раз за хвилину.',
+  'Internal server error': 'Внутрішня помилка сервера. Спробуйте ще раз за хвилину.',
+  'bad-response': 'Сервер прокидається або недоступний — зачекайте кілька секунд і повторіть.',
+  'session-expired': 'Сесія завершилась — увійдіть знову.',
+  'forbidden': 'Недостатньо прав для цієї дії.',
+  'owner-only': 'Ця дія доступна лише власнику.',
+  'not-found': 'Запис не знайдено — можливо, його вже видалили.',
+  'appointment-not-found': 'Запис не знайдено — можливо, його вже видалили.',
+  'client-not-found': 'Клієнта не знайдено.',
+  'service-not-found': 'Послугу не знайдено.',
+  'slot-busy': 'Час зайнято: у майстра вже є запис на цей час.',
+  'slot-taken': 'Цей час щойно зайняли — оберіть інший.',
+  'not-active': 'Абонемент неактивний.',
+  'insufficient-balance': 'Недостатньо залишку на абонементі.',
+  'max-freezes-reached': 'Вичерпано ліміт заморозок абонемента.',
+  'already_confirmed': 'Ця виплата вже проведена — двічі не проводимо.',
+  'amount must be a positive number': 'Сума має бути додатним числом (без ком і пробілів).',
+  'amount must be positive': 'Сума має бути додатним числом.',
+  'client-blocked': 'Клієнт у чорному списку — запис неможливий.',
+  'invoice-not-found': 'Рахунок не знайдено.',
+  'gateway-not-configured': 'Еквайринг не налаштовано — додайте токен Mono в «Інтеграціях».',
+  'mono-not-configured-for-tenant': 'Еквайринг салону не налаштовано — додайте свій токен Mono в «Інтеграціях».',
+  'past-locked': 'Редагування минулих днів вимкнено в налаштуваннях.',
+  'tenant-suspended': 'Салон заблоковано за несплату — оплатіть підписку в розділі «Підписка».',
+};
+function errHuman(msg) {
+  const s = String(msg == null ? '' : msg);
+  if (ERR_HUMAN[s]) return ERR_HUMAN[s];
+  // машинний слаг (internal-error, promo-not-found) без словника → загальний текст
+  if (/^[a-z][a-z0-9_.-]{2,40}$/.test(s)) return 'Помилка: ' + s + '. Якщо повторюється — повідомте адміністратора.';
+  return s;
+}
 function toast(msg, type = 'ok') {
   let t = document.getElementById('genToast');
   if (!t) { t = document.createElement('div'); t.id = 'genToast';
     t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 20px;border-radius:10px;color:#fff;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:opacity .3s;font-size:14px';
     document.body.appendChild(t); }
   t.style.background = type === 'error' ? '#d9534f' : '#0a8f5f';
-  t.textContent = msg; t.style.opacity = '1';
+  t.textContent = type === 'error' ? errHuman(msg) : msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 2600);
 }
 // Українське склонення після числа: plUk(1,'послуга','послуги','послуг') → 'послуга'
