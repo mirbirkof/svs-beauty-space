@@ -682,7 +682,13 @@ if (process.env.DATABASE_URL) {
   try {
     const billing = require('./lib/billing');
     const tm = require('./lib/tenant-mgmt');
+    // Guard от наложения (аудит): если прошлый прогон биллинг-цикла ещё идёт (медленная БД,
+    // много салонов), следующий tick НЕ стартует поверх — иначе dunning/продления могли
+    // провестись дважды за период.
+    let _billingRunning = false;
     const runBillingCycle = async () => {
+      if (_billingRunning) { console.warn('[billing] попередній цикл ще йде — пропуск'); return; }
+      _billingRunning = true;
       try { const r = await billing.runRecurring(); if (r.renewed || r.cancelled) console.log('[billing] recurring', r); }
       catch (e) { console.error('[billing] recurring:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.recurring' }); }
       try { const d = await billing.processDunning(); if (d.attempted || d.suspended) console.log('[billing] dunning', d); }
@@ -697,6 +703,7 @@ if (process.env.DATABASE_URL) {
       catch (e) { console.error('[security] detect:', e.message); }
       try { const ig = await require('./lib/instagram-content').runScheduled(); if (ig.published) console.log('[ig-content] published', ig); }
       catch (e) { console.error('[ig-content] scheduled:', e.message); }
+      _billingRunning = false;
     };
     setInterval(runBillingCycle, 60 * 60 * 1000).unref();
     setTimeout(runBillingCycle, 60 * 1000).unref(); // первый прогон через минуту после старта

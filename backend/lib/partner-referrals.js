@@ -63,30 +63,32 @@ async function registerReferral(refCode, newTenantId, newTenantName) {
 // Приглашённый салон оплатил первый счёт → квалифицируем и награждаем реферера.
 // Вызывается из billing.recordPayment при первой успешной оплате подписки.
 async function onReferredPaid(referredTenantId) {
-  const pool = getPool();
-  // Атомарно захватываем реферал: UPDATE ... WHERE status='pending' RETURNING — только ОДИН
-  // из параллельных вызовов переведёт pending→qualified и получит строку. Второй получит
-  // 0 строк и выйдет → награда не начисляется дважды (гонка двух Mono-вебхуков одного салона).
-  const ref = (await pool.query(
-    `UPDATE partner_referrals SET status='qualified', qualified_at=now()
-      WHERE referred_tenant_id=$1 AND status='pending' RETURNING *`,
-    [referredTenantId])).rows[0];
-  if (!ref) return null;
+  const { withTx } = require('../db-pg');
+  // Захват + начисление + rewarded — В ОДНОЙ транзакции (аудит): захват атомарен
+  // (UPDATE...WHERE pending RETURNING — только один параллельный вызов получит строку),
+  // а транзакция гарантирует что если начисление упадёт, статус откатится к pending и
+  // награду можно начислить повторно (не застрянет в qualified без бонуса).
   try {
-    if (ref.reward_type === 'days') {
-      // +N дней к текущему периоду подписки реферера (и к лицензии — доступ)
-      const days = Math.round(Number(ref.reward_value) || 30);
-      await pool.query(
-        `UPDATE subscriptions_saas SET current_period_end = GREATEST(current_period_end, now()) + ($2||' days')::interval,
-                updated_at=now() WHERE tenant_id=$1`, [ref.referrer_tenant_id, days]);
-      await pool.query(
-        `UPDATE tenant_licenses SET expires_at = GREATEST(COALESCE(expires_at, now()), now()) + ($2||' days')::interval
-          WHERE tenant_id=$1`, [ref.referrer_tenant_id, days]).catch(() => {});
-    }
-    await pool.query(`UPDATE partner_referrals SET status='rewarded', rewarded_at=now() WHERE id=$1`, [ref.id]);
-    console.log(`[partner:reward] referrer=${ref.referrer_tenant_id} +${ref.reward_value} ${ref.reward_type} за ${referredTenantId}`);
-  } catch (e) { console.error('[partner:reward]', e.message); }
-  return ref.id;
+    return await withTx(async (client) => {
+      const ref = (await client.query(
+        `UPDATE partner_referrals SET status='qualified', qualified_at=now()
+          WHERE referred_tenant_id=$1 AND status='pending' RETURNING *`,
+        [referredTenantId])).rows[0];
+      if (!ref) return null;
+      if (ref.reward_type === 'days') {
+        const days = Math.round(Number(ref.reward_value) || 30);
+        await client.query(
+          `UPDATE subscriptions_saas SET current_period_end = GREATEST(current_period_end, now()) + ($2||' days')::interval,
+                  updated_at=now() WHERE tenant_id=$1`, [ref.referrer_tenant_id, days]);
+        await client.query(
+          `UPDATE tenant_licenses SET expires_at = GREATEST(COALESCE(expires_at, now()), now()) + ($2||' days')::interval
+            WHERE tenant_id=$1`, [ref.referrer_tenant_id, days]);
+      }
+      await client.query(`UPDATE partner_referrals SET status='rewarded', rewarded_at=now() WHERE id=$1`, [ref.id]);
+      console.log(`[partner:reward] referrer=${ref.referrer_tenant_id} +${ref.reward_value} ${ref.reward_type} за ${referredTenantId}`);
+      return ref.id;
+    });
+  } catch (e) { console.error('[partner:reward]', e.message); return null; }
 }
 
 // Сводка для салона: его код, ссылка, приглашённые, начисленная награда.
