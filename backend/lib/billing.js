@@ -61,9 +61,17 @@ async function planPrice(planCode, cycle = 'monthly') {
 
 async function nextInvoiceNumber() {
   const year = new Date().getFullYear();
-  const n = Number((await getPool().query(
-    `SELECT count(*)::int n FROM invoices_saas WHERE invoice_number LIKE $1`, [`INV-${year}-%`])).rows[0].n) + 1;
-  return `INV-${year}-${String(n).padStart(6, '0')}`;
+  // Аудит v6: count(*)+1 не атомарен — два конкурентных счёта получали один номер,
+  // второй падал об UNIQUE без ретрая. Sequence (мигр. 254) выдаёт номер атомарно.
+  try {
+    const n = Number((await getPool().query(`SELECT nextval('invoice_number_seq') AS n`)).rows[0].n);
+    return `INV-${year}-${String(n).padStart(6, '0')}`;
+  } catch (_) {
+    // sequence ещё не создана (254 не накатана) — старый путь как fallback
+    const n = Number((await getPool().query(
+      `SELECT count(*)::int n FROM invoices_saas WHERE invoice_number LIKE $1`, [`INV-${year}-%`])).rows[0].n) + 1;
+    return `INV-${year}-${String(n).padStart(6, '0')}`;
+  }
 }
 
 // ── Промокоды ────────────────────────────────────────────────────────
@@ -101,6 +109,13 @@ async function createSubscription(tenantId, { plan_code, cycle = 'monthly', prom
   const pool = getPool();
   let promoId = null;
   if (promo_code) { const v = await validatePromo(promo_code, plan_code); if (!v.valid) throw new Error('promo-' + v.reason); promoId = v.promo.id; }
+  // Аудит v6: триал давался при КАЖДОМ вызове (ON CONFLICT перезаписывал trial_ends_at) —
+  // владелец мог бесконечно сбрасывать себе 14 дней и не платить никогда. Триал — один раз.
+  if (trial) {
+    const prev = (await pool.query(
+      `SELECT trial_ends_at FROM subscriptions_saas WHERE tenant_id=$1`, [tenantId])).rows[0];
+    if (prev && prev.trial_ends_at) trial = false;
+  }
   const days = PERIOD_DAYS[cycle] || 30;
   const status = trial ? 'trialing' : 'active';
   const sub = (await pool.query(
@@ -317,6 +332,15 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [inv.tenant_id, invoiceId, methodId, amt, status, gw, gatewayPaymentId, raw ? JSON.stringify(raw) : null])).rows[0];
   if (status === 'succeeded') {
+    // Аудит v6: частичная сумма (админ ввёл 50 из 100) помечала счёт полностью оплаченным.
+    // Теперь paid — только когда сумма успешных платежей покрывает total.
+    const paidSum = Number((await pool.query(
+      `SELECT COALESCE(SUM(amount),0) AS s FROM payments_saas WHERE invoice_id=$1 AND status='succeeded'`,
+      [invoiceId])).rows[0].s);
+    if (paidSum + 0.005 < Number(inv.total)) {
+      console.log(`[billing] часткова оплата рахунку ${invoiceId}: ${paidSum}/${inv.total} — статус лишаємо`);
+      return pay;
+    }
     await pool.query(`UPDATE invoices_saas SET status='paid', paid_at=NOW(), updated_at=NOW() WHERE id=$1`, [invoiceId]);
     if (inv.subscription_id) {
       const sub = (await pool.query(
@@ -381,18 +405,36 @@ async function notifyOwnerPayLink(tenantId, invoiceId) {
   const bs = (await pool.query(
     `SELECT bot_token, owner_chat_id FROM tenant_bot_settings WHERE tenant_id=$1 AND status='connected'`,
     [tenantId])).rows[0];
-  if (!bs || !bs.bot_token || !bs.owner_chat_id) return { sent: false, reason: 'no-owner-contact' };
   let payUrl = null;
   try { const link = await createSubscriptionPayLink(invoiceId); if (link && !link.alreadyPaid) payUrl = link.pay_url; }
   catch (e) { /* pay-link опційний (немає MONO_TOKEN) — надсилаємо текст без посилання */ }
   const text = payUrl
     ? `💳 <b>Продовження підписки SVS CRM</b>\nПотрібна оплата, щоб не втратити доступ.\nОплатити: ${payUrl}`
     : `💳 <b>Продовження підписки SVS CRM</b>\nПотрібна оплата. Відкрийте розділ «Підписка» в адмінці.`;
+  // 1) Telegram — основной канал
+  if (bs && bs.bot_token && bs.owner_chat_id) {
+    try {
+      const { tgCall } = require('./tenant-bots');
+      await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
+      return { sent: true, channel: 'telegram', payUrl: !!payUrl };
+    } catch (e) { /* падаем на email ниже */ }
+  }
+  // 2) Email fallback (аудит v6: салон без подключённого Telegram-бота не получал
+  //    НИ ОДНОГО платёжного напоминания и улетал в suspend без предупреждения)
   try {
-    const { tgCall } = require('./tenant-bots');
-    await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
-    return { sent: true, payUrl: !!payUrl };
+    const emailCh = require('./channels/email-resend');
+    if (emailCh.isConfigured()) {
+      const owner = (await pool.query(
+        `SELECT u.email FROM users u JOIN roles r ON r.id = u.role_id
+          WHERE u.tenant_id=$1 AND r.code='owner' AND u.email IS NOT NULL AND u.is_active
+          ORDER BY u.id LIMIT 1`, [tenantId])).rows[0];
+      if (owner && owner.email) {
+        await emailCh.send(owner.email, { subject: 'Оплата підписки SVS CRM', body: text.replace(/\n/g, '<br>') });
+        return { sent: true, channel: 'email', payUrl: !!payUrl };
+      }
+    }
   } catch (e) { return { sent: false, reason: e.message?.slice(0, 80) }; }
+  return { sent: false, reason: 'no-owner-contact' };
 }
 
 // Викликається вебхуком/полінгом Mono (payments-mono.js), коли рахунок підписки

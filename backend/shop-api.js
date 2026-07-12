@@ -434,12 +434,37 @@ if (process.env.DATABASE_URL) {
               AND EXISTS (SELECT 1 FROM invoices_saas i
                            WHERE i.subscription_id = s.id AND i.status = 'open'
                              AND i.created_at < NOW() - INTERVAL '7 days')
-            RETURNING s.tenant_id, s.plan_code, s.current_period_end`);
+            RETURNING s.id, s.tenant_id, s.plan_code, s.current_period_end`);
         if (t.rowCount) {
           console.log(`[subscriptions] active→past_due (несплата 7+ днів): ${t.rowCount}`);
           const billing = require('./lib/billing');
           for (const sub of t.rows) {
             await billing.syncLicense(sub.tenant_id, sub.plan_code, 'past_due', sub.current_period_end).catch(() => {});
+            // Аудит v6: past_due був ТУПИКОМ — dunning заводився лише при продовженні
+            // (runRecurring), а сюди підписки потрапляли через upgrade/ручний рахунок і
+            // висіли past_due вічно: ні нагадувань, ні suspend. Тепер заводимо дожим.
+            try {
+              const inv = (await pool.query(
+                `SELECT id FROM invoices_saas WHERE subscription_id=$1 AND status='open'
+                  ORDER BY created_at LIMIT 1`, [sub.id])).rows[0];
+              if (inv) await billing.scheduleDunning(sub.id, inv.id);
+            } catch (e) { console.error('[subscriptions] dunning schedule:', e.message); }
+          }
+        }
+        // Страховка від вічного past_due: 14+ днів без живого dunning → suspend
+        // (нормальний шлях — 4-та невдала спроба дожиму в processDunning).
+        const susp = await pool.query(
+          `UPDATE subscriptions_saas s SET status='suspended', updated_at=NOW()
+            WHERE s.status='past_due' AND s.updated_at < NOW() - INTERVAL '14 days'
+              AND NOT EXISTS (SELECT 1 FROM dunning_attempts d
+                               WHERE d.subscription_id = s.id AND d.status = 'pending')
+            RETURNING s.tenant_id, s.plan_code, s.current_period_end`);
+        if (susp.rowCount) {
+          console.log(`[subscriptions] past_due→suspended (страховка 14 днів): ${susp.rowCount}`);
+          const billing = require('./lib/billing');
+          for (const sub of susp.rows) {
+            await pool.query(`UPDATE tenants SET status='suspended', updated_at=NOW() WHERE id=$1`, [sub.tenant_id]).catch(() => {});
+            await billing.syncLicense(sub.tenant_id, sub.plan_code, 'suspended', sub.current_period_end).catch(() => {});
           }
         }
         // повідомлення оператору платформи: хто перейшов у grace/past_due (щоб подзвонити/виставити рахунок)
