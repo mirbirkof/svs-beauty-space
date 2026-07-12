@@ -568,7 +568,11 @@ async function monoScanTick() {
         );
         for (const row of sr.rows) {
           try {
-            const live = await mono.getInvoiceStatus(row.gateway_payment_id);
+            // SaaS-рахунок створено ПЛАТФОРМЕННИМ токеном (дохід платформи) — статус
+            // питаємо ним же (runAs(null)), інакше в контексті орендаря резолвер per-tenant
+            // Mono взяв би ЙОГО токен і отримав 404 (аудит v6).
+            const { runAs } = require('../lib/tenant');
+            const live = await runAs(null, () => mono.getInvoiceStatus(row.gateway_payment_id));
             await applyInvoiceStatus(live);
           } catch (e) { console.error('[mono:cron:saas]', row.gateway_payment_id, e.message); }
         }

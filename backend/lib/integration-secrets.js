@@ -118,4 +118,40 @@ async function saveIntegrationSecret(name, value, userId = null) {
   return { name, set: true };
 }
 
-module.exports = { ALLOWED, isAllowed, loadIntegrationSecrets, saveIntegrationSecret, encryptVal, decryptVal };
+// ── Per-tenant секрети (аудит v6, блокер аренды) ─────────────────────────
+// Раніше ВСІ клієнтські оплати йшли через платформенний MONO_TOKEN → гроші клієнтів
+// салонів-орендарів падали на рахунок платформи (правовий ризик). Тепер токен
+// еквайрингу — per-tenant: зберігається в app_settings ПІД tenant_id салона (RLS),
+// шифрується тим же ключем. НЕ потрапляє в process.env (він глобальний).
+const TENANT_ALLOWED = new Set(['MONO_TOKEN']);
+
+async function saveTenantIntegrationSecret(name, value, userId = null) {
+  name = String(name || '').trim();
+  if (!TENANT_ALLOWED.has(name)) throw new Error('not-tenant-scoped: ' + name);
+  const pool = getPool();
+  const v = (value == null ? '' : String(value)).trim();
+  if (!v) {
+    await pool.query('DELETE FROM app_settings WHERE key = $1', [PREFIX + name]);
+    return { name, set: false };
+  }
+  await pool.query(
+    `INSERT INTO app_settings (key, value, updated_by, updated_at)
+     VALUES ($1, to_jsonb($2::text), $3, NOW())
+     ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+    [PREFIX + name, encryptVal(v), userId]
+  );
+  return { name, set: true };
+}
+
+// Читає секрет ПОТОЧНОГО тенанта (RLS скоупить по GUC контексту виклику).
+async function getTenantIntegrationSecret(name) {
+  name = String(name || '').trim();
+  if (!TENANT_ALLOWED.has(name)) return null;
+  const r = await getPool().query(`SELECT value FROM app_settings WHERE key = $1 LIMIT 1`, [PREFIX + name]);
+  if (!r.rows[0]) return null;
+  const stored = typeof r.rows[0].value === 'string' ? r.rows[0].value : (r.rows[0].value == null ? '' : String(r.rows[0].value));
+  return decryptVal(stored) || null;
+}
+
+module.exports = { ALLOWED, isAllowed, loadIntegrationSecrets, saveIntegrationSecret, encryptVal, decryptVal,
+  TENANT_ALLOWED, saveTenantIntegrationSecret, getTenantIntegrationSecret };

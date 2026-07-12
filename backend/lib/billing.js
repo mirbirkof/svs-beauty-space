@@ -384,11 +384,15 @@ async function createSubscriptionPayLink(invoiceId) {
   }
 
   const mono = require('./mono');
-  const monoInv = await mono.createInvoice({
+  // Рахунок ПІДПИСКИ — дохід ПЛАТФОРМИ: інвойс завжди на платформенний токен Mono,
+  // навіть якщо виклик прийшов у контексті салона-орендаря (runAs(null) → env-токен).
+  // Клієнтські оплати салонів навпаки йдуть per-tenant (аудит v6).
+  const { runAs } = require('./tenant');
+  const monoInv = await runAs(null, () => mono.createInvoice({
     amountUah: Number(inv.total),
     orderId: `saas-${invoiceId}`,
     destination: `Підписка SVS CRM — рахунок ${inv.invoice_number}`.slice(0, 280),
-  });
+  }));
   await pool.query(
     `INSERT INTO payments_saas (tenant_id, invoice_id, amount, currency, status, gateway, gateway_payment_id, gateway_response)
      VALUES ($1,$2,$3,$4,'pending','monobank',$5,$6)`,

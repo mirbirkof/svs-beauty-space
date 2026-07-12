@@ -113,4 +113,28 @@ router.post('/configure', requirePlatform(), requirePerm('integrations.write'), 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/integrations/configure-tenant — салон-орендар зберігає ВЛАСНИЙ токен
+// еквайрингу (аудит v6, блокер аренды): гроші його клієнтів мають іти на ЙОГО
+// рахунок Mono, а не на рахунок платформи. Дозволені лише per-tenant ключі
+// (TENANT_ALLOWED, зараз MONO_TOKEN); значення шифрується і живе під tenant_id
+// салона (RLS) — у глобальний process.env НЕ потрапляє.
+// body: { values: { MONO_TOKEN: "..." } }  (порожнє значення → вимкнути свій еквайринг)
+router.post('/configure-tenant', requirePerm('integrations.write'), async (req, res) => {
+  try {
+    const { TENANT_ALLOWED, saveTenantIntegrationSecret } = require('../lib/integration-secrets');
+    const values = (req.body && req.body.values) || {};
+    const names = Object.keys(values).filter(n => TENANT_ALLOWED.has(n));
+    if (!names.length) return res.status(400).json({ error: 'no valid tenant keys to save' });
+    const userId = req.user && req.user.id ? req.user.id : null;
+    const saved = [];
+    for (const name of names) {
+      const r = await saveTenantIntegrationSecret(name, values[name], userId);
+      saved.push(r);
+    }
+    // токен змінився — скинути кеш резолвера Mono для цього салону
+    try { require('../lib/mono').invalidateTokenCache(require('../lib/tenant').getTenantId()); } catch (_) {}
+    res.json({ ok: true, saved });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
