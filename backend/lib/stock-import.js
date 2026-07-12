@@ -10,7 +10,9 @@
    matchRows(pool, rows) → кожному рядку топ-3 кандидати зі складу
      (точний SKU/штрихкод → повний збіг токенів назва+варіант → частковий).
    ═══════════════════════════════════════════════════════════════ */
-const XLSX = require('xlsx');
+// Безопасный собственный ридер (аудит: убрали SheetJS/xlsx — high-уязвимости prototype
+// pollution + ReDoS без апстрим-фикса; xlsx-lite парсит .xlsx через встроенный zlib).
+const xlsxLite = require('./xlsx-lite');
 
 // ── нормалізація тексту для матчингу ──
 function norm(s) {
@@ -87,9 +89,8 @@ function parseText(text) {
 }
 
 function parseXlsx(buffer) {
-  const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  // xlsx-lite возвращает 2D-массив строк первого листа (как sheet_to_json header:1).
+  const rows = xlsxLite.parseXlsx(buffer);
   const out = [];
   for (const cells of rows) {
     const arr = cells.map(c => String(c ?? '').trim()).filter(c => c !== '');
