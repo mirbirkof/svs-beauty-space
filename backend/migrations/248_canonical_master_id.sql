@@ -20,11 +20,16 @@ CREATE OR REPLACE FUNCTION canon_master_id(mid text) RETURNS text AS $$
     NULLIF(regexp_replace(mid, '^mst-', ''), ''));
 $$ LANGUAGE sql STABLE;
 
--- 2. Одноразовая чистка существующих строк (включая '' → NULL)
-UPDATE online_bookings
-   SET master_id = canon_master_id(master_id)
- WHERE master_id IS NOT NULL
-   AND master_id IS DISTINCT FROM canon_master_id(master_id);
+-- 2. Одноразовая чистка существующих строк (включая '' → NULL).
+-- ОБХОД capacity-триггера 247: UPDATE master_id дёргает ob_enforce_capacity, и на БД
+-- с массой подтверждённых броней бэкфилл мог упасть с ob_overlap (аудит v8).
+DO $$ BEGIN
+  PERFORM set_config('app.skip_overbook', 'on', true);
+  UPDATE online_bookings
+     SET master_id = canon_master_id(master_id)
+   WHERE master_id IS NOT NULL
+     AND master_id IS DISTINCT FROM canon_master_id(master_id);
+END $$;
 
 -- 3. BEFORE-триггер канонизации на insert/update
 CREATE OR REPLACE FUNCTION ob_canon_master() RETURNS trigger AS $$
