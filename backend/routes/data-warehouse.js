@@ -533,6 +533,9 @@ router.post('/query', platformOnly, requirePerm('dwh.query.execute'), async (req
       return res.status(400).json({ error: 'single statement only' });
     if (/\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|copy|merge)\b/.test(lowered))
       return res.status(400).json({ error: 'mutations are not allowed' });
+    // блок небезпечних pg_-функцій: pg_sleep (DoS), pg_read_file/pg_ls_dir (витік ФС), lo_* (аудит v8)
+    if (/\b(pg_sleep|pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|lo_import|lo_export|dblink|pg_terminate_backend|pg_cancel_backend)\b/.test(lowered))
+      return res.status(400).json({ error: 'function not allowed' });
     // дозволяємо лише читання з DWH-таблиць (з whitelist) та pg_catalog-функцій
     const referenced = (lowered.match(/\b(?:from|join)\s+([a-z_][a-z0-9_."]*)/g) || [])
       .map(m => m.replace(/\b(?:from|join)\s+/, '').replace(/["]/g, '').split('.').pop());

@@ -22,7 +22,7 @@ async function candidates(pool, trg) {
     const before = Number(p.days_before || 0);
     return pool.query(`
       SELECT id, name FROM clients
-      WHERE birthday IS NOT NULL
+      WHERE deleted_at IS NULL AND birthday IS NOT NULL
         AND to_char(birthday,'MM-DD') = to_char(NOW() + ($1 || ' days')::interval, 'MM-DD')
     `, [String(before)]);
   }
@@ -30,7 +30,7 @@ async function candidates(pool, trg) {
     const min = Number(p.days_inactive || 45), max = Number(p.days_max || 89);
     return pool.query(`
       SELECT id, name FROM clients
-      WHERE last_visit_at IS NOT NULL
+      WHERE deleted_at IS NULL AND last_visit_at IS NOT NULL
         AND last_visit_at <= NOW() - ($1 || ' days')::interval
         AND last_visit_at >  NOW() - ($2 || ' days')::interval
     `, [String(min), String(max + 1)]);
@@ -39,7 +39,7 @@ async function candidates(pool, trg) {
     const min = Number(p.days_inactive || 90);
     return pool.query(`
       SELECT id, name FROM clients
-      WHERE last_visit_at IS NOT NULL
+      WHERE deleted_at IS NULL AND last_visit_at IS NOT NULL
         AND last_visit_at <= NOW() - ($1 || ' days')::interval
     `, [String(min)]);
   }

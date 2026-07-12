@@ -51,7 +51,9 @@ function toCsv(rows, columns) {
 router.get('/orders.csv', async (req, res) => {
   const pool = getPool();
   const r = await pool.query(`
-    SELECT o.id, o.created_at, c.phone, c.name AS client_name,
+    SELECT o.id, o.created_at,
+           CASE WHEN c.deleted_at IS NULL THEN c.phone END AS phone,
+           CASE WHEN c.deleted_at IS NULL THEN c.name ELSE 'Видалений клієнт' END AS client_name,
            o.total, o.status, o.payment_method, o.delivery_type, o.notes
     FROM orders o LEFT JOIN clients c ON c.id = o.client_id
     ORDER BY o.id DESC LIMIT 5000`);
@@ -134,8 +136,10 @@ router.get('/appointments.csv', async (req, res) => {
   const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
   const r = await pool.query(`
     SELECT a.id, a.starts_at, a.status,
-           COALESCE(c.name, a.client_name) AS client_name,
-           COALESCE(c.phone, '')          AS phone,
+           CASE WHEN c.id IS NULL OR c.deleted_at IS NULL
+                THEN COALESCE(c.name, a.client_name) ELSE 'Видалений клієнт' END AS client_name,
+           CASE WHEN c.id IS NULL OR c.deleted_at IS NULL
+                THEN COALESCE(c.phone, '') ELSE '' END AS phone,
            COALESCE(m.name, '')           AS master_name,
            COALESCE(s.name, a.services_text) AS service_name,
            a.price, a.payment_method, a.source,
@@ -330,8 +334,10 @@ router.get('/appointments', requirePerm('clients.read'), async (req, res) => {
   const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
   const r = await pool.query(`
     SELECT a.id, a.starts_at, a.status,
-           COALESCE(c.name, a.client_name) AS client_name,
-           COALESCE(c.phone, '')          AS phone,
+           CASE WHEN c.id IS NULL OR c.deleted_at IS NULL
+                THEN COALESCE(c.name, a.client_name) ELSE 'Видалений клієнт' END AS client_name,
+           CASE WHEN c.id IS NULL OR c.deleted_at IS NULL
+                THEN COALESCE(c.phone, '') ELSE '' END AS phone,
            COALESCE(m.name, '')           AS master_name,
            COALESCE(s.name, a.services_text) AS service_name,
            a.price, a.payment_method, a.source,

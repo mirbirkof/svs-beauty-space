@@ -219,8 +219,14 @@ router.post('/:id/tokens', requirePerm('users.write'), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { label, ttl_days } = req.body || {};
-    const u = await pool.query(`SELECT id FROM users WHERE id=$1 AND is_active=TRUE`, [id]);
+    // анти-ескалація (аудит v8): не можна випустити токен юзеру з роллю ВИЩЕ або РІВНОЮ своїй
+    // (інакше admin мінтить сесію owner і забирає повний доступ). Себе — можна.
+    const u = await pool.query(
+      `SELECT u.id, COALESCE(r.level,0) AS level FROM users u
+         LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.is_active=TRUE`, [id]);
     if (!u.rows[0]) return res.status(404).json({ error: 'not-found' });
+    if (id !== req.user.id && Number(u.rows[0].level) >= Number(req.user.role_level || 0))
+      return res.status(403).json({ error: 'forbidden', message: 'Не можна видати токен користувачу з роллю не нижче вашої' });
     const token = 'svs_' + crypto.randomBytes(24).toString('hex');
     const hash = sha256(token);
     const expires = ttl_days ? new Date(Date.now() + ttl_days * 86400 * 1000) : null;
@@ -236,8 +242,16 @@ router.post('/:id/tokens', requirePerm('users.write'), async (req, res) => {
 // DELETE /api/users/:id/tokens/:tid — отозвать
 router.delete('/:id/tokens/:tid', requirePerm('users.write'), async (req, res) => {
   try {
-    await pool.query(`DELETE FROM user_tokens WHERE id=$1 AND user_id=$2`, [Number(req.params.tid), Number(req.params.id)]);
-    await logAction({ user: req.user, action: 'token.revoke', entity: 'user', entity_id: Number(req.params.id), meta: { token_id: Number(req.params.tid) } });
+    const tid = Number(req.params.tid), uid = Number(req.params.id);
+    // анти-lockout (аудит v8): admin не рве сесії власника (роль ≥ своєї), окрім своїх
+    if (uid !== req.user.id) {
+      const tu = await pool.query(
+        `SELECT COALESCE(r.level,0) AS level FROM users u LEFT JOIN roles r ON r.id=u.role_id WHERE u.id=$1`, [uid]);
+      if (tu.rows[0] && Number(tu.rows[0].level) >= Number(req.user.role_level || 0))
+        return res.status(403).json({ error: 'forbidden', message: 'Не можна відкликати токени користувача з роллю не нижче вашої' });
+    }
+    await pool.query(`DELETE FROM user_tokens WHERE id=$1 AND user_id=$2`, [tid, uid]);
+    await logAction({ user: req.user, action: 'token.revoke', entity: 'user', entity_id: uid, meta: { token_id: tid } });
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

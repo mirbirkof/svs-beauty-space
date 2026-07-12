@@ -124,6 +124,7 @@ async function searchEntity(type, raw, variants, limit, offset = 0, filters = {}
              GREATEST(similarity(coalesce(name,''), $1), 0) AS sim
       FROM clients
       WHERE tenant_id = current_tenant_id()
+        AND deleted_at IS NULL
         AND ( ${lk.clause}
            OR ($3::text IS NOT NULL AND regexp_replace(coalesce(phone,''),'\\D','','g') ILIKE $3) )
       ORDER BY (name ILIKE $2) DESC, sim DESC, last_visit_at DESC NULLS LAST

@@ -913,7 +913,9 @@ router.post('/sync', mobileAuth, needPerm('mobile.access'), async (req, res) => 
 router.get('/sync/pull', mobileAuth, needPerm('mobile.access'), async (req, res) => {
   try {
     const pool = getPool();
-    const since = req.query.since ? new Date(req.query.since).toISOString() : null;
+    // guard: new Date('мусор').toISOString() кидає RangeError і роняє sync/pull (аудит v8)
+    let since = null;
+    if (req.query.since) { const d = new Date(req.query.since); if (!isNaN(d.getTime())) since = d.toISOString(); }
     const sinceTs = since || new Date(Date.now() - 3 * 86400000).toISOString(); // по умолчанию 3 дня
 
     // Фильтр по мастеру для роли master
