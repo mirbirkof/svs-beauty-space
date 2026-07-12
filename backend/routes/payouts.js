@@ -456,9 +456,11 @@ router.post('/records/:id/recalculate', async (req, res) => {
     const percent_part = est.percent_part, fixed_part = est.fixed_part;
 
     const oldTotal = num(r0.total);
+    // sales_part теж перераховуємо — інакше після recalc комісія з продажу лишалась
+    // старою і не потрапляла в total (аудит v8). kpi_bonus тягнеться окремим процесом.
     await client.query(
-      `UPDATE payroll_records SET services_count=$2, services_revenue=$3, percent_part=$4, fixed_part=$5 WHERE id=$1`,
-      [r0.id, services_count, services_revenue, Math.round(percent_part), Math.round(fixed_part)]);
+      `UPDATE payroll_records SET services_count=$2, services_revenue=$3, percent_part=$4, fixed_part=$5, sales_part=$6 WHERE id=$1`,
+      [r0.id, services_count, services_revenue, Math.round(percent_part), Math.round(fixed_part), Math.round(est.sales_part || 0)]);
     const newTotal = num((await client.query(`SELECT total FROM payroll_records WHERE id=$1`, [r0.id])).rows[0].total);
 
     await client.query(
