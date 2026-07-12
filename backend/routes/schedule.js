@@ -1457,7 +1457,7 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       await client.query('BEGIN'); await applyTenant(client);
       // застосовані знижки/бонуси/сертифікат — для точного відкату
       const a = await client.query(
-        `SELECT client_id, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
+        `SELECT client_id, starts_at, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
            FROM appointments WHERE id=$1 FOR UPDATE`, [id]);
       appt = a.rows[0] || {};
       removed = await client.query(
@@ -1481,6 +1481,13 @@ router.post('/appointments/:id/unpay', async (req, res) => {
                 pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL,
                 real_amount=NULL
           WHERE id=$1`, [id]);
+      // передоплата: /pay позначає онлайн-передоплату спожитою (prepaid_consumed_at).
+      // Без відкату мітки повторна оплата НЕ відніме передоплату — каса порахує
+      // гроші двічі (аудит v7, регрес #4). Той самий жорсткий матч, що в /pay.
+      if (appt.client_id && appt.starts_at) await client.query(
+        `UPDATE online_bookings SET prepaid_consumed_at = NULL, updated_at = NOW()
+          WHERE client_id = $1 AND prepaid_consumed_at IS NOT NULL
+            AND date_from <= $2 AND date_to > $2`, [appt.client_id, appt.starts_at]);
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});

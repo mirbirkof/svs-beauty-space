@@ -291,12 +291,14 @@ router.get('/orders', async (req, res) => {
   try {
     const pool = getPool();
     const { status, from, to, limit = 50, offset = 0 } = req.query;
+    // потолок limit: без него ?limit=999999 выкачивает всю таблицу одним запросом (аудит v7)
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
     const cond = []; const args = [];
     if (status) { args.push(status); cond.push(`o.status = $${args.length}`); }
     if (from) { args.push(from); cond.push(`o.created_at >= $${args.length}`); }
     if (to) { args.push(to); cond.push(`o.created_at <= $${args.length}`); }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
-    args.push(parseInt(limit, 10), parseInt(offset, 10));
+    args.push(lim, Math.max(parseInt(offset, 10) || 0, 0));
     const r = await pool.query(
       `SELECT o.id, o.total, o.status, o.payment_method, o.delivery_type,
               o.created_at, c.phone, c.name AS client_name
@@ -497,6 +499,8 @@ router.get('/clients', async (req, res) => {
   try {
     const pool = getPool();
     const { search, limit = 50, offset = 0, tag_id } = req.query;
+    // потолок limit: защита PII от выкачки всей базы клиентов одним запросом (аудит v7)
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
     const cond = ['c.deleted_at IS NULL']; const args = [];
     if (search) {
       args.push(`%${search}%`); args.push(`%${search}%`);
@@ -508,7 +512,7 @@ router.get('/clients', async (req, res) => {
     }
     const where = cond.length ? 'WHERE ' + cond.join(' AND ') : '';
     const cnt = await pool.query(`SELECT COUNT(*)::int AS total FROM clients c ${where}`, args.slice());
-    args.push(parseInt(limit, 10), parseInt(offset, 10));
+    args.push(lim, Math.max(parseInt(offset, 10) || 0, 0));
     const r = await pool.query(
       `SELECT c.id, c.phone, c.name, c.email, c.loyalty_points,
               c.created_at, c.last_visit_at, c.first_visit_at,
@@ -527,7 +531,7 @@ router.get('/clients', async (req, res) => {
       args
     );
     res.json({ ok: true, items: r.rows, total: cnt.rows[0].total,
-               limit: parseInt(limit, 10), offset: parseInt(offset, 10) });
+               limit: lim, offset: parseInt(offset, 10) || 0 });
   } catch (e) { console.error('[admin:clients]', e); res.status(500).json({ error: 'internal' }); }
 });
 

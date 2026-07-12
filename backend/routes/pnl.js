@@ -150,8 +150,12 @@ async function aggregate(start, end, branchId) {
   // ── COGS ──────────────────────────────────────────────────────────────────
   // Матеріали: списання зі складу × оптова ціна
   const mat = await safeRows(
-    `SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::numeric s
+    `SELECT COALESCE(SUM(ABS(sm.delta) * CASE
+              WHEN p.price_per_gram IS NOT NULL AND p.cost_per_gram IS NOT NULL THEN p.cost_per_gram
+              WHEN COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+              ELSE COALESCE(pv.wholesale,0) END),0)::numeric s
        FROM stock_movements sm JOIN product_variants pv ON pv.id = sm.variant_id
+       LEFT JOIN products p ON p.id = pv.product_id
       WHERE sm.delta < 0
         AND (sm.reason IN ('sale','order','consumption','writeoff') OR sm.reason LIKE 'order:%'
              OR sm.reason LIKE 'service:%')
@@ -409,7 +413,10 @@ router.get('/drilldown', requirePerm('pnl.drilldown'), async (req, res) => {
     } else if (section === 'cogs' && category === 'materials') {
       transactions = await safeRows(
         `SELECT sm.created_at AS date, (COALESCE(pr.name,'товар')||' ×'||ABS(sm.delta)) AS description,
-                (ABS(sm.delta)*COALESCE(pv.wholesale,0))::numeric AS amount, sm.reason AS method, 'stock_movements' AS source
+                (ABS(sm.delta) * CASE
+                   WHEN pr.price_per_gram IS NOT NULL AND pr.cost_per_gram IS NOT NULL THEN pr.cost_per_gram
+                   WHEN COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+                   ELSE COALESCE(pv.wholesale,0) END)::numeric AS amount, sm.reason AS method, 'stock_movements' AS source
            FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id
            LEFT JOIN products pr ON pr.id=pv.product_id
           WHERE sm.delta<0 AND sm.created_at >= $1 AND sm.created_at < $2

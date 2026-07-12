@@ -42,6 +42,8 @@ async function sendOtpToUser({ telegram_id, phone, text }) {
         ...(process.env.INTERNAL_RELAY_SECRET ? { 'x-internal-token': process.env.INTERNAL_RELAY_SECRET } : {}),
       },
       body: JSON.stringify({ phone, text }),
+      // без таймаута зависший relay вешает OTP-вход навсегда (аудит v7)
+      signal: AbortSignal.timeout(15000),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(`relay-failed: ${j.error || r.status}`);

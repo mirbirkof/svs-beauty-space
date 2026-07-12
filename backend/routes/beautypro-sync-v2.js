@@ -148,6 +148,7 @@ router.get('/health', async (req, res) => {
 });
 
 router.post('/client', requirePerm('sync.write'), async (req, res) => {
+  try {
   const { phone, client_id } = req.body || {};
   let local;
   if (client_id) {
@@ -171,9 +172,11 @@ router.post('/client', requirePerm('sync.write'), async (req, res) => {
   if (!local) return res.status(404).json({ error: 'client-not-found' });
   const result = await syncOneClient(local);
   res.json(result);
+  } catch (e) { console.error('[sync-v2:client]', e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 
 router.post('/all-clients', requirePerm('sync.write'), async (req, res) => {
+  try {
   const r = await pool.query(
     `SELECT id, phone, name, email FROM clients
      WHERE beautypro_id IS NULL AND phone IS NOT NULL LIMIT 50`
@@ -186,9 +189,11 @@ router.post('/all-clients', requirePerm('sync.write'), async (req, res) => {
   }
   const linked = results.filter(x => x.ok).length;
   res.json({ ok: true, processed: results.length, linked, results });
+  } catch (e) { console.error('[sync-v2:all-clients]', e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 
 router.get('/status', requirePerm('sync.write'), async (req, res) => {
+  try {
   const r = await pool.query(
     `SELECT
        COUNT(*) FILTER (WHERE beautypro_id IS NOT NULL) AS linked,
@@ -197,6 +202,7 @@ router.get('/status', requirePerm('sync.write'), async (req, res) => {
      FROM clients WHERE phone IS NOT NULL`
   );
   res.json({ ok: true, sync: r.rows[0] });
+  } catch (e) { console.error('[sync-v2:status]', e.message); res.status(500).json({ ok: false, error: e.message }); }
 });
 
 module.exports = router;
