@@ -83,6 +83,24 @@ try{ if(window.top!==window.self) document.documentElement.classList.add('embedd
     <h3>📅 Останні зміни</h3>
     <div id="hist" class="hist"><div class="muted">—</div></div>
   </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3 style="cursor:pointer" onclick="toggleTplEditor()">⚙️ Налаштування чек-листа <span id="tplCaret" class="muted" style="font-size:13px">(показати)</span></h3>
+    <div id="tplEditor" style="display:none">
+      <div class="muted" style="margin-bottom:10px">Свій розпорядок дня. Кожен пункт можна прив'язати до конкретних днів тижня — тоді він показується лише в ці дні (напр. «Instagram stories» лише в робочі дні). Без відмічених днів — пункт щодня.</div>
+      <div id="tplRows"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="addTplRow('open')">+ Пункт відкриття</button>
+        <button class="btn" onclick="addTplRow('day')">+ Пункт дня</button>
+        <button class="btn" onclick="addTplRow('close')">+ Пункт закриття</button>
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button class="btn primary" onclick="saveTpl()">Зберегти шаблон</button>
+        <button class="btn" onclick="resetTpl()">Повернути стандартний</button>
+      </div>
+      <div class="msg" id="tplMsg"></div>
+    </div>
+  </div>
 </main>
 
 <script src="/admin/assets/admin-shell.js" data-title="Чек-лист зміни"></script>
@@ -188,6 +206,73 @@ async function loadHist(){
       return `<div class="h"><span>${dt} · ${esc(h.admin_name||'—')} · ${h.done_cnt}/${h.total_cnt} ✓${diff}</span>${cl}</div>`;
     }).join('') : '<div class="muted">Поки що порожньо</div>';
   }catch(e){ $('hist').innerHTML='<div class="muted">—</div>'; }
+}
+
+// ── Редактор шаблону (owner) ──
+const DOW = [{v:1,l:'Пн'},{v:2,l:'Вт'},{v:3,l:'Ср'},{v:4,l:'Чт'},{v:5,l:'Пт'},{v:6,l:'Сб'},{v:0,l:'Нд'}];
+let TPL = null, tplLoaded = false;
+async function toggleTplEditor(){
+  const el = $('tplEditor');
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  $('tplCaret').textContent = show ? '(сховати)' : '(показати)';
+  if(show && !tplLoaded){ await loadTpl(); }
+}
+async function loadTpl(){
+  $('tplRows').innerHTML = '<div class="muted">Завантаження…</div>';
+  try{
+    const d = await apiGet('/api/shift-checklist/template');
+    TPL = (d.items||[]).map(x=>({ key:x.key||'', phase:x.phase||'day', label:x.label||'', days:Array.isArray(x.days)?x.days.slice():null }));
+    tplLoaded = true; renderTpl();
+  }catch(e){ $('tplRows').innerHTML='<div class="warn">Не вдалося: '+esc(e.message)+'</div>'; }
+}
+function renderTpl(){
+  let html=''; let lastPhase=null;
+  TPL.forEach((it,i)=>{
+    if(it.phase!==lastPhase){ html+='<div class="phase" style="margin-top:12px">'+(PHASES[it.phase]||it.phase)+'</div>'; lastPhase=it.phase; }
+    const days = Array.isArray(it.days)?it.days:[];
+    const chips = DOW.map(d=>`<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;margin-right:6px;cursor:pointer">
+      <input type="checkbox" ${days.includes(d.v)?'checked':''} onchange="tplDay(${i},${d.v},this.checked)">${d.l}</label>`).join('');
+    html+=`<div style="border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" value="${esc(it.label)}" oninput="tplLabel(${i},this.value)" placeholder="Текст пункту" style="flex:1">
+        <button class="btn" style="padding:4px 10px" onclick="tplDel(${i})" title="Видалити">✕</button>
+      </div>
+      <div style="margin-top:6px"><span class="muted" style="font-size:12px">Дні: </span>${chips}
+        <span class="muted" style="font-size:11px;margin-left:6px">${days.length?'':'(щодня)'}</span></div>
+    </div>`;
+  });
+  $('tplRows').innerHTML = html || '<div class="muted">Пунктів немає — додайте нижче</div>';
+}
+function tplLabel(i,v){ TPL[i].label=v; }
+function tplDay(i,v,on){ let d=Array.isArray(TPL[i].days)?TPL[i].days:[]; d = on ? [...new Set([...d,v])] : d.filter(x=>x!==v); TPL[i].days = d.length?d:null; renderTpl(); }
+function tplDel(i){ TPL.splice(i,1); renderTpl(); }
+function addTplRow(phase){
+  if(!TPL) TPL=[];
+  const key = 'custom_'+Date.now().toString(36);
+  // вставляємо в кінець своєї фази
+  let idx = TPL.length; for(let j=TPL.length-1;j>=0;j--){ if(TPL[j].phase===phase){ idx=j+1; break; } }
+  TPL.splice(idx,0,{ key, phase, label:'', days:null });
+  renderTpl();
+}
+async function saveTpl(){
+  $('tplMsg').textContent='Зберігаю…';
+  const clean = TPL.filter(x=>x.label && x.label.trim());
+  if(!clean.length){ $('tplMsg').innerHTML='<span class="warn">Додайте хоча б один пункт з текстом</span>'; return; }
+  try{
+    await apiSend('/api/shift-checklist/template', { items: clean }, 'PUT');
+    $('tplMsg').innerHTML='<span class="ok">Шаблон збережено ✓ Оновлюю чек-лист…</span>';
+    await load();
+  }catch(e){ $('tplMsg').innerHTML='<span class="warn">Помилка: '+esc(e.message)+'</span>'; }
+}
+async function resetTpl(){
+  if(!confirm('Повернути стандартний чек-лист? Свої пункти буде видалено.')) return;
+  $('tplMsg').textContent='Скидаю…';
+  try{
+    const r = await apiSend('/api/shift-checklist/template', { items: [] }, 'PUT');
+    TPL = (r.items||[]).map(x=>({ key:x.key, phase:x.phase, label:x.label, days:Array.isArray(x.days)?x.days.slice():null }));
+    renderTpl(); $('tplMsg').innerHTML='<span class="ok">Повернуто стандартний ✓</span>'; await load();
+  }catch(e){ $('tplMsg').innerHTML='<span class="warn">Помилка: '+esc(e.message)+'</span>'; }
 }
 
 $('date').value = kyivToday();
