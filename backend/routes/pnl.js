@@ -138,12 +138,16 @@ async function aggregate(start, end, branchId) {
        FROM cash_operations co ${cb.join}
       WHERE co.type='out' AND co.category='refund'
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
-  // Абонементи: продані у періоді × ціна плану
+  // Абонементи: виручка = РЕАЛЬНО сплачене в касу (category='sale_subscription':
+  // продаж + платежі + продовження + апгрейди). Аудит v6: раніше рахувалось по
+  // subscription_plans.price × продані — це (а) двоїло суму з «Іншими доходами», куди
+  // sale_subscription теж потрапляв, і (б) додавало ФАНТОМ для trial (безкоштовні,
+  // is_trial → фактично 0, але бралась повна ціна плану). Каса визнає рівно факт.
   const subs = await safeRows(
-    `SELECT COALESCE(SUM(sp.price),0)::numeric s
-       FROM subscriptions su JOIN subscription_plans sp ON sp.id = su.plan_id
-      WHERE su.status <> 'cancelled'
-        AND su.sold_at >= $1 AND su.sold_at < $2`, [start, end]);
+    `SELECT COALESCE(SUM(co.amount),0)::numeric s
+       FROM cash_operations co ${cb.join}
+      WHERE co.type='in' AND co.category='sale_subscription'
+        AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
   // Інші доходи: cash_operations type=in решта категорій.
   // sale_certificate виключено: продаж сертифіката вже врахований довідковим рядком
   // «Сертифікати (аванси)» з gift_certificate_transactions — інакше та сама сума
@@ -152,7 +156,7 @@ async function aggregate(start, end, branchId) {
     `SELECT COALESCE(SUM(co.amount),0)::numeric s
        FROM cash_operations co ${cb.join}
       WHERE co.type='in'
-        AND co.category NOT IN ('sale_service','sale_product','sale_certificate')
+        AND co.category NOT IN ('sale_service','sale_product','sale_certificate','sale_subscription')
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
 
   // ── COGS ──────────────────────────────────────────────────────────────────

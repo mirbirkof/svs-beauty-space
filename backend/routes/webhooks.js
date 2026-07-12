@@ -108,8 +108,13 @@ router.get('/', async (req, res) => {
 router.get('/:id/deliveries', async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    // Аудит v6: раньше журнал доставок читался по webhook_id без проверки владельца —
+    // перебором id виден журнал чужого салона. Ограничиваем вебхуками текущего тенанта.
     const rows = await q(`SELECT id,event_type,status_code,ok,error,attempt,created_at
-                          FROM webhook_deliveries WHERE webhook_id=$1 ORDER BY created_at DESC LIMIT ${limit}`, [req.params.id]);
+                          FROM webhook_deliveries
+                          WHERE webhook_id=$1
+                            AND webhook_id IN (SELECT id FROM webhooks WHERE tenant_id=current_tenant_id())
+                          ORDER BY created_at DESC LIMIT ${limit}`, [req.params.id]);
     res.json({ rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

@@ -338,7 +338,7 @@ router.patch('/payroll/records/:id', async (req, res) => {
     // ламати її підсумок заднім числом (як при unpay візиту). Транші payroll_partial НЕ чіпаємо.
     if (prevStatus === 'paid' && status && status !== 'paid') {
       await client.query(
-        `DELETE FROM cash_operations WHERE ref_type='payroll' AND ref_id=$1 AND type='out'
+        `DELETE FROM cash_operations WHERE ref_type IN ('payroll','auto_payroll') AND ref_id=$1 AND type='out'
            AND (shift_id IS NULL OR shift_id IN (SELECT id FROM cash_shifts WHERE status='open'))`,
         [req.params.id]);
       await client.query(`DELETE FROM payroll_payments WHERE record_id=$1`, [req.params.id]);
@@ -349,7 +349,10 @@ router.patch('/payroll/records/:id', async (req, res) => {
       const r0 = lock.rows[0];
       if (+r0.total > 0) {
         // главный guard идемпотентности: расход по этому расчёту уже проведён?
-        const already = await client.query(`SELECT 1 FROM cash_operations WHERE ref_type='payroll' AND ref_id=$1 AND type='out' LIMIT 1`, [r0.id]);
+        // Аудит v6: авто-расчёт (payouts.autoPayrollRun) пишет расход с ref_type='auto_payroll'.
+        // Раньше guard смотрел только 'payroll' → перевод авто-записи в 'paid' проводил
+        // ВТОРОЙ расход в кассу (двойная выплата ЗП). Теперь учитываем оба типа.
+        const already = await client.query(`SELECT 1 FROM cash_operations WHERE ref_type IN ('payroll','auto_payroll') AND ref_id=$1 AND type='out' LIMIT 1`, [r0.id]);
         if (!already.rowCount) {
           // захист від ПОДВІЙНОЇ виплати: та сама ЗП могла бути вже проведена через «Підтвердження витрат»
           const ym = String(r0.period_start).slice(0, 7);
