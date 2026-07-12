@@ -90,6 +90,9 @@ async function createTenant(name, opts = {}, actor = null) {
   //    склад без груп). Фарби/окисники/знебарвлення/завивка/пігменти = розхідник (commissionable=FALSE).
   try { await seedTenantCategories(tenant.id); } catch (e) { console.error('[tenant-mgmt:createTenant:cats]', e.message); }
 
+  // 4b) Стадії пайплайна візитів — з 251 вони per-tenant; без сіду канбан журналу порожній.
+  try { await seedTenantPipelineStages(tenant.id); } catch (e) { console.error('[tenant-mgmt:createTenant:pipeline]', e.message); }
+
   // 5) Онбординг: шаг registration выполнен.
   try { await completeStep(tenant.id, 'registration'); } catch (_) {}
 
@@ -257,6 +260,28 @@ async function seedTenantCategories(tenantId) {
         `INSERT INTO categories (id, name, group_name, commissionable)
          VALUES ($1,$2,$3,$4) ON CONFLICT (tenant_id, id) DO NOTHING`,
         [id, name, group_name, comm]);
+    }
+  });
+}
+
+// Базові стадії пайплайна візитів (дзеркало сіда міграцій 155/251)
+const DEFAULT_PIPELINE_STAGES = [
+  ['booked',      'Заплановані',  0, '#6366f1', 1440, false],
+  ['confirmed',   'Підтверджені', 1, '#0ea5e9', 120,  false],
+  ['arrived',     'Прийшли',      2, '#f59e0b', 15,   false],
+  ['in_progress', 'В роботі',     3, '#8b5cf6', null, false],
+  ['done',        'Завершені',    4, '#16a34a', null, true],
+  ['noshow',      'Не прийшли',   5, '#dc2626', null, true],
+  ['cancelled',   'Скасовані',    6, '#94a3b8', null, true],
+];
+async function seedTenantPipelineStages(tenantId) {
+  const pool = getPool();
+  await runAs(tenantId, async () => {
+    for (const [code, name, position, color, sla, terminal] of DEFAULT_PIPELINE_STAGES) {
+      await pool.query(
+        `INSERT INTO visit_pipeline_stages (code, name, position, color, sla_minutes, is_terminal)
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (tenant_id, code) DO NOTHING`,
+        [code, name, position, color, sla, terminal]);
     }
   });
 }

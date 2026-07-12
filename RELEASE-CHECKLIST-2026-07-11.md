@@ -88,3 +88,14 @@
 - booking.js shadow-INSERT appointments после ob_insert — проверить не глотает ли 23P01 (иначе ob есть, appt нет)
 - cancel-синк online_bookings↔appointments для нативных броней
 РЕШЕНИЕ: holistic — либо расширить триггер (ends_at coalesce, покрыть UPDATE с исключением self), либо унифицировать online_bookings+appointments. С тестом каждого. НЕ патчить по одному (2 регресса уже было).
+
+---
+
+# РАУНД 5 (12.07.2026, аудит v8) — 15 специалистов + скептики, 31 подтверждённая находка
+
+Вердикт до фиксов: салон 64% / SaaS 31%. Все 7 блокеров вердикта ЗАКРЫТЫ (коммиты 2c83076→3fda72c, ~14 волн):
+B1 applyTenant на txc брони · B2 failPay (захват оплаты снимается при провале валидации) ·
+B3 XSS escapeHtml (waitlist/reminders/repeat) · B4 MCL reversed синк (двойной возврат склада) ·
+B5 миграция 250 (sales_part+kpi_bonus в total ЗП) · B6 reschedule синкает даты брони (предоплата) ·
+B7 batch-apply unnest (18600 запросов → 2-3).
+Плюс: бонусы в

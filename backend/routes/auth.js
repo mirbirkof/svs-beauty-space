@@ -17,6 +17,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
+const emailChannel = require('../lib/channels/email-resend');
 
 // Секрет для краткоживущего 2FA pre-auth токена.
 // Раньше при отсутствии JWT_SECRET использовалась строка-заглушка из репозитория —
@@ -509,17 +510,32 @@ router.post('/forgot-password', validateBody({
     const token = generateResetToken();
     const tokenHash = sha256(token);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
-    const channel = user.email ? 'email' : 'telegram';
+
+    const base = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api.onrender.com';
+    const link = `${base}/admin/reset-password.html?token=${token}`;
+    const resetHtml = `🔑 <b>Скидання пароля SVS CRM</b>\nПерейдіть за посиланням, щоб задати новий пароль:\n<a href="${link}">${link}</a>\n\nПосилання дійсне 30 хв. Якщо ви не запитували — проігноруйте.`;
+
+    // Аудит v6: раньше channel='email' лишь ЗАПИСЫВАЛСЯ, а доставка всегда шла в Telegram —
+    // юзер с email без telegram_id получал валидный токен «в никуда». Теперь: пробуем email
+    // (если настроен Resend), затем Telegram; в БД пишем ФАКТИЧЕСКИЙ канал доставки.
+    let channel = null;
+    if (user.email && emailChannel.isConfigured()) {
+      try {
+        await emailChannel.send(user.email, { subject: 'Скидання пароля SVS CRM', body: resetHtml.replace(/\n/g, '<br>') });
+        channel = 'email';
+      } catch (e) { console.error('[auth:forgot:email]', e.message); }
+    }
+    if (!channel && await deliverViaTelegram(user, resetHtml)) channel = 'telegram';
+    if (!channel) {
+      // ни один канал не доставил — токен не сохраняем, чтобы не висел «в никуда»
+      await recordAttempt(pool, { identifier, kind: 'reset', success: false, ip, ua, meta: { reason: 'no-delivery-channel' } });
+      return res.json({ ok: true }); // existence-leak guard: наружу всегда ok
+    }
 
     await pool.query(
       `INSERT INTO password_reset_tokens (user_id, token_hash, channel, expires_at, ip) VALUES ($1,$2,$3,$4,$5)`,
       [user.id, tokenHash, channel, expiresAt, ip]
     );
-
-    const base = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api.onrender.com';
-    const link = `${base}/admin/reset-password.html?token=${token}`;
-
-    await deliverViaTelegram(user, `🔑 <b>Скидання пароля SVS CRM</b>\nПерейдіть за посиланням, щоб задати новий пароль:\n<a href="${link}">${link}</a>\n\nПосилання дійсне 30 хв. Якщо ви не запитували — проігноруйте.`);
     await recordAttempt(pool, { identifier, kind: 'reset', success: true, ip, ua, meta: { channel } });
 
     res.json({ ok: true });

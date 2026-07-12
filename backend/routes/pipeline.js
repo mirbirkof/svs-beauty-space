@@ -146,7 +146,13 @@ const STATUS_BY_STAGE = {
 async function fireTriggers(appt, stageCode, on) {
   let fired = 0;
   try {
-    const trs = await q(`SELECT * FROM visit_stage_triggers WHERE stage_code=$1 AND trigger_on=$2 AND active=true`, [stageCode, on]);
+    // Явный замок салона поверх RLS: триггеры берём ТОЛЬКО салона самой записи
+    // (без GUC политика permissive — вебхук одного салона стрелял бы по чужой записи).
+    const trs = await q(
+      `SELECT * FROM visit_stage_triggers
+        WHERE stage_code=$1 AND trigger_on=$2 AND active=true
+          AND ($3::uuid IS NULL OR tenant_id=$3::uuid)`,
+      [stageCode, on, appt.tenant_id || null]);
     for (const t of trs) {
       // умови: vip_only, service_ids
       const cond = t.conditions || {};
@@ -175,10 +181,10 @@ router.post('/transition', async (req, res) => {
       return res.status(400).json({ error: 'appointment_id and valid target_stage_id required' });
     await client.query('BEGIN'); await applyTenant(client); // RLS: без цього видно/пишеться чужий тенант (аудит 06.07)
     const appt = (await client.query(
-      `SELECT id, status, service_id, client_id, COALESCE(is_vip,false) AS is_vip FROM appointments WHERE id=$1 FOR UPDATE`,
+      `SELECT id, status, service_id, client_id, tenant_id, COALESCE(is_vip,false) AS is_vip FROM appointments WHERE id=$1 FOR UPDATE`,
       [+appointment_id]).catch(async () => {
         // is_vip може не існувати — fallback без нього
-        return client.query(`SELECT id, status, service_id, client_id, false AS is_vip FROM appointments WHERE id=$1 FOR UPDATE`, [+appointment_id]);
+        return client.query(`SELECT id, status, service_id, client_id, tenant_id, false AS is_vip FROM appointments WHERE id=$1 FOR UPDATE`, [+appointment_id]);
       })).rows[0];
     if (!appt) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'appointment not found' }); }
 
