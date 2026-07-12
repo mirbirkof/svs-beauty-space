@@ -338,9 +338,18 @@ async function getPrepaymentConfig() {
   return { enabled: ENV_DEPOSIT_PERCENT > 0, percent: ENV_DEPOSIT_PERCENT, minAmount: 0 };
 }
 
-// отправка через booking-бота (клиент гарантированно начинал с ним диалог)
-function bookingBotSend(chatId, text, opts = {}) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+// отправка через booking-бота (клиент гарантированно начинал с ним диалог).
+// Аудит-контроль: берём бота ТЕКУЩЕГО салона (getBotForTenant по контексту) — раньше
+// всегда слали платформенным TELEGRAM_BOT_TOKEN, и клиент арендатора получал платёжку
+// от бота Босса. Для салона Босса fallback — тот же env-токен (getBotForTenant дефолту его и отдаёт).
+async function bookingBotSend(chatId, text, opts = {}) {
+  let token = process.env.TELEGRAM_BOT_TOKEN;
+  try {
+    const { getTenantId } = require('../lib/tenant');
+    const { getBotForTenant } = require('../lib/tenant-bots');
+    const tid = getTenantId();
+    if (tid) { const bot = await getBotForTenant(tid); if (bot && bot.token) token = bot.token; }
+  } catch (_) {}
   if (!token) return Promise.reject(new Error('no-booking-bot-token'));
   return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
