@@ -263,10 +263,15 @@ router.post('/addons/:key/subscribe', async (req, res) => {
     const tenantId = (await q(`SELECT current_tenant_id() AS id`))[0]?.id;
     if (!tenantId) return res.status(400).json({ error: 'no_tenant' });
 
-    // якщо модуль уже входить у тариф — платити нема за що
+    // якщо модуль уже входить у тариф — платити нема за що.
+    // saas_plans.features використовує ті самі ключі, що saas_addons (loyalty/marketing/…),
+    // але зберігає старі коди планів → мапимо новий slug на старий код (аудит: інакше
+    // салон на 'professional' не знаходив своїх фіч і міг ОПЛАТИТИ модуль, який вже входить).
     const lic = (await q(`SELECT plan_code FROM tenant_licenses WHERE tenant_id=current_tenant_id() LIMIT 1`))[0];
     if (lic) {
-      const planFeatures = (await q(`SELECT features FROM saas_plans WHERE code=$1`, [lic.plan_code]))[0]?.features || [];
+      const V2_TO_LEGACY = { professional: 'pro', free: 'free', enterprise: 'enterprise' };
+      const legacyCode = V2_TO_LEGACY[lic.plan_code] || lic.plan_code;
+      const planFeatures = (await q(`SELECT features FROM saas_plans WHERE code=$1`, [legacyCode]))[0]?.features || [];
       const inPlan = Array.isArray(planFeatures) && (planFeatures.includes('*') || planFeatures.includes(key));
       if (inPlan) return res.status(400).json({ error: 'already_in_plan' });
     }

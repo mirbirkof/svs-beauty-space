@@ -233,7 +233,11 @@ async function syncLicense(tenantId, planCode, status, expiresAt) {
 // под лицензией. '*' → все модули. expiresAt = конец текущего периода подписки: каждая
 // оплата двигает его вперёд, при неоплате лицензия истекает штатно (крон + grace).
 async function syncModuleLicenses(tenantId, planCode, expiresAt) {
-  const pr = await getPool().query(`SELECT features FROM saas_plans WHERE code=$1`, [planCode]);
+  // saas_plans.features хранит старые коды планов → мапим новый slug на старый код,
+  // иначе для 'professional' features не найдётся и модульные лицензии не выдадутся.
+  const V2_TO_LEGACY = { professional: 'pro', free: 'free', enterprise: 'enterprise' };
+  const legacyCode = V2_TO_LEGACY[planCode] || planCode;
+  const pr = await getPool().query(`SELECT features FROM saas_plans WHERE code=$1`, [legacyCode]);
   if (!pr.rows.length) return;
   const feats = Array.isArray(pr.rows[0].features) ? pr.rows[0].features : [];
   const all = feats.includes('*');
