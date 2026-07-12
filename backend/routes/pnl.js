@@ -647,7 +647,9 @@ router.post('/export', requirePerm('pnl.export'), async (req, res) => {
 
     // CSV (Excel-сумісний, з BOM для кирилиці)
     const SECTION_LABELS = { revenue: 'ВИРУЧКА', cogs: 'СОБІВАРТІСТЬ', opex: 'ОПЕРАЦІЙНІ ВИТРАТИ', other: 'ІНШЕ' };
-    const esc = (v) => { const s = String(v == null ? '' : v); return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const esc = (v) => { let s = String(v == null ? '' : v);
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // аудит: нейтрализация formula-injection в Excel
+      return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const lines = ['Секція;Стаття;Сума'];
     let curSec = null;
     for (const it of items) {

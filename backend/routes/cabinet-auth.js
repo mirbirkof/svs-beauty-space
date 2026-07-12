@@ -109,10 +109,13 @@ router.post('/request-code', validateBody({
       return res.json({ ok: true, mode: 'dev', hint: `dev-code: ${DEV_CODE}` });
     }
 
-    // Ищем клиента с привязанным Telegram
+    // Ищем клиента с привязанным Telegram. Аудит: раньше LIKE '%'+последние-10-цифр мог
+    // совпасть с ЧУЖИМ похожим номером → код входа уходил не тому клиенту. Точное сравнение
+    // по всем цифрам (канон БД — 380XXXXXXXXX без '+').
     const cl = await pool.query(
-      'SELECT id, telegram_id FROM clients WHERE phone LIKE $1 AND telegram_id IS NOT NULL LIMIT 1',
-      ['%' + phone.slice(-10)]
+      `SELECT id, telegram_id FROM clients
+        WHERE regexp_replace(phone, '\\D', '', 'g') = $1 AND telegram_id IS NOT NULL LIMIT 1`,
+      [String(phone).replace(/\D/g, '')]
     );
     if (!cl.rows[0]) {
       // Telegram не привязан — вход невозможен, объясняем как привязать

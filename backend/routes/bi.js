@@ -394,7 +394,9 @@ router.delete('/:id(\\d+)', async (req, res) => {
 
 // CSV-экспорт (ad-hoc через POST-конфиг или сохранённый через ?id=)
 function toCsv(columns, rows) {
-  const esc = v => { const s = v == null ? '' : String(v); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const esc = v => { let s = v == null ? '' : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // аудит: нейтрализация formula-injection в Excel
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const head = columns.map(c => esc(c.label)).join(';');
   const body = rows.map(r => columns.map(c => esc(r[c.key])).join(';')).join('\n');
   return '\uFEFF' + head + '\n' + body; // BOM → Excel читает кириллицу
