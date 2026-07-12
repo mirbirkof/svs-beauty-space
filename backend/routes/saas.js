@@ -123,7 +123,7 @@ router.get('/onboarding-checklist', async (req, res) => {
       q(`SELECT COUNT(*)::int n FROM appointments`),
     ]);
     const steps = [
-      { key: 'masters',  done: (masters[0]?.n || 0) > 0,  label: 'Додайте майстрів', go: 'employees' },
+      { key: 'masters',  done: (masters[0]?.n || 0) > 0,  label: 'Додайте майстрів', embed: '/admin/crm-extra.html#users', embedTitle: 'Майстри / Співробітники' },
       { key: 'services', done: (services[0]?.n || 0) > 0, label: 'Додайте послуги з цінами', go: 'services' },
       { key: 'schedule', done: (sched[0]?.n || 0) > 0,    label: 'Заповніть графік роботи', go: 'wsched' },
       { key: 'bot',      done: (bot[0]?.n || 0) > 0,      label: 'Підключіть Telegram-бота (онлайн-запис)', go: 'settings' },

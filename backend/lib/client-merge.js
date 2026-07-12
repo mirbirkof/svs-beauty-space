@@ -106,6 +106,32 @@ async function mergeClients(client, primaryId, dupId) {
   const dup = both.rows.find(r => r.id === dupId);
   if (!primary || !dup) throw new Error('not-found');
 
+  // 0) Единый кошелёк бонусов (аудит-регресс 257): balance живёт в bonus_balances
+  //    (PK tenant_id,client_id). Перецепка client_id ниже упёрлась бы в PK primary и
+  //    УДАЛИЛА строку дубля вместе с балансом. Поэтому СНАЧАЛА складываем баланс дубля
+  //    в primary, историю (bonus_transactions) перецепка перенесёт, а обнулённую строку
+  //    дубля потом снесёт как конфликтную. loyalty_points не трогаем вручную —
+  //    это зеркало, его обновит триггер mirror_bonus_balance при UPDATE баланса.
+  await client.query('SAVEPOINT bonus_mv');
+  try {
+    await client.query(`
+      INSERT INTO bonus_balances (client_id, balance, total_accrued, total_redeemed, total_expired)
+      SELECT $1, balance, total_accrued, total_redeemed, total_expired FROM bonus_balances WHERE client_id=$2
+      ON CONFLICT (tenant_id, client_id) DO UPDATE SET
+        balance = bonus_balances.balance + EXCLUDED.balance,
+        total_accrued = bonus_balances.total_accrued + EXCLUDED.total_accrued,
+        total_redeemed = bonus_balances.total_redeemed + EXCLUDED.total_redeemed,
+        total_expired = bonus_balances.total_expired + EXCLUDED.total_expired,
+        updated_at = NOW()
+    `, [primaryId, dupId]);
+    // строку баланса дубля обнуляем — перецепка client_id ниже её удалит по конфликту PK
+    await client.query(`UPDATE bonus_balances SET balance=0, total_accrued=0, total_redeemed=0, total_expired=0 WHERE client_id=$1`, [dupId]);
+    await client.query('RELEASE SAVEPOINT bonus_mv');
+  } catch (e) {
+    await client.query('ROLLBACK TO SAVEPOINT bonus_mv');
+    console.error('[client-merge:bonus]', e.message);
+  }
+
   // 1) Перецепляем все ссылки dup → primary.
   const refs = await discoverClientRefs(client);
   const moved = [];
@@ -143,7 +169,8 @@ async function mergeClients(client, primaryId, dupId) {
       avatar        = COALESCE(avatar, $5),
       telegram_id   = COALESCE(telegram_id, $6),
       beautypro_id  = COALESCE(beautypro_id, $7),
-      loyalty_points = COALESCE(loyalty_points,0) + COALESCE($8,0),
+      -- loyalty_points НЕ складываем вручную ($8 игнор): это зеркало bonus_balances,
+      -- баланс дубля уже слит в primary выше (шаг 0), триггер зеркалит актуальное.
       total_spent    = COALESCE(total_spent,0)   + COALESCE($9,0),
       tags          = $10,
       notes         = $11,

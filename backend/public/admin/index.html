@@ -5981,10 +5981,16 @@ async function loadOnbChecklist(){
       <div class="card-body" style="padding:14px 18px">
         <div style="font-weight:700;margin-bottom:8px">🚀 Налаштування салону · ${d.done}/${d.total}</div>
         <div style="display:flex;flex-direction:column;gap:5px;font-size:13.5px">
-          ${d.steps.map(st=>`<div style="display:flex;align-items:center;gap:8px;${st.done?'opacity:.55':''}">
+          ${d.steps.map(st=>{
+            // Аудит-регрес: крок «Додайте майстрів» вів на go('employees') — такої SPA-сторінки
+            // немає (майстри в embed crm-extra), навігація падала. Тепер бек віддає embed-ціль.
+            const act = st.embed
+              ? `openEmbed('${st.embed}', ${JSON.stringify(st.embedTitle||st.label)});return false`
+              : `go('${st.go}');return false`;
+            return `<div style="display:flex;align-items:center;gap:8px;${st.done?'opacity:.55':''}">
             <span>${st.done?'✅':'⬜'}</span>
-            ${st.done?`<span>${st.label}</span>`:`<a href="#" onclick="go('${st.go}');return false" style="color:#4f46e5;font-weight:600">${st.label}</a>`}
-          </div>`).join('')}
+            ${st.done?`<span>${st.label}</span>`:`<a href="#" onclick="${act}" style="color:#4f46e5;font-weight:600">${st.label}</a>`}
+          </div>`;}).join('')}
         </div>
       </div></div>`;
   } catch(_) { box.innerHTML=''; }
