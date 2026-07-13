@@ -2455,14 +2455,17 @@ select.input { background:var(--card); }
         </div>
 
         <div class="saas-pane" id="saas-tenants" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
-            <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3> <button type="button" class="info-i" data-t="<b>Орендарі.</b> Салони, підключені до твоєї платформи. Кожен — окремий бізнес зі своїми даними (клієнти й склад не перетинаються). Тут створюєш нового орендаря і керуєш його доступом." onclick="showInfo(event,this.dataset.t)">i</button>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
-              <button class="btn btn-primary btn-sm" onclick="saasNewTenant()"><span class="material-icons-round" style="font-size:16px">add_business</span> Новий салон</button>
+          <div id="saasTenantsListWrap">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+              <h3 style="margin:0;font-size:17px">Орендарі (салони)</h3> <button type="button" class="info-i" data-t="<b>Орендарі.</b> Салони, підключені до твоєї платформи. Кожен — окремий бізнес зі своїми даними (клієнти й склад не перетинаються). Клікни на салон — відкриється повний профіль підписки." onclick="showInfo(event,this.dataset.t)">i</button>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="saasTenantSearch" class="input" placeholder="Пошук за назвою..." style="max-width:240px" oninput="loadSaasTenants()">
+                <button class="btn btn-primary btn-sm" onclick="saasNewTenant()"><span class="material-icons-round" style="font-size:16px">add_business</span> Новий салон</button>
+              </div>
             </div>
+            <div id="saasTenantsList"></div>
           </div>
-          <div id="saasTenantsList"></div>
+          <div id="saasTenantCard" style="display:none"></div>
         </div>
 
         <div class="saas-pane" id="saas-billing" style="display:none">
@@ -12940,7 +12943,7 @@ async function saasDrill(kind){
     let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
     const rows=((r&&r.rows)||[]).filter(s=>['active','past_due'].includes(s.status));
     const body = rows.length
-      ? `<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`<tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':'місячний'}</td><td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`
+      ? `<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`<tr style="cursor:pointer" onclick="document.getElementById('genModal')?.remove();_unlockScroll();saasOpenTenant('${s.tenant_id}')"><td style="font-weight:600">${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':'місячний'}</td><td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`
       : '<div style="opacity:.7;padding:8px">Платних підписок ще немає. MRR/ARR з\'являться після першої реальної оплати клієнта.</div>';
     showModal('Платні підписки (джерело MRR)', body);
   } else if (kind==='collected'){
@@ -12994,14 +12997,229 @@ async function loadSaasTenants(){
   const rows=(r&&r.rows)||[];
   if(!rows.length){ box.innerHTML='<div style="opacity:.6;padding:8px">Орендарів не знайдено. Поки що CRM використовує лише ваш салон.</div>'; return; }
   box.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Статус</th><th>Health</th><th></th></tr></thead><tbody>${rows.map(t=>`
-    <tr><td>${escapeHtml(t.name||t.tenant_name||String(t.id||''))}</td>
+    <tr style="cursor:pointer" onclick="saasTenantProfile('${t.id}')" title="Відкрити профіль підписника">
+    <td style="font-weight:600">${escapeHtml(t.name||t.tenant_name||String(t.id||''))}</td>
     <td>${escapeHtml(t.plan_code||'—')}</td>
     <td>${saasTenantStatus(t.status)}</td>
     <td>${t.health_score!=null?t.health_score:'—'}</td>
-    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="saasManageTenant('${t.id}','${escapeHtml(String(t.name||t.tenant_name||'')).replace(/'/g,"&#39;")}')">Керувати</button>
+    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="event.stopPropagation();saasTenantProfile('${t.id}')">Профіль</button>
     ${t.status==='suspended'
-      ? `<button class="btn btn-sm" onclick="saasTenant('${t.id}','unblock')">Розблокувати</button>`
-      : `<button class="btn btn-sm" onclick="saasTenant('${t.id}','block')">Заблокувати</button>`}</td></tr>`).join('')}</tbody></table>`;
+      ? `<button class="btn btn-sm" onclick="event.stopPropagation();saasTenant('${t.id}','unblock')">Розблокувати</button>`
+      : `<button class="btn btn-sm" onclick="event.stopPropagation();saasTenant('${t.id}','block')">Заблокувати</button>`}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// ═══ ПРОФІЛЬ ПІДПИСНИКА (картка салону, лише для оператора платформи) ═══
+const SAAS_LIMIT_LABELS = { max_employees:'Майстри / співробітники', max_clients:'Клієнти', max_services:'Послуги', max_branches:'Філії', max_sms_month:'SMS на місяць', max_storage_mb:'Сховище (МБ)', max_api_calls_hour:'API-виклики / год' };
+function saasDstr(v){ return v?String(v).slice(0,10):'—'; }
+function saasCloseProfile(keepList){
+  const wrap=document.getElementById('saasTenantsListWrap'), card=document.getElementById('saasTenantCard');
+  if(!wrap||!card) return;
+  card.style.display='none'; card.innerHTML=''; wrap.style.display='';
+  window._saasProfId=null;
+  if(!keepList) loadSaasTenants();
+}
+async function saasTenantProfile(id){
+  const wrap=document.getElementById('saasTenantsListWrap'), card=document.getElementById('saasTenantCard');
+  if(!wrap||!card) return;
+  wrap.style.display='none'; card.style.display='';
+  card.innerHTML='<div style="opacity:.6;padding:12px">Завантаження профілю підписника...</div>';
+  window._saasProfId=id;
+  let p; try{ p=await api('/api/tenant-mgmt/tenants/'+id+'/profile'); }catch{ p=null; }
+  if(!p||p.error||!p.tenant){
+    card.innerHTML='<button class="btn btn-sm" onclick="saasCloseProfile()">← Назад</button><div style="color:#d9534f;padding:10px">Не вдалося завантажити профіль салону</div>';
+    return;
+  }
+  window._saasProf=p;
+  saasRenderProfile();
+}
+function saasRenderProfile(){
+  const p=window._saasProf, id=window._saasProfId;
+  const card=document.getElementById('saasTenantCard');
+  if(!p||!card) return;
+  const t=p.tenant, sub=p.subscription, lic=p.license, ov=(lic&&lic.overrides)||{};
+  const openInvs=(p.invoices||[]).filter(i=>i.status==='open');
+  const debt=openInvs.reduce((s,i)=>s+Number(i.total||0),0);
+  const paidTotal=(p.payments||[]).filter(x=>x.status==='succeeded').reduce((s,x)=>s+Number(x.amount||0),0);
+  const hs=p.health&&(p.health.health_score??p.health.score);
+  const nm=escapeHtml(t.name||'');
+
+  // ── Шапка ──
+  const head=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="saasCloseProfile()">← Орендарі</button>
+      <h3 style="margin:0;font-size:19px">${nm}</h3>
+      ${saasTenantStatus(t.status)}
+      <button class="btn btn-sm" onclick="saasProfRename()" title="Перейменувати">✎</button>
+    </div>
+    <div style="font-size:12.5px;opacity:.75;text-align:right;line-height:1.7">
+      <div>Slug: <code>${escapeHtml(t.slug||'')}</code> · з ${saasDstr(t.created_at)}</div>
+      ${p.owner?`<div>Власник: <b>${escapeHtml(p.owner.display_name||'')}</b> · ${escapeHtml(p.owner.phone||p.owner.email||'')}${p.owner.last_login_at?' · вхід '+saasDstr(p.owner.last_login_at):''}</div>`:'<div style="opacity:.7">Власника ще не створено</div>'}
+    </div></div>`;
+
+  // ── KPI ──
+  const kpis=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${saasKpi('Тариф',escapeHtml((sub&&sub.plan_code)||(lic&&lic.plan_code)||'—'),'blue')}
+    ${saasKpi('Підписка',sub?escapeHtml(sub.status):'немає',sub&&['active','trialing'].includes(sub.status)?'green':'orange')}
+    ${saasKpi('Оплачено до',sub?saasDstr(sub.current_period_end):'—','teal')}
+    ${saasKpi('Заборгованість',debt>0?saasMoney(debt):'—',debt>0?'orange':'green')}
+    ${saasKpi('Сплачено всього',saasMoney(paidTotal),'purple')}
+    ${saasKpi('Health',hs!=null?hs:'—','teal')}
+    ${saasKpi('Тікети',String(p.open_tickets||0),p.open_tickets>0?'orange':'green')}
+  </div>`;
+
+  // ── Підписка: дії ──
+  const subInfo=sub?`<div style="font-size:13.5px;line-height:1.9;margin-bottom:10px">
+      Цикл: <b>${sub.billing_cycle==='yearly'?'річний':'місячний'}</b>
+      ${sub.trial_ends_at?` · тріал до <b>${saasDstr(sub.trial_ends_at)}</b>`:''}
+      ${sub.cancelled_at?` · скасовано ${saasDstr(sub.cancelled_at)}`:''}
+    </div>`:'<div style="opacity:.7;margin-bottom:10px">Підписки немає — «Змінити тариф» створить її.</div>';
+  const subActions=`<div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-sm btn-primary" onclick="saasChangePlan('${id}')">Змінити тариф</button>
+    <button class="btn btn-sm" onclick="saasGiftDays('${id}')">🎁 Подарувати дні</button>
+    ${openInvs.length?`<button class="btn btn-sm" onclick="saasMarkPaid(${openInvs[0].id},'${id}')">Позначити оплату (${saasMoney(openInvs[0].total)})</button>`:''}
+    ${sub&&sub.status==='cancelled'
+      ?`<button class="btn btn-sm" onclick="saasResumeSub('${id}')">Відновити підписку</button>`
+      :(sub?`<button class="btn btn-sm" onclick="saasCancelSub('${id}')">Скасувати підписку</button>`:'')}
+    ${t.status==='suspended'
+      ?`<button class="btn btn-sm" onclick="saasTenant('${id}','unblock')">Розблокувати салон</button>`
+      :`<button class="btn btn-sm" onclick="saasTenant('${id}','block')">Заблокувати салон</button>`}
+  </div>`;
+
+  // ── Ліцензія: статус + строки ──
+  const licSt=(lic&&lic.status)||'active';
+  const licBlock=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <label class="fld" style="min-width:150px"><span>Статус ліцензії</span><select id="prLicSt" class="input">
+      ${['active','trial','suspended','cancelled'].map(s=>`<option value="${s}" ${s===licSt?'selected':''}>${s}</option>`).join('')}</select></label>
+    <label class="fld"><span>Тріал до (порожньо = без)</span><input id="prTrial" class="input" type="date" value="${lic&&lic.trial_ends_at?String(lic.trial_ends_at).slice(0,10):''}"></label>
+    <label class="fld"><span>Діє до (порожньо = безстроково)</span><input id="prExp" class="input" type="date" value="${lic&&lic.expires_at?String(lic.expires_at).slice(0,10):''}"></label>
+  </div>`;
+
+  // ── Індивідуальні фічі (усі флаги + куплені аддони) ──
+  const flagKeys=new Set((p.flags||[]).map(f=>f.key));
+  const extraOv=Object.keys(ov).filter(k=>!k.startsWith('limit:')&&!flagKeys.has(k)).map(k=>({key:k,name:k,description:'(аддон / ручний override)',default_enabled:false}));
+  const featRows=[...(p.flags||[]),...extraOv].map(f=>{
+    const cur=Object.prototype.hasOwnProperty.call(ov,f.key)?(ov[f.key]?'on':'off'):'';
+    return `<tr><td><b>${escapeHtml(f.name||f.key)}</b><div style="font-size:11.5px;opacity:.65">${escapeHtml(f.description||'')}</div></td>
+      <td style="width:180px"><select class="input pr-feat" data-key="${escapeHtml(f.key)}" style="padding:4px 8px">
+        <option value="" ${cur===''?'selected':''}>за тарифом ${f.default_enabled?'(увімк.)':''}</option>
+        <option value="on" ${cur==='on'?'selected':''}>увімкнено персонально</option>
+        <option value="off" ${cur==='off'?'selected':''}>вимкнено персонально</option>
+      </select></td></tr>`;}).join('');
+  const featBlock=featRows?`<table class="tbl" style="font-size:13px"><tbody>${featRows}</tbody></table>`:'<div style="opacity:.6;padding:6px">Фіч-флагів ще немає (вкладка «Фіч-флаги»).</div>';
+
+  // ── Індивідуальні ліміти ──
+  const planLim={}; (p.plan_limits||[]).forEach(l=>planLim[l.limit_key]=l.limit_value);
+  const limKeys=[...new Set([...Object.keys(SAAS_LIMIT_LABELS),...Object.keys(planLim)])];
+  const limRows=limKeys.map(k=>{
+    const ovv=ov['limit:'+k], plv=planLim[k];
+    const usageMap={max_employees:p.usage&&p.usage.masters,max_clients:p.usage&&p.usage.clients};
+    const used=usageMap[k];
+    return `<tr><td>${escapeHtml(SAAS_LIMIT_LABELS[k]||k)}${used!=null?` <span style="opacity:.6;font-size:12px">(зараз: ${used})</span>`:''}</td>
+      <td style="width:120px;opacity:.75">${plv!=null?(Number(plv)<0?'безліміт':plv):'—'}</td>
+      <td style="width:150px"><input class="input pr-lim" data-key="${k}" type="number" placeholder="за тарифом" value="${ovv!=null?ovv:''}" style="padding:4px 8px"></td></tr>`;}).join('');
+  const limBlock=`<table class="tbl" style="font-size:13px"><thead><tr><th>Ліміт</th><th>За тарифом</th><th>Персонально</th></tr></thead><tbody>${limRows}</tbody></table>
+    <div style="font-size:11.5px;opacity:.65;margin-top:4px">Порожньо = діє ліміт тарифу · −1 = безліміт · число = персональний ліміт цього салону</div>`;
+
+  // ── Рахунки та платежі ──
+  const invBlock=(p.invoices||[]).length?`<table class="tbl" style="font-size:12.5px"><thead><tr><th>№</th><th>Сума</th><th>Статус</th><th>До</th><th></th></tr></thead><tbody>
+    ${p.invoices.map(i=>`<tr><td>${escapeHtml(i.invoice_number||'')}</td><td>${saasMoney(i.total)}</td><td>${escapeHtml(i.status||'')}</td><td>${saasDstr(i.due_date)}</td>
+      <td>${i.status==='open'?`<button class="btn btn-sm" onclick="saasMarkPaid(${i.id},'${id}')">Оплачено</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<div style="opacity:.6;padding:6px">Рахунків ще немає</div>';
+  const payBlock=(p.payments||[]).length?`<table class="tbl" style="font-size:12.5px"><thead><tr><th>Дата</th><th>Сума</th><th>Шлюз</th><th>Статус</th></tr></thead><tbody>
+    ${p.payments.map(x=>`<tr><td>${saasDstr(x.created_at)}</td><td>${saasMoney(x.amount)}</td><td>${escapeHtml(x.gateway||'')}</td><td>${escapeHtml(x.status||'')}</td></tr>`).join('')}</tbody></table>`:'<div style="opacity:.6;padding:6px">Платежів ще не було</div>';
+
+  // ── Історія планів + аддони ──
+  const histBlock=(p.plan_changes||[]).length?`<table class="tbl" style="font-size:12.5px"><thead><tr><th>Дата</th><th>Дія</th><th>План</th></tr></thead><tbody>
+    ${p.plan_changes.map(c=>`<tr><td>${saasDstr(c.created_at)}</td><td>${escapeHtml(c.action||'')}</td><td>${escapeHtml(c.from_plan||'—')} → ${escapeHtml(c.to_plan||'—')}</td></tr>`).join('')}</tbody></table>`:'<div style="opacity:.6;padding:6px">Змін тарифу ще не було</div>';
+  const addonBlock=(p.addons||[]).length?`<div style="font-size:13px;margin-top:6px">Аддони: ${p.addons.map(a=>`<code>${escapeHtml(a.slug)}</code> (${escapeHtml(a.status)})`).join(', ')}</div>`:'';
+
+  const sec=(title,body,info)=>`<details style="margin-bottom:12px;border:1px solid var(--border,#eee);border-radius:10px;padding:10px 14px" ${info?'':'open'}>
+    <summary style="cursor:pointer;font-weight:700;font-size:14.5px">${title}</summary><div style="margin-top:10px">${body}</div></details>`;
+
+  card.innerHTML=head+kpis
+    +sec('Підписка та доступ',subInfo+subActions)
+    +sec('Індивідуальна ліцензія (статус і строки)',licBlock+`<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="saasProfSaveLicense()">Зберегти ліцензію</button>`)
+    +sec('Персональні функції (фічі цього салону)',featBlock+`<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="saasProfSaveLicense()">Зберегти фічі та ліміти</button>`)
+    +sec('Персональні ліміти',limBlock)
+    +sec(`Рахунки (${(p.invoices||[]).length})`,invBlock,1)
+    +sec(`Платежі (${(p.payments||[]).length})`,payBlock,1)
+    +sec('Історія тарифу',histBlock+addonBlock,1)
+    +sec('Нотатки платформи (бачиш лише ти)',`<textarea id="prNotes" class="input" rows="3" style="width:100%" placeholder="Домовленості, знижки, особливості клієнта...">${escapeHtml(p.platform_notes||'')}</textarea>
+      <button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="saasProfSaveNotes()">Зберегти нотатки</button>`)
+    +sec('Небезпечна зона',`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-sm" style="color:#d9534f;border-color:#d9534f" onclick="saasDeleteTenant()">🗑 Видалити підписника повністю</button>
+      <span style="font-size:12px;opacity:.65">Незворотньо: всі дані салону буде стерто (GDPR-очистка)</span></div>`,1);
+}
+function saasProfRename(){
+  const p=window._saasProf; if(!p) return;
+  showModal('Перейменувати салон',`<label class="fld"><span>Назва</span><input id="prName" class="input" value="${escapeHtml(p.tenant.name||'')}"></label>`,async()=>{
+    const name=saasV('prName').trim(); if(!name){ toast('Назва порожня','error'); throw new Error('v'); }
+    const r=await api('/api/tenant-mgmt/tenants/'+window._saasProfId,{method:'PATCH',body:JSON.stringify({name})});
+    if(r&&r.ok){ toast('Перейменовано'); saasTenantProfile(window._saasProfId); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('s'); }
+  });
+}
+async function saasProfSaveLicense(){
+  const id=window._saasProfId; if(!id) return;
+  const feature_overrides={}, limit_overrides={};
+  document.querySelectorAll('#saasTenantCard .pr-feat').forEach(s=>{
+    feature_overrides[s.dataset.key]=s.value===''?null:(s.value==='on');
+  });
+  document.querySelectorAll('#saasTenantCard .pr-lim').forEach(inp=>{
+    limit_overrides[inp.dataset.key]=inp.value===''?null:Number(inp.value);
+  });
+  const body={
+    status:saasV('prLicSt')||undefined,
+    trial_ends_at:(document.getElementById('prTrial')||{}).value||null,
+    expires_at:(document.getElementById('prExp')||{}).value||null,
+    feature_overrides, limit_overrides,
+  };
+  const r=await api('/api/tenant-mgmt/tenants/'+id+'/license',{method:'POST',body:JSON.stringify(body)});
+  if(r&&r.ok){ toast('Індивідуальні налаштування збережено'); saasTenantProfile(id); } else { toast((r&&r.error)||'Помилка збереження','error'); }
+}
+async function saasProfSaveNotes(){
+  const id=window._saasProfId; if(!id) return;
+  const notes=(document.getElementById('prNotes')||{}).value||'';
+  const r=await api('/api/tenant-mgmt/tenants/'+id,{method:'PATCH',body:JSON.stringify({notes})});
+  if(r&&r.ok){ toast('Нотатки збережено'); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+function saasGiftDays(id){
+  showModal('Подарувати дні підписки',`
+    <label class="fld"><span>Скільки днів додати</span><input id="gdDays" class="input" type="number" value="7" min="1" max="730"></label>
+    <label class="fld"><span>Причина (запишеться в історію)</span><input id="gdReason" class="input" placeholder="компенсація / бонус / продовження тріалу"></label>
+  `,async()=>{
+    const days=+saasV('gdDays')||0;
+    if(days<1){ toast('Вкажіть кількість днів','error'); throw new Error('v'); }
+    const r=await api('/api/tenant-mgmt/tenants/'+id+'/gift-days',{method:'POST',body:JSON.stringify({days,reason:saasV('gdReason').trim()||null})});
+    if(r&&r.ok){ toast('Додано +'+days+' дн.'); saasTenantProfile(id); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('s'); }
+  });
+}
+async function saasResumeSub(id){
+  const ok=await jConfirm('Відновити скасовану підписку цього салону?',{okText:'Так, відновити',cancelText:'Ні'});
+  if(!ok) return;
+  const r=await api('/api/billing/admin/subscriptions/'+id+'/resume',{method:'POST',body:JSON.stringify({})}).catch(()=>null);
+  if(r&&r.ok){ toast('Підписку відновлено'); saasTenantProfile(id); } else { toast((r&&r.error)||'Помилка','error'); }
+}
+async function saasDeleteTenant(){
+  const p=window._saasProf, id=window._saasProfId; if(!p||!id) return;
+  const nm=p.tenant.name||'';
+  if(!['suspended','cancelled'].includes(p.tenant.status)){
+    const blk=await jConfirm('Салон активний. Перед видаленням його треба заблокувати. Заблокувати зараз?',{okText:'Заблокувати',cancelText:'Скасувати'});
+    if(!blk) return;
+    const rb=await api('/api/tenant-mgmt/tenants/'+id+'/block',{method:'POST',body:JSON.stringify({reason:'pre-delete'})});
+    if(!rb||!(rb.ok||rb.tenant)){ toast('Не вдалося заблокувати','error'); return; }
+  }
+  showModal('Видалення підписника — незворотньо',`
+    <p style="margin:0 0 10px;color:#d9534f;font-weight:600">Всі дані салону «${escapeHtml(nm)}» (клієнти, записи, склад, каса) будуть стерті назавжди.</p>
+    <label class="fld"><span>Для підтвердження введіть точну назву салону</span><input id="delConfirm" class="input" placeholder="${escapeHtml(nm)}"></label>
+  `,async()=>{
+    if(saasV('delConfirm').trim()!==nm){ toast('Назва не збігається','error'); throw new Error('v'); }
+    const r=await api('/api/tenant-mgmt/tenants/'+id+'/purge',{method:'POST',body:JSON.stringify({confirm_name:nm})});
+    if(r&&r.ok){ toast('Підписника видалено'); saasCloseProfile(); } else { toast((r&&r.error)||'Помилка видалення','error'); throw new Error('s'); }
+  });
+}
+// Перехід у профіль з інших вкладок (біллінг, аналітика)
+function saasOpenTenant(tid){
+  if(_saasTab!=='tenants') saasTab('tenants');
+  saasTenantProfile(tid);
 }
 
 // Меню керування салоном (#54): підписка, тариф, оплата, доступ — все в одному місці.
@@ -13042,26 +13260,26 @@ async function saasChangePlan(id){
   `, async ()=>{
     const body={ plan_code:saasV('cpPlan'), cycle:saasV('cpCycle'), trial:document.getElementById('cpTrial').checked };
     const r=await api('/api/billing/admin/subscriptions/'+id+'/override',{method:'POST',body:JSON.stringify(body)});
-    if(r&&r.ok){ toast('Тариф оновлено'); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('save'); }
+    if(r&&r.ok){ toast('Тариф оновлено'); window._saasProfId===id?saasTenantProfile(id):loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); throw new Error('save'); }
   });
 }
 async function saasMarkPaid(invoiceId, tenantId){
   const ok=await jConfirm('Позначити рахунок як оплачений (офлайн-переказ)? Це активує підписку й врахується у виручці.',{okText:'Так, оплачено',cancelText:'Скасувати'});
   if(!ok) return;
   const r=await api('/api/billing/admin/invoices/'+invoiceId+'/pay',{method:'POST',body:JSON.stringify({})});
-  if(r&&r.ok){ toast('Оплату зафіксовано'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadSaasAnalytics&&loadSaasAnalytics(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Оплату зафіксовано'); document.getElementById('genModal')?.remove(); _unlockScroll(); if(window._saasProfId===tenantId){ saasTenantProfile(tenantId); } else { loadSaasAnalytics&&loadSaasAnalytics(); } } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function saasCancelSub(id){
   const ok=await jConfirm('Скасувати підписку салону наприкінці поточного періоду? Доступ збережеться до кінця оплаченого терміну.',{okText:'Так, скасувати',cancelText:'Ні'});
   if(!ok) return;
   const r=await api('/api/billing/admin/subscriptions/'+id+'/cancel',{method:'POST',body:JSON.stringify({})}).catch(()=>null);
-  if(r&&r.ok){ toast('Підписку скасовано (до кінця періоду)'); document.getElementById('genModal')?.remove(); _unlockScroll(); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&r.ok){ toast('Підписку скасовано (до кінця періоду)'); document.getElementById('genModal')?.remove(); _unlockScroll(); window._saasProfId===id?saasTenantProfile(id):loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 async function saasTenant(id, action){
   const ok = await jConfirm(action==='block'?'Призупинити цей салон? Він втратить доступ до CRM.':'Відновити доступ салону до CRM?',{okText:'Так',cancelText:'Скасувати'});
   if(!ok) return;
   const r=await api('/api/tenant-mgmt/tenants/'+id+'/'+action,{method:'POST',body:JSON.stringify({})});
-  if(r&&(r.ok||r.tenant)){ toast(action==='block'?'Салон призупинено':'Доступ відновлено'); loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
+  if(r&&(r.ok||r.tenant)){ toast(action==='block'?'Салон призупинено':'Доступ відновлено'); window._saasProfId===id?saasTenantProfile(id):loadSaasTenants(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 // Створення нового салону: тенант + власник + підписка з авто-строком оплати
 function saasNewTenant(){
@@ -13120,7 +13338,7 @@ async function loadSaasBilling(){
     const debtCell = debt>0
       ? `<td style="color:#d9534f;font-weight:700;white-space:nowrap">${saasMoney(debt)}${Number(s.open_count)>1?` <span style="font-weight:400;opacity:.7">(${s.open_count})</span>`:''}</td>`
       : `<td style="color:#0a8f5f">—</td>`;
-    return `<tr><td>${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':(s.billing_cycle==='monthly'?'місячний':'—')}</td>
+    return `<tr style="cursor:pointer" onclick="saasOpenTenant('${s.tenant_id}')" title="Відкрити профіль підписника"><td style="font-weight:600">${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':(s.billing_cycle==='monthly'?'місячний':'—')}</td>
     <td>${saasSubStatus(s.status)}</td>${debtCell}<td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`;}).join('')}</tbody></table>`;
 }
 async function saasPromoModal(){

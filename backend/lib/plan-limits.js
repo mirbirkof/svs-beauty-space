@@ -20,6 +20,14 @@ async function tenantLimit(pool, limitKey) {
   // tenant_licenses БЕЗ RLS → tenant_id фільтруємо явно (verify-аудит 06.07)
   const tid = getTenantId();
   if (!tid) return null;
+  // Індивідуальний override ліміту (профіль підписника, ключ "limit:<key>" в overrides).
+  // Задається оператором платформи в картці салону; має пріоритет над лімітом тарифу.
+  const ov = await pool.query(
+    `SELECT overrides->>('limit:'||$1) AS v FROM tenant_licenses WHERE tenant_id=$2 LIMIT 1`,
+    [limitKey, tid]);
+  const ovVal = ov.rows[0] && ov.rows[0].v;
+  if (ovVal != null && ovVal !== '' && Number.isFinite(Number(ovVal)))
+    return { limit_value: Number(ovVal), is_soft: false };
   const r = await pool.query(
     `SELECT pl.limit_value, pl.is_soft
        FROM tenant_licenses tl

@@ -230,6 +230,15 @@ router.post('/admin/subscriptions/:tenantId/cancel', ADMIN_W, async (req, res) =
   } catch (e) { fail(res, e); }
 });
 
+// Відновлення скасованої підписки адміном (профіль підписника)
+router.post('/admin/subscriptions/:tenantId/resume', ADMIN_W, async (req, res) => {
+  try {
+    const sub = await billing.resumeSubscription(req.params.tenantId);
+    await logAction({ user: req.user, action: 'billing.resume', entity: 'subscriptions_saas', entity_id: req.params.tenantId, ip: req.ip });
+    res.json({ ok: true, subscription: sub });
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/admin/invoices', ADMIN_R, async (req, res) => {
   try {
     res.json(await billing.listInvoices({

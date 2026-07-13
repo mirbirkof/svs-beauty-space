@@ -77,6 +77,47 @@ router.get('/tenants/:id', requirePerm('saas.read'), async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// Повний профіль підписника: підписка, рахунки, платежі, ліцензія+overrides,
+// ліміти тарифу, використання, історія планів, власник, нотатки платформи.
+router.get('/tenants/:id/profile', requirePerm('saas.read'), async (req, res) => {
+  try {
+    const p = await tm.tenantProfile(req.params.id);
+    if (!p) return res.status(404).json({ error: 'tenant-not-found' });
+    res.json(p);
+  } catch (e) { fail(res, e); }
+});
+
+// Редагування тенанта оператором: назва, службові нотатки
+router.patch('/tenants/:id', requirePerm('saas.write'), async (req, res) => {
+  try {
+    const r = await tm.updateTenant(req.params.id, { name: req.body?.name, notes: req.body?.notes });
+    await logAction({ user: req.user, action: 'tenant.update', entity: 'tenants', entity_id: req.params.id, ip: req.ip });
+    res.json({ ok: true, tenant: r });
+  } catch (e) { fail(res, e); }
+});
+
+// Індивідуальна ліцензія: статус/строки + overrides фіч і лімітів конкретного салону
+router.post('/tenants/:id/license', requirePerm('saas.write'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const r = await tm.setLicense(req.params.id, {
+      status: b.status, trial_ends_at: b.trial_ends_at, expires_at: b.expires_at,
+      feature_overrides: b.feature_overrides, limit_overrides: b.limit_overrides,
+    });
+    await logAction({ user: req.user, action: 'tenant.license', entity: 'tenant_licenses', entity_id: req.params.id, ip: req.ip, meta: { overrides: r.overrides } });
+    res.json({ ok: true, license: r });
+  } catch (e) { fail(res, e); }
+});
+
+// Подарувати дні підписки (компенсація/бонус/продовження тріалу)
+router.post('/tenants/:id/gift-days', requirePerm('saas.write'), async (req, res) => {
+  try {
+    const r = await tm.giftDays(req.params.id, req.body?.days, req.body?.reason || null);
+    await logAction({ user: req.user, action: 'tenant.gift_days', entity: 'tenants', entity_id: req.params.id, ip: req.ip, meta: { days: r.days } });
+    res.json({ ok: true, ...r });
+  } catch (e) { fail(res, e); }
+});
+
 router.post('/tenants/:id/block', requirePerm('saas.write'), async (req, res) => {
   try {
     const r = await tm.setStatus(req.params.id, 'suspended', req.body?.reason || null);

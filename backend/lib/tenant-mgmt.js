@@ -239,6 +239,141 @@ async function tenantDetail(tenantId) {
   return { tenant: t, license: lic, onboarding: onb, health, open_tickets: tickets };
 }
 
+// ── Повний профіль підписника (картка салону в панелі SaaS) ──────────
+// Все про один салон: підписка, рахунки, платежі, ліцензія з індивідуальними
+// overrides (фічі + ліміти), історія планів, використання лімітів, власник.
+const LEGACY_PLAN_SLUG = { solo: 'free', pro: 'professional' };
+async function tenantProfile(tenantId) {
+  const pool = getPool();
+  const t = (await pool.query(`SELECT * FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+  if (!t) return null;
+  const q = (sql, params) => pool.query(sql, params).then(r => r.rows).catch(() => []);
+  const [licR, subR, invoices, payments, changes, addons, flags, onbR, ownerR] = await Promise.all([
+    q(`SELECT * FROM tenant_licenses WHERE tenant_id=$1`, [tenantId]),
+    q(`SELECT * FROM subscriptions_saas WHERE tenant_id=$1`, [tenantId]),
+    q(`SELECT id, invoice_number, status, subtotal, discount_amount, total, due_date, period_start, period_end, created_at
+         FROM invoices_saas WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 15`, [tenantId]),
+    q(`SELECT id, invoice_id, amount, status, gateway, created_at
+         FROM payments_saas WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 15`, [tenantId]),
+    q(`SELECT c.action, c.prorated_uah, c.created_at, pf.slug AS from_plan, pt.slug AS to_plan
+         FROM plan_change_log c
+         LEFT JOIN saas_plans_v2 pf ON pf.id=c.from_plan_id
+         LEFT JOIN saas_plans_v2 pt ON pt.id=c.to_plan_id
+        WHERE c.tenant_id=$1 ORDER BY c.created_at DESC LIMIT 10`, [tenantId]),
+    q(`SELECT a.slug, a.addon_type, ta.status, ta.cycle
+         FROM tenant_plan_addons ta JOIN plan_addons a ON a.id=ta.addon_id
+        WHERE ta.tenant_id=$1`, [tenantId]),
+    q(`SELECT key, name, description, default_enabled FROM feature_flags ORDER BY key`),
+    q(`SELECT * FROM tenant_onboarding WHERE tenant_id=$1`, [tenantId]),
+    q(`SELECT u.display_name, u.phone, u.email, u.last_login_at
+         FROM users u JOIN roles r ON r.id=u.role_id
+        WHERE u.tenant_id=$1 AND r.code='owner' AND u.is_active=TRUE
+        ORDER BY u.id LIMIT 1`, [tenantId]),
+  ]);
+  const lic = licR[0] || null;
+  // Ліміти тарифу цього салону (щоб показати «за тарифом N» поряд з override)
+  const planLimits = lic ? await q(
+    `SELECT pl.limit_key, pl.limit_value, pl.is_soft
+       FROM saas_plans_v2 p JOIN plan_limits pl ON pl.plan_id=p.id
+      WHERE p.slug = COALESCE($2::jsonb->>$1, $1)`,
+    [lic.plan_code, JSON.stringify(LEGACY_PLAN_SLUG)]) : [];
+  // Реальне використання (під RLS-контекстом салону)
+  let usage = null;
+  try {
+    usage = await runAs(tenantId, async () => {
+      const one = async (sql) => Number((await pool.query(sql)).rows[0]?.n) || 0;
+      return {
+        masters: await one(`SELECT COUNT(*)::int n FROM masters WHERE COALESCE(active,true)=true`),
+        clients: await one(`SELECT COUNT(*)::int n FROM clients`),
+        appointments_30d: await one(`SELECT COUNT(*)::int n FROM appointments WHERE starts_at > NOW() - interval '30 days'`),
+      };
+    });
+  } catch { usage = null; }
+  const health = await computeHealth(tenantId).catch(() => null);
+  const openTickets = Number((await pool.query(
+    `SELECT count(*)::int n FROM tenant_support_tickets WHERE tenant_id=$1 AND status IN ('open','in_progress')`,
+    [tenantId])).rows[0].n);
+  return {
+    tenant: t, license: lic, subscription: subR[0] || null,
+    invoices, payments, plan_changes: changes, addons, flags,
+    plan_limits: planLimits, usage, health,
+    onboarding: onbR[0] || null, owner: ownerR[0] || null, open_tickets: openTickets,
+    platform_notes: (t.settings && t.settings.platform_notes) || '',
+  };
+}
+
+// Редагування тенанта оператором платформи: назва + службові нотатки (в settings)
+async function updateTenant(tenantId, { name, notes } = {}) {
+  const pool = getPool();
+  const t = (await pool.query(`SELECT id FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+  if (!t) throw new Error('tenant-not-found');
+  if (name !== undefined && String(name).trim())
+    await pool.query(`UPDATE tenants SET name=$2, updated_at=NOW() WHERE id=$1`, [tenantId, String(name).trim().slice(0, 120)]);
+  if (notes !== undefined)
+    await pool.query(
+      `UPDATE tenants SET settings=COALESCE(settings,'{}'::jsonb)||jsonb_build_object('platform_notes',$2::text), updated_at=NOW() WHERE id=$1`,
+      [tenantId, String(notes).slice(0, 5000)]);
+  return (await pool.query(`SELECT id, name, status, settings FROM tenants WHERE id=$1`, [tenantId])).rows[0];
+}
+
+// Індивідуальна ліцензія салону: статус/строки + overrides фіч ({key:bool})
+// і лімітів ({"limit:<key>": число}). null/'' у значенні = прибрати override (за тарифом).
+// План тут НЕ міняємо — зміна тарифу йде через billing override (щоб підписка й ліцензія не розійшлися).
+async function setLicense(tenantId, { status, trial_ends_at, expires_at, feature_overrides, limit_overrides } = {}) {
+  const pool = getPool();
+  if (status && !['active', 'trial', 'suspended', 'cancelled'].includes(status)) throw new Error('status-invalid');
+  const cur = (await pool.query(`SELECT * FROM tenant_licenses WHERE tenant_id=$1`, [tenantId])).rows[0];
+  const overrides = Object.assign({}, (cur && cur.overrides) || {});
+  if (feature_overrides && typeof feature_overrides === 'object')
+    for (const [k, v] of Object.entries(feature_overrides)) {
+      if (v === null || v === 'inherit') delete overrides[k]; else overrides[k] = !!v;
+    }
+  if (limit_overrides && typeof limit_overrides === 'object')
+    for (const [k, v] of Object.entries(limit_overrides)) {
+      const key = 'limit:' + String(k).replace(/[^a-z0-9_]/gi, '');
+      if (v === null || v === '' || !Number.isFinite(Number(v))) delete overrides[key];
+      else overrides[key] = Math.max(-1, Math.round(Number(v)));
+    }
+  const r = (await pool.query(
+    `INSERT INTO tenant_licenses (tenant_id, plan_code, status, trial_ends_at, expires_at, overrides, updated_at)
+     VALUES ($1, 'solo', COALESCE($2,'active'), $3, $4, $5::jsonb, NOW())
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       status        = COALESCE($2, tenant_licenses.status),
+       trial_ends_at = CASE WHEN $6 THEN $3 ELSE tenant_licenses.trial_ends_at END,
+       expires_at    = CASE WHEN $7 THEN $4 ELSE tenant_licenses.expires_at END,
+       overrides     = $5::jsonb, updated_at = NOW()
+     RETURNING *`,
+    [tenantId, status || null, trial_ends_at || null, expires_at || null, JSON.stringify(overrides),
+     trial_ends_at !== undefined, expires_at !== undefined])).rows[0];
+  return r;
+}
+
+// Подарувати дні: продовжити оплачений період підписки + строки ліцензії.
+// Компенсація за збій, бонус за лояльність, продовження тріалу — все одним рухом.
+async function giftDays(tenantId, days, reason = null) {
+  const d = Math.round(Number(days));
+  if (!d || d < 1 || d > 730) throw new Error('days-invalid (1..730)');
+  const pool = getPool();
+  const sub = (await pool.query(
+    `UPDATE subscriptions_saas
+        SET current_period_end = GREATEST(COALESCE(current_period_end, NOW()), NOW()) + make_interval(days => $2),
+            trial_ends_at = CASE WHEN status='trialing'
+              THEN GREATEST(COALESCE(trial_ends_at, NOW()), NOW()) + make_interval(days => $2)
+              ELSE trial_ends_at END,
+            updated_at = NOW()
+      WHERE tenant_id=$1 RETURNING *`, [tenantId, d])).rows[0] || null;
+  await pool.query(
+    `UPDATE tenant_licenses
+        SET expires_at    = CASE WHEN expires_at    IS NULL THEN NULL ELSE GREATEST(expires_at, NOW())    + make_interval(days => $2) END,
+            trial_ends_at = CASE WHEN trial_ends_at IS NULL THEN NULL ELSE GREATEST(trial_ends_at, NOW()) + make_interval(days => $2) END,
+            updated_at = NOW()
+      WHERE tenant_id=$1`, [tenantId, d]).catch(() => {});
+  await pool.query(
+    `UPDATE tenant_onboarding SET notes=COALESCE(notes,'')||$2, updated_at=NOW() WHERE tenant_id=$1`,
+    [tenantId, `\n[${new Date().toISOString().slice(0, 10)}] Подаровано +${d} дн.${reason ? ' — ' + String(reason).slice(0, 200) : ''}`]).catch(() => {});
+  return { subscription: sub, days: d };
+}
+
 async function setStatus(tenantId, status, reason = null) {
   const pool = getPool();
   const r = (await pool.query(
@@ -516,7 +651,7 @@ async function purgeTenant(tenantId, { confirmName } = {}, actor = null) {
 
 module.exports = {
   computeHealth, runHealthCheck, runHealthAll, categorize,
-  dashboard, listTenants, tenantDetail, setStatus, createTenant, purgeTenant,
+  dashboard, listTenants, tenantDetail, tenantProfile, updateTenant, setLicense, giftDays, setStatus, createTenant, purgeTenant,
   getOnboarding, completeStep, updateOnboarding, ONB_STEPS,
   createTicket, listTickets, getTicket, updateTicket, replyTicket, supportStats,
 };
