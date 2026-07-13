@@ -285,6 +285,7 @@ app.use('/api/consumables', require('./routes/consumables'));
 app.use('/api/stock-import', require('./routes/stock-import')); // накладні + прайси → склад
 try { app.use('/api/master-services', require('./routes/master-services')); } catch(e) { console.error('[master-services] mount failed:', e.message); }
 app.use('/api/notes', require('./routes/notes'));
+try { app.use('/api/client-ratings', require('./routes/client-ratings')); } catch(e) { console.error('[client-ratings] mount failed:', e.message); } // оцінка клієнта салоном (263)
 try { app.use('/api/me', require('./routes/master-cabinet')); } catch(e) { console.error('[master-cabinet] mount failed:', e.message); }
 try { app.use('/api/events', require('./routes/events')); } catch(e) { console.error('[events] mount failed:', e.message); }
 const notificationsRoutes = require('./routes/notifications');

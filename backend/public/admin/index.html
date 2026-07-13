@@ -10247,6 +10247,7 @@ async function openClientCard(id){
         <button class="btn btn-sm" style="color:#c0392b;border-color:#c0392b;background:transparent" onclick="archiveClient(${id})">Архівувати</button>
         ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);margin-left:auto">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
       </div>
+      <div id="ccRating" style="margin-bottom:18px"></div>
       <div id="ccRecs" style="margin-bottom:18px"></div>
       <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
       <div class="cc-timeline" style="margin-bottom:18px">${timelineHtml}</div>
@@ -10271,7 +10272,55 @@ async function openClientCard(id){
     loadClientHistory(id);
     loadClientRecs(id);
     loadClientMedical(id);
+    loadClientRating(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// Оцінка клієнта салоном (client_ratings): зірки 1-5 + теги надійності.
+// Бачить салон, НЕ клієнт. Середнє + форма нової оцінки.
+const CR_TAGS = ['запізнюється','no-show','конфліктний','торгується','топ-клієнт','пунктуальний'];
+let _crSel = 0;
+async function loadClientRating(id){
+  const box = document.getElementById('ccRating'); if(!box) return;
+  _crSel = 0;
+  try {
+    const d = await api('/api/client-ratings/'+id);
+    const stars = n => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+    const tagsSum = (d.tags_summary||[]).map(t =>
+      `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;font-size:11px;background:${t.tag==='топ-клієнт'||t.tag==='пунктуальний'?'#e6f7ee;color:#0a8f5f':'#fdecea;color:#c0392b'}">${escapeHtml(t.tag)} ×${t.n}</span>`).join('');
+    const last = (d.items||[]).slice(0,3).map(i =>
+      `<div style="font-size:12px;color:var(--text-secondary);margin-top:3px">${'★'.repeat(i.rating)} ${i.comment?'— '+escapeHtml(i.comment):''} <span style="opacity:.7">(${escapeHtml(i.rated_by_name||i.master_name||'—')}, ${new Date(i.created_at).toLocaleDateString('uk-UA')})</span></div>`).join('');
+    box.innerHTML = `
+      <div style="border:1px solid #eee;border-radius:8px;padding:12px;background:#fafafa">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <b style="font-size:14px">Оцінка клієнта салоном</b>
+          ${d.count ? `<span style="color:#f39c12;font-size:16px">${stars(d.avg)}</span><span style="font-size:13px">${d.avg} (${d.count})</span>` : '<span style="font-size:12px;color:var(--text-secondary)">оцінок ще немає</span>'}
+        </div>
+        ${tagsSum?`<div style="margin-top:6px">${tagsSum}</div>`:''}
+        ${last}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #ddd">
+          <span id="crStars" style="font-size:22px;cursor:pointer;letter-spacing:3px;color:#ccc;user-select:none">${[1,2,3,4,5].map(n=>`<span data-star="${n}" onclick="crPick(${n})">★</span>`).join('')}</span>
+          <div style="margin:6px 0">${CR_TAGS.map(t=>`<label style="font-size:12px;margin-right:10px;cursor:pointer"><input type="checkbox" class="crTag" value="${t}"> ${t}</label>`).join('')}</div>
+          <div style="display:flex;gap:8px">
+            <input id="crComment" class="input" placeholder="Коментар (необовʼязково)" style="flex:1">
+            <button class="btn btn-sm btn-primary" onclick="submitClientRating(${id})">Оцінити</button>
+          </div>
+        </div>
+      </div>`;
+  } catch(e){ box.innerHTML = ''; }
+}
+function crPick(n){
+  _crSel = n;
+  document.querySelectorAll('#crStars [data-star]').forEach(s => { s.style.color = Number(s.dataset.star) <= n ? '#f39c12' : '#ccc'; });
+}
+async function submitClientRating(id){
+  if (!_crSel) { toast('Оберіть кількість зірок', 'error'); return; }
+  const tags = Array.from(document.querySelectorAll('.crTag:checked')).map(c => c.value);
+  const comment = (document.getElementById('crComment')||{}).value || '';
+  try {
+    await api('/api/client-ratings', { method:'POST', body: JSON.stringify({ client_id: id, rating: _crSel, tags, comment }) });
+    toast('Оцінку збережено');
+    loadClientRating(id);
+  } catch(e){ toast(e.message||e, 'error'); }
 }
 // Beauty Core: медкарта в карточке клиента — предупреждения (аллергии/противопоказания)
 // и формулы окрашивания. Безопасность: критичное видно перед записью.
