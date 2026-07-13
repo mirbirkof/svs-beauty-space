@@ -108,7 +108,9 @@ async function createTenant(name, opts = {}, actor = null) {
   try { await seedTenantPipelineStages(tenant.id); } catch (e) { console.error('[tenant-mgmt:createTenant:pipeline]', e.message); }
 
   // 4c) KPI-метрики, GC-шаблон, winback-цепочка — SQL-функция из 252 (единый источник сида).
-  try { await getPool().query(`SELECT seed_tenant_defaults($1)`, [tenant.id]); } catch (e) { console.error('[tenant-mgmt:createTenant:defaults]', e.message); }
+  //     runAs обязателен: kpi_metrics и др. под RLS WITH CHECK — из платформенного контекста
+  //     (public signup / адмінка) сид мовчки відхилявся, новий салон лишався без KPI (баг 13.07).
+  try { await runAs(tenant.id, () => getPool().query(`SELECT seed_tenant_defaults($1)`, [tenant.id])); } catch (e) { console.error('[tenant-mgmt:createTenant:defaults]', e.message); }
 
   // 5) Онбординг: шаг registration выполнен.
   try { await completeStep(tenant.id, 'registration'); } catch (_) {}

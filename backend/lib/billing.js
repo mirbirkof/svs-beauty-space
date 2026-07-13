@@ -144,7 +144,7 @@ async function createSubscription(tenantId, { plan_code, cycle = 'monthly', prom
      RETURNING *`,
     [tenantId, plan_code, status, cycle, trial ? TRIAL_DAYS : days, trial ? new Date(Date.now() + TRIAL_DAYS * 864e5) : null, gw, promoId])).rows[0];
   // зеркалим в tenant_licenses (источник для feature-gating)
-  await syncLicense(tenantId, plan_code, status, sub.current_period_end).catch(() => {});
+  await syncLicense(tenantId, plan_code, status, sub.current_period_end).catch(e => console.error('[billing] syncLicense(create):', e.message));
   // Рахунок — лише для платних планів. Безкоштовні (solo/free, ціна 0) активні без рахунку.
   if (!trial) {
     const price = await planPrice(plan_code, cycle).catch(() => 0);
@@ -173,7 +173,7 @@ async function changePlan(tenantId, plan_code, cycle = null) {
   const updated = (await pool.query(
     `UPDATE subscriptions_saas SET plan_code=$2, billing_cycle=$3, updated_at=NOW()
      WHERE tenant_id=$1 RETURNING *`, [tenantId, plan_code, newCycle])).rows[0];
-  await syncLicense(tenantId, plan_code, updated.status, updated.current_period_end).catch(() => {});
+  await syncLicense(tenantId, plan_code, updated.status, updated.current_period_end).catch(e => console.error('[billing] syncLicense(changePlan):', e.message));
   // доплата → отдельный счёт
   if (proration > 0) {
     await createInvoiceRow(updated, {
@@ -197,7 +197,7 @@ async function cancelSubscription(tenantId, { reason = null, immediate = false }
     : (await pool.query(
         `UPDATE subscriptions_saas SET cancel_at_period_end=TRUE, cancel_reason=$2, updated_at=NOW()
          WHERE tenant_id=$1 RETURNING *`, [tenantId, reason])).rows[0];
-  if (immediate) await syncLicense(tenantId, sub.plan_code, 'cancelled', upd.current_period_end).catch(() => {});
+  if (immediate) await syncLicense(tenantId, sub.plan_code, 'cancelled', upd.current_period_end).catch(e => console.error('[billing] syncLicense(cancel):', e.message));
   return upd;
 }
 
@@ -213,6 +213,14 @@ async function resumeSubscription(tenantId) {
 
 // Зеркалирование подписки в tenant_licenses (feature-gating читает оттуда).
 async function syncLicense(tenantId, planCode, status, expiresAt) {
+  // РЕЄСТРАЦІЙНИЙ БАГ 13.07: tenant_licenses під RLS (WITH CHECK tenant_id=GUC).
+  // Виклик ішов у контексті ПЛАТФОРМИ (public signup / адмінка) → GUC чужий →
+  // INSERT мовчки відхилявся, салон лишався БЕЗ ліцензії → ліміти тарифу
+  // не працювали (fail-open). Виконуємо в контексті ЦІЛЬОВОГО тенанта.
+  const { runAs } = require('./tenant');
+  return runAs(tenantId, () => syncLicenseInner(tenantId, planCode, status, expiresAt));
+}
+async function syncLicenseInner(tenantId, planCode, status, expiresAt) {
   const licStatus = status === 'active' || status === 'trialing' ? 'active' : status;
   await getPool().query(
     `INSERT INTO tenant_licenses (tenant_id, plan_code, status, expires_at, updated_at)
@@ -364,7 +372,7 @@ async function recordPayment(invoiceId, { amount = null, gateway: gw = 'manual',
       const sub = (await pool.query(
         `UPDATE subscriptions_saas SET status='active', updated_at=NOW() WHERE id=$1 RETURNING *`, [inv.subscription_id])).rows[0];
       if (sub) {
-        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
+        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(e => console.error('[billing] syncLicense(payment):', e.message));
         // Реактивировать сам салон: если он был suspended за неоплату, оплата
         // обязана его разблокировать (иначе остаётся заперт навсегда). + сброс кэша.
         await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1 AND status<>'active'`, [sub.tenant_id]).catch(() => {});
@@ -482,7 +490,7 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
       const sub = (await pool.query(
         `UPDATE subscriptions_saas SET status='active', updated_at=NOW() WHERE id=$1 RETURNING *`, [inv.subscription_id])).rows[0];
       if (sub) {
-        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(() => {});
+        await syncLicense(sub.tenant_id, sub.plan_code, 'active', sub.current_period_end).catch(e => console.error('[billing] syncLicense(payment):', e.message));
         await pool.query(`UPDATE tenants SET status='active', updated_at=NOW() WHERE id=$1`, [sub.tenant_id]).catch(() => {});
         _invalidateTenantCache(sub.tenant_id);
         try { require('./feature-gate').invalidateFeatureCache(sub.tenant_id); } catch (_) {}

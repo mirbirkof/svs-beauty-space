@@ -35,13 +35,22 @@
 const express = require('express');
 const router = express.Router();
 const { requirePerm, logAction } = require('../lib/rbac');
-const { getTenantId, isPlatformTenant } = require('../lib/tenant');
+const { getTenantId, isPlatformTenant, runAsPlatform } = require('../lib/tenant');
 const billing = require('../lib/billing');
 
 const TENANT_R = requirePerm('saas.read');
 const TENANT_W = requirePerm('saas.write');
 const ADMIN_R = requirePerm('saas.read');
 const ADMIN_W = requirePerm('saas.write');
+
+// RLS-контекст для адмін-операцій платформи (баг 13.07): payments_saas під RLS,
+// а запит адмінки йде з платформенним GUC → запис/читання платежів ЧУЖОГО салону
+// мовчки ламалися. Операції над конкретним салоном — у контексті цього салону,
+// списки по всіх — без tenant-фільтра (runAs(null) = прямий запит повз RLS-обгортку).
+router.use('/admin', (req, res, next) => {
+  const m = req.path.match(/^\/subscriptions\/([0-9a-f-]{36})(\/|$)/i);
+  return runAsPlatform(m ? m[1] : null, () => next());
+});
 
 const fail = (res, e) => {
   console.error('[billing]', e);

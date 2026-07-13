@@ -38,6 +38,19 @@ router.use((req, res, next) => {
   return platformGuard(req, res, next);
 });
 
+// RLS-контекст для кросс-тенантних операцій (баг реєстрації 13.07):
+// запит платформи йде з GUC = платформенний тенант, тому RLS-таблиці
+// (tenant_licenses, users, payments_saas, plan_change_log, health, tickets...)
+// мовчки ховали/відкидали рядки ЧУЖОГО салону — профіль без власника/платежів,
+// purge видаляв 0 рядків. Операції над конкретним салоном виконуємо в ЙОГО
+// контексті, списки по всіх салонах — без tenant-фільтра (runAs(null) = прямий запит).
+const { runAsPlatform } = require('../lib/tenant');
+router.use((req, res, next) => {
+  if (req.path.startsWith('/my/') || req.path === '/my') return next();
+  const m = req.path.match(/^\/tenants\/([0-9a-f-]{36})(\/|$)/i);
+  return runAsPlatform(m ? m[1] : null, () => next());
+});
+
 const fail = (res, e) => {
   console.error('[tenant-mgmt]', e);
   const msg = e.message || '';

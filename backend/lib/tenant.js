@@ -114,6 +114,14 @@ function runAs(tenantId, fn) {
   return tenantContext.run({ tenantId }, fn);
 }
 
+// Платформенна операція над КОНКРЕТНИМ салоном (профіль підписника, білінг, purge):
+// RLS-scope = цільовий тенант (його рядки видно/можна писати), але позначка isPlatform
+// зберігається — інакше requirePlatform() і легасі ADMIN_TOKEN (rbac перевіряє
+// isPlatformTenant()) відкидали б запит адмінки (баг-ловля 13.07).
+function runAsPlatform(tenantId, fn) {
+  return tenantContext.run({ tenantId, isPlatform: true }, fn);
+}
+
 // ПРЕСЕЙЛ-БЛОКЕР #5: прогнать fn(tenantId) для КАЖДОГО живого салона под его RLS-контекстом.
 // Кроны (постоянные расходы, Mono-скан, дни рождения) раньше делали один глобальный запрос
 // без контекста → RLS permissive → данные всех салонов сваливались в дефолтный. Теперь крон
@@ -133,4 +141,4 @@ async function forEachTenant(fn, { statuses = ['active', 'trial'] } = {}) {
   return { tenants: rows.length, ok, fail };
 }
 
-module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, invalidateTenant, runAs, forEachTenant, DEFAULT_TENANT_ID };
+module.exports = { tenantMiddleware, getTenantId, isPlatformTenant, resolveBySlug, invalidateTenant, runAs, runAsPlatform, forEachTenant, DEFAULT_TENANT_ID };
