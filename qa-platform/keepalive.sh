@@ -12,13 +12,7 @@ if ! pgrep -f "node run.js --loop" >/dev/null 2>&1; then
   echo "[keepalive $(date '+%F %T')] QA-loop поднят (PID $!)" >> "$QA_LOG"
 fi
 
-# ── 2. Neon failover daemon: сторож базы (health 2 мин, снапшот в резерв 30 мин) ──
-# Ключ NEON_BACKUP_URL приходит из окружения Jarvis-движка (в файлах его НЕТ — не терять!).
-# Без ключа секция молча пропускается (лучше нет сторожа, чем сторож без резерва).
-OPS_REPO="$HOME/workspace/svs-beauty-space"
-NF_LOG="/tmp/neon-failover.log"
-if [ -n "$NEON_BACKUP_URL" ] && ! pgrep -f "neon-failover.js --daemon" >/dev/null 2>&1; then
-  cd "$OPS_REPO" && NODE_PATH="$OPS_REPO/backend/node_modules" DOTENV_CONFIG_PATH="$OPS_REPO/backend/.env" \
-    nohup node -r dotenv/config ops/neon-failover.js --daemon >> "$NF_LOG" 2>&1 &
-  echo "[keepalive $(date '+%F %T')] neon-failover поднят (PID $!)" >> "$NF_LOG"
-fi
+# ── 2. Neon failover daemon — ОТКЛЮЧЁН 13.07.2026 (Босс: Neon не используем, лимиты жёг) ──
+# База переехала на Supabase; failover-на-Neon устарел, sync был сломан (pr.cols.join),
+# health-пинги каждые 2 мин не давали Neon заснуть → расход compute 24/7.
+# Резервные копии теперь: ночной pg_dump (cron), см. ops/db-backup.sh.
