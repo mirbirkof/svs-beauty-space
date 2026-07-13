@@ -57,6 +57,8 @@ async function tick(pool, tg) {
         AND NOT EXISTS (SELECT 1 FROM booking_reminders r
                          WHERE r.appointment_id = a.id AND r.kind = k.kind)
       ORDER BY c.telegram_id, a.starts_at`);
+  // пост-візитні оцінки — незалежно від нагадувань (свій дедуп всередині)
+  try { await ratingTick(pool, tg); } catch (e) { console.error('[reminders/rate]', e.message); }
   if (!due.rows.length) return;
 
   // групуємо: один клієнт + один день + один kind = одне повідомлення
@@ -97,6 +99,55 @@ async function tick(pool, tg) {
       // не дійшло — знімаємо claim, спробуємо наступним tick
       await pool.query(`DELETE FROM booking_reminders WHERE appointment_id = ANY($1::int[]) AND kind=$2`,
         [ids, first.kind]).catch(() => {});
+    }
+  }
+}
+
+// ── Пост-візитний запит оцінки (264, Босс 13.07): done-візити, що завершились
+// 2..26 год тому, клієнт з Telegram → «оцініть майстра» ⭐1-5 (bk:rate у booking-bot).
+// Той самий дедуп booking_reminders (kind='rate'); visit_ratings під RLS — tick
+// вже виконується в контексті свого тенанта.
+async function ratingTick(pool, tg) {
+  const due = await pool.query(
+    `SELECT a.id, c.telegram_id,
+            COALESCE(NULLIF(m.online_title,''), m.name) AS master_name,
+            (a.starts_at AT TIME ZONE '${KYIV}')::date::text AS d
+       FROM appointments a
+       JOIN clients c ON c.id = a.client_id AND c.telegram_id IS NOT NULL
+       LEFT JOIN masters m ON m.id = a.master_id
+      WHERE a.status = 'done'
+        AND COALESCE(a.ends_at, a.starts_at) BETWEEN NOW() - interval '26 hours' AND NOW() - interval '2 hours'
+        AND NOT EXISTS (SELECT 1 FROM booking_reminders r WHERE r.appointment_id = a.id AND r.kind = 'rate')
+        AND NOT EXISTS (SELECT 1 FROM visit_ratings vr WHERE vr.appointment_id = a.id)
+      ORDER BY c.telegram_id, a.starts_at`);
+  if (!due.rows.length) return;
+  const groups = new Map();
+  for (const r of due.rows) {
+    const key = `${r.telegram_id}|${r.d}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for (const items of groups.values()) {
+    const first = items[0];
+    const ids = items.map(x => x.id);
+    const claim = await pool.query(
+      `INSERT INTO booking_reminders (appointment_id, kind)
+       SELECT unnest($1::int[]), 'rate' ON CONFLICT DO NOTHING RETURNING appointment_id`, [ids]);
+    if (!claim.rows.length) continue;
+    const idsKey = ids.join('.');
+    const master = first.master_name ? `майстра <b>${first.master_name}</b>` : 'майстра';
+    try {
+      await tg('sendMessage', {
+        chat_id: Number(first.telegram_id), parse_mode: 'HTML',
+        text: `Дякуємо за візит! 💛\nОцініть, будь ласка, ${master} — це допомагає нам ставати кращими:`,
+        reply_markup: { inline_keyboard: [
+          [1, 2, 3, 4, 5].map(n => ({ text: `${n}⭐`, callback_data: `bk:rate:${idsKey}:${n}` })),
+        ] },
+      });
+    } catch (e) {
+      console.error('[reminders/rate-send]', e.message);
+      await pool.query(`DELETE FROM booking_reminders WHERE appointment_id = ANY($1::int[]) AND kind='rate'`,
+        [ids]).catch(() => {});
     }
   }
 }

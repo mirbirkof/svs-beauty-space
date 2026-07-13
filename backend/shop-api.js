@@ -326,6 +326,7 @@ try { app.use('/api/white-label', require('./routes/white-label')); } catch(e) {
 try { app.use('/api/public', require('./routes/public-signup')); } catch(e) { console.error('[public-signup] mount failed:', e.message); }
 try { app.use('/api/tenant-mgmt', require('./routes/tenant-mgmt')); } catch(e) { console.error('[tenant-mgmt] mount failed:', e.message); }
 try { app.use('/api/billing', require('./routes/billing')); } catch(e) { console.error('[billing] mount failed:', e.message); }
+try { app.use('/api/insights', require('./routes/insights')); } catch(e) { console.error('[insights] mount failed:', e.message); }
 try { app.use('/api/domains', require('./routes/domains')); } catch(e) { console.error('[domains] mount failed:', e.message); }
 try { app.use('/api/omni', require('./routes/omnichannel')); } catch(e) { console.error('[omni] mount failed:', e.message); }
 try { app.use('/api/reviews-moderation', require('./routes/reviews-moderation')); } catch(e) { console.error('[reviews-moderation] mount failed:', e.message); }

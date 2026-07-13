@@ -10250,6 +10250,7 @@ async function openClientCard(id){
         <button class="btn btn-sm" style="color:#c0392b;border-color:#c0392b;background:transparent" onclick="archiveClient(${id})">Архівувати</button>
         ${c.last_visit_at?`<span style="font-size:12px;color:var(--text-secondary);margin-left:auto">Останній візит: ${new Date(c.last_visit_at).toLocaleDateString('uk-UA')}</span>`:''}
       </div>
+      <div id="ccInsights" style="margin-bottom:14px"></div>
       <div id="ccRating" style="margin-bottom:18px"></div>
       <div id="ccRecs" style="margin-bottom:18px"></div>
       <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
@@ -10276,7 +10277,27 @@ async function openClientCard(id){
     loadClientRecs(id);
     loadClientMedical(id);
     loadClientRating(id);
+    loadClientInsights(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// Поведінкові прогнози (264): ризик скасування + особистий ритм + оцінки клієнта салону
+async function loadClientInsights(id){
+  const box = document.getElementById('ccInsights'); if(!box) return;
+  let r; try{ r = await api('/api/insights/client/'+id); }catch{ r = null; }
+  if(!r || r.error){ box.innerHTML=''; return; }
+  const chips = [];
+  if (r.risk === 'high') chips.push(`<span style="background:#fdecea;color:#c0392b;padding:4px 10px;border-radius:14px;font-size:12.5px;font-weight:600">⚠ Ризик скасування ${r.cancel_pct}% (${r.cancelled} з ${r.history})</span>`);
+  else if (r.risk === 'medium') chips.push(`<span style="background:#fff7e0;color:#b07d1a;padding:4px 10px;border-radius:14px;font-size:12.5px;font-weight:600">Скасовує ${r.cancel_pct}% записів</span>`);
+  if (r.rhythm_days) {
+    const overdue = r.overdue > 0;
+    chips.push(`<span style="background:${overdue?'#fdecea':'#eaf6ef'};color:${overdue?'#c0392b':'#0a8f5f'};padding:4px 10px;border-radius:14px;font-size:12.5px;font-weight:600">Ритм: раз на ~${r.rhythm_days} дн${overdue?` · прострочено на ${r.overdue} дн — час запросити!`:` · був ${r.days_since} дн тому`}</span>`);
+  }
+  const given = (r.ratings||[]).filter(x=>x.master_stars||x.salon_stars);
+  if (given.length) {
+    const last = given[0];
+    chips.push(`<span style="background:#f0edfb;color:#6d5ae6;padding:4px 10px;border-radius:14px;font-size:12.5px;font-weight:600">Оцінив: майстер ${'⭐'.repeat(last.master_stars||0)||'—'}${last.salon_stars?` · салон ${'⭐'.repeat(last.salon_stars)}`:''}</span>`);
+  }
+  box.innerHTML = chips.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips.join('')}</div>` : '';
 }
 // Оцінка клієнта салоном (client_ratings): зірки 1-5 + теги надійності.
 // Бачить салон, НЕ клієнт. Середнє + форма нової оцінки.
@@ -11237,7 +11258,17 @@ function mcTab(k, skipShell){
 const _esc = s => String(s||'').replace(/"/g,'&quot;');
 function _mcTabProfile(){
   const ms = _mcData.ms;
+  // зірки від клієнтів (visit_ratings, 264) — підвантажуються асинхронно
+  setTimeout(async ()=>{
+    const el = document.getElementById('mcStars'); if(!el) return;
+    let r; try{ r = await api('/api/insights/master-ratings'); }catch{ r = null; }
+    const me = r && Array.isArray(r.masters) ? r.masters.find(x=>Number(x.id)===Number(ms.id)) : null;
+    el.innerHTML = me
+      ? `<span style="background:#fff8e6;color:#b07d1a;padding:5px 12px;border-radius:14px;font-weight:700;font-size:13.5px">⭐ ${me.avg_stars} <span style="font-weight:400;opacity:.75">(${me.cnt} оцінок від клієнтів)</span></span>`
+      : `<span style="font-size:12.5px;color:var(--text-secondary)">Оцінок від клієнтів ще немає — бот питає їх після кожного візиту</span>`;
+  }, 50);
   return `
+    <div id="mcStars" style="margin-bottom:10px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
       <div><label class="set-l">Імʼя *</label><input id="mcName" class="input" value="${_esc(ms.name)}"></div>
       <div><label class="set-l">Прізвище</label><input id="mcSurname" class="input" value="${_esc(ms.surname)}"></div>

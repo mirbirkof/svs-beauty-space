@@ -534,7 +534,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
   if (Array.isArray(session.data.moveIds) && session.data.moveIds.length) {
     try {
       await ctx.pool.query(
-        `UPDATE appointments SET status='cancelled', updated_at=NOW()
+        `UPDATE appointments SET status='cancelled', cancelled_at=COALESCE(cancelled_at,NOW()), updated_at=NOW()
           WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
         [session.data.moveIds]);
       moved = true;
@@ -1150,6 +1150,59 @@ async function onCallback(cq, ctx) {
       return true;
     }
 
+    // Оцінка візиту клієнтом (264, Босс 13.07): bk:rate:<id.id>:<n> — зірки майстру,
+    // bk:rates:<id.id>:<n> — зірки салону (другий крок). Без сесії. 1-3⭐ → алерт власнику.
+    if (data.startsWith('bk:rate:') || data.startsWith('bk:rates:')) {
+      const salonStep = data.startsWith('bk:rates:');
+      const p = data.split(':'); // [bk, rate|rates, idsKey, n]
+      const rIds = String(p[2] || '').split('.').map(Number).filter(Boolean);
+      const stars = Math.min(5, Math.max(1, Number(p[3]) || 0));
+      await ack();
+      if (!rIds.length || !stars) return true;
+      // безпека: оцінювати можна ТІЛЬКИ власні візити
+      const own = await ctx.pool.query(
+        `SELECT a.id, a.client_id, a.master_id FROM appointments a
+          JOIN clients c ON c.id = a.client_id
+         WHERE a.id = ANY($1::int[]) AND c.telegram_id = $2 AND a.status='done'`, [rIds, uid]);
+      if (!own.rows.length) { await respond(ctx.tg, target, 'Цей візит вже неактуальний.'); return true; }
+      for (const r of own.rows) {
+        if (salonStep) {
+          await ctx.pool.query(
+            `UPDATE visit_ratings SET salon_stars=$2, updated_at=NOW() WHERE appointment_id=$1`, [r.id, stars]);
+        } else {
+          await ctx.pool.query(
+            `INSERT INTO visit_ratings (appointment_id, client_id, master_id, master_stars)
+             VALUES ($1,$2,$3,$4)
+             ON CONFLICT (tenant_id, appointment_id)
+             DO UPDATE SET master_stars=EXCLUDED.master_stars, updated_at=NOW()`,
+            [r.id, r.client_id, r.master_id, stars]);
+        }
+      }
+      // 1-3 зірки → одразу алерт власнику: незадоволений клієнт, треба реагувати
+      if (stars <= 3) {
+        try {
+          const oc = (await ctx.pool.query(
+            `SELECT owner_chat_id FROM tenant_bot_settings
+              WHERE tenant_id=current_tenant_id() AND owner_chat_id IS NOT NULL LIMIT 1`)).rows[0];
+          const who = (await ctx.pool.query(
+            `SELECT c.name, COALESCE(NULLIF(m.online_title,''), m.name) AS master_name
+               FROM appointments a JOIN clients c ON c.id=a.client_id
+               LEFT JOIN masters m ON m.id=a.master_id WHERE a.id=$1`, [own.rows[0].id])).rows[0] || {};
+          if (oc) await ctx.tg('sendMessage', { chat_id: oc.owner_chat_id,
+            text: `⚠️ Низька оцінка ${salonStep ? 'салону' : 'майстра'}: ${'⭐'.repeat(stars)} від ${who.name || 'клієнта'}${who.master_name ? ' (майстер ' + who.master_name + ')' : ''}. Варто звʼязатись.` });
+        } catch (_) {}
+      }
+      if (!salonStep) {
+        const idsKey = own.rows.map(r => r.id).join('.');
+        await respond(ctx.tg, target,
+          `Дякуємо! Оцінку майстру ${'⭐'.repeat(stars)} записали.\nА як вам салон загалом?`,
+          [[1, 2, 3, 4, 5].map(n => ({ text: `${n}⭐`, callback_data: `bk:rates:${idsKey}:${n}` }))]);
+      } else {
+        await respond(ctx.tg, target, `Дякуємо за відгук! 💛 Ваша думка допомагає нам ставати кращими.`);
+      }
+      return true;
+    }
+
     // кнопки з нагадувань (bk:r:ok|mv|cn:<id.id>) — працюють без сесії
     if (data.startsWith('bk:r:')) {
       const [, , act, idsKey] = data.split(':');
@@ -1171,7 +1224,7 @@ async function onCallback(cq, ctx) {
       if (act === 'cn') {
         const cnIds = own.rows.map(r => r.id);
         await ctx.pool.query(
-          `UPDATE appointments SET status='cancelled', updated_at=NOW()
+          `UPDATE appointments SET status='cancelled', cancelled_at=COALESCE(cancelled_at,NOW()), updated_at=NOW()
             WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
           [cnIds]);
         // дзеркалимо у online_bookings → адмінка почує «розбитий кришталь» + спливне вікно (заметка #117)

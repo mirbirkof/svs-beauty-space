@@ -1125,6 +1125,8 @@ router.patch('/appointments/:id', async (req, res) => {
                 service_id = COALESCE($9, service_id),
                 price = COALESCE($10, price),
                 manual_override = CASE WHEN $8 THEN true ELSE manual_override END,
+                -- точний час скасування для прогнозу ризику (264): лише при переході в cancelled
+                cancelled_at = CASE WHEN $3 = 'cancelled' AND status <> 'cancelled' THEN NOW() ELSE cancelled_at END,
                 updated_at = NOW()
           WHERE id = $1
           RETURNING id, notes, status, room_id, master_id, starts_at, ends_at, service_id, price, real_amount`,
@@ -1988,7 +1990,7 @@ router.delete('/appointments/:id', async (req, res) => {
       // відтворить знову. Тому мʼяке видалення: cancelled + manual_override.
       if (soft) {
         await client.query(
-          `UPDATE appointments SET status='cancelled', manual_override=true, updated_at=NOW() WHERE id=$1`, [id]
+          `UPDATE appointments SET status='cancelled', manual_override=true, cancelled_at=COALESCE(cancelled_at,NOW()), updated_at=NOW() WHERE id=$1`, [id]
         );
       } else {
         await client.query(`DELETE FROM appointments WHERE id=$1`, [id]);
