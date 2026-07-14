@@ -619,8 +619,9 @@ function mainMenu() {
     keyboard: [
       [{ text: '🗓 Записатись' }],
       [{ text: '👤 Мій кабінет' }, { text: '🧚 Адміністратор' }],
+      [{ text: '🔽 Приховати меню' }],
     ],
-    resize_keyboard: true, is_persistent: true,
+    resize_keyboard: true,
   };
 }
 
@@ -838,8 +839,28 @@ async function tryMenuButton(text, msg, ctx) {
     });
     return true;
   }
+  // «Назад» / «Меню» — повертаємо у ГОЛОВНЕ меню (owner або клієнт), а не заглушку.
+  // Кнопка «Назад» лишилась у частині чатів від старого бота — раніше вела в «розділ оновлюється».
+  if (/^назад$|^меню$|^☰ ?меню$|^головне меню$|^на головну$|^в меню$/.test(t)) {
+    const owner = await ownerTgUser(ctx, uid);
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: owner ? '☰ Головне меню керування' : 'Головне меню 💛\nОберіть дію нижче або напишіть послугу.',
+      reply_markup: owner ? ownerMenu() : mainMenu(),
+    });
+    return true;
+  }
+  // «Приховати меню» — ховаємо нижню клавіатуру. Повернути: слово «меню» або команда /menu.
+  if (/^приховати меню$|^сховати меню$|^згорнути меню$|^приховати$/.test(t)) {
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: '✅ Меню приховано. Щоб відкрити знову — напишіть <b>меню</b> або /menu.',
+      reply_markup: { remove_keyboard: true },
+    });
+    return true;
+  }
   // функції старого бота, що переїхали/вимкнені — мʼякий фолбек, а не «не впізнав послугу»
-  if (/^магазин косметики$|^отримати знижку$|^запросити подругу$|^мій графік$|^назад$/.test(t)) {
+  if (/^магазин косметики$|^отримати знижку$|^запросити подругу$|^мій графік$/.test(t)) {
     await ctx.tg('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
       text: 'Цей розділ оновлюється 🛠\nЩоб записатись — напишіть послугу (напр. «манікюр»). З інших питань — 🧚 Адміністратор.',
@@ -891,8 +912,9 @@ function ownerMenu() {
       [{ text: '💰 Каса' }, { text: '📅 Записи' }],
       [{ text: '👥 Майстри' }, { text: '📦 Залишки' }],
       [{ text: '🗓 Записатись' }],
+      [{ text: '🔽 Приховати меню' }],
     ],
-    resize_keyboard: true, is_persistent: true,
+    resize_keyboard: true,
   };
 }
 // /start власника → вітання + його меню

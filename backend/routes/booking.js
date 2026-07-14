@@ -250,6 +250,16 @@ async function processUpdate(upd, tg, salon) {
     const msg = upd.message;
     if (!msg) return;
 
+    // /menu — повернути нижнє меню (owner або клієнт) після того, як його приховали
+    if (msg.text && /^\/menu(@\w+)?$/i.test(msg.text.trim())) {
+      try { if (await bookingBot.tryOwnerStart(msg, botCtx)) return; } catch (e) { console.error('[booking/menu-owner]', e.message); }
+      return tg('sendMessage', {
+        chat_id: msg.chat.id, parse_mode: 'HTML',
+        text: 'Головне меню 💛\nОберіть дію нижче або напишіть послугу.',
+        reply_markup: bookingBot.mainMenu(),
+      });
+    }
+
     // /start <token>
     if (msg.text && msg.text.startsWith('/start')) {
       const parts = msg.text.split(' ');
