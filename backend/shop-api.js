@@ -347,17 +347,10 @@ if (process.env.DATABASE_URL) {
       const y = +p.year, m = +p.month, d = +p.day;
       const lastDay = new Date(y, m, 0).getDate();
       const isReminderDay = (d === 1 || d === 15 || d === lastDay);
-      const stamp = `${y}-${m}-${d}`;
       if (!isReminderDay) return;
-      // Дедуп у БД (не в памʼяті!): інакше КОЖЕН рестарт/деплой у день нагадування
-      // повторно слав повідомлення всім власникам → спам. Тепер — рівно раз на день.
-      const { getSetting, setSetting } = require('./lib/settings');
-      if (String(await getSetting('_last_expense_reminder', '')) === stamp) return;
-      await setSetting('_last_expense_reminder', stamp); // ставимо ДО відправки — навіть при збої не спамимо
+      const stamp = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const when = d === 1 ? 'початок місяця' : d === 15 ? 'середина місяця' : 'кінець місяця';
-      const { tgSend } = require('./routes/telegram-notify');
-      const text = `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`;
-      // Розсилка ВСІМ власникам салону (не лише в один ADMIN_TG_CHAT) — фідбек Власника 15.07.
+      const body = `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`;
       const recipients = new Set();
       try {
         const pool = require('./db-pg').getPool();
@@ -365,10 +358,18 @@ if (process.env.DATABASE_URL) {
         const vm = require('./lib/virtual-manager');
         for (const tg of await vm.ownerRecipients(pool, DEFAULT_TENANT_ID)) recipients.add(String(tg));
       } catch (e) { console.error('[expense-reminder] owners lookup:', e.message); }
-      if (process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT)); // сумісність
-      let nSent = 0;
-      for (const chat of recipients) { await tgSend(chat, text, { parse_mode: 'HTML' }).then(() => nSent++).catch(()=>{}); }
-      console.log(`[expense-reminder] нагадування надіслано ${nSent} власникам (${when})`);
+      if (process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT));
+      // ПРОТИ СПАМУ: шлемо через notification-hub з dedupKey (день+отримувач).
+      // ON CONFLICT dedup_key DO NOTHING → рівно ОДНЕ повідомлення на добу кожному,
+      // попри рестарти/деплої/два сервери. getSetting-дедуп не працював у cron (без tenant).
+      const hub = require('./lib/notification-hub');
+      let n = 0;
+      for (const chat of recipients) {
+        await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
+          category: 'transactional', priority: 'normal', source: 'expense-reminder',
+          dedupKey: `expreminder:${stamp}:${chat}` }).then(() => n++).catch(() => {});
+      }
+      console.log(`[expense-reminder] enqueued ${n} власникам (${when}) dedup=${stamp}`);
     } catch (e) { console.error('[expense-reminder] tick:', e.message); }
   };
   setTimeout(expenseReminderTick, 50000);
