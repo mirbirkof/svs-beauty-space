@@ -85,7 +85,7 @@
 </header>
 <div class="tabs">
   <button class="active" data-t="schedule" onclick="tab('schedule')">Графік</button>
-  <button data-t="clients" onclick="tab('clients')">Клієнти</button>
+  <button data-t="clients" onclick="tab('clients')" style="display:none">Клієнти</button>
   <button data-t="payroll" onclick="tab('payroll')">Зарплата</button>
   <button data-t="services" onclick="tab('services')">Послуги</button>
 </div>
@@ -136,11 +136,16 @@ function logout(){
   const av = document.getElementById('av');
   if(u.display_name) av.textContent = u.display_name.trim().charAt(0).toUpperCase();
   // Салонний майстер не має розділу «Клієнти» (клієнти належать салону). Тільки соло-майстер.
-  try{ const p = await api('/api/me/profile'); if(!(p && p.solo)){ const cb=document.querySelector('.tabs button[data-t="clients"]'); if(cb) cb.style.display='none'; } }catch(_){}
+  // Вкладка «Клієнти» прихована за замовчуванням (див. HTML) — показуємо ЛИШЕ соло-майстру.
+  // Так вона не блимає при оновленні сторінки й салонний майстер не встигне на неї клікнути.
+  try{ const p = await api('/api/me/profile'); if(p && p.solo){ const cb=document.querySelector('.tabs button[data-t="clients"]'); if(cb) cb.style.display=''; } }catch(_){}
   loadSchedule();
 })();
 
 function tab(name){
+  // Захист: не перемикатись на приховану вкладку (напр. «Клієнти» для салонного майстра).
+  const btn=document.querySelector('.tabs button[data-t="'+name+'"]');
+  if(btn && btn.style.display==='none') return;
   document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.t===name));
   document.querySelectorAll('.sec').forEach(s=>s.classList.toggle('active',s.id==='sec-'+name));
   if(loaded[name]) return; loaded[name]=true;
