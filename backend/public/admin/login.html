@@ -24,6 +24,8 @@
   .step.active { display:block; }
   .code-input { letter-spacing:.4em; text-align:center; font-size:22px; font-weight:600; }
   .back { margin-top:14px; color:var(--text-secondary); font-size:13px; text-align:center; cursor:pointer; text-decoration:underline; }
+  #forgot-link { margin-top:20px; text-align:center; font-size:12px; color:var(--text-secondary); text-decoration:underline; cursor:pointer; }
+  #forgot-link:hover { color:var(--text-primary,#1e1f2b); }
   .tabs { display:flex; gap:8px; margin-bottom:18px; }
   .tab { flex:1; text-align:center; padding:9px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; cursor:pointer; background:var(--bg-secondary,#f3f4f8); color:var(--text-secondary); border:1px solid transparent; }
   .tab.active { background:var(--bg-card,#fff); color:var(--text-primary,#1e1f2b); border-color:var(--border,#e3e4ec); font-weight:600; }
@@ -74,7 +76,6 @@
       </div>
       <button id="btn-pwd" class="btn">Увійти</button>
       <div id="msg3" class="msg"></div>
-      <div class="back" id="go-forgot">Забули пароль?</div>
       <div class="back" id="pwd-hint">Немає пароля? Увійдіть через Telegram-код і встановіть його в кабінеті.</div>
     </div>
 
@@ -86,6 +87,10 @@
       <div id="msg4" class="msg"></div>
       <div class="back" id="back-forgot">← Назад до входу</div>
     </div>
+
+    <!-- Забули пароль? — маленьке посилання внизу меню логіну -->
+    <div id="forgot-link" onclick="document.getElementById('go-forgot').click()">Забули пароль?</div>
+    <span id="go-forgot" style="display:none"></span>
   </div>
 
 <script>
@@ -100,6 +105,8 @@ function showMsg(el, type, text) {
 function setStep(name) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   $('step-' + name).classList.add('active');
+  // Нижнє посилання «Забули пароль?» ховаємо на самому кроці відновлення.
+  const fl = $('forgot-link'); if (fl) fl.style.display = (name === 'forgot') ? 'none' : '';
 }
 
 let savedPhone = '';
