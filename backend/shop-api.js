@@ -353,9 +353,19 @@ if (process.env.DATABASE_URL) {
       _lastExpReminder = stamp;
       const when = d === 1 ? 'початок місяця' : d === 15 ? 'середина місяця' : 'кінець місяця';
       const { tgSend } = require('./routes/telegram-notify');
-      const chat = process.env.ADMIN_TG_CHAT;
-      if (chat) await tgSend(chat, `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`, { parse_mode: 'HTML' }).catch(()=>{});
-      console.log(`[expense-reminder] нагадування надіслано (${when})`);
+      const text = `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`;
+      // Розсилка ВСІМ власникам салону (не лише в один ADMIN_TG_CHAT) — фідбек Власника 15.07.
+      const recipients = new Set();
+      try {
+        const pool = require('./db-pg').getPool();
+        const { DEFAULT_TENANT_ID } = require('./lib/tenant');
+        const vm = require('./lib/virtual-manager');
+        for (const tg of await vm.ownerRecipients(pool, DEFAULT_TENANT_ID)) recipients.add(String(tg));
+      } catch (e) { console.error('[expense-reminder] owners lookup:', e.message); }
+      if (process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT)); // сумісність
+      let nSent = 0;
+      for (const chat of recipients) { await tgSend(chat, text, { parse_mode: 'HTML' }).then(() => nSent++).catch(()=>{}); }
+      console.log(`[expense-reminder] нагадування надіслано ${nSent} власникам (${when})`);
     } catch (e) { console.error('[expense-reminder] tick:', e.message); }
   };
   setTimeout(expenseReminderTick, 50000);

@@ -283,4 +283,6 @@ module.exports = {
   ownerDailyReportAll,
   adminDayPlan: _wrap(adminDayPlan),
   weeklyMonthlyReminders: _wrap(weeklyMonthlyReminders),
+  // Отримувачі = ВСІ власники салону з привʼязаним Telegram (для розсилок типу «підтвердити витрати»).
+  ownerRecipients: _ownerRecipients,
 };
