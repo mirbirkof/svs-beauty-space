@@ -74,7 +74,17 @@
       </div>
       <button id="btn-pwd" class="btn">Увійти</button>
       <div id="msg3" class="msg"></div>
+      <div class="back" id="go-forgot">Забули пароль?</div>
       <div class="back" id="pwd-hint">Немає пароля? Увійдіть через Telegram-код і встановіть його в кабінеті.</div>
+    </div>
+
+    <!-- Відновлення пароля -->
+    <div id="step-forgot" class="step">
+      <label for="forgot-id">Телефон або e-mail</label>
+      <input id="forgot-id" class="inp" type="text" placeholder="+380XXXXXXXXX або email" autocomplete="username">
+      <button id="btn-forgot" class="btn">Надіслати посилання для скидання</button>
+      <div id="msg4" class="msg"></div>
+      <div class="back" id="back-forgot">← Назад до входу</div>
     </div>
   </div>
 
@@ -198,6 +208,45 @@ $('back').addEventListener('click', () => {
   $('code').value = '';
   $('msg2').className = 'msg';
 });
+
+// Відновлення пароля
+$('go-forgot').addEventListener('click', () => {
+  const pre = $('pwd-phone').value.trim();
+  if (pre) $('forgot-id').value = pre;
+  setStep('forgot');
+  $('msg4').className = 'msg';
+  setTimeout(() => $('forgot-id').focus(), 100);
+});
+
+$('back-forgot').addEventListener('click', () => {
+  setStep('pwd');
+  $('msg4').className = 'msg';
+});
+
+$('btn-forgot').addEventListener('click', async () => {
+  const identifier = $('forgot-id').value.trim();
+  if (!identifier) { showMsg($('msg4'), 'err', 'Введіть телефон або e-mail'); return; }
+  $('btn-forgot').disabled = true;
+  try {
+    const r = await fetch(API + '/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier })
+    });
+    if (r.status === 429) {
+      showMsg($('msg4'), 'err', 'Забагато спроб. Спробуйте пізніше.');
+    } else {
+      // сервер завжди відповідає ok (захист від перебору) — показуємо нейтральне повідомлення
+      showMsg($('msg4'), 'ok', 'Якщо акаунт існує, посилання для скидання надіслано у Telegram або на e-mail. Діє 30 хв.');
+    }
+  } catch (e) {
+    showMsg($('msg4'), 'err', 'Мережева помилка: ' + e.message);
+  } finally {
+    $('btn-forgot').disabled = false;
+  }
+});
+
+$('forgot-id').addEventListener('keypress', e => { if (e.key === 'Enter') $('btn-forgot').click(); });
 
 // Enter submits
 $('phone').addEventListener('keypress', e => { if (e.key === 'Enter') $('btn-request').click(); });
