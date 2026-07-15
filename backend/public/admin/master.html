@@ -64,7 +64,9 @@
   .cal-dow{text-align:center;font-size:11px;color:var(--mut);padding:2px 0 4px}
   .cal-cell{aspect-ratio:1/1;min-height:40px;border-radius:8px;background:var(--card2);
     border:1px solid transparent;display:flex;flex-direction:column;align-items:center;
-    justify-content:center;font-size:13px;font-weight:600}
+    justify-content:center;font-size:13px;font-weight:600;cursor:pointer}
+  .cal-cell.empty{cursor:default}
+  .cal-cell.sel{outline:2px solid var(--acc2);outline-offset:-2px}
   .cal-cell.work{background:rgba(62,207,142,.14);border-color:rgba(62,207,142,.35);color:var(--green)}
   .cal-cell.off{background:rgba(255,107,107,.10);color:var(--red)}
   .cal-cell.none{color:var(--mut);font-weight:400}
@@ -176,7 +178,7 @@ async function loadMonthCal(month){
       else if(info&&!info.working){ cls+=' off'; inner+='<span class="hh">Вих</span>'; }
       else cls+=' none';
       if(ds===todayStr) cls+=' today';
-      html+=`<div class="${cls}">${inner}</div>`;
+      html+=`<div class="${cls}" onclick="showDayAppts('${ds}',event)">${inner}</div>`;
     }
     html+='</div>';
     html+=`<div class="cal-legend">`
@@ -188,9 +190,33 @@ async function loadMonthCal(month){
   }catch(e){ if(e.message!=='auth') box.innerHTML='<div class="err">Не вдалося завантажити графік місяця</div>'; }
 }
 
+// Записи конкретного дня — по кліку на клітинку календаря.
+async function showDayAppts(ds, ev){
+  if(ev&&ev.currentTarget){ document.querySelectorAll('.cal-cell.sel').forEach(c=>c.classList.remove('sel')); ev.currentTarget.classList.add('sel'); }
+  const box=document.getElementById('dayView'); if(!box) return;
+  box.innerHTML='<div class="ldr">Завантаження…</div>';
+  try{
+    const d=await api('/api/me/schedule?date='+ds);
+    const items=(d.items||[]);
+    const [y,mm,dd]=ds.split('-');
+    let html=`<div class="dayhdr" style="display:flex;justify-content:space-between;align-items:center">`
+      +`<span>📅 ${dd}.${mm}.${y} · записів: ${items.length}</span>`
+      +`<span onclick="document.getElementById('dayView').innerHTML=''" style="color:var(--mut);cursor:pointer;font-weight:400">✕</span></div>`;
+    if(!items.length){ html+='<div class="muted" style="padding:14px">Немає записів на цей день</div>'; }
+    else for(const a of items){
+      html+=`<div class="card"><div class="row">
+        <div><div class="t">${esc(a.client)}</div><div class="s">${esc(a.service||'—')}</div>${statusPill(a.status)}</div>
+        <div style="text-align:right"><div class="amt">${fmtTime(a.starts_at)}</div><div class="s">${money(a.amount)}</div></div>
+      </div></div>`;
+    }
+    box.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') box.innerHTML='<div class="err">Не вдалося завантажити день</div>'; }
+}
+
 async function loadSchedule(){
   const el=document.getElementById('sec-schedule'); loaded.schedule=true;
   el.innerHTML='<div class="cal" id="mcal"><div class="ldr">Завантаження графіку…</div></div>'
+    +'<div id="dayView"></div>'
     +'<div id="appts"><div class="ldr">Завантаження записів…</div></div>';
   loadMonthCal(calMonth||ymNow());
   const appts=document.getElementById('appts');

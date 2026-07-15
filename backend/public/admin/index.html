@@ -709,6 +709,13 @@ select.input { background:var(--card); }
       <button onclick="tgLoginVerify()" class="btn btn-primary" style="width:100%;margin-top:8px">Підтвердити код</button>
       <p id="tgCodeErr" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></p>
     </div>
+
+    <p style="margin-top:18px;text-align:center"><a href="#" onclick="toggleForgot();return false" style="font-size:12px;color:var(--text-secondary);text-decoration:underline">Забули пароль?</a></p>
+    <div id="forgotBox" style="display:none;margin-top:10px">
+      <input id="forgotIdent" type="text" placeholder="Телефон або email" class="input" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')sendForgot()">
+      <button onclick="sendForgot()" class="btn btn-outline" style="width:100%">Надіслати посилання для скидання</button>
+      <p id="forgotMsg" style="display:none;font-size:13px;margin-top:8px"></p>
+    </div>
   </div>
 </div>
 
@@ -3140,6 +3147,28 @@ async function checkToken() {
 }
 
 function _loginErr(msg){ const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display=''; }
+
+// Відновлення пароля з екрану входу
+function toggleForgot(){
+  const b=document.getElementById('forgotBox');
+  b.style.display = b.style.display==='none' ? '' : 'none';
+  if(b.style.display!=='none'){
+    const pre=document.getElementById('loginIdent').value.trim();
+    if(pre) document.getElementById('forgotIdent').value=pre;
+    document.getElementById('forgotIdent').focus();
+  }
+}
+async function sendForgot(){
+  const identifier=document.getElementById('forgotIdent').value.trim();
+  const msg=document.getElementById('forgotMsg');
+  if(!identifier){ msg.style.display=''; msg.style.color='var(--danger)'; msg.textContent='Введіть телефон або email'; return; }
+  try{
+    const r=await fetch(API+'/api/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json',...tenantHeader()},body:JSON.stringify({identifier})});
+    msg.style.display='';
+    if(r.status===429){ msg.style.color='var(--danger)'; msg.textContent='Забагато спроб. Спробуйте пізніше.'; }
+    else { msg.style.color='var(--success,#3ecf8e)'; msg.textContent='Якщо акаунт існує, посилання для скидання надіслано у Telegram або на email. Діє 30 хв.'; }
+  }catch(e){ msg.style.display=''; msg.style.color='var(--danger)'; msg.textContent='Помилка мережі'; }
+}
 let PANEL_2FA_TOKEN = null; // pre-auth токен, коли panel-login вимагає 2FA-код
 
 // Основний вхід: логін + пароль

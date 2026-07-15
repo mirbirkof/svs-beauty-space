@@ -341,7 +341,6 @@ try { app.use('/api/onboarding', require('./routes/onboarding')); } catch(e) { c
 // Нагадування про витрати: 1-го, 15-го і в останній день місяця.
 // НЕ проводить автоматично — лише нагадує підтвердити (адмін підтверджує/коригує у CRM).
 if (process.env.DATABASE_URL) {
-  let _lastExpReminder = null;
   const expenseReminderTick = async () => {
     try {
       const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[x.type] = x.value;
@@ -349,8 +348,12 @@ if (process.env.DATABASE_URL) {
       const lastDay = new Date(y, m, 0).getDate();
       const isReminderDay = (d === 1 || d === 15 || d === lastDay);
       const stamp = `${y}-${m}-${d}`;
-      if (!isReminderDay || _lastExpReminder === stamp) return;
-      _lastExpReminder = stamp;
+      if (!isReminderDay) return;
+      // Дедуп у БД (не в памʼяті!): інакше КОЖЕН рестарт/деплой у день нагадування
+      // повторно слав повідомлення всім власникам → спам. Тепер — рівно раз на день.
+      const { getSetting, setSetting } = require('./lib/settings');
+      if (String(await getSetting('_last_expense_reminder', '')) === stamp) return;
+      await setSetting('_last_expense_reminder', stamp); // ставимо ДО відправки — навіть при збої не спамимо
       const when = d === 1 ? 'початок місяця' : d === 15 ? 'середина місяця' : 'кінець місяця';
       const { tgSend } = require('./routes/telegram-notify');
       const text = `🔔 <b>Час підтвердити витрати</b> (${when})\nЗарплата майстрам, оренда та інші витрати нараховані — перевірте суми й проведіть.\n👉 Зарплата → <b>Підтвердження витрат</b>`;
