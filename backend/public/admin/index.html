@@ -709,12 +709,6 @@ select.input { background:var(--card); }
       <button onclick="tgLoginVerify()" class="btn btn-primary" style="width:100%;margin-top:8px">Підтвердити код</button>
       <p id="tgCodeErr" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></p>
     </div>
-
-    <p style="margin-top:16px"><a href="#" onclick="toggleTokenLogin();return false" style="font-size:12px;color:var(--text-secondary);text-decoration:underline">Вхід за токеном (адміністратор)</a></p>
-    <div id="tokenLoginBox" style="display:none;margin-top:10px">
-      <input id="tokenInput" type="password" placeholder="Admin token" class="input">
-      <button onclick="loginWithToken()" class="btn btn-outline" style="width:100%;margin-top:8px">Увійти за токеном</button>
-    </div>
   </div>
 </div>
 
@@ -3145,7 +3139,6 @@ async function checkToken() {
   // 5xx и прочее — сервер моргнул, токен НЕ трогаем
 }
 
-function toggleTokenLogin(){ const b=document.getElementById('tokenLoginBox'); b.style.display = b.style.display==='none'?'':'none'; }
 function _loginErr(msg){ const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display=''; }
 let PANEL_2FA_TOKEN = null; // pre-auth токен, коли panel-login вимагає 2FA-код
 
@@ -3237,14 +3230,6 @@ function tgLoginVerify() {
   })();
 }
 
-// Запасний вхід: за токеном (для адміністратора / legacy)
-function loginWithToken() {
-  TOKEN = document.getElementById('tokenInput').value.trim();
-  if (!TOKEN) return _loginErr('Введіть токен');
-  localStorage.setItem('svs_admin_token', TOKEN);
-  document.getElementById('loginErr').style.display='none';
-  checkToken().then(() => { if (document.getElementById('app').style.display==='none') _loginErr('Невірний токен'); });
-}
 function logout() { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); localStorage.removeItem('svs_tenant_slug'); location.reload(); }
 
 // Індикатор підтвердження пошти у шапці: показуємо лише якщо в акаунта є email і він ще не підтверджений.
