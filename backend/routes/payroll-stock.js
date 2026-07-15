@@ -715,6 +715,20 @@ router.get('/payroll/my', async (req, res) => {
         }
       }
       const mStart = ym + '-01';
+      // Оборот майстра за місяць з КАСИ (як бачить власник у фінансах): послуги + продані товари.
+      // Показуємо ОКРЕМО від бази %: база = послуги мінус матеріали, а оборот — це вся виручка.
+      // Раніше кабінет показував лише базу як «виручку» → у майстрів, що продають товар,
+      // цифра не сходилась із реальним оборотом (фідбек Власника 15.07: Вера оборот 41660, показ 19775).
+      const turn = await pool.query(
+        `SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric AS serv,
+                COALESCE(SUM(amount) FILTER (WHERE category='sale_product'),0)::numeric AS prod
+           FROM cash_operations
+          WHERE master_id=$1::int AND type='in'
+            AND (created_at AT TIME ZONE 'Europe/Kyiv') >= $2::date
+            AND (created_at AT TIME ZONE 'Europe/Kyiv') <  ($2::date + INTERVAL '1 month')`,
+        [mid, mStart]);
+      const turnover_services = parseFloat(turn.rows[0]?.serv || 0);
+      const turnover_products = parseFloat(turn.rows[0]?.prod || 0);
       const bsum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_bonuses WHERE master_id=$1 AND applied_record_id IS NULL AND bonus_date >= $2::date AND bonus_date < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
       const psum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_penalties WHERE master_id=$1 AND applied_record_id IS NULL AND penalty_date >= $2::date AND penalty_date < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
       const asum = await pool.query(`SELECT COALESCE(SUM(amount),0)::numeric s FROM payroll_advances WHERE master_id=$1 AND settled=FALSE AND issued_at >= $2::date AND issued_at < ($2::date + INTERVAL '1 month')`, [mid, mStart]);
@@ -746,6 +760,7 @@ router.get('/payroll/my', async (req, res) => {
       current = {
         period_start: ym + '-01', ym,
         services_count: cnt, services_revenue: revenue,
+        turnover_services, turnover_products, turnover: +(turnover_services + turnover_products).toFixed(2),
         scheme_type: s.scheme_type, percent: parseFloat(s.percent || 0), scheme_from_commission: !!s._from_commission,
         percent_part: Math.round(percent_part), fixed_part: Math.round(fixed_part), sales_part,
         bonus, penalty, advance,

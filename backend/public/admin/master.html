@@ -301,7 +301,14 @@ async function loadPayroll(){
       html+=`<div class="card" style="background:linear-gradient(135deg,#1a1a1a,#2a2416);border:1px solid var(--gold)">
         <div class="s" style="text-transform:capitalize">${esc(mName)} · ${isCur?'наразі':'останній місяць із заробітком'}</div>
         <div class="amt" style="font-size:30px;color:var(--gold);margin:6px 0">${money(cur.to_pay)}</div>
-        <div class="s">${cur.services_count} візитів · виручка ${money(cur.services_revenue)} · ${cur.percent?cur.percent+'%':cur.scheme_type}${cur.scheme_from_commission?' (з картки)':''}</div>`;
+        <div class="s">${cur.services_count} візитів · ${cur.percent?cur.percent+'%':cur.scheme_type}${cur.scheme_from_commission?' (з картки)':''}</div>`;
+      // Оборот (як у фінансах власника): послуги + продані товари. Окремо — база для %.
+      if(cur.turnover!=null){
+        const tp=Number(cur.turnover_products||0);
+        html+=`<div class="s" style="margin-top:6px">Оборот: <b>${money(cur.turnover)}</b> <span class="muted">(послуги ${money(cur.turnover_services)}${tp?` + товари ${money(tp)}`:''})</span></div>`;
+      }
+      html+=`<div class="s">База для ${cur.percent||0}% (послуги − матеріали): ${money(cur.services_revenue)}${cur.percent_part!=null?` → ${money(cur.percent_part)}`:''}</div>`;
+      if(Number(cur.sales_part||0)>0) html+=`<div class="s green">Комісія з продажу товарів: +${money(cur.sales_part)}</div>`;
       if(cur.fixed_part) html+=`<div class="s">Ставка: ${money(cur.fixed_part)}</div>`;
       if(cur.bonus) html+=`<div class="s green">Бонуси: +${money(cur.bonus)}</div>`;
       if(cur.penalty) html+=`<div class="s" style="color:var(--red)">Штрафи: −${money(cur.penalty)}</div>`;
