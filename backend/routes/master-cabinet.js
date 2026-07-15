@@ -150,4 +150,30 @@ router.get('/schedule', async (req, res) => {
   } catch (e) { console.error('me/schedule', e); res.status(500).json({ error: 'internal' }); }
 });
 
+// ── Місячний графік: робочі дні / вихідні ─────────────────
+// Майстер бачить свій місяць: які дні робочі (з годинами) і які вихідні.
+// Джерело — master_schedule_days (start_time IS NULL = вихідний цього дня).
+router.get('/month-schedule', async (req, res) => {
+  try {
+    const m = (req.query.month || '').trim();
+    const month = /^\d{4}-\d{2}$/.test(m) ? m : new Date().toISOString().slice(0, 7);
+    const first = `${month}-01`;
+    const r = await pool.query(
+      `SELECT to_char(work_date,'YYYY-MM-DD')      AS date,
+              to_char(start_time,'HH24:MI')        AS start,
+              to_char(end_time,'HH24:MI')          AS "end",
+              (start_time IS NOT NULL)             AS working
+         FROM master_schedule_days
+        WHERE master_id = $1
+          AND work_date >= $2::date
+          AND work_date <  ($2::date + INTERVAL '1 month')
+        ORDER BY work_date`, [req.mid, first]);
+    const days = {};
+    for (const row of r.rows) days[row.date] = { working: row.working, start: row.start, end: row.end };
+    const workCount = r.rows.filter(x => x.working).length;
+    const offCount = r.rows.filter(x => !x.working).length;
+    res.json({ ok: true, month, days, work_days: workCount, days_off: offCount, has_data: r.rows.length > 0 });
+  } catch (e) { console.error('me/month-schedule', e); res.status(500).json({ error: 'internal' }); }
+});
+
 module.exports = router;

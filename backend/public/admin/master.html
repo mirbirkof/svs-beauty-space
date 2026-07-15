@@ -53,6 +53,26 @@
   .ldr{text-align:center;color:var(--mut);padding:40px}
   .err{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);
     color:var(--red);padding:12px;border-radius:10px;margin-bottom:12px;font-size:13.5px}
+  /* Місячний календар графіку */
+  .cal{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:16px}
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .cal-nav button{background:var(--card2);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;width:36px;height:36px;font-size:18px;cursor:pointer;line-height:1}
+  .cal-nav button:active{background:var(--line)}
+  .cal-nav b{font-size:15.5px;font-weight:600;text-transform:capitalize;color:var(--acc2)}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cal-dow{text-align:center;font-size:11px;color:var(--mut);padding:2px 0 4px}
+  .cal-cell{aspect-ratio:1/1;min-height:40px;border-radius:8px;background:var(--card2);
+    border:1px solid transparent;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;font-size:13px;font-weight:600}
+  .cal-cell.work{background:rgba(62,207,142,.14);border-color:rgba(62,207,142,.35);color:var(--green)}
+  .cal-cell.off{background:rgba(255,107,107,.10);color:var(--red)}
+  .cal-cell.none{color:var(--mut);font-weight:400}
+  .cal-cell.empty{background:transparent}
+  .cal-cell.today{outline:2px solid var(--acc);outline-offset:-2px}
+  .cal-cell .hh{font-size:9px;font-weight:500;margin-top:1px;opacity:.9}
+  .cal-legend{display:flex;gap:16px;margin-top:12px;font-size:12px;color:var(--mut);flex-wrap:wrap}
+  .cal-legend i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
 </style>
 </head>
 <body>
@@ -126,14 +146,60 @@ function tab(name){
 }
 
 // ── Графік ──
+const UA_MONTHS=['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+let calMonth=null;
+function ymNow(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Kiev'}).slice(0,7); }
+function ymShift(m,delta){ let [y,mm]=m.split('-').map(Number); mm+=delta; if(mm<1){mm=12;y--} if(mm>12){mm=1;y++} return `${y}-${String(mm).padStart(2,'0')}`; }
+
+// Місячна сітка: робочі дні (зелені, з годинами) / вихідні (червоні) / не заплановано.
+async function loadMonthCal(month){
+  calMonth=month||calMonth||ymNow();
+  const box=document.getElementById('mcal'); if(!box) return;
+  box.innerHTML='<div class="ldr">Завантаження графіку…</div>';
+  try{
+    const d=await api('/api/me/month-schedule?month='+calMonth);
+    const days=d.days||{};
+    const [y,mm]=calMonth.split('-').map(Number);
+    const daysIn=new Date(y,mm,0).getDate();
+    let firstDow=new Date(y,mm-1,1).getDay(); firstDow=(firstDow+6)%7; // Пн=0
+    const todayStr=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Kiev'});
+    const dow=['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+    let html=`<div class="cal-nav"><button onclick="loadMonthCal(ymShift(calMonth,-1))">‹</button>`
+      +`<b>${UA_MONTHS[mm-1]} ${y}</b>`
+      +`<button onclick="loadMonthCal(ymShift(calMonth,1))">›</button></div>`;
+    html+='<div class="cal-grid">'+dow.map(x=>`<div class="cal-dow">${x}</div>`).join('');
+    for(let i=0;i<firstDow;i++) html+='<div class="cal-cell empty"></div>';
+    for(let day=1;day<=daysIn;day++){
+      const ds=`${calMonth}-${String(day).padStart(2,'0')}`, info=days[ds];
+      let cls='cal-cell', inner=`<span>${day}</span>`;
+      if(info&&info.working){ cls+=' work'; inner+=`<span class="hh">${(info.start||'').slice(0,5)}</span>`; }
+      else if(info&&!info.working){ cls+=' off'; inner+='<span class="hh">Вих</span>'; }
+      else cls+=' none';
+      if(ds===todayStr) cls+=' today';
+      html+=`<div class="${cls}">${inner}</div>`;
+    }
+    html+='</div>';
+    html+=`<div class="cal-legend">`
+      +`<span><i style="background:rgba(62,207,142,.5)"></i>Робочий (${d.work_days||0})</span>`
+      +`<span><i style="background:rgba(255,107,107,.4)"></i>Вихідний (${d.days_off||0})</span>`
+      +`<span><i style="background:var(--card2)"></i>Не заплановано</span></div>`;
+    if(!d.has_data) html+='<div class="muted" style="padding:14px 10px 4px">Графік на цей місяць ще не складено адміністратором</div>';
+    box.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') box.innerHTML='<div class="err">Не вдалося завантажити графік місяця</div>'; }
+}
+
 async function loadSchedule(){
   const el=document.getElementById('sec-schedule'); loaded.schedule=true;
+  el.innerHTML='<div class="cal" id="mcal"><div class="ldr">Завантаження графіку…</div></div>'
+    +'<div id="appts"><div class="ldr">Завантаження записів…</div></div>';
+  loadMonthCal(calMonth||ymNow());
+  const appts=document.getElementById('appts');
   try{
     const d=await api('/api/me/schedule');
     const items=(d.items||[]);
-    if(!items.length){ el.innerHTML='<div class="muted">Немає запланованих записів на найближчі 30 днів</div>'; return; }
+    if(!items.length){ appts.innerHTML='<h2>Найближчі записи</h2><div class="muted">Немає запланованих записів на найближчі 30 днів</div>'; return; }
     const today=dayKey(new Date().toISOString());
-    let html='', curDay='';
+    let html='<h2>Найближчі записи</h2>', curDay='';
     for(const a of items){
       const dk=dayKey(a.starts_at);
       if(dk!==curDay){ curDay=dk;
@@ -145,8 +211,8 @@ async function loadSchedule(){
           <div class="s">${money(a.amount)}</div></div>
       </div></div>`;
     }
-    el.innerHTML=html;
-  }catch(e){ if(e.message!=='auth') el.innerHTML='<div class="err">Не вдалося завантажити графік</div>'; }
+    appts.innerHTML=html;
+  }catch(e){ if(e.message!=='auth') appts.innerHTML='<div class="err">Не вдалося завантажити записи</div>'; }
 }
 
 // ── Клієнти ──
