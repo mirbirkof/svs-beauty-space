@@ -12838,7 +12838,9 @@ function renderMySub(){
     const price = cyc==='yearly' ? Number(p.price_year) : Number(p.price_month);
     const per = cyc==='yearly' ? '/рік' : '/міс';
     const isCur = s && s.plan_code===p.code && (s.status==='active'||s.status==='trialing');
-    const feats = (p.features||[]).map(f=>`<div style="display:flex;gap:7px;align-items:center;font-size:13px;color:#444;margin:5px 0"><span class="material-icons-round" style="font-size:16px;color:#0a8f5f">check</span>${_MS_FEAT[f]||f}</div>`).join('');
+    // features буває масивом АБО обʼєктом {key:true} (solo_pro) — нормалізуємо до масиву
+    const featArr = Array.isArray(p.features) ? p.features : Object.keys(p.features||{}).filter(k=>p.features[k]);
+    const feats = featArr.map(f=>`<div style="display:flex;gap:7px;align-items:center;font-size:13px;color:#444;margin:5px 0"><span class="material-icons-round" style="font-size:16px;color:#0a8f5f">check</span>${_MS_FEAT[f]||f}</div>`).join('');
     const lim = p.limits||{};
     const limStr = [lim.clients?(lim.clients<0?'клієнти ∞':'до '+lim.clients+' клієнтів'):null, lim.masters?(lim.masters<0?'майстри ∞':'до '+lim.masters+' майстрів'):null].filter(Boolean).join(' · ');
     let btn;
