@@ -711,6 +711,7 @@ select.input { background:var(--card); }
     </div>
 
     <p style="margin-top:18px;text-align:center"><a href="#" onclick="toggleForgot();return false" style="font-size:12px;color:var(--text-secondary);text-decoration:underline">Забули пароль?</a></p>
+    <p style="margin-top:10px;text-align:center;font-size:13px;color:var(--text-secondary)">Немає акаунту? <a href="/p/signup.html" style="color:var(--primary,#6b4eff);font-weight:600;text-decoration:underline">Зареєструватися</a> <span style="color:var(--text-secondary,#9aa0a6)">— салон або майстер</span></p>
     <div id="forgotBox" style="display:none;margin-top:10px">
       <input id="forgotIdent" type="text" placeholder="Телефон або email" class="input" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')sendForgot()">
       <button onclick="sendForgot()" class="btn btn-outline" style="width:100%">Надіслати посилання для скидання</button>
