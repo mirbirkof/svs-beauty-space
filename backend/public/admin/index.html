@@ -16,6 +16,13 @@
     document.documentElement.classList.add('solo-loading');
     var _ss=document.createElement('style');_ss.textContent='.solo-loading .sidebar-item,.solo-loading .sidebar-group-header{visibility:hidden}';document.head.appendChild(_ss);
     setTimeout(function(){document.documentElement.classList.remove('solo-loading');},2500);
+    // Мобільна версія — ТІЛЬКИ за явним вибором соло-майстра (Босс 16.07). Дефолт для всіх
+    // ІНШИХ — ПК width=1280 (директива Боса ×3, НЕ ЧІПАТИ). Тут міняємо viewport ДО рендеру.
+    if(localStorage.getItem('svs_mobile_view')==='1'){
+      var _vp=document.querySelector('meta[name="viewport"]');
+      if(_vp)_vp.setAttribute('content','width=device-width, initial-scale=1');
+      document.documentElement.classList.add('solo-mobile');
+    }
   }
   // Стан розкритих груп меню застосовуємо ДО першої відрисовки (pre-paint),
   // інакше меню «стрибає»: спершу рисується одне, потім JS міняє на збережене.
@@ -1118,6 +1125,11 @@ select.input { background:var(--card); }
           <option value="tr">🇹🇷 Türkçe</option>
         </select>
       </div>
+      <!-- Перемикач мобільної версії — ЛИШЕ для соло-майстра (прихований для решти).
+           Дефолт залишається ПК width=1280 (директива Боса) — мобільний вид тільки за вибором. -->
+      <button id="soloMobileBtn" style="display:none" onclick="toggleSoloMobile()">
+        <span class="material-icons-round" style="font-size:18px" id="soloMobileIcon">smartphone</span> <span id="soloMobileLabel">Мобільна версія</span>
+      </button>
       <button onclick="logout()">
         <span class="material-icons-round" style="font-size:18px">logout</span> <span data-i18n-src="Вийти">Вийти</span>
       </button>
@@ -3173,6 +3185,18 @@ function hideNotesWidget() {
   });
   kill(); for (const t of [200,600,1500,3000]) setTimeout(kill, t); // віджет вантажиться асинхронно
 }
+// Мобільна версія для соло: перемикає viewport 1280 ↔ device-width за ВИБОРОМ майстра.
+function _syncSoloMobileBtn() {
+  const on = localStorage.getItem('svs_mobile_view') === '1';
+  const ic = document.getElementById('soloMobileIcon'), lb = document.getElementById('soloMobileLabel');
+  if (ic) ic.textContent = on ? 'desktop_windows' : 'smartphone';
+  if (lb) lb.textContent = on ? 'ПК-версія' : 'Мобільна версія';
+}
+function toggleSoloMobile() {
+  const on = localStorage.getItem('svs_mobile_view') === '1';
+  try { localStorage.setItem('svs_mobile_view', on ? '0' : '1'); } catch (_) {}
+  location.reload(); // viewport застосовується pre-paint скриптом у <head>
+}
 async function applyEntitlements() {
   let ent;
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
@@ -3185,6 +3209,11 @@ async function applyEntitlements() {
   if (solo) {
     document.body.classList.add('solo-mode');
     applySoloMenu(0);
+    // перемикач мобільної версії (тільки соло; дефолт — ПК, директива Боса не порушена)
+    try {
+      const b = document.getElementById('soloMobileBtn');
+      if (b) { b.style.display = ''; _syncSoloMobileBtn(); }
+    } catch (_) {}
   } else {
     // не соло → знімаємо pre-paint приховування (якщо лишилось з попереднього разу)
     document.documentElement.classList.remove('solo-loading');
