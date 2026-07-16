@@ -70,6 +70,28 @@ router.patch('/', async (req, res) => {
     for (const k of keys) {
       if (!ALLOWED[k](body[k])) return res.status(400).json({ error: 'bad-value', key: k });
     }
+
+    // ── Тарифні фічі (Майстер PRO): УВІМКНЕННЯ депозиту / SMS-каналу вимагає фічу плану.
+    // Вимкнення і решта налаштувань — вільно. Платформа/старі салони — без обмежень
+    // (featureAllowed fail-open, якщо для плану немає рядка фічі).
+    try {
+      const { isPlatformTenant } = require('../lib/tenant');
+      if (!(isPlatformTenant && isPlatformTenant())) {
+        const { requireFeature } = require('../lib/feature-gate');
+        const gate = async (fkey) => new Promise((resolve) => {
+          requireFeature(fkey)(req, { status: () => ({ json: () => resolve(false) }) }, () => resolve(true));
+        });
+        if (body.prepayment && body.prepayment.enabled === true && !(await gate('booking.prepay'))) {
+          return res.status(403).json({ error: 'feature-locked', feature: 'booking.prepay',
+            message: 'Передоплата при записі доступна на тарифі Майстер PRO. Спробуйте 14 днів безкоштовно у розділі «Моя підписка».' });
+        }
+        if (body.notifications && body.notifications.sms === true && !(await gate('sms.reminders'))) {
+          return res.status(403).json({ error: 'feature-locked', feature: 'sms.reminders',
+            message: 'SMS-нагадування доступні на тарифі Майстер PRO. Спробуйте 14 днів безкоштовно у розділі «Моя підписка».' });
+        }
+      }
+    } catch (e) { console.error('[settings/feature-gate]', e.message); /* fail-open */ }
+
     for (const k of keys) await setSetting(k, body[k], u.id || null);
 
     logAction({ user: u, action: 'settings.update', entity: 'settings', meta: body, ip: req.ip });
