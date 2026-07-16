@@ -3096,10 +3096,16 @@ function showApp() {
   try { applyEntitlements(); } catch (_) {}
 }
 
-// Тариф/режим салону: соло-майстер (один) → ховаємо командні розділи меню.
+// Тариф/режим салону: соло-майстер (один) → ховаємо командні та enterprise-розділи.
 // Fail-open: якщо запит впав — нічого не ховаємо (робочий салон не постраждає).
-// Розділи тільки для команди (одиночці не потрібні):
-const SOLO_HIDE_PAGES = ['payroll','shifts','plan','qcontrol','callcenter'];
+// Підхід — БІЛИЙ СПИСОК: соло бачить лише свої потрібні розділи, решта схована.
+// Соло-майстру ПОТРІБНО (все інше ховаємо):
+const SOLO_KEEP_PAGES = [
+  'dashboard','journal','clients','services','svccats','online','reminders',
+  'repeat','waitlist','giftcerts','formulas','blacklist','reviews','surveys',
+  'products','stock','purchasing','suppliers','cashflow','finance','orders',
+  'mysub','settings','branding','documents','kb',
+];
 async function applyEntitlements() {
   let ent;
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
@@ -3108,12 +3114,26 @@ async function applyEntitlements() {
   if (ent.is_solo && !ent.is_platform) {
     document.body.classList.add('solo-mode');
     if (!document.getElementById('soloModeCss')) {
-      const st = document.createElement('style');
-      st.id = 'soloModeCss';
-      st.textContent = 'body.solo-mode .sidebar-item[data-page="' +
-        SOLO_HIDE_PAGES.join('"],body.solo-mode .sidebar-item[data-page="') +
-        '"]{display:none!important}';
-      document.head.appendChild(st);
+      // ховаємо КОЖЕН пункт меню, якого немає в білому списку
+      const all = [...document.querySelectorAll('.sidebar-item[data-page]')];
+      const hide = all.map(el => el.getAttribute('data-page'))
+                      .filter(p => p && !SOLO_KEEP_PAGES.includes(p));
+      if (hide.length) {
+        const st = document.createElement('style');
+        st.id = 'soloModeCss';
+        st.textContent = 'body.solo-mode .sidebar-item[data-page="' +
+          [...new Set(hide)].join('"],body.solo-mode .sidebar-item[data-page="') +
+          '"]{display:none!important}';
+        document.head.appendChild(st);
+      }
+      // сховати також порожні групи-заголовки, де не лишилось видимих пунктів
+      setTimeout(() => {
+        document.querySelectorAll('.sidebar-group').forEach(g => {
+          const items = g.querySelectorAll('.sidebar-item[data-page]');
+          const visible = [...items].some(el => getComputedStyle(el).display !== 'none');
+          if (items.length && !visible) g.style.display = 'none';
+        });
+      }, 50);
     }
   }
 }
