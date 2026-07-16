@@ -3107,7 +3107,7 @@ function showApp() {
 const SOLO_KEEP_PAGES = new Set([
   'dashboard','journal','wsched','clients','waitlist','repeat','formulas','blacklist',
   'services','svccats','orders','giftcerts','finance','cashflow','reminders','reviews',
-  'products','stock','purchasing','suppliers','settings','mysub','branding','surveys','kb','documents',
+  'products','stock','purchasing','suppliers','settings','mysub','kb',
 ]);
 // Дозволені embed-розділи (підрядок URL): каса, інвентаризація, чек-лист зміни.
 const SOLO_KEEP_EMBED = ['#cashbox','#inventory','shift-checklist'];
@@ -13430,7 +13430,7 @@ function saasNewTenant(){
     <label class="fld"><span>Телефон для входу *</span><input id="ntPhone" class="input" placeholder="380501234567"></label>
     <label class="fld"><span>Пароль для входу * (мін. 6)</span><input id="ntPass" class="input" type="text" placeholder="напр. salon2026"></label>
     <div style="display:flex;gap:10px">
-      <label class="fld" style="flex:1"><span>Тариф</span><select id="ntPlan" class="input"><option value="pro">Pro (990₴/міс)</option><option value="free">Free (0₴)</option><option value="enterprise">Enterprise (2990₴/міс)</option></select></label>
+      <label class="fld" style="flex:1"><span>Тариф</span><select id="ntPlan" class="input"><option value="solo">Майстер / Solo (0₴)</option><option value="pro">Салон / Pro (690₴/міс)</option><option value="enterprise">Мережа / Enterprise (1490₴/міс)</option></select></label>
       <label class="fld" style="flex:1"><span>Цикл оплати</span><select id="ntCycle" class="input"><option value="monthly">Місяць</option><option value="yearly">Рік (-2 міс)</option></select></label>
     </div>
     <label class="fld" style="display:flex;align-items:center;gap:8px;flex-direction:row"><input id="ntTrial" type="checkbox" checked style="width:auto"><span style="margin:0">Пробний період 14 днів</span></label>
