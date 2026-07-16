@@ -324,7 +324,7 @@ async function loadPayroll(){
         const p=`${new Date(r.period_start).toLocaleDateString('uk-UA')} – ${new Date(r.period_end).toLocaleDateString('uk-UA')}`;
         html+=`<div class="card"><div class="row">
           <div><div class="t">${esc(p)}</div>
-            <div class="s">${r.services_count||0} послуг · виручка ${money(r.services_revenue)}</div>
+            <div class="s">${r.services_count||0} послуг · виручка послуг ${money(r.services_revenue)}</div>
             <span class="pill ${r.status==='paid'?'done':''}">${r.status==='paid'?'Виплачено':'Очікує'}</span></div>
           <div class="amt">${money(r.total)}</div></div></div>`;
       }

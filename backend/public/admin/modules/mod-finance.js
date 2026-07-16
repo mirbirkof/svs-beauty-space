@@ -152,7 +152,7 @@
         if (!rows.length) { body.innerHTML = window.modEmpty('Немає нарахувань за період'); return; }
 
         var html = tableOpen() + '<thead><tr>' +
-          th('Майстер') + th('Візити', true) + th('Виручка', true) +
+          th('Майстер') + th('Візити', true) + th('Виручка (послуги)', true) +
           th('Відсоток', true) + th('Оклад', true) + th('Бонус', true) +
           th('До нарах.', true) + th('Виплачено', true) + th('Залишок', true) + th('Статус') +
           '</tr></thead><tbody>';
