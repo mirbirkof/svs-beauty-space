@@ -318,6 +318,16 @@ select.input { background:var(--card); }
   .jcol-head .nm { font-size:12px; }
   .jappt { left:2px; right:2px; padding:4px 5px; font-size:11px; }
   .jappt .t { font-size:10px; }
+  /* СОЛО-МАЙСТЕР на мобільному: меню коротке (15 пунктів) → можна КРУПНІШЕ і зручніше
+     для великого пальця (Босс 16.07: «надписи больше, адаптивніше до мобільного») */
+  body.solo-mode .sidebar { width:290px; }
+  body.solo-mode .sidebar-item { font-size:16.5px; padding:13px 18px; gap:13px; }
+  body.solo-mode .sidebar-item .material-icons-round { font-size:23px; }
+  body.solo-mode .sidebar-group-header { font-size:16.5px; padding:13px 18px; gap:13px; }
+  body.solo-mode .sidebar-group-header .material-icons-round { font-size:23px; }
+  body.solo-mode .sidebar-logo .logo-top span { font-size:19px; }
+  body.solo-mode .mobile-toggle { width:46px; height:46px; }
+  body.solo-mode .mobile-toggle .material-icons-round { font-size:26px; }
 }
 
 /* SCROLLBAR */
