@@ -51,6 +51,11 @@
         <label id="lbl_owner">Ваше ім'я (власник)</label>
         <input id="owner_name" placeholder="Напр. Олена">
 
+        <label>Країна</label>
+        <select id="country" class="input" style="width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);background:#13142a;color:var(--ink);font-size:15px">
+          <!-- опції генеруються з COUNTRIES у JS (назва + код +XXX) -->
+        </select>
+
         <label>Телефон (логін у CRM)</label>
         <input id="phone" required inputmode="tel" placeholder="+380 ...">
 
@@ -59,21 +64,6 @@
 
         <label>E-mail (необов'язково)</label>
         <input id="email" type="email" placeholder="you@example.com">
-
-        <label>Країна</label>
-        <select id="country" class="input" style="width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);background:#13142a;color:var(--ink);font-size:15px">
-          <option value="UA">Україна</option>
-          <option value="PL">Польща (Polska)</option>
-          <option value="KZ">Казахстан</option>
-          <option value="MD">Молдова</option>
-          <option value="LT">Литва (Lietuva)</option>
-          <option value="LV">Латвія (Latvija)</option>
-          <option value="EE">Естонія (Eesti)</option>
-          <option value="CZ">Чехія (Česko)</option>
-          <option value="DE">Німеччина (Deutschland)</option>
-          <option value="GB">Велика Британія</option>
-          <option value="US">США</option>
-          <option value="OTHER">Інша країна</option>
         </select>
         <div id="langNote" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
 
@@ -112,6 +102,53 @@
   // Язык определяется АВТОМАТОМ из браузера (место жительства). Страну предугадываем
   // из локали/таймзоны, но пользователь может сменить.
   const LANG = (navigator.language || 'uk').slice(0, 2).toLowerCase();
+
+  // ── Країни з телефонними кодами (страна ↔ префікс звʼязані) ──
+  const COUNTRIES = [
+    ['UA','🇺🇦','Україна','+380'], ['PL','🇵🇱','Польща','+48'], ['KZ','🇰🇿','Казахстан','+7'],
+    ['MD','🇲🇩','Молдова','+373'], ['LT','🇱🇹','Литва','+370'], ['LV','🇱🇻','Латвія','+371'],
+    ['EE','🇪🇪','Естонія','+372'], ['CZ','🇨🇿','Чехія','+420'], ['SK','🇸🇰','Словаччина','+421'],
+    ['DE','🇩🇪','Німеччина','+49'], ['AT','🇦🇹','Австрія','+43'], ['CH','🇨🇭','Швейцарія','+41'],
+    ['GB','🇬🇧','Велика Британія','+44'], ['IE','🇮🇪','Ірландія','+353'], ['FR','🇫🇷','Франція','+33'],
+    ['ES','🇪🇸','Іспанія','+34'], ['PT','🇵🇹','Португалія','+351'], ['IT','🇮🇹','Італія','+39'],
+    ['NL','🇳🇱','Нідерланди','+31'], ['BE','🇧🇪','Бельгія','+32'], ['SE','🇸🇪','Швеція','+46'],
+    ['NO','🇳🇴','Норвегія','+47'], ['FI','🇫🇮','Фінляндія','+358'], ['DK','🇩🇰','Данія','+45'],
+    ['RO','🇷🇴','Румунія','+40'], ['BG','🇧🇬','Болгарія','+359'], ['HU','🇭🇺','Угорщина','+36'],
+    ['GR','🇬🇷','Греція','+30'], ['HR','🇭🇷','Хорватія','+385'], ['GE','🇬🇪','Грузія','+995'],
+    ['AM','🇦🇲','Вірменія','+374'], ['AZ','🇦🇿','Азербайджан','+994'], ['TR','🇹🇷','Туреччина','+90'],
+    ['IL','🇮🇱','Ізраїль','+972'], ['AE','🇦🇪','ОАЕ','+971'], ['US','🇺🇸','США','+1'],
+    ['CA','🇨🇦','Канада','+1'], ['CY','🇨🇾','Кіпр','+357'], ['UZ','🇺🇿','Узбекистан','+998'],
+    ['OTHER','🌍','Інша країна','+'],
+  ];
+  const DIAL = Object.fromEntries(COUNTRIES.map(c => [c[0], c[3]]));
+  (function populateCountries() {
+    const sel = document.getElementById('country');
+    sel.innerHTML = COUNTRIES.map(c => `<option value="${c[0]}">${c[1]} ${c[2]} ${c[3]}</option>`).join('');
+  })();
+  // Виставити префікс у поле телефону при виборі країни (замінює попередній код, зберігає введені цифри).
+  function applyDialPrefix(cc) {
+    const ph = document.getElementById('phone');
+    const dial = DIAL[cc]; if (!dial || dial === '+') return;
+    const cur = ph.value.trim();
+    // якщо вже стоїть якийсь +код — зрізаємо його, лишаємо локальні цифри
+    let local = cur.replace(/^\+?\d{1,4}[\s-]*/, '');
+    if (cur === '' || /^\+?\d[\d\s-]*$/.test(cur) && cur.length <= (dial.length + 1)) local = '';
+    ph.value = dial + ' ' + local;
+    ph.placeholder = dial + ' ...';
+    ph.setSelectionRange(ph.value.length, ph.value.length);
+  }
+  document.getElementById('country').addEventListener('change', e => applyDialPrefix(e.target.value));
+  // Зворотно: якщо користувач вводить +код — визначаємо країну автоматично.
+  document.getElementById('phone').addEventListener('input', e => {
+    const v = e.target.value.trim(); if (!v.startsWith('+')) return;
+    // найдовший збіг коду (щоб +380 не сплутати з +38)
+    let best = null;
+    for (const [cc,, , dial] of COUNTRIES) {
+      if (dial !== '+' && v.startsWith(dial) && (!best || dial.length > DIAL[best].length)) best = cc;
+    }
+    if (best && document.getElementById('country').value !== best) document.getElementById('country').value = best;
+  });
+
   (function autoGeo() {
     const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').toLowerCase();
     const locale = (navigator.language || '').toUpperCase();
@@ -121,6 +158,8 @@
     for (const k in tzMap) if (tz.includes(k)) { cc = cc || tzMap[k]; break; }
     const sel = document.getElementById('country');
     if (cc && [...sel.options].some(o => o.value === cc)) sel.value = cc;
+    else sel.value = 'UA';
+    applyDialPrefix(sel.value);
     const langNames = { uk:'українська', ru:'російська', pl:'польська', en:'англійська', de:'німецька', lt:'литовська', lv:'латиська', et:'естонська', cs:'чеська', kk:'казахська' };
     const note = document.getElementById('langNote');
     if (note) note.textContent = 'Мова інтерфейсу визначена автоматично: ' + (langNames[LANG] || LANG);
