@@ -3136,6 +3136,39 @@ async function applyEntitlements() {
       }, 50);
     }
   }
+  // ── ТАРИФНІ ЗАМКИ 🔒 (Фаза 2): платні розділи на безкоштовному тарифі ──
+  // Показуємо з замком (не ховаємо) → мотивація оновитись. Платформа — все відкрито.
+  if (!ent.is_platform) {
+    const tier = Number(ent.tier_rank || 0);
+    const locked = new Set();
+    for (const el of document.querySelectorAll('.sidebar-item[data-page]')) {
+      const page = el.getAttribute('data-page');
+      const need = PAGE_MIN_TIER[page];
+      if (need && tier < need && getComputedStyle(el).display !== 'none') {
+        locked.add(page);
+        if (!el.querySelector('.lock-badge')) {
+          const b = document.createElement('span');
+          b.className = 'lock-badge'; b.textContent = ' 🔒';
+          b.style.cssText = 'font-size:11px;opacity:.7;margin-left:auto';
+          el.appendChild(b);
+        }
+      }
+    }
+    window.LOCKED_PAGES = locked;
+  }
+}
+// Мінімальний тариф для розділу (0 free · 1 starter · 2 pro · 3 enterprise).
+// Розділи без запису — доступні всім. Соло-режим ховає своє окремо (вище).
+const PAGE_MIN_TIER = {
+  pipeline: 2, fincenter: 2, budgets: 2, promos: 2, viber: 2,
+  qcontrol: 2, callcenter: 2, subscriptions: 2, plan: 2,
+  saas: 3, mobileapp: 3,
+};
+// Вікно пропозиції оновити тариф.
+function showUpgrade(page) {
+  const name = (typeof pageTitles !== 'undefined' && pageTitles[page]) ? pageTitles[page] : page;
+  const msg = 'Розділ «' + name + '» доступний на платному тарифі.\n\nПерейти до оновлення тарифу?';
+  if (window.confirm(msg)) { go('mysub'); }
 }
 
 // Глобальний банер про неоплачений рахунок — лише власнику салону з боргом.
@@ -4214,6 +4247,14 @@ function openEmbed(url, title) {
 }
 
 function go(page) {
+  // Тарифний замок (Фаза 2, монетизація): платний розділ на безкоштовному тарифі →
+  // не відкриваємо, пропонуємо оновлення. Платформа/pro — без обмежень. Fail-open.
+  try {
+    if (window.LOCKED_PAGES && window.LOCKED_PAGES.has && window.LOCKED_PAGES.has(page)) {
+      if (typeof showUpgrade === 'function') showUpgrade(page); else go('mysub');
+      return;
+    }
+  } catch (_) {}
   // Замок навігації: приховане в меню не відкривається і напряму (hash/посилання).
   // Власник — без обмежень; іншим ролям owner-only сторінки та сторінки без прав → дашборд.
   if (USER && USER.role !== 'owner' && page !== 'dashboard') {
