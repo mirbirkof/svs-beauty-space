@@ -340,7 +340,9 @@ try { app.use('/api/manager', require('./routes/manager')); } catch(e) { console
 try { app.use('/api/onboarding', require('./routes/onboarding')); } catch(e) { console.error('[onboarding] mount failed:', e.message); }
 // Нагадування про витрати: 1-го, 15-го і в останній день місяця.
 // НЕ проводить автоматично — лише нагадує підтвердити (адмін підтверджує/коригує у CRM).
-if (process.env.DATABASE_URL) {
+// ВИМКНЕНО за наказом Босса 15.07.2026 («Отключи») — спамило. Увімкнути назад:
+// env EXPENSE_REMINDER_ENABLED=1 на Render (дедуп через notification-hub вже готовий).
+if (process.env.DATABASE_URL && process.env.EXPENSE_REMINDER_ENABLED === '1') {
   const expenseReminderTick = async () => {
     try {
       const p = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) p[x.type] = x.value;
