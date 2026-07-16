@@ -26,3 +26,11 @@
 - Auth-код живого салона — НЕ править вслепую. Строить аддитивно (новые функции/эндпоинты), тестить на инстансе 3037, свап после проверки.
 - Изоляцию (RLS/app_tenant) не ослаблять. Токен сессии всегда scoped на один tenant_id.
 - Статус: ЖДЁТ решения Босса A/B, потом реализация на тесте.
+
+## Статус 17.07 (Jarvis)
+- [done] Бэкенд: /login-multi + /pick-tenant (JWT-сессии) — 4/4 теста на 3038
+- [done] Бэкенд: /panel-login-multi — панельные svs_-токены на каждый салон сразу (пароль подтверждён для всех), runAs(tenant) для user_tokens под RLS
+- [done] Кросс-тенант поиск: SET LOCAL app.tenant_id='' в транзакции (RLS fail-open на пустой GUC)
+- [done] Платформа Босса: tenant_slug=NULL (is_internal) — фронт-логика «пустой слаг = платформа» цела
+- [done] Фронт: login()→panel-login-multi (fallback на старый), _showSalonPicker, _pickSalon, switchSalon + кнопка в футере
+- [testing] 3039 — прогон panel-login-multi

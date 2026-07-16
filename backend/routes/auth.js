@@ -331,8 +331,11 @@ router.post('/login', validateBody({
 async function findAllUsersByIdentifier(poolRef, identifier) {
   const id = String(identifier || '').trim();
   if (!id) return [];
+  // Платформенний тенант (is_internal) → tenant_slug=NULL: фронт трактує порожній слаг
+  // як «власна панель Боса» (SaaS-розділи, віджет заміток) — не ламаємо це.
   const SEL = `SELECT u.*, r.code AS role_code, r.permissions AS role_permissions,
-                      tn.name AS tenant_name, tn.slug AS tenant_slug
+                      tn.name AS tenant_name,
+                      CASE WHEN tn.is_internal THEN NULL ELSE tn.slug END AS tenant_slug
                  FROM users u LEFT JOIN roles r ON r.id=u.role_id
                  LEFT JOIN tenants tn ON tn.id=u.tenant_id`;
   let where, params;
@@ -988,6 +991,63 @@ router.post('/panel-login', async (req, res) => {
     }});
   } catch (e) {
     res.status(500).json({ ok: false, error: 'panel-login-failed', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) });
+  }
+});
+
+// POST /api/auth/panel-login-multi — ЄДИНИЙ ВХІД для адмін-панелі (Варіант А).
+// Той самий контракт що panel-login, але шукає по ВСІХ салонах: пароль підійшов
+// в одному → одразу токен; у кількох → salons[] з готовим токеном КОЖНОГО салону
+// (пароль вже підтверджено для кожного) → фронт показує вибір і перемикає без пароля.
+router.post('/panel-login-multi', async (req, res) => {
+  const { identifier, password, remember_me } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  if (!identifier || !password) return res.status(400).json({ ok: false, error: 'identifier-and-password-required' });
+  try {
+    const ipFailures = await countRecentFailures(pool, ip || 'unknown', 'panel-login', 15);
+    if (ipFailures >= 20) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'ip-rate-limit' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    }
+    const candidates = await findAllUsersByIdentifier(pool, identifier);
+    const matched = [];
+    for (const u of candidates) {
+      if (u.is_active === false || !u.password_hash) continue;
+      if (u.locked_until && new Date(u.locked_until) > new Date()) continue;
+      if (u.two_factor_enabled) continue; // 2FA-акаунти — через звичайний panel-login по салону
+      if (await verifyPassword(password, u.password_hash)) matched.push(u);
+    }
+    if (!matched.length) {
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: false, ip, ua, meta: { reason: 'multi-no-match' } });
+      return res.status(401).json({ ok: false, error: 'bad-credentials' });
+    }
+    const { runAs } = require('../lib/tenant');
+    const crypto = require('crypto');
+    const issuePanelToken = async (user) => runAs(user.tenant_id, async () => {
+      await pool.query(`UPDATE users SET failed_login_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1`, [user.id]);
+      const token = 'svs_' + crypto.randomBytes(24).toString('hex');
+      const expires = remember_me ? null : new Date(Date.now() + 90 * 86400 * 1000);
+      await pool.query(
+        `INSERT INTO user_tokens (user_id, token_hash, label, expires_at, tenant_id) VALUES ($1,$2,$3,$4,$5)`,
+        [user.id, sha256(token), deviceLabelFromUA(ua).slice(0, 120), expires, user.tenant_id]);
+      return token;
+    });
+    const pubUser = (u) => ({ id: u.id, display_name: u.display_name, role: u.role_code,
+      permissions: effectivePerms(u), master_id: u.master_id, branch_id: u.branch_id });
+    if (matched.length === 1) {
+      const token = await issuePanelToken(matched[0]);
+      await recordAttempt(pool, { identifier, kind: 'panel-login', success: true, ip, ua, meta: { multi: 1 } });
+      return res.json({ ok: true, token, user: pubUser(matched[0]), tenant_slug: matched[0].tenant_slug || null });
+    }
+    const salons = [];
+    for (const u of matched) {
+      salons.push({ salon_name: u.tenant_name || 'Салон', slug: u.tenant_slug || null,
+        role: u.role_code || 'staff', token: await issuePanelToken(u), user: pubUser(u) });
+    }
+    await recordAttempt(pool, { identifier, kind: 'panel-login', success: true, ip, ua, meta: { multi: matched.length, stage: 'picker' } });
+    return res.json({ ok: true, requires_pick: true, salons });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'panel-login-failed', ...(process.env.NODE_ENV !== 'production' && { detail: e.message }) });
   }
 });
 

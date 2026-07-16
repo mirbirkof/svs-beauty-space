@@ -1130,6 +1130,10 @@ select.input { background:var(--card); }
       <button id="soloMobileBtn" style="display:none" onclick="toggleSoloMobile()">
         <span class="material-icons-round" style="font-size:18px" id="soloMobileIcon">smartphone</span> <span id="soloMobileLabel">Мобільна версія</span>
       </button>
+      <!-- ЄДИНИЙ ВХІД: перемикання салону без пароля (видно якщо салонів >1) -->
+      <button id="switchSalonBtn" style="display:none" onclick="switchSalon()">
+        <span class="material-icons-round" style="font-size:18px">swap_horiz</span> <span>Змінити салон</span>
+      </button>
       <button onclick="logout()">
         <span class="material-icons-round" style="font-size:18px">logout</span> <span data-i18n-src="Вийти">Вийти</span>
       </button>
@@ -3130,6 +3134,11 @@ window.addEventListener('DOMContentLoaded', () => {
 function showLogin() { document.getElementById('login').style.display=''; document.getElementById('app').style.display='none';
   try { document.getElementById('aiFab')?.classList.add('hidden'); document.getElementById('aiPanel')?.classList.remove('open'); } catch(_){} }
 function showApp() {
+  // «Змінити салон» — якщо єдиний вхід дав кілька салонів
+  try {
+    const sal = JSON.parse(localStorage.getItem('svs_salons') || '[]');
+    if (sal.length > 1) { const b = document.getElementById('switchSalonBtn'); if (b) b.style.display = ''; }
+  } catch (_) {}
   document.getElementById('login').style.display='none';
   document.getElementById('app').style.display='';
   try { document.getElementById('aiFab')?.classList.remove('hidden'); } catch(_){}
@@ -3330,6 +3339,44 @@ async function sendForgot(){
 }
 let PANEL_2FA_TOKEN = null; // pre-auth токен, коли panel-login вимагає 2FA-код
 
+// ── ЄДИНИЙ ВХІД: вибір салону + перемикання без пароля ──
+function _showSalonPicker(salons) {
+  try { localStorage.setItem('svs_salons', JSON.stringify(salons)); } catch (_) {}
+  let ov = document.getElementById('salonPickOverlay');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'salonPickOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,8,25,.82);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  const cards = salons.map((s, i) => `
+    <div onclick="_pickSalon(${i})" style="cursor:pointer;background:#fff;border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:14px;transition:transform .12s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''">
+      <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#6d5ae6,#b06cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px">${(s.salon_name||'C')[0].toUpperCase()}</div>
+      <div style="flex:1"><div style="font-weight:700;font-size:16px;color:#1e1f2b">${(s.salon_name||'Салон').replace(/</g,'&lt;')}</div>
+      <div style="font-size:12.5px;color:#6b7280">${s.role==='owner'?'Власник':s.role==='admin'?'Адміністратор':'Майстер'}</div></div>
+      <span class="material-icons-round" style="color:#6d5ae6">arrow_forward</span>
+    </div>`).join('');
+  ov.innerHTML = `<div style="max-width:420px;width:100%">
+    <div style="color:#fff;text-align:center;margin-bottom:18px"><div style="font-size:22px;font-weight:800">Обери салон</div>
+    <div style="opacity:.75;font-size:13.5px;margin-top:4px">Один вхід — усі твої салони. Перемикайся будь-коли через меню.</div></div>
+    <div style="display:flex;flex-direction:column;gap:10px">${cards}</div></div>`;
+  document.body.appendChild(ov);
+}
+function _pickSalon(i) {
+  let salons = [];
+  try { salons = JSON.parse(localStorage.getItem('svs_salons') || '[]'); } catch (_) {}
+  const s = salons[i]; if (!s) return;
+  TOKEN = s.token; USER = s.user || null;
+  localStorage.setItem('svs_admin_token', TOKEN);
+  if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
+  if (s.slug) { localStorage.setItem('svs_tenant_slug', s.slug); }
+  else { localStorage.removeItem('svs_tenant_slug'); } // платформа Боса — без слага
+  location.reload(); // чистий старт у контексті обраного салону
+}
+function switchSalon() { // виклик з меню «Змінити салон»
+  let salons = [];
+  try { salons = JSON.parse(localStorage.getItem('svs_salons') || '[]'); } catch (_) {}
+  if (salons.length > 1) _showSalonPicker(salons);
+}
+
 // Основний вхід: логін + пароль
 function login() {
   const identifier = document.getElementById('loginIdent').value.trim();
@@ -3340,14 +3387,25 @@ function login() {
   (async () => {
     let r, j;
     try {
-      r = await fetch(API + '/api/auth/panel-login', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
+      // ЄДИНИЙ ВХІД: один пароль → всі салони майстра. Один салон = звичайний вхід,
+      // кілька = екран вибору салону (перемикання потім без пароля).
+      r = await fetch(API + '/api/auth/panel-login-multi', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
         body: JSON.stringify({ identifier, password, remember_me: remember }) });
       j = await r.json();
+      // fallback на старий вхід (мультивхід пропускає 2FA-акаунти)
+      if (r.status === 401) {
+        r = await fetch(API + '/api/auth/panel-login', { method:'POST', headers:{'Content-Type':'application/json', ...tenantHeader()},
+          body: JSON.stringify({ identifier, password, remember_me: remember }) });
+        j = await r.json();
+      }
     } catch { return _loginErr('Сервер недоступний, спробуйте ще раз'); }
-    if (r.status === 200 && j.ok && j.token) {
+    if (r.status === 200 && j.ok && j.requires_pick && Array.isArray(j.salons)) {
+      _showSalonPicker(j.salons);
+    } else if (r.status === 200 && j.ok && j.token) {
       TOKEN = j.token; USER = j.user || null;
       localStorage.setItem('svs_admin_token', TOKEN);
       if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
+      if (j.tenant_slug) { TENANT_SLUG = j.tenant_slug; localStorage.setItem('svs_tenant_slug', j.tenant_slug); }
       applyRoleUI(); showApp();
     } else if (r.status === 200 && j.ok && j.requires_2fa && j.pre_auth_token) {
       // Блокер A1: panel-login тепер вимагає 2FA-код. Показуємо поле коду і підтверджуємо через verify-2fa.
