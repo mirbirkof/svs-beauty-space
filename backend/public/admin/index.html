@@ -10,6 +10,13 @@
 <title>SVS Beauty — CRM</title>
 <script>try{
   if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');
+  // Соло-майстер: якщо минулого разу був соло — ХОВАЄМО меню ДО першої відрисовки,
+  // щоб повне меню не блимало. applySoloMenu покаже правильні пункти. Safety: 2.5с зняти в будь-якому разі.
+  if(localStorage.getItem('svs_solo')==='1'){
+    document.documentElement.classList.add('solo-loading');
+    var _ss=document.createElement('style');_ss.textContent='.solo-loading .sidebar-item,.solo-loading .sidebar-group-header{visibility:hidden}';document.head.appendChild(_ss);
+    setTimeout(function(){document.documentElement.classList.remove('solo-loading');},2500);
+  }
   // Стан розкритих груп меню застосовуємо ДО першої відрисовки (pre-paint),
   // інакше меню «стрибає»: спершу рисується одне, потім JS міняє на збережене.
   var _g=JSON.parse(localStorage.getItem('svs_sb_groups')||'[]');
@@ -3133,6 +3140,8 @@ function applySoloMenu(tries) {
     const vis = [...its].some(el => !el.classList.contains('solo-hidden'));
     g.classList.toggle('solo-hidden', its.length > 0 && !vis);
   });
+  // правильні пункти застосовані → знімаємо pre-paint приховування (показуємо лаконічне меню)
+  document.documentElement.classList.remove('solo-loading');
   if ((tries||0) < 4) setTimeout(() => applySoloMenu((tries||0)+1), 400);
 }
 // Віджет заміток (svsNotesFab/Panel/Badge) — це ВНУТРІШНІЙ фідбек-інструмент
@@ -3150,9 +3159,14 @@ async function applyEntitlements() {
   window.ENTITLEMENTS = ent;
   // Віджет заміток прихований CSS за замовчуванням; показуємо ЛИШЕ платформі.
   if (ent.is_platform) document.body.classList.add('platform-tenant');
-  if (ent.is_solo && !ent.is_platform) {
+  const solo = ent.is_solo && !ent.is_platform;
+  try { localStorage.setItem('svs_solo', solo ? '1' : '0'); } catch (_) {}
+  if (solo) {
     document.body.classList.add('solo-mode');
     applySoloMenu(0);
+  } else {
+    // не соло → знімаємо pre-paint приховування (якщо лишилось з попереднього разу)
+    document.documentElement.classList.remove('solo-loading');
   }
   // ── ТАРИФНІ ЗАМКИ 🔒 (Фаза 2): платні розділи на безкоштовному тарифі ──
   // Показуємо з замком (не ховаємо) → мотивація оновитись. Платформа — все відкрито.
@@ -12743,14 +12757,16 @@ async function loadMySub(){
   const box = document.getElementById('mysubBody');
   box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Завантаження…</div>';
   try {
-    const [sub, plansR, invR, gw, addR, refR] = await Promise.all([
+    const [sub, plansR, invR, gw, addR, refR, entR] = await Promise.all([
       api('/api/billing/subscription'),
       api('/api/billing/plans'),
       api('/api/billing/invoices?limit=20'),
       api('/api/billing/gateways'),
       api('/api/saas/addons').catch(()=>({addons:[]})),
       api('/api/saas/referral').catch(()=>null),
+      api('/api/my/entitlements').catch(()=>null),  // гарантуємо соло-флаг ДО рендеру
     ]);
+    if (entR && entR.ok) window.ENTITLEMENTS = entR;
     _mysub.referral = (refR && !refR.error) ? refR : null;
     if (sub && sub.error === 'forbidden') { box.innerHTML = '<div style="padding:40px;text-align:center;color:#9aa0a6">Керування підпискою доступне лише власнику салону.</div>'; return; }
     _mysub.sub = (sub && !sub.error) ? sub : null;
