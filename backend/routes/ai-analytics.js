@@ -178,6 +178,20 @@ async function scanInsights() {
   const push = (category, severity, title, body, action, metric_value, fp) =>
     insights.push({ category, severity, title, body, action, metric_value, fingerprint: fp });
 
+  // 0) НОВИЙ салон/майстер: без історії тривожні інсайти («відтік», «неявки», «падіння
+  //    виручки», «немає роботи») лякають і демотивують. Поки мало даних — тепле привітання,
+  //    а не аларми. (людський фактор: новачок має бачити підтримку, а не «в тебе все погано»)
+  try {
+    const st = (await pool.query(
+      `SELECT COUNT(*)::int AS appts FROM appointments WHERE starts_at >= NOW() - INTERVAL '90 days'`)).rows[0];
+    if (num(st.appts) < 15) {
+      push('welcome', 'opportunity', 'Ласкаво просимо! 🌱',
+        'Ти щойно почав — і це чудово. Додай свої послуги та поділись посиланням на онлайн-запис. Перші записи, аналітика й персональні поради зʼявляться тут, коли накопичиться історія. Ми поруч.',
+        'Поділитись посиланням на онлайн-запис', 0, 'welcome_new');
+      return insights;
+    }
+  } catch (_) { /* якщо перевірка впала — не блокуємо звичайні інсайти */ }
+
   // 1) Динаміка виручки (останні 30 vs попередні 30)
   const rev = await dailySeries('revenue', 60);
   const prev30 = rev.slice(0, 30).reduce((s, x) => s + x.v, 0);
