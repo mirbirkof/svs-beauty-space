@@ -163,12 +163,35 @@ function start(getPool, tg, opts) {
       if (opts.runAs && opts.defaultTenantId) await opts.runAs(opts.defaultTenantId, () => tick(pool, tg));
       else await tick(pool, tg);
     } catch (e) { console.error('[reminders/tick]', e.message); }
-    // 2) SAS: салони з власними ботами — кожен у СВОЄМУ tenant-контексті СВОЇМ ботом
-    if (opts.listConnectedBots && opts.runAs && opts.tgFor) {
+    // 2) SAS: УСІ активні салони-орендарі (не лише з власним ботом!) — соло на СПІЛЬНОМУ
+    //    боті теж має отримувати нагадування (раніше цикл йшов лише по connected-ботах,
+    //    і Free/PRO-орендар без свого бота лишався без нагадувань — дірка 17.07).
+    //    Бот: свій якщо підключений, інакше спільний (getBotForTenant вирішує).
+    //    Гейт: авто-нагадування — платна фіча notify.auto (DIKIDI). Free → скіп (ручні).
+    if (opts.runAs && opts.tgFor && opts.getBotForTenant) {
+      try {
+        const tens = (await pool.query(
+          `SELECT id FROM tenants WHERE COALESCE(is_internal,false)=false AND COALESCE(status,'active')='active'`)).rows;
+        for (const t of tens) {
+          if (String(t.id) === String(opts.defaultTenantId)) continue;
+          await opts.runAs(t.id, async () => {
+            try {
+              if (opts.featureAllowed) {
+                const f = await opts.featureAllowed('notify.auto');
+                if (f && f.ok === false) return; // Free-тариф: ручні нагадування
+              }
+              const bot = await opts.getBotForTenant(t.id);
+              if (bot && bot.token) await tick(pool, opts.tgFor(bot.token));
+            } catch (e) { console.error('[reminders/tenant]', t.id, e.message); }
+          });
+        }
+      } catch (e) { console.error('[reminders/tenants]', e.message); }
+    } else if (opts.listConnectedBots && opts.runAs && opts.tgFor) {
+      // fallback: стара поведінка, якщо getBotForTenant не передали
       try {
         const bots = await opts.listConnectedBots(pool);
         for (const b of bots) {
-          if (String(b.tenant_id) === String(opts.defaultTenantId)) continue; // платформа вже оброблена
+          if (String(b.tenant_id) === String(opts.defaultTenantId)) continue;
           await opts.runAs(b.tenant_id, () => tick(pool, opts.tgFor(b.bot_token)))
             .catch((e) => console.error('[reminders/tenant]', b.tenant_id, e.message));
         }

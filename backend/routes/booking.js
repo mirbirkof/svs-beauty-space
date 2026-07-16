@@ -147,6 +147,10 @@ if (BOT_TOKEN) {
   try {
     require('../lib/booking-reminders').start(getPool, tg, {
       runAs, defaultTenantId: DEFAULT_TENANT_ID, tgFor, listConnectedBots,
+      // 17.07: обхід УСІХ орендарів (соло на спільному боті теж отримує нагадування),
+      // бот на салон вирішує getBotForTenant; авто-нагадування гейтяться notify.auto (PRO)
+      getBotForTenant: require('../lib/tenant-bots').getBotForTenant,
+      featureAllowed: require('../lib/feature-gate').featureAllowed,
     });
   } catch (e) { console.error('[booking/reminders-init]', e.message); }
 }

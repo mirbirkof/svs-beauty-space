@@ -76,4 +76,4 @@ function invalidateFeatureCache(tenantId) {
   for (const k of _cache.keys()) if (!tenantId || k.startsWith(tenantId + ':')) _cache.delete(k);
 }
 
-module.exports = { requireFeature, invalidateFeatureCache };
+module.exports = { requireFeature, invalidateFeatureCache, featureAllowed };
