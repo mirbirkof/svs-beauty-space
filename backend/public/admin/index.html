@@ -3098,43 +3098,50 @@ function showApp() {
 
 // Тариф/режим салону: соло-майстер (один) → ховаємо командні та enterprise-розділи.
 // Fail-open: якщо запит впав — нічого не ховаємо (робочий салон не постраждає).
-// Підхід — БІЛИЙ СПИСОК: соло бачить лише свої потрібні розділи, решта схована.
-// Соло-майстру ПОТРІБНО (все інше ховаємо):
-const SOLO_KEEP_PAGES = [
-  'dashboard','journal','clients','services','svccats','online','reminders',
-  'repeat','waitlist','giftcerts','formulas','blacklist','reviews','surveys',
-  'products','stock','purchasing','suppliers','cashflow','finance','orders',
-  'mysub','settings','branding','documents','kb',
-];
+// БІЛИЙ СПИСОК: соло бачить лише своє. Пункти меню бувають ДВОХ типів —
+// data-page (go) і data-embed (openEmbed), тому перевіряємо ОБИДВА.
+const SOLO_KEEP_PAGES = new Set([
+  'dashboard','journal','wsched','clients','waitlist','repeat','formulas','blacklist',
+  'services','svccats','orders','giftcerts','finance','cashflow','reminders','reviews',
+  'products','stock','purchasing','suppliers','settings','mysub','branding','surveys','kb','documents',
+]);
+// Дозволені embed-розділи (підрядок URL): каса, інвентаризація, чек-лист зміни.
+const SOLO_KEEP_EMBED = ['#cashbox','#inventory','shift-checklist'];
+function soloItemAllowed(el) {
+  const p = el.getAttribute('data-page');
+  if (p) return SOLO_KEEP_PAGES.has(p);
+  const e = el.getAttribute('data-embed') || '';
+  return SOLO_KEEP_EMBED.some(k => e.includes(k));
+}
+function applySoloMenu(tries) {
+  const items = document.querySelectorAll('.sidebar-item[data-page],.sidebar-item[data-embed]');
+  if (!items.length) { if ((tries||0) < 10) return setTimeout(() => applySoloMenu((tries||0)+1), 200); return; }
+  items.forEach(el => { if (!soloItemAllowed(el)) el.style.display = 'none'; });
+  // порожні групи ховаємо
+  document.querySelectorAll('.sidebar-group').forEach(g => {
+    const its = g.querySelectorAll('.sidebar-item[data-page],.sidebar-item[data-embed]');
+    const vis = [...its].some(el => el.style.display !== 'none');
+    if (its.length && !vis) g.style.display = 'none';
+  });
+}
+// Віджет заміток (svsNotesFab/Panel/Badge) — це ВНУТРІШНІЙ фідбек-інструмент
+// команди Боса. Салонам-клієнтам (не платформа) він не потрібен — ховаємо назавжди.
+function hideNotesWidget() {
+  const kill = () => ['svsNotesFab','svsNotesPanel','svsNotesBadge'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  kill(); for (const t of [200,600,1500,3000]) setTimeout(kill, t); // віджет вантажиться асинхронно
+}
 async function applyEntitlements() {
   let ent;
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
   if (!ent || !ent.ok) return;
   window.ENTITLEMENTS = ent;
+  // Віджет заміток — лише для платформи (команда Боса), не для салонів-клієнтів.
+  if (!ent.is_platform) hideNotesWidget();
   if (ent.is_solo && !ent.is_platform) {
     document.body.classList.add('solo-mode');
-    if (!document.getElementById('soloModeCss')) {
-      // ховаємо КОЖЕН пункт меню, якого немає в білому списку
-      const all = [...document.querySelectorAll('.sidebar-item[data-page]')];
-      const hide = all.map(el => el.getAttribute('data-page'))
-                      .filter(p => p && !SOLO_KEEP_PAGES.includes(p));
-      if (hide.length) {
-        const st = document.createElement('style');
-        st.id = 'soloModeCss';
-        st.textContent = 'body.solo-mode .sidebar-item[data-page="' +
-          [...new Set(hide)].join('"],body.solo-mode .sidebar-item[data-page="') +
-          '"]{display:none!important}';
-        document.head.appendChild(st);
-      }
-      // сховати також порожні групи-заголовки, де не лишилось видимих пунктів
-      setTimeout(() => {
-        document.querySelectorAll('.sidebar-group').forEach(g => {
-          const items = g.querySelectorAll('.sidebar-item[data-page]');
-          const visible = [...items].some(el => getComputedStyle(el).display !== 'none');
-          if (items.length && !visible) g.style.display = 'none';
-        });
-      }, 50);
-    }
+    applySoloMenu(0);
   }
   // ── ТАРИФНІ ЗАМКИ 🔒 (Фаза 2): платні розділи на безкоштовному тарифі ──
   // Показуємо з замком (не ховаємо) → мотивація оновитись. Платформа — все відкрито.
