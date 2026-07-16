@@ -51,6 +51,11 @@ body.solo-mode #tab-business .card:has(#adminPermsList) { display: none !importa
 body.solo-mode a[data-tab="rooms"],
 body.solo-mode a[data-embed*="users-access"],
 body.solo-mode a[data-embed*="crm-migrate"] { display: none !important; }
+/* ДАШБОРД соло: командні блоки геть (один майстер — нема кого порівнювати/контролювати) */
+body.solo-mode #mgrPanel,
+body.solo-mode #planCard,
+body.solo-mode #qualCard,
+body.solo-mode .card:has(#topMastersBody) { display: none !important; }
 :root {
   --primary: #5B5FC7;
   --primary-hover: #4B4FB7;
