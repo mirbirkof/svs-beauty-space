@@ -64,7 +64,10 @@ router.post('/owner-code', requirePerm('settings.write'), async (req, res) => {
   } catch (e) { console.error('[bot-connect/owner-code]', e.message); res.status(500).json({ error: 'internal' }); }
 });
 
-router.post('/', requirePerm('integrations.write'), async (req, res) => {
+// Власний брендовий бот — платна фіча (DIKIDI-логіка: аналог «брендового застосунку»).
+// Безкоштовно всі салони обслуговує НАШ спільний бот. requireFeature fail-open для старих.
+const { requireFeature } = require('../lib/feature-gate');
+router.post('/', requirePerm('integrations.write'), requireFeature('brand.bot'), async (req, res) => {
   try {
     const token = String((req.body || {}).token || '').trim();
     if (!/^\d{6,12}:[A-Za-z0-9_-]{30,60}$/.test(token)) {

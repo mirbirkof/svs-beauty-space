@@ -2568,6 +2568,20 @@ select.input { background:var(--card); }
 
             <!-- ОНЛАЙН-ЗАПИС -->
             <div class="set-pane" id="tab-booking">
+              <!-- Telegram-бот запису: спільний (безкоштовно) або власний брендовий (платно) -->
+              <div class="card"><div class="card-body" id="tgBotCard">
+                <h3 class="set-h">Telegram-бот запису <button type="button" class="info-i" data-t="<b>Telegram-бот.</b> Клієнти записуються й отримують нагадування через Telegram. Безкоштовно працює наш спільний бот. За бажанням підключіть ВЛАСНОГО бота з вашим імʼям і аватаром (створюється у @BotFather за 2 хвилини)." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+                <div id="tgBotStatus" style="margin-bottom:10px;font-size:13.5px;color:var(--text-secondary)">Завантаження…</div>
+                <div class="set-form">
+                  <div class="set-field"><label>Токен вашого бота (з @BotFather)</label>
+                    <input id="tgBotToken" class="input" type="password" placeholder="123456789:AAF3k…" autocomplete="off"></div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-primary btn-sm" onclick="tgBotConnect()">Підключити свого бота</button>
+                    <button class="btn btn-sm" id="tgBotDisc" style="display:none" onclick="tgBotDisconnect()">Відключити (повернутись на спільний)</button>
+                  </div>
+                  <p id="tgBotMsg" class="set-msg" style="margin-top:8px"></p>
+                </div>
+              </div></div>
               <div class="card"><div class="card-body">
                 <h3 class="set-h">Онлайн-запис <button type="button" class="info-i" data-t="<b>Онлайн-запис.</b> Налаштування сторінки самостійного запису клієнтів: які послуги показувати, інтервали слотів, за скільки наперед і на скільки днів уперед можна записатись." onclick="showInfo(event,this.dataset.t)">i</button></h3>
                 <p class="set-p">Налаштування форми запису, якою користуються клієнти.</p>
@@ -5264,6 +5278,39 @@ function setTab(tab) {
   document.querySelectorAll('.sidebar-item[data-page="settings"]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
   // Сумісність зі старим внутрішнім підменю (якщо ще присутнє в DOM)
   document.querySelectorAll('.settings-nav .set-item[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
+  if (tab === 'booking') { try { tgBotLoad(); } catch (_) {} }
+}
+
+// ── Telegram-бот запису: статус / підключення власного / відключення ──
+async function tgBotLoad() {
+  const st = document.getElementById('tgBotStatus'); if (!st) return;
+  try {
+    const r = await api('/api/bot-connect');
+    if (r && r.connected && r.bot_username) {
+      st.innerHTML = '🤖 Підключено ВАШОГО бота: <b>@' + r.bot_username + '</b> — клієнти пишуть саме йому';
+      document.getElementById('tgBotDisc').style.display = '';
+    } else {
+      st.innerHTML = '✅ Працює наш спільний бот (безкоштовно). Хочете бота під своїм імʼям і аватаром — підключіть власного нижче.';
+      document.getElementById('tgBotDisc').style.display = 'none';
+    }
+  } catch (_) { st.textContent = 'Не вдалося отримати статус'; }
+}
+async function tgBotConnect() {
+  const tok = (document.getElementById('tgBotToken').value || '').trim();
+  const msg = document.getElementById('tgBotMsg');
+  if (!tok) { msg.textContent = 'Вставте токен з @BotFather'; return; }
+  msg.textContent = 'Підключаю…';
+  const r = await api('/api/bot-connect', { method: 'POST', body: JSON.stringify({ token: tok }) });
+  if (r && r.ok) { msg.textContent = '✅ Підключено @' + r.bot_username; document.getElementById('tgBotToken').value = ''; tgBotLoad(); }
+  else if (r && r.error === 'feature-locked') {
+    msg.innerHTML = '🔒 Власний брендовий бот доступний на тарифі <b>Майстер PRO</b>. <a href="#" onclick="go(\'mysub\');return false" style="color:#5b5fc7;font-weight:600">Спробувати 14 днів безкоштовно →</a>';
+  } else msg.textContent = (r && (r.error || r.message)) || 'Помилка підключення';
+}
+async function tgBotDisconnect() {
+  if (!confirm('Відключити власного бота і повернутись на спільний?')) return;
+  const r = await api('/api/bot-connect', { method: 'DELETE' });
+  document.getElementById('tgBotMsg').textContent = r && r.ok ? 'Повернуто на спільний бот' : 'Помилка';
+  tgBotLoad();
 }
 async function loadSettings() {
   const msg = document.getElementById('settingsMsg');
@@ -12887,6 +12934,13 @@ async function loadMySub(){
     _mysub.invoices = (invR && invR.rows) || [];
     _mysub.gateways = gw || {};
     _mysub.addons = (addR && addR.addons) || [];
+    // Соло бачить лише СВОЇ модулі-доплати (DIKIDI-логіка), без командних/мережевих
+    try {
+      if (window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo) {
+        const SOLO_ADDONS = ['before_after', 'ai_recommendations', 'ai_receptionist'];
+        _mysub.addons = _mysub.addons.filter(a => SOLO_ADDONS.includes(String(a.code || a.feature_key || '').replace('.', '_')));
+      }
+    } catch (_) {}
     renderMySub();
   } catch (e) {
     box.innerHTML = '<div style="padding:40px;text-align:center;color:#d9534f">Не вдалося завантажити підписку. Спробуйте оновити сторінку.</div>';
@@ -13078,7 +13132,7 @@ function renderMySub(){
         <div style="color:#4a4f6a;font-size:13.5px;line-height:1.5;margin-bottom:12px">Коли виростеш до салону — тариф <b>Салон</b> відкриє майстрів, графіки, зарплати й аналітику по команді. <b>Твоя історія й клієнти залишаться з тобою.</b></div>
         <button class="btn btn-sm" style="background:#5b5fc7;color:#fff;border:0;font-weight:600" onclick="if(confirm('Дізнатись про тариф Салон? Ми допоможемо все перенести й налаштувати.')){toast('Заявку прийнято — звʼяжемось');}">Дізнатись про Салон →</button>
       </div>`;
-    box.innerHTML = cur + freeCard + proCard + growCard + refBlock + invBlock;
+    box.innerHTML = cur + freeCard + proCard + growCard + addonsBlock + refBlock + invBlock;
     return;
   }
   box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;
