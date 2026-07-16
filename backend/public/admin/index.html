@@ -2311,7 +2311,7 @@ select.input { background:var(--card); }
 
       <!-- ═══ REPEAT VISITS ═══ -->
       <div class="page" id="page-repeat">
-        <div class="kpi-grid" id="repStats" style="max-width:800px"></div>
+        <div class="kpi-grid" id="repStatsRepeat" style="max-width:800px"></div>
         <div style="display:flex;gap:8px;margin-bottom:16px">
           <button onclick="loadRepeat()" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
           <button onclick="runRepeat()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Запустити кампанію</button>
@@ -5759,7 +5759,7 @@ async function loadRepeat() {
       api('/api/repeat-visits/candidates?limit=100'),
     ]);
     const k = st.stats || {};
-    document.getElementById('repStats').innerHTML = [
+    document.getElementById('repStatsRepeat').innerHTML = [
       ['Кандидатів', k.candidates ?? '—', 'orange'],
       ['Відправлено', k.sent_total ?? '—', 'blue'],
       ['Конверсія', (k.conversion ?? '0') + '%', 'green'],
@@ -9850,7 +9850,7 @@ function ncSearchClient() {
     const box = document.getElementById('ncClientResults');
     if (q.length < 2) { box.innerHTML=''; return; }
     const r = await api('/api/admin/clients?limit=8&search=' + encodeURIComponent(q));
-    box.innerHTML = (r.items||[]).map(c=>`<div style="padding:6px 8px;border:1px dashed var(--border);border-radius:8px;cursor:pointer" onclick="ncPickClient(${c.id},'${(c.name||'').replace(/'/g,'')}','${c.phone||''}')">${c.name||'—'} · ${fmtPhone(c.phone)}</div>`).join('')
+    box.innerHTML = (r.items||[]).map(c=>`<div style="padding:6px 8px;border:1px dashed var(--border);border-radius:8px;cursor:pointer" onclick="ncPickClient(${c.id},'${escapeHtml(c.name||'').replace(/'/g,"\\'")}','${escapeHtml(c.phone||'').replace(/'/g,"\\'")}')">${escapeHtml(c.name||'—')} · ${fmtPhone(c.phone)}</div>`).join('')
       || '<span style="font-size:12px;color:var(--text-secondary)">Не знайдено — заповніть імʼя+телефон нижче</span>';
   }, 300);
 }
@@ -10562,7 +10562,7 @@ function fsPickSearch(q){
       const r=await api('/api/admin/clients?limit=8&search='+encodeURIComponent(q.trim()));
       const items=r.items||r.clients||r||[];
       if(!items.length){ box.innerHTML='<div style="font-size:13px;color:var(--text-secondary);padding:4px">Нікого не знайдено</div>'; return; }
-      box.innerHTML=items.map(c=>`<div style="padding:7px 10px;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;gap:10px" onmouseover="this.style.background='var(--bg-hover,#f1f5f9)'" onmouseout="this.style.background=''" onclick="fsPickClient(${c.id})"><b>${String(c.name||'Без імені').replace(/</g,'&lt;')}</b><span style="color:var(--text-secondary)">${c.phone||''}</span></div>`).join('');
+      box.innerHTML=items.map(c=>`<div style="padding:7px 10px;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;gap:10px" onmouseover="this.style.background='var(--bg-hover,#f1f5f9)'" onmouseout="this.style.background=''" onclick="fsPickClient(${c.id})"><b>${escapeHtml(c.name||'Без імені')}</b><span style="color:var(--text-secondary)">${escapeHtml(c.phone||'')}</span></div>`).join('');
     }catch(e){ box.innerHTML='<div style="font-size:13px;color:#dc2626;padding:4px">Помилка пошуку</div>'; }
   },300);
 }

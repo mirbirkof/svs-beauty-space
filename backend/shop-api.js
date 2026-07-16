@@ -121,13 +121,21 @@ const credentialLimiter = rateLimit({
   skipSuccessfulRequests: true,             // успішний логін не зараховується — рахуємо лише невдалі спроби
   message: { error: 'too-many-auth-attempts' },
 });
+// Скидання пароля завжди відповідає 200 (захист від enumeration), тому skipSuccessfulRequests
+// НЕ рахував би нічого. Окремий лімітер рахує ВСІ запити: 5 за 15 хв з IP — блокує і перебір
+// акаунтів по timing, і флуд листами/повідомленнями легітимному користувачу. (аудит 16.07)
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 5,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'too-many-reset-requests' },
+});
 app.use('/api', globalLimiter);
 app.use('/api/cabinet', authLimiter);
 // Анти-брутфорс на конкретні точки входу/скидання пароля (лише невдалі спроби).
 // Точково, щоб не throttle-ити /me, /refresh-token, /logout (їх викликають часто).
 app.use('/api/auth/login', credentialLimiter);
 app.use('/api/auth/staff/login-password', credentialLimiter);
-app.use('/api/auth/forgot-password', credentialLimiter);
+app.use('/api/auth/forgot-password', resetLimiter);
 app.use('/api/auth/reset-password', credentialLimiter);
 app.use('/api/files/upload', uploadLimiter);
 
