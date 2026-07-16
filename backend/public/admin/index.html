@@ -3093,6 +3093,29 @@ function showApp() {
   if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
   loadBillingAlert();
   try { startOnlineEventsPoll(); } catch (_) {}
+  try { applyEntitlements(); } catch (_) {}
+}
+
+// Тариф/режим салону: соло-майстер (один) → ховаємо командні розділи меню.
+// Fail-open: якщо запит впав — нічого не ховаємо (робочий салон не постраждає).
+// Розділи тільки для команди (одиночці не потрібні):
+const SOLO_HIDE_PAGES = ['payroll','shifts','plan','qcontrol','callcenter'];
+async function applyEntitlements() {
+  let ent;
+  try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
+  if (!ent || !ent.ok) return;
+  window.ENTITLEMENTS = ent;
+  if (ent.is_solo && !ent.is_platform) {
+    document.body.classList.add('solo-mode');
+    if (!document.getElementById('soloModeCss')) {
+      const st = document.createElement('style');
+      st.id = 'soloModeCss';
+      st.textContent = 'body.solo-mode .sidebar-item[data-page="' +
+        SOLO_HIDE_PAGES.join('"],body.solo-mode .sidebar-item[data-page="') +
+        '"]{display:none!important}';
+      document.head.appendChild(st);
+    }
+  }
 }
 
 // Глобальний банер про неоплачений рахунок — лише власнику салону з боргом.

@@ -346,6 +346,7 @@ try { app.use('/api/payouts', require('./routes/payouts')); } catch(e) { console
 try { app.use('/api/expense-confirm', require('./routes/expense-confirm')); } catch(e) { console.error('[expense-confirm] mount failed:', e.message); }
 try { app.use('/api/manager', require('./routes/manager')); } catch(e) { console.error('[manager] mount failed:', e.message); }
 try { app.use('/api/onboarding', require('./routes/onboarding')); } catch(e) { console.error('[onboarding] mount failed:', e.message); }
+try { app.use('/api', require('./routes/entitlements')); } catch(e) { console.error('[entitlements] mount failed:', e.message); }
 // Нагадування про витрати: 1-го, 15-го і в останній день місяця.
 // НЕ проводить автоматично — лише нагадує підтвердити (адмін підтверджує/коригує у CRM).
 // ВИМКНЕНО за наказом Босса 15.07.2026 («Отключи») — спамило. Увімкнути назад:
