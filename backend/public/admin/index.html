@@ -22,6 +22,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
+/* Віджет заміток (внутрішній фідбек Боса) прихований ЗА ЗАМОВЧУВАННЯМ — щоб не блимав
+   при завантаженні у салонів-клієнтів. applyEntitlements ПОКАЗУЄ його лише платформі. */
+#svsNotesFab, #svsNotesPanel, #svsNotesBadge { display: none !important; }
+body.platform-tenant #svsNotesFab { display: flex !important; }
 :root {
   --primary: #5B5FC7;
   --primary-hover: #4B4FB7;
@@ -3137,8 +3141,8 @@ async function applyEntitlements() {
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
   if (!ent || !ent.ok) return;
   window.ENTITLEMENTS = ent;
-  // Віджет заміток — лише для платформи (команда Боса), не для салонів-клієнтів.
-  if (!ent.is_platform) hideNotesWidget();
+  // Віджет заміток прихований CSS за замовчуванням; показуємо ЛИШЕ платформі.
+  if (ent.is_platform) document.body.classList.add('platform-tenant');
   if (ent.is_solo && !ent.is_platform) {
     document.body.classList.add('solo-mode');
     applySoloMenu(0);
