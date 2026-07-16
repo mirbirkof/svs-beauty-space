@@ -61,95 +61,41 @@ router.post('/signup', signupLimiter, async (req, res) => {
     // один власник може мати кілька салонів. Від спаму захищає rate-limit вище.
     // Створення салону + власника. Платні плани → 14-денний trial.
     // solo/free → trial:false: одразу постійна безкоштовна active-підписка без рахунку.
-    const r = await tm.createTenant(salonName, {
-      phone, password, owner_name: ownerName, email,
-      plan_code: planCode, cycle, trial: needTrial, country, lang,
-    }, { id: null, source: 'public-signup' });
-
-    // GDPR (блокер G1): зберігаємо доказ згоди власника — timestamp, джерело, IP, версія.
-    try {
-      const { getPool } = require('../db-pg');
-      const cip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || null;
-      await getPool().query(
-        `UPDATE tenants SET consent_given_at = NOW(), consent_source = $2, consent_ip = $3, consent_version = $4 WHERE id = $1`,
-        [r.tenant.id, 'public-signup', cip, 'offer+dpa-2026-07']);
-    } catch (consErr) { console.error('[public-signup/consent]', consErr.message); }
-
-    // Партнёрська програма «приведи салон»: якщо реєстрація по реф-коду (?ref= / body.ref) —
-    // фіксуємо зв'язок. Нагорода рефереру нараховується при першій оплаті цього салону.
-    try {
-      const refCode = (b.ref || req.query.ref || '').toString().trim();
-      if (refCode) await require('../lib/partner-referrals').registerReferral(refCode, r.tenant.id, salonName);
-    } catch (refErr) { console.error('[public-signup/referral]', refErr.message); }
-
-    // SAS этап 2: онлайн-запис доступний одразу — ліцензія модуля online_booking.
-    // Платні плани → trial на trial_days; solo/free → безстрокова підписка (це
-    // ключовий сценарій майстра-одиночки: CRM + запис + свій ТГ-бот безкоштовно).
-    try {
-      const { getPool } = require('../db-pg');
-      const mod = await getPool().query(`SELECT id, trial_days FROM module_catalog WHERE code = 'online_booking'`);
-      if (mod.rowCount) {
-        await getPool().query(
-          `INSERT INTO licenses (tenant_id, module_id, license_type, status, activated_at, expires_at)
-           VALUES ($1, $2, $3, 'active', NOW(), $4)
-           ON CONFLICT DO NOTHING`,
-          [r.tenant.id, mod.rows[0].id,
-           needTrial ? 'trial' : 'subscription',
-           needTrial ? new Date(Date.now() + (Number(mod.rows[0].trial_days) || 14) * 864e5) : null]);
-      }
-    } catch (licErr) { console.error('[public-signup/license]', licErr.message); }
-
-    // МАЙСТЕР-ОДИНОЧКА (SaaS-аудит 06.07): одразу створюємо йому картку майстра
-    // (інакше журнал/онлайн-запис порожні і незрозумілі) та вмикаємо соло-режим
-    // (app_settings тепер per-tenant, міграція 217).
-    if (accountType === 'solo') {
-      try {
-        const { runAs } = require('../lib/tenant');
-        await runAs(r.tenant.id, async () => {
-          const { getPool } = require('../db-pg');
-          await getPool().query(
-            `INSERT INTO masters (name, phone, specialty, active, provides_services)
-             VALUES ($1, $2, NULL, true, true)
-             ON CONFLICT DO NOTHING`, [ownerName, phone]);
-          // лінкуємо owner-користувача з карткою майстра — інакше весь кабінет майстра
-          // (/api/me/*, «мої клієнти») відповідає 403 «Тільки для майстра» (аудит 06.07, P0)
-          await getPool().query(
-            `UPDATE users u SET master_id = m.id FROM masters m
-              WHERE m.phone = $1 AND u.phone = $1 AND u.master_id IS NULL`, [phone]);
-          const { setSetting } = require('../lib/settings');
-          await setSetting('solo_master_mode', true, null);
-          // тип акаунта в онбординг + крок 'employees' авто-виконано (соло працює сам,
-          // інакше чек-лист онбордингу навічно вимагає «додати співробітників», 100% недосяжні)
-          await getPool().query(
-            `UPDATE tenant_onboarding SET account_type='solo' WHERE tenant_id=$1`, [r.tenant.id]);
-          try { await tm.completeStep(r.tenant.id, 'employees'); } catch (_) {}
-          // дефолтний графік (пн-сб 09-18 на 30 днів) — інакше онлайн-запис
-          // повертає нуль слотів і соло-майстер думає, що система зламана
-          await getPool().query(
-            `INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, source)
-             SELECT m.id, gs::date, '09:00', '18:00', 'signup-default'
-               FROM masters m,
-                    generate_series(CURRENT_DATE, CURRENT_DATE + 89, '1 day') gs
-              WHERE m.phone = $1 AND EXTRACT(ISODOW FROM gs) < 7
-             ON CONFLICT DO NOTHING`, [phone]);
-        });
-      } catch (soloErr) { console.error('[public-signup/solo]', soloErr.message); }
-    }
-
-    res.status(201).json({
-      ok: true,
-      slug: r.slug,
-      salon_name: r.tenant.name,
-      login: { phone, tenant_slug: r.slug, header: 'X-Tenant-Slug: ' + r.slug },
-      login_url: '/admin/?tenant=' + encodeURIComponent(r.slug),
-      subscription: r.subscription,
-      trial_ends_at: r.subscription ? r.subscription.trial_ends_at : null,
+    // ПІДТВЕРДЖЕННЯ ТЕЛЕФОНУ (Босс 16.07): НЕ створюємо салон одразу — спершу
+    // верифікуємо номер через Telegram (безкоштовно, request_contact). Дані заявки
+    // живуть у pending_signups, реальне створення — у lib/signup-verify після контакту.
+    const { hashPassword } = require('../lib/auth-core');
+    const verify = require('../lib/signup-verify');
+    const cip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || null;
+    const password_hash = await hashPassword(password);
+    const { token, deeplink, bot_username } = await verify.createPending({
+      phone, salonName, ownerName, email, password_hash, accountType, planCode, cycle,
+      country, lang, refCode: (b.ref || req.query.ref || '').toString().trim() || null,
+      consent: true, consentIp: cip,
+    });
+    res.status(202).json({
+      ok: true, needs_verification: true, token, deeplink, bot_username,
+      message: 'Підтвердіть номер телефону в Telegram, щоб завершити реєстрацію.',
     });
   } catch (e) {
     console.error('[public-signup]', e.message);
     const msg = e.message || '';
     const code = /required|invalid|min|too-long/.test(msg) ? 400 : 500;
     res.status(code).json({ error: process.env.NODE_ENV === 'production' && code === 500 ? 'Internal server error' : msg });
+  }
+});
+
+// Статус заявки: веб поллит після відкриття Telegram-бота.
+// { status: pending | verified | expired | not-found, slug?, login_url? }
+router.get('/signup-status', async (req, res) => {
+  try {
+    const token = String(req.query.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'token-required' });
+    const st = await require('../lib/signup-verify').getStatus(token);
+    res.json(st);
+  } catch (e) {
+    console.error('[signup-status]', e.message);
+    res.status(500).json({ error: 'status-failed' });
   }
 });
 

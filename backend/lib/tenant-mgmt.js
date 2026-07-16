@@ -49,8 +49,10 @@ async function createTenant(name, opts = {}, actor = null) {
   // Зберігаємо телефон у каноні 380… без '+' (auth-core.normalizePhone, міграція 200) — логін шукає всі формати.
   const phone = phoneDigits ? normalizePhone(phoneDigits) : '';
   const password = opts.password ? String(opts.password) : null;
+  // passwordHash — готовый хеш (путь верификации: pending хранит хеш, не открытый пароль).
+  const presetHash = opts.passwordHash ? String(opts.passwordHash) : null;
   if (!phone) throw new Error('owner-phone-required');
-  if (!password || password.length < 6) throw new Error('owner-password-required'); // >=6 для входа
+  if (!presetHash && (!password || password.length < 6)) throw new Error('owner-password-required'); // >=6 для входа
   const planCode = opts.plan_code || 'pro';
   const cycle = opts.cycle === 'yearly' ? 'yearly' : 'monthly';
   const trial = opts.trial !== false; // по умолчанию trial 14д
@@ -68,7 +70,7 @@ async function createTenant(name, opts = {}, actor = null) {
   // Критичная связка: без владельца салон = «мёртвый» (войти нельзя). Аудит: если этот шаг
   // упадёт, компенсируем — удаляем только что созданный tenant (+ его роли), чтобы не оставить
   // orphan-салон с зарезервированным slug и без входа. Шаги 3+ (сиды/подписка) уже в try/catch.
-  const hash = await hashPassword(password);
+  const hash = presetHash || await hashPassword(password);
   let owner;
   try {
     owner = await runAs(tenant.id, async () => {

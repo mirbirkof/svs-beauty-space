@@ -264,6 +264,13 @@ async function processUpdate(upd, tg, salon) {
     if (msg.text && msg.text.startsWith('/start')) {
       const parts = msg.text.split(' ');
       const token = parts[1];
+      // ВЕРИФІКАЦІЯ РЕЄСТРАЦІЇ (Босс 16.07): токен sv_… — це підтвердження номера
+      // при реєстрації салону, а не запис. Просимо поділитись номером. Рання гілка.
+      if (token && token.startsWith('sv_')) {
+        try { await require('./../lib/signup-verify').onStartVerify(token, msg.chat.id, msg.from.id); }
+        catch (e) { console.error('[booking/signup-start]', e.message); }
+        return;
+      }
       // короткі deep-link ключі з сайту/візитки — це НЕ токен запису, а звичайний старт
       if (!token || /^(link|book|site|web|start|zapis|menu)$/i.test(token)) {
         // Власник салону → його меню керування (ізольовано; клієнт цього не бачить).
@@ -319,6 +326,12 @@ async function processUpdate(upd, tg, salon) {
 
     // contact received
     if (msg.contact) {
+      // ВЕРИФІКАЦІЯ РЕЄСТРАЦІЇ: якщо в цьому чаті активна заявка signup — обробляємо її
+      // і виходимо (не плутаємо з підтвердженням запису). Якщо заявки нема — false, йдемо далі.
+      try {
+        const handled = await require('./../lib/signup-verify').onContactVerify(msg.chat.id, msg.contact, msg.from.id);
+        if (handled) return;
+      } catch (e) { console.error('[booking/signup-contact]', e.message); }
       // critical: contact must belong to sender
       if (msg.contact.user_id !== msg.from.id) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '❌ Можна поділитись лише власним номером.' });

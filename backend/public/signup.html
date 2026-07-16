@@ -260,6 +260,12 @@
         }[data.error] || ('Помилка: ' + (data.error || 'спробуйте ще раз'));
         show('err', human); return;
       }
+      // Новий флоу: спершу підтвердження номера в Telegram.
+      if (data.needs_verification && data.token) {
+        showVerify(data.deeplink, data.token);
+        return;
+      }
+      // Fallback (якщо колись повернеться готовий салон одразу).
       const url = data.login_url || ('/admin/?tenant=' + encodeURIComponent(data.slug));
       const okText = acct === 'solo'
         ? 'Профіль <b>' + (data.salon_name || '') + '</b> створено! Базові функції безкоштовні назавжди.'
@@ -271,6 +277,47 @@
       btn.disabled = false; btn.textContent = 'Почати безкоштовно';
     }
   });
+
+  // ── Екран підтвердження номера через Telegram ──
+  let _pollTimer = null;
+  function showVerify(deeplink, token) {
+    const card = document.querySelector('.card') || document.body;
+    card.innerHTML =
+      '<h1 style="margin-bottom:6px">Підтвердіть номер</h1>' +
+      '<p style="color:var(--muted,#9aa0a6);margin-bottom:18px">Залишився один крок — підтвердіть номер телефону в Telegram. Це безкоштовно.</p>' +
+      '<a href="' + deeplink + '" target="_blank" rel="noopener" ' +
+      'style="display:block;text-align:center;background:#229ED9;color:#fff;padding:15px;border-radius:12px;font-size:16px;font-weight:700;text-decoration:none;margin-bottom:14px">' +
+      '📱 Підтвердити в Telegram</a>' +
+      '<ol style="color:var(--muted,#9aa0a6);font-size:13.5px;line-height:1.7;padding-left:18px">' +
+      '<li>Натисніть кнопку — відкриється наш бот</li>' +
+      '<li>У боті натисніть «📱 Підтвердити номер»</li>' +
+      '<li>Ця сторінка оновиться сама, коли номер підтверджено</li></ol>' +
+      '<div id="vstatus" style="margin-top:16px;text-align:center;color:var(--muted,#9aa0a6);font-size:14px">⏳ Очікуємо підтвердження…</div>';
+    startPoll(token);
+  }
+  function startPoll(token) {
+    if (_pollTimer) clearInterval(_pollTimer);
+    let tries = 0;
+    _pollTimer = setInterval(async () => {
+      tries++;
+      if (tries > 200) { clearInterval(_pollTimer); return; } // ~10 хв
+      try {
+        const r = await fetch(API + '/api/public/signup-status?token=' + encodeURIComponent(token));
+        const s = await r.json();
+        const el = document.getElementById('vstatus');
+        if (s.status === 'verified') {
+          clearInterval(_pollTimer);
+          const url = s.login_url || '/admin/';
+          if (el) el.innerHTML = '✅ <b>Номер підтверджено!</b><br><br>' +
+            '<a href="' + url + '" style="color:#229ED9;font-weight:700">Увійти в кабінет →</a>';
+          setTimeout(() => { location.href = url; }, 1500);
+        } else if (s.status === 'expired' || s.status === 'not-found') {
+          clearInterval(_pollTimer);
+          if (el) el.innerHTML = '⌛ Заявка застаріла. <a href="/p/signup.html" style="color:#229ED9">Почати знову</a>';
+        }
+      } catch (_) { /* мережний збій — просто чекаємо наступний тік */ }
+    }, 3000);
+  }
 </script>
 </body>
 </html>
