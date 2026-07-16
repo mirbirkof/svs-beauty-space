@@ -33,6 +33,17 @@
    при завантаженні у салонів-клієнтів. applyEntitlements ПОКАЗУЄ його лише платформі. */
 #svsNotesFab, #svsNotesPanel, #svsNotesBadge { display: none !important; }
 body.platform-tenant #svsNotesFab { display: flex !important; }
+/* СОЛО-МАЙСТЕР: в Бізнес-налаштуваннях приховуємо розділи тільки для салонів
+   (адмін-доступи, зміни/табель, права редагування) — у одного майстра їх немає */
+body.solo-mode #adminPermsCard,
+body.solo-mode #editPastDurWrap,
+body.solo-mode #tab-business .card:has(#bz_mod_shifts),
+body.solo-mode #tab-business .card:has(#set-edit-past),
+body.solo-mode #tab-business .card:has(#adminPermsList) { display: none !important; }
+/* Кабінети / ресурси та Доступ — не потрібні соло */
+body.solo-mode a[data-tab="rooms"],
+body.solo-mode a[data-embed*="users-access"],
+body.solo-mode a[data-embed*="crm-migrate"] { display: none !important; }
 :root {
   --primary: #5B5FC7;
   --primary-hover: #4B4FB7;
@@ -12918,7 +12929,10 @@ function renderMySub(){
       </div></div>`;
   }
   // СОЛО-МАЙСТЕР: не прайс-сітка в лице, а тепло — твій тариф + шлях + гідне «вирости до салону».
-  const isSolo = !!(window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo);
+  // Подвійний захист: is_solo з entitlements АБО plan_code=solo/solo_pro з підписки.
+  // Якщо entitlements ще не завантажились — все одно покажемо правильний вид.
+  const isSolo = !!(window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo)
+    || !!(s && ['solo','solo_pro'].includes(s.plan_code));
   if (isSolo) {
     const code = s ? s.plan_code : 'solo';
     const onPro = code === 'solo_pro';
