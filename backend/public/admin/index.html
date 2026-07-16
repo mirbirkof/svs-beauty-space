@@ -3104,13 +3104,15 @@ function showApp() {
 // Fail-open: якщо запит впав — нічого не ховаємо (робочий салон не постраждає).
 // БІЛИЙ СПИСОК: соло бачить лише своє. Пункти меню бувають ДВОХ типів —
 // data-page (go) і data-embed (openEmbed), тому перевіряємо ОБИДВА.
+// СОЛО-МАЙСТЕР бачить ЛИШЕ своє ремесло — жодних салонних модулів (склад/закупівлі/
+// постачальники/магазин/команда/маркетинг). «Стати салоном» — окрема кнопка апгрейду,
+// а не купа салонних розділів. Мінімальний робочий набір одного майстра:
 const SOLO_KEEP_PAGES = new Set([
-  'dashboard','journal','wsched','clients','waitlist','repeat','formulas','blacklist',
-  'services','svccats','orders','giftcerts','finance','cashflow','reminders','reviews',
-  'products','stock','purchasing','suppliers','settings','mysub','kb',
+  'dashboard','journal','clients','waitlist','repeat','formulas','blacklist',
+  'services','svccats','reminders','reviews','finance','giftcerts','settings','mysub',
 ]);
-// Дозволені embed-розділи (підрядок URL): каса, інвентаризація, чек-лист зміни.
-const SOLO_KEEP_EMBED = ['#cashbox','#inventory','shift-checklist'];
+// Дозволені embed-розділи для соло: вітрина онлайн-запису (сайт). Все інше — сховати.
+const SOLO_KEEP_EMBED = ['booking','vitrina','showcase'];
 function soloItemAllowed(el) {
   const p = el.getAttribute('data-page');
   if (p) return SOLO_KEEP_PAGES.has(p);
@@ -3120,13 +3122,18 @@ function soloItemAllowed(el) {
 function applySoloMenu(tries) {
   const items = document.querySelectorAll('.sidebar-item[data-page],.sidebar-item[data-embed]');
   if (!items.length) { if ((tries||0) < 10) return setTimeout(() => applySoloMenu((tries||0)+1), 200); return; }
-  items.forEach(el => { if (!soloItemAllowed(el)) el.style.display = 'none'; });
-  // порожні групи ховаємо
+  if (!document.getElementById('soloHideCss')) {
+    const st = document.createElement('style'); st.id = 'soloHideCss';
+    st.textContent = '.solo-hidden{display:none!important}';
+    document.head.appendChild(st);
+  }
+  items.forEach(el => { el.classList.toggle('solo-hidden', !soloItemAllowed(el)); });
   document.querySelectorAll('.sidebar-group').forEach(g => {
     const its = g.querySelectorAll('.sidebar-item[data-page],.sidebar-item[data-embed]');
-    const vis = [...its].some(el => el.style.display !== 'none');
-    if (its.length && !vis) g.style.display = 'none';
+    const vis = [...its].some(el => !el.classList.contains('solo-hidden'));
+    g.classList.toggle('solo-hidden', its.length > 0 && !vis);
   });
+  if ((tries||0) < 4) setTimeout(() => applySoloMenu((tries||0)+1), 400);
 }
 // Віджет заміток (svsNotesFab/Panel/Badge) — це ВНУТРІШНІЙ фідбек-інструмент
 // команди Боса. Салонам-клієнтам (не платформа) він не потрібен — ховаємо назавжди.
