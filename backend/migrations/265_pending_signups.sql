@@ -32,3 +32,10 @@ CREATE INDEX IF NOT EXISTS ix_pending_signups_phone ON pending_signups (phone);
 CREATE INDEX IF NOT EXISTS ix_pending_signups_expires ON pending_signups (expires_at);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON pending_signups TO app_tenant;
+
+-- ВАЖНО: таблица имеет колонку tenant_id (для отметки созданного салона), поэтому
+-- ensure-rls.js авто-включил бы tenant_isolation и сломал INSERT заявки (tenant_id=NULL
+-- в контексте дефолтного тенанта → new row violates RLS). Явно держим RLS ВЫКЛ; в
+-- ensure-rls.js pending_signups добавлена в PLATFORM_MANAGED (исключение). Доступ — по token.
+DROP POLICY IF EXISTS tenant_isolation ON pending_signups;
+ALTER TABLE pending_signups DISABLE ROW LEVEL SECURITY;

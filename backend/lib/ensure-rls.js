@@ -28,6 +28,10 @@ const { Pool } = require('pg');
 const PLATFORM_MANAGED = [
   '_migrations', 'subscriptions_saas', 'invoices_saas', 'tenant_addon_subscriptions',
   'licenses', 'tenant_onboarding', 'staff_otp_throttle',
+  // pending_signups — заявка на регистрацию ДО создания тенанта: пишется в контексте
+  // дефолтного тенанта (или без него), tenant_id заполняется ПОСЛЕ верификации.
+  // tenant_isolation ломала INSERT (new row violates RLS). Доступ только по token. (16.07)
+  'pending_signups',
 ];
 const EXCLUDE_SQL = PLATFORM_MANAGED.map(t => `'${t}'`).join(', ');
 
