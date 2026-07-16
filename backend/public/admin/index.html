@@ -12901,6 +12901,33 @@ function renderMySub(){
         </div>
       </div></div>`;
   }
+  // СОЛО-МАЙСТЕР: не прайс-сітка в лице, а тепло — твій тариф + шлях + гідне «вирости до салону».
+  const isSolo = !!(window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo);
+  if (isSolo) {
+    const proPlan = (_mysub.plans.find(p => p.code === 'pro' || p.code === 'professional')) || { name: 'Салон', price_month: 690 };
+    const soloBlock = `
+      <div style="background:#f4f7ff;border:1px solid #e0e7ff;border-radius:16px;padding:22px 24px;margin-bottom:18px">
+        <div style="font-size:17px;font-weight:700;color:#1e1f2b;margin-bottom:6px">Твій тариф — Майстер</div>
+        <div style="color:#4a4f6a;font-size:14px;margin-bottom:14px">Безкоштовно назавжди. Усе, що потрібно майстру: онлайн-запис, база клієнтів, послуги, нагадування, свої доходи, сертифікати.</div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:#6b7280">
+          <div><b style="font-size:18px;color:#1e1f2b">0 ₴</b><br>щомісяця</div>
+          <div><b style="font-size:18px;color:#1e1f2b">1</b><br>майстер (ти)</div>
+          <div><b style="font-size:18px;color:#1e1f2b">∞</b><br>записів і клієнтів</div>
+        </div>
+      </div>
+      <div style="background:linear-gradient(135deg,#6d5ae6,#8b6ff0);color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:18px">
+        <div style="font-size:17px;font-weight:700;margin-bottom:6px">🌱 Виріс до салону?</div>
+        <div style="opacity:.9;font-size:14px;margin-bottom:14px;line-height:1.5">Коли будеш готовий взяти команду — тариф <b>Салон</b> відкриє майстрів, графіки, зарплати, склад і аналітику по команді. Твоя історія й клієнти залишаться з тобою.</div>
+        <button class="btn" style="background:#fff;color:#6d5ae6;font-weight:700;border:0" onclick="document.getElementById('growBox').style.display='block';this.style.display='none'">Дізнатись про Салон →</button>
+        <div id="growBox" style="display:none;margin-top:16px;background:rgba(255,255,255,.12);border-radius:12px;padding:16px">
+          <div style="font-size:15px;font-weight:700;margin-bottom:8px">Салон — ${Math.round(proPlan.price_month||690)} ₴/міс</div>
+          <div style="opacity:.92;font-size:13.5px;line-height:1.6;margin-bottom:14px">+ Команда майстрів і доступи · Графіки та зміни · Зарплати й мотивація · Склад і закупівлі · Аналітика по команді · Маркетинг і розсилки</div>
+          <button class="btn" style="background:#fff;color:#6d5ae6;font-weight:700;border:0" onclick="if(confirm('Перейти на тариф Салон? Ми допоможемо все налаштувати.')){toast('Заявку прийнято — скоро звʼяжемось');}">Вирости до салону</button>
+        </div>
+      </div>`;
+    box.innerHTML = cur + soloBlock + refBlock + invBlock;
+    return;
+  }
   box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;
 }
 
