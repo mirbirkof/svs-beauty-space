@@ -89,6 +89,12 @@ router.patch('/', async (req, res) => {
           return res.status(403).json({ error: 'feature-locked', feature: 'sms.reminders',
             message: 'SMS-нагадування доступні на тарифі Майстер PRO. Спробуйте 14 днів безкоштовно у розділі «Моя підписка».' });
         }
+        // АВТО-нагадування (DIKIDI-логіка: головний платний тригер) — будь-який авто-канал
+        if (body.notifications && (body.notifications.telegram === true || body.notifications.viber === true)
+            && !(await gate('notify.auto'))) {
+          return res.status(403).json({ error: 'feature-locked', feature: 'notify.auto',
+            message: 'Автоматичні нагадування доступні на тарифі Майстер PRO (безкоштовно — ручні: готовий шаблон, надсилаєте самі). Спробуйте PRO 14 днів безкоштовно.' });
+        }
       }
     } catch (e) { console.error('[settings/feature-gate]', e.message); /* fail-open */ }
 
