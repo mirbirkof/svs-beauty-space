@@ -322,6 +322,147 @@ router.post('/login', validateBody({
   }
 });
 
+// ═════════════════════════════════════════════════════════
+// ЄДИНИЙ ВХІД МАЙСТРА (Варіант А, Босс 16.07.2026):
+// один телефон+пароль → всі салони, де цей пароль підходить.
+// Аддитивно: старий /login НЕ чіпаємо. Ізоляція ціла — сесія
+// завжди scoped на ОДИН tenant (звичайний issueSession).
+// ═════════════════════════════════════════════════════════
+async function findAllUsersByIdentifier(poolRef, identifier) {
+  const id = String(identifier || '').trim();
+  if (!id) return [];
+  const SEL = `SELECT u.*, r.code AS role_code, r.permissions AS role_permissions,
+                      tn.name AS tenant_name, tn.slug AS tenant_slug
+                 FROM users u LEFT JOIN roles r ON r.id=u.role_id
+                 LEFT JOIN tenants tn ON tn.id=u.tenant_id`;
+  let where, params;
+  if (id.includes('@')) {
+    where = 'LOWER(u.email)=$1'; params = [normalizeEmail(id)];
+  } else if (/^[\+\d\s\-\(\)]+$/.test(id)) {
+    const phone = normalizePhone(id);
+    const digits = phone.replace(/\D/g, '');
+    where = 'u.phone IN ($1,$2,$3)'; params = [phone, digits, '+' + digits];
+  } else {
+    where = 'LOWER(u.username)=LOWER($1)'; params = [id];
+  }
+  // ЄДИНИЙ ВХІД = платформенний запит ДО вибору салону: users під RLS показує лише
+  // поточний tenant-контекст, тому крос-тенантний пошук робимо у транзакції з
+  // ОЧИЩЕНИМ app.tenant_id (політика fail-open на порожній GUC → видно всіх).
+  // Безпечно: далі кожен кандидат перевіряється паролем, сесія — на один tenant.
+  const client = await poolRef.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL app.tenant_id = ''`);
+    const r = await client.query(`${SEL} WHERE ${where} ORDER BY u.created_at`, params);
+    await client.query('COMMIT');
+    return r.rows;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    throw e;
+  } finally { client.release(); }
+}
+
+// POST /api/auth/login-multi — вхід з вибором салону.
+// 0 збігів пароля → 401; 1 → одразу сесія (як /login); >1 → список салонів + pick_token (5 хв).
+router.post('/login-multi', validateBody({
+  identifier: t.string({ min: 1, max: 200, required: true }),
+  password: t.string({ min: 1, max: 200, required: true }),
+  remember_me: t.bool({ required: false }),
+}), async (req, res) => {
+  const { identifier, password, remember_me } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  try {
+    const ipFailures = await countRecentFailures(pool, ip || 'unknown', 'login', 15);
+    if (ipFailures >= 20) {
+      await recordAttempt(pool, { identifier, kind: 'login', success: false, ip, ua, meta: { reason: 'ip-rate-limit' } });
+      return res.status(429).json({ ok: false, error: 'too-many-attempts-ip' });
+    }
+    const candidates = await findAllUsersByIdentifier(pool, identifier);
+    const matched = [];
+    for (const u of candidates) {
+      if (!u.is_active || !u.password_hash) continue;
+      if (u.locked_until && new Date(u.locked_until) > new Date()) continue;
+      if (u.two_factor_enabled) continue; // 2FA-акаунти — через звичайний /login (кожен окремо)
+      if (await verifyPassword(password, u.password_hash)) matched.push(u);
+    }
+    if (!matched.length) {
+      await recordAttempt(pool, { identifier, kind: 'login', success: false, ip, ua, meta: { reason: 'multi-no-match' } });
+      return res.status(401).json({ ok: false, error: 'invalid-credentials' });
+    }
+    await pool.query(`UPDATE users SET failed_login_attempts=0, locked_until=NULL WHERE id = ANY($1)`, [matched.map(u => u.id)]);
+    if (matched.length === 1) {
+      const user = matched[0];
+      // сесія та last_login — у КОНТЕКСТІ салону юзера (user_sessions під RLS)
+      const { runAs } = require('../lib/tenant');
+      const sess = await runAs(user.tenant_id, async () => {
+        await pool.query(`UPDATE users SET last_login_at=NOW() WHERE id=$1`, [user.id]);
+        return issueSession(pool, { user, req, rememberMe: remember_me });
+      });
+      const { accessToken, refreshToken, refreshTtlMs: ttlMs, expiresAt } = sess;
+      setRefreshCookie(res, refreshToken, ttlMs);
+      await recordAttempt(pool, { identifier, kind: 'login', success: true, ip, ua, meta: { multi: 1 } });
+      return res.json({ ok: true, token: accessToken, token_expires_in: ACCESS_TTL_SEC,
+        refresh: refreshToken, refresh_expires_at: expiresAt, user: publicUser(user),
+        tenant_slug: user.tenant_slug || null });
+    }
+    // >1 салону: pick-token з дозволеними user_id (пароль вже підтверджено для кожного)
+    const pickToken = jwt.sign(
+      { typ: 'tenant_pick', uids: matched.map(u => u.id), rm: !!remember_me },
+      PRE_AUTH_SECRET, { expiresIn: 300, issuer: 'svs-crm' });
+    await recordAttempt(pool, { identifier, kind: 'login', success: true, ip, ua, meta: { multi: matched.length, stage: 'picker' } });
+    return res.json({ ok: true, requires_pick: true, pick_token: pickToken,
+      salons: matched.map(u => ({ user_id: u.id, tenant_id: u.tenant_id,
+        salon_name: u.tenant_name || 'Салон', slug: u.tenant_slug || null, role: u.role_code || 'staff' })) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'login-failed', ...(process.env.NODE_ENV !== 'production' && { detail: e.message }) });
+  }
+});
+
+// POST /api/auth/pick-tenant { pick_token, user_id } → сесія для обраного салону
+router.post('/pick-tenant', async (req, res) => {
+  const { pick_token, user_id } = req.body || {};
+  const ip = clientIp(req);
+  const ua = req.headers['user-agent'] || '';
+  if (!pick_token || !user_id) return res.status(400).json({ ok: false, error: 'token-and-user-required' });
+  try {
+    let decoded;
+    try { decoded = jwt.verify(pick_token, PRE_AUTH_SECRET, { issuer: 'svs-crm' }); }
+    catch { return res.status(401).json({ ok: false, error: 'pick-token-invalid' }); }
+    if (decoded.typ !== 'tenant_pick' || !Array.isArray(decoded.uids) || !decoded.uids.includes(Number(user_id))) {
+      return res.status(401).json({ ok: false, error: 'pick-not-allowed' });
+    }
+    // крос-тенантне читання обраного юзера (RLS ховає чужий tenant) — чистимо GUC у транзакції
+    const cli = await pool.connect();
+    let user;
+    try {
+      await cli.query('BEGIN');
+      await cli.query(`SET LOCAL app.tenant_id = ''`);
+      const r = await cli.query(
+        `SELECT u.*, r.code AS role_code, r.permissions AS role_permissions, tn.slug AS tenant_slug
+           FROM users u LEFT JOIN roles r ON r.id=u.role_id LEFT JOIN tenants tn ON tn.id=u.tenant_id
+          WHERE u.id=$1`, [Number(user_id)]);
+      await cli.query('COMMIT');
+      user = r.rows[0];
+    } catch (e) { try { await cli.query('ROLLBACK'); } catch (_) {} throw e; }
+    finally { cli.release(); }
+    if (!user || !user.is_active) return res.status(401).json({ ok: false, error: 'invalid-user' });
+    const { runAs } = require('../lib/tenant');
+    const sess = await runAs(user.tenant_id, async () => {
+      await pool.query(`UPDATE users SET last_login_at=NOW() WHERE id=$1`, [user.id]);
+      return issueSession(pool, { user, req, rememberMe: !!decoded.rm });
+    });
+    const { accessToken, refreshToken, refreshTtlMs: ttlMs, expiresAt } = sess;
+    setRefreshCookie(res, refreshToken, ttlMs);
+    await recordAttempt(pool, { identifier: user.phone || user.email || String(user.id), kind: 'login', success: true, ip, ua, meta: { via: 'pick-tenant' } });
+    return res.json({ ok: true, token: accessToken, token_expires_in: ACCESS_TTL_SEC,
+      refresh: refreshToken, refresh_expires_at: expiresAt, user: publicUser(user),
+      tenant_slug: user.tenant_slug || null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'pick-failed', ...(process.env.NODE_ENV !== 'production' && { detail: e.message }) });
+  }
+});
+
 // ─────────────────────────────────────────────────────────
 // POST /api/auth/verify-2fa
 // body: { pre_auth_token, code, remember_me? }
