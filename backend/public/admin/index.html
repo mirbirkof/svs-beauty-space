@@ -12932,7 +12932,7 @@ function renderMySub(){
         </div>
         ${onPro
           ? '<div style="background:rgba(255,255,255,.18);border-radius:10px;padding:10px 14px;font-weight:600;text-align:center">✓ Твій поточний тариф</div>'
-          : `<button class="btn" style="background:#fff;color:#5b5fc7;font-weight:800;border:0;width:100%;padding:13px" onclick="if(confirm('Спробувати Майстер PRO 14 днів безкоштовно? Картка не потрібна.')){toast('PRO активовано на 14 днів — усе відкрито');}">Спробувати 14 днів безкоштовно →</button>
+          : `<button class="btn" style="background:#fff;color:#5b5fc7;font-weight:800;border:0;width:100%;padding:13px" onclick="mysubStartSoloPro()">Спробувати 14 днів безкоштовно →</button>
              <div style="text-align:center;font-size:12px;opacity:.8;margin-top:8px">Без картки · Скасувати будь-коли</div>`}
       </div>`;
     // Рост до салона — окремо, як досягнення
@@ -12948,6 +12948,16 @@ function renderMySub(){
   box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;
 }
 
+// Соло-майстер стартує 14-денний trial тарифу Майстер PRO (без картки). trial:true →
+// createSubscription ставить trial_ends_at, рахунок НЕ виставляється до кінця пробного.
+async function mysubStartSoloPro(){
+  if(!confirm('Активувати Майстер PRO на 14 днів безкоштовно? Картка не потрібна, скасувати можна будь-коли.')) return;
+  try{
+    const r = await api('/api/billing/subscription', { method:'POST', body: JSON.stringify({ plan_code:'solo_pro', cycle:'monthly', trial:true }) });
+    if(r && r.ok!==false && !r.error){ toast('Майстер PRO активовано на 14 днів — усе відкрито'); loadMySub(); try{ applyEntitlements(); }catch(_){} }
+    else toast((r&&r.error)||'Не вдалося активувати', 'error');
+  }catch(e){ toast('Помилка активації', 'error'); }
+}
 async function mysubToggleAddon(key, enable){
   const a = (_mysub.addons||[]).find(x=>x.feature_key===key) || {};
   const isOper = (typeof TENANT_SLUG !== 'undefined') ? !TENANT_SLUG : false;
