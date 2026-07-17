@@ -367,10 +367,36 @@ router.delete('/staging/:id', canRead, async (req, res) => {
 // AI-контентмейкер: бриф → план роликов с задачами на съёмку. Админ грузит клипы
 // по задаче → «Змонтувати за сценарієм» → студия сама делает всё остальное.
 
+/** Собрать реальный контекст салона для планировщика: профиль + Instagram +
+ *  ТОП услуг по фактическим записям за 90 дней (план обязан соответствовать
+ *  нише салона и его Instagram-странице, а не фантазиям — Босс 17.07). */
+async function salonContextForPlan() {
+  const parts = [];
+  try {
+    const { getSetting } = require('../lib/settings');
+    const sp = (await getSetting('salon_profile', {})) || {};
+    if (sp.name) parts.push(`Салон: ${sp.name}`);
+    if (sp.instagram) parts.push(`Instagram: ${sp.instagram}`);
+    if (sp.tiktok) parts.push(`TikTok: ${sp.tiktok}`);
+    if (sp.facebook) parts.push(`Facebook: ${sp.facebook}`);
+    if (sp.directions) parts.push(`Напрямки: ${sp.directions}`);
+    if (sp.description) parts.push(`Опис: ${sp.description}`);
+  } catch (_) {}
+  try {
+    const top = await db().query(
+      `SELECT s.name, COUNT(*)::int n FROM appointments a JOIN services s ON s.id = a.service_id
+        WHERE a.starts_at > NOW() - INTERVAL '90 days' AND a.status NOT IN ('cancelled','no_show')
+        GROUP BY s.name ORDER BY n DESC LIMIT 10`);
+    if (top.rows.length) parts.push('Найпопулярніші послуги (за реальними записами): ' + top.rows.map((r) => r.name).join(', '));
+  } catch (e) { console.error('[ai-video] top services:', e.message); }
+  return parts.join('\n');
+}
+
 router.post('/content-plan/generate', canRead, requireFeature('video_studio'), async (req, res) => {
   try {
     const { brief, posts, brandVoice } = req.body || {};
-    const items = await studio.contentPlan(brief, { posts, brandVoice });
+    const salonContext = await salonContextForPlan();
+    const items = await studio.contentPlan(brief, { posts, brandVoice, salonContext });
     const saved = [];
     for (const it of items) {
       const d = new Date(Date.now() + it.publish_offset_days * 86400000);

@@ -2557,6 +2557,9 @@ select.input { background:var(--card); }
                   <label class="set-field"><span>Час роботи</span><input id="sp_hours" class="input" placeholder="Пн–Нд 08:00–22:00"></label>
                   <label class="set-field"><span>Напрямки діяльності</span><input id="sp_directions" class="input" placeholder="Манікюр, педикюр, брови, вії, масаж"></label>
                   <label class="set-field"><span>Орієнтири / як дістатися</span><input id="sp_landmarks" class="input" placeholder="Поруч ТРЦ ..., вхід з двору"></label>
+                  <label class="set-field"><span>Instagram</span><input id="sp_instagram" class="input" placeholder="@svs_beauty_space"></label>
+                  <label class="set-field"><span>TikTok</span><input id="sp_tiktok" class="input" placeholder="@нік у TikTok"></label>
+                  <label class="set-field"><span>Facebook</span><input id="sp_facebook" class="input" placeholder="посилання на сторінку"></label>
                   <label class="set-field full"><span>Опис</span><textarea id="sp_desc" class="input" rows="3" placeholder="Короткий опис салону для клієнтів"></textarea></label>
                 </div>
                 <div class="set-actions">
@@ -5333,7 +5336,7 @@ async function loadSettings() {
     const p = s.salon_profile || {};
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
     setv('sp_name', p.name); setv('sp_phones', p.phones); setv('sp_address', p.address);
-    setv('sp_hours', p.hours); setv('sp_directions', p.directions); setv('sp_landmarks', p.landmarks); setv('sp_desc', p.description);
+    setv('sp_hours', p.hours); setv('sp_directions', p.directions); setv('sp_landmarks', p.landmarks); setv('sp_desc', p.description); setv('sp_instagram', p.instagram); setv('sp_tiktok', p.tiktok); setv('sp_facebook', p.facebook);
     // Онлайн-запис
     const b = s.online_booking || {};
     const ob = document.getElementById('ob_enabled'); if (ob) ob.checked = b.enabled === true;
@@ -5756,7 +5759,7 @@ async function saveProfile() {
   const msg = document.getElementById('profileMsg');
   const g = (id)=>document.getElementById(id).value.trim();
   const salon_profile = { name:g('sp_name'), phones:g('sp_phones'), address:g('sp_address'),
-    hours:g('sp_hours'), directions:g('sp_directions'), landmarks:g('sp_landmarks'), description:g('sp_desc') };
+    hours:g('sp_hours'), directions:g('sp_directions'), landmarks:g('sp_landmarks'), description:g('sp_desc'), instagram:g('sp_instagram'), tiktok:g('sp_tiktok'), facebook:g('sp_facebook') };
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
   try {
     const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ salon_profile }) });

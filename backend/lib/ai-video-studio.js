@@ -191,12 +191,16 @@ function readiness() {
    музыки и советом по трендовому звуку.
    Жёсткое правило (Босс): трендова музика БУДЬ-ЯКА світова чи українська,
    але НІКОЛИ російська — ми в Україні. */
-async function contentPlan(brief, { posts = 3, lang = 'uk', brandVoice = '' } = {}) {
-  if (!brief || !String(brief).trim()) throw new Error('brief required');
+async function contentPlan(brief, { posts = 3, lang = 'uk', brandVoice = '', salonContext = '' } = {}) {
+  // Бриф необязателен: без него план строится по РЕАЛЬНОМУ профилю салона
+  // (услуги из CRM, Instagram, описание) — «мы не детский салон» (Босс 17.07).
+  if (!String(brief || '').trim() && !String(salonContext || '').trim()) throw new Error('brief required');
   posts = Math.min(7, Math.max(1, parseInt(posts, 10) || 3));
   const sys = `Ти — SMM-стратег українських салонів краси. Повертай ЛИШЕ валідний JSON. Трендові звуки/музику пропонуй будь-які світові чи українські, але НІКОЛИ російські (артисти, пісні, звуки рф заборонені).`;
   const prompt = `Склади контент-план із ${posts} Reels для салону краси в Україні.
-Про салон/бриф: "${String(brief).trim()}" ${brandVoice ? '· Тон бренду: ' + brandVoice : ''}
+${salonContext ? 'РЕАЛЬНИЙ ПРОФІЛЬ САЛОНУ (план МУСИТЬ відповідати саме цим послугам і стилю Instagram-сторінки; НЕ вигадуй напрямки, яких салон не робить):\n' + salonContext : ''}
+${String(brief || '').trim() ? 'Побажання на цей план: "' + String(brief).trim() + '"' : 'Особливих побажань немає — обери найсильніші теми з профілю салону.'}
+${brandVoice ? '· Тон бренду: ' + brandVoice : ''}
 Кожен ролик: 3-4 сцени по 3-5 секунд, знімає АДМІНІСТРАТОР на телефон (прості завдання!).
 
 Поверни JSON строго такої форми:

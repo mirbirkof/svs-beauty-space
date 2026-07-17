@@ -120,8 +120,8 @@
     <h3>📅 Контент-план (AI-контентмейкер)</h3>
     <div class="intro" style="margin:0 0 12px">AI складає план роликів із простими завданнями на зйомку. Адмін лише знімає кліпи за завданням, завантажує їх — студія сама монтує: текст, озвучка, музика, титри.</div>
     <div class="row" style="grid-template-columns:2fr 1fr auto">
-      <div class="fld"><label>Про салон / що просувати цього тижня</label>
-        <input id="cpBrief" placeholder="Напр.: салон краси, сильні сторони — дитячі образи, колористика; хочемо більше записів на фарбування"></div>
+      <div class="fld"><label>Побажання до плану (порожньо = за профілем салону та Instagram)</label>
+        <input id="cpBrief" placeholder="Необовʼязково: побажання (напр. «більше записів на фарбування»). Порожньо = план за профілем салону і реальними послугами"></div>
       <div class="fld"><label>Роликів</label>
         <select id="cpPosts"><option>2</option><option selected>3</option><option>5</option></select></div>
       <div class="fld" style="display:flex;align-items:flex-end">
@@ -412,7 +412,7 @@ async function doMontage(){
 // ═══ КОНТЕНТ-ПЛАН ═══
 async function cpGenerate(){
   const brief = $('cpBrief').value.trim();
-  if(!brief){ $('cpMsg').textContent='Опишіть салон або що просуваємо'; return; }
+  // бриф необовʼязковий — без нього план будується за профілем салону (послуги з CRM + Instagram)
   $('cpGen').disabled=true; $('cpMsg').textContent='🧠 AI складає план і завдання на зйомку…';
   try{
     const d = await adminJson('/api/ai/video/content-plan/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brief, posts: parseInt($('cpPosts').value,10) })});
