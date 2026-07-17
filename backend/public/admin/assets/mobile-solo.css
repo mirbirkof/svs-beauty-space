@@ -24,6 +24,12 @@
   .sidebar.open { z-index: 1200 !important; }
   .sidebar { overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .sidebar-item, .sidebar-group-header { min-height: 46px; font-size: 15px; }
+  /* Подвал шторки: був на чверть екрана (мова+версія+вийти) — тепер компактний рядок */
+  .sidebar-footer { padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+  .sidebar-footer .sidebar-lang { flex: 1; min-width: 0; margin: 0; }
+  .sidebar-footer .sidebar-lang select { width: 100%; min-height: 36px; font-size: 13px !important; padding: 4px 6px; }
+  .sidebar-footer button { width: auto; min-height: 36px; font-size: 12.5px; padding: 5px 9px; margin: 0; white-space: nowrap; }
+  .sidebar-footer button .material-icons-round { font-size: 16px; }
 
   /* ── Нижняя навигация (зона большого пальца) ── */
   .sm-bottomnav {

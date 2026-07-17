@@ -3194,6 +3194,7 @@ function showApp() {
 const SOLO_KEEP_PAGES = new Set([
   'dashboard','journal','clients','waitlist','repeat','formulas','blacklist',
   'services','svccats','reminders','reviews','finance','giftcerts','settings','mysub',
+  'schedule', // Графік роботи — КРИТИЧЕН соло (слоты онлайн-записи строятся из него); был скрыт по ошибке (Босс 17.07)
 ]);
 // Дозволені embed-розділи для соло: вітрина онлайн-запису (сайт). Все інше — сховати.
 const SOLO_KEEP_EMBED = ['booking','vitrina','showcase'];
@@ -3490,6 +3491,7 @@ function login() {
       localStorage.setItem('svs_admin_token', TOKEN);
       if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
       if (j.tenant_slug) { TENANT_SLUG = j.tenant_slug; localStorage.setItem('svs_tenant_slug', j.tenant_slug); }
+      else { TENANT_SLUG = ''; localStorage.removeItem('svs_tenant_slug'); } // платформа: чужой слаг (вчорашня Зветла) не липнет — давал 401-выброс
       applyRoleUI(); showApp();
     } else if (r.status === 200 && j.ok && j.requires_2fa && j.pre_auth_token) {
       // Блокер A1: panel-login тепер вимагає 2FA-код. Показуємо поле коду і підтверджуємо через verify-2fa.
@@ -3554,6 +3556,8 @@ function tgLoginVerify() {
       TOKEN = j.token; USER = j.user || null;
       localStorage.setItem('svs_admin_token', TOKEN);
       if (USER) localStorage.setItem('svs_user', JSON.stringify(USER));
+      if (j.tenant_slug) { TENANT_SLUG = j.tenant_slug; localStorage.setItem('svs_tenant_slug', j.tenant_slug); }
+      else { TENANT_SLUG = ''; localStorage.removeItem('svs_tenant_slug'); }
       applyRoleUI(); showApp();
     } else if (r.status === 401) { errEl.textContent='Невірний або прострочений код'; errEl.style.display='';
     } else { errEl.textContent='Помилка підтвердження, спробуйте ще раз'; errEl.style.display=''; }
@@ -3720,7 +3724,7 @@ async function api(path, opts = {}) {
   // з CRM, просто повертаємо помилку (раніше такий 401 перезавантажував на логін).
   const foreignAuth = /^\/api\/(mobile|cabinet|app)\b/.test(path);
   if (r.status === 401 && TOKEN && !foreignAuth) {
-    try { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); } catch {}
+    try { localStorage.removeItem('svs_admin_token'); localStorage.removeItem('svs_user'); localStorage.removeItem('svs_tenant_slug'); } catch {}
     location.reload();
     return { ok: false, error: 'session-expired' };
   }
