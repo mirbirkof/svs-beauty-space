@@ -1077,7 +1077,13 @@ router.patch('/appointments/:id', async (req, res) => {
       dur = Math.min(dur, 24 * 60); // запобіжник
       if (starts_at !== undefined) newStart = baseStart.toISOString();
       newEnd = new Date(baseStart.getTime() + dur * 60000).toISOString();
+      // КОРІНЬ 409 «час зайнято» при зміні ціни (Босс 17.07): фронт шле starts_at/duration
+      // навіть без змін → гвард і БД-тригер ревалідували вмістимість і валили 409 на записі,
+      // поруч з якою стоїть СВІДОМИЙ паралельний запис (force). «Не змінилось» = null.
+      if (newStart && +new Date(newStart) === +new Date(curRow.starts_at)) newStart = null;
+      if (newEnd && curRow.ends_at && +new Date(newEnd) === +new Date(curRow.ends_at)) newEnd = null;
     }
+    const masterChanged = master_id != null && Number(master_id) !== Number(curRow.master_id);
 
     // Планова сума запису: явна ручна ціна (заметки #94/#96) має пріоритет над ціною нової послуги.
     // Фактичні оплати в продажах не чіпаємо.
@@ -1085,7 +1091,7 @@ router.patch('/appointments/:id', async (req, res) => {
 
     // защита от двойного бронирования при переносе времени/смене мастера.
     // force_parallel=true — админ осознанно ставит поверх существующей записи.
-    if ((newStart || newEnd || master_id != null) && !req.body.force_parallel) {
+    if ((newStart || newEnd || masterChanged) && !req.body.force_parallel) {
       const effMaster = master_id != null ? Number(master_id) : curRow.master_id;
       const effStart = newStart || curRow.starts_at;
       const effEnd = newEnd || curRow.ends_at;
@@ -1113,7 +1119,12 @@ router.patch('/appointments/:id', async (req, res) => {
       await applyTenant(txc);
       // force_parallel: вместимость уже осознанно подтверждена админом (app-проверка выше
       // пропущена) → локальный обход триггера. Без force триггер остаётся боевым (TOCTOU).
-      if (req.body.force_parallel) await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+      // Тригер вмістимості — боєвий ЛИШЕ коли реально міняється час/майстер.
+      // Інакше (ціна/нотатки/статус) UPDATE все одно лістить часові колонки в SET
+      // і «UPDATE OF starts_at» стріляв би без жодної зміни часу.
+      if (req.body.force_parallel || !(newStart || newEnd || masterChanged)) {
+        await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
+      }
       r = await txc.query(
         `UPDATE appointments
             SET notes = COALESCE($2, notes),
