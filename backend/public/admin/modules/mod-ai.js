@@ -40,14 +40,25 @@
     if (cards) cards.innerHTML = empty('Завантаження…');
     if (wb) wb.innerHTML = empty('Завантаження…');
     try {
+      // ФАКТ-ФІКС 17.07: раніше картки читали offers_funnel/cross_sell_opportunity,
+      // яких API НЕ повертає → всюди «—». Тепер — реальні поля з /sales/analytics.
       var data = await window.modApi('/api/ai/sales/analytics');
-      var f = (data && data.offers_funnel) || {};
-      var op = (data && data.cross_sell_opportunity) || {};
+      var o = (data && data.overall) || {};
       if (cards) cards.innerHTML =
-        card('Конверсія пропозицій', ratePct(f.conversion_rate), '#1a73e8') +
-        card('Додаткова виручка', money(f.additional_revenue), '#188038') +
-        card('ROI', f.roi == null ? '—' : (Number(f.roi) * 100).toFixed(0) + '%', '#9334e6') +
-        card('Потенціал крос-селу', money(op.potential_revenue), '#e37400');
+        card('Візитів за ' + ((data && data.window_days) || 180) + ' дн.', num(o.visits), '#1a73e8') +
+        card('Середній чек', money(o.avg_check), '#188038') +
+        card('Мультипослуги в чеку', o.multi_service_pct == null ? '—' : o.multi_service_pct + '%', '#9334e6') +
+        card('Виручка', money(o.revenue), '#e37400');
+      var bm = document.getElementById('aisales-bymaster');
+      var masters = (data && data.by_master) || [];
+      if (bm) bm.innerHTML = masters.length ? table(
+        ['Майстер', 'Візитів', 'Середній чек', 'Мультипослуги'],
+        masters.map(function (m) {
+          return '<tr><td style="' + TD + '">' + esc(val(m.name)) + '</td>' +
+            '<td style="' + TD + '">' + num(m.visits) + '</td>' +
+            '<td style="' + TD + '">' + money(m.avg_check) + '</td>' +
+            '<td style="' + TD + '">' + (m.multi_service_pct == null ? '—' : m.multi_service_pct + '%') + '</td></tr>';
+        }).join('')) : empty('Немає даних по майстрах');
 
       var cand = await window.modApi('/api/ai/sales/winback/candidates');
       var list = (cand && cand.candidates) || [];
@@ -75,13 +86,17 @@
     if (sc) sc.innerHTML = empty('Завантаження…');
     try {
       var d = await window.modApi('/api/ai/quality/dashboard') || {};
-      if (cards) cards.innerHTML =
-        card('Оцінка салону', d.branch_score == null ? '—' : d.branch_score, '#1a73e8') +
-        card('NPS', num(d.nps), '#188038') +
-        card('CSAT', num(d.csat), '#9334e6') +
-        card('Sentiment', d.sentiment_avg == null ? '—' : d.sentiment_avg, '#e37400') +
-        card('Активні алерти', num(d.active_alerts_count), '#d93025') +
-        card('Критичні алерти', num(d.critical_alerts_count), '#d93025');
+      // ФАКТ-ФІКС 17.07: NPS/CSAT/sentiment без опитувань завжди null → картки-пустишки.
+      // Показуємо їх лише коли Є дані, а базово — реальні операційні метрики.
+      var qc = card('Оцінка салону', d.branch_score == null ? '—' : d.branch_score, '#1a73e8') +
+        card('Повторні візити', d.repeat_visit_rate == null ? '—' : d.repeat_visit_rate + '%', '#188038') +
+        card('Скасування', d.cancel_rate == null ? '—' : d.cancel_rate + '%', '#e37400') +
+        card('Неявки', d.no_show_rate == null ? '—' : d.no_show_rate + '%', '#9334e6');
+      if (d.nps != null) qc += card('NPS', num(d.nps), '#188038');
+      if (d.csat != null) qc += card('CSAT', num(d.csat), '#9334e6');
+      if (Number(d.active_alerts_count)) qc += card('Активні алерти', num(d.active_alerts_count), '#d93025');
+      if (Number(d.critical_alerts_count)) qc += card('Критичні алерти', num(d.critical_alerts_count), '#d93025');
+      if (cards) cards.innerHTML = qc;
 
       var res = await window.modApi('/api/ai/quality/scores');
       var items = (res && res.items) || [];
@@ -107,7 +122,11 @@
     if (pop) pop.innerHTML = empty('Завантаження…');
     try {
       var a = await window.modApi('/api/ai/recommendations/analytics') || {};
-      if (cards) cards.innerHTML =
+      // ФАКТ-ФІКС 17.07: без показів рекомендацій картки з нулями виглядали як «чушь» —
+      // пояснюємо чесно, коли модуль ще не почав збирати дані.
+      if (!Number(a.total_impressions)) {
+        if (cards) cards.innerHTML = '<div class="card" style="padding:14px 16px;font-size:13px;color:#555;line-height:1.55">🤖 Модуль рекомендацій ще не показував підказки клієнтам — метрики (покази, кліки, конверсія) почнуть накопичуватись, щойно бот або каса запропонують супутні послуги. Нижче — реальний топ послуг за записами.</div>';
+      } else if (cards) cards.innerHTML =
         card('Покази', num(a.total_impressions), '#1a73e8') +
         card('CTR', ratePct(a.ctr), '#188038') +
         card('Конверсія', ratePct(a.conversion_rate), '#9334e6') +
@@ -314,6 +333,8 @@
         var PANES = {
           sales:
             '<div id="aisales-cards" style="' + CARDS + '"></div>' +
+            '<h3 style="' + H3 + '">По майстрах</h3>' +
+            '<div id="aisales-bymaster" class="card" style="' + BOX + ';margin-bottom:18px"></div>' +
             '<h3 style="' + H3 + '">Кандидати на повернення (win-back)</h3>' +
             '<div id="aisales-winback" class="card" style="' + BOX + '"></div>',
           quality:
