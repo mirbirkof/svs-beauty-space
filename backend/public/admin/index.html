@@ -18,6 +18,11 @@
     setTimeout(function(){document.documentElement.classList.remove('solo-loading');},2500);
     // Мобільна версія — ТІЛЬКИ за явним вибором соло-майстра (Босс 16.07). Дефолт для всіх
     // ІНШИХ — ПК width=1280 (директива Боса ×3, НЕ ЧІПАТИ). Тут міняємо viewport ДО рендеру.
+    // Автовключення мобільної версії при першому вході соло з телефона (Босс 17.07):
+    // вибору ще немає І екран телефонний → одразу мобільний режим (перемикач лишається).
+    if(localStorage.getItem('svs_mobile_view')===null && Math.min(screen.width,screen.height)<=520){
+      try{localStorage.setItem('svs_mobile_view','1');}catch(e){}
+    }
     if(localStorage.getItem('svs_mobile_view')==='1'){
       var _vp=document.querySelector('meta[name="viewport"]');
       if(_vp)_vp.setAttribute('content','width=device-width, initial-scale=1');
@@ -35,6 +40,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+<link rel="stylesheet" href="/admin/assets/mobile-solo.css">
 <style>
 /* Віджет заміток (внутрішній фідбек Боса) прихований ЗА ЗАМОВЧУВАННЯМ — щоб не блимав
    при завантаженні у салонів-клієнтів. applyEntitlements ПОКАЗУЄ його лише платформі. */
@@ -3230,6 +3236,49 @@ function _syncSoloMobileBtn() {
   if (ic) ic.textContent = on ? 'desktop_windows' : 'smartphone';
   if (lb) lb.textContent = on ? 'ПК-версія' : 'Мобільна версія';
 }
+// ── Мобильная навигация соло (Босс 17.07): гамбургер + шторка + нижняя панель ──
+function initSoloMobileNav() {
+  if (!document.documentElement.classList.contains('solo-mobile')) return;
+  if (document.getElementById('smBottomNav')) return;
+  // затемнение для шторки
+  const ov = document.createElement('div');
+  ov.className = 'sm-overlay';
+  ov.onclick = () => _smDrawer(false);
+  document.body.appendChild(ov);
+  // шторку открывает ШТАТНАЯ кнопка меню в topbar (дубль-шапку не плодим)
+  const mt = document.querySelector('.mobile-toggle');
+  if (mt) mt.onclick = () => _smDrawer();
+  // нижняя навигация: журнал / клиенты / дашборд / меню
+  const nav = document.createElement('div');
+  nav.className = 'sm-bottomnav'; nav.id = 'smBottomNav';
+  const items = [
+    { icon: 'event_note', label: 'Журнал', page: 'journal' },
+    { icon: 'group', label: 'Клієнти', page: 'clients' },
+    { icon: 'dashboard', label: 'Дашборд', page: 'dashboard' },
+    { icon: 'menu', label: 'Меню', page: null },
+  ];
+  nav.innerHTML = items.map(it => '<button data-smnav="' + (it.page || 'menu') + '" onclick="' +
+    (it.page ? "_smDrawer(false);go('" + it.page + "');_smSetActive('" + it.page + "')"
+             : "_smDrawer()") + '">' +
+    '<span class="material-icons-round">' + it.icon + '</span>' + it.label + '</button>').join('');
+  document.body.appendChild(nav);
+  // клик по пункту шторки — закрыть шторку
+  document.querySelectorAll('.sidebar-item').forEach(el =>
+    el.addEventListener('click', () => setTimeout(() => _smDrawer(false), 150)));
+  _smSetActive('journal');
+}
+function _smDrawer(force) {
+  const open = force !== undefined ? force : !document.body.classList.contains('sm-drawer-open');
+  document.body.classList.toggle('sm-drawer-open', open);
+  const sb = document.getElementById('sidebar');
+  if (sb) sb.classList.toggle('open', open);
+}
+function _smSetActive(page) {
+  document.querySelectorAll('[data-smnav]').forEach(b =>
+    b.classList.toggle('active', b.getAttribute('data-smnav') === page));
+}
+document.addEventListener('DOMContentLoaded', initSoloMobileNav);
+
 function toggleSoloMobile() {
   const on = localStorage.getItem('svs_mobile_view') === '1';
   try { localStorage.setItem('svs_mobile_view', on ? '0' : '1'); } catch (_) {}
@@ -13959,7 +14008,8 @@ async function aiDailyBriefing(){
     if(localStorage.getItem('aiBriefingDay')===r.today) return; // вже показували сьогодні
     localStorage.setItem('aiBriefingDay',r.today);
     const html=_aiEsc(r.message).replace(/\n/g,'<br>').replace(/&lt;b&gt;/g,'<b>').replace(/&lt;\/b&gt;/g,'</b>');
-    aiFabToggle(true);                                 // бот сам відкривається
+    // На мобільному соло НЕ відкриваємо панель самі — вона закриє весь екран (Босс 17.07)
+    if (!document.documentElement.classList.contains('solo-mobile')) aiFabToggle(true);
     _aiAdd('bot',html);
     window._aiHist.push({role:'assistant',text:r.message.replace(/<[^>]+>/g,'')}); _aiSaveLog();
   }catch(_){}
