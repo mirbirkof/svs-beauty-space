@@ -52,7 +52,8 @@ body.solo-mode #adminPermsCard,
 body.solo-mode #editPastDurWrap,
 body.solo-mode #tab-business .card:has(#bz_mod_shifts),
 body.solo-mode #tab-business .card:has(#set-edit-past),
-body.solo-mode #tab-business .card:has(#adminPermsList) { display: none !important; }
+body.solo-mode #tab-business .card:has(#adminPermsList),
+body.solo-mode .card:has(#bz_vis_others) { display: none !important; } /* «Видимість для майстрів» — соло сам себе хозяин (Босс 17.07) */
 /* Кабінети / ресурси та Доступ — не потрібні соло */
 body.solo-mode a[data-tab="rooms"],
 body.solo-mode a[data-embed*="users-access"],
@@ -3194,7 +3195,7 @@ function showApp() {
 const SOLO_KEEP_PAGES = new Set([
   'dashboard','journal','clients','waitlist','repeat','formulas','blacklist',
   'services','svccats','reminders','reviews','finance','giftcerts','settings','mysub',
-  'schedule', // Графік роботи — КРИТИЧЕН соло (слоты онлайн-записи строятся из него); был скрыт по ошибке (Босс 17.07)
+  'schedule','wsched', // Графіки роботи (data-page=wsched!) — КРИТИЧНО соло: из графика строятся слоты записи. Первый фикс промахнулся ключом (Босс 17.07 ×2)
 ]);
 // Дозволені embed-розділи для соло: вітрина онлайн-запису (сайт). Все інше — сховати.
 const SOLO_KEEP_EMBED = ['booking','vitrina','showcase'];

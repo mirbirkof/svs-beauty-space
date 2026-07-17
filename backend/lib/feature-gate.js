@@ -10,6 +10,19 @@ const { getPool } = require('../db-pg');
 const { isPlatformTenant, getTenantId } = require('./tenant');
 
 const LEGACY_SLUG = { solo: 'free', pro: 'professional' };
+// Ключи АДДОНОВ (saas_addons, snake) ≠ ключи ФИЧ (plan_features, dot) — из-за этого
+// купленный модуль «Маркетинг» НЕ открывал mkt.campaigns (Босс 17.07: «баги в корне»).
+const ADDON_ALIAS = {
+  'mkt.campaigns': 'marketing',
+  'loyalty.program': 'loyalty',
+  'ai.receptionist': 'ai_receptionist',
+  'ai.recommendations': 'ai_recommendations',
+};
+function keyVariants(key) {
+  const v = new Set([key, String(key).replace('.', '_')]);
+  if (ADDON_ALIAS[key]) v.add(ADDON_ALIAS[key]);
+  return [...v];
+}
 const _cache = new Map(); // `${tenant}:${key}` → { ok, exp }
 const TTL = 60 * 1000;
 
@@ -35,16 +48,16 @@ async function featureAllowed(key) {
   // і оплачений модуль лишався 403 (аудит 06.07)
   try {
     const ov = pf.rows[0].overrides;
-    if (!badStatus && ov && (ov[key] === true || ov[key.replace('.', '_')] === true)) {
+    if (!badStatus && ov && keyVariants(key).some((k) => ov[k] === true)) {
       return { ok: true, reason: 'addon-override' };
     }
   } catch (_) {}
   // фіча вимкнена в плані — можливо куплена окремим модулем
   const lic = await pool.query(
     `SELECT 1 FROM licenses l JOIN module_catalog mc ON mc.id = l.module_id
-      WHERE mc.code = $1 AND l.tenant_id = $2 AND l.status IN ('active','grace_period')
+      WHERE mc.code = ANY($1) AND l.tenant_id = $2 AND l.status IN ('active','grace_period')
         AND (l.expires_at IS NULL OR l.expires_at > NOW() OR l.status='grace_period') LIMIT 1`,
-    [key.replace('.', '_'), tid]);
+    [keyVariants(key), tid]);
   if (lic.rows.length) return { ok: true, reason: 'module-license' };
   return { ok: false };
 }

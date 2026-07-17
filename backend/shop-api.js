@@ -322,8 +322,8 @@ try { app.use('/api/ai/analytics', require('./lib/feature-gate').requireFeature(
 try { app.use('/api/recommendations', require('./lib/feature-gate').requireFeature('ai.recommendations'), require('./routes/recommendations')); } catch(e) { console.error('[recommendations] mount failed:', e.message); }
 try { app.use('/api/search', require('./routes/search')); } catch(e) { console.error('[search] mount failed:', e.message); }
 try { app.use('/api/audit', require('./routes/audit')); } catch(e) { console.error('[audit] mount failed:', e.message); }
-try { app.use('/api/forms', require('./routes/forms')); } catch(e) { console.error('[forms] mount failed:', e.message); }
-try { app.use('/api/webhooks', require('./routes/webhooks')); } catch(e) { console.error('[webhooks] mount failed:', e.message); }
+try { app.use('/api/forms', require('./lib/feature-gate').requireFeature('forms'), require('./routes/forms')); } catch(e) { console.error('[forms] mount failed:', e.message); }
+try { app.use('/api/webhooks', require('./lib/feature-gate').requireFeature('webhooks'), require('./routes/webhooks')); } catch(e) { console.error('[webhooks] mount failed:', e.message); }
 try { app.use('/api/api-keys', require('./routes/api-keys')); } catch(e) { console.error('[api-keys] mount failed:', e.message); }
 try { app.use('/api/v1', require('./routes/public-api')); } catch(e) { console.error('[public-api] mount failed:', e.message); }
 try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { console.error('[portfolio] mount failed:', e.message); }
