@@ -19,34 +19,11 @@
   .content h3 { font-size: 16px; }
   img, video, canvas { max-width: 100%; height: auto; }
 
-  /* ── Сайдбар → шторка (drawer) ── */
-  .sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; width: min(82vw, 300px);
-    transform: translateX(-105%); transition: transform .25s ease;
-    z-index: 1200; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    box-shadow: 4px 0 24px rgba(0,0,0,.35);
-  }
-  body.sm-drawer-open .sidebar { transform: translateX(0); }
-  .sm-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(15,15,25,.5); z-index: 1100;
-  }
-  body.sm-drawer-open .sm-overlay { display: block; }
+  /* ── Сайдбар-шторка: используем ШТАТНУЮ систему CRM (.sidebar.open + #sidebarBackdrop).
+     Дубль-оверлей был поверх меню и глотал тапы (баг «не нажимается») — удалён. ── */
+  .sidebar.open { z-index: 1200 !important; }
+  .sidebar { overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .sidebar-item, .sidebar-group-header { min-height: 46px; font-size: 15px; }
-  .sb-collapsed .sidebar { width: min(82vw, 300px); } /* collapse-режим не мешает шторке */
-
-  /* ── Шапка-гамбургер ── */
-  .sm-topbar {
-    display: flex; align-items: center; gap: 10px;
-    position: sticky; top: 0; z-index: 900;
-    background: var(--bg, #f5f6fa); padding: 8px 2px 8px;
-    margin: -6px -4px 8px;
-  }
-  .sm-burger {
-    width: 44px; height: 44px; border: 1px solid var(--border,#e2e2ea); border-radius: 12px;
-    background: var(--card,#fff); display: flex; align-items: center; justify-content: center;
-    font-size: 22px; cursor: pointer; flex: 0 0 auto;
-  }
-  .sm-title { font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ── Нижняя навигация (зона большого пальца) ── */
   .sm-bottomnav {
@@ -120,7 +97,5 @@
   .sidebar.open { transform: translateX(0); }
 }
 
-/* Элементы мобильной навигации существуют только в solo-mobile — вне его скрыты всегда */
-html:not(.solo-mobile) .sm-topbar,
-html:not(.solo-mobile) .sm-bottomnav,
-html:not(.solo-mobile) .sm-overlay { display: none !important; }
+/* Нижняя навигация существует только в solo-mobile — вне его скрыта всегда */
+html:not(.solo-mobile) .sm-bottomnav { display: none !important; }

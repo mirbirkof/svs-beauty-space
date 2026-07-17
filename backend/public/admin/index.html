@@ -3240,14 +3240,7 @@ function _syncSoloMobileBtn() {
 function initSoloMobileNav() {
   if (!document.documentElement.classList.contains('solo-mobile')) return;
   if (document.getElementById('smBottomNav')) return;
-  // затемнение для шторки
-  const ov = document.createElement('div');
-  ov.className = 'sm-overlay';
-  ov.onclick = () => _smDrawer(false);
-  document.body.appendChild(ov);
-  // шторку открывает ШТАТНАЯ кнопка меню в topbar (дубль-шапку не плодим)
-  const mt = document.querySelector('.mobile-toggle');
-  if (mt) mt.onclick = () => _smDrawer();
+  // шторку открывает ШТАТНАЯ кнопка меню; затемнение — штатный #sidebarBackdrop
   // нижняя навигация: журнал / клиенты / дашборд / меню
   const nav = document.createElement('div');
   nav.className = 'sm-bottomnav'; nav.id = 'smBottomNav';
@@ -3268,10 +3261,10 @@ function initSoloMobileNav() {
   _smSetActive('journal');
 }
 function _smDrawer(force) {
-  const open = force !== undefined ? force : !document.body.classList.contains('sm-drawer-open');
-  document.body.classList.toggle('sm-drawer-open', open);
   const sb = document.getElementById('sidebar');
-  if (sb) sb.classList.toggle('open', open);
+  if (!sb) return;
+  const open = force !== undefined ? force : !sb.classList.contains('open');
+  sb.classList.toggle('open', open);
 }
 function _smSetActive(page) {
   document.querySelectorAll('[data-smnav]').forEach(b =>
