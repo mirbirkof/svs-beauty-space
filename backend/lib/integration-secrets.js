@@ -147,7 +147,12 @@ async function saveTenantIntegrationSecret(name, value, userId = null) {
 async function getTenantIntegrationSecret(name) {
   name = String(name || '').trim();
   if (!TENANT_ALLOWED.has(name)) return null;
-  const r = await getPool().query(`SELECT value FROM app_settings WHERE key = $1 LIMIT 1`, [PREFIX + name]);
+  // Тільки рядок ПОТОЧНОГО тенанта (17.07.2026): з порожнім GUC RLS permissive —
+  // без фільтра платформа могла прочитати секрет чужого салону.
+  const r = await getPool().query(
+    `SELECT value FROM app_settings WHERE key = $1
+      AND tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid)
+      LIMIT 1`, [PREFIX + name]);
   if (!r.rows[0]) return null;
   const stored = typeof r.rows[0].value === 'string' ? r.rows[0].value : (r.rows[0].value == null ? '' : String(r.rows[0].value));
   return decryptVal(stored) || null;

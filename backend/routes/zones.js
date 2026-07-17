@@ -110,7 +110,10 @@ router.get('/', async (req, res) => {
                     LEFT JOIN sched sc ON sc.master_id=m.id
                    WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE
                    GROUP BY m.id`, [String(fromTs).slice(0,10), String(toTs).slice(0,10)]),
-      pool.query(`SELECT value FROM app_settings WHERE key='finance'`),
+      // tenant-фільтр (17.07.2026): платформа з порожнім GUC не має хапати рядок чужого тенанта
+      pool.query(`SELECT value FROM app_settings WHERE key='finance'
+        AND tenant_id IN (COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
+        ORDER BY (tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid)) DESC LIMIT 1`),
       // товари (магазин) — окремий бакет
       pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND master_id IS NULL),0)::float cash_prod
                     FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]),

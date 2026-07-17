@@ -12,15 +12,21 @@ const cache = new Map(); // `${tenant}:${key}` → { value, exp }
 // іншим салонам протягом TTL.
 const ck = (key) => `${_getTenantId() || 'platform'}:${key}`;
 
+const PLATFORM_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 async function getSetting(key, def = null) {
   const hit = cache.get(ck(key));
   if (hit && hit.exp > Date.now()) return hit.value;
   try {
-    // Поза HTTP-контекстом RLS permissive → при 2+ тенантах ключ може дати кілька рядків.
-    // Детерміновано беремо рядок ПЛАТФОРМИ (салон Босса); тенантські крони мусять runAs.
+    // ЖОРСТКИЙ tenant-фільтр (фікс 17.07.2026): для платформи app.tenant_id порожній →
+    // RLS permissive → запит без фільтра хапав рядок ЧУЖОГО тенанта (solo_master_mode
+    // Зветли протік у салон Босса — там зʼявився вигляд соло-майстра). Тепер беремо
+    // ТІЛЬКИ свій рядок; якщо його нема — рядок платформи (глобальний дефолт).
+    const tid = _getTenantId() || PLATFORM_TENANT_ID;
     const r = await getPool().query(
-      `SELECT value FROM app_settings WHERE key = $1
-        ORDER BY (tenant_id = '00000000-0000-0000-0000-000000000001') DESC LIMIT 1`, [key]);
+      `SELECT value FROM app_settings
+        WHERE key = $1 AND tenant_id IN ($2::uuid, $3::uuid)
+        ORDER BY (tenant_id = $2::uuid) DESC LIMIT 1`, [key, tid, PLATFORM_TENANT_ID]);
     const value = r.rows[0] ? r.rows[0].value : def;
     cache.set(ck(key), { value, exp: Date.now() + CACHE_TTL_MS });
     return value;
@@ -42,7 +48,13 @@ async function setSetting(key, value, userId = null) {
 }
 
 async function getAllSettings() {
-  const r = await getPool().query(`SELECT DISTINCT ON (key) key, value FROM app_settings ORDER BY key, (tenant_id = '00000000-0000-0000-0000-000000000001') DESC`);
+  // Той самий tenant-фільтр, що і в getSetting: свій рядок пріоритетніший за платформенний,
+  // чужі тенанти не протікають.
+  const tid = _getTenantId() || PLATFORM_TENANT_ID;
+  const r = await getPool().query(
+    `SELECT DISTINCT ON (key) key, value FROM app_settings
+      WHERE tenant_id IN ($1::uuid, $2::uuid)
+      ORDER BY key, (tenant_id = $1::uuid) DESC`, [tid, PLATFORM_TENANT_ID]);
   const out = {};
   for (const row of r.rows) out[row.key] = row.value;
   return out;

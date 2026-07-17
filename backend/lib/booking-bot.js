@@ -599,7 +599,9 @@ async function tryFaq(text, ctx) {
   const isPhone = /телефон|номер|подзвон|зв.?яза|контакт|вайбер|viber|whats|зателеф/.test(t);
   if (!isHours && !isAddr && !isPhone) return null;
   let sp = {};
-  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'`)).rows[0]?.value || {}; } catch (_) {}
+  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'
+    AND tenant_id IN (COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
+    ORDER BY (tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid)) DESC LIMIT 1`)).rows[0]?.value || {}; } catch (_) {}
   const out = [];
   if (sp.name) out.push(`<b>${sp.name}</b>`);
   if (isHours && sp.hours) out.push(`🕐 Графік роботи: <b>${sp.hours}</b>`);
@@ -783,7 +785,9 @@ async function showMyVisits(ctx, uid, chatId) {
 // контакти адміністратора з профілю салону
 async function showAdminContact(ctx, chatId) {
   let sp = {};
-  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'`)).rows[0]?.value || {}; } catch (_) {}
+  try { sp = (await ctx.pool.query(`SELECT value FROM app_settings WHERE key='salon_profile'
+    AND tenant_id IN (COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
+    ORDER BY (tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid)) DESC LIMIT 1`)).rows[0]?.value || {}; } catch (_) {}
   // Telegram робить номер клікабельним лише у чистому форматі (без дужок).
   // «+380 (99) 128 33 75» → «+380991283375» — тапаєш прямо по цифрах і дзвониш.
   const firstPhoneRaw = String(sp.phones || '').split(/[,;/]/)[0].trim();

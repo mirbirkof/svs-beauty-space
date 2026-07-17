@@ -70,7 +70,11 @@ async function liveFinance(pool, from, to) {
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
         GROUP BY category ORDER BY s DESC`, [from, to]),
-    q(`SELECT value FROM app_settings WHERE key='finance'`),
+    // tenant-фільтр (17.07.2026): без нього платформа (GUC порожній → RLS permissive)
+    // хапала рядок чужого тенанта
+    q(`SELECT value FROM app_settings WHERE key='finance'
+        AND tenant_id IN (COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
+        ORDER BY (tenant_id = COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid)) DESC LIMIT 1`),
     // % майстрам З ПРОДАЖУ продукції: банки у візитах по ПРОДАВЦЮ + роздрібні POS-продажі
     // майстра × sales_commission_pct (та сама формула, що ЗП і «Підтвердження витрат»)
     q(`WITH bottles AS (
