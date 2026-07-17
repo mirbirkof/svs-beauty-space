@@ -31,6 +31,10 @@ router.get('/my/entitlements', async (req, res) => {
     const planSlug = ({ solo: 'free', pro: 'professional' })[plan] || plan;
     const tierRank = TIER[plan] ?? TIER[planSlug] ?? 2;
 
+    // 1.5) Вертикаль бизнеса (beauty/fitness/dental) — фронт показывает только свои группы меню
+    let businessType = 'beauty';
+    try { businessType = await require('../lib/vertical').getVertical(); } catch (_) {}
+
     // 2) Соло-режим (per-tenant настройка)
     let isSolo = false;
     try {
@@ -61,12 +65,13 @@ router.get('/my/entitlements', async (req, res) => {
       tier_rank: platform ? 3 : tierRank,
       is_solo: isSolo,
       is_platform: !!platform,
+      business_type: businessType,
       features,
     });
   } catch (e) {
     console.error('[entitlements]', e.message);
     // fail-open: при ошибке отдаём «всё доступно», чтобы не заблокировать рабочий салон
-    res.json({ ok: true, plan: 'professional', tier_rank: 3, is_solo: false, features: {}, degraded: true });
+    res.json({ ok: true, plan: 'professional', tier_rank: 3, is_solo: false, business_type: 'beauty', features: {}, degraded: true });
   }
 });
 

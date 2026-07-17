@@ -3284,6 +3284,18 @@ async function applyEntitlements() {
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
   if (!ent || !ent.ok) return;
   window.ENTITLEMENTS = ent;
+  // ── ВЕРТИКАЛІ (18.07): beauty/fitness/dental. Групи меню чужих вертикалей
+  // приховані за замовчуванням у HTML — показуємо ЛИШЕ свою. Beauty не має
+  // своїх груп → для салонів рендер не змінюється взагалі.
+  window.BUSINESS_TYPE = ent.business_type || 'beauty';
+  try { localStorage.setItem('svs_vertical', window.BUSINESS_TYPE); } catch (_) {}
+  document.body.classList.add('vertical-' + window.BUSINESS_TYPE);
+  try {
+    for (const v of ['fitness', 'dental']) {
+      const g = document.getElementById('grp-' + v);
+      if (g) g.style.display = (window.BUSINESS_TYPE === v) ? '' : 'none';
+    }
+  } catch (_) {}
   // Віджет заміток прихований CSS за замовчуванням; показуємо ЛИШЕ платформі.
   if (ent.is_platform) document.body.classList.add('platform-tenant');
   const solo = ent.is_solo && !ent.is_platform;

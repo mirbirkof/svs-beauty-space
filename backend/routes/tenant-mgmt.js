@@ -100,11 +100,21 @@ router.get('/tenants/:id/profile', requirePerm('saas.read'), async (req, res) =>
   } catch (e) { fail(res, e); }
 });
 
-// Редагування тенанта оператором: назва, службові нотатки
+// Редагування тенанта оператором: назва, службові нотатки, вертикаль бізнесу
 router.patch('/tenants/:id', requirePerm('saas.write'), async (req, res) => {
   try {
     const r = await tm.updateTenant(req.params.id, { name: req.body?.name, notes: req.body?.notes });
-    await logAction({ user: req.user, action: 'tenant.update', entity: 'tenants', entity_id: req.params.id, ip: req.ip });
+    // Вертикаль (beauty/fitness/dental) — визначає, які модулі «існують» для тенанта
+    if (req.body?.business_type !== undefined) {
+      const bt = String(req.body.business_type);
+      if (!['beauty', 'fitness', 'dental'].includes(bt)) {
+        return res.status(400).json({ error: 'bad-business-type', allowed: ['beauty', 'fitness', 'dental'] });
+      }
+      const { getPool } = require('../db-pg');
+      await getPool().query(`UPDATE tenants SET business_type=$1 WHERE id=$2`, [bt, req.params.id]);
+      try { require('../lib/vertical').invalidateVerticalCache(req.params.id); } catch (_) {}
+    }
+    await logAction({ user: req.user, action: 'tenant.update', entity: 'tenants', entity_id: req.params.id, ip: req.ip, meta: req.body?.business_type ? { business_type: req.body.business_type } : undefined });
     res.json({ ok: true, tenant: r });
   } catch (e) { fail(res, e); }
 });
