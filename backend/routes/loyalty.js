@@ -41,6 +41,13 @@ function normalizePhone(p) {
   return n && /^380\d{9}$/.test(n) ? n : null;
 }
 
+// ═══ Тарифный замок (17.07.2026): «Програма лояльності» — платный модуль (149₴/мес).
+// Гейт на ВСЕ /loyalty/* пути этого роутера: платформа (салон Босса) проходит всегда,
+// тенант — только с планом enterprise/solo_max или купленным аддоном loyalty.
+// Money-контур (/api/bonus, кешбек при оплате визита) НЕ тронут — это ядро, не модуль.
+const { requireFeature } = require('../lib/feature-gate');
+router.use('/loyalty', requireFeature('loyalty.program'));
+
 // === ТАРИФЫ ===
 router.get('/loyalty/tiers', async (req, res) => {
   try {
