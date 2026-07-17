@@ -11851,7 +11851,9 @@ async function uploadMasterAvatar(inp){
     const up = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN, ...tenantHeader() }, body: fd });
     const j = await up.json();
     if (!up.ok || !j.ok || !j.id){ if(st) st.textContent='Помилка завантаження'; toast('Помилка завантаження','error'); inp.value=''; return; }
-    const url = API + '/api/files/' + j.id;
+    // ОТНОСИТЕЛЬНЫЙ url (17.07): абсолютный с backup-домена ломался на основном
+    // (файл жил на диске резерва и умирал при его редеплое). Относительный живёт везде.
+    const url = '/api/files/' + j.id;
     const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ avatar: url }) });
     if (!r || !r.ok){ toast('Фото завантажено, але не збереглось','error'); return; }
     _mcData.ms = r.master; toast('Фото оновлено','success'); _mcRenderShell(); mcTab(_mcTabKey||'photos');

@@ -226,6 +226,12 @@ router.patch('/masters/:id/profile', async (req, res) => {
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, f)) {
         let v = req.body[f];
         if (f === 'commission_pct' && (v === '' || v == null)) v = null;
+        // avatar: нормалізуємо до ВІДНОСНОГО шляху (17.07). Абсолютний URL з
+        // backup-домену вмирав разом з його ефемерним диском → «фото не відображається».
+        if (f === 'avatar' && typeof v === 'string') {
+          const m = v.match(/^https?:\/\/[^/]+(\/api\/files\/.+)$/i);
+          if (m) v = m[1];
+        }
         if (f === 'online_rank') v = (v === '' || v == null) ? 0 : parseInt(v, 10) || 0;
         if (f === 'max_parallel') v = Math.max(1, parseInt(v, 10) || 1);
         if (boolFields.has(f)) v = !!v;
