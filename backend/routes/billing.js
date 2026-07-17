@@ -69,8 +69,20 @@ router.get('/alert', TENANT_R, async (req, res) => {
   try { res.json(await billing.dueAlert(getTenantId())); } catch (e) { fail(res, e); }
 });
 
+// Соло-тарифи (solo/solo_pro) — лише для майстрів-одиночок (solo_master_mode).
+// UI ховає ці картки від салону, а це серверна страховка від випадкового даунгрейду
+// салону до тарифу «1 майстер» (17.07.2026). Онбординг йде через lib напряму — не зачіпає.
+async function assertSoloPlanAllowed(planCode, res) {
+  if (!['solo', 'solo_pro'].includes(String(planCode || ''))) return true;
+  const { getSetting } = require('../lib/settings');
+  const isSolo = String(await getSetting('solo_master_mode', false)) === 'true';
+  if (!isSolo) { res.status(400).json({ error: 'solo-plan-not-allowed' }); return false; }
+  return true;
+}
+
 router.post('/subscription', TENANT_W, async (req, res) => {
   try {
+    if (!(await assertSoloPlanAllowed(req.body?.plan_code, res))) return;
     const sub = await billing.createSubscription(getTenantId(), req.body || {}, req.user);
     await logAction({ user: req.user, action: 'billing.subscribe', entity: 'subscriptions_saas', ip: req.ip });
     res.status(201).json({ ok: true, subscription: sub });
@@ -81,6 +93,7 @@ router.patch('/subscription', TENANT_W, async (req, res) => {
   try {
     const { plan_code, cycle } = req.body || {};
     if (!plan_code) return res.status(400).json({ error: 'plan_code-required' });
+    if (!(await assertSoloPlanAllowed(plan_code, res))) return;
     const r = await billing.changePlan(getTenantId(), plan_code, cycle || null);
     await logAction({ user: req.user, action: 'billing.change_plan', entity: 'subscriptions_saas', ip: req.ip });
     res.json({ ok: true, ...r });

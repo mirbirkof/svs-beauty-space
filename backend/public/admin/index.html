@@ -12990,7 +12990,10 @@ function renderMySub(){
     <button class="btn btn-sm" style="border:0;${cyc==='yearly'?'background:#6d5ae6;color:#fff':'background:transparent;color:#6d5ae6'}" onclick="_mysub.cycle='yearly';renderMySub()">Щороку <span style="opacity:.8;font-size:11px">−2 міс</span></button>
   </div>`;
   // ── Сітка тарифів ──
-  const cards = _mysub.plans.map(p=>{
+  // Салону показуємо ТІЛЬКИ салонні тарифи: solo/solo_pro — для майстрів-одиночок,
+  // вони мають свій окремий вигляд нижче (isSolo). Салону вони не потрібні і небезпечні
+  // («Обрати Free» = випадковий даунгрейд до 1 майстра).
+  const cards = _mysub.plans.filter(p=>!['solo','solo_pro'].includes(String(p.code))).map(p=>{
     const price = cyc==='yearly' ? Number(p.price_year) : Number(p.price_month);
     const per = cyc==='yearly' ? '/рік' : '/міс';
     const isCur = s && s.plan_code===p.code && (s.status==='active'||s.status==='trialing');
