@@ -27,12 +27,35 @@ const canWrite = requirePerm('marketing.write');
 const UPLOAD_ROOT = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 const VIDEO_DIR = path.join(UPLOAD_ROOT, 'video');
 
-// Загрузка своих клипов: в память (montage сам пишет во временную папку и чистит).
-// Лимиты — защита и от DoS, и от таймаутов рендера на проде.
+// Загрузка своих клипов: НА ДИСК (17.07.2026 — было memoryStorage: 8×80МБ буферов
+// в RAM убивали Render 512MB задолго до ffmpeg; это и была часть «montage падает»).
+// + поле music (опц. фоновая музыка для режима Reels).
+const os = require('os');
+const reel = require('../lib/ai-video-reel');
+const upDiskDir = path.join(os.tmpdir(), 'ai-video-up');
+try { fs.mkdirSync(upDiskDir, { recursive: true }); } catch {}
 const uploadClips = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 80 * 1024 * 1024, files: montager.MAX_CLIPS },
-}).array('clips', montager.MAX_CLIPS);
+  storage: multer.diskStorage({
+    destination: upDiskDir,
+    filename: (_req, _file, cb) => cb(null, crypto.randomUUID()),
+  }),
+  limits: { fileSize: 80 * 1024 * 1024, files: montager.MAX_CLIPS + 1 },
+}).fields([
+  { name: 'clips', maxCount: montager.MAX_CLIPS },
+  { name: 'music', maxCount: 1 },
+]);
+const rmUploads = (req) => {
+  const all = [...((req.files && req.files.clips) || []), ...((req.files && req.files.music) || [])];
+  for (const f of all) fsp.rm(f.path, { force: true }).catch(() => {});
+};
+
+// ─── Асинхронные задания рендера (Reels) ───────────────────────────────────
+// Синхронный HTTP-ответ на проде обрывается прокси при рендере >100с → job+поллинг.
+const jobs = new Map(); // id → { status, stage, error, videoId, tenantId, createdAt }
+setInterval(() => {
+  const cutoff = Date.now() - 2 * 3600 * 1000;
+  for (const [id, j] of jobs) if (j.createdAt < cutoff) jobs.delete(id);
+}, 15 * 60 * 1000).unref();
 
 function fail(res, e, ctx) {
   console.error(`[ai-video] ${ctx}:`, e.message);
@@ -126,60 +149,110 @@ router.get('/clip', canRead, async (req, res) => {
   } catch (e) { fail(res, e, 'clip.poll'); }
 });
 
-/** Монтаж из СВОИХ видео: загрузить 1..N клипов + (опц.) титры сцен → один промо-MP4.
- *  Бесплатно (локальный ffmpeg, без платной квоты Google) → marketing.read.
- *  multipart/form-data: clips[] = файлы; scenes = JSON [{caption,durationSec}]; aspect. */
-router.post('/montage', canRead, (req, res) => {
+/** Сохранить готовый ролик в библиотеку (диск + БД + общее облако). */
+async function saveToLibrary(result, { title, aspect, createdBy }) {
+  await fsp.mkdir(VIDEO_DIR, { recursive: true });
+  const fname = `${Date.now()}_${crypto.randomBytes(6).toString('hex')}.mp4`;
+  const abs = path.join(VIDEO_DIR, fname);
+  await fsp.copyFile(result.path, abs);
+  const size = (await fsp.stat(abs)).size;
+  let videoId = null;
+  const pool = db();
+  if (pool) {
+    const ins = await pool.query(
+      `INSERT INTO ai_video_library (title, storage_path, aspect, duration_sec, clips, size_bytes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [title || 'Промо-ролик', path.join('video', fname), aspect, result.durationSec, result.clips, size, createdBy || null]);
+    videoId = ins.rows[0].id;
+  }
+  if (fileStore.shared()) {
+    try { await fileStore.put(path.join('video', fname), await fsp.readFile(abs), 'video/mp4'); }
+    catch (e) { console.error('[ai-video] cloud upload failed (локальная копия есть):', e.message); }
+  }
+  return { videoId, savedPath: abs };
+}
+
+/** Монтаж из СВОИХ видео: 1..N клипов + титры → один промо-MP4.
+ *  mode=reel (за замовч.) — «Reels-магія»: fill-кроп, xfade+fadewhite, цвет,
+ *  озвучка «напівшепіт» (voiceText), музыка (файл music) с дакингом.
+ *  mode=simple — старая простая склейка с полями.
+ *  async=1 → { job } сразу, поллинг GET /montage-job/:id (на проде рендер >100с
+ *  рвался прокси — поэтому асинхронно). Без async — старое sync-поведение (simple). */
+const { requireFeature } = require('../lib/feature-gate');
+router.post('/montage', canRead, requireFeature('video_studio'), (req, res) => {
   uploadClips(req, res, async (upErr) => {
     if (upErr) {
-      const code = upErr.code === 'LIMIT_FILE_SIZE' ? 413
-        : upErr.code === 'LIMIT_FILE_COUNT' ? 400 : 400;
+      const code = upErr.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
       return res.status(code).json({ error: upErr.code === 'LIMIT_FILE_SIZE'
         ? `файл завеликий (макс 80 МБ на кліп)` : upErr.message });
     }
-    const files = req.files || [];
-    if (!files.length) return res.status(400).json({ error: 'no clips uploaded' });
+    const files = (req.files && req.files.clips) || [];
+    const musicFile = ((req.files && req.files.music) || [])[0] || null;
+    if (!files.length) { rmUploads(req); return res.status(400).json({ error: 'no clips uploaded' }); }
     let scenes = [];
-    try { scenes = req.body.scenes ? JSON.parse(req.body.scenes) : []; }
-    catch { scenes = []; }
+    try { scenes = req.body.scenes ? JSON.parse(req.body.scenes) : []; } catch { scenes = []; }
     if (!Array.isArray(scenes)) scenes = [];
     const aspect = (req.body.aspect || '9:16').toString();
+    const mode = (req.body.mode || 'reel').toString();
+    const isAsync = req.body.async === '1' || req.query.async === '1';
+    const createdBy = (req.staff && req.staff.name) || (req.user && req.user.name) || null;
+    const title = (scenes[0] && scenes[0].caption) ? String(scenes[0].caption).slice(0, 120)
+      : String(req.body.title || 'Промо-ролик').slice(0, 120);
 
+    const renderOnce = async (onProgress) => {
+      const clipList = files.map((f) => ({ path: f.path, name: f.originalname }));
+      if (mode === 'simple') {
+        const bufs = [];
+        for (const f of files) bufs.push({ buffer: await fsp.readFile(f.path), name: f.originalname });
+        return montager.montage(bufs, scenes, { aspect });
+      }
+      return reel.renderReel(clipList, {
+        aspect,
+        targetSec: req.body.targetSec,
+        captions: scenes.map((s) => (s && s.caption) || ''),
+        brandLine: req.body.brandLine || '',
+        voiceText: req.body.voiceText || '',
+        musicPath: musicFile ? musicFile.path : null,
+        onProgress,
+      });
+    };
+
+    if (isAsync) {
+      const jobId = crypto.randomUUID();
+      const job = { status: 'rendering', stage: 'Готуюсь…', error: null, videoId: null, createdAt: Date.now() };
+      jobs.set(jobId, job);
+      res.json({ ok: true, job: jobId });
+      // Контекст тенанта (AsyncLocalStorage) сохраняется в этой async-цепочке —
+      // запись в ai_video_library идёт под тем же tenant, что и запрос.
+      (async () => {
+        let result = null;
+        try {
+          result = await renderOnce((st) => { job.stage = st; });
+          job.stage = 'Зберігаю в бібліотеку…';
+          const saved = await saveToLibrary(result, { title, aspect, createdBy });
+          job.videoId = saved.videoId;
+          job.status = 'done';
+        } catch (e) {
+          console.error('[ai-video] reel job:', e.message);
+          job.status = 'error';
+          job.error = /відео|clips|max |монтувати/i.test(e.message) ? e.message : 'рендер не вдався — спробуйте ще раз';
+        } finally {
+          if (result) result.cleanup();
+          rmUploads(req);
+        }
+      })();
+      return;
+    }
+
+    // sync (старый путь — совместимость)
     let result = null;
     try {
-      result = await montager.montage(
-        files.map((f) => ({ buffer: f.buffer, name: f.originalname })),
-        scenes,
-        { aspect }
-      );
-      // Зберігаємо готовий ролик у бібліотеку (диск + запис у БД), щоб він НЕ зникав
-      // після оновлення сторінки. Помилка збереження не блокує віддачу відео користувачу.
+      result = await renderOnce(() => {});
       let savedPath = result.path, videoId = null;
       try {
-        await fsp.mkdir(VIDEO_DIR, { recursive: true });
-        const fname = `${Date.now()}_${crypto.randomBytes(6).toString('hex')}.mp4`;
-        const abs = path.join(VIDEO_DIR, fname);
-        await fsp.copyFile(result.path, abs);
-        savedPath = abs;
-        const size = (await fsp.stat(abs)).size;
-        const title = (Array.isArray(scenes) && scenes[0] && scenes[0].caption)
-          ? String(scenes[0].caption).slice(0, 120) : 'Промо-ролик';
-        const pool = db();
-        if (pool) {
-          const ins = await pool.query(
-            `INSERT INTO ai_video_library (title, storage_path, aspect, duration_sec, clips, size_bytes, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-            [title, path.join('video', fname), aspect, result.durationSec, result.clips, size,
-             (req.staff && req.staff.name) || (req.user && req.user.name) || null]);
-          videoId = ins.rows[0].id;
-        }
-        // Дублируем ролик в общее облако — чтобы его видели все серверы.
-        if (fileStore.shared()) {
-          try { await fileStore.put(path.join('video', fname), await fsp.readFile(abs), 'video/mp4'); }
-          catch (e) { console.error('[ai-video] cloud upload failed (локальная копия есть):', e.message); }
-        }
+        const saved = await saveToLibrary(result, { title, aspect, createdBy });
+        savedPath = saved.savedPath; videoId = saved.videoId;
       } catch (saveErr) { console.error('[ai-video] save library:', saveErr.message); }
-
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Content-Disposition', 'attachment; filename="svs-promo.mp4"');
       res.setHeader('X-Montage-Duration', String(result.durationSec));
@@ -187,11 +260,11 @@ router.post('/montage', canRead, (req, res) => {
       if (videoId) res.setHeader('X-Video-Id', String(videoId));
       const stream = fs.createReadStream(savedPath);
       stream.on('error', () => { if (!res.headersSent) res.status(500).end(); });
-      stream.on('close', () => result.cleanup());
+      stream.on('close', () => { result.cleanup(); rmUploads(req); });
       stream.pipe(res);
     } catch (e) {
       if (result) result.cleanup();
-      // ошибки контента/лимитов — это вина ввода, не сервера → 400
+      rmUploads(req);
       if (/відео|clips|max |монтувати|nothing/i.test(e.message)) {
         console.error('[ai-video] montage:', e.message);
         return res.status(400).json({ error: e.message });
@@ -199,6 +272,13 @@ router.post('/montage', canRead, (req, res) => {
       fail(res, e, 'montage');
     }
   });
+});
+
+/** Статус асинхронного рендера. */
+router.get('/montage-job/:id', canRead, (req, res) => {
+  const j = jobs.get(req.params.id);
+  if (!j) return res.status(404).json({ error: 'job-not-found' });
+  res.json({ status: j.status, stage: j.stage, error: j.error, video_id: j.videoId });
 });
 
 /** Бібліотека збережених роликів — щоб після оновлення сторінки вони не зникали. */

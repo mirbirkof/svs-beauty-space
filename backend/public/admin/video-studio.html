@@ -67,14 +67,32 @@
   <div class="card" id="montageCard">
     <h3>Змонтувати з моїх відео</h3>
     <div class="intro" style="margin:0 0 12px">Завантажте свої кліпи (зняті на телефон, будь-який формат) — зведемо в один ролик єдиного формату з титрами. Без платного ключа, рендер на сервері.</div>
-    <div class="row" style="grid-template-columns:1fr 1fr">
+    <div class="row" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div class="fld"><label>Стиль</label>
+        <select id="mMode" onchange="document.getElementById('reelExtras').style.display=this.value==='reel'?'':'none'">
+          <option value="reel" selected>✨ Reels-магія (переходи, без полів)</option>
+          <option value="simple">Простий (склейка як є)</option>
+        </select></div>
       <div class="fld"><label>Орієнтація</label>
         <select id="mAspect"><option value="9:16" selected>Вертикальне 9:16 (Reels/Stories)</option><option value="16:9">Горизонтальне 16:9</option><option value="1:1">Квадрат 1:1</option></select></div>
+      <div class="fld"><label>Тривалість, сек</label>
+        <select id="mTarget"><option>15</option><option selected>18</option><option>30</option><option>45</option><option>60</option></select></div>
       <div class="fld" style="display:flex;align-items:flex-end">
         <label class="btn" style="cursor:pointer;width:100%;text-align:center">
           + Додати відео
           <input id="mFiles" type="file" accept="video/*" multiple style="display:none" onchange="addClips(event)">
         </label></div>
+    </div>
+    <div id="reelExtras">
+      <div class="fld"><label>Текст озвучки — прочитається ніжним жіночим голосом «напівшепіт» (необовʼязково)</label>
+        <textarea id="mVoice" placeholder="Напр.: Сьогодні до нас завітала маленька принцеса… Мить, коли очі починають сяяти…"></textarea></div>
+      <div class="row" style="grid-template-columns:1fr 1fr">
+        <div class="fld"><label>Фонова музика (mp3/m4a, необовʼязково; приглушується під голосом)</label>
+          <input id="mMusic" type="file" accept="audio/*"></div>
+        <div class="fld"><label>Підпис бренду на фіналі (напр. назва салону)</label>
+          <input id="mBrand" placeholder="SVS Beauty Space"></div>
+      </div>
+      <div class="muted" style="margin-bottom:8px">Порада SMM: для максимальних охоплень музику краще накладати в самому Instagram (трендовий звук) — тоді залиште поле музики порожнім, а озвучку ввімкніть.</div>
     </div>
     <div id="mList"></div>
     <div class="msg muted" id="mHint" style="margin-top:6px"></div>
@@ -245,13 +263,20 @@ function moveClip(i,d){ const j=i+d; if(j<0||j>=mClips.length) return; [mClips[i
 
 async function doMontage(){
   if(!mClips.length){ $('mMsg').textContent='Додайте хоча б одне відео'; return; }
-  $('mGo').disabled=true; $('mMsg').textContent='Монтую ролик… це може зайняти 1–2 хв (рендер на сервері)';
-  $('mResult').innerHTML='';
+  $('mGo').disabled=true; $('mResult').innerHTML='';
+  $('mMsg').textContent='Завантажую кліпи на сервер…';
   try{
     const fd = new FormData();
     fd.append('aspect', $('mAspect').value);
+    fd.append('mode', $('mMode').value);
+    fd.append('targetSec', $('mTarget').value);
+    fd.append('voiceText', ($('mVoice').value||'').slice(0,600));
+    fd.append('brandLine', ($('mBrand').value||'').slice(0,60));
+    fd.append('async', '1');
     fd.append('scenes', JSON.stringify(mClips.map(c=>({ caption:(c.caption||'').slice(0,120) }))));
     for(const c of mClips) fd.append('clips', c.file, c.file.name);
+    const mus = $('mMusic').files && $('mMusic').files[0];
+    if(mus) fd.append('music', mus, mus.name);
     const resp = await fetch('/api/ai/video/montage', {
       method:'POST',
       headers:{ 'X-Admin-Token': (window.adminToken?adminToken():'') },
@@ -262,15 +287,31 @@ async function doMontage(){
       try{ const j=await resp.json(); if(j.error) msg=j.error; }catch{}
       throw new Error(msg);
     }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const dur = resp.headers.get('X-Montage-Duration')||'';
-    $('mResult').innerHTML = `
-      <div class="ok">Готово ✓ ${dur?('тривалість ~'+dur+'с'):''}</div>
-      <video src="${url}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
-      <div style="margin-top:8px"><a class="btn" href="${url}" download="svs-promo.mp4">Завантажити MP4</a></div>`;
-    $('mMsg').textContent='';
-    loadLibrary();  // ролик збережено — оновлюємо галерею «Мої відео»
+    const { job } = await resp.json();
+    if(!job) throw new Error('сервер не повернув номер задачі');
+    // Поллинг: рендер на сервері 1-5 хв. Показуємо живу стадію.
+    let tries = 0;
+    const t0 = Date.now();
+    while(true){
+      await new Promise(r=>setTimeout(r, 4000));
+      if(++tries > 150) throw new Error('рендер триває занадто довго — перевірте бібліотеку нижче пізніше');
+      let st;
+      try{ st = await adminJson('/api/ai/video/montage-job/'+job); }
+      catch(e){ continue; /* мережевий глюк — пробуємо далі */ }
+      const mins = Math.floor((Date.now()-t0)/60000), secs = Math.floor(((Date.now()-t0)%60000)/1000);
+      $('mMsg').textContent = `⏳ ${st.stage||'Рендер…'} (${mins}:${String(secs).padStart(2,'0')})`;
+      if(st.status==='error') throw new Error(st.error||'рендер не вдався');
+      if(st.status==='done'){
+        $('mMsg').textContent='';
+        const vid = st.video_id;
+        $('mResult').innerHTML = `
+          <div class="ok">Готово ✓ Ролик збережено в бібліотеці «Мої відео»</div>
+          ${vid?`<video src="/api/ai/video/file/${vid}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
+          <div style="margin-top:8px"><a class="btn" href="/api/ai/video/file/${vid}" download="svs-promo.mp4">Завантажити MP4</a></div>`:''}`;
+        loadLibrary();
+        break;
+      }
+    }
   }catch(e){ $('mMsg').textContent='Помилка: '+e.message; }
   finally{ $('mGo').disabled=false; }
 }
