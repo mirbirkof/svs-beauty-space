@@ -86,11 +86,25 @@
     <div id="reelExtras">
       <div class="fld"><label>Текст озвучки — прочитається ніжним жіночим голосом «напівшепіт» (необовʼязково)</label>
         <textarea id="mVoice" placeholder="Напр.: Сьогодні до нас завітала маленька принцеса… Мить, коли очі починають сяяти…"></textarea></div>
-      <div class="row" style="grid-template-columns:1fr 1fr">
-        <div class="fld"><label>Фонова музика (mp3/m4a, необовʼязково; приглушується під голосом)</label>
-          <input id="mMusic" type="file" accept="audio/*"></div>
-        <div class="fld"><label>Підпис бренду на фіналі (напр. назва салону)</label>
-          <input id="mBrand" placeholder="SVS Beauty Space"></div>
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="fld"><label>Голос озвучки</label>
+          <select id="mVoiceSel">
+            <option value="auto" selected>🤖 Авто (під контент і ЦА)</option>
+            <option value="female_soft">Жіночий ніжний (напівшепіт)</option>
+            <option value="female_energy">Жіночий енергійний (акції)</option>
+            <option value="male_calm">Чоловічий спокійний</option>
+          </select></div>
+        <div class="fld"><label>Музика</label>
+          <select id="mMusicMood">
+            <option value="">Без музики (додасте тренд в Instagram)</option>
+            <option value="tender" selected>🎵 Ніжна (з бібліотеки)</option>
+            <option value="upbeat">🎵 Енергійна (з бібліотеки)</option>
+            <option value="luxury">🎵 Статусна (з бібліотеки)</option>
+            <option value="file">Свій файл ↓</option>
+          </select>
+          <input id="mMusic" type="file" accept="audio/*" style="display:none;margin-top:6px"></div>
+        <div class="fld"><label>Підпис бренду на фіналі</label>
+          <input id="mBrand" placeholder="Назва салону"></div>
       </div>
       <div class="muted" style="margin-bottom:8px">Порада SMM: для максимальних охоплень музику краще накладати в самому Instagram (трендовий звук) — тоді залиште поле музики порожнім, а озвучку ввімкніть.</div>
     </div>
@@ -101,10 +115,26 @@
     <div id="mResult" style="margin-top:12px"></div>
   </div>
 
+  <!-- ═══ Контент-план: AI-контентмейкер ставить задачі → адмін знімає → студія монтує ═══ -->
+  <div class="card" id="planCard2">
+    <h3>📅 Контент-план (AI-контентмейкер)</h3>
+    <div class="intro" style="margin:0 0 12px">AI складає план роликів із простими завданнями на зйомку. Адмін лише знімає кліпи за завданням, завантажує їх — студія сама монтує: текст, озвучка, музика, титри.</div>
+    <div class="row" style="grid-template-columns:2fr 1fr auto">
+      <div class="fld"><label>Про салон / що просувати цього тижня</label>
+        <input id="cpBrief" placeholder="Напр.: салон краси, сильні сторони — дитячі образи, колористика; хочемо більше записів на фарбування"></div>
+      <div class="fld"><label>Роликів</label>
+        <select id="cpPosts"><option>2</option><option selected>3</option><option>5</option></select></div>
+      <div class="fld" style="display:flex;align-items:flex-end">
+        <button class="btn" id="cpGen" onclick="cpGenerate()">Згенерувати план</button></div>
+    </div>
+    <div class="msg" id="cpMsg"></div>
+    <div id="cpList" style="margin-top:8px"></div>
+  </div>
+
   <div class="card" style="margin-top:16px">
     <h2 style="display:flex;align-items:center;gap:8px;margin:0 0 4px">🎬 Мої відео <span class="muted" id="libCount" style="font-size:13px;font-weight:400"></span></h2>
     <div class="msg muted" style="margin-bottom:10px">Усі змонтовані ролики зберігаються тут і не зникають після оновлення сторінки.</div>
-    <div id="libList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+    <div id="libList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px"></div>
   </div>
 </main>
 
@@ -199,13 +229,23 @@ async function loadLibrary(){
     box.innerHTML = items.map(v=>{
       const dt = v.created_at ? new Date(v.created_at).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
       const mb = v.size_bytes ? (v.size_bytes/1048576).toFixed(1)+' МБ' : '';
-      return `<div style="border:1px solid var(--border,#e5e5e5);border-radius:12px;overflow:hidden;background:#fff">
-        <video src="/api/ai/video/file/${v.id}" controls playsinline preload="metadata" style="width:100%;display:block;background:#000;aspect-ratio:9/16;object-fit:contain"></video>
-        <div style="padding:8px 10px">
-          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.title||'Промо-ролик')}</div>
-          <div class="muted" style="font-size:11.5px;margin:2px 0 8px">${dt} · ${v.aspect||''} · ${v.duration_sec?('~'+v.duration_sec+'с · '):''}${mb}</div>
-          <div style="display:flex;gap:6px">
-            <a class="btn sm" href="/api/ai/video/file/${v.id}" download="svs-promo-${v.id}.mp4">Завантажити</a>
+      if(v.archived_at){
+        return `<div style="border:1px dashed var(--border,#ddd);border-radius:10px;background:#fafafa;padding:10px;opacity:.75">
+          <div style="font-size:22px;text-align:center;margin:6px 0">🗄️</div>
+          <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.title||'Промо-ролик')}</div>
+          <div class="muted" style="font-size:11px">${dt} · архів (файли живуть 3 дні)</div>
+        </div>`;
+      }
+      return `<div style="border:1px solid var(--border,#e5e5e5);border-radius:10px;overflow:hidden;background:#fff">
+        <div onclick="playVideo(${v.id},'${esc((v.title||'Промо-ролик').replace(/'/g,''))}')" style="cursor:pointer;position:relative;background:#000;aspect-ratio:9/16">
+          <video src="/api/ai/video/file/${v.id}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"></video>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">▶</div></div>
+        </div>
+        <div style="padding:6px 8px">
+          <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.title||'Промо-ролик')}</div>
+          <div class="muted" style="font-size:10.5px;margin:1px 0 6px">${dt} · ${v.duration_sec?('~'+v.duration_sec+'с · '):''}${mb}</div>
+          <div style="display:flex;gap:5px">
+            <a class="btn sm" href="/api/ai/video/file/${v.id}" download="svs-promo-${v.id}.mp4" style="flex:1;text-align:center">⬇ Завантажити</a>
             <button class="btn sm" onclick="delVideo(${v.id})" title="видалити">✕</button>
           </div>
         </div>
@@ -213,6 +253,23 @@ async function loadLibrary(){
     }).join('');
   }catch(e){ box.innerHTML='<div class="muted">Не вдалося завантажити: '+esc(e.message)+'</div>'; }
 }
+// Просмотр прямо в CRM: модалка с плеером (Босс 17.07)
+function playVideo(id, title){
+  const old = document.getElementById('vsPlayer'); if(old) old.remove();
+  const m = document.createElement('div');
+  m.id='vsPlayer';
+  m.style.cssText='position:fixed;inset:0;background:rgba(10,10,16,.82);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px';
+  m.innerHTML = `
+    <div style="color:#fff;font-size:14px;font-weight:600;max-width:70vw;text-align:center">${title||''}</div>
+    <video src="/api/ai/video/file/${id}" controls autoplay playsinline style="max-height:78vh;max-width:92vw;border-radius:14px;background:#000"></video>
+    <div style="display:flex;gap:10px">
+      <a class="btn" href="/api/ai/video/file/${id}" download="svs-promo-${id}.mp4" style="background:#fff">⬇ Завантажити</a>
+      <button class="btn" onclick="document.getElementById('vsPlayer').remove()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)">Закрити ✕</button>
+    </div>`;
+  m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+}
+
 async function delVideo(id){
   if(!confirm('Видалити цей ролик?')) return;
   try{
@@ -223,9 +280,23 @@ async function delVideo(id){
 }
 loadLibrary();
 
-// ═══ Монтаж із своїх відео ═══
+// ═══ Монтаж із своїх відео (staging: кліпи живуть на сервері, F5 не страшний) ═══
 const MAX_CLIPS = 8, MAX_MB = 80;
-let mClips = [];   // {file, caption, dur}
+let mClips = [];   // [{id, file_name, size_bytes, caption}] — з сервера
+const capStore = {
+  get: id => { try { return JSON.parse(localStorage.getItem('vsCaps')||'{}')[id]||''; } catch { return ''; } },
+  set: (id,v) => { try { const o=JSON.parse(localStorage.getItem('vsCaps')||'{}'); o[id]=v; localStorage.setItem('vsCaps', JSON.stringify(o)); } catch {} },
+};
+
+$('mMusicMood').addEventListener('change', function(){ $('mMusic').style.display = this.value==='file' ? '' : 'none'; });
+
+async function loadStaged(){
+  try{
+    const d = await adminJson('/api/ai/video/staging');
+    mClips = (d.items||[]).filter(x=>!x.plan_item_id).map(x=>({ ...x, caption: capStore.get(x.id) }));
+    renderClips();
+  }catch(e){ /* мовчки — список порожній */ }
+}
 
 function renderClips(){
   const box = $('mList');
@@ -234,32 +305,49 @@ function renderClips(){
     <div class="scene" style="display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center">
       <div style="font-weight:700;color:var(--text-secondary)">${i+1}</div>
       <div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:4px">${esc(c.file.name)} <span class="muted">· ${(c.file.size/1048576).toFixed(1)} МБ</span></div>
-        <input class="cap-in" placeholder="Титр на цю сцену (необовʼязково)" value="${esc(c.caption)}" oninput="mClips[${i}].caption=this.value" style="width:100%;padding:6px 9px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:12.5px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:4px">${esc(c.file_name)} <span class="muted">· ${(c.size_bytes/1048576).toFixed(1)} МБ · збережено ✓</span></div>
+        <input class="cap-in" placeholder="Титр на цю сцену (необовʼязково)" value="${esc(c.caption)}" oninput="mClips[${i}].caption=this.value;capStore.set(${c.id},this.value)" style="width:100%;padding:6px 9px;border:1px solid var(--border,#ddd);border-radius:8px;font-size:12.5px">
       </div>
       <div style="display:flex;gap:4px">
         <button class="btn sm" onclick="moveClip(${i},-1)" ${i===0?'disabled':''} title="вгору">↑</button>
         <button class="btn sm" onclick="moveClip(${i},1)" ${i===mClips.length-1?'disabled':''} title="вниз">↓</button>
-        <button class="btn sm" onclick="rmClip(${i})" title="видалити">✕</button>
+        <button class="btn sm" onclick="rmClip(${i})" title="видалити із сервера">✕</button>
       </div>
     </div>`).join('');
   $('mGo').style.display='';
   const hasSb = Array.isArray(window._lastScenes) && window._lastScenes.length;
-  $('mHint').innerHTML = `${mClips.length} кліп(ів). Порядок — стрілками. Макс ${MAX_CLIPS}, до ${MAX_MB} МБ кожен.`
+  $('mHint').innerHTML = `${mClips.length} кліп(ів) на сервері — переживуть оновлення сторінки. Макс ${MAX_CLIPS}, до ${MAX_MB} МБ.`
     + (hasSb ? ` · <a href="#" onclick="fillCaptionsFromStoryboard(window._lastScenes);return false">підставити титри зі сценарію ліворуч</a>` : '');
 }
-function addClips(ev){
-  const files = Array.from(ev.target.files||[]);
-  for(const f of files){
-    if(mClips.length>=MAX_CLIPS){ $('mMsg').textContent='Досягнуто ліміту '+MAX_CLIPS+' кліпів'; break; }
-    if(f.size > MAX_MB*1048576){ $('mMsg').textContent='Файл «'+f.name+'» більший за '+MAX_MB+' МБ'; continue; }
-    mClips.push({ file:f, caption:'' });
-  }
+
+async function addClips(ev){
+  const files = Array.from(ev.target.files||[]).filter(f=>{
+    if(f.size > MAX_MB*1048576){ $('mMsg').textContent='Файл «'+f.name+'» більший за '+MAX_MB+' МБ'; return false; }
+    return true;
+  }).slice(0, MAX_CLIPS - mClips.length);
   ev.target.value='';
-  renderClips();
+  if(!files.length) return;
+  $('mMsg').textContent = '⏫ Завантажую '+files.length+' відео на сервер…';
+  try{
+    const fd = new FormData();
+    for(const f of files) fd.append('clips', f, f.name);
+    const resp = await fetch('/api/ai/video/staging', { method:'POST', headers:{ 'X-Admin-Token':(window.adminToken?adminToken():'') }, body: fd });
+    if(!resp.ok){ const j=await resp.json().catch(()=>({})); throw new Error(j.error||('HTTP '+resp.status)); }
+    $('mMsg').textContent = '✓ Збережено на сервері';
+    setTimeout(()=>{ if($('mMsg').textContent.startsWith('✓')) $('mMsg').textContent=''; }, 3000);
+    await loadStaged();
+  }catch(e){ $('mMsg').textContent = 'Помилка завантаження: '+e.message; }
 }
-function rmClip(i){ mClips.splice(i,1); renderClips(); }
+async function rmClip(i){
+  const c = mClips[i];
+  try{
+    const resp = await fetch('/api/ai/video/staging/'+c.id, { method:'DELETE', headers:{ 'X-Admin-Token':(window.adminToken?adminToken():'') }});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    mClips.splice(i,1); renderClips();
+  }catch(e){ $('mMsg').textContent='Не вдалося видалити: '+e.message; }
+}
 function moveClip(i,d){ const j=i+d; if(j<0||j>=mClips.length) return; [mClips[i],mClips[j]]=[mClips[j],mClips[i]]; renderClips(); }
+loadStaged();
 
 async function doMontage(){
   if(!mClips.length){ $('mMsg').textContent='Додайте хоча б одне відео'; return; }
@@ -271,11 +359,14 @@ async function doMontage(){
     fd.append('mode', $('mMode').value);
     fd.append('targetSec', $('mTarget').value);
     fd.append('voiceText', ($('mVoice').value||'').slice(0,600));
+    fd.append('voice', $('mVoiceSel').value);
     fd.append('brandLine', ($('mBrand').value||'').slice(0,60));
     fd.append('async', '1');
     fd.append('scenes', JSON.stringify(mClips.map(c=>({ caption:(c.caption||'').slice(0,120) }))));
-    for(const c of mClips) fd.append('clips', c.file, c.file.name);
-    const mus = $('mMusic').files && $('mMusic').files[0];
+    fd.append('staged_ids', JSON.stringify(mClips.map(c=>c.id)));
+    const moodSel = $('mMusicMood').value;
+    if(moodSel && moodSel!=='file') fd.append('musicMood', moodSel);
+    const mus = moodSel==='file' && $('mMusic').files && $('mMusic').files[0];
     if(mus) fd.append('music', mus, mus.name);
     const resp = await fetch('/api/ai/video/montage', {
       method:'POST',
@@ -315,6 +406,96 @@ async function doMontage(){
   }catch(e){ $('mMsg').textContent='Помилка: '+e.message; }
   finally{ $('mGo').disabled=false; }
 }
+
+// ═══ КОНТЕНТ-ПЛАН ═══
+async function cpGenerate(){
+  const brief = $('cpBrief').value.trim();
+  if(!brief){ $('cpMsg').textContent='Опишіть салон або що просуваємо'; return; }
+  $('cpGen').disabled=true; $('cpMsg').textContent='🧠 AI складає план і завдання на зйомку…';
+  try{
+    const d = await adminJson('/api/ai/video/content-plan/generate',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brief, posts: parseInt($('cpPosts').value,10) })});
+    if(d.error) throw new Error(d.error);
+    $('cpMsg').textContent='✓ План готовий — роздайте завдання і знімайте';
+    loadPlan();
+  }catch(e){ $('cpMsg').textContent='Помилка: '+e.message; }
+  finally{ $('cpGen').disabled=false; }
+}
+
+async function loadPlan(){
+  try{
+    const d = await adminJson('/api/ai/video/content-plan');
+    const items = d.items||[];
+    if(!items.length){ $('cpList').innerHTML='<div class="muted">План порожній — згенеруйте вище.</div>'; return; }
+    $('cpList').innerHTML = items.map(it=>{
+      const sc = it.scenario||{};
+      const tasks = (it.shoot_tasks||[]).map((t,i)=>`<div style="display:flex;gap:8px;font-size:12.5px;margin:3px 0"><span style="color:#6d5ae6;font-weight:700">${i+1}.</span><span>${esc(t)}</span></div>`).join('');
+      const stBadge = it.status==='rendered' ? '<span class="tag" style="background:#E3F6E9;color:#1B7A3D">✓ змонтовано</span>'
+        : it.clips_uploaded>0 ? '<span class="tag" style="background:#FFF3D6;color:#8a6100">🎥 кліпів: '+it.clips_uploaded+'</span>'
+        : '<span class="tag">📋 очікує зйомки</span>';
+      return `<div class="scene" id="cpItem${it.id}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="font-weight:700;font-size:14px">${esc(it.idea)} <span class="muted" style="font-weight:400;font-size:12px">· ${it.publish_date?String(it.publish_date).slice(0,10):''}</span></div>
+          <div style="display:flex;gap:6px;align-items:center">${stBadge}
+            <button class="btn sm" onclick="cpDelete(${it.id})" title="видалити">✕</button></div>
+        </div>
+        <div style="margin:8px 0 4px;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">Завдання на зйомку (телефоном):</div>
+        ${tasks||'<div class="muted" style="font-size:12px">—</div>'}
+        ${sc.trendSoundAdvice?`<div style="font-size:12px;color:#2A5C9A;margin-top:6px">🎧 Тренд-звук для Instagram: ${esc(sc.trendSoundAdvice)}</div>`:''}
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <label class="btn sm" style="cursor:pointer">📤 Завантажити зняті кліпи
+            <input type="file" accept="video/*" multiple style="display:none" onchange="cpUpload(${it.id}, event)"></label>
+          ${it.clips_uploaded>0 && it.status!=='rendered' ? `<button class="btn sm btn-primary" onclick="cpRender(${it.id})">✨ Змонтувати за сценарієм</button>`:''}
+          ${it.status==='rendered' && it.video_id ? `<button class="btn sm" onclick="playVideo(${it.video_id},'${esc(it.idea.replace(/'/g,''))}')">▶ Переглянути</button>
+            <a class="btn sm" href="/api/ai/video/file/${it.video_id}" download>⬇ Завантажити</a>
+            <a class="muted" href="#" style="font-size:12px" onclick="navigator.clipboard.writeText(${JSON.stringify(String(sc.caption||'')+ '\n\n' + (sc.hashtags||[]).join(' ')).replace(/"/g,'&quot;')});return false">копіювати підпис+хештеги</a>`:''}
+          <span class="msg" id="cpMsg${it.id}" style="margin:0"></span>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){ $('cpList').innerHTML='<div class="muted">Не вдалося завантажити план: '+esc(e.message)+'</div>'; }
+}
+
+async function cpUpload(id, ev){
+  const files = Array.from(ev.target.files||[]); ev.target.value='';
+  if(!files.length) return;
+  const el = $('cpMsg'+id); el.textContent='⏫ завантажую '+files.length+' кліп(ів)…';
+  try{
+    const fd = new FormData();
+    fd.append('plan_item_id', id);
+    for(const f of files) fd.append('clips', f, f.name);
+    const resp = await fetch('/api/ai/video/staging',{ method:'POST', headers:{'X-Admin-Token':(window.adminToken?adminToken():'')}, body:fd });
+    if(!resp.ok){ const j=await resp.json().catch(()=>({})); throw new Error(j.error||('HTTP '+resp.status)); }
+    el.textContent='✓ збережено'; loadPlan();
+  }catch(e){ el.textContent='помилка: '+e.message; }
+}
+
+async function cpRender(id){
+  const el = $('cpMsg'+id); el.textContent='🎬 стартую монтаж…';
+  try{
+    const d = await adminJson('/api/ai/video/content-plan/'+id+'/render',{ method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    if(!d.job) throw new Error(d.error||'задача не створилась');
+    const t0=Date.now();
+    while(true){
+      await new Promise(r=>setTimeout(r,4000));
+      let st; try{ st = await adminJson('/api/ai/video/montage-job/'+d.job); }catch{ continue; }
+      const m=Math.floor((Date.now()-t0)/60000), s=Math.floor(((Date.now()-t0)%60000)/1000);
+      el.textContent = '⏳ '+(st.stage||'рендер…')+' ('+m+':'+String(s).padStart(2,'0')+')';
+      if(st.status==='error') throw new Error(st.error||'рендер не вдався');
+      if(st.status==='done'){ el.textContent=''; loadPlan(); loadLibrary(); break; }
+      if((Date.now()-t0) > 12*60000) throw new Error('довго — перевірте бібліотеку пізніше');
+    }
+  }catch(e){ el.textContent='помилка: '+e.message; }
+}
+
+async function cpDelete(id){
+  if(!confirm('Видалити цей пункт плану (разом із завантаженими кліпами)?')) return;
+  try{
+    const resp = await fetch('/api/ai/video/content-plan/'+id,{ method:'DELETE', headers:{'X-Admin-Token':(window.adminToken?adminToken():'')}});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    loadPlan();
+  }catch(e){ alert('Помилка: '+e.message); }
+}
+loadPlan();
 
 // Якщо ліворуч згенерували розкадровку — підказати: можна підставити її титри.
 function fillCaptionsFromStoryboard(scenes){

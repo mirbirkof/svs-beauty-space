@@ -185,4 +185,58 @@ function readiness() {
   };
 }
 
-module.exports = { storyboard, produce, generateFrame, startClip, pollClip, readiness, videoKey };
+/* ── Контент-план (Босс 17.07.2026) ──────────────────────────────
+   Маркетолог-планировщик: бриф салона → N идей роликов, каждая со сценарием,
+   ЗАДАЧАМИ НА СЪЁМКУ для админа простым языком, текстом озвучки, настроением
+   музыки и советом по трендовому звуку.
+   Жёсткое правило (Босс): трендова музика БУДЬ-ЯКА світова чи українська,
+   але НІКОЛИ російська — ми в Україні. */
+async function contentPlan(brief, { posts = 3, lang = 'uk', brandVoice = '' } = {}) {
+  if (!brief || !String(brief).trim()) throw new Error('brief required');
+  posts = Math.min(7, Math.max(1, parseInt(posts, 10) || 3));
+  const sys = `Ти — SMM-стратег українських салонів краси. Повертай ЛИШЕ валідний JSON. Трендові звуки/музику пропонуй будь-які світові чи українські, але НІКОЛИ російські (артисти, пісні, звуки рф заборонені).`;
+  const prompt = `Склади контент-план із ${posts} Reels для салону краси в Україні.
+Про салон/бриф: "${String(brief).trim()}" ${brandVoice ? '· Тон бренду: ' + brandVoice : ''}
+Кожен ролик: 3-4 сцени по 3-5 секунд, знімає АДМІНІСТРАТОР на телефон (прості завдання!).
+
+Поверни JSON строго такої форми:
+{"items":[{
+  "idea": "коротка назва/ідея ролика",
+  "publish_offset_days": 0,
+  "scenario": {
+    "scenes": [{ "narration": "коротка фраза озвучки українською", "shootHint": "просте завдання адміну: що і як зняти (ракурс, тривалість 3-5с)", "durationSec": 4 }],
+    "caption": "підпис до посту українською до 300 символів",
+    "hashtags": ["до 6 хештегів"],
+    "voiceText": "суцільний текст озвучки з narration, з паузами через …",
+    "voiceStyle": "female_soft | female_energy | male_calm — під психологію ЦА ролика",
+    "musicMood": "tender | upbeat | luxury",
+    "trendSoundAdvice": "порада: який трендовий звук знайти в Instagram під цей ролик (будь-який світовий/український тренд, НЕ російський)"
+  }
+}]}`;
+  const j = await llm.askJSON(prompt, { system: sys, maxTokens: 2400 });
+  if (!j || !Array.isArray(j.items) || !j.items.length) throw new Error('content plan parse failed');
+  const MOODS = ['tender', 'upbeat', 'luxury'];
+  const VOICES = ['female_soft', 'female_energy', 'male_calm'];
+  return j.items.slice(0, posts).map((it) => {
+    const sc = it.scenario || {};
+    return {
+      idea: String(it.idea || 'Ролик').slice(0, 200),
+      publish_offset_days: Math.max(0, parseInt(it.publish_offset_days, 10) || 0),
+      scenario: {
+        scenes: (Array.isArray(sc.scenes) ? sc.scenes : []).slice(0, 6).map((s) => ({
+          narration: String(s.narration || '').slice(0, 160),
+          shootHint: String(s.shootHint || '').slice(0, 300),
+          durationSec: Math.min(8, Math.max(2, parseInt(s.durationSec, 10) || 4)),
+        })),
+        caption: String(sc.caption || '').slice(0, 500),
+        hashtags: (Array.isArray(sc.hashtags) ? sc.hashtags : []).slice(0, 7).map(String),
+        voiceText: String(sc.voiceText || '').slice(0, 600),
+        voiceStyle: VOICES.includes(sc.voiceStyle) ? sc.voiceStyle : 'auto',
+        musicMood: MOODS.includes(sc.musicMood) ? sc.musicMood : 'tender',
+        trendSoundAdvice: String(sc.trendSoundAdvice || '').slice(0, 300),
+      },
+    };
+  });
+}
+
+module.exports = { storyboard, produce, generateFrame, startClip, pollClip, readiness, videoKey, contentPlan };

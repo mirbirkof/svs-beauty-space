@@ -199,12 +199,35 @@ router.post('/montage', canRead, requireFeature('video_studio'), (req, res) => {
     const title = (scenes[0] && scenes[0].caption) ? String(scenes[0].caption).slice(0, 120)
       : String(req.body.title || 'Промо-ролик').slice(0, 120);
 
+    // Клипы: загруженные сейчас + заранее сохранённые (staging, переживают F5).
+    let stagedRows = [];
+    try {
+      const ids = req.body.staged_ids ? JSON.parse(req.body.staged_ids) : [];
+      if (Array.isArray(ids) && ids.length && db()) {
+        const r = await db().query(
+          `SELECT id, file_name, storage_path FROM ai_video_staging WHERE id = ANY($1::bigint[])`, [ids.map(Number)]);
+        const byId = new Map(r.rows.map((x) => [Number(x.id), x]));
+        stagedRows = ids.map((id) => byId.get(Number(id))).filter(Boolean);
+      }
+    } catch (e) { console.error('[ai-video] staged_ids:', e.message); }
+
     const renderOnce = async (onProgress) => {
-      const clipList = files.map((f) => ({ path: f.path, name: f.originalname }));
+      const clipList = [
+        ...stagedRows.map((s) => ({ path: path.join(UPLOAD_ROOT, s.storage_path), name: s.file_name })),
+        ...files.map((f) => ({ path: f.path, name: f.originalname })),
+      ];
+      if (!clipList.length) throw new Error('no clips');
       if (mode === 'simple') {
         const bufs = [];
-        for (const f of files) bufs.push({ buffer: await fsp.readFile(f.path), name: f.originalname });
+        for (const f of clipList) bufs.push({ buffer: await fsp.readFile(f.path), name: f.name });
         return montager.montage(bufs, scenes, { aspect });
+      }
+      // музыка: файл пользователя > настроение из библиотеки (CC BY, НЕ російська) > без музыки
+      let musicPath = musicFile ? musicFile.path : null;
+      if (!musicPath && req.body.musicMood) {
+        const mood = String(req.body.musicMood).replace(/[^a-z_]/g, '');
+        const cand = path.join(__dirname, '..', 'assets', 'music', `${mood}.mp3`);
+        if (fs.existsSync(cand)) musicPath = cand;
       }
       return reel.renderReel(clipList, {
         aspect,
@@ -212,7 +235,9 @@ router.post('/montage', canRead, requireFeature('video_studio'), (req, res) => {
         captions: scenes.map((s) => (s && s.caption) || ''),
         brandLine: req.body.brandLine || '',
         voiceText: req.body.voiceText || '',
-        musicPath: musicFile ? musicFile.path : null,
+        voice: req.body.voice || 'auto',            // авто-подбор голоса под контент
+        voiceContext: req.body.voiceContext || '',  // бриф/идея для психологии ЦА
+        musicPath,
         onProgress,
       });
     };
@@ -281,13 +306,187 @@ router.get('/montage-job/:id', canRead, (req, res) => {
   res.json({ status: j.status, stage: j.stage, error: j.error, video_id: j.videoId });
 });
 
+// ═══ STAGING — клипы, загруженные заранее (Босс 17.07) ══════════════════════
+// Админ грузит видео СРАЗУ при выборе → они на сервере и переживают обновление
+// страницы. Лишний клип можно удалить. Привязка к пункту контент-плана опциональна.
+const STAGING_DIR = path.join(UPLOAD_ROOT, 'video-staging');
+
+router.post('/staging', canRead, requireFeature('video_studio'), (req, res) => {
+  uploadClips(req, res, async (upErr) => {
+    if (upErr) {
+      return res.status(upErr.code === 'LIMIT_FILE_SIZE' ? 413 : 400)
+        .json({ error: upErr.code === 'LIMIT_FILE_SIZE' ? 'файл завеликий (макс 80 МБ)' : upErr.message });
+    }
+    const files = (req.files && req.files.clips) || [];
+    if (!files.length) return res.status(400).json({ error: 'no clips' });
+    const planItemId = req.body.plan_item_id ? Number(req.body.plan_item_id) : null;
+    const createdBy = (req.user && req.user.display_name) || null;
+    const out = [];
+    try {
+      await fsp.mkdir(STAGING_DIR, { recursive: true });
+      for (const f of files) {
+        const fname = `${Date.now()}_${crypto.randomBytes(5).toString('hex')}${path.extname(f.originalname || '.mp4') || '.mp4'}`;
+        const rel = path.join('video-staging', fname);
+        await fsp.copyFile(f.path, path.join(UPLOAD_ROOT, rel));
+        const size = (await fsp.stat(path.join(UPLOAD_ROOT, rel))).size;
+        const ins = await db().query(
+          `INSERT INTO ai_video_staging (plan_item_id, file_name, storage_path, size_bytes, created_by)
+           VALUES ($1,$2,$3,$4,$5) RETURNING id, file_name, size_bytes, plan_item_id, created_at`,
+          [planItemId, String(f.originalname || fname).slice(0, 200), rel, size, createdBy]);
+        out.push(ins.rows[0]);
+      }
+      res.json({ ok: true, items: out });
+    } catch (e) { fail(res, e, 'staging'); }
+    finally { rmUploads(req); }
+  });
+});
+
+router.get('/staging', canRead, async (req, res) => {
+  try {
+    const cond = req.query.plan_item_id
+      ? { sql: 'WHERE plan_item_id=$1', params: [Number(req.query.plan_item_id)] }
+      : { sql: '', params: [] };
+    const r = await db().query(
+      `SELECT id, plan_item_id, file_name, size_bytes, created_by, created_at
+         FROM ai_video_staging ${cond.sql} ORDER BY sort_order, id`, cond.params);
+    res.json({ items: r.rows });
+  } catch (e) { fail(res, e, 'staging-list'); }
+});
+
+router.delete('/staging/:id', canRead, async (req, res) => {
+  try {
+    const r = await db().query(`DELETE FROM ai_video_staging WHERE id=$1 RETURNING storage_path`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    const abs = path.join(UPLOAD_ROOT, r.rows[0].storage_path);
+    if (abs.startsWith(UPLOAD_ROOT)) await fsp.rm(abs, { force: true }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'staging-delete'); }
+});
+
+// ═══ КОНТЕНТ-ПЛАН (Босс 17.07) ══════════════════════════════════════════════
+// AI-контентмейкер: бриф → план роликов с задачами на съёмку. Админ грузит клипы
+// по задаче → «Змонтувати за сценарієм» → студия сама делает всё остальное.
+
+router.post('/content-plan/generate', canRead, requireFeature('video_studio'), async (req, res) => {
+  try {
+    const { brief, posts, brandVoice } = req.body || {};
+    const items = await studio.contentPlan(brief, { posts, brandVoice });
+    const saved = [];
+    for (const it of items) {
+      const d = new Date(Date.now() + it.publish_offset_days * 86400000);
+      const ins = await db().query(
+        `INSERT INTO ai_content_plan_items (publish_date, idea, scenario, shoot_tasks, status)
+         VALUES ($1,$2,$3,$4,'plan') RETURNING *`,
+        [d.toISOString().slice(0, 10), it.idea, JSON.stringify(it.scenario),
+         JSON.stringify(it.scenario.scenes.map((s) => s.shootHint).filter(Boolean))]);
+      saved.push(ins.rows[0]);
+    }
+    res.json({ ok: true, items: saved });
+  } catch (e) { fail(res, e, 'content-plan-generate'); }
+});
+
+router.get('/content-plan', canRead, async (req, res) => {
+  try {
+    const r = await db().query(
+      `SELECT p.*, (SELECT COUNT(*)::int FROM ai_video_staging s WHERE s.plan_item_id=p.id) AS clips_uploaded
+         FROM ai_content_plan_items p ORDER BY p.publish_date NULLS LAST, p.id DESC LIMIT 60`);
+    res.json({ items: r.rows });
+  } catch (e) { fail(res, e, 'content-plan-list'); }
+});
+
+router.delete('/content-plan/:id', canRead, async (req, res) => {
+  try {
+    await db().query(`DELETE FROM ai_video_staging WHERE plan_item_id=$1`, [req.params.id]);
+    const r = await db().query(`DELETE FROM ai_content_plan_items WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true });
+  } catch (e) { fail(res, e, 'content-plan-delete'); }
+});
+
+/** Авто-монтаж пункта плана: клипы из staging + сценарий → готовый рил. */
+router.post('/content-plan/:id/render', canRead, requireFeature('video_studio'), async (req, res) => {
+  try {
+    const it = (await db().query(`SELECT * FROM ai_content_plan_items WHERE id=$1`, [req.params.id])).rows[0];
+    if (!it) return res.status(404).json({ error: 'not-found' });
+    const clips = (await db().query(
+      `SELECT file_name, storage_path FROM ai_video_staging WHERE plan_item_id=$1 ORDER BY sort_order, id`,
+      [it.id])).rows;
+    if (!clips.length) return res.status(400).json({ error: 'спочатку завантажте відео за завданнями зйомки' });
+    const sc = it.scenario || {};
+    const jobId = crypto.randomUUID();
+    const job = { status: 'rendering', stage: 'Готуюсь…', error: null, videoId: null, createdAt: Date.now() };
+    jobs.set(jobId, job);
+    res.json({ ok: true, job: jobId });
+    (async () => {
+      let result = null;
+      try {
+        let musicPath = null;
+        const mood = String(sc.musicMood || 'tender').replace(/[^a-z_]/g, '');
+        const cand = path.join(__dirname, '..', 'assets', 'music', `${mood}.mp3`);
+        if (fs.existsSync(cand)) musicPath = cand;
+        result = await reel.renderReel(
+          clips.map((c) => ({ path: path.join(UPLOAD_ROOT, c.storage_path), name: c.file_name })),
+          {
+            aspect: '9:16',
+            targetSec: Math.min(60, (sc.scenes || []).reduce((s, x) => s + (x.durationSec || 4), 0) || 18),
+            captions: (sc.scenes || []).map((s) => s.narration || ''),
+            voiceText: sc.voiceText || '',
+            voice: sc.voiceStyle && sc.voiceStyle !== 'auto' ? sc.voiceStyle : 'auto',
+            voiceContext: it.idea,
+            musicPath,
+            onProgress: (st) => { job.stage = st; },
+          });
+        job.stage = 'Зберігаю в бібліотеку…';
+        const saved = await saveToLibrary(result, { title: it.idea, aspect: '9:16',
+          createdBy: (req.user && req.user.display_name) || null });
+        job.videoId = saved.videoId;
+        job.status = 'done';
+        await db().query(`UPDATE ai_content_plan_items SET status='rendered', video_id=$1, updated_at=NOW() WHERE id=$2`,
+          [saved.videoId, it.id]);
+      } catch (e) {
+        console.error('[ai-video] plan render:', e.message);
+        job.status = 'error'; job.error = 'рендер не вдався — спробуйте ще раз';
+      } finally { if (result) result.cleanup(); }
+    })();
+  } catch (e) { fail(res, e, 'content-plan-render'); }
+});
+
+// ═══ RETENTION — 3 дня (Босс 17.07) ═════════════════════════════════════════
+// Готовый ролик должен скачиваться на устройство, а не жить в CRM: через 3 дня
+// файл удаляется (место 0), запись остаётся в библиотеке как «архів» для статистики.
+// Staging-клипы чистим через 7 дней (сырьё под съёмку недельного плана).
+async function retentionTick() {
+  try {
+    const pool = db(); if (!pool) return;
+    const old = await pool.query(
+      `UPDATE ai_video_library SET archived_at=NOW()
+        WHERE archived_at IS NULL AND created_at < NOW() - INTERVAL '3 days'
+        RETURNING id, storage_path`);
+    for (const r of old.rows) {
+      const abs = path.join(UPLOAD_ROOT, r.storage_path);
+      if (abs.startsWith(UPLOAD_ROOT)) await fsp.rm(abs, { force: true }).catch(() => {});
+    }
+    const oldStage = await pool.query(
+      `DELETE FROM ai_video_staging WHERE created_at < NOW() - INTERVAL '7 days' RETURNING storage_path`);
+    for (const r of oldStage.rows) {
+      const abs = path.join(UPLOAD_ROOT, r.storage_path);
+      if (abs.startsWith(UPLOAD_ROOT)) await fsp.rm(abs, { force: true }).catch(() => {});
+    }
+    if (old.rows.length || oldStage.rows.length) {
+      console.log(`[ai-video] retention: архивировано ${old.rows.length} роликов, удалено ${oldStage.rows.length} staging-клипов`);
+    }
+  } catch (e) { console.error('[ai-video] retention:', e.message); }
+}
+setInterval(retentionTick, 6 * 3600 * 1000).unref();
+setTimeout(retentionTick, 90 * 1000).unref();
+
 /** Бібліотека збережених роликів — щоб після оновлення сторінки вони не зникали. */
 router.get('/library', canRead, async (req, res) => {
   try {
     const pool = db();
     if (!pool) return res.json({ items: [] });
     const r = await pool.query(
-      `SELECT id, title, aspect, duration_sec, clips, size_bytes, created_by, created_at
+      `SELECT id, title, aspect, duration_sec, clips, size_bytes, created_by, created_at, archived_at
          FROM ai_video_library ORDER BY created_at DESC LIMIT 100`);
     res.json({ items: r.rows });
   } catch (e) { fail(res, e, 'library'); }
@@ -298,8 +497,10 @@ router.get('/file/:id', canRead, async (req, res) => {
   try {
     const pool = db();
     if (!pool) return res.status(404).json({ error: 'not-found' });
-    const r = await pool.query(`SELECT storage_path FROM ai_video_library WHERE id=$1`, [req.params.id]);
+    const r = await pool.query(`SELECT storage_path, archived_at FROM ai_video_library WHERE id=$1`, [req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
+    // Retention: файл ролика живёт 3 дня (скачивайте сразу) — потом только запись для статистики
+    if (r.rows[0].archived_at) return res.status(410).json({ error: 'archived', message: 'Ролик архівовано (файли зберігаються 3 дні) — завантажуйте результат одразу після рендеру.' });
     const abs = path.join(UPLOAD_ROOT, r.rows[0].storage_path);
     if (!abs.startsWith(UPLOAD_ROOT)) return res.status(410).json({ error: 'file-gone' });
     if (!fs.existsSync(abs)) {

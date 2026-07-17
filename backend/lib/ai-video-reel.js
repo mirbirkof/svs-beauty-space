@@ -76,14 +76,45 @@ async function probeDuration(file) {
   });
 }
 
-/** Озвучка текста украинским «напівшепотом». Возвращает путь к wav или null. */
-async function makeVoiceover(text, dir) {
+/* ── Голосовые профили (приказ Босса 17.07): система сама подбирает голос под
+   контент, тренд и ЦА, если админ не выбрал явно. Все голоса УКРАИНСКИЕ. */
+const VOICE_PROFILES = {
+  // ніжність: діти, принцеси, догляд, спа, весілля — довірливий «напівшепіт»
+  female_soft: {
+    voice: 'uk-UA-PolinaNeural', rate: '-15%', pitch: '-5Hz',
+    post: 'highpass=f=130,treble=g=2.5:f=5500,acompressor=threshold=-22dB:ratio=2.5:attack=12:release=250,aecho=0.5:0.2:35:0.1,volume=1.9',
+  },
+  // енергія: акції, знижки, відкриття, молодіжна ЦА — бадьорий темп
+  female_energy: {
+    voice: 'uk-UA-PolinaNeural', rate: '+8%', pitch: '+2Hz',
+    post: 'highpass=f=110,treble=g=2:f=5000,acompressor=threshold=-18dB:ratio=3:attack=8:release=180,volume=1.7',
+  },
+  // статус/чоловіча ЦА: барбершоп, борода, тату — спокійний низький
+  male_calm: {
+    voice: 'uk-UA-OstapNeural', rate: '-8%', pitch: '-2Hz',
+    post: 'highpass=f=90,bass=g=1.5:f=180,acompressor=threshold=-20dB:ratio=2.5:attack=12:release=220,volume=1.7',
+  },
+};
+
+/** Авто-подбор голоса по тексту/брифу: психология ЦА через маркеры содержания. */
+function pickVoiceProfile(text, hint) {
+  if (hint && VOICE_PROFILES[hint]) return hint;
+  const t = String(text || '').toLowerCase();
+  if (/барбер|чолові|борід|бород|тату|брутал|men/.test(t)) return 'male_calm';
+  if (/акці|знижк|встигн|лише сьогодні|розіграш|відкритт|запрошуємо|новинк|енерг/.test(t)) return 'female_energy';
+  // дефолт — ніжний довірливий: б'юті-контент, історії клієнтів, діти
+  return 'female_soft';
+}
+
+/** Озвучка текста украинским голосом по профилю. Возвращает путь к wav или null. */
+async function makeVoiceover(text, dir, profileKey) {
   const clean = String(text || '').trim().slice(0, 600);
   if (!clean) return null;
+  const prof = VOICE_PROFILES[profileKey] || VOICE_PROFILES.female_soft;
   const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
   const tts = new MsEdgeTTS();
-  await tts.setMetadata('uk-UA-PolinaNeural', OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
-  const { audioStream } = await tts.toStream(clean, { rate: '-15%', pitch: '-5Hz' });
+  await tts.setMetadata(prof.voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+  const { audioStream } = await tts.toStream(clean, { rate: prof.rate, pitch: prof.pitch });
   const raw = path.join(dir, 'vo_raw.mp3');
   await new Promise((resolve, reject) => {
     const chunks = [];
@@ -93,9 +124,7 @@ async function makeVoiceover(text, dir) {
     audioStream.on('error', (e) => { clearTimeout(to); reject(e); });
   });
   const out = path.join(dir, 'vo.wav');
-  await run(ffmpegPath, ['-y', '-threads', '1', '-i', raw, '-af',
-    'highpass=f=130,treble=g=2.5:f=5500,acompressor=threshold=-22dB:ratio=2.5:attack=12:release=250,aecho=0.5:0.2:35:0.1,volume=1.9',
-    '-ar', '44100', out]);
+  await run(ffmpegPath, ['-y', '-threads', '1', '-i', raw, '-af', prof.post, '-ar', '44100', out]);
   return out;
 }
 
@@ -211,7 +240,12 @@ async function renderReel(clips, opts = {}) {
 
     // 4) звук: голос + музыка (дакинг) / что-то одно / тишина
     progress('Записую озвучку та музику…');
-    const voicePath = await makeVoiceover(opts.voiceText, dir).catch((e) => {
+    // голос: явный выбор админа или авто-подбор под контент (текст+титры+бриф)
+    const voiceKey = pickVoiceProfile(
+      [opts.voiceText, (opts.captions || []).join(' '), opts.voiceContext || ''].join(' '),
+      opts.voice && opts.voice !== 'auto' ? opts.voice : null
+    );
+    const voicePath = await makeVoiceover(opts.voiceText, dir, voiceKey).catch((e) => {
       console.error('[reel] voiceover failed (продолжаем без голоса):', e.message);
       return null;
     });
@@ -275,4 +309,4 @@ async function renderReel(clips, opts = {}) {
   }
 }
 
-module.exports = { renderReel, MAX_CLIPS, DEF_TARGET, MAX_TARGET };
+module.exports = { renderReel, pickVoiceProfile, VOICE_PROFILES, MAX_CLIPS, DEF_TARGET, MAX_TARGET };
