@@ -12966,7 +12966,9 @@ async function loadMySub(){
     // Соло бачить лише СВОЇ модулі-доплати (DIKIDI-логіка), без командних/мережевих
     try {
       if (window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo) {
-        const SOLO_ADDONS = ['before_after', 'ai_recommendations', 'ai_receptionist'];
+        // Розширено 17.07 (Босс): відеостудія + маркетинг + лояльність + форми —
+        // все це прямо корисне майстру-одиночці. Поза списком лише командне/мережеве (вебхуки).
+        const SOLO_ADDONS = ['before_after', 'video_studio', 'ai_recommendations', 'ai_receptionist', 'marketing', 'loyalty', 'forms'];
         _mysub.addons = _mysub.addons.filter(a => SOLO_ADDONS.includes(String(a.code || a.feature_key || '').replace('.', '_')));
       }
     } catch (_) {}
