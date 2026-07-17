@@ -829,5 +829,26 @@ router.get('/catalog', async (req, res) => {
   }
 });
 
+/** Публічна візитівка салону для клієнтських сторінок (запис, кабінет):
+ *  назва, адреса, графік + КЛІКАБЕЛЬНІ соцмережі (Босс 17.07). Без токена. */
+router.get('/salon-info', async (req, res) => {
+  try {
+    const { getSetting } = require('../lib/settings');
+    const sp = (await getSetting('salon_profile', {})) || {};
+    const igHandle = String(sp.instagram || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/+$/, '');
+    const ttHandle = String(sp.tiktok || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/i, '').replace(/\/+$/, '');
+    const fb = String(sp.facebook || '').trim();
+    res.json({
+      ok: true,
+      name: sp.name || '', address: sp.address || '', hours: sp.hours || '', phones: sp.phones || '',
+      socials: {
+        instagram: igHandle ? `https://instagram.com/${igHandle}` : null,
+        tiktok: ttHandle ? `https://www.tiktok.com/@${ttHandle}` : null,
+        facebook: fb ? (/^https?:\/\//i.test(fb) ? fb : `https://facebook.com/${fb.replace(/^@/, '')}`) : null,
+      },
+    });
+  } catch (e) { res.json({ ok: false }); }
+});
+
 module.exports = router;
 module.exports.resolveBookingIds = resolveBookingIds;

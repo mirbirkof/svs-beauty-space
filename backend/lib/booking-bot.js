@@ -611,8 +611,22 @@ async function tryFaq(text, ctx) {
   }
   if (isPhone && sp.phones) out.push(`📞 Телефон: <b>${sp.phones}</b>`);
   if (out.length <= 1) return null; // профіль порожній по запитаному — не вдаємо, що відповіли
+  const socials = salonSocialLinks(sp);
+  if (socials) out.push(socials);
   out.push(`\nНапишіть назву послуги — підберу вільний час і запишу. 💛`);
   return out.join('\n');
+}
+
+/** Клікабельні соцмережі салону для повідомлень бота (Босс 17.07.2026). */
+function salonSocialLinks(sp) {
+  const links = [];
+  const ig = String(sp.instagram || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/+$/, '');
+  const tt = String(sp.tiktok || '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/i, '').replace(/\/+$/, '');
+  const fb = String(sp.facebook || '').trim();
+  if (ig) links.push(`<a href="https://instagram.com/${ig}">Instagram</a>`);
+  if (tt) links.push(`<a href="https://www.tiktok.com/@${tt}">TikTok</a>`);
+  if (fb) links.push(`<a href="${/^https?:\/\//i.test(fb) ? fb : 'https://facebook.com/' + fb.replace(/^@/, '')}">Facebook</a>`);
+  return links.length ? `✨ Ми в соцмережах: ${links.join(' · ')}` : '';
 }
 
 // ── постійне меню (замінює старе меню погашеного svs-booking-api в чатах клієнтів) ──
@@ -798,6 +812,8 @@ async function showAdminContact(ctx, chatId) {
   else if (sp.phones) out.push(`📞 ${sp.phones}`);
   if (sp.address) out.push(`📍 ${sp.address}`);
   if (sp.hours) out.push(`🕐 ${sp.hours}`);
+  const socials2 = salonSocialLinks(sp);
+  if (socials2) out.push(socials2);
   out.push('\nТисніть на номер вище, щоб подзвонити, або напишіть питання прямо тут.');
   await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: out.join('\n'), reply_markup: mainMenu() });
 

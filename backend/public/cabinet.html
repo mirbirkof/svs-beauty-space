@@ -395,5 +395,26 @@ window.closePay = () => $('payModal').classList.add('hidden');
 if (token) showCabinet();
 else $('login').classList.remove('hidden');
 </script>
+
+<!-- Соцмережі салону — клікабельні (Босс 17.07.2026) -->
+<div id="salonSocials" style="display:none;text-align:center;padding:18px 12px 26px;font-family:inherit">
+  <div id="ssName" style="font-size:13px;color:#888;margin-bottom:10px"></div>
+  <div style="display:flex;gap:12px;justify-content:center">
+    <a id="ssIg" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;background:linear-gradient(135deg,#f58529,#dd2a7b,#8134af);color:#fff;border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:600">📸 Instagram</a>
+    <a id="ssTt" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;background:#111;color:#fff;border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:600">🎵 TikTok</a>
+    <a id="ssFb" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;background:#1877f2;color:#fff;border-radius:999px;padding:9px 18px;font-size:13.5px;font-weight:600">👥 Facebook</a>
+  </div>
+</div>
+<script>
+(async()=>{try{
+  const r = await fetch((window.API||'')+'/api/booking/salon-info');
+  const d = await r.json();
+  if(!d||!d.ok||!d.socials) return;
+  const s=d.socials; let any=false;
+  const set=(id,url)=>{const el=document.getElementById(id); if(el&&url){el.href=url;el.style.display='inline-block';any=true;}};
+  set('ssIg',s.instagram); set('ssTt',s.tiktok); set('ssFb',s.facebook);
+  if(any){ document.getElementById('ssName').textContent=(d.name?d.name+' — ':'')+'ми в соцмережах'; document.getElementById('salonSocials').style.display='block'; }
+}catch(e){}})();
+</script>
 </body>
 </html>
