@@ -9903,7 +9903,14 @@ async function apptEditPrice(id) {
     const v = Number(document.getElementById('apPriceEdit').value);
     if (!Number.isFinite(v) || v < 0) { toast('Вкажіть коректну суму', 'error'); throw new Error('bad-price'); }
     const r = await api('/api/schedule/appointments/' + id, { method:'PATCH', body: JSON.stringify({ price: v }) });
-    if (r && r.ok) { toast('Суму змінено', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
+    if (r && r.ok) {
+      toast('Суму змінено', 'ok');
+      // Без «миготіння» (Босс 17.07): модалку НЕ закриваємо — оновлюємо суму локально,
+      // перемальовуємо вміст модалки на місці, журнал освіжаємо тихо у фоні.
+      const a = (journalData?.appointments||[]).find(x => x.id === id);
+      if (a) a.price = (r.appointment && r.appointment.price != null) ? Number(r.appointment.price) : v;
+      openAppt(id); loadJournal(true);
+    }
     else { toast((r && r.error) || 'Не вдалося змінити суму', 'error'); throw new Error('save-failed'); }
   });
 }
@@ -9917,7 +9924,12 @@ async function apptEditSvcPrice(id, rowId, current) {
     const v = Number(document.getElementById('apSvcPriceEdit').value);
     if (!Number.isFinite(v) || v < 0) { toast('Вкажіть коректну ціну', 'error'); throw new Error('bad-price'); }
     const r = await api('/api/schedule/appointments/' + id + '/services/' + rowId, { method:'PATCH', body: JSON.stringify({ price: v }) });
-    if (r && r.ok) { toast('Ціну змінено', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
+    if (r && r.ok) {
+      toast('Ціну змінено', 'ok');
+      const a = (journalData?.appointments||[]).find(x => x.id === id);
+      if (a && r.appointment && r.appointment.price != null) a.price = Number(r.appointment.price);
+      openAppt(id); loadJournal(true);
+    }
     else { toast((r && r.error) || 'Не вдалося змінити ціну', 'error'); throw new Error('save-failed'); }
   });
 }
