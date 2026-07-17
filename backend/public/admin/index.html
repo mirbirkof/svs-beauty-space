@@ -13022,7 +13022,7 @@ function renderMySub(){
   // Салону показуємо ТІЛЬКИ салонні тарифи: solo/solo_pro — для майстрів-одиночок,
   // вони мають свій окремий вигляд нижче (isSolo). Салону вони не потрібні і небезпечні
   // («Обрати Free» = випадковий даунгрейд до 1 майстра).
-  const cards = _mysub.plans.filter(p=>!['solo','solo_pro'].includes(String(p.code))).map(p=>{
+  const cards = _mysub.plans.filter(p=>!['solo','solo_pro','solo_max'].includes(String(p.code))).map(p=>{
     const price = cyc==='yearly' ? Number(p.price_year) : Number(p.price_month);
     const per = cyc==='yearly' ? '/рік' : '/міс';
     const isCur = s && s.plan_code===p.code && (s.status==='active'||s.status==='trialing');
@@ -13122,7 +13122,7 @@ function renderMySub(){
   // Подвійний захист: is_solo з entitlements АБО plan_code=solo/solo_pro з підписки.
   // Якщо entitlements ще не завантажились — все одно покажемо правильний вид.
   const isSolo = !!(window.ENTITLEMENTS && window.ENTITLEMENTS.is_solo)
-    || !!(s && ['solo','solo_pro'].includes(s.plan_code));
+    || !!(s && ['solo','solo_pro','solo_max'].includes(s.plan_code));
   if (isSolo) {
     const code = s ? s.plan_code : 'solo';
     const onPro = code === 'solo_pro';
@@ -13157,6 +13157,25 @@ function renderMySub(){
           : `<button class="btn" style="background:#fff;color:#5b5fc7;font-weight:800;border:0;width:100%;padding:13px" onclick="mysubStartSoloPro()">Спробувати 14 днів безкоштовно →</button>
              <div style="text-align:center;font-size:12px;opacity:.8;margin-top:8px">Без картки · Скасувати будь-коли</div>`}
       </div>`;
+    // Тариф MAX — все модулі включено (Босс 17.07)
+    const maxPrice = (_mysub.plans.find(p => p.code === 'solo_max') || {}).price_month || 449;
+    const onMax = code === 'solo_max';
+    const maxCard = `
+      <div style="background:#1e1f2b;color:#fff;border-radius:16px;padding:22px 24px;margin-bottom:14px;border:2px solid ${onMax?'#f5c518':'#1e1f2b'}">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-size:19px;font-weight:800">Майстер MAX <span style="font-size:11px;background:#f5c518;color:#1e1f2b;border-radius:20px;padding:2px 8px;vertical-align:middle">ВСЕ ВКЛЮЧЕНО</span></div>
+          <div style="font-size:22px;font-weight:800">${Math.round(maxPrice)} ₴<span style="font-size:13px;opacity:.8;font-weight:500">/міс</span></div>
+        </div>
+        <div style="opacity:.9;font-size:13.5px;line-height:1.7;margin-bottom:14px">
+          Усе з PRO + <b>усі платні модулі без доплат</b>:<br>
+          🎬 AI Відеостудія (Reels з озвучкою) · 🤖 AI-адміністратор · 💡 AI-рекомендації<br>
+          📣 Маркетинг і розсилки · 🎁 Лояльність · 📋 Конструктор форм · 🔗 Вебхуки
+          <div style="opacity:.75;font-size:12px;margin-top:6px">Окремо ці модулі коштують понад 1300 ₴/міс</div>
+        </div>
+        ${onMax
+          ? '<div style="background:rgba(255,255,255,.15);border-radius:10px;padding:10px 14px;font-weight:600;text-align:center">✓ Твій поточний тариф</div>'
+          : `<button class="btn" style="background:#f5c518;color:#1e1f2b;font-weight:800;border:0;width:100%;padding:13px" onclick="mysubChoose('solo_max')">Перейти на MAX →</button>`}
+      </div>`;
     // Рост до салона — окремо, як досягнення
     const growCard = `
       <div style="background:#f4f7ff;border:1px dashed #c7cbf0;border-radius:16px;padding:18px 22px;margin-bottom:18px">
@@ -13164,7 +13183,7 @@ function renderMySub(){
         <div style="color:#4a4f6a;font-size:13.5px;line-height:1.5;margin-bottom:12px">Коли виростеш до салону — тариф <b>Салон</b> відкриє майстрів, графіки, зарплати й аналітику по команді. <b>Твоя історія й клієнти залишаться з тобою.</b></div>
         <button class="btn btn-sm" style="background:#5b5fc7;color:#fff;border:0;font-weight:600" onclick="if(confirm('Дізнатись про тариф Салон? Ми допоможемо все перенести й налаштувати.')){toast('Заявку прийнято — звʼяжемось');}">Дізнатись про Салон →</button>
       </div>`;
-    box.innerHTML = cur + freeCard + proCard + growCard + addonsBlock + refBlock + invBlock;
+    box.innerHTML = cur + freeCard + proCard + maxCard + growCard + addonsBlock + refBlock + invBlock;
     return;
   }
   box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;

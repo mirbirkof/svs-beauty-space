@@ -8,7 +8,7 @@ const router = express.Router();
 const { getPool } = require('../db-pg');
 const { getTenantId, isPlatformTenant } = require('../lib/tenant');
 
-const TIER = { free: 0, solo: 0, starter: 1, pro: 2, professional: 2, enterprise: 3 };
+const TIER = { free: 0, solo: 0, solo_max: 2, starter: 1, pro: 2, professional: 2, enterprise: 3 };
 
 router.get('/my/entitlements', async (req, res) => {
   try {

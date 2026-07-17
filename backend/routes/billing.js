@@ -73,7 +73,7 @@ router.get('/alert', TENANT_R, async (req, res) => {
 // UI ховає ці картки від салону, а це серверна страховка від випадкового даунгрейду
 // салону до тарифу «1 майстер» (17.07.2026). Онбординг йде через lib напряму — не зачіпає.
 async function assertSoloPlanAllowed(planCode, res) {
-  if (!['solo', 'solo_pro'].includes(String(planCode || ''))) return true;
+  if (!['solo', 'solo_pro', 'solo_max'].includes(String(planCode || ''))) return true;
   const { getSetting } = require('../lib/settings');
   const isSolo = String(await getSetting('solo_master_mode', false)) === 'true';
   if (!isSolo) { res.status(400).json({ error: 'solo-plan-not-allowed' }); return false; }
