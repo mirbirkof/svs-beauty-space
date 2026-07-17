@@ -528,6 +528,8 @@ if (process.env.DATABASE_URL) {
   setTimeout(licenseExpiryTick, 90 * 1000);
 }
 try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console.error('[medical] mount failed:', e.message); }
+// Вертикали (18.07): модуль существует ТОЛЬКО для своего business_type (иначе 404, fail-closed)
+try { app.use('/api/fitness', require('./lib/vertical').requireVertical('fitness'), require('./routes/fitness')); } catch(e) { console.error('[fitness] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 // Повний booking-роутер: telegram-вебхук бота @Svs_beautybot + розмовна запис + нагадування.
 // З 03.07 вебхук вказує СЮДИ (svs-shop-api) — окремий сервіс svs-booking-api деплоївся
