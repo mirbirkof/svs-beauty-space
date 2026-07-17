@@ -2560,6 +2560,13 @@ select.input { background:var(--card); }
                   <label class="set-field"><span>Instagram</span><input id="sp_instagram" class="input" placeholder="@svs_beauty_space"></label>
                   <label class="set-field"><span>TikTok</span><input id="sp_tiktok" class="input" placeholder="@нік у TikTok"></label>
                   <label class="set-field"><span>Facebook</span><input id="sp_facebook" class="input" placeholder="посилання на сторінку"></label>
+                  <div class="set-field full" style="display:flex;gap:14px;align-items:center">
+                    <img id="sp_logo_img" src="" alt="" style="display:none;width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #eee">
+                    <input type="hidden" id="sp_logo_file_id" value="">
+                    <label class="btn btn-sm btn-outline" style="cursor:pointer">📷 Фото / логотип салону
+                      <input id="sp_logo_input" type="file" accept="image/*" style="display:none" onchange="spUploadLogo(event)"></label>
+                    <span class="muted" id="sp_logo_msg" style="font-size:12px">Логотип або фото студії</span>
+                  </div>
                   <label class="set-field full"><span>Опис</span><textarea id="sp_desc" class="input" rows="3" placeholder="Короткий опис салону для клієнтів"></textarea></label>
                 </div>
                 <div class="set-actions">
@@ -5337,6 +5344,8 @@ async function loadSettings() {
     const setv = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
     setv('sp_name', p.name); setv('sp_phones', p.phones); setv('sp_address', p.address);
     setv('sp_hours', p.hours); setv('sp_directions', p.directions); setv('sp_landmarks', p.landmarks); setv('sp_desc', p.description); setv('sp_instagram', p.instagram); setv('sp_tiktok', p.tiktok); setv('sp_facebook', p.facebook);
+    const lf=document.getElementById('sp_logo_file_id'); if(lf) lf.value = p.logo_file_id||'';
+    const li=document.getElementById('sp_logo_img'); if(li){ if(p.logo_file_id){ li.src=API+'/api/files/'+p.logo_file_id+'?token='+encodeURIComponent(TOKEN); li.style.display=''; } else li.style.display='none'; }
     // Онлайн-запис
     const b = s.online_booking || {};
     const ob = document.getElementById('ob_enabled'); if (ob) ob.checked = b.enabled === true;
@@ -5755,11 +5764,28 @@ async function saveSchedule() {
     } else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
 }
+async function spUploadLogo(ev){
+  const f = ev.target.files && ev.target.files[0]; ev.target.value='';
+  if(!f) return;
+  const msg = document.getElementById('sp_logo_msg');
+  msg.textContent='Завантаження…';
+  try{
+    const fd = new FormData(); fd.append('file', f); fd.append('entity_type','salon_profile'); fd.append('is_public','false');
+    const r = await fetch(API + '/api/files/upload', { method:'POST', headers:{ 'X-Admin-Token': TOKEN, ...tenantHeader() }, body: fd });
+    const d = await r.json();
+    if(!d.ok || !d.id) throw new Error(d.error||'upload failed');
+    document.getElementById('sp_logo_file_id').value = d.id;
+    const img = document.getElementById('sp_logo_img');
+    img.src = API+'/api/files/'+d.id+'?token='+encodeURIComponent(TOKEN); img.style.display='';
+    msg.textContent='Фото завантажено — натисніть «Зберегти» нижче';
+  }catch(e){ msg.textContent='Помилка: '+e.message; }
+}
+
 async function saveProfile() {
   const msg = document.getElementById('profileMsg');
   const g = (id)=>document.getElementById(id).value.trim();
   const salon_profile = { name:g('sp_name'), phones:g('sp_phones'), address:g('sp_address'),
-    hours:g('sp_hours'), directions:g('sp_directions'), landmarks:g('sp_landmarks'), description:g('sp_desc'), instagram:g('sp_instagram'), tiktok:g('sp_tiktok'), facebook:g('sp_facebook') };
+    hours:g('sp_hours'), directions:g('sp_directions'), landmarks:g('sp_landmarks'), description:g('sp_desc'), instagram:g('sp_instagram'), tiktok:g('sp_tiktok'), facebook:g('sp_facebook'), logo_file_id:document.getElementById('sp_logo_file_id').value||null };
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
   try {
     const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify({ salon_profile }) });
