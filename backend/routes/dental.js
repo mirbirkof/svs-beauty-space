@@ -8,7 +8,7 @@
    Состав: одонтограмма (upsert + append-only история) · планы лечения (этапы ↔ визиты,
    смета) · зуботехлаборатория (статус-цепочка, расход в кассу идемпотентно) · снимки к зубам. */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { requireFeature } = require('../lib/feature-gate');
 const { recordCashOut } = require('../lib/cash-ledger');
@@ -45,6 +45,7 @@ router.post('/chart/:client_id/teeth', requireFeature('dental.chart'), async (re
       if (!T_STATUSES.includes(t.status)) return res.status(400).json({ error: 'bad-status', allowed: T_STATUSES });
     }
     await db.query('BEGIN');
+    await applyTenant(db); // ручная транзакция мимо обёртки пула — тенант обязателен (урок E2E 18.07)
     const results = [];
     for (const t of items) {
       const old = (await db.query(`SELECT status FROM dental_teeth WHERE client_id=$1 AND tooth_no=$2`, [clientId, +t.tooth_no])).rows[0];
@@ -110,6 +111,7 @@ router.post('/plans', requireFeature('dental.plans'), async (req, res) => {
     const b = req.body || {};
     if (!b.client_id || !b.title) return res.status(400).json({ error: 'client_id and title required' });
     await db.query('BEGIN');
+    await applyTenant(db); // ручная транзакция мимо обёртки пула — тенант обязателен (урок E2E 18.07)
     const stages = Array.isArray(b.stages) ? b.stages : [];
     const total = stages.reduce((s, x) => s + (Number(x.estimate) || 0), 0) || b.total_estimate || null;
     const p = (await db.query(

@@ -11,7 +11,7 @@
    шаблоны недели с идемпотентным генератором · чек-ин (QR/вручную) с журналом отказов. */
 const express = require('express');
 const crypto = require('crypto');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { requireFeature } = require('../lib/feature-gate');
 const hub = require('../lib/notification-hub');
@@ -210,6 +210,9 @@ router.post('/classes/:id/book', requireFeature('fitness.classes'), async (req, 
     const classId = +req.params.id; const clientId = +req.body?.client_id;
     if (!clientId) return res.status(400).json({ error: 'client_id-required' });
     await client.query('BEGIN');
+    // КРИТИЧНО: ручной client идёт мимо AsyncLocalStorage-обёртки пула → без applyTenant
+    // строки писались бы в дефолтный тенант (смешивание данных). Урок E2E 18.07.
+    await applyTenant(client);
     // FOR UPDATE класса = сериализация записей на одно занятие (нет гонки за последнее место)
     const c = (await client.query(`SELECT * FROM fitness_classes WHERE id=$1 FOR UPDATE`, [classId])).rows[0];
     if (!c || c.status !== 'scheduled') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'class-unavailable' }); }
