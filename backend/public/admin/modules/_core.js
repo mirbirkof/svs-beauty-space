@@ -16,7 +16,11 @@
     // існуючі групи моноліту — модульні сторінки інжектяться в них,
     // щоб «Аналітика та AI» не була звалищем фінансів і маркетингу
     finance:   { id: 'grp-finance',   title: 'Фінанси',   icon: 'payments' },
-    marketing: { id: 'grp-marketing', title: 'Маркетинг', icon: 'campaign' }
+    marketing: { id: 'grp-marketing', title: 'Маркетинг', icon: 'campaign' },
+    // вертикалі (18.07): групу видно ЛИШЕ своєму business_type — pre-hide за
+    // localStorage (проти мигання), авторитетно показує/ховає applyEntitlements
+    fitness:   { id: 'grp-fitness',   title: 'Фітнес',        icon: 'fitness_center', vertical: 'fitness' },
+    dental:    { id: 'grp-dental',    title: 'Стоматологія',  icon: 'medical_services', vertical: 'dental' }
   };
 
   window.registerModule = function (cfg) {
@@ -61,6 +65,10 @@
     var wrap = document.createElement('div');
     wrap.className = 'sidebar-group';
     wrap.id = g.id;
+    try {
+      var curVert = window.BUSINESS_TYPE || localStorage.getItem('svs_vertical');
+      if (g.vertical && curVert !== g.vertical) wrap.style.display = 'none';
+    } catch (_e) {}
     wrap.innerHTML =
       '<div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">' +
         '<span class="material-icons-round">' + g.icon + '</span>' +
