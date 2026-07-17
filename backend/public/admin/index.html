@@ -3288,6 +3288,19 @@ async function applyEntitlements() {
   try { localStorage.setItem('svs_solo', solo ? '1' : '0'); } catch (_) {}
   if (solo) {
     document.body.classList.add('solo-mode');
+    // Телефон + выбор ещё не сделан → включаем мобильный режим СРАЗУ (один reload).
+    // Раньше включался только со 2-й загрузки (pre-paint читает svs_solo из прошлой сессии).
+    try {
+      if (localStorage.getItem('svs_mobile_view') === null
+          && Math.min(screen.width, screen.height) <= 520
+          && matchMedia('(pointer:coarse)').matches
+          && !sessionStorage.getItem('svs_mm_boot')) {
+        sessionStorage.setItem('svs_mm_boot', '1'); // защита от цикла перезагрузок
+        localStorage.setItem('svs_mobile_view', '1');
+        location.reload();
+        return;
+      }
+    } catch (_) {}
     applySoloMenu(0);
     // перемикач мобільної версії (тільки соло; дефолт — ПК, директива Боса не порушена)
     try {

@@ -4,6 +4,19 @@
   <script src="/p/tenant-boot.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=1280">
+<script>/* Телефон → адаптивний логін (Босс 17.07: повноцінний мобільний для соло).
+  На ПК (екран >520px) viewport лишається 1280 — директива №1 для салонів діє. */
+try{if(Math.min(screen.width,screen.height)<=520&&matchMedia('(pointer:coarse)').matches){
+  document.querySelector('meta[name="viewport"]').setAttribute('content','width=device-width, initial-scale=1');
+  document.documentElement.classList.add('m-login');
+}}catch(e){}</script>
+<style>
+  .m-login body { padding:14px; }
+  .m-login .login-card { max-width:100%; padding:26px 20px; }
+  .m-login input, .m-login .inp { font-size:16px !important; min-height:46px; }
+  .m-login .btn { min-height:48px; font-size:16px; }
+  .m-login .login-card h1 { font-size:24px; }
+</style>
 <title>SVS CRM — Вхід</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/admin/assets/admin-shell.css">
