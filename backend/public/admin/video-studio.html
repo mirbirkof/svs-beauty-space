@@ -144,6 +144,8 @@ const $ = id => document.getElementById(id);
 // adminFetch возвращает сырой Response — для чтения данных используем adminJson (парсит JSON)
 const adminJson = (path, opts) => adminFetch(path, opts).then(r => r.json());
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// <video>/<a> не шлють заголовки авторизації — токен у query (GET дозволено rbac)
+const fileUrl = (id, frag='') => '/api/ai/video/file/'+id+'?token='+encodeURIComponent(window.adminToken?adminToken():'')+frag;
 
 async function loadStatus(){
   try{
@@ -238,14 +240,14 @@ async function loadLibrary(){
       }
       return `<div style="border:1px solid var(--border,#e5e5e5);border-radius:10px;overflow:hidden;background:#fff">
         <div onclick="playVideo(${v.id},'${esc((v.title||'Промо-ролик').replace(/'/g,''))}')" style="cursor:pointer;position:relative;background:#000;aspect-ratio:9/16">
-          <video src="/api/ai/video/file/${v.id}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"></video>
+          <video src="${fileUrl(v.id,'#t=0.5')}" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none"></video>
           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">▶</div></div>
         </div>
         <div style="padding:6px 8px">
           <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(v.title||'Промо-ролик')}</div>
           <div class="muted" style="font-size:10.5px;margin:1px 0 6px">${dt} · ${v.duration_sec?('~'+v.duration_sec+'с · '):''}${mb}</div>
           <div style="display:flex;gap:5px">
-            <a class="btn sm" href="/api/ai/video/file/${v.id}" download="svs-promo-${v.id}.mp4" style="flex:1;text-align:center">⬇ Завантажити</a>
+            <a class="btn sm" href="${fileUrl(v.id)}" download="svs-promo-${v.id}.mp4" style="flex:1;text-align:center">⬇ Завантажити</a>
             <button class="btn sm" onclick="delVideo(${v.id})" title="видалити">✕</button>
           </div>
         </div>
@@ -261,9 +263,9 @@ function playVideo(id, title){
   m.style.cssText='position:fixed;inset:0;background:rgba(10,10,16,.82);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px';
   m.innerHTML = `
     <div style="color:#fff;font-size:14px;font-weight:600;max-width:70vw;text-align:center">${title||''}</div>
-    <video src="/api/ai/video/file/${id}" controls autoplay playsinline style="max-height:78vh;max-width:92vw;border-radius:14px;background:#000"></video>
+    <video src="${fileUrl(id)}" controls autoplay playsinline style="max-height:78vh;max-width:92vw;border-radius:14px;background:#000"></video>
     <div style="display:flex;gap:10px">
-      <a class="btn" href="/api/ai/video/file/${id}" download="svs-promo-${id}.mp4" style="background:#fff">⬇ Завантажити</a>
+      <a class="btn" href="${fileUrl(id)}" download="svs-promo-${id}.mp4" style="background:#fff">⬇ Завантажити</a>
       <button class="btn" onclick="document.getElementById('vsPlayer').remove()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3)">Закрити ✕</button>
     </div>`;
   m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
@@ -397,8 +399,8 @@ async function doMontage(){
         const vid = st.video_id;
         $('mResult').innerHTML = `
           <div class="ok">Готово ✓ Ролик збережено в бібліотеці «Мої відео»</div>
-          ${vid?`<video src="/api/ai/video/file/${vid}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
-          <div style="margin-top:8px"><a class="btn" href="/api/ai/video/file/${vid}" download="svs-promo.mp4">Завантажити MP4</a></div>`:''}`;
+          ${vid?`<video src="${fileUrl(vid)}" controls playsinline style="width:100%;max-width:360px;border-radius:12px;background:#000"></video>
+          <div style="margin-top:8px"><a class="btn" href="${fileUrl(vid)}" download="svs-promo.mp4">Завантажити MP4</a></div>`:''}`;
         loadLibrary();
         break;
       }
@@ -446,7 +448,7 @@ async function loadPlan(){
             <input type="file" accept="video/*" multiple style="display:none" onchange="cpUpload(${it.id}, event)"></label>
           ${it.clips_uploaded>0 && it.status!=='rendered' ? `<button class="btn sm btn-primary" onclick="cpRender(${it.id})">✨ Змонтувати за сценарієм</button>`:''}
           ${it.status==='rendered' && it.video_id ? `<button class="btn sm" onclick="playVideo(${it.video_id},'${esc(it.idea.replace(/'/g,''))}')">▶ Переглянути</button>
-            <a class="btn sm" href="/api/ai/video/file/${it.video_id}" download>⬇ Завантажити</a>
+            <a class="btn sm" href="${fileUrl(it.video_id)}" download>⬇ Завантажити</a>
             <a class="muted" href="#" style="font-size:12px" onclick="navigator.clipboard.writeText(${JSON.stringify(String(sc.caption||'')+ '\n\n' + (sc.hashtags||[]).join(' ')).replace(/"/g,'&quot;')});return false">копіювати підпис+хештеги</a>`:''}
           <span class="msg" id="cpMsg${it.id}" style="margin:0"></span>
         </div>
