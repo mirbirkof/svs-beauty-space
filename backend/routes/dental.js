@@ -234,9 +234,9 @@ router.patch('/lab/:id', requireFeature('dental.lab'), async (req, res) => {
       // Расход в кассу при первой отправке (идемпотентно через cash_operation_id)
       if (b.status === 'sent' && Number(cur.cost) > 0 && !cur.cash_operation_id) {
         try {
-          const op = await recordCashOut({ category: 'lab_expense', amount: Number(cur.cost), method: 'transfer',
+          const opId = await recordCashOut({ category: 'lab_expense', amount: Number(cur.cost), method: 'transfer',
             ref_type: 'dental_lab', ref_id: id, description: `Лабораторія ${cur.lab_name}: ${cur.work_type}`, ext_ref: `dental-lab-${id}` });
-          if (op && op.id) await pool.query(`UPDATE dental_lab_orders SET cash_operation_id=$1 WHERE id=$2`, [op.id, id]);
+          if (opId) await pool.query(`UPDATE dental_lab_orders SET cash_operation_id=$1 WHERE id=$2`, [opId, id]);
         } catch (ce) { console.error('[dental/lab] cash out:', ce.message); }
       }
     }
