@@ -161,6 +161,7 @@ router.post('/couples', requireFeature('wellness.couples'), async (req, res) => 
 // Состав парной брони
 router.get('/couples/:groupId', requireFeature('wellness.couples'), async (req, res) => {
   try {
+    if (!Number.isInteger(+req.params.groupId)) return res.status(400).json({ error: 'bad-group-id' });
     const g = await pool.query(`SELECT * FROM booking_groups WHERE id=$1`, [Number(req.params.groupId)]);
     if (!g.rows.length) return res.status(404).json({ error: 'group-not-found' });
     const a = await pool.query(
@@ -179,6 +180,7 @@ router.get('/couples/:groupId', requireFeature('wellness.couples'), async (req, 
 router.post('/couples/:groupId/cancel', requireFeature('wellness.couples'), async (req, res) => {
   const client = await pool.connect();
   try {
+    if (!Number.isInteger(+req.params.groupId)) { client.release(); return res.status(400).json({ error: 'bad-group-id' }); }
     await client.query('BEGIN'); await applyTenant(client);
     const g = await client.query(`SELECT id FROM booking_groups WHERE id=$1`, [Number(req.params.groupId)]);
     if (!g.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'group-not-found' }); }
