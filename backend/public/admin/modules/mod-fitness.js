@@ -58,6 +58,7 @@
         '<b>' + from.slice(8, 10) + '.' + from.slice(5, 7) + ' – ' + to.slice(8, 10) + '.' + to.slice(5, 7) + '</b>' +
         '<button class="btn btn-outline btn-sm" onclick="fitWeek(1)">▶</button>' +
         '<span style="flex:1"></span>' +
+        '<button class="btn btn-outline btn-sm" onclick="fitPolicyModal()"><span class="material-icons-round" style="font-size:15px">gavel</span> Політика</button>' +
         '<button class="btn btn-outline btn-sm" onclick="fitTypesModal()"><span class="material-icons-round" style="font-size:15px">category</span> Типи занять</button>' +
         '<button class="btn btn-outline btn-sm" onclick="fitTemplatesModal()"><span class="material-icons-round" style="font-size:15px">event_repeat</span> Шаблон тижня</button>' +
         '<button class="btn btn-primary btn-sm" onclick="fitClassModal()"><span class="material-icons-round" style="font-size:15px">add</span> Заняття</button></div>';
@@ -120,6 +121,7 @@
         ' · місць: ' + c.capacity + '</div>';
       h += '<div style="display:flex;gap:6px;margin-bottom:12px">' +
         '<input id="fbSearch" class="form-control" placeholder="Пошук клієнта (імʼя/телефон)" style="flex:1" oninput="fitClientSearch(this.value,' + id + ')">' +
+        '<input id="fbSpot" class="form-control" type="number" min="1" placeholder="Місце №" title="Спот (необовʼязково)" style="width:90px">' +
         '</div><div id="fbResults"></div>';
       function row(b) {
         var st = { booked: '🟢 записаний', attended: '✅ прийшов', noshow: '❌ не прийшов', waitlist: '⏳ черга №' + (b.waitlist_pos || '') }[b.status] || b.status;
@@ -157,7 +159,9 @@
   };
 
   window.fitBook = function (classId, clientId) {
-    API('/api/fitness/classes/' + classId + '/book', { method: 'POST', body: JSON.stringify({ client_id: clientId }) })
+    var spotEl = document.getElementById('fbSpot');
+    var spot = spotEl && spotEl.value ? parseInt(spotEl.value, 10) : null;
+    API('/api/fitness/classes/' + classId + '/book', { method: 'POST', body: JSON.stringify({ client_id: clientId, spot_number: spot }) })
       .then(function (r) {
         toast(r.waitlist ? 'Місць немає — клієнта додано в лист очікування' : 'Клієнта записано');
         window.fitOpenClass(classId); loadFitSchedule();
@@ -307,6 +311,27 @@
         if (r.allowed) { toast('Чек-ін: ' + r.client.name + (r.consumed ? ' · залишок візитів: ' + r.consumed.balance : '')); window.fitCiPick(checkinClient.id, checkinClient.name); }
         else toast(r.message || 'Відмова', 'error');
       }).catch(function (e) { toast(e.message || 'Помилка', 'error'); });
+  };
+
+  /* ── політика скасувань/неявок (Phase C) ── */
+  window.fitPolicyModal = function () {
+    API('/api/fitness/policy').then(function (r) {
+      var p = r.policy || {};
+      showModal('Політика скасувань і неявок',
+        '<div style="display:grid;gap:12px">' +
+        '<label>За скільки годин скасування вважається пізнім' +
+        '<input id="fpH" type="number" min="0" max="168" class="form-control" value="' + (p.late_cancel_hours || 0) + '"></label>' +
+        '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input id="fpLC" type="checkbox" style="width:auto" ' + (p.late_cancel_burns_visit ? 'checked' : '') + '> Пізнє скасування списує візит з абонемента</label>' +
+        '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input id="fpNS" type="checkbox" style="width:auto" ' + (p.noshow_burns_visit ? 'checked' : '') + '> Неявка (no-show) списує візит з абонемента</label>' +
+        '<div style="font-size:12px;color:#888">Списання ідемпотентне: якщо візит вже списано (відвідування), другий раз не згорить.</div></div>',
+        function () {
+          return API('/api/fitness/policy', { method: 'PUT', body: JSON.stringify({
+            late_cancel_hours: parseInt(document.getElementById('fpH').value, 10) || 0,
+            late_cancel_burns_visit: document.getElementById('fpLC').checked,
+            noshow_burns_visit: document.getElementById('fpNS').checked }) })
+            .then(function () { toast('Політику збережено'); });
+        });
+    }).catch(function (e) { toast(e.message || 'Помилка', 'error'); });
   };
 
   /* ── реєстрація сторінок ── */

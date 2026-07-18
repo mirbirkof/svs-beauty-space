@@ -221,28 +221,95 @@ router.post('/classes/:id/book', requireFeature('fitness.classes'), async (req, 
               COALESCE(MAX(waitlist_pos), 0) AS maxpos
          FROM fitness_class_bookings WHERE class_id=$1`, [classId])).rows[0];
     const isWait = cnt.booked >= c.capacity;
+    // Спот-бронювання (Phase C): місце/reformer №. Валідація: 1..capacity, вільне.
+    // NULL = без місця (як раніше). Уникальність живого місця страхує uq_fcb_class_spot (278).
+    let spot = req.body?.spot_number != null ? Number(req.body.spot_number) : null;
+    if (spot != null) {
+      if (isWait) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'class-full', message: 'Місць немає — лише лист очікування (без вибору місця)' }); }
+      if (!Number.isInteger(spot) || spot < 1 || spot > Number(c.capacity)) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: 'bad-spot', max: Number(c.capacity) });
+      }
+      const taken = await client.query(
+        `SELECT 1 FROM fitness_class_bookings WHERE class_id=$1 AND spot_number=$2 AND status IN ('booked','attended') LIMIT 1`,
+        [classId, spot]);
+      if (taken.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'spot-taken', spot }); }
+    }
     const r = await client.query(
-      `INSERT INTO fitness_class_bookings (class_id, client_id, subscription_id, status, waitlist_pos, note)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      `INSERT INTO fitness_class_bookings (class_id, client_id, subscription_id, status, waitlist_pos, note, spot_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [classId, clientId, req.body?.subscription_id || null, isWait ? 'waitlist' : 'booked',
-       isWait ? Number(cnt.maxpos) + 1 : null, req.body?.note || null]);
+       isWait ? Number(cnt.maxpos) + 1 : null, req.body?.note || null, spot]);
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'fitness.book', entity: 'fitness_class_bookings', entity_id: r.rows[0].id, ip: req.ip, meta: { waitlist: isWait } }).catch(() => {});
     res.json({ ok: true, item: r.rows[0], waitlist: isWait });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     if (String(e.message).includes('uq_fcb_class_client_live')) return res.status(409).json({ error: 'already-booked', message: 'Клієнт вже записаний на це заняття' });
+    if (String(e.message).includes('uq_fcb_class_spot')) return res.status(409).json({ error: 'spot-taken', message: 'Це місце щойно зайняли' });
     err500(res, e);
   } finally { client.release(); }
 });
 
-// Отмена записи → автопродвижение первого из листа ожидания + уведомление
+/* ── Політика скасувань/неявок (Phase C, 18.07.2026) ─────────────────────────
+   Дослідження ринку: no-show/late-cancel політики з автосписанням — must-have
+   (vibefam/hostmerchantservices). Налаштування у app_settings 'fitness_policy':
+   { late_cancel_hours: 12, late_cancel_burns_visit: false, noshow_burns_visit: false }.
+   Вимкнено за замовчуванням — поведінка як раніше, поки студія сама не увімкне. */
+const FIT_POLICY_DEF = { late_cancel_hours: 12, late_cancel_burns_visit: false, noshow_burns_visit: false };
+async function fitPolicy() {
+  const p = await require('../lib/settings').getSetting('fitness_policy', FIT_POLICY_DEF);
+  return { ...FIT_POLICY_DEF, ...(p || {}) };
+}
+router.get('/policy', requireFeature('fitness.classes'), async (_req, res) => {
+  try { res.json({ ok: true, policy: await fitPolicy() }); } catch (e) { err500(res, e); }
+});
+router.put('/policy', requireFeature('fitness.classes'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const pol = {
+      late_cancel_hours: Math.max(0, Math.min(168, Number(b.late_cancel_hours) || 0)),
+      late_cancel_burns_visit: b.late_cancel_burns_visit === true,
+      noshow_burns_visit: b.noshow_burns_visit === true,
+    };
+    await require('../lib/settings').setSetting('fitness_policy', pol, req.user?.id);
+    logAction({ user: req.user, action: 'fitness.policy.update', entity: 'app_settings', ip: req.ip, meta: pol }).catch(() => {});
+    res.json({ ok: true, policy: pol });
+  } catch (e) { err500(res, e); }
+});
+
+// Списання візиту за пізнє скасування/неявку. usageKey = той самий 'class:<booking_id>',
+// що й attend → подвійного списання не буде ні в якому порядку подій (ідемпотентність).
+async function burnVisit(booking, usageKey, by) {
+  const adm = booking.subscription_id
+    ? { allowed: true, sub: (await pool.query(`SELECT s.*, p.type AS plan_type FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.id=$1`, [booking.subscription_id])).rows[0] }
+    : await findAdmission(booking.client_id);
+  if (!(adm.allowed && adm.sub)) return null; // без абонемента палити нічого
+  const c = await consumeVisit(adm.sub, booking.client_id, usageKey, by);
+  return c.ok ? { subscription_id: adm.sub.id, balance: c.balance } : null;
+}
+
+// Отмена записи → автопродвижение первого из листа ожидания + уведомление.
+// late-cancel: якщо до старту менше ніж policy.late_cancel_hours і политика увімкнена —
+// візит згорає (запис у note, щоб було видно чому).
 router.post('/bookings/:id/cancel', requireFeature('fitness.classes'), async (req, res) => {
   try {
     const b = (await pool.query(
       `UPDATE fitness_class_bookings SET status='cancelled', updated_at=NOW()
         WHERE id=$1 AND status IN ('booked','waitlist') RETURNING *`, [+req.params.id])).rows[0];
     if (!b) return res.status(404).json({ error: 'not-found-or-final' });
+    let burned = null;
+    try {
+      const pol = await fitPolicy();
+      if (pol.late_cancel_burns_visit && b.waitlist_pos === null) {
+        const cls = (await pool.query(`SELECT starts_at FROM fitness_classes WHERE id=$1`, [b.class_id])).rows[0];
+        const hoursLeft = cls ? (new Date(cls.starts_at) - Date.now()) / 36e5 : Infinity;
+        if (hoursLeft >= 0 && hoursLeft < pol.late_cancel_hours) {
+          burned = await burnVisit(b, `class:${b.id}`, req.user?.display_name);
+          if (burned) await pool.query(
+            `UPDATE fitness_class_bookings SET note = COALESCE(note,'') || ' [late-cancel: візит списано]' WHERE id=$1`, [b.id]);
+        }
+      }
+    } catch (pe) { console.error('[fitness:late-cancel]', pe.message); }
     let promoted = null;
     if (b.status === 'cancelled' && b.waitlist_pos === null) { // освободилось живое место
       promoted = (await pool.query(
@@ -258,7 +325,7 @@ router.post('/bookings/:id/cancel', requireFeature('fitness.classes'), async (re
           priority: 'high', category: 'transactional', source: 'fitness', dedupKey: `fitbook:${promoted.id}:promoted` }).catch(() => {});
       }
     }
-    res.json({ ok: true, promoted: promoted ? { booking_id: promoted.id, client_id: promoted.client_id } : null });
+    res.json({ ok: true, promoted: promoted ? { booking_id: promoted.id, client_id: promoted.client_id } : null, burned });
   } catch (e) { err500(res, e); }
 });
 
@@ -294,9 +361,15 @@ router.post('/bookings/:id/attend', requireFeature('fitness.classes'), async (re
 
 router.post('/bookings/:id/noshow', requireFeature('fitness.classes'), async (req, res) => {
   try {
-    const r = await pool.query(`UPDATE fitness_class_bookings SET status='noshow', updated_at=NOW() WHERE id=$1 AND status='booked' RETURNING id`, [+req.params.id]);
+    const r = await pool.query(`UPDATE fitness_class_bookings SET status='noshow', updated_at=NOW() WHERE id=$1 AND status='booked' RETURNING *`, [+req.params.id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found-or-final' });
-    res.json({ ok: true });
+    // Phase C: неявка палить візит, якщо студія увімкнула політику (ідемпотентно з attend)
+    let burned = null;
+    try {
+      const pol = await fitPolicy();
+      if (pol.noshow_burns_visit) burned = await burnVisit(r.rows[0], `class:${r.rows[0].id}`, req.user?.display_name);
+    } catch (pe) { console.error('[fitness:noshow-burn]', pe.message); }
+    res.json({ ok: true, burned });
   } catch (e) { err500(res, e); }
 });
 

@@ -277,4 +277,85 @@ router.post('/files', requireFeature('dental.chart'), async (req, res) => {
   } catch (e) { err500(res, e); }
 });
 
+/* ── Recall: «жоден пацієнт не загублений» (Phase C, 18.07.2026) ──────────────
+   Черга ВИРАХОВУЄТЬСЯ з живих даних (нової «ручної» таблиці немає):
+     open_plan  — план approved/in_progress, а майбутнього візиту немає;
+     recall_due — останній візит давніше N міс (налаштування dental_recall_months, 6);
+     noshow     — неявка за останні 60 днів без перезапису.
+   dental_recall_log зберігає лише ДІЇ адміна: contacted / booked / snoozed / dismissed.
+   snoozed ховає пацієнта до дати, dismissed/booked — на 90 днів (потім знову перевірка). */
+router.get('/recall', requireFeature('dental.recall'), async (req, res) => {
+  try {
+    const months = Number(await require('../lib/settings').getSetting('dental_recall_months', 6)) || 6;
+    const r = await pool.query(`
+      WITH future AS (
+        SELECT DISTINCT client_id FROM appointments
+         WHERE starts_at > NOW() AND status IN ('booked','confirmed') AND client_id IS NOT NULL
+      ),
+      hidden AS (
+        SELECT DISTINCT client_id FROM dental_recall_log
+         WHERE (action='snoozed' AND snooze_until >= CURRENT_DATE)
+            OR (action IN ('dismissed','booked') AND created_at > NOW() - INTERVAL '90 days')
+      ),
+      last_visit AS (
+        SELECT c.id AS client_id,
+               GREATEST(COALESCE(c.last_visit_at,'epoch'), COALESCE(MAX(a.starts_at),'epoch')) AS lv
+          FROM clients c LEFT JOIN appointments a
+            ON a.client_id = c.id AND a.status IN ('done','confirmed','booked') AND a.starts_at <= NOW()
+         GROUP BY c.id, c.last_visit_at
+      ),
+      cand AS (
+        SELECT dp.client_id, 'open_plan'::text AS reason,
+               MAX(dp.title) AS detail, MAX(dp.updated_at) AS at
+          FROM dental_plans dp
+         WHERE dp.status IN ('approved','in_progress')
+         GROUP BY dp.client_id
+        UNION ALL
+        SELECT lv.client_id, 'recall_due', NULL, lv.lv
+          FROM last_visit lv
+         WHERE lv.lv > 'epoch' AND lv.lv < NOW() - ($1 || ' months')::interval
+        UNION ALL
+        SELECT a.client_id, 'noshow', NULL, MAX(a.starts_at)
+          FROM appointments a
+         WHERE a.status='noshow' AND a.starts_at > NOW() - INTERVAL '60 days' AND a.client_id IS NOT NULL
+         GROUP BY a.client_id
+      )
+      SELECT cand.client_id, cand.reason, cand.detail, cand.at,
+             c.name, c.phone,
+             (SELECT l.action FROM dental_recall_log l WHERE l.client_id = cand.client_id
+               ORDER BY l.created_at DESC LIMIT 1) AS last_action
+        FROM cand
+        JOIN clients c ON c.id = cand.client_id
+       WHERE cand.client_id NOT IN (SELECT client_id FROM future)
+         AND cand.client_id NOT IN (SELECT client_id FROM hidden)
+       ORDER BY CASE cand.reason WHEN 'open_plan' THEN 0 WHEN 'noshow' THEN 1 ELSE 2 END, cand.at ASC
+       LIMIT 200`, [months]);
+    // один пацієнт може мати кілька причин — групуємо на віддачі
+    const byClient = new Map();
+    for (const row of r.rows) {
+      if (!byClient.has(row.client_id)) byClient.set(row.client_id, { ...row, reasons: [] });
+      byClient.get(row.client_id).reasons.push({ reason: row.reason, detail: row.detail, at: row.at });
+    }
+    res.json({ ok: true, months, items: [...byClient.values()] });
+  } catch (e) { err500(res, e); }
+});
+
+router.post('/recall/:clientId/action', requireFeature('dental.recall'), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!['contacted', 'booked', 'snoozed', 'dismissed'].includes(b.action)) {
+      return res.status(400).json({ error: 'bad-action', allowed: ['contacted', 'booked', 'snoozed', 'dismissed'] });
+    }
+    const snooze = b.action === 'snoozed'
+      ? (b.snooze_until || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10)) : null;
+    const r = await pool.query(
+      `INSERT INTO dental_recall_log (client_id, reason, action, comment, snooze_until, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [+req.params.clientId, ['open_plan', 'recall_due', 'noshow'].includes(b.reason) ? b.reason : 'recall_due',
+       b.action, b.comment || null, snooze, req.user?.id || null]);
+    logAction({ user: req.user, action: 'dental.recall.' + b.action, entity: 'clients', entity_id: req.params.clientId, ip: req.ip }).catch(() => {});
+    res.json({ ok: true, item: r.rows[0] });
+  } catch (e) { err500(res, e); }
+});
+
 module.exports = router;

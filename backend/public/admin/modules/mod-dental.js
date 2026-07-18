@@ -281,6 +281,43 @@
   };
 
   /* ── реєстрація ── */
+
+  /* ══ RECALL: «жоден пацієнт не загублений» (Phase C, 18.07) ══════════════ */
+  var RECALL_REASON = { open_plan: 'Незакінчений план', recall_due: 'Давно не був', noshow: 'Неявка без перезапису' };
+  function loadDRecall() {
+    var el = document.querySelector('#page-drecall .ext-mod-body');
+    if (!el) return;
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:#9aa0a6">Завантаження…</div>';
+    API('/api/dental/recall').then(function (r) {
+      var items = r.items || [];
+      var h = '<div style="font-size:13px;color:#888;margin-bottom:12px">Пацієнти, що потребують уваги (без майбутнього запису): незакінчені плани, davno не були (' + (r.months || 6) + ' міс+), неявки. Оброблені ховаються на 90 днів, відкладені — до дати.</div>';
+      if (!items.length) h += '<div style="padding:24px;color:#37d39a;font-weight:600">Черга порожня — жоден пацієнт не загублений ✓</div>';
+      h += items.map(function (it) {
+        var reasons = (it.reasons || []).map(function (x) {
+          return '<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:rgba(124,92,255,.12);margin-right:4px">' +
+            esc(RECALL_REASON[x.reason] || x.reason) + (x.detail ? ': ' + esc(x.detail) : '') + '</span>';
+        }).join('');
+        var mainReason = (it.reasons && it.reasons[0] && it.reasons[0].reason) || 'recall_due';
+        return '<div style="background:var(--card-bg,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:180px"><b>' + esc(it.name || 'Пацієнт') + '</b>' +
+          '<div style="font-size:12px;color:#888">' + esc(it.phone || '') + (it.last_action ? ' · остання дія: ' + esc(it.last_action) : '') + '</div>' +
+          '<div style="margin-top:4px">' + reasons + '</div></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn btn-outline btn-sm" onclick="dRecallAct(' + it.client_id + ',\'' + mainReason + '\',\'contacted\')">Подзвонили</button>' +
+          '<button class="btn btn-outline btn-sm" onclick="dRecallAct(' + it.client_id + ',\'' + mainReason + '\',\'snoozed\')">Відкласти 30 дн</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="dRecallAct(' + it.client_id + ',\'' + mainReason + '\',\'booked\')">Записаний</button>' +
+          '</div></div>';
+      }).join('');
+      el.innerHTML = h;
+    }).catch(function (e) { window.modErr(el, e); });
+  }
+  window.dRecallAct = function (clientId, reason, action) {
+    API('/api/dental/recall/' + clientId + '/action', { method: 'POST', body: JSON.stringify({ reason: reason, action: action }) })
+      .then(function () { toast('Готово'); loadDRecall(); })
+      .catch(function (e) { toast(e.message || 'Помилка', 'error'); });
+  };
+
+  window.registerModule({ page: 'drecall', title: 'Recall-черга', group: 'dental', icon: 'notification_important', loader: loadDRecall });
   window.registerModule({ page: 'dchart', title: 'Зубна формула', group: 'dental', icon: 'dentistry', loader: loadDChart });
   window.registerModule({ page: 'dplans', title: 'Плани лікування', group: 'dental', icon: 'clinical_notes', loader: loadDPlans });
   window.registerModule({ page: 'dlab', title: 'Лабораторія', group: 'dental', icon: 'biotech', loader: loadDLab });
