@@ -35,7 +35,39 @@ const GATEWAYS = {
   // рахунок підписки оплачується через pay-link (createSubscriptionPayLink) + вебхук.
   monobank: {
     configured: () => !!process.env.MONO_TOKEN,
-    async charge() { return { status: 'pending', gateway_payment_id: null, raw: { mode: 'mono-link' } }; },
+    // Phase E (18.07): автосписання зі збереженої картки (walletPayment) — ТІЛЬКИ при
+    // MONO_RECURRING=1 (токенізацію вмикає підтримка monobank; без флага — старий pay-link).
+    // ІДЕМПОТЕНТНІСТЬ (захист від подвійного списання): якщо по цьому рахунку вже є свіжий
+    // pending wallet-платіж — повторний charge НЕ ініціює новий, повертає 'initiated'.
+    // Статус платежу закриє вебхук (payInvoiceViaMono) — як у звичайного mono-інвойса.
+    async charge({ tenantId, amount, invoiceId } = {}) {
+      if (process.env.MONO_RECURRING !== '1' || !invoiceId) {
+        return { status: 'pending', gateway_payment_id: null, raw: { mode: 'mono-link' } };
+      }
+      const pool = getPool();
+      const fresh = (await pool.query(
+        `SELECT gateway_payment_id FROM payments_saas
+          WHERE invoice_id=$1 AND gateway='monobank' AND status IN ('pending','processing')
+            AND (gateway_response->>'wallet')='1' AND created_at > NOW()-INTERVAL '20 hours'
+          ORDER BY id DESC LIMIT 1`, [invoiceId])).rows[0];
+      if (fresh) return { status: 'initiated', gateway_payment_id: fresh.gateway_payment_id, raw: { wallet: '1', reused: true } };
+      const pm = (await pool.query(
+        `SELECT gateway_token FROM payment_methods
+          WHERE tenant_id=$1 AND gateway='monobank' AND gateway_token IS NOT NULL
+          ORDER BY is_default DESC, created_at DESC LIMIT 1`, [tenantId])).rows[0];
+      if (!pm) return { status: 'pending', gateway_payment_id: null, raw: { mode: 'mono-link', reason: 'no-saved-card' } };
+      const mono = require('./mono');
+      const { runAs } = require('./tenant');
+      const r = await runAs(null, () => mono.walletPayment({
+        cardToken: pm.gateway_token, amountUah: amount,
+        orderId: `saas-${invoiceId}`, destination: `Продовження підписки SVS CRM (рахунок ${invoiceId})`,
+      }));
+      await pool.query(
+        `INSERT INTO payments_saas (tenant_id, invoice_id, amount, currency, status, gateway, gateway_payment_id, gateway_response)
+         VALUES ($1,$2,$3,'UAH','pending','monobank',$4,$5)`,
+        [tenantId, invoiceId, Number(amount), r.invoiceId || null, JSON.stringify({ wallet: '1', tdsUrl: r.tdsUrl || null })]);
+      return { status: 'initiated', gateway_payment_id: r.invoiceId || null, raw: { wallet: '1' } };
+    },
     async refund() { return { status: 'refunded', raw: { mode: 'mono-manual' } }; },
   },
 };
@@ -421,6 +453,11 @@ async function createSubscriptionPayLink(invoiceId) {
     amountUah: Number(inv.total),
     orderId: `saas-${invoiceId}`,
     destination: `Підписка SVS CRM — рахунок ${inv.invoice_number}`.slice(0, 280),
+    // Phase E: при увімкненому рекуренті просимо зберегти картку — далі продовження
+    // підписки списуватиметься автоматично (walletId детермінований від тенанта).
+    ...(process.env.MONO_RECURRING === '1'
+      ? { saveCardData: { saveCard: true, walletId: 'saas' + String(inv.tenant_id).replace(/-/g, '') } }
+      : {}),
   }));
   await pool.query(
     `INSERT INTO payments_saas (tenant_id, invoice_id, amount, currency, status, gateway, gateway_payment_id, gateway_response)
@@ -537,6 +574,28 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
   if (data.status === 'success') {
     await pool.query(`UPDATE payments_saas SET status='succeeded', gateway_response=$2, updated_at=NOW() WHERE id=$1`,
       [pay.id, JSON.stringify(data)]);
+    // Phase E: клієнт оплатив pay-link із збереженням картки → фіксуємо cardToken
+    // для майбутніх автосписань (ідемпотентно: однаковий токен не дублюємо).
+    try {
+      const ct = data.walletData && data.walletData.cardToken;
+      if (ct && data.walletData.status !== 'failed') {
+        const dup = await pool.query(
+          `SELECT 1 FROM payment_methods WHERE tenant_id=$1 AND gateway='monobank' AND gateway_token=$2`,
+          [pay.tenant_id, ct]);
+        if (!dup.rows.length) {
+          const masked = (data.paymentInfo && data.paymentInfo.maskedPan) || '';
+          await addPaymentMethod(pay.tenant_id, { type: 'card', gateway: 'monobank', token: ct,
+            last4: masked ? masked.slice(-4) : null, makeDefault: true });
+          // Картка збережена → підписка переходить на автосписання (усі зараз 'manual' —
+          // без цього charge ніколи б не викликався). walletData приходить ТІЛЬКИ якщо
+          // ми просили saveCardData, тобто тільки при MONO_RECURRING=1 — ланцюжок захищений.
+          await pool.query(
+            `UPDATE subscriptions_saas SET payment_gateway='monobank', updated_at=NOW()
+              WHERE tenant_id=$1 AND status IN ('active','trialing','past_due')`, [pay.tenant_id]);
+          console.log('[billing] mono card saved for tenant', pay.tenant_id, '→ recurring on');
+        }
+      }
+    } catch (we) { console.error('[billing:wallet-save]', we.message); }
     const inv = (await pool.query(
       `UPDATE invoices_saas SET status='paid', paid_at=NOW(), updated_at=NOW()
          WHERE id=$1 AND status<>'paid' RETURNING *`, [pay.invoice_id])).rows[0];
@@ -812,7 +871,7 @@ async function processDunning(limit = 100) {
     const g = gateway(d.payment_gateway);
     let result = { status: 'failed', raw: null };
     if (d.payment_gateway !== 'manual' && g.configured()) {
-      try { result = await g.charge({ tenantId: d.tenant_id, amount: Number(d.total) }); } catch (e) { result = { status: 'failed', raw: { error: e.message } }; }
+      try { result = await g.charge({ tenantId: d.tenant_id, amount: Number(d.total), invoiceId: d.invoice_id }); } catch (e) { result = { status: 'failed', raw: { error: e.message } }; }
     }
     attempted++;
     if (result.status === 'succeeded') {
@@ -820,6 +879,11 @@ async function processDunning(limit = 100) {
       await pool.query(`UPDATE dunning_attempts SET status='succeeded', attempted_at=NOW(), gateway_response=$2 WHERE id=$1`,
         [d.id, JSON.stringify(result.raw)]);
       recovered++;
+    } else if (result.status === 'initiated') {
+      // Phase E: автосписання ІНІЦІЙОВАНО (wallet-платіж у польоті) — pay-link НЕ шлемо,
+      // вебхук закриє рахунок; наступна dunning-спроба побачить paid і завершиться.
+      await pool.query(`UPDATE dunning_attempts SET status='attempted', attempted_at=NOW(), notification_type='auto-charge', gateway_response=$2 WHERE id=$1`,
+        [d.id, JSON.stringify(result.raw || {})]);
     } else {
       // manual/Mono: авто-charge немає — реально надсилаємо власнику pay-link у Telegram
       // (раніше notification_sent=TRUE виставлявся без жодної відправки — клієнт не платив).
@@ -866,9 +930,9 @@ async function runRecurring(limit = 200) {
       const g = gateway(renewedSub.payment_gateway);
       if (renewedSub.payment_gateway !== 'manual' && g.configured()) {
         try {
-          const r = await g.charge({ tenantId: sub.tenant_id, amount: Number(inv.total) });
+          const r = await g.charge({ tenantId: sub.tenant_id, amount: Number(inv.total), invoiceId: inv.id });
           if (r.status === 'succeeded') await recordPayment(inv.id, { gateway: renewedSub.payment_gateway, status: 'succeeded', gatewayPaymentId: r.gateway_payment_id, raw: r.raw });
-          else await scheduleDunning(renewedSub.id, inv.id);
+          else await scheduleDunning(renewedSub.id, inv.id); // initiated: вебхук закриє рахунок, dunning — страховка (charge ідемпотентний)
         } catch { await scheduleDunning(renewedSub.id, inv.id); }
       } else {
         // manual/Mono: авто-списання картки немає (Mono = разове pay-link). Раніше рахунок

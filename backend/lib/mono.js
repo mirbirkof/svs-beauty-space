@@ -97,7 +97,7 @@ function getPublicBase() {
 }
 
 /** Создать инвойс. amountUah — гривны (переводим в копейки). */
-async function createInvoice({ amountUah, orderId, destination, basket }) {
+async function createInvoice({ amountUah, orderId, destination, basket, saveCardData }) {
   const base = getPublicBase();
   const payload = {
     amount: Math.round(Number(amountUah) * 100),
@@ -116,6 +116,9 @@ async function createInvoice({ amountUah, orderId, destination, basket }) {
       } : {}),
     },
     validity: 24 * 3600, // сутки на оплату
+    // Phase E (18.07): токенізація картки для автосписань підписки (потребує
+    // активації токенізації у підтримці monobank). saveCardData={saveCard,walletId}.
+    ...(saveCardData ? { saveCardData } : {}),
     ...(base ? {
       redirectUrl: `${base}/p/order-paid.html?order=${orderId}`,
       // Метка салона в webhook-URL (аудит-контроль): вебхук Mono не несёт tenant, а подпись
@@ -181,4 +184,20 @@ async function verifyWebhook(rawBody, xSign) {
   }
 }
 
-module.exports = { createInvoice, getInvoiceStatus, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache };
+// Phase E (18.07): списання зі збереженої картки (рекурент). Офіційна дока:
+// POST /api/merchant/wallet/payment { cardToken, amount(коп), ccy, initiationKind:'merchant' }.
+// Статус приходить вебхуком, як у звичайного інвойса.
+async function walletPayment({ cardToken, amountUah, orderId, destination }) {
+  const base = getPublicBase();
+  return monoRequest('POST', '/api/merchant/wallet/payment', {
+    cardToken,
+    amount: Math.round(Number(amountUah) * 100),
+    ccy: 980,
+    initiationKind: 'merchant',
+    paymentType: 'debit',
+    merchantPaymInfo: { reference: String(orderId), destination: (destination || '').slice(0, 280) },
+    ...(base ? { webHookUrl: `${base}/api/pay/mono/webhook` } : {}),
+  });
+}
+
+module.exports = { createInvoice, getInvoiceStatus, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache, walletPayment };
