@@ -1112,9 +1112,13 @@ router.patch('/appointments/:id', async (req, res) => {
 
     // Кімната при переносі/зміні (Phase B wellness, 18.07): якщо у записи є/буде room_id і
     // змінюється час або кімната — перевіряємо конфлікт кабінету. Записи без кімнати не задіті.
-    {
+    // КОРІНЬ 500 при зміні ЛИШЕ суми (Босс 18.07): curRow завантажується тільки коли
+    // змінюється час/послуга/майстер; при чистій зміні price/notes/status curRow=null,
+    // і читання curRow.room_id падало 500. Тепер безпечний доступ + перевірка потрібна
+    // лише коли реально змінюється час або кабінет.
+    if (curRow && (newStart || newEnd || room_id !== undefined)) {
       const effRoom = room_id !== undefined ? (room_id ? Number(room_id) : null) : curRow.room_id;
-      if (effRoom && (newStart || newEnd || room_id !== undefined)) {
+      if (effRoom) {
         const bg = require('../lib/booking-guard');
         const busy = await bg.roomBusy({ roomId: effRoom,
           startsAt: newStart || curRow.starts_at, endsAt: newEnd || curRow.ends_at,
@@ -1128,6 +1132,7 @@ router.patch('/appointments/:id', async (req, res) => {
     }
 
     // Ручний перенос (час/майстер/тривалість/послуга/сума) → позначаємо manual_override,
+    // (нижче) щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
     const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined || price !== undefined);
     // Аудит v6: UPDATE записи + синк её онлайн-брони = ОДНА транзакция.
