@@ -10065,10 +10065,19 @@ async function delApptPhoto(fileId, kind, apptId) {
 // ── Створення запису «в моменті» (клік по вільному слоту) ──
 let _svcCache = null;
 async function getServices() {
-  if (_svcCache) return _svcCache;
-  try { const r = await api('/api/admin/services'); _svcCache = (r.items||[]).filter(s=>s.active!==false); }
-  catch { _svcCache = []; }
-  return _svcCache;
+  if (_svcCache && _svcCache.length) return _svcCache;   // порожній кеш НЕ використовуємо — див. нижче
+  // КОРІНЬ «не можна змінити/додати послугу» (Босс 18.07): раніше список брався з
+  // /api/admin/services (право admin.*). Роль без admin.* (рецепшн/кастомна) або будь-який
+  // збій → 403/помилка → catch ставив _svcCache=[] НАЗАВЖДИ → усі модалки послуг казали
+  // «список порожній» і нічого не зберігали, хоча ЦІНУ (не потребує списку) міняти можна.
+  // Тепер: (1) беремо ЗАГАЛЬНОДОСТУПНИЙ /api/services (без admin.*), (2) порожній результат
+  // НЕ кешуємо — наступний виклик спробує знову (тимчасовий збій не залипає).
+  try {
+    const r = await api('/api/services?limit=1000&sort=name');
+    const list = (r.items || r.services || []).filter(s => s.active !== false);
+    if (list.length) _svcCache = list;
+    return list;
+  } catch (_) { return _svcCache || []; }
 }
 // ── #99: послуги конкретного майстра (master_services) ──
 // Повертає Set(service_id) активних звʼязок майстра, або null якщо звʼязки не
