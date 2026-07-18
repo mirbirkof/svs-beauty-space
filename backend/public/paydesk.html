@@ -142,7 +142,7 @@
         el('<header><div><b style="font-size:18px">Каса</b> <span class="day">' + esc(j.date) + '</span>' +
           '<div class="cnt">' + j.count + ' оплат сьогодні' + (j.personal_connected ? '' : ' · еквайринг') + '</div></div>' +
           '<div class="total">' + fmtA(j.total) + '</div></header>' +
-          '<div class="feed">' + (rows || '<div class="empty">Сьогодні оплат ще не було.<br>Екран оновлюється сам кожні 30 секунд.</div>') + '</div>' +
+          '<div class="feed">' + (rows || ('<div class="empty">Сьогодні оплат ще не було.<br>Екран оновлюється сам кожні 30 секунд.' + (j.personal_connected ? '' : '<br><br><span style="color:#e6a23c;font-size:13px">⚠ Зараз видно лише оплати через еквайринг (посилання/QR з CRM).<br>Перекази на картку зʼявляться після підключення особистого ключа mono.</span>') + '</div>')) + '</div>' +
           '<div class="hint">Видно лише СЬОГОДНІШНІ надходження. Історія — тільки в банку.</div>');
         if (hasNew) beep();
         firstLoad = false;
