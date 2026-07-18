@@ -1219,7 +1219,7 @@ router.patch('/appointments/:id', async (req, res) => {
              FROM appointments WHERE id = $1),
          mat AS (
            SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                                    WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price / NULLIF(GREATEST(pv.unit_ml,1),0), 2)
+                                    WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                                     ELSE 0 END), 0) AS total
              FROM appointment_materials am
              JOIN product_variants pv ON pv.id = am.variant_id
@@ -1249,7 +1249,7 @@ router.patch('/appointments/:id', async (req, res) => {
             SET real_amount = ROUND($2::numeric * (1 - LEAST(COALESCE(a.discount_amount,0)+COALESCE(a.pay_cert_amount,0)+COALESCE(a.pay_bonus_money,0), $2::numeric + m.total)
                                                    / GREATEST($2::numeric + m.total, 0.01)), 2)
            FROM (SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used*p.price_per_gram,2)
-                                          WHEN pv.price IS NOT NULL THEN ROUND(am.qty_used*pv.price/NULLIF(GREATEST(pv.unit_ml,1),0),2) ELSE 0 END),0) AS total
+                                          WHEN pv.price IS NOT NULL THEN ROUND(am.qty_used*pv.price,2) ELSE 0 END),0) AS total
                    FROM appointment_materials am JOIN product_variants pv ON pv.id=am.variant_id
                    LEFT JOIN products p ON p.id=pv.product_id WHERE am.appointment_id=$1) m
           WHERE a.id = $1 AND a.pay_settled_at IS NOT NULL`,
@@ -1716,7 +1716,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const mat = await pool.query(
       `SELECT COALESCE(SUM(
                 CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                     WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price / NULLIF(GREATEST(pv.unit_ml,1),0), 2)
+                     WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                      ELSE 0 END),0)::float AS total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id

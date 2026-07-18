@@ -43,7 +43,7 @@ async function syncPaidMaterials(aid) {
     if (!ops.rows.length) { await client.query('ROLLBACK'); return null; } // не оплачено — каса не чіпається
     const mat = await client.query(
       `SELECT COALESCE(SUM(CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                                WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price / NULLIF(GREATEST(pv.unit_ml,1),0), 2)
+                                WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                                 ELSE 0 END),0)::float AS total
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
@@ -89,7 +89,7 @@ router.get('/appointment/:apptId', requirePerm(), async (req, res) => {
               p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price,
               p.price_per_gram,
               CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
-                   WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price / NULLIF(GREATEST(pv.unit_ml,1),0), 2)
+                   WHEN pv.price IS NOT NULL      THEN ROUND(am.qty_used * pv.price, 2)
                    END AS line_total -- будь-який матеріал з ціною йде в чек (вимога Босса 04.07)
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
