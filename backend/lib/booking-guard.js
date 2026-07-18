@@ -95,15 +95,25 @@ async function roomBusy({ roomId, startsAt, endsAt, excludeId = null, needCapaci
         AND ($4::int IS NULL OR id <> $4)`, [Number(roomId), s, e, excludeId]);
   const used = occ.rows[0]?.c ?? 0;
   if (used + Number(needCapacity || 1) > roomCap) return { reason: 'room-busy', used, capacity: roomCap };
-  try {
+  // Сервисные блоки кабинета. КРИТИЧНО (баг 18.07, вскрыт E2E couples): колонки в
+  // room_blocks — blocked_from/blocked_until (мигр. 152), НЕ starts_at/ends_at. Старый
+  // запрос падал, try/catch глотал ошибку — вне транзакции это «работало», а ВНУТРИ
+  // транзакции couples отравляло её целиком → 500. Наличие таблицы проверяем ОДИН раз
+  // отдельным соединением (не q!) — чтобы сбой проверки никогда не трогал транзакцию.
+  if (_hasRoomBlocks === null) {
+    try { _hasRoomBlocks = !!(await getPool().query(`SELECT to_regclass('room_blocks') r`)).rows[0].r; }
+    catch (_) { _hasRoomBlocks = false; }
+  }
+  if (_hasRoomBlocks) {
     const blk = await q.query(
-      `SELECT 1 FROM room_blocks WHERE room_id=$1
-        AND tstzrange(starts_at, ends_at) && tstzrange($2::timestamptz, $3::timestamptz) LIMIT 1`,
+      `SELECT 1 FROM room_blocks WHERE room_id=$1 AND status='active'
+        AND tstzrange(blocked_from, blocked_until) && tstzrange($2::timestamptz, $3::timestamptz) LIMIT 1`,
       [Number(roomId), s, e]);
     if (blk.rows.length) return { reason: 'room-blocked' };
-  } catch (_) { /* таблицы может не быть (мигр. 152 не накатилась) — не блокируем */ }
+  }
   return null;
 }
+let _hasRoomBlocks = null; // кэш на процесс
 
 // Подбор свободной комнаты под интервал (preferred первой, потом по sort_order).
 // needCapacity=2 для couples. Возвращает id или null.
