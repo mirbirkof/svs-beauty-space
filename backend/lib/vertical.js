@@ -21,9 +21,22 @@ async function getVertical() {
   return bt;
 }
 
+const PREVIEW_OK = ['beauty', 'fitness', 'dental', 'wellness'];
+
 function requireVertical(vertical) {
-  return async (_req, res, next) => {
+  return async (req, res, next) => {
     try {
+      // Режим керуючого (Босс, 18.07): ТІЛЬКИ платформенний тенант може перемикатись
+      // між вертикалями заголовком X-Vertical-Preview — дивитись CRM очима будь-якої
+      // вертикалі. Для ВСІХ інших тенантів заголовок ігнорується — ізоляція незмінна.
+      try {
+        const { isPlatformTenant } = require('./tenant');
+        const pv = req.get && req.get('X-Vertical-Preview');
+        if (pv && PREVIEW_OK.includes(pv) && isPlatformTenant && isPlatformTenant()) {
+          if (pv === vertical) return next();
+          return res.status(404).json({ error: 'not-found' });
+        }
+      } catch (_) { /* нема хелпера платформи → звичайний шлях */ }
       if ((await getVertical()) === vertical) return next();
       return res.status(404).json({ error: 'not-found' });
     } catch (e) {
