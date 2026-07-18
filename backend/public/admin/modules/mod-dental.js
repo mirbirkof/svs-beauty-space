@@ -61,7 +61,9 @@
   }
   function renderChart() {
     var body = document.getElementById('dChartBody');
-    var h = '<div style="font-size:16px;font-weight:700;margin-bottom:10px">' + esc(dClient.name) + '</div>' +
+    var h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<span style="font-size:16px;font-weight:700">' + esc(dClient.name) + '</span>' +
+      '<button class="btn btn-outline btn-sm" onclick="dForm043Print()"><span class="material-icons-round" style="font-size:15px">print</span> Форма 043/о</button></div>' +
       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">' + UPPER.map(toothCell).join('') + '</div>' +
       '<div style="display:flex;gap:4px;flex-wrap:wrap">' + LOWER.map(toothCell).join('') + '</div>' +
       '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#666">' +
@@ -199,7 +201,9 @@
           (s.appt_starts_at ? ' · візит ' + new Date(s.appt_starts_at).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '') + '</div></div>' +
           (s.status !== 'done' ? '<button class="btn btn-sm btn-outline" onclick="dStageDone(' + s.id + ',' + id + ')">✓ виконано</button>' : '') + '</div>';
       }).join('') || window.modEmpty('Етапів немає');
-      if (p.status === 'draft') h += '<div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-primary" onclick="dPlanApprove(' + id + ')">Затвердити план</button></div>';
+      h += '<div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">' +
+        '<button class="btn btn-sm btn-outline" onclick="dPlanPresent(' + id + ')"><span class="material-icons-round" style="font-size:15px">present_to_all</span> Презентація для пацієнта</button>' +
+        (p.status === 'draft' ? '<button class="btn btn-sm btn-primary" onclick="dPlanApprove(' + id + ')">Затвердити план</button>' : '') + '</div>';
       showModal('План: ' + esc(p.title), h);
     });
   };
@@ -315,6 +319,102 @@
     API('/api/dental/recall/' + clientId + '/action', { method: 'POST', body: JSON.stringify({ reason: reason, action: action }) })
       .then(function () { toast('Готово'); loadDRecall(); })
       .catch(function (e) { toast(e.message || 'Помилка', 'error'); });
+  };
+
+
+  /* ══ ФОРМА 043/о — друк (структура за офіційним бланком наказу МОЗ № 110;
+     позначення наказу: С=карієс, Р=пульпіт, РІ=пломба, А=відсутній, Cd=коронка,
+     R=корінь, і=імплантація). Поля, яких немає в CRM (стать, адреса, прикус,
+     індекси ГІ/РМА, шкала Віта) — порожні рядки для ручного заповнення. ══ */
+  window.dForm043Print = function () {
+    if (!dClient) { toast('Оберіть клієнта', 'error'); return; }
+    API('/api/dental/form043/' + dClient.id).then(function (r) {
+      var c = r.client || {}, teeth = {};
+      (r.teeth || []).forEach(function (t) { teeth[t.tooth_no] = t.mark; });
+      // Зубна формула бланка: 2 ряди по 16 (Зигмонді). Верх: FDI 18..11 | 21..28. Низ: 48..41 | 31..38.
+      function row(fdis) {
+        return '<tr>' + fdis.map(function (n) { return '<td>' + (teeth[n] || '&nbsp;') + '</td>'; }).join('') + '</tr>';
+      }
+      var UP = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28];
+      var DN = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38];
+      var posRow = '<tr class="pos">' + [8,7,6,5,4,3,2,1,1,2,3,4,5,6,7,8].map(function (n) { return '<td>' + n + '</td>'; }).join('') + '</tr>';
+      var med = r.medical || {};
+      function lst(v) { return Array.isArray(v) ? v.join(', ') : (v || ''); }
+      var perenes = [lst(med.chronic_conditions), lst(med.allergies) && ('Алергії: ' + lst(med.allergies)), lst(med.current_medications) && ('Ліки: ' + lst(med.current_medications))].filter(Boolean).join('; ');
+      var planObsl = '', planLik = '';
+      (r.plans || []).forEach(function (pp) {
+        planLik += '<b>' + pp.title + '</b>' + (pp.diagnosis ? ' (' + pp.diagnosis + ')' : '') + '<br>' +
+          (pp.stages || []).map(function (st) { return (st.position + 1) + '. ' + st.title + (st.teeth && st.teeth.length ? ' [зуби ' + st.teeth.join(',') + ']' : ''); }).join('<br>') + '<br>';
+      });
+      var diary = (r.diary || []).slice().reverse().map(function (d) {
+        return '<tr><td style="white-space:nowrap">' + new Date(d.starts_at).toLocaleDateString('uk-UA') + '</td><td>' +
+          (d.service_name || '') + (d.master_name ? ' · лікар: ' + d.master_name : '') + (d.notes ? '<br>' + d.notes : '') + '</td></tr>';
+      }).join('');
+      var diag = (r.plans && r.plans[0] && r.plans[0].diagnosis) || '';
+      var esc2 = function (x) { return String(x == null ? '' : x).replace(/</g, '&lt;'); };
+      var html = '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><title>Форма 043/о — ' + esc2(c.name) + '</title><style>' +
+        'body{font-family:"Times New Roman",serif;font-size:13px;margin:28px;color:#000}' +
+        'h2{text-align:center;font-size:15px;margin:4px 0}.small{font-size:11px;color:#333}' +
+        '.fld{border-bottom:1px solid #000;min-height:16px;display:inline-block;min-width:180px}' +
+        'table.tf{border-collapse:collapse;margin:6px 0}table.tf td{border:1px solid #000;width:26px;height:22px;text-align:center;font-size:12px}' +
+        'table.tf tr.pos td{border:none;font-size:10px;color:#555;height:12px}' +
+        'table.diary{border-collapse:collapse;width:100%}table.diary td,table.diary th{border:1px solid #000;padding:4px 6px;vertical-align:top;font-size:12px;text-align:left}' +
+        'p{margin:7px 0}@media print{button{display:none}}</style></head><body>' +
+        '<div class="small">Найменування закладу: ' + esc2(r.clinic) + '</div>' +
+        '<h2>МЕДИЧНА КАРТА СТОМАТОЛОГІЧНОГО ХВОРОГО<br><span class="small">(форма № 043/о, наказ МОЗ України № 110 від 14.02.2012)</span></h2>' +
+        '<p>1. Прізвище, імʼя, по батькові: <b>' + esc2(c.name) + '</b></p>' +
+        '<p>2. Стать: <span class="fld"></span> &nbsp; 3. Дата народження: <b>' + (c.birthday ? new Date(c.birthday).toLocaleDateString('uk-UA') : '<span class="fld" style="min-width:90px"></span>') + '</b></p>' +
+        '<p>4. Місце проживання, телефон: <b>' + esc2(c.phone || '') + '</b> <span class="fld"></span></p>' +
+        '<p>5. Діагноз: <b>' + esc2(diag) + '</b><span class="fld"></span></p>' +
+        '<p>6. Скарги: <span class="fld" style="min-width:70%"></span></p>' +
+        '<p>7. Перенесені та супутні захворювання: <b>' + esc2(perenes) + '</b><span class="fld"></span></p>' +
+        '<p>8. Розвиток теперішнього захворювання: <span class="fld" style="min-width:60%"></span></p>' +
+        '<p>9. Дані обʼєктивного дослідження, зовнішній огляд. Зубна формула (позначення: С‒карієс, Р‒пульпіт, Pt‒періодонтит, РІ‒пломба, А‒відсутній, Cd‒коронка, R‒корінь, і‒імплантація):</p>' +
+        '<table class="tf">' + posRow + row(UP) + row(DN) + posRow.replace('class="pos"','class="pos"') + '</table>' +
+        '<p>10. Прикус: <span class="fld"></span> &nbsp; 11. Стан гігієни, слизової, ясен. Індекси ГІ, РМА: <span class="fld"></span></p>' +
+        '<p>12. Дані рентгенівських, лабораторних досліджень: <span class="fld" style="min-width:60%"></span></p>' +
+        '<p>13. Колір за шкалою «Віта»: <span class="fld" style="min-width:80px"></span> &nbsp; 14-15. Навчання/контроль гігієни: <span class="fld"></span></p>' +
+        '<h2 style="margin-top:14px">План обстеження / План лікування</h2>' +
+        '<table class="diary"><tr><th style="width:50%">План обстеження</th><th>План лікування</th></tr>' +
+        '<tr><td>' + (planObsl || '&nbsp;') + '</td><td>' + (planLik || '&nbsp;') + '</td></tr></table>' +
+        '<h2 style="margin-top:14px">Щоденник лікаря</h2>' +
+        '<table class="diary"><tr><th style="width:110px">Дата</th><th>Анамнез, статус, діагноз, лікування та рекомендації</th></tr>' + (diary || '<tr><td>&nbsp;</td><td>&nbsp;</td></tr>') + '</table>' +
+        '<p style="margin-top:18px">Лікар: <span class="fld"></span> &nbsp; Завідувач відділення: <span class="fld"></span> &nbsp; Дата: ' + new Date().toLocaleDateString('uk-UA') + '</p>' +
+        '<button onclick="window.print()" style="margin-top:10px;padding:8px 18px">Друк</button></body></html>';
+      var w = window.open('', '_blank');
+      if (!w) { toast('Дозвольте спливаючі вікна для друку', 'error'); return; }
+      w.document.write(html); w.document.close();
+    }).catch(function (e) { toast(e.message || 'Помилка', 'error'); });
+  };
+
+  /* ── Презентація плану лікування для пацієнта (чистий друк без кухні) ── */
+  window.dPlanPresent = function (id) {
+    API('/api/dental/plans/' + id).then(function (r) {
+      var p = r.item, st = r.stages || [];
+      var esc2 = function (x) { return String(x == null ? '' : x).replace(/</g, '&lt;'); };
+      var total = 0;
+      var rows = st.map(function (s, idx) {
+        total += Number(s.estimate) || 0;
+        return '<tr><td>' + (idx + 1) + '</td><td>' + esc2(s.title) +
+          (s.teeth && s.teeth.length ? ' <span style="color:#666;font-size:12px">(зуби ' + s.teeth.join(', ') + ')</span>' : '') + '</td>' +
+          '<td style="text-align:right;white-space:nowrap">' + (s.estimate ? Number(s.estimate).toLocaleString('uk-UA') + ' грн' : '—') + '</td></tr>';
+      }).join('');
+      var html = '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><title>План лікування — ' + esc2(p.client_name) + '</title><style>' +
+        'body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:40px;color:#1a1a2e;max-width:720px}' +
+        'h1{font-size:22px;margin-bottom:4px}.sub{color:#666;font-size:14px;margin-bottom:22px}' +
+        'table{border-collapse:collapse;width:100%;margin:14px 0}td,th{border-bottom:1px solid #e2e2ea;padding:10px 8px;text-align:left;font-size:14px}' +
+        'th{color:#666;font-size:12px;text-transform:uppercase}.total{font-size:18px;font-weight:700;text-align:right;margin-top:8px}' +
+        '.sign{margin-top:44px;display:flex;justify-content:space-between;font-size:13px;color:#444}@media print{button{display:none}}</style></head><body>' +
+        '<h1>План лікування: ' + esc2(p.title) + '</h1>' +
+        '<div class="sub">Пацієнт: <b>' + esc2(p.client_name) + '</b>' + (p.diagnosis ? ' · Діагноз: ' + esc2(p.diagnosis) : '') + ' · ' + new Date().toLocaleDateString('uk-UA') + '</div>' +
+        '<table><tr><th style="width:36px">№</th><th>Етап</th><th style="text-align:right">Вартість</th></tr>' + rows + '</table>' +
+        '<div class="total">Разом: ' + total.toLocaleString('uk-UA') + ' грн</div>' +
+        '<div class="sign"><span>Пацієнт: ______________________</span><span>Лікар: ______________________</span></div>' +
+        '<button onclick="window.print()" style="margin-top:24px;padding:8px 18px">Друк</button></body></html>';
+      var w = window.open('', '_blank');
+      if (!w) { toast('Дозвольте спливаючі вікна', 'error'); return; }
+      w.document.write(html); w.document.close();
+    }).catch(function (e) { toast(e.message || 'Помилка', 'error'); });
   };
 
   window.registerModule({ page: 'drecall', title: 'Recall-черга', group: 'dental', icon: 'notification_important', loader: loadDRecall });

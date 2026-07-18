@@ -358,4 +358,52 @@ router.post('/recall/:clientId/action', requireFeature('dental.recall'), async (
   } catch (e) { err500(res, e); }
 });
 
+/* ── Форма № 043/о «Медична карта стоматологічного хворого» (наказ МОЗ № 110
+   від 14.02.2012, обовʼязкова НЕЗАЛЕЖНО від форми власності; електронна форма
+   допускається). Факт-чек структури — з офіційного бланка (z0678-12), 18.07.2026.
+   Ендпоінт віддає ДАНІ; друкований вигляд рендерить mod-dental.js (window.print).
+   Позначення зубної формули ЗА НАКАЗОМ: С=карієс, Р=пульпіт, Pt=періодонтит,
+   РІ=пломба, А=відсутній, Cd=коронка, R=корінь, і=імплантація (НЕ радянські К/П/В). */
+const FORM043_MAP = {
+  caries: 'С', pulpitis: 'Р', filling: 'РІ', crown: 'Cd', implant: 'і',
+  extracted: 'А', missing: 'А', root: 'R', bridge: 'Cd', healthy: '',
+};
+router.get('/form043/:client_id', requireFeature('dental.chart'), async (req, res) => {
+  try {
+    const cid = +req.params.client_id;
+    const cl = (await pool.query(
+      `SELECT id, name, phone, birthday FROM clients WHERE id=$1`, [cid])).rows[0];
+    if (!cl) return res.status(404).json({ error: 'client-not-found' });
+    const clinic = (await pool.query(
+      `SELECT name FROM tenants WHERE id = current_tenant_id()`)).rows[0];
+    const teeth = (await pool.query(
+      `SELECT tooth_no, status, note FROM dental_teeth WHERE client_id=$1`, [cid])).rows
+      .map(t => ({ ...t, mark: FORM043_MAP[t.status] ?? '' }));
+    // «Перенесені та супутні захворювання» — з медкарти (алергії/хронічні/ліки)
+    let med = null;
+    try {
+      med = (await pool.query(
+        `SELECT allergies, chronic_conditions, current_medications FROM medical_cards WHERE client_id=$1`, [cid])).rows[0] || null;
+    } catch (_) {}
+    const plans = (await pool.query(
+      `SELECT p.id, p.title, p.diagnosis, p.status, p.total_estimate,
+              COALESCE(json_agg(json_build_object('position', st.position, 'title', st.title,
+                'teeth', st.teeth, 'estimate', st.estimate, 'status', st.status)
+                ORDER BY st.position) FILTER (WHERE st.id IS NOT NULL), '[]') AS stages
+         FROM dental_plans p LEFT JOIN dental_plan_stages st ON st.plan_id = p.id
+        WHERE p.client_id=$1 AND p.status <> 'cancelled'
+        GROUP BY p.id ORDER BY p.id`, [cid])).rows;
+    // Щоденник: завершені/поточні візити з послугою та нотатками
+    const diary = (await pool.query(
+      `SELECT a.starts_at, a.status, a.notes, s.name AS service_name, m.name AS master_name
+         FROM appointments a
+         LEFT JOIN services s ON s.id = a.service_id
+         LEFT JOIN masters m ON m.id = a.master_id
+        WHERE a.client_id=$1 AND a.status IN ('done','confirmed','booked')
+        ORDER BY a.starts_at DESC LIMIT 50`, [cid])).rows;
+    res.json({ ok: true, clinic: clinic?.name || '', client: cl, teeth, medical: med, plans, diary,
+      legend: FORM043_MAP });
+  } catch (e) { err500(res, e); }
+});
+
 module.exports = router;
