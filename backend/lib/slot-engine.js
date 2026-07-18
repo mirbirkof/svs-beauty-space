@@ -82,13 +82,18 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
   const busyQ = await pool.query(
     `WITH day AS (SELECT ($1::date)::timestamp AT TIME ZONE '${KYIV}' AS d0,
                          (($1::date + 1))::timestamp AT TIME ZONE '${KYIV}' AS d1)
+     -- Processing time (Phase B wellness, 18.07): зайнятість запису розширюється на
+     -- буфери її послуги (прибирання кабінету/підготовка). buffer=0 (всі салонні
+     -- послуги, перевірено фактом по БД) → інтервали біт-в-біт як раніше.
      SELECT a.master_id,
-            GREATEST(0,    FLOOR(EXTRACT(EPOCH FROM (a.starts_at - day.d0)) / 60))::int AS s_min,
-            LEAST(1440, CEIL(EXTRACT(EPOCH FROM (a.ends_at   - day.d0)) / 60))::int AS e_min
-       FROM appointments a, day
+            GREATEST(0,    FLOOR(EXTRACT(EPOCH FROM (a.starts_at - (COALESCE(s.buffer_before,0)||' minutes')::interval - day.d0)) / 60))::int AS s_min,
+            LEAST(1440, CEIL(EXTRACT(EPOCH FROM (a.ends_at   + (COALESCE(s.buffer_after,0)||' minutes')::interval - day.d0)) / 60))::int AS e_min
+       FROM appointments a
+       LEFT JOIN services s ON s.id = a.service_id, day
       WHERE a.master_id = ANY($2::int[])
         AND a.status = ANY($3::text[])
-        AND a.starts_at < day.d1 AND a.ends_at > day.d0
+        AND a.starts_at - (COALESCE(s.buffer_before,0)||' minutes')::interval < day.d1
+        AND a.ends_at   + (COALESCE(s.buffer_after,0)||' minutes')::interval > day.d0
      UNION ALL
      -- онлайн-броні БЕЗ тіні в журналі (appointment_id IS NULL): інакше движок їх не
      -- бачив і показував слот вільним, хоча він зайнятий (аудит v8). З тінню — рахує

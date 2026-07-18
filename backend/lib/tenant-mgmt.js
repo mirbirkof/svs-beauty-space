@@ -60,7 +60,7 @@ async function createTenant(name, opts = {}, actor = null) {
   const email = opts.email || null;
   // Вертикаль (Phase A, 18.07): выбирается на signup. Невалидное значение → beauty
   // (CHECK в мигр. 272 всё равно не пропустит чужое — двойная защита).
-  const businessType = ['beauty', 'fitness', 'dental'].includes(opts.business_type) ? opts.business_type : 'beauty';
+  const businessType = ['beauty', 'fitness', 'dental', 'wellness'].includes(opts.business_type) ? opts.business_type : 'beauty';
 
   const pool = getPool();
   const slug = await uniqueSlug(name);

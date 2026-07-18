@@ -3291,7 +3291,7 @@ async function applyEntitlements() {
   try { localStorage.setItem('svs_vertical', window.BUSINESS_TYPE); } catch (_) {}
   document.body.classList.add('vertical-' + window.BUSINESS_TYPE);
   try {
-    for (const v of ['fitness', 'dental']) {
+    for (const v of ['fitness', 'dental', 'wellness']) {
       const g = document.getElementById('grp-' + v);
       if (g) g.style.display = (window.BUSINESS_TYPE === v) ? '' : 'none';
     }
@@ -13960,6 +13960,7 @@ function saasFlagEdit(flag){
 <script src="/admin/modules/mod-infra.js"></script>
 <script src="/admin/modules/mod-fitness.js"></script>
 <script src="/admin/modules/mod-dental.js"></script>
+<script src="/admin/modules/mod-wellness.js"></script>
 <script>if(window.__bootModules)window.__bootModules();
 // модулі щойно додали пункти меню — повторно застосовуємо права ролі (checkSession міг завершитись раніше)
 try { if (typeof applyMenuPerms === 'function') applyMenuPerms(); } catch(_) {}</script>

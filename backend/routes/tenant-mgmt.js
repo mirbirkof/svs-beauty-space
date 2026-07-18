@@ -107,8 +107,8 @@ router.patch('/tenants/:id', requirePerm('saas.write'), async (req, res) => {
     // Вертикаль (beauty/fitness/dental) — визначає, які модулі «існують» для тенанта
     if (req.body?.business_type !== undefined) {
       const bt = String(req.body.business_type);
-      if (!['beauty', 'fitness', 'dental'].includes(bt)) {
-        return res.status(400).json({ error: 'bad-business-type', allowed: ['beauty', 'fitness', 'dental'] });
+      if (!['beauty', 'fitness', 'dental', 'wellness'].includes(bt)) {
+        return res.status(400).json({ error: 'bad-business-type', allowed: ['beauty', 'fitness', 'dental', 'wellness'] });
       }
       const { getPool } = require('../db-pg');
       await getPool().query(`UPDATE tenants SET business_type=$1 WHERE id=$2`, [bt, req.params.id]);

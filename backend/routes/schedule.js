@@ -1110,6 +1110,23 @@ router.patch('/appointments/:id', async (req, res) => {
       }
     }
 
+    // Кімната при переносі/зміні (Phase B wellness, 18.07): якщо у записи є/буде room_id і
+    // змінюється час або кімната — перевіряємо конфлікт кабінету. Записи без кімнати не задіті.
+    {
+      const effRoom = room_id !== undefined ? (room_id ? Number(room_id) : null) : curRow.room_id;
+      if (effRoom && (newStart || newEnd || room_id !== undefined)) {
+        const bg = require('../lib/booking-guard');
+        const busy = await bg.roomBusy({ roomId: effRoom,
+          startsAt: newStart || curRow.starts_at, endsAt: newEnd || curRow.ends_at,
+          excludeId: Number(req.params.id) });
+        if (busy) {
+          return res.status(409).json({ error: busy.reason || 'room-busy',
+            message: busy.reason === 'room-blocked' ? 'Кабінет заблоковано (сервіс/ремонт) на цей час'
+                   : 'Кабінет зайнятий на цей час' });
+        }
+      }
+    }
+
     // Ручний перенос (час/майстер/тривалість/послуга/сума) → позначаємо manual_override,
     // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
     const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined || price !== undefined);
@@ -1449,6 +1466,28 @@ router.post('/appointments', async (req, res) => {
           message: cap.cap > 1
             ? `У майстра вже ${cap.count} паралельних записів на цей час (ліміт ${cap.cap})`
             : 'У майстра вже є запис на цей час' });
+      }
+    }
+
+    // ── Кімнати як ресурс (Phase B wellness, 18.07). Активується ТІЛЬКИ даними,
+    // яких у салону немає: room_id у запиті АБО requires_room у послуги. Інакше — нуль змін.
+    {
+      const bg = require('../lib/booking-guard');
+      if (room_id) {
+        const busy = await bg.roomBusy({ roomId: Number(room_id), startsAt: startDate, endsAt: endDate });
+        if (busy) {
+          return res.status(409).json({ error: busy.reason || 'room-busy',
+            message: busy.reason === 'room-blocked' ? 'Кабінет заблоковано (сервіс/ремонт) на цей час'
+                   : busy.reason === 'room-not-found' ? 'Кабінет не знайдено або вимкнено'
+                   : 'Кабінет зайнятий на цей час' });
+        }
+      } else {
+        const req_ = await bg.serviceRoomRequirement(Number(service_id));
+        if (req_) {
+          const free = await bg.findFreeRoom({ startsAt: startDate, endsAt: endDate, preferredRoomId: req_.preferred_room_id });
+          if (!free) return res.status(409).json({ error: 'no-room-available', message: 'Немає вільного кабінету на цей час' });
+          room_id = free; // автопідбір: preferred першим, далі за sort_order
+        }
       }
     }
 

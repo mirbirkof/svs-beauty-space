@@ -16,7 +16,8 @@
   label{ display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
   input{ width:100%; padding:13px 14px; border-radius:11px; border:1px solid var(--line); background:#13142a; color:var(--ink); font-size:15px; outline:none; transition:border .15s; }
   input:focus{ border-color:var(--acc); }
-  .plans{ display:flex; gap:8px; margin-top:6px; }
+  .plans{ display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+  .plans .biz{ min-width:120px; }
   .plan,.acct,.biz{ flex:1; cursor:pointer; border:1px solid var(--line); border-radius:11px; padding:11px 8px; text-align:center; font-size:13px; background:#13142a; transition:.15s; }
   .plan b,.acct b,.biz b{ display:block; font-size:14px; margin-bottom:2px; }
   .plan small,.acct small,.biz small{ color:var(--muted); font-size:11px; }
@@ -44,6 +45,7 @@
           <div class="biz active" data-biz="beauty"><b>Салон краси</b><small>б'юті-послуги</small></div>
           <div class="biz" data-biz="fitness"><b>Фітнес / Йога</b><small>класи, абонементи</small></div>
           <div class="biz" data-biz="dental"><b>Стоматологія</b><small>пацієнти, плани</small></div>
+          <div class="biz" data-biz="wellness"><b>Велнес / Спа</b><small>кабінети, масаж</small></div>
         </div>
 
         <label>Тип акаунта</label>
@@ -224,6 +226,7 @@
     beauty:  { salon: 'Назва салону',   soloName: 'майстер', trial14: '14 днів безкоштовно · оплата пізніше · картка не потрібна' },
     fitness: { salon: 'Назва студії/клубу', soloName: 'тренер', trial14: '14 днів безкоштовно · класи, абонементи, чек-ін' },
     dental:  { salon: 'Назва клініки',  soloName: 'лікар',   trial14: '14 днів безкоштовно · картки пацієнтів, плани лікування' },
+    wellness:{ salon: 'Назва центру',   soloName: 'терапевт', trial14: '14 днів безкоштовно · кабінети, парні записи, пакети' },
   };
   function refreshLabels(){
     const solo = acct === 'solo';

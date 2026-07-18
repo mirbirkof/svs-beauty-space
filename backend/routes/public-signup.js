@@ -44,7 +44,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const accountType = b.account_type === 'solo' ? 'solo' : 'salon';
     // Вертикаль бізнесу (Phase A, 18.07): обирається на реєстрації і визначає, які модулі
     // «існують» для тенанта (lib/vertical.js, fail-closed). Невідоме значення → beauty.
-    const businessType = ['beauty', 'fitness', 'dental'].includes(b.business_type) ? b.business_type : 'beauty';
+    const businessType = ['beauty', 'fitness', 'dental', 'wellness'].includes(b.business_type) ? b.business_type : 'beauty';
     let planCode = ALLOWED_PLANS.includes(b.plan_code) ? b.plan_code : 'pro';
     if (accountType === 'solo') planCode = 'solo';
     const cycle = b.cycle === 'yearly' ? 'yearly' : 'monthly';

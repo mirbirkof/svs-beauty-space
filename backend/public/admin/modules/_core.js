@@ -20,7 +20,8 @@
     // вертикалі (18.07): групу видно ЛИШЕ своєму business_type — pre-hide за
     // localStorage (проти мигання), авторитетно показує/ховає applyEntitlements
     fitness:   { id: 'grp-fitness',   title: 'Фітнес',        icon: 'fitness_center', vertical: 'fitness' },
-    dental:    { id: 'grp-dental',    title: 'Стоматологія',  icon: 'medical_services', vertical: 'dental' }
+    dental:    { id: 'grp-dental',    title: 'Стоматологія',  icon: 'medical_services', vertical: 'dental' },
+    wellness:  { id: 'grp-wellness',  title: 'Велнес',        icon: 'spa', vertical: 'wellness' }
   };
 
   window.registerModule = function (cfg) {
