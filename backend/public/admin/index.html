@@ -4832,10 +4832,10 @@ function svcBulkPrice(){
   });
 }
 async function svcDuplicate(id){
-  const r=await api('/api/services/'+id+'/duplicate',{method:'POST',body:JSON.stringify({})});
+  const r=await api('/api/services/'+id+'/duplicate',{method:'POST',body:JSON.stringify({})}); _svcCache=null;
   if(r.ok){ toast('Створено копію (чернетка)'); loadServices(); } else toast(r.error||'Помилка','error');
 }
-async function svcDelete(id,name){
+async function svcDelete(id,name){ _svcCache=null;
   if(!confirm('Видалити послугу «'+name+'»? (м\'яке видалення)')) return;
   const r=await api('/api/services/'+id,{method:'DELETE'});
   if(r.ok){ toast('Видалено'); loadServices(); }
@@ -4930,11 +4930,15 @@ async function svcSave(id){
   // #102: інтервал повторного візиту
   const rbVal=document.getElementById('svcf_rebook').value;
   b.rebook_interval_days = rbVal?parseInt(rbVal):null;
-  if(!b.name||!b.price||!b.duration_min){ toast('Заповніть назву, ціну і тривалість','error'); return; }
+  // Ціна МОЖЕ бути 0 (безкоштовна/акційна). Раніше `!b.price` (0 falsy) блокував
+  // збереження нульової ціни й будь-яку правку такої послуги — «не зберігається».
+  if(!b.name){ toast('Вкажіть назву послуги','error'); return; }
+  if(!Number.isFinite(b.price)||b.price<0){ toast('Вкажіть коректну ціну (0 або більше)','error'); return; }
+  if(!b.duration_min||b.duration_min<=0){ toast('Вкажіть тривалість у хвилинах','error'); return; }
   const r = id ? await api('/api/services/'+id,{method:'PATCH',body:JSON.stringify(b)})
               : await api('/api/services',{method:'POST',body:JSON.stringify(b)});
-  if(r.ok){ toast('Збережено'); document.getElementById('svcModal').remove(); loadServices(); }
-  else toast(r.error||'Помилка','error');
+  if(r && r.ok){ toast('Збережено'); _svcCache=null; document.getElementById('svcModal').remove(); loadServices(); }
+  else toast((r && r.error)||'Помилка збереження — оновіть сторінку та спробуйте ще раз','error');
 }
 // ── Варіації ──
 function _svcRenderVars(id,vars){
