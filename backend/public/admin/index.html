@@ -3279,6 +3279,39 @@ function toggleSoloMobile() {
   try { localStorage.setItem('svs_mobile_view', on ? '0' : '1'); } catch (_) {}
   location.reload(); // viewport застосовується pre-paint скриптом у <head>
 }
+async function vertSwitchGo(v) {
+  // Перемикання режиму керуючого: демо-токен видає ТІЛЬКИ домашня (платформенна) сесія.
+  let home = null;
+  try { home = JSON.parse(localStorage.getItem('svs_home_session') || 'null'); } catch (_) {}
+  if (v === 'beauty') {
+    if (home) {
+      try {
+        localStorage.setItem('svs_admin_token', home.token);
+        if (home.slug) localStorage.setItem('svs_tenant_slug', home.slug); else localStorage.removeItem('svs_tenant_slug');
+        localStorage.removeItem('svs_home_session');
+      } catch (_) {}
+      location.reload();
+    }
+    return;
+  }
+  try {
+    const auth = home
+      ? { 'X-Admin-Token': home.token, ...(home.slug ? { 'X-Tenant-Slug': home.slug } : {}) }
+      : { 'X-Admin-Token': TOKEN, ...tenantHeader() };
+    const r = await fetch(API + '/api/tenant-mgmt/my/demo-token', {
+      method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vertical: v }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok || !j.token) { toast((j && j.error) || 'Не вдалося відкрити демо-режим', 'error'); return; }
+    if (!home) {
+      localStorage.setItem('svs_home_session', JSON.stringify({ token: TOKEN, slug: localStorage.getItem('svs_tenant_slug') || '' }));
+    }
+    localStorage.setItem('svs_admin_token', j.token);
+    localStorage.setItem('svs_tenant_slug', j.slug);
+    location.reload();
+  } catch (e) { toast('Помилка перемикання', 'error'); }
+}
 async function applyEntitlements() {
   let ent;
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
@@ -3287,12 +3320,8 @@ async function applyEntitlements() {
   // ── ВЕРТИКАЛІ (18.07): beauty/fitness/dental. Групи меню чужих вертикалей
   // приховані за замовчуванням у HTML — показуємо ЛИШЕ свою. Beauty не має
   // своїх груп → для салонів рендер не змінюється взагалі.
-  // Режим керуючого: платформа бачить CRM очима обраної вертикалі (localStorage),
-  // звичайний тенант — СТРОГО свою (preview ігнорується і тут, і на сервері).
-  let vPreview = null;
-  try { vPreview = ent.is_platform ? (localStorage.getItem('svs_vertical_preview') || null) : null; } catch (_) {}
-  if (vPreview && !['beauty', 'fitness', 'dental', 'wellness'].includes(vPreview)) vPreview = null;
-  window.BUSINESS_TYPE = vPreview || ent.business_type || 'beauty';
+  window.BUSINESS_TYPE = ent.business_type || 'beauty';
+  try { localStorage.removeItem('svs_vertical_preview'); } catch (_) {} // легасі-механіка прибрана
   try { localStorage.setItem('svs_vertical', window.BUSINESS_TYPE); } catch (_) {}
   document.body.classList.add('vertical-' + window.BUSINESS_TYPE);
   try {
@@ -3301,34 +3330,39 @@ async function applyEntitlements() {
       if (g) g.style.display = (window.BUSINESS_TYPE === v) ? '' : 'none';
     }
   } catch (_) {}
-  // Перемикач вертикалі — ТІЛЬКИ платформі (Босс). Обраний режим живе в localStorage,
-  // заголовок X-Vertical-Preview відкриває відповідні API (сервер перевіряє платформу).
-  if (ent.is_platform) {
+  // Режим керуючого (v2, 18.07): перемикання вертикалі = ВХІД У ДЕМО-САЛОН цієї
+  // вертикалі (свої демо-дані: пацієнти, класи, кабінети) — а не чужі форми на даних
+  // салону Босса (стара механіка плутала — прибрана). «Бьюті (мій)» = повернення в
+  // домашню сесію. Доступно платформі та всередині демо (щоб повернутись).
+  (function () {
+    let inDemo = false, home = null;
     try {
-      const V_LBL = { beauty: '💅 Б\'юті', fitness: '🏋 Фітнес', dental: '🦷 Стомат', wellness: '🧖 Велнес' };
-      let sw = document.getElementById('vertSwitch');
-      if (!sw) {
-        sw = document.createElement('div');
-        sw.id = 'vertSwitch';
-        sw.style.cssText = 'padding:8px 14px 4px;';
-        sw.innerHTML = '<div style="font-size:10px;color:#8a8fb5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Режим керуючого</div>' +
-          '<select id="vertSwitchSel" style="width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--line,#2b2d50);background:transparent;color:inherit;font-size:13px;cursor:pointer">' +
-          Object.keys(V_LBL).map(function (v) {
-            return '<option value="' + v + '"' + (window.BUSINESS_TYPE === v ? ' selected' : '') + '>' + V_LBL[v] + (v === (ent.business_type || 'beauty') ? ' (мій)' : '') + '</option>';
-          }).join('') + '</select>';
-        const nav = document.querySelector('.sidebar-nav');
-        if (nav) nav.parentNode.insertBefore(sw, nav);
-        document.getElementById('vertSwitchSel').addEventListener('change', function () {
-          const v = this.value;
-          try {
-            if (v === (ent.business_type || 'beauty')) localStorage.removeItem('svs_vertical_preview');
-            else localStorage.setItem('svs_vertical_preview', v);
-          } catch (_) {}
-          location.reload(); // повний перерендер меню/модулів під обрану вертикаль
-        });
-      }
+      inDemo = (localStorage.getItem('svs_tenant_slug') || '').indexOf('demo-') === 0;
+      home = JSON.parse(localStorage.getItem('svs_home_session') || 'null');
     } catch (_) {}
-  }
+    // Ми вдома (платформа, не демо), а стара home_session висить (перелогін у демо-режимі) —
+    // чистимо, щоб наступний демо-вхід не пішов протухлим токеном.
+    if (ent.is_platform && !inDemo && home) { try { localStorage.removeItem('svs_home_session'); } catch (_) {} home = null; }
+    if (!(ent.is_platform || (inDemo && home))) return;
+    try {
+      const V_LBL = { beauty: "💅 Б'юті (мій салон)", fitness: '🏋 Фітнес (демо)', dental: '🦷 Стомат (демо)', wellness: '🧖 Велнес (демо)' };
+      const current = inDemo ? (localStorage.getItem('svs_tenant_slug') || '').replace('demo-', '') : 'beauty';
+      let sw = document.getElementById('vertSwitch');
+      if (sw) sw.remove();
+      sw = document.createElement('div');
+      sw.id = 'vertSwitch';
+      sw.style.cssText = 'padding:8px 14px 4px;';
+      sw.innerHTML = '<div style="font-size:10px;color:#8a8fb5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Режим керуючого</div>' +
+        '<select id="vertSwitchSel" style="width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--line,#2b2d50);background:transparent;color:inherit;font-size:13px;cursor:pointer">' +
+        Object.keys(V_LBL).map(function (v) {
+          return '<option value="' + v + '"' + (current === v ? ' selected' : '') + '>' + V_LBL[v] + '</option>';
+        }).join('') + '</select>' +
+        (inDemo ? '<div style="margin-top:6px;font-size:11px;font-weight:700;color:#e67e22;background:rgba(230,126,34,.12);border-radius:6px;padding:4px 8px;text-align:center">ДЕМО-РЕЖИМ — дані несправжні</div>' : '');
+      const nav = document.querySelector('.sidebar-nav');
+      if (nav) nav.parentNode.insertBefore(sw, nav);
+      document.getElementById('vertSwitchSel').addEventListener('change', function () { vertSwitchGo(this.value); });
+    } catch (_) {}
+  })();
   // Віджет заміток прихований CSS за замовчуванням; показуємо ЛИШЕ платформі.
   if (ent.is_platform) document.body.classList.add('platform-tenant');
   const solo = ent.is_solo && !ent.is_platform;
@@ -3761,12 +3795,8 @@ function applyMenuPerms(){
 
 // ── API helpers ──────────────────────────────
 async function api(path, opts = {}) {
-  // Режим керуючого (18.07): платформа може дивитись CRM очима іншої вертикалі.
-  // Заголовок шлемо ТІЛЬКИ якщо режим увімкнено; сервер приймає його ТІЛЬКИ від платформи.
-  let _vp = null; try { _vp = localStorage.getItem('svs_vertical_preview') || null; } catch (_) {}
   const r = await fetch(API + path, {
-    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...tenantHeader(),
-      ...(_vp ? { 'X-Vertical-Preview': _vp } : {}), ...(opts.headers || {}) },
+    ...opts, headers: { 'X-Admin-Token': TOKEN, 'Content-Type': 'application/json', ...tenantHeader(), ...(opts.headers || {}) },
   });
   // Major #24: протухла сесія mid-session → на екран логіну, а не «мертва» панель.
   // Аудит: 401 від ендпоінтів з ІНШОЮ авторизацією (мобільний застосунок /api/mobile,

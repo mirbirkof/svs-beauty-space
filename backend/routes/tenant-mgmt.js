@@ -240,6 +240,38 @@ router.get('/support/stats', requirePerm('saas.read'), async (req, res) => {
 });
 
 // ── TENANT-FACING: свой онбординг / тикеты (current_tenant_id) ────────
+/* ── Режим керуючого: вхід у ДЕМО-салони вертикалей (Босс, 18.07.2026) ──────
+   Перемикач вертикалей = справжня зміна тенанта (демо-салон з демо-даними),
+   а НЕ показ чужих форм на своїх даних (стара механіка плутала — прибрана).
+   Токен демо видається ТІЛЬКИ власнику платформи; демо-тенанти is_internal. */
+router.post('/my/demo-token', requirePerm('users.write'), async (req, res) => {
+  try {
+    const { isPlatformTenant } = require('../lib/tenant');
+    if (!(isPlatformTenant && isPlatformTenant())) return res.status(403).json({ error: 'platform-only' });
+    const u0 = req.user || {};
+    if (!(u0.role === 'owner' || Number(u0.role_level) >= 100)) {
+      return res.status(403).json({ error: 'owner-only' });
+    }
+    const slug = { dental: 'demo-dental', fitness: 'demo-fitness', wellness: 'demo-wellness' }[String(req.body?.vertical || '')];
+    if (!slug) return res.status(400).json({ error: 'bad-vertical', allowed: ['dental', 'fitness', 'wellness'] });
+    const { getPool } = require('../db-pg');
+    const t = (await getPool().query(`SELECT id, slug FROM tenants WHERE slug=$1 AND COALESCE(is_internal,false)`, [slug])).rows[0];
+    if (!t) return res.status(404).json({ error: 'demo-not-found', hint: 'run ops/seed-demo-tenants.js' });
+    const du = (await getPool().query(
+      `SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id
+        WHERE u.tenant_id=$1 AND r.code='owner' AND u.is_active ORDER BY u.id LIMIT 1`, [t.id])).rows[0];
+    if (!du) return res.status(404).json({ error: 'demo-owner-not-found' });
+    const crypto = require('crypto');
+    const token = 'svs_' + crypto.randomBytes(24).toString('hex');
+    const sha = crypto.createHash('sha256').update(token).digest('hex');
+    await getPool().query(
+      `INSERT INTO user_tokens (user_id, token_hash, label, expires_at, tenant_id)
+       VALUES ($1,$2,'demo-mode',NOW()+INTERVAL '90 days',$3)`, [du.id, sha, t.id]);
+    await logAction({ user: u0, action: 'tenant.demo-enter', entity: 'tenants', entity_id: t.id, ip: req.ip, meta: { vertical: req.body?.vertical } });
+    res.json({ ok: true, token, slug: t.slug });
+  } catch (e) { fail(res, e); }
+});
+
 /* ── Самозакриття акаунта (анти-lock-in, Phase D 18.07.2026) ────────────────
    GDPR right-to-erasure self-service: раніше видалити акаунт міг лише оператор.
    Тепер власник закриває сам: підтвердження назвою → підписка cancelled +
