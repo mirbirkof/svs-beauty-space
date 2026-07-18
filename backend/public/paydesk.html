@@ -149,7 +149,17 @@
       }).catch(function () {});
   }
 
-  if (TOK) startFeed(); else renderPin();
+  // Старт: тихо пробуємо ввійти без PIN (якщо власник його не встановив — екран відкритий).
+  // Якщо сервер вимагає код — показуємо PIN-пад.
+  if (TOK) startFeed();
+  else {
+    fetch(API + '/api/paydesk/login', { method: 'POST', headers: hdr(), body: JSON.stringify({ pin: '' }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.token) { TOK = j.token; try { sessionStorage.setItem('pd_tok', TOK); } catch (e) {} startFeed(); }
+        else renderPin();
+      }).catch(function () { renderPin('Немає звʼязку'); });
+  }
 </script>
 </body>
 </html>

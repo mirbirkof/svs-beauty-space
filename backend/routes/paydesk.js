@@ -86,7 +86,13 @@ router.post('/set-pin', pinLimiter, async (req, res) => {
 router.post('/login', pinLimiter, async (req, res) => {
   try {
     const hash = await getPinHash();
-    if (!hash) return res.status(409).json({ error: 'pin-not-set' });
+    // Босс (18.07): «убери пока что пинкод» — поки PIN не встановлено, екран
+    // відкривається БЕЗ нього. Механіка лишається: щойно власник задасть PIN
+    // (set-pin), вхід знову вимагатиме код.
+    if (!hash) {
+      const { getTenantId } = require('../lib/tenant');
+      return res.json({ ok: true, token: newSession(getTenantId()), open: true });
+    }
     if (sha(String(req.body?.pin || '')) !== hash) return res.status(401).json({ error: 'bad-pin' });
     const { getTenantId } = require('../lib/tenant');
     res.json({ ok: true, token: newSession(getTenantId()) });
