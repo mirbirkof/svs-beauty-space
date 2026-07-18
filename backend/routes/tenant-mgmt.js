@@ -257,16 +257,24 @@ router.post('/my/demo-token', requirePerm('users.write'), async (req, res) => {
     const { getPool } = require('../db-pg');
     const t = (await getPool().query(`SELECT id, slug FROM tenants WHERE slug=$1 AND COALESCE(is_internal,false)`, [slug])).rows[0];
     if (!t) return res.status(404).json({ error: 'demo-not-found', hint: 'run ops/seed-demo-tenants.js' });
-    const du = (await getPool().query(
-      `SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id
-        WHERE u.tenant_id=$1 AND r.code='owner' AND u.is_active ORDER BY u.id LIMIT 1`, [t.id])).rows[0];
-    if (!du) return res.status(404).json({ error: 'demo-owner-not-found' });
+    // КРОСС-ТЕНАНТ (грабля з CRM-INVARIANTS): запит із платформенного HTTP-контексту
+    // ріжеться RLS — власника демо-салону видно ТІЛЬКИ зсередини його тенанта.
+    // Тому і пошук, і вставка токена — під runAs(demo-tenant).
+    const { runAs } = require('../lib/tenant');
     const crypto = require('crypto');
     const token = 'svs_' + crypto.randomBytes(24).toString('hex');
     const sha = crypto.createHash('sha256').update(token).digest('hex');
-    await getPool().query(
-      `INSERT INTO user_tokens (user_id, token_hash, label, expires_at, tenant_id)
-       VALUES ($1,$2,'demo-mode',NOW()+INTERVAL '90 days',$3)`, [du.id, sha, t.id]);
+    const issued = await runAs(t.id, async () => {
+      const du = (await getPool().query(
+        `SELECT u.id FROM users u JOIN roles r ON r.id=u.role_id
+          WHERE r.code='owner' AND u.is_active ORDER BY u.id LIMIT 1`)).rows[0];
+      if (!du) return false;
+      await getPool().query(
+        `INSERT INTO user_tokens (user_id, token_hash, label, expires_at)
+         VALUES ($1,$2,'demo-mode',NOW()+INTERVAL '90 days')`, [du.id, sha]);
+      return true;
+    });
+    if (!issued) return res.status(404).json({ error: 'demo-owner-not-found' });
     await logAction({ user: u0, action: 'tenant.demo-enter', entity: 'tenants', entity_id: t.id, ip: req.ip, meta: { vertical: req.body?.vertical } });
     res.json({ ok: true, token, slug: t.slug });
   } catch (e) { fail(res, e); }
