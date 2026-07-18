@@ -240,6 +240,47 @@ router.get('/support/stats', requirePerm('saas.read'), async (req, res) => {
 });
 
 // ── TENANT-FACING: свой онбординг / тикеты (current_tenant_id) ────────
+/* ── Самозакриття акаунта (анти-lock-in, Phase D 18.07.2026) ────────────────
+   GDPR right-to-erasure self-service: раніше видалити акаунт міг лише оператор.
+   Тепер власник закриває сам: підтвердження назвою → підписка cancelled +
+   tenants.status='cancelled' (вхід блокується) → сигнал оператору платформи.
+   ФІЗИЧНЕ видалення даних — НЕ тут: 30 днів на «передумав» (закон CRM-DIARY:
+   даних не видаляємо автоматично), purge робить оператор наявним інструментом. */
+router.post('/my/close-account', requirePerm('users.write'), async (req, res) => {
+  try {
+    const u = req.user || {};
+    const isOwner = u.role === 'owner' || Number(u.role_level) >= 100;
+    if (!isOwner) return res.status(403).json({ error: 'owner-only', message: 'Закрити акаунт може лише власник' });
+    const tid = getTenantId();
+    const { getPool } = require('../db-pg');
+    const t = (await getPool().query(`SELECT id, name, slug, status FROM tenants WHERE id=$1`, [tid])).rows[0];
+    if (!t) return res.status(404).json({ error: 'tenant-not-found' });
+    if (String(req.body?.confirm_name || '').trim() !== String(t.name).trim()) {
+      return res.status(400).json({ error: 'confirm-name-mismatch',
+        message: 'Введіть точну назву закладу для підтвердження' });
+    }
+    // підписка → cancelled (без автопродовжень/рахунків), тенант → cancelled (вхід закрито)
+    try {
+      const billing = require('../lib/billing');
+      const sub = await billing.getSubscription(tid);
+      if (sub && !['cancelled'].includes(sub.status)) await billing.cancelSubscription(tid, { reason: 'self-close' });
+    } catch (be) { console.error('[close-account:sub]', be.message); }
+    await getPool().query(`UPDATE tenants SET status='cancelled', updated_at=NOW() WHERE id=$1`, [tid]);
+    await logAction({ user: u, action: 'tenant.self-close', entity: 'tenants', entity_id: tid, ip: req.ip,
+      meta: { reason: (req.body?.reason || '').slice(0, 300) } });
+    // сигнал оператору платформи (той самий канал, що й прострочені підписки)
+    if (process.env.ADMIN_TG_CHAT) {
+      try {
+        const { tgSend } = require('./telegram-notify');
+        await tgSend(process.env.ADMIN_TG_CHAT,
+          `<b>🚪 Самозакриття акаунта</b>\n${t.name} (${t.slug})\nПричина: ${(req.body?.reason || 'не вказано').slice(0, 200)}\nДані зберігаються 30 днів — purge вручну, якщо не передумають.`);
+      } catch (ne) { console.error('[close-account:notify]', ne.message); }
+    }
+    res.json({ ok: true, closed: true,
+      message: 'Акаунт закрито. Дані зберігаються 30 днів — напишіть у підтримку, якщо передумаєте. Повний експорт: /api/backup/export-full' });
+  } catch (e) { fail(res, e); }
+});
+
 router.get('/my/onboarding', requirePerm('users.read'), async (req, res) => {
   try { res.json(await tm.getOnboarding(getTenantId())); } catch (e) { fail(res, e); }
 });

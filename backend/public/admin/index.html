@@ -13064,6 +13064,35 @@ async function loadMySub(){
   }
 }
 
+async function mysubExportFull(){
+  try {
+    toast('Готуємо експорт — може зайняти до хвилини…');
+    const r = await fetch(API + '/api/backup/export-full', { headers: { 'X-Admin-Token': TOKEN, ...tenantHeader() } });
+    if (!r.ok) { toast('Помилка експорту (' + r.status + ')', 'error'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'full-export-' + new Date().toISOString().slice(0,10) + '.ndjson';
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('Експорт завантажено');
+  } catch (e) { toast('Помилка експорту', 'error'); }
+}
+function mysubCloseAccount(){
+  showModal('Закрити акаунт назавжди',
+    `<div style="display:grid;gap:12px">
+      <div style="color:#b4413e;font-weight:600">Доступ буде закрито одразу. Дані зберігаються 30 днів — потім видаляються назавжди.</div>
+      <div style="font-size:13px;color:#666">Радимо спершу зробити «Експорт усіх даних». Для підтвердження введіть точну назву закладу.</div>
+      <label>Назва закладу<input id="caName" class="form-control" placeholder="Точна назва"></label>
+      <label>Причина (допоможе нам стати кращими)<input id="caReason" class="form-control" placeholder="Необовʼязково"></label>
+    </div>`,
+    async function(){
+      const j = await api('/api/tenant-mgmt/my/close-account', {
+        method:'POST', body: JSON.stringify({ confirm_name: document.getElementById('caName').value, reason: document.getElementById('caReason').value }) });
+      if (!j || !j.ok) { toast((j && (j.message || j.error)) || 'Помилка', 'error'); throw new Error('close-failed'); }
+      alert('Акаунт закрито. Дякуємо, що були з нами. Якщо передумаєте протягом 30 днів — напишіть у підтримку.');
+      try { localStorage.removeItem('svs_admin_token'); } catch(_){} location.reload();
+    });
+}
 function renderMySub(){
   const box = document.getElementById('mysubBody');
   const s = _mysub.sub, cyc = _mysub.cycle;
@@ -13271,10 +13300,19 @@ function renderMySub(){
         <div style="color:#4a4f6a;font-size:13.5px;line-height:1.5;margin-bottom:12px">Коли виростеш до салону — тариф <b>Салон</b> відкриє майстрів, графіки, зарплати й аналітику по команді. <b>Твоя історія й клієнти залишаться з тобою.</b></div>
         <button class="btn btn-sm" style="background:#5b5fc7;color:#fff;border:0;font-weight:600" onclick="if(confirm('Дізнатись про тариф Салон? Ми допоможемо все перенести й налаштувати.')){toast('Заявку прийнято — звʼяжемось');}">Дізнатись про Салон →</button>
       </div>`;
-    box.innerHTML = cur + freeCard + proCard + maxCard + growCard + addonsBlock + refBlock + invBlock;
+
+  // ── Анти-lock-in (Phase D): дані належать салону. Повний експорт + самозакриття ──
+  const dangerBlock = `<div style="margin-top:26px;border:1px solid #f1c8c8;border-radius:14px;padding:18px 20px;background:#fffafa">
+    <div style="font-weight:700;color:#b4413e;margin-bottom:6px">Ваші дані — ваші</div>
+    <div style="font-size:13px;color:#8a6d6d;margin-bottom:12px">Повний експорт усіх даних закладу одним файлом — безкоштовно, будь-коли. Закриття акаунта — самостійно, без дзвінків і листів.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="mysubExportFull()"><span class="material-icons-round" style="font-size:15px">download</span> Експорт усіх даних</button>
+      <button class="btn btn-sm" style="background:#fff;border:1px solid #e2a7a7;color:#b4413e" onclick="mysubCloseAccount()">Закрити акаунт назавжди</button>
+    </div></div>`;
+    box.innerHTML = cur + freeCard + proCard + maxCard + growCard + addonsBlock + refBlock + invBlock + dangerBlock;
     return;
   }
-  box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock;
+  box.innerHTML = cur + plansBlock + addonsBlock + refBlock + invBlock + dangerBlock;
 }
 
 // Соло-майстер стартує 14-денний trial тарифу Майстер PRO (без картки). trial:true →

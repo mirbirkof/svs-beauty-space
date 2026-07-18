@@ -196,4 +196,34 @@ router.get('/export', MANAGE, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── Повний експорт (анти-lock-in, Phase D 18.07.2026) ─────────────────────
+   Дослідження ринку: утримання даних при виході — біль №1 усіх сегментів
+   ($2-10k за експорт у Dentrix, обмеження Fresha/Zenoti). Наш козир: власник
+   забирає ВСЕ свої дані одним кліком, безкоштовно.
+   Старий /export лишається (10 базових таблиць, сумісність). Тут — УСІ таблиці
+   тенанта (динамічно за information_schema: колонка tenant_id), потоково NDJSON:
+   рядок = {"table":...,"rows":[...]} — пам'ять не роздувається, RLS сам фільтрує. */
+router.get('/export-full', MANAGE, async (req, res) => {
+  try {
+    const tbls = await pool.query(
+      `SELECT c.table_name FROM information_schema.columns c
+        JOIN information_schema.tables t
+          ON t.table_name = c.table_name AND t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+       WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id'
+       ORDER BY c.table_name`);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="full-export-${Date.now()}.ndjson"`);
+    res.write(JSON.stringify({ meta: true, exported_at: new Date().toISOString(),
+      format: 'ndjson-per-table', tables: tbls.rows.length }) + '\n');
+    for (const { table_name } of tbls.rows) {
+      try {
+        const r = await pool.query(`SELECT * FROM "${table_name}" LIMIT 200000`);
+        if (r.rows.length) res.write(JSON.stringify({ table: table_name, count: r.rows.length, rows: r.rows }) + '\n');
+      } catch (te) { res.write(JSON.stringify({ table: table_name, error: te.message.slice(0, 120) }) + '\n'); }
+    }
+    await logAction({ user: req.user, action: 'backup.full-export', ip: req.ip, meta: { tables: tbls.rows.length } });
+    res.end();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
