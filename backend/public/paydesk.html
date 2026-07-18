@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Каса — вхідні оплати</title>
+<style>
+  :root{ --bg:#0d0f1c; --card:#171a2e; --ink:#eef0ff; --muted:#8a90b8; --ok:#2ecc71; --acc:#7c5cff; --line:#262a48; }
+  *{ box-sizing:border-box; } body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Inter,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  .center{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .pinbox{ width:100%; max-width:340px; text-align:center; }
+  .pinbox h1{ font-size:20px; margin:0 0 6px; } .pinbox p{ color:var(--muted); font-size:13px; margin:0 0 18px; }
+  .dots{ display:flex; gap:10px; justify-content:center; margin-bottom:18px; min-height:16px; }
+  .dot{ width:14px; height:14px; border-radius:50%; border:2px solid var(--acc); } .dot.f{ background:var(--acc); }
+  .pad{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .pad button{ padding:18px 0; font-size:22px; border-radius:14px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
+  .pad button:active{ background:#232748; }
+  .err{ color:#ff6b7d; font-size:13px; min-height:18px; margin-top:10px; }
+  input{ width:100%; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:15px; margin-top:8px; }
+  .btn{ width:100%; margin-top:14px; padding:13px; border:0; border-radius:11px; background:var(--acc); color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
+  /* лента */
+  header{ position:sticky; top:0; background:linear-gradient(180deg,var(--bg) 75%,transparent); padding:18px 20px 10px; display:flex; align-items:baseline; gap:14px; }
+  header .day{ color:var(--muted); font-size:14px; }
+  header .total{ margin-left:auto; font-size:26px; font-weight:800; color:var(--ok); }
+  header .cnt{ color:var(--muted); font-size:13px; }
+  .feed{ padding:8px 16px 40px; max-width:680px; margin:0 auto; }
+  .pay{ background:var(--card); border:1px solid var(--line); border-left:5px solid var(--ok); border-radius:14px; padding:14px 18px; margin-bottom:10px; display:flex; align-items:center; gap:14px; animation:none; }
+  .pay.new{ animation:flash 2.4s ease-out; }
+  @keyframes flash{ 0%{ background:#123f2a; transform:scale(1.02);} 100%{ background:var(--card); transform:scale(1);} }
+  .pay .amt{ font-size:24px; font-weight:800; color:var(--ok); white-space:nowrap; }
+  .pay .info{ flex:1; min-width:0; } .pay .src{ font-size:13px; color:var(--muted); }
+  .pay .desc{ font-size:13px; color:#b9bede; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pay .t{ font-size:15px; font-weight:600; }
+  .empty{ text-align:center; color:var(--muted); padding:60px 20px; font-size:15px; }
+  .hint{ text-align:center; color:#5a5f85; font-size:11px; padding:10px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+  var API = location.origin;
+  var qs = new URLSearchParams(location.search);
+  var SLUG = qs.get('salon') || '';
+  var TOK = null; try { TOK = sessionStorage.getItem('pd_tok'); } catch (e) {}
+  var pin = '', known = {}, firstLoad = true, timer = null;
+
+  function hdr(extra) {
+    var h = { 'Content-Type': 'application/json' };
+    if (SLUG) h['X-Tenant-Slug'] = SLUG;
+    if (TOK) h['X-Paydesk-Token'] = TOK;
+    for (var k in (extra || {})) h[k] = extra[k];
+    return h;
+  }
+  function el(html) { document.getElementById('app').innerHTML = html; }
+  function esc(s) { return String(s == null ? '' : s).replace(/</g, '&lt;'); }
+
+  /* ── PIN-екран ── */
+  function renderPin(msg) {
+    var dots = ''; for (var i = 0; i < 4; i++) dots += '<div class="dot' + (i < pin.length ? ' f' : '') + '"></div>';
+    el('<div class="center"><div class="pinbox">' +
+      '<h1>Каса — вхідні оплати</h1><p>Введіть PIN-код</p>' +
+      '<div class="dots">' + dots + '</div>' +
+      '<div class="pad">' + [1,2,3,4,5,6,7,8,9,'⌫',0,'OK'].map(function (k) {
+        return '<button onclick="pk(\'' + k + '\')">' + k + '</button>';
+      }).join('') + '</div>' +
+      '<div class="err">' + esc(msg || '') + '</div></div></div>');
+  }
+  window.pk = function (k) {
+    if (k === '⌫') pin = pin.slice(0, -1);
+    else if (k === 'OK') { if (pin.length >= 4) doLogin(); return; }
+    else if (pin.length < 8) pin += String(k);
+    renderPin();
+    if (pin.length === 4) doLogin();
+  };
+  function doLogin() {
+    fetch(API + '/api/paydesk/login', { method: 'POST', headers: hdr(), body: JSON.stringify({ pin: pin }) })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (r) {
+        pin = '';
+        if (r.j && r.j.ok && r.j.token) {
+          TOK = r.j.token; try { sessionStorage.setItem('pd_tok', TOK); } catch (e) {}
+          startFeed();
+        } else if (r.j && r.j.error === 'pin-not-set') renderSetPin();
+        else renderPin(r.s === 429 ? 'Забагато спроб — зачекайте 5 хв' : 'Невірний PIN');
+      }).catch(function () { renderPin('Немає звʼязку'); });
+  }
+
+  /* ── Первинне встановлення PIN (тільки власник) ── */
+  function renderSetPin(msg) {
+    el('<div class="center"><div class="pinbox">' +
+      '<h1>Каса — перший запуск</h1><p>PIN ще не встановлено. Підтвердьте, що ви власник, і задайте PIN (4-8 цифр).</p>' +
+      '<input id="spId" placeholder="Телефон або email власника">' +
+      '<input id="spPw" type="password" placeholder="Пароль від CRM">' +
+      '<input id="spPin" inputmode="numeric" maxlength="8" placeholder="Новий PIN (4-8 цифр)">' +
+      '<button class="btn" onclick="setPin()">Встановити PIN</button>' +
+      '<div class="err">' + esc(msg || '') + '</div></div></div>');
+  }
+  window.setPin = function () {
+    fetch(API + '/api/paydesk/set-pin', { method: 'POST', headers: hdr(), body: JSON.stringify({
+      identifier: document.getElementById('spId').value.trim(),
+      password: document.getElementById('spPw').value,
+      pin: document.getElementById('spPin').value.trim() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) { renderPin('PIN встановлено — введіть його'); }
+        else renderSetPin(j.message || j.error || 'Помилка');
+      }).catch(function () { renderSetPin('Немає звʼязку'); });
+  };
+
+  /* ── Стрічка оплат ── */
+  function beep() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880; g.gain.setValueAtTime(0.25, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      o.start(); o.stop(ctx.currentTime + 0.5);
+    } catch (e) {}
+  }
+  function fmtT(ts) { return new Date(ts * 1000).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }); }
+  function fmtA(a) { return a.toLocaleString('uk-UA', { minimumFractionDigits: a % 1 ? 2 : 0 }) + ' грн'; }
+
+  function startFeed() { load(); if (timer) clearInterval(timer); timer = setInterval(load, 30000); }
+  function load() {
+    fetch(API + '/api/paydesk/today', { headers: hdr() })
+      .then(function (r) {
+        if (r.status === 401) { TOK = null; try { sessionStorage.removeItem('pd_tok'); } catch (e) {} renderPin('Сесія завершена — введіть PIN'); throw new Error('auth'); }
+        return r.json();
+      })
+      .then(function (j) {
+        if (!j.ok) return;
+        var hasNew = false;
+        (j.items || []).forEach(function (i) { if (!known[i.id]) { if (!firstLoad) hasNew = true; known[i.id] = 1; } });
+        var rows = (j.items || []).map(function (i, idx) {
+          return '<div class="pay' + (hasNew && idx === 0 ? ' new' : '') + '">' +
+            '<div class="amt">+' + fmtA(i.amount) + '</div>' +
+            '<div class="info"><div class="t">' + fmtT(i.time) + ' · Оплату прийнято ✅</div>' +
+            '<div class="src">' + esc(i.source) + (i.masked ? ' · ' + esc(i.masked) : '') + '</div>' +
+            (i.desc ? '<div class="desc">' + esc(i.desc) + '</div>' : '') + '</div></div>';
+        }).join('');
+        el('<header><div><b style="font-size:18px">Каса</b> <span class="day">' + esc(j.date) + '</span>' +
+          '<div class="cnt">' + j.count + ' оплат сьогодні' + (j.personal_connected ? '' : ' · еквайринг') + '</div></div>' +
+          '<div class="total">' + fmtA(j.total) + '</div></header>' +
+          '<div class="feed">' + (rows || '<div class="empty">Сьогодні оплат ще не було.<br>Екран оновлюється сам кожні 30 секунд.</div>') + '</div>' +
+          '<div class="hint">Видно лише СЬОГОДНІШНІ надходження. Історія — тільки в банку.</div>');
+        if (hasNew) beep();
+        firstLoad = false;
+      }).catch(function () {});
+  }
+
+  if (TOK) startFeed(); else renderPin();
+</script>
+</body>
+</html>

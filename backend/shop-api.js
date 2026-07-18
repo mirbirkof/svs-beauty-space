@@ -156,6 +156,10 @@ app.get('/book', (req, res) => {
   res.redirect(302, '/p/book.html' + (qs >= 0 ? req.url.slice(qs) : ''));
 });
 app.get('/signup', (req, res) => res.redirect(302, '/p/signup.html'));
+app.get('/kasa', (req, res) => {
+  const qs = req.url.indexOf('?');
+  res.redirect(302, '/p/paydesk.html' + (qs >= 0 ? req.url.slice(qs) : ''));
+});
 app.get('/pricing', (req, res) => res.redirect(302, '/p/pricing.html')); // публічна вітрина тарифів
 app.get('/help', (req, res) => res.redirect(302, '/p/help.html'));       // інструкція користувача
 app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
@@ -532,6 +536,8 @@ try { app.use('/api/medical', require('./routes/medical')); } catch(e) { console
 try { app.use('/api/fitness', require('./lib/vertical').requireVertical('fitness'), require('./routes/fitness')); } catch(e) { console.error('[fitness] mount failed:', e.message); }
 try { app.use('/api/dental', require('./lib/vertical').requireVertical('dental'), require('./routes/dental')); } catch(e) { console.error('[dental] mount failed:', e.message); }
 try { app.use('/api/wellness', require('./lib/vertical').requireVertical('wellness'), require('./routes/wellness')); } catch(e) { console.error('[wellness] mount failed:', e.message); }
+// Каса-екран (Босс, 18.07): вхідні оплати Mono за СЬОГОДНІ, PIN-доступ, без адмін-сесії
+try { app.use('/api/paydesk', require('./routes/paydesk')); } catch(e) { console.error('[paydesk] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 // Повний booking-роутер: telegram-вебхук бота @Svs_beautybot + розмовна запис + нагадування.
 // З 03.07 вебхук вказує СЮДИ (svs-shop-api) — окремий сервіс svs-booking-api деплоївся

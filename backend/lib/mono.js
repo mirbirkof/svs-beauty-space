@@ -200,4 +200,23 @@ async function walletPayment({ cardToken, amountUah, orderId, destination }) {
   });
 }
 
-module.exports = { createInvoice, getInvoiceStatus, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache, walletPayment };
+// Каса-екран (Босс, 18.07): виписка мерчанта за період — усі success-оплати еквайрингу.
+// GET /api/merchant/statement?from=<unix>&to=<unix> (офіційна дока, суми в копійках, date=RFC-3339).
+async function merchantStatement(fromUnix, toUnix) {
+  const q = `from=${Math.floor(fromUnix)}` + (toUnix ? `&to=${Math.floor(toUnix)}` : '');
+  return monoRequest('GET', `/api/merchant/statement?${q}`);
+}
+
+// Особиста виписка (ВСІ приходи на рахунок, вкл. перекази на картку) — окремий
+// ОСОБИСТИЙ токен MONO_PERSONAL_TOKEN (https://api.monobank.ua, QR-авторизація).
+// Ліміт банку: 1 запит / 60 сек — виклики ОБОВʼЯЗКОВО кешувати (routes/paydesk.js).
+function personalStatement(fromUnix, toUnix, account) {
+  const token = process.env.MONO_PERSONAL_TOKEN;
+  if (!token) return Promise.resolve(null);
+  const acc = account || process.env.MONO_PERSONAL_ACCOUNT || '0';
+  return withRetry(() => _monoRequestOnce('GET',
+    `/personal/statement/${encodeURIComponent(acc)}/${Math.floor(fromUnix)}/${Math.floor(toUnix || Date.now() / 1000)}`,
+    null, token), { label: 'mono-personal', tries: 2, baseDelay: 1000 });
+}
+
+module.exports = { createInvoice, getInvoiceStatus, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache, walletPayment, merchantStatement, personalStatement };
