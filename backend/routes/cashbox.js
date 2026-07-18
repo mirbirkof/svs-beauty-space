@@ -496,11 +496,9 @@ router.post('/operations', async (req, res) => {
     let stockAfter = null;
     const vId = Number(req.body.variant_id);
     if (type === 'in' && category === 'sale_product' && Number.isFinite(vId) && vId > 0) {
-      const qPcs = Number(req.body.qty) > 0 ? Number(req.body.qty) : 1;
-      // POS продає ЦІЛІ упаковки, а склад для unit_ml-товарів ведеться в мл (мігр. 199):
-      // списуємо qty × unit_ml, інакше продаж банки знімав 1 мл замість 250 (кейс 18.07)
-      const packQ = await client.query(`SELECT GREATEST(COALESCE(unit_ml,1),1)::float AS pack FROM product_variants WHERE id=$1`, [vId]);
-      const q = qPcs * (Number(packQ.rows[0]?.pack) || 1);
+      // Склад роздрібних банок ведеться в ШТУКАХ (рухи 18.07: накладні +6, продажі −1),
+      // тому продаж списує qty як є. Грамові товари через POS не продаються поштучно.
+      const q = Number(req.body.qty) > 0 ? Number(req.body.qty) : 1;
       const upd = await client.query(
         `UPDATE product_variants
             SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1)

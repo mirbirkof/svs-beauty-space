@@ -121,12 +121,16 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
           result.created++;
         }
         if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'нема збігу' }); continue; }
-        // товар «за грам/мл» (unit_ml > 1): кількість у накладній — ПЛЯШКИ/УПАКОВКИ,
+        // ГРАМОВИЙ товар (price_per_gram, unit_ml > 1): кількість у накладній — ПЛЯШКИ,
         // а склад ведеться в мл/г → приход = qty × unit_ml. Інакше +5 замість +5000 мл.
-        const vinfo = await client.query(`SELECT unit_ml::float AS unit_ml FROM product_variants WHERE id=$1`, [variantId]);
+        // Роздрібні банки БЕЗ ціни-за-грам: склад у ШТУКАХ (18.07) — qty як є.
+        const vinfo = await client.query(
+          `SELECT pv.unit_ml::float AS unit_ml, p.price_per_gram
+             FROM product_variants pv JOIN products p ON p.id = pv.product_id WHERE pv.id=$1`, [variantId]);
         if (!vinfo.rows[0]) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'варіант зник' }); continue; }
         const unitMl = Number(vinfo.rows[0].unit_ml) || 0;
-        const asUnits = it.unit === 'ml' ? false : unitMl > 1; // накладна в штуках за замовч.; unit:'ml' — явно в мл
+        const isGram = vinfo.rows[0].price_per_gram != null;
+        const asUnits = it.unit === 'ml' ? false : (isGram && unitMl > 1); // накладна в штуках за замовч.; unit:'ml' — явно в мл
         const delta = asUnits ? qty * unitMl : qty;
         await client.query(
           `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $2 WHERE id = $1`,

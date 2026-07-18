@@ -11913,15 +11913,40 @@ async function _mcSvcAddSave(){
   } catch(e){ toast('Помилка: '+(e.message||e)); }
 }
 function _mcTabSalary(){
-  const ms = _mcData.ms, s = _mcData.stats;
+  const s = _mcData.stats;
+  setTimeout(_mcSalaryLoad, 0);
   return `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
       ${kpiBox('Виручка (всього)', (s.revenue_total||0).toLocaleString()+' ₴')}
       ${kpiBox('Виручка 30 днів', (s.revenue_30||0).toLocaleString()+' ₴')}
     </div>
-    <div style="max-width:240px;margin-bottom:14px"><label class="set-l">Комісія майстра, %</label>
-      <input id="mcComm" type="number" step="0.1" class="input" value="${ms.commission_pct!=null?ms.commission_pct:''}" placeholder="напр. 40"></div>
-    <button class="btn btn-primary btn-sm" onclick="saveMasterSalary()">Зберегти схему ЗП</button>
-    <p class="set-p" style="font-size:12px;margin-top:12px">Нарахування за період — у розділі <b>Персонал → Зарплати</b>.</p>`;
+    <div id="mcSalaryBox"><div class="empty">Завантаження схеми…</div></div>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Це та сама схема, що в <b>Персонал → Зарплати</b> — саме за нею рахуються нарахування. Зміни тут одразу діють на розрахунок ЗП.</p>`;
+}
+// Реальна схема ЗП з payroll_schemes (Босс 18.07: у профілі показувався застарілий
+// commission_pct з masters, який у розрахунку ЗП НЕ бере участі — «не той %»).
+async function _mcSalaryLoad(){
+  const box = document.getElementById('mcSalaryBox'); if(!box) return;
+  let sch = null;
+  try { const r = await api('/api/payroll/schemes'); sch = (r.items||[]).find(x=>String(x.master_id)===String(_mcId)) || null; }
+  catch(e){ box.innerHTML = '<div class="empty">Сервер зарплати недоступний</div>'; return; }
+  const v = (x)=> x!=null && x!=='' ? x : '';
+  box.innerHTML = `
+    ${sch?'':'<div style="background:#fef3c7;color:#92400e;font-size:12.5px;border-radius:8px;padding:8px 12px;margin-bottom:10px">Схеми ЗП для майстра ще немає — заповніть і збережіть, вона зʼявиться і в розділі «Зарплати».</div>'}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;max-width:640px;margin-bottom:12px">
+      <div><label class="set-l">Тип схеми</label><select id="mcSchType" class="input">
+        <option value="percent" ${!sch||sch.scheme_type==='percent'?'selected':''}>Відсоток з послуг</option>
+        <option value="fixed" ${sch&&sch.scheme_type==='fixed'?'selected':''}>Фіксована ставка/оклад</option>
+        <option value="hybrid" ${sch&&sch.scheme_type==='hybrid'?'selected':''}>Змішана</option></select></div>
+      <div><label class="set-l">% з послуг</label><input id="mcSchPct" type="number" step="0.5" min="0" class="input" value="${v(sch&&sch.percent!=null?Number(sch.percent):'')}" placeholder="напр. 50"></div>
+      <div><label class="set-l">База відсотка</label><select id="mcSchBase" class="input">
+        <option value="net" ${!sch||sch.percent_base!=='gross'?'selected':''}>Послуги без матеріалів</option>
+        <option value="gross" ${sch&&sch.percent_base==='gross'?'selected':''}>Вся сума чека</option></select></div>
+      <div><label class="set-l">Ставка за зміну, ₴</label><input id="mcSchDay" type="number" min="0" class="input" value="${v(sch&&sch.fixed_per_day!=null?Number(sch.fixed_per_day):'')}"></div>
+      <div><label class="set-l">Оклад на місяць, ₴</label><input id="mcSchMonth" type="number" min="0" class="input" value="${v(sch&&sch.fixed_per_month!=null?Number(sch.fixed_per_month):'')}"></div>
+      <div><label class="set-l">% з продажу товарів</label><input id="mcSchSales" type="number" step="0.5" min="0" class="input" value="${v(sch&&sch.sales_commission_pct!=null?Number(sch.sales_commission_pct):'')}" placeholder="напр. 10"></div>
+    </div>
+    ${sch&&sch.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Примітка: ${sch.notes}</div>`:''}
+    <button class="btn btn-primary btn-sm" onclick="saveMasterSalary()">Зберегти схему ЗП</button>`;
 }
 function _mcTabOnline(){
   const ms = _mcData.ms;
@@ -12037,11 +12062,22 @@ async function saveMasterCard(){
 }
 async function saveMasterSalary(){
   if(!_mcId) return;
-  const v = document.getElementById('mcComm').value;
+  const g = id => (document.getElementById(id)||{}).value;
+  const ms = _mcData.ms;
+  const body = {
+    master_id: String(_mcId),
+    master_name: [ms.name, ms.surname].filter(Boolean).join(' '),
+    scheme_type: g('mcSchType') || 'percent',
+    percent: +g('mcSchPct') || null,
+    percent_base: g('mcSchBase') || 'net',
+    fixed_per_day: +g('mcSchDay') || null,
+    fixed_per_month: +g('mcSchMonth') || null,
+    sales_commission_pct: +g('mcSchSales') || 0,
+  };
   try {
-    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify({ commission_pct: v||null }) });
-    if (!r || !r.ok) { toast('Помилка','error'); return; }
-    _mcData.ms = r.master; toast('Схему ЗП збережено','success');
+    const r = await api('/api/payroll/schemes', { method:'POST', body: JSON.stringify(body) });
+    if (!r || !r.ok) { toast((r&&r.error)||'Помилка','error'); return; }
+    toast('Схему ЗП збережено','success'); _mcSalaryLoad();
   } catch(e){ toast('Помилка','error'); }
 }
 async function saveMasterAvatar(){

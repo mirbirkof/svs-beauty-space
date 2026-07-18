@@ -58,7 +58,7 @@ async function liveFinance(pool, from, to) {
     // інакше unpay→pay рахує списання двічі.
     q(`SELECT COALESCE(SUM(-sm.delta * CASE
                 WHEN p.price_per_gram IS NOT NULL AND p.cost_per_gram IS NOT NULL THEN p.cost_per_gram
-                WHEN COALESCE(pv.unit_ml,0) > 1
+                WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 1
                 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
                 ELSE COALESCE(pv.wholesale,0) END),0)::numeric g
          FROM stock_movements sm

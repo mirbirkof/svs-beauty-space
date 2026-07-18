@@ -272,13 +272,15 @@ router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res)
             console.warn(`[purchasing] товар ${r.poi.product_id} имеет ${vrows.length} вариантов без variant_id в позиции — приход ${good} не распределён (выберите вариант в форме закупки)`);
           }
         }
-        // товар «за грам/мл» (unit_ml > 1): кількість у замовленні — ПЛЯШКИ/УПАКОВКИ,
-        // а склад ведеться в мл/г → приход = good × unit_ml (як у stock-import). Раніше
-        // Purchasing клав +good замість +good×unit_ml → грамові товари врали при приході.
+        // ГРАМОВИЙ товар (price_per_gram, unit_ml > 1): кількість у замовленні — ПЛЯШКИ,
+        // а склад ведеться в мл/г → приход = good × unit_ml (як у stock-import).
+        // Роздрібні банки: склад у ШТУКАХ (18.07) — good як є.
         if (targetVariant) {
-          const um = Number((await client.query(
-            `SELECT unit_ml::float AS unit_ml FROM product_variants WHERE id=$1`, [targetVariant])).rows[0]?.unit_ml) || 0;
-          const delta = um > 1 ? good * um : good;
+          const vi = (await client.query(
+            `SELECT pv.unit_ml::float AS unit_ml, p.price_per_gram
+               FROM product_variants pv JOIN products p ON p.id = pv.product_id WHERE pv.id=$1`, [targetVariant])).rows[0] || {};
+          const um = Number(vi.unit_ml) || 0;
+          const delta = (vi.price_per_gram != null && um > 1) ? good * um : good;
           await client.query(
             `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1, wholesale = COALESCE($3, wholesale) WHERE id=$2`,
             [delta, targetVariant, cost]);

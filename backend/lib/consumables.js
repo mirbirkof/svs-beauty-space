@@ -24,22 +24,17 @@ async function writeOffForAppointment(apptId) {
     // Заметка #105: фактичні матеріали візиту (appointment_materials) мають
     // пріоритет над нормами service_consumables — списуємо саме їх.
     const mats = await client.query(
-      `SELECT am.variant_id, am.qty_used,
-              CASE WHEN p.price_per_gram IS NULL AND COALESCE(pv.unit_ml,0) > 1
-                   THEN pv.unit_ml ELSE 1 END AS pack_ml
-         FROM appointment_materials am
-         JOIN product_variants pv ON pv.id = am.variant_id
-         LEFT JOIN products p ON p.id = pv.product_id
-        WHERE am.appointment_id=$1`,
+      `SELECT variant_id, qty_used FROM appointment_materials WHERE appointment_id=$1`,
       [apptId]
     );
     if (mats.rows.length) {
       let written = 0;
       for (const m of mats.rows) {
-        // #109: qty_used у грамах/мл — списуємо ТОЧНЕ дробове значення (stock_qty NUMERIC з міграції 199).
-        // Банка/пляшка БЕЗ ціни-за-грам (кейс 18.07: маска ENVIE): qty_used = ШТУКИ,
-        // а склад ведеться в мл (мігр. 199) → списуємо qty × unit_ml, інакше −1 мл замість −250.
-        const qty = Number(m.qty_used) * (Number(m.pack_ml) || 1);
+        // #109: qty_used списуємо ЯК Є — одиниці збігаються зі складом:
+        // грамові товари (price_per_gram) — грами/мл, роздрібні банки — ШТУКИ
+        // (перевірено рухами 18.07: накладні банок пишуть штуки, продажі −1).
+        // unit_ml у банок — лише довідковий обʼєм упаковки, НЕ множник складу.
+        const qty = Number(m.qty_used);
         if (!Number.isFinite(qty) || qty <= 0) continue; // від'ємне/нульове списання заборонено
         // кламп нулем (уніфіковано з гілкою нижче): склад не йде в мінус,
         // а фактичну нестачу фіксуємо приміткою в stock_movements — правда про розхід не губиться

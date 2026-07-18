@@ -166,7 +166,8 @@ async function aggregate(start, end, branchId) {
     // иначе цикл unpay→pay считает списание дважды (как в live-finance.js)
     `SELECT COALESCE(SUM(-sm.delta * CASE
               WHEN p.price_per_gram IS NOT NULL AND p.cost_per_gram IS NOT NULL THEN p.cost_per_gram
-              WHEN COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+              -- ÷unit_ml ЛИШЕ грамові товари: у роздрібних банок склад у ШТУКАХ, unit_ml — довідка (18.07)
+              WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
               ELSE COALESCE(pv.wholesale,0) END),0)::numeric s
        FROM stock_movements sm JOIN product_variants pv ON pv.id = sm.variant_id
        LEFT JOIN products p ON p.id = pv.product_id
@@ -431,7 +432,7 @@ router.get('/drilldown', requirePerm('pnl.drilldown'), async (req, res) => {
         `SELECT sm.created_at AS date, (COALESCE(pr.name,'товар')||' ×'||ABS(sm.delta)) AS description,
                 (-sm.delta * CASE
                    WHEN pr.price_per_gram IS NOT NULL AND pr.cost_per_gram IS NOT NULL THEN pr.cost_per_gram
-                   WHEN COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+                   WHEN pr.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
                    ELSE COALESCE(pv.wholesale,0) END)::numeric AS amount, sm.reason AS method, 'stock_movements' AS source
            FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id
            LEFT JOIN products pr ON pr.id=pv.product_id
