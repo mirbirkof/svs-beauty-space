@@ -742,6 +742,9 @@ if (process.env.DATABASE_URL) {
       catch (e) { console.error('[billing] recurring:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.recurring' }); }
       try { const d = await billing.processDunning(); if (d.attempted || d.suspended) console.log('[billing] dunning', d); }
       catch (e) { console.error('[billing] dunning:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.dunning' }); }
+      // Phase A (18.07): попередження «тріал закінчується за 3 дні» — раніше тріал гас мовчки
+      try { const te = await billing.notifyTrialEnding(); if (te.checked) console.log('[billing] trial-ending', te); }
+      catch (e) { console.error('[billing] trial-ending:', e.message); sentry.capture(e, { kind: 'cron', job: 'billing.trialEnding' }); }
       try { const b = await require('./lib/bonus').expireBonuses(); if (b.expired) console.log('[bonus] expired', b); }
       catch (e) { console.error('[bonus] expiry:', e.message); sentry.capture(e, { kind: 'cron', job: 'bonus.expiry' }); }
       try { const m = await require('./lib/meta-ads').syncAllAccounts(); if (m.synced) console.log('[meta-ads] synced', m); }

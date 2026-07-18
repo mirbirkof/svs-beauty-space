@@ -71,6 +71,23 @@ async function finalizeSignup(data) {
     } catch (e) { console.error('[signup-finalize/solo]', e.message); }
   }
 
+  // Welcome-лист (Phase A, 18.07): раніше після реєстрації тенант не отримував нічого,
+  // крім TG-повідомлення від signup-verify. Email — якщо вказано і Resend налаштований.
+  try {
+    const emailCh = require('./channels/email-resend');
+    if (email && emailCh.isConfigured()) {
+      const base = process.env.APP_URL || 'https://svs-shop-api.onrender.com';
+      await emailCh.send(email, {
+        subject: 'Вітаємо у SVS CRM — кабінет створено',
+        body: `Вітаємо, ${ownerName}!<br><br>Кабінет «${salonName}» створено.<br>` +
+          `Вхід: <a href="${base}/admin/?tenant=${encodeURIComponent(r.slug)}">${base}/admin/</a> (логін — ваш телефон).<br>` +
+          (needTrial ? 'Тріал 14 днів уже активний — картка не потрібна.<br>'
+                     : 'Базові функції безкоштовні назавжди.<br>') +
+          '<br>Питання? Просто відповідайте на цей лист.',
+      });
+    }
+  } catch (e) { console.error('[signup-finalize/welcome]', e.message); }
+
   return {
     ok: true, slug: r.slug, salon_name: r.tenant.name, tenant_id: r.tenant.id,
     login: { phone, tenant_slug: r.slug, header: 'X-Tenant-Slug: ' + r.slug },

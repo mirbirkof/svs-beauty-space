@@ -258,6 +258,45 @@ async function rateAllow(pool, n, settings) {
   return { ok: true };
 }
 
+// Phase A (18.07): місячний ліміт SMS тарифу (max_sms_month) — раніше існував «на папері»
+// (free=0, starter=500, professional=2000, enterprise=безліміт), а канал слав без ліку.
+// Перевіряємо в контексті тенанта (RLS сама фільтрує notifications по tenant_id).
+// Збій перевірки → fail-open: помилка БД не повинна класти нагадування клієнтам.
+// tenant_id береться З САМОГО запису notification (НЕ з ALS): хвилинний воркер
+// (routes/notifications.js workerTick) крутиться БЕЗ tenant-контексту — через ALS
+// ліміт там мовчки перетворився б на безліміт. Явний WHERE працює в обох контекстах.
+const SMS_LEGACY_SLUG = { solo: 'free', pro: 'professional' };
+async function smsMonthlyAllow(pool, tenantId) {
+  try {
+    if (!tenantId) return { ok: true };
+    // Індивідуальний override оператора має пріоритет (як у plan-limits.tenantLimit)
+    const ov = await pool.query(
+      `SELECT overrides->>'limit:max_sms_month' AS v FROM tenant_licenses WHERE tenant_id=$1 LIMIT 1`,
+      [tenantId]);
+    let limit = null, soft = false;
+    const ovVal = ov.rows[0] && ov.rows[0].v;
+    if (ovVal != null && ovVal !== '' && Number.isFinite(Number(ovVal))) limit = Number(ovVal);
+    else {
+      const r = await pool.query(
+        `SELECT pl.limit_value, pl.is_soft FROM tenant_licenses tl
+           JOIN saas_plans_v2 p ON p.slug = COALESCE($1::jsonb->>tl.plan_code, tl.plan_code)
+           JOIN plan_limits pl ON pl.plan_id = p.id AND pl.limit_key = 'max_sms_month'
+          WHERE tl.tenant_id = $2 ORDER BY tl.updated_at DESC NULLS LAST LIMIT 1`,
+        [JSON.stringify(SMS_LEGACY_SLUG), tenantId]);
+      if (!r.rows.length) return { ok: true }; // немає сіду ліміту → не блокуємо
+      limit = Number(r.rows[0].limit_value); soft = !!r.rows[0].is_soft;
+    }
+    if (limit == null || limit < 0 || soft) return { ok: true };
+    const c = await pool.query(
+      `SELECT count(*)::int n FROM notifications
+        WHERE tenant_id=$1 AND channel='sms' AND status IN ('sent','delivered','read')
+          AND sent_at >= date_trunc('month', NOW())`, [tenantId]);
+    const used = Number(c.rows[0] && c.rows[0].n) || 0;
+    if (used >= limit) return { ok: false, used, limit };
+    return { ok: true };
+  } catch (e) { return { ok: true }; }
+}
+
 // Переход на следующий канал в цепочке (fallback)
 function nextChannel(n) {
   const chain = n.fallback_chain || [];
@@ -296,6 +335,27 @@ async function processQueue(limit = 30) {
         `UPDATE notifications SET next_attempt_at = NOW() + interval '30 minutes',
            last_error=$2, updated_at=NOW() WHERE id=$1`, [n.id, 'rate:' + gate.reason]);
       skipped++; continue;
+    }
+    // SMS понад місячний ліміт тарифу → одразу наступний канал ланцюжка (email),
+    // без каналу — cancelled з явною причиною (щоб було видно в журналі, а не тиша).
+    if (n.channel === 'sms') {
+      const sg = await smsMonthlyAllow(pool, n.tenant_id);
+      if (!sg.ok) {
+        const fb = nextChannel(n);
+        const c2 = n.client_id ? (await pool.query(`SELECT phone,email,telegram_id FROM clients WHERE id=$1`, [n.client_id])).rows[0] : null;
+        const addr = fb ? recipientFor(fb, c2) : null;
+        if (fb && addr) {
+          await pool.query(
+            `UPDATE notifications SET channel=$2, recipient=$3, status='queued',
+               last_error=$4, next_attempt_at=NOW(), updated_at=NOW() WHERE id=$1`,
+            [n.id, fb, addr, `sms-plan-limit:${sg.used}/${sg.limit}`]);
+        } else {
+          await pool.query(
+            `UPDATE notifications SET status='cancelled', last_error=$2, updated_at=NOW() WHERE id=$1`,
+            [n.id, `sms-plan-limit:${sg.used}/${sg.limit}`]);
+        }
+        skipped++; continue;
+      }
     }
     await pool.query(`UPDATE notifications SET status='sending', updated_at=NOW() WHERE id=$1`, [n.id]);
     const adapter = channels[n.channel];

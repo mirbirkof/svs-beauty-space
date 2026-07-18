@@ -430,6 +430,60 @@ async function createSubscriptionPayLink(invoiceId) {
   return { pay_url: monoInv.pageUrl, mono_invoice_id: monoInv.invoiceId };
 }
 
+// Універсальна доставка власнику тенанта (Phase A, 18.07): Telegram-бот салону → email-fallback.
+// Використовується transactional-ланцюжком (trial-ending, receipt) — раніше тенант отримував
+// ЛИШЕ dunning-нагадування, welcome/попередження/чеки не існували.
+async function notifyOwner(tenantId, text, subject = 'SVS CRM') {
+  const pool = getPool();
+  const bs = (await pool.query(
+    `SELECT bot_token, owner_chat_id FROM tenant_bot_settings WHERE tenant_id=$1 AND status='connected'`,
+    [tenantId])).rows[0];
+  if (bs && bs.bot_token && bs.owner_chat_id) {
+    try {
+      const { tgCall } = require('./tenant-bots');
+      await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
+      return { sent: true, channel: 'telegram' };
+    } catch (e) { /* падаємо на email нижче */ }
+  }
+  try {
+    const emailCh = require('./channels/email-resend');
+    if (emailCh.isConfigured()) {
+      const owner = (await pool.query(
+        `SELECT u.email FROM users u JOIN roles r ON r.id = u.role_id
+          WHERE u.tenant_id=$1 AND r.code='owner' AND u.email IS NOT NULL AND u.is_active
+          ORDER BY u.id LIMIT 1`, [tenantId])).rows[0];
+      if (owner && owner.email) {
+        await emailCh.send(owner.email, { subject, body: text.replace(/\n/g, '<br>') });
+        return { sent: true, channel: 'email' };
+      }
+    }
+  } catch (e) { return { sent: false, reason: e.message?.slice(0, 80) }; }
+  return { sent: false, reason: 'no-owner-contact' };
+}
+
+// Phase A (18.07): за 3 дні до кінця тріалу — попередження власнику. Раніше тріал
+// закінчувався мовчки → past_due без жодного сигналу. Рівно один раз (флаг мігр. 276);
+// флаг ставимо навіть якщо доставка не вдалась (no-owner-contact), щоб не молотити щогодини.
+async function notifyTrialEnding() {
+  const pool = getPool();
+  const subs = (await pool.query(
+    `SELECT s.id, s.tenant_id, s.current_period_end FROM subscriptions_saas s
+      WHERE s.status='trialing' AND s.trial_ending_notified_at IS NULL
+        AND s.current_period_end BETWEEN NOW() AND NOW() + INTERVAL '3 days' LIMIT 100`)).rows;
+  let sent = 0;
+  for (const s of subs) {
+    const d = new Date(s.current_period_end).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' });
+    try {
+      const r = await notifyOwner(s.tenant_id,
+        `⏳ <b>Тріал SVS CRM закінчується ${d}</b>\nЩоб зберегти доступ до всіх функцій, оберіть тариф у розділі «Підписка» — рахунок і оплата карткою за посиланням.`,
+        'Тріал SVS CRM закінчується');
+      if (r && r.sent) sent++;
+    } catch (e) { console.error('[billing:trial-ending]', s.tenant_id, e.message); }
+    await pool.query(`UPDATE subscriptions_saas SET trial_ending_notified_at=NOW() WHERE id=$1`, [s.id]).catch(() => {});
+  }
+  return { checked: subs.length, sent };
+}
+
 // Надсилає власнику салону нагадування про оплату продовження підписки з pay-link.
 // Використовується dunning-циклом (manual/Mono): без реальної відправки клієнт не знав,
 // що треба платити — раніше processDunning лише виставляв notification_sent=TRUE без дії.
@@ -496,11 +550,23 @@ async function payInvoiceViaMono(monoInvoiceId, data) {
         try { require('./feature-gate').invalidateFeatureCache(sub.tenant_id); } catch (_) {}
         // Партнёрка: Mono-оплата тоже должна награждать реферера (как recordPayment).
         try { await require('./partner-referrals').onReferredPaid(sub.tenant_id); } catch (e) { console.error('[mono:partner]', e.message); }
+        // Receipt (Phase A, 18.07): підтвердження оплати — раніше після оплати тиша.
+        try {
+          await notifyOwner(sub.tenant_id,
+            `✅ <b>Оплату отримано</b>\nРахунок №${inv.invoice_number} на ${inv.total} грн.\nПідписку продовжено до ${new Date(sub.current_period_end).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' })}. Дякуємо, що з нами!`,
+            'Оплату отримано — SVS CRM');
+        } catch (e) { console.error('[billing:receipt]', e.message); }
       }
       await pool.query(`UPDATE dunning_attempts SET status='succeeded' WHERE invoice_id=$1 AND status='pending'`, [pay.invoice_id]).catch(() => {});
     } else if (inv) {
       // рахунок без підписки = оплата платного модуля (add-on) → вмикаємо фічу
       await applyAddonInvoicePaid(inv.id).catch(e => console.error('[billing] addon-paid', e.message));
+      // Receipt за модуль (Phase A, 18.07)
+      try {
+        await notifyOwner(inv.tenant_id,
+          `✅ <b>Оплату отримано</b>\nРахунок №${inv.invoice_number} на ${inv.total} грн — модуль активовано.`,
+          'Оплату отримано — SVS CRM');
+      } catch (e) { console.error('[billing:receipt-addon]', e.message); }
     }
     return { ok: true, status: 'paid' };
   }
@@ -877,4 +943,6 @@ module.exports = {
   listPromoCodes, createPromoCode, updatePromoCode, deletePromoCode,
   // dunning / recurring / metrics
   scheduleDunning, processDunning, runRecurring, billingMetrics,
+  // transactional-ланцюжок тенанту (Phase A, 18.07)
+  notifyOwner, notifyTrialEnding,
 };
