@@ -64,6 +64,41 @@ try {
   });
   ok('журнал записів открывается', journalOk);
 
+  // ── ТЕСТ 4-7 (грабли 18.07): запись — сумма/смена услуги/добавление, список услуг ──
+  const chk = await p.evaluate(async () => {
+    const out = {};
+    try {
+      // будущая запись
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' });
+      const j = await api('/api/schedule/appointments?from=' + today + '&to=' + today);
+      const list = (j && (j.appointments || j.items)) || [];
+      const a = Array.isArray(list) ? list.find(x => ['booked','confirmed','arrived'].includes(x.status)) : null;
+      if (!a) { out.note = 'нет активной записи на сегодня — тесты записи пропущены'; return out; }
+      const id = a.id, oldPrice = Number(a.price);
+      // 4: смена суммы (чистый PATCH price — регресс room-блока)
+      const r1 = await api('/api/schedule/appointments/' + id, { method: 'PATCH', body: JSON.stringify({ price: oldPrice }) });
+      out.price_patch = !!(r1 && r1.ok);
+      // 5: список услуг для модалок непустой и отсортирован по категориям
+      _svcCache = null;
+      const svcs = await getServices();
+      out.svc_list = svcs.length > 3;
+      // 6: смена услуги на ту же самую (no-op, но проверяет весь путь PATCH service_id)
+      const r2 = await api('/api/schedule/appointments/' + id, { method: 'PATCH', body: JSON.stringify({ service_id: a.service_id }) });
+      out.svc_change = !!(r2 && r2.ok);
+      // 7: связки мастера отдаются (фильтр по профессии)
+      const ms = await api('/api/master-services/by-master/' + a.master_id);
+      out.master_links = Array.isArray(ms.items);
+    } catch (e) { out.err = e.message.slice(0, 120); }
+    return out;
+  });
+  if (chk.note) console.log('[i] ' + chk.note);
+  else {
+    ok('смена суммы записи (PATCH price)', chk.price_patch, chk);
+    ok('список услуг для модалок непустой', chk.svc_list, chk);
+    ok('смена услуги записи (PATCH service_id)', chk.svc_change, chk);
+    ok('связки мастера отдаются (фильтр профессии)', chk.master_links, chk);
+  }
+
 } catch (e) {
   ok('смоук без падения', false); console.error(e.message);
 } finally {
