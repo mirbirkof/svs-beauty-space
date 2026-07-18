@@ -1298,7 +1298,7 @@ router.post('/appointments/:id/services', async (req, res) => {
   try {
     const pool = getPool();
     const apptId = Number(req.params.id);
-    const { service_id } = req.body || {};
+    const { service_id, no_extend } = req.body || {};
     if (!service_id) return res.status(400).json({ error: 'service_id обовʼязковий' });
 
     const aRes = await pool.query(
@@ -1347,7 +1347,14 @@ router.post('/appointments/:id/services', async (req, res) => {
            FROM appointment_services WHERE appointment_id=$1`, [apptId]);
       const totalPrice = Number(sum.rows[0].total_price) || 0;
       const totalDur = Math.min(Number(sum.rows[0].total_dur) || 0, 24 * 60) || (Number(a.dur) || 30);
-      const newEnd = new Date(new Date(a.starts_at).getTime() + totalDur * 60000).toISOString();
+      // no_extend (Босс 18.07, відео «не зберігає»): коротка послуга робиться В МЕЖАХ
+      // візиту (брови+корекція обличчя разом) — час НЕ подовжуємо, тільки сума і склад.
+      // Тригер вмістимості не будиться (час не змінюється) → конфлікту з наступним
+      // записом немає. Звичайний шлях (подовження) — як раніше.
+      const newEnd = no_extend === true
+        ? new Date(a.ends_at).toISOString()
+        : new Date(new Date(a.starts_at).getTime() + totalDur * 60000).toISOString();
+      if (no_extend === true) await txc.query(`SET LOCAL app.skip_overbook = 'on'`);
       const upd = await txc.query(
         `UPDATE appointments SET price=$2, ends_at=$3, manual_override=true, updated_at=NOW()
           WHERE id=$1 RETURNING id, price, starts_at, ends_at`, [apptId, totalPrice, newEnd]);
@@ -1356,8 +1363,8 @@ router.post('/appointments/:id/services', async (req, res) => {
     } catch (txErr) {
       await txc.query('ROLLBACK').catch(() => {});
       if (txErr.code === '23P01') {
-        return res.status(409).json({ error: 'slot-busy',
-          message: 'Послуга не додана: візит подовжується і не вміщується у графік майстра (конфлікт з наступним записом). Перенесіть наступний запис або скоротіть тривалість.' });
+        return res.status(409).json({ error: 'slot-busy', can_no_extend: true,
+          message: 'Візит подовжується і не вміщується до наступного запису майстра.' });
       }
       throw txErr;
     } finally {

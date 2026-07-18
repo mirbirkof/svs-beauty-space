@@ -9982,9 +9982,17 @@ async function apptAddService(id) {
     <div style="color:var(--text-secondary);font-size:12px;margin-top:8px">Послуга додасться до складу візиту. Планова сума й час завершення оновляться автоматично.</div>`, async () => {
     const sid = Number(document.getElementById('svcAddPick').value);
     if (!sid) { toast('Оберіть послугу — клікніть по рядку в списку', 'error'); throw new Error('no-svc'); }
-    const r = await api('/api/schedule/appointments/' + id + '/services', { method:'POST', body: JSON.stringify({ service_id: sid }) });
+    let r = await api('/api/schedule/appointments/' + id + '/services', { method:'POST', body: JSON.stringify({ service_id: sid }) });
+    // Візит не вміщується до наступного запису (Босс 18.07, відео): раніше — дрібний
+    // toast і «не зберігає». Тепер ЯВНИЙ вибір: додати послугу БЕЗ подовження часу
+    // (сума і склад +, графік не рухається) — так салон реально працює.
+    if (r && r.error === 'slot-busy' && r.can_no_extend) {
+      if (confirm('Візит подовжується і НЕ ВМІЩУЄТЬСЯ до наступного запису майстра.\n\nДодати послугу БЕЗ подовження часу візиту? (сума додасться, графік не зміниться)')) {
+        r = await api('/api/schedule/appointments/' + id + '/services', { method:'POST', body: JSON.stringify({ service_id: sid, no_extend: true }) });
+      }
+    }
     if (r && r.ok) { toast('Послугу додано', 'ok'); closeAppt(); await loadJournal(); openAppt(id); }
-    else { toast((r && r.error) || 'Не вдалося додати послугу', 'error'); throw new Error('save-failed'); }
+    else { toast((r && (r.message || r.error)) || 'Не вдалося додати послугу', 'error'); throw new Error('save-failed'); }
   });
 }
 
