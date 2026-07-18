@@ -11821,13 +11821,96 @@ function _mcTabSchedule(){
     <div style="margin-bottom:14px">${_mcSchedule(_mcData.ms.schedule_json)}</div>
     <p class="set-p" style="font-size:12px">Редагувати зміни по днях — у розділі <b>Персонал → Графіки</b> (помісячна сітка з реальними змінами BeautyPro).</p>`;
 }
+// ── Послуги майстра: керування звʼязками та розцінками прямо з профілю (Босс 18.07) ──
+let _mcSvcItems = [];
 function _mcTabServices(){
+  setTimeout(_mcSvcLoad, 0);
   const top = _mcData.top;
-  const rows = top.map(t=>`<tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
+  const factRows = top.map(t=>`<tr><td>${t.service}</td><td>${t.cnt}</td><td>${Number(t.sum||0).toLocaleString()} ₴</td></tr>`).join('')
     || '<tr><td colspan="3"><div class="empty">Ще немає виконаних послуг</div></td></tr>';
-  return `<h4 style="margin:0 0 10px;font-size:14px">Послуги, які надає (за фактом виконання)</h4>
-    <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="set-p" style="font-size:12px;margin-top:10px">Індивідуальні ціни майстра на послуги — у розділі <b>Послуги</b> (картка послуги → «Ціни майстрів»).</p>`;
+  return `<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap">
+      <h4 style="margin:0;font-size:14px">Послуги та розцінки майстра</h4>
+      <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="_mcSvcAddToggle()">+ Додати послугу</button>
+    </div>
+    <div id="mcSvcAddRow" style="display:none;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center"></div>
+    <div id="mcSvcList"><div class="empty">Завантаження…</div></div>
+    <p class="set-p" style="font-size:12px;margin-top:8px">Ціна/хв: порожньо = базова з каталогу, своє число = персональна розцінка. Вимкнена послуга (сірий тумблер) не пропонується цьому майстру в журналі та онлайн-записі.</p>
+    <h4 style="margin:18px 0 8px;font-size:14px">За фактом виконання</h4>
+    <table class="tbl"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${factRows}</tbody></table>`;
+}
+async function _mcSvcLoad(){
+  const box = document.getElementById('mcSvcList'); if(!box) return;
+  let r; try { r = await api('/api/master-services/by-master/' + _mcId); }
+  catch(e){ box.innerHTML = '<div class="empty">Не вдалося завантажити: '+(e.message||e)+'</div>'; return; }
+  _mcSvcItems = r.items || [];
+  if (!_mcSvcItems.length) { box.innerHTML = '<div class="empty">Звʼязок ще немає — додайте першу послугу кнопкою вище. Поки звʼязки не налаштовані, майстру доступний весь каталог.</div>'; return; }
+  let html = '', cat = null;
+  for (const it of _mcSvcItems) {
+    const c = it.category || 'Без категорії';
+    if (c !== cat) { cat = c; html += `<div style="font-size:11.5px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px">${c}</div>`; }
+    const off = it.active === false;
+    html += `<div style="display:flex;gap:8px;align-items:center;padding:7px 8px;border:1px solid var(--border,#e5e7eb);border-radius:9px;margin-bottom:5px;${off?'opacity:.55;background:var(--bg-secondary,#f9fafb)':''}">
+      <label style="flex:none;cursor:pointer" title="${off?'Увімкнути':'Вимкнути'} послугу для майстра">
+        <input type="checkbox" ${off?'':'checked'} onchange="_mcSvcPatch(${it.id},'active',this.checked)" style="width:16px;height:16px;vertical-align:middle"></label>
+      <div style="min-width:0;flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(it.service_name)}">${it.service_name}</div>
+      <input type="number" min="0" step="1" class="input" style="width:92px;padding:6px 8px;font-size:13px" value="${it.price!=null?Number(it.price):''}"
+        placeholder="${it.base_price!=null?Number(it.base_price):'—'}" title="Ціна майстра, грн (порожньо = базова ${it.base_price!=null?Number(it.base_price):''})"
+        onchange="_mcSvcPatch(${it.id},'price',this.value)"> <span style="font-size:11px;color:var(--text-secondary)">₴</span>
+      <input type="number" min="0" step="5" class="input" style="width:74px;padding:6px 8px;font-size:13px" value="${it.duration_min!=null?it.duration_min:''}"
+        placeholder="${it.base_duration!=null?it.base_duration:'—'}" title="Тривалість, хв (порожньо = базова)"
+        onchange="_mcSvcPatch(${it.id},'duration_min',this.value)"> <span style="font-size:11px;color:var(--text-secondary)">хв</span>
+      <button class="btn btn-sm" style="flex:none;background:#fee2e2;color:#dc2626;padding:5px 8px" title="Прибрати послугу в майстра"
+        onclick="_mcSvcDel(${it.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button>
+    </div>`;
+  }
+  box.innerHTML = html;
+}
+async function _mcSvcPatch(id, field, val){
+  const body = field==='active' ? { active: !!val } : { [field]: (val===''||val==null) ? null : Number(val) };
+  try {
+    const r = await api('/api/master-services/'+id, { method:'PATCH', body: JSON.stringify(body) });
+    if (r && r.ok) { toast('Збережено'); delete _msIdsCache[Number(_mcId)]; if (field==='active') _mcSvcLoad(); }
+    else toast((r&&r.error)||'Помилка збереження');
+  } catch(e){ toast('Помилка: '+(e.message||e)); _mcSvcLoad(); }
+}
+async function _mcSvcDel(id){
+  const it = _mcSvcItems.find(x=>Number(x.id)===Number(id));
+  if (!confirm('Прибрати послугу «'+((it&&it.service_name)||'')+'» у майстра? Історія виконаних візитів не зміниться.')) return;
+  try {
+    const r = await api('/api/master-services/'+id, { method:'DELETE' });
+    if (r && r.ok) { toast('Прибрано'); delete _msIdsCache[Number(_mcId)]; _mcSvcLoad(); }
+    else toast((r&&r.error)||'Помилка');
+  } catch(e){ toast('Помилка: '+(e.message||e)); }
+}
+async function _mcSvcAddToggle(){
+  const row = document.getElementById('mcSvcAddRow'); if(!row) return;
+  if (row.style.display !== 'none') { row.style.display='none'; return; }
+  row.style.display='flex'; row.innerHTML = '<span class="set-p" style="font-size:12px">Завантаження каталогу…</span>';
+  const all = await getServices();
+  const linked = new Set(_mcSvcItems.map(x=>Number(x.service_id)));
+  const free = all.filter(s=>!linked.has(Number(s.id)));
+  if (!free.length) { row.innerHTML = '<span class="set-p" style="font-size:12px">Усі послуги каталогу вже додані цьому майстру.</span>'; return; }
+  let cat=null, opts='';
+  for (const s of free) {
+    const c = s.category || 'Без категорії';
+    if (c!==cat){ if(cat!==null) opts+='</optgroup>'; opts+=`<optgroup label="${_esc(c)}">`; cat=c; }
+    opts += `<option value="${s.id}" data-price="${s.price!=null?Number(s.price):''}">${_esc(s.name)}${s.price!=null?' · '+Number(s.price)+' ₴':''}</option>`;
+  }
+  if (cat!==null) opts+='</optgroup>';
+  row.innerHTML = `<select id="mcSvcAddSel" class="input" style="flex:1;min-width:220px;padding:8px">${opts}</select>
+    <input id="mcSvcAddPrice" type="number" min="0" step="1" class="input" style="width:120px" placeholder="Ціна (базова)" title="Персональна ціна майстра; порожньо = базова з каталогу">
+    <button class="btn btn-sm btn-primary" onclick="_mcSvcAddSave()">Додати</button>`;
+}
+async function _mcSvcAddSave(){
+  const sel = document.getElementById('mcSvcAddSel'); if(!sel || !sel.value) return;
+  const priceRaw = (document.getElementById('mcSvcAddPrice')||{}).value;
+  try {
+    const r = await api('/api/master-services', { method:'POST', body: JSON.stringify({
+      master_id: Number(_mcId), service_id: Number(sel.value),
+      price: priceRaw==='' || priceRaw==null ? null : Number(priceRaw) }) });
+    if (r && r.ok) { toast('Додано'); delete _msIdsCache[Number(_mcId)]; document.getElementById('mcSvcAddRow').style.display='none'; _mcSvcLoad(); }
+    else toast((r&&r.error)||'Помилка');
+  } catch(e){ toast('Помилка: '+(e.message||e)); }
 }
 function _mcTabSalary(){
   const ms = _mcData.ms, s = _mcData.stats;
