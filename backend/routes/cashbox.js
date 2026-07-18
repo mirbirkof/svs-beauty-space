@@ -115,10 +115,27 @@ router.get('/today', async (req, res) => {
   try {
     const todayStr = new Date().toISOString().slice(0, 10);
     const reqDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : todayStr;
-    // минулі/майбутні дні — це історія, доступна лише власнику (cashbox.history)
+    // минулі/майбутні дні — це історія, доступна лише власнику (cashbox.history).
+    // ВИНЯТОК (Босс, 18.07): коли власник увімкнув «редагувати минулі дні»
+    // (allow_edit_past, та сама настройка що відкриває журнал) — адмін автоматично
+    // бачить КАСУ ЗА ДЕНЬ за минулі дні для звірки. Тільки денна каса (/today) —
+    // періоди і статистика (/finance) лишаються owner-only. Семантика строку дії
+    // 1-в-1 як у журналі (schedule.js pastEditDenied): allow_edit_past_until.
     if (reqDate !== todayStr && !hasPermission(req.user?.permissions || [], 'cashbox.history')) {
-      return res.status(403).json({ error: 'forbidden', need: 'cashbox.history',
-        message: 'Каса за минулі дні доступна лише власнику' });
+      let pastOk = false;
+      if (reqDate < todayStr) {
+        try {
+          const { getSetting } = require('../lib/settings');
+          if ((await getSetting('allow_edit_past', false)) === true) {
+            const until = await getSetting('allow_edit_past_until', null);
+            pastOk = !(until && !isNaN(Date.parse(until)) && Date.parse(until) < Date.now());
+          }
+        } catch (_) { /* збій перевірки → доступ не відкриваємо */ }
+      }
+      if (!pastOk) {
+        return res.status(403).json({ error: 'forbidden', need: 'cashbox.history',
+          message: 'Каса за минулі дні доступна лише власнику' });
+      }
     }
     const r = await pool.query(
       `SELECT

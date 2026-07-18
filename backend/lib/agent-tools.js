@@ -270,6 +270,52 @@ const TOOLS = {
     },
   },
 
+  // ── Журнал: записи за дату (Босс, 18.07: «зроби помічника розумнішим» —
+  //    найчастіші питання «хто записаний завтра?», «що по журналу?») ──
+  get_appointments: {
+    category: 'manager',
+    description: 'Записи журналу на дату: час, клієнт, майстер, послуга, статус. Параметри: {date?: "YYYY-MM-DD" (за замовч. сьогодні), master_id?: number}.',
+    parameters_schema: { type: 'object', properties: { date: { type: 'string' }, master_id: { type: 'number' } } },
+    is_destructive: false,
+    async impl(args) {
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(String(args.date || '')) ? args.date
+        : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' });
+      const p = [day]; let mf = '';
+      if (args.master_id) { p.push(Number(args.master_id)); mf = ' AND a.master_id=$2'; }
+      const rows = await q(
+        `SELECT to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','HH24:MI') AS t,
+                c.name AS client, m.name AS master, s.name AS service, a.status
+           FROM appointments a
+           LEFT JOIN clients c ON c.id=a.client_id
+           LEFT JOIN masters m ON m.id=a.master_id
+           LEFT JOIN services s ON s.id=a.service_id
+          WHERE (a.starts_at AT TIME ZONE 'Europe/Kiev')::date = $1::date
+            AND a.status NOT IN ('cancelled')${mf}
+          ORDER BY a.starts_at LIMIT 80`, p).catch(() => []);
+      return { date: day, count: rows.length, appointments: rows };
+    },
+  },
+
+  // ── Вільні слоти майстра (реюз бойового слот-движка — та сама логіка, що онлайн-запис) ──
+  get_free_slots: {
+    category: 'manager',
+    description: 'Вільні слоти майстра на дату (той самий движок, що онлайн-запис). Параметри: {master_id: number, date?: "YYYY-MM-DD", duration_min?: number (за замовч. 60)}.',
+    parameters_schema: { type: 'object', properties: { master_id: { type: 'number' }, date: { type: 'string' }, duration_min: { type: 'number' } }, required: ['master_id'] },
+    is_destructive: false,
+    async impl(args) {
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(String(args.date || '')) ? args.date
+        : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' });
+      try {
+        const { freeSlotsForDate } = require('./slot-engine');
+        const { getPool } = require('../db-pg');
+        const slots = await freeSlotsForDate(getPool(), {
+          date: day, masterIds: [Number(args.master_id)], durationMin: Number(args.duration_min) || 60 });
+        return { date: day, master_id: Number(args.master_id),
+          free: (slots || []).slice(0, 40).map(x => x.label) };
+      } catch (e) { return { error: 'slots-failed', detail: e.message.slice(0, 80) }; }
+    },
+  },
+
   // ── Управлінські дії (потребують підтвердження) ──
   create_expense: {
     category: 'manager',

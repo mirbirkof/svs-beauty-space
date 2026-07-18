@@ -14172,7 +14172,7 @@ function _aiNavigate(page){
 }
 function _aiEsc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 window._aiHist = (function(){ try{ return JSON.parse(localStorage.getItem('aiChatHist')||'[]'); }catch(_){ return []; } })();
-function _aiSaveLog(){ try{ const l=document.getElementById('aiFabLog'); if(l) localStorage.setItem('aiChatLog', l.innerHTML); localStorage.setItem('aiChatHist', JSON.stringify(window._aiHist.slice(-20))); }catch(_){} }
+function _aiSaveLog(){ try{ const l=document.getElementById('aiFabLog'); if(l) localStorage.setItem('aiChatLog', l.innerHTML); localStorage.setItem('aiChatHist', JSON.stringify(window._aiHist.slice(-30))); }catch(_){} }
 function _aiRestore(){ try{ const saved=localStorage.getItem('aiChatLog'); const l=document.getElementById('aiFabLog'); if(saved && l) l.innerHTML=saved; }catch(_){} }
 function _aiAdd(cls,html){ const l=document.getElementById('aiFabLog'); if(!l)return; l.innerHTML+=`<div class="${cls}"><span>${html}</span></div>`; l.scrollTop=l.scrollHeight; _aiSaveLog(); }
 async function aiFabSend(){
@@ -14181,7 +14181,7 @@ async function aiFabSend(){
   window._aiHist.push({role:'user',text:msg});
   _aiAdd('bot','<i id="aiFabWait">друкує…</i>');
   try{
-    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({message:msg, history:window._aiHist.slice(-8,-1)})});
+    const r=await api('/api/manager/assistant',{method:'POST',body:JSON.stringify({message:msg, history:window._aiHist.slice(-14,-1)})});
     document.getElementById('aiFabWait')?.closest('.bot')?.remove();
     if(r.pending){ window._aiFabPending=r.pending;
       _aiAdd('bot',`Підтвердьте: <i>${_aiEsc(r.pending.label)}</i><br><button onclick="aiFabConfirm(true)" style="margin-top:6px;border:none;background:#7c5cff;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Так</button> <button onclick="aiFabConfirm(false)" style="border:1px solid #e3e6ef;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer">Ні</button>`);

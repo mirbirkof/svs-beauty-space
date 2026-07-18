@@ -51,10 +51,12 @@ router.post('/ai-settings', requirePerm('reports.finance'), async (req, res) => 
 // Помічник керуючого (v1): командний чат тільки з читаючими інструментами.
 // ReAct-цикл, без деструктивних дій — безпечно. Дії з підтвердженням — наступний крок.
 const ASSISTANT_TOOLS = [
-  // читання
+  // читання (Босс 18.07 «зроби розумнішим»: підключені РАНІШЕ ЗАБУТІ інструменти
+  // get_revenue/get_top_services/get_client_history/search_kb + нові get_appointments/get_free_slots)
   'get_cashbox', 'get_month_plan', 'get_closure', 'get_clients_to_rebook', 'get_services', 'get_client', 'get_masters',
+  'get_appointments', 'get_free_slots', 'get_revenue', 'get_top_services', 'get_client_history', 'search_kb',
   // дії (потребують підтвердження)
-  'create_expense', 'add_bonus', 'add_penalty',
+  'create_expense', 'add_bonus', 'add_penalty', 'add_client_note',
 ];
 // RBAC: яке право потрібне для кожного інструмента. null = доступно всім авторизованим.
 // Перевіряється і при формуванні каталогу (LLM бачить лише дозволене), і ПЕРЕД виконанням
@@ -67,6 +69,13 @@ const TOOL_PERMS = {
   get_clients_to_rebook: 'clients.read', // повертає телефони клієнтів
   get_client: 'clients.read',            // контакти клієнта
   get_masters: 'masters.read',
+  get_appointments: 'schedule.read',      // журнал — база роботи адміна
+  get_free_slots: 'schedule.read',
+  get_revenue: 'reports.finance',         // виручка за період — фінанси
+  get_top_services: 'reports.read',
+  get_client_history: 'clients.read',
+  search_kb: null,                        // база знань CRM — не секрет
+  add_client_note: 'clients.write',
   create_expense: 'cashbox.write',
   add_bonus: 'payroll.write',
   add_penalty: 'payroll.write',
@@ -161,8 +170,11 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const ownerNote = fullAccess
       ? `\nВАЖЛИВО: цей користувач — ВЛАСНИК/керівник салону з ПОВНИМ доступом. Йому дозволено АБСОЛЮТНО ВСЕ. НІКОЛИ не кажи йому «доступно лише для керівника» чи «у вас немає прав» — він і є керівник. Якщо чогось немає в переліку інструментів/сторінок нижче — це просто ще не підключено в помічнику, так і скажи, але не як відмову по правах.`
       : '';
+    const kyivNow = new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kiev', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const kyivISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' });
     const system = `${LANG_CMD}
-Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами. Мова поля "response" — визначена командою у першому рядку (мова питання користувача), незалежно від того, що цей промпт українською.
+Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами.
+ЗАРАЗ: ${kyivNow} (Київ). Сьогодні = ${kyivISO}. «Завтра» = наступний день від цієї дати — рахуй дати САМ і передавай в інструменти у форматі YYYY-MM-DD. Мова поля "response" — визначена командою у першому рядку (мова питання користувача), незалежно від того, що цей промпт українською.
 
 ХТО З ТОБОЮ ГОВОРИТЬ: «${u.display_name || u.role}» — ${fullAccess
       ? 'ВЛАСНИК салону. Йому можна все, звертайся з повагою, показуй повну картину.'
@@ -199,18 +211,20 @@ ${catalog ? 'Інструменти:\n' + catalog : 'Інструментів д
 
 ‼ МОВА ВІДПОВІДІ (НАЙВИЩИЙ ПРІОРИТЕТ): визнач мову ПИТАННЯ користувача і поле "response" пиши ТІЄЮ Ж мовою. Питання англійською → response English. Питання польською → response po polsku. Питання російською → response русский. НЕ перекладай на українську, якщо питали іншою мовою — цей промпт українською, але ТИ відповідаєш мовою користувача. Якщо мова питання незрозуміла — мовою «${salonLang}».
 
-Працюй покроково. Відповідай ЛИШЕ валідним JSON:
-{"action":"tool","tool":"<імʼя>","args":{...}}
+Працюй покроково. Перед кожною дією СПОЧАТКУ подумай у полі "thought" (1 коротке речення:
+що людина хоче і який інструмент/крок наступний — це поле користувач НЕ бачить).
+Відповідай ЛИШЕ валідним JSON:
+{"thought":"<міркування>","action":"tool","tool":"<імʼя>","args":{...}}
 {"action":"open_page","page":"<ключ>","response":"<не лише «відкрив X», а Й КОРОТКА покрокова інструкція 1→2→3 що робити на цій сторінці>"}
 {"action":"final","response":"<відповідь людині>"}
 Для дій (create_expense/add_bonus/add_penalty) за потреби знайди id через get_masters, потім виклич дію — система попросить підтвердження.`;
 
     const cfg = await aiConfig();
     // Контекст попередніх реплік (заметка #83 — бот має памʼятати діалог)
-    const hist = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-8) : [];
+    const hist = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-14) : [];
     const trail = [];
     for (const h of hist) {
-      if (h && h.text) trail.push(`${h.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(h.text).slice(0, 300)}`);
+      if (h && h.text) trail.push(`${h.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(h.text).slice(0, 500)}`);
     }
     trail.push(`USER: ${question}`);
     let answer = null, pending = null;
