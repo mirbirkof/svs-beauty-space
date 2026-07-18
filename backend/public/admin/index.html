@@ -3312,6 +3312,30 @@ async function vertSwitchGo(v) {
     location.reload();
   } catch (e) { toast('Помилка перемикання', 'error'); }
 }
+// ── Автовиявлення нової версії (18.07): відкриті вкладки співробітників не бачать
+// оновлень і ловлять «у власника працює, у мене ні». Раз на 4 хв порівнюємо ETag
+// index.html; змінився → жовта плашка з кнопкою оновлення (не перериваємо роботу).
+(function () {
+  let _verTag = null;
+  async function verPing() {
+    try {
+      const r = await fetch('/admin/index.html', { method: 'HEAD', cache: 'no-store' });
+      const tag = r.headers.get('etag') || r.headers.get('last-modified');
+      if (!tag) return;
+      if (_verTag === null) { _verTag = tag; return; }
+      if (tag !== _verTag && !document.getElementById('verBanner')) {
+        const b = document.createElement('div');
+        b.id = 'verBanner';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#f59e0b;color:#1a1a1a;padding:10px 16px;text-align:center;font-size:14px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.2)';
+        b.innerHTML = 'Вийшло оновлення CRM — щоб все працювало коректно, оновіть сторінку. <button onclick="location.reload()" style="margin-left:10px;padding:6px 16px;border:0;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;font-weight:600">Оновити зараз</button>';
+        document.body.appendChild(b);
+      }
+    } catch (_) {}
+  }
+  setTimeout(verPing, 15000);
+  setInterval(verPing, 4 * 60 * 1000);
+})();
+
 async function applyEntitlements() {
   let ent;
   try { ent = await api('/api/my/entitlements'); } catch (_) { return; }
@@ -10092,7 +10116,12 @@ async function getMasterServiceIds(masterId) {
     const ids = new Set((r.items || []).filter(x => x.active !== false).map(x => Number(x.service_id)));
     // майстер БЕЗ налаштованих звʼязок не бачить весь каталог з цінами — порожній набір
     _msIdsCache[key] = ids.size ? ids : ((USER && USER.role === 'master') ? new Set([-1]) : null);
-  } catch { _msIdsCache[key] = (USER && USER.role === 'master') ? new Set([-1]) : null; }
+  } catch {
+    // Збій запиту НЕ кешуємо (раніше null залипав на всю сесію → фільтр майстра
+    // відвалювався і показувались ЧУЖІ послуги «не його професії»). Майстру, як і
+    // раніше, закритий каталог; іншим — разовий фолбек без запису в кеш.
+    return (USER && USER.role === 'master') ? new Set([-1]) : null;
+  }
   return _msIdsCache[key];
 }
 // Стан відкритого пікера послуг (один модал за раз): повний список + фільтр майстра
