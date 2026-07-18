@@ -42,6 +42,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const lang = b.lang ? String(b.lang).slice(0, 5).toLowerCase() : 'uk';
     // account_type='solo' → майстер-одиночка: безкоштовний план solo
     const accountType = b.account_type === 'solo' ? 'solo' : 'salon';
+    // Вертикаль бізнесу (Phase A, 18.07): обирається на реєстрації і визначає, які модулі
+    // «існують» для тенанта (lib/vertical.js, fail-closed). Невідоме значення → beauty.
+    const businessType = ['beauty', 'fitness', 'dental'].includes(b.business_type) ? b.business_type : 'beauty';
     let planCode = ALLOWED_PLANS.includes(b.plan_code) ? b.plan_code : 'pro';
     if (accountType === 'solo') planCode = 'solo';
     const cycle = b.cycle === 'yearly' ? 'yearly' : 'monthly';
@@ -52,7 +55,8 @@ router.post('/signup', signupLimiter, async (req, res) => {
     if (!salonName) return res.status(400).json({ error: 'salon-name-required' });
     if (salonName.length > 120) return res.status(400).json({ error: 'salon-name-too-long' });
     if (!phone || phone.length < 10) return res.status(400).json({ error: 'valid-phone-required' });
-    if (!password || password.length < 6) return res.status(400).json({ error: 'password-min-6' });
+    // SaaS-поріг (Phase A): min 8 символів для НОВИХ реєстрацій (старі паролі не чіпаємо).
+    if (!password || password.length < 8) return res.status(400).json({ error: 'password-min-8' });
     // GDPR (блокер G1, ужесточено РАУНД3-m5): згода має бути ЯВНОЮ — сервер не довіряє
     // «мовчазній» згоді. Форма шле consent:true з 11.07 (commit 67aa4ea), API-клієнти зобовʼязані теж.
     if (b.consent !== true && b.consent !== 'true') return res.status(400).json({ error: 'consent-required' });
@@ -70,7 +74,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
     const password_hash = await hashPassword(password);
     const { token, deeplink, bot_username } = await verify.createPending({
       phone, salonName, ownerName, email, password_hash, accountType, planCode, cycle,
-      country, lang, refCode: (b.ref || req.query.ref || '').toString().trim() || null,
+      businessType, country, lang, refCode: (b.ref || req.query.ref || '').toString().trim() || null,
       consent: true, consentIp: cip,
     });
     res.status(202).json({

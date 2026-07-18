@@ -58,13 +58,16 @@ async function createTenant(name, opts = {}, actor = null) {
   const trial = opts.trial !== false; // по умолчанию trial 14д
   const ownerName = opts.owner_name || 'Власник';
   const email = opts.email || null;
+  // Вертикаль (Phase A, 18.07): выбирается на signup. Невалидное значение → beauty
+  // (CHECK в мигр. 272 всё равно не пропустит чужое — двойная защита).
+  const businessType = ['beauty', 'fitness', 'dental'].includes(opts.business_type) ? opts.business_type : 'beauty';
 
   const pool = getPool();
   const slug = await uniqueSlug(name);
   // 1) Тенант. status=active (доступ открыт; платёжный статус живёт в subscription).
   const tenant = (await pool.query(
-    `INSERT INTO tenants (name, slug, status, plan, country, lang) VALUES ($1,$2,'active',$3,$4,COALESCE($5,'uk')) RETURNING *`,
-    [String(name).trim(), slug, planCode, opts.country || null, opts.lang || null])).rows[0];
+    `INSERT INTO tenants (name, slug, status, plan, country, lang, business_type) VALUES ($1,$2,'active',$3,$4,COALESCE($5,'uk'),$6) RETURNING *`,
+    [String(name).trim(), slug, planCode, opts.country || null, opts.lang || null, businessType])).rows[0];
 
   // 2) Роли + владелец — в контексте нового тенанта (RLS WITH CHECK + DEFAULT tenant_id).
   // Критичная связка: без владельца салон = «мёртвый» (войти нельзя). Аудит: если этот шаг

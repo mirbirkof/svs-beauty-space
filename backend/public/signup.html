@@ -17,10 +17,10 @@
   input{ width:100%; padding:13px 14px; border-radius:11px; border:1px solid var(--line); background:#13142a; color:var(--ink); font-size:15px; outline:none; transition:border .15s; }
   input:focus{ border-color:var(--acc); }
   .plans{ display:flex; gap:8px; margin-top:6px; }
-  .plan,.acct{ flex:1; cursor:pointer; border:1px solid var(--line); border-radius:11px; padding:11px 8px; text-align:center; font-size:13px; background:#13142a; transition:.15s; }
-  .plan b,.acct b{ display:block; font-size:14px; margin-bottom:2px; }
-  .plan small,.acct small{ color:var(--muted); font-size:11px; }
-  .plan.active,.acct.active{ border-color:var(--acc); background:#1d1b3e; box-shadow:0 0 0 1px var(--acc) inset; }
+  .plan,.acct,.biz{ flex:1; cursor:pointer; border:1px solid var(--line); border-radius:11px; padding:11px 8px; text-align:center; font-size:13px; background:#13142a; transition:.15s; }
+  .plan b,.acct b,.biz b{ display:block; font-size:14px; margin-bottom:2px; }
+  .plan small,.acct small,.biz small{ color:var(--muted); font-size:11px; }
+  .plan.active,.acct.active,.biz.active{ border-color:var(--acc); background:#1d1b3e; box-shadow:0 0 0 1px var(--acc) inset; }
   button{ width:100%; margin-top:22px; padding:14px; border:0; border-radius:12px; background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; font-size:16px; font-weight:600; cursor:pointer; transition:.15s; }
   button:disabled{ opacity:.55; cursor:not-allowed; }
   .hint{ font-size:12px; color:var(--muted); margin-top:14px; text-align:center; }
@@ -39,6 +39,13 @@
     </div>
     <div class="card">
       <form id="f" autocomplete="on">
+        <label>Тип бізнесу</label>
+        <div class="plans">
+          <div class="biz active" data-biz="beauty"><b>Салон краси</b><small>б'юті-послуги</small></div>
+          <div class="biz" data-biz="fitness"><b>Фітнес / Йога</b><small>класи, абонементи</small></div>
+          <div class="biz" data-biz="dental"><b>Стоматологія</b><small>пацієнти, плани</small></div>
+        </div>
+
         <label>Тип акаунта</label>
         <div class="plans">
           <div class="acct active" data-acct="salon"><b>Салон</b><small>команда майстрів</small></div>
@@ -59,8 +66,8 @@
         <label>Телефон (логін у CRM)</label>
         <input id="phone" required inputmode="tel" placeholder="+380 ...">
 
-        <label>Пароль (мін. 6 символів)</label>
-        <input id="password" required type="password" minlength="6" placeholder="••••••">
+        <label>Пароль (мін. 8 символів)</label>
+        <input id="password" required type="password" minlength="8" placeholder="••••••••">
 
         <label>E-mail (необов'язково)</label>
         <input id="email" type="email" placeholder="you@example.com">
@@ -211,16 +218,33 @@
   const lblSalon = document.getElementById('lbl_salon');
   const lblOwner = document.getElementById('lbl_owner');
   const btnEl = document.getElementById('btn');
+  // Вертикаль бізнесу: визначає, які модулі буде видно в CRM (салон/фітнес/стоматологія)
+  let biz = 'beauty';
+  const BIZ_LBL = {
+    beauty:  { salon: 'Назва салону',   soloName: 'майстер', trial14: '14 днів безкоштовно · оплата пізніше · картка не потрібна' },
+    fitness: { salon: 'Назва студії/клубу', soloName: 'тренер', trial14: '14 днів безкоштовно · класи, абонементи, чек-ін' },
+    dental:  { salon: 'Назва клініки',  soloName: 'лікар',   trial14: '14 днів безкоштовно · картки пацієнтів, плани лікування' },
+  };
+  function refreshLabels(){
+    const solo = acct === 'solo';
+    const L = BIZ_LBL[biz];
+    lblSalon.textContent = solo ? 'Назва профілю (ваше імʼя чи бренд)' : L.salon;
+    lblOwner.textContent = solo ? ('Ваше імʼя (' + L.soloName + ')') : "Ваше ім'я (власник)";
+    trialNote.textContent = solo
+      ? 'Безкоштовно назавжди · базові функції + платні модулі за бажанням'
+      : L.trial14;
+  }
+  document.querySelectorAll('.biz').forEach(bEl => bEl.addEventListener('click', () => {
+    document.querySelectorAll('.biz').forEach(x => x.classList.remove('active'));
+    bEl.classList.add('active'); biz = bEl.dataset.biz;
+    refreshLabels();
+  }));
   document.querySelectorAll('.acct').forEach(a => a.addEventListener('click', () => {
     document.querySelectorAll('.acct').forEach(x => x.classList.remove('active'));
     a.classList.add('active'); acct = a.dataset.acct;
     const solo = acct === 'solo';
     planBlock.style.display = solo ? 'none' : '';
-    lblSalon.textContent = solo ? 'Назва профілю (ваше імʼя чи бренд)' : 'Назва салону';
-    lblOwner.textContent = solo ? 'Ваше імʼя (майстер)' : "Ваше ім'я (власник)";
-    trialNote.textContent = solo
-      ? 'Безкоштовно назавжди · базові функції + платні модулі за бажанням'
-      : '14 днів безкоштовно · оплата пізніше · картка не потрібна';
+    refreshLabels();
     btnEl.textContent = solo ? 'Створити безкоштовний профіль' : 'Почати безкоштовно';
   }));
 
@@ -238,6 +262,7 @@
       password: document.getElementById('password').value,
       email: document.getElementById('email').value.trim() || null,
       account_type: acct,
+      business_type: biz,
       plan_code: acct === 'solo' ? 'solo' : plan,
       cycle: acct === 'solo' ? 'monthly' : cycle,
       ref: REF || undefined,
@@ -255,6 +280,7 @@
         const human = {
           'phone-already-registered': 'Цей телефон вже зареєстрований. Увійдіть у наявний салон.',
           'password-min-6': 'Пароль має містити щонайменше 6 символів.',
+          'password-min-8': 'Пароль має містити щонайменше 8 символів.',
           'valid-phone-required': 'Вкажіть коректний номер телефону.',
           'salon-name-required': 'Вкажіть назву салону.',
         }[data.error] || ('Помилка: ' + (data.error || 'спробуйте ще раз'));

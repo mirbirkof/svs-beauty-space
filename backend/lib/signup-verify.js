@@ -27,11 +27,12 @@ async function createPending(fields) {
   await getPool().query(
     `INSERT INTO pending_signups
        (token, phone, salon_name, owner_name, email, password_hash, account_type,
-        plan_code, cycle, country, lang, ref_code, consent, consent_ip)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        plan_code, cycle, country, lang, ref_code, consent, consent_ip, business_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [token, fields.phone, fields.salonName, fields.ownerName, fields.email, fields.password_hash,
      fields.accountType, fields.planCode, fields.cycle, fields.country, fields.lang,
-     fields.refCode || null, !!fields.consent, fields.consentIp || null]);
+     fields.refCode || null, !!fields.consent, fields.consentIp || null,
+     fields.businessType || 'beauty']);
   return { token, deeplink: `https://t.me/${BOT_USERNAME}?start=${token}`, bot_username: BOT_USERNAME };
 }
 
@@ -82,6 +83,7 @@ async function onContactVerify(chatId, contact, fromUserId) {
     const result = await finalizeSignup({
       salonName: p.salon_name, ownerName: p.owner_name, phone: p.phone, password_hash: p.password_hash,
       email: p.email, accountType: p.account_type, planCode: p.plan_code, cycle: p.cycle,
+      businessType: p.business_type || 'beauty',
       needTrial: !['solo', 'free'].includes(p.plan_code), country: p.country, lang: p.lang,
       refCode: p.ref_code, consentIp: p.consent_ip,
     });

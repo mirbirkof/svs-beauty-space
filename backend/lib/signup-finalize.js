@@ -10,13 +10,14 @@ const tm = require('./tenant-mgmt');
 async function finalizeSignup(data) {
   const {
     salonName, ownerName, phone, password_hash, email,
-    accountType, planCode, cycle, needTrial, country, lang, refCode, consentIp,
+    accountType, planCode, cycle, needTrial, country, lang, refCode, consentIp, businessType,
   } = data;
 
   // createTenant умеет принять готовый хеш (passwordHash) или пароль. Передаём хеш.
   const r = await tm.createTenant(salonName, {
     phone, passwordHash: password_hash, owner_name: ownerName, email,
     plan_code: planCode, cycle, trial: needTrial, country, lang,
+    business_type: businessType,
   }, { id: null, source: 'public-signup-verified' });
 
   const { getPool } = require('../db-pg');

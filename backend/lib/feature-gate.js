@@ -40,7 +40,11 @@ async function featureAllowed(key) {
       WHERE tl.tenant_id = $3
       ORDER BY tl.updated_at DESC NULLS LAST LIMIT 1`,
     [key, JSON.stringify(LEGACY_SLUG), tid]);
-  if (!pf.rows.length) return { ok: true, reason: 'no-plan-row' }; // fail-open
+  // FAIL-CLOSED (Phase A, 18.07): немає рядка фічі в плані → відмова. Перевірено фактом:
+  // всі 8 гейтованих ключів засіяні у всіх планах, всі тенанти мають tenant_licenses —
+  // існуючих не ламаємо. Нова фіча без сіду plan_features тепер дає явний 403, а не
+  // безкоштовну роздачу платного модуля (стара логіка «no-plan-row → ok»).
+  if (!pf.rows.length) return { ok: false, reason: 'no-plan-row' };
   // несплачений/скасований план → платні фічі гаснуть (past_due ставить білінг-тік)
   const badStatus = ['past_due', 'cancelled', 'suspended', 'expired'].includes(String(pf.rows[0].status || ''));
   if (pf.rows[0].enabled && !badStatus) return { ok: true, reason: 'plan' };
@@ -80,7 +84,15 @@ function requireFeature(key) {
         message: `Функція «${key}» недоступна на вашому тарифі. Оновіть план або підключіть модуль.` });
     } catch (e) {
       console.error('[feature-gate]', key, e.message);
-      return next(); // fail-open
+      // FAIL-CLOSED (Phase A, 18.07): збій БД більше НЕ відкриває платні модулі безкоштовно.
+      // stale-if-error: використовуємо останню відому відповідь (навіть протухлу з кешу),
+      // щоб миготіння БД не клало робочі салони; зовсім без історії → 503 (тимчасово).
+      const stale = _cache.get(`${req.tenant_id || 't'}:${key}`);
+      if (stale) {
+        if (stale.ok) return next();
+        return res.status(403).json({ error: 'feature-locked', feature: key });
+      }
+      return res.status(503).json({ error: 'feature-check-unavailable', retry: true });
     }
   };
 }
