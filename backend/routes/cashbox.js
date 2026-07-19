@@ -165,14 +165,40 @@ router.get('/today', async (req, res) => {
       [reqDate]
     );
     // Пояснення «недостачі»: непроведені записи (гроші ще не отримані), знижки, скасовані.
+    // «Непроведені» — ТА САМА формула, що в /api/schedule/unsettled (Босс 19.07):
+    // оплачено = прапор закриття / пряма каса / зафіксований у касі продаж послуги того ж
+    // клієнта+майстра+дня; 0₴ і повернення не рахуються; оплачений дубль-слот виключено.
+    // Інакше жовтий блок звірки розходився з панеллю «Забули провести».
     const ap = await pool.query(
-      `SELECT
-         COALESCE(SUM(discount_amount),0)::float AS discounts,
-         COUNT(*) FILTER (WHERE pay_settled_at IS NULL AND status NOT IN ('cancelled','no_show'))::int AS unsettled_cnt,
-         COALESCE(SUM(CASE WHEN pay_settled_at IS NULL AND status NOT IN ('cancelled','no_show') THEN price ELSE 0 END),0)::float AS unsettled_sum,
-         COUNT(*) FILTER (WHERE status IN ('cancelled','no_show'))::int AS cancelled_cnt
-       FROM appointments
-       WHERE starts_at >= $1::date AND starts_at < ($1::date + INTERVAL '1 day')`,
+      `WITH day_appts AS (
+         SELECT a.* FROM appointments a
+          WHERE a.starts_at >= $1::date AND a.starts_at < ($1::date + INTERVAL '1 day')),
+       paid_flag AS (
+         SELECT a.id,
+                (a.pay_settled_at IS NOT NULL
+                 OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
+                 OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(
+                       SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+                         AND co.bp_client=a.bp_client AND co.master_id=a.master_id
+                         AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                             = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))) AS paid
+           FROM day_appts a)
+       SELECT
+         COALESCE(SUM(a.discount_amount),0)::float AS discounts,
+         COUNT(*) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
+                            AND COALESCE(a.real_amount,a.price,0) > 0
+                            AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
+                                            WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
+                                              AND (b.client_id=a.client_id
+                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,''))))))::int AS unsettled_cnt,
+         COALESCE(SUM(a.price) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
+                            AND COALESCE(a.real_amount,a.price,0) > 0
+                            AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
+                                            WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
+                                              AND (b.client_id=a.client_id
+                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,''))))))::float AS unsettled_sum,
+         COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow','no_show'))::int AS cancelled_cnt
+       FROM day_appts a JOIN paid_flag pf ON pf.id = a.id`,
       [reqDate]
     );
     const b = brk.rows[0], a = ap.rows[0];
