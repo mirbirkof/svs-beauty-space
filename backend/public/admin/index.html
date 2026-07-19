@@ -8974,9 +8974,9 @@ async function puAutoRun(){
   if(r&&r.ok){ toast('Кандидатів: '+r.candidates+', створено заказів: '+r.orders_created); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 
-// Забули провести (Босс 19.07): дні з минулими записами без проведеної оплати.
-// Групуємо по днях («цілий день забули»). Рендеримо в усі контейнери .unsettled-list
-// (журнал + дашборд). Клік по дню → журнал переходить на нього для проведення.
+// Забули провести (Босс 19.07): минулі записи, НЕ закриті в касі (немає прямої каси).
+// Показуємо ПОШТУЧНО з майстром і клієнтом (Босс: «не видно на кому пропуск»), свіжі зверху.
+// Клік → журнал переходить на день запису і відкриває її для проведення.
 async function loadUnsettled() {
   const boxes = document.querySelectorAll('.unsettled-list');
   const cards = document.querySelectorAll('.unsettled-card');
@@ -8984,31 +8984,34 @@ async function loadUnsettled() {
   try {
     const r = await api('/api/schedule/unsettled');
     const items = (r && r.items) || [];
-    const total = items.reduce((s, x) => s + (x.cnt || 0), 0);
     if (!items.length) { cards.forEach(c => c.style.display = 'none'); return; }
     cards.forEach(c => c.style.display = '');
-    document.querySelectorAll('.unsettled-count').forEach(el => el.textContent = total + ' у ' + items.length + ' дн.');
+    const shown = items.length + (items.length >= 300 ? '+' : '');
+    document.querySelectorAll('.unsettled-count').forEach(el => el.textContent = shown);
     const html = items.map(a => {
-      const d = new Date(a.day + 'T00:00:00');
-      const dstr = d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const wd = d.toLocaleDateString('uk-UA', { weekday: 'short' });
-      return `<div onclick="openUnsettledDay('${a.day}')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--border,#f0f0f0);cursor:pointer">
-        <div><b>${dstr}</b> <span style="color:var(--text-secondary)">${wd}</span>
-          <div style="font-size:12.5px;color:#c23b34">${a.cnt} ${a.cnt === 1 ? 'запис' : (a.cnt < 5 ? 'записи' : 'записів')} не проведено</div></div>
-        <div style="text-align:right;white-space:nowrap"><b>${_money2(a.sum)} ₴</b>
-          <div style="font-size:11.5px;color:#c23b34;font-weight:600">відкрити день →</div></div>
+      const d = new Date(a.starts_at);
+      const dstr = d.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric' });
+      const tstr = d.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+      const mid = (a.master_id == null) ? 'null' : a.master_id;
+      return `<div onclick="openUnsettled(${a.id},'${a.day}',${mid})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--border,#f0f0f0);cursor:pointer">
+        <div style="min-width:0"><b>${dstr}</b> <span style="color:var(--text-secondary)">${tstr}</span>
+          <div style="font-size:13px;margin-top:1px">${escapeHtml(a.master_name || '—')} · <b>${escapeHtml(a.client_name || 'Клієнт')}</b></div>
+          <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(a.service_name || '—')}</div></div>
+        <div style="text-align:right;white-space:nowrap"><b>${_money2(a.price)} ₴</b>
+          <div style="font-size:11.5px;color:#c23b34;font-weight:600">провести →</div></div>
       </div>`;
     }).join('');
     boxes.forEach(b => b.innerHTML = html);
   } catch (e) { cards.forEach(c => c.style.display = 'none'); }
 }
-async function openUnsettledDay(dateStr) {
-  // переходимо в журнал на потрібний день
+async function openUnsettled(id, dateStr, masterId) {
   if (typeof go === 'function') go('journal');
   const di = document.getElementById('journalDate');
-  if (di) di.value = dateStr;
-  await loadJournal();
+  const cur = di ? di.value : null;
+  if (di && cur !== dateStr) { di.value = dateStr; await loadJournal(); }
+  else { await loadJournal(); }
   try { document.getElementById('page-journal').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+  try { openAppt(id, masterId); } catch (_) {}
 }
 async function loadJournal(silent) {
   const container = document.getElementById('journalContent');

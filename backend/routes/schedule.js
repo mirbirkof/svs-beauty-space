@@ -202,37 +202,38 @@ router.get('/masters/:id/portfolio', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// ── GET /api/schedule/unsettled — дні із записами, які ЗАБУЛИ провести (Босс 19.07) ──
-// «Не проведено» визначаємо ТОЧНО ТАК САМО, як журнал показує «оплачено» (див. /journal:
-// поле paid) — інакше було 1764 хибних (сирий флаг pay_settled_at не збігався з журналом).
-// Проведено = є касова операція по візиту АБО збіг продажу послуги того ж дня/майстра/клієнта.
-// Не проведено = НЕ те й НЕ інше. Групуємо по днях, дедуп слотів, за весь час.
-const PAID_SQL = `(
-  EXISTS(SELECT 1 FROM cash_operations co
-           WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-  OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
-           WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-             AND co.bp_client=a.bp_client AND co.master_id=a.master_id
-             AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
-                 = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
-)`;
+// ── GET /api/schedule/unsettled — записи, які ЗАБУЛИ провести (Босс 19.07) ──
+// НАДІЙНИЙ критерій «проведено» = є ПРЯМА касова операція саме по цьому візиту
+// (ref_type='appointment', ref_id=візит). Жодних евристик-збігів — вони і брехали
+// (ховали 27.06, показували зайве). «Не проведено» = минулий візит, який відбувся або
+// був заброньований, price>0, не скасований, і БЕЗ прямої каси. Повертаємо ПОШТУЧНО з
+// майстром і клієнтом (Босс: «не видно на кому пропуск»), свіжі зверху.
 router.get('/unsettled', async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(
-      `SELECT day, COUNT(*)::int AS cnt, COALESCE(SUM(price),0)::numeric AS sum
-         FROM (
-           SELECT DISTINCT ON (a.starts_at, a.master_id, COALESCE(a.client_name,''))
-                  (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date AS day, a.price
-             FROM appointments a
-            WHERE a.starts_at < NOW() AND a.price > 0
-              AND a.status NOT IN ('cancelled','noshow','no_show')
-              AND NOT ${PAID_SQL}
-            ORDER BY a.starts_at, a.master_id, COALESCE(a.client_name,''), a.price DESC
-         ) t
-        GROUP BY day ORDER BY day DESC LIMIT 400`);
-    const items = r.rows.map(x => ({ day: (x.day instanceof Date ? x.day.toISOString().slice(0,10) : String(x.day).slice(0,10)), cnt: x.cnt, sum: Number(x.sum) }));
-    res.json({ ok: true, items });
+      `SELECT a.id, a.starts_at, a.master_id, a.price, a.status,
+              COALESCE(m.name,'—') AS master_name,
+              COALESCE(NULLIF(a.client_name,''), c.name, 'Клієнт') AS client_name,
+              COALESCE(NULLIF(a.services_text,''), s.name, '—') AS service_name
+         FROM appointments a
+         LEFT JOIN masters m ON m.id = a.master_id
+         LEFT JOIN clients c ON c.id = a.client_id
+         LEFT JOIN services s ON s.id = a.service_id
+        WHERE a.starts_at < NOW() AND a.price > 0
+          AND a.status NOT IN ('cancelled','noshow','no_show')
+          AND NOT EXISTS(SELECT 1 FROM cash_operations co
+                          WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
+        ORDER BY a.starts_at DESC
+        LIMIT 300`);
+    const items = r.rows.map(x => ({
+      id: x.id,
+      day: (new Date(x.starts_at)).toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' }),
+      starts_at: x.starts_at, master_id: x.master_id, master_name: x.master_name,
+      client_name: x.client_name, service_name: x.service_name,
+      price: Number(x.price), status: x.status,
+    }));
+    res.json({ ok: true, items, total: items.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
