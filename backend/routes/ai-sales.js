@@ -91,6 +91,16 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
          ORDER BY revenue DESC LIMIT 8`, [W]).then(r => r.rows).catch(() => []),
     ]);
 
+    // ВИРУЧКА = РЕАЛЬНІ ГРОШІ з каси (cash_operations), а не ціни з журналу записів
+    // (Босс 19.07: журнал роздутий дублями BeautyPro-синхро → давав завищену суму.
+    // Єдине джерело правди для грошей — каса, як у дашборді/звітах). Метрики візитів
+    // (avg_check, multi_pct) лишаються з appointments — це поведінка, а не гроші.
+    const cashRev = await q(
+      `SELECT COALESCE(SUM(amount),0)::float AS revenue
+         FROM cash_operations
+        WHERE type='in' AND category IN ('sale_service','sale_product')
+          AND created_at >= NOW() - ($1 || ' days')::interval`, [W]).then(r => Number(r[0]?.revenue || 0)).catch(() => 0);
+
     // воронка по persisted offer'ах: offer→accepted→paid, дод.виручка, ROI, top, by_type
     const params = [];
     const wh = [];
@@ -145,7 +155,7 @@ router.get('/analytics', requirePerm('reports.finance'), async (req, res) => {
         visits, avg_check: avgCheck,
         avg_services: overall.avg_services || 0,
         multi_service_pct: curMulti,
-        revenue: Number(overall.revenue || 0),
+        revenue: cashRev,                 // реальні гроші з каси (не журнал)
       },
       by_master: byMaster.map(m => ({ name: m.name, visits: m.visits, avg_check: m.avg_check, multi_service_pct: m.multi_pct })),
       top_combos: combos.map(c => ({ a: c.n1 || '—', b: c.n2 || '—', count: c.cnt, revenue: c.revenue })),
