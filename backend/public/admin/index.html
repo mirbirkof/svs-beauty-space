@@ -804,6 +804,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="wsched" onclick="go('wsched')">
             <span class="material-icons-round">calendar_month</span> Графіки роботи
           </a>
+          <a class="sidebar-item" onclick="openMasterProfiles()" style="cursor:pointer" title="Профілі майстрів — картки з послугами, графіком і статистикою">
+            <span class="material-icons-round">badge</span> Профілі майстрів
+          </a>
           <a class="sidebar-item" data-page="tasks" onclick="go('tasks')">
             <span class="material-icons-round">checklist</span> Задачі
             <span class="sidebar-badge" id="badge-tasks" style="display:none">0</span>
@@ -3371,7 +3374,9 @@ async function applyEntitlements() {
     // Ми вдома (платформа, не демо), а стара home_session висить (перелогін у демо-режимі) —
     // чистимо, щоб наступний демо-вхід не пішов протухлим токеном.
     if (ent.is_platform && !inDemo && home) { try { localStorage.removeItem('svs_home_session'); } catch (_) {} home = null; }
-    if (!(ent.is_platform || (inDemo && home))) return;
+    // Босс 19.07: перемикач вертикалей (стомат/фітнес/велнес) ПРИБРАНО з домашнього
+    // салону. Показуємо ЛИШЕ всередині демо-режиму — щоб можна було повернутись додому.
+    if (!(inDemo && home)) return;
     try {
       const V_LBL = { beauty: "💅 Б'юті (мій салон)", fitness: '🏋 Фітнес (демо)', dental: '🦷 Стомат (демо)', wellness: '🧖 Велнес (демо)' };
       const current = inDemo ? (localStorage.getItem('svs_tenant_slug') || '').replace('demo-', '') : 'beauty';
@@ -11726,6 +11731,24 @@ function _mcSchedule(sj){
     </div>`;
   }).join('');
   return `<div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div>`;
+}
+// ── «Профілі майстрів» у Роботі салону (Босс 19.07): простий список ТІЛЬКИ
+// профілів працюючих майстрів → клік відкриває звичайну картку майстра. ──
+async function openMasterProfiles(){
+  const m = document.getElementById('masterCardModal');
+  const body = document.getElementById('masterCardBody');
+  document.getElementById('masterCardTitle').textContent = 'Профілі майстрів';
+  body.innerHTML = '<div class="empty">Завантаження…</div>';
+  m.style.display = 'flex';
+  try {
+    const r = await api('/api/schedule/masters');
+    const list = (r.items || r.masters || r || []).filter(x => x.active !== false && x.provides_services !== false);
+    if (!list.length) { body.innerHTML = '<div class="empty">Немає працюючих майстрів</div>'; return; }
+    body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:14px 0 8px">` +
+      list.map(x => `<button class="btn" style="justify-content:flex-start;gap:10px;padding:13px 14px;font-size:13.5px;font-weight:600" onclick="openMasterCard(${x.id})">
+          <span class="material-icons-round" style="font-size:19px;color:#7c5cff">account_circle</span>${x.name}${x.specialty?`<span style="font-weight:400;color:var(--text-secondary);font-size:11.5px;margin-left:auto">${x.specialty}</span>`:''}
+        </button>`).join('') + '</div>';
+  } catch(e){ body.innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
 }
 async function openMasterCard(id){
   _mcId = id;
