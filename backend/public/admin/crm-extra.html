@@ -1281,26 +1281,72 @@ async function saveMasterProfile(id){
     openMasterCard(id); loadMasters();
   }catch(e){ alert(e.message); }
 }
+let _ucGrant = [], _ucRoles = [];
 function openUserCard(id){
   const u = USERS_CACHE.find(x=>x.id===id) || {};
   // якщо у співробітника є картка майстра — відкриваємо єдину DIKIDI-картку
   if(u.master_id){ return openMasterCard(u.master_id); }
+  // Інакше — повноцінний профіль ДОСТУПУ (роль + права + пароль + активність). Босс 19.07.
   document.getElementById('cardModal').style.display='flex';
   document.getElementById('cardBody').innerHTML = `
-    <h2 style="margin:0 0 4px">${u.display_name||'Користувач'}</h2>
-    <div style="color:#888;font-size:13px;margin-bottom:14px"><span class="pill info">${u.role_name||u.role||''}</span></div>
-    <div style="font-size:14px;line-height:2">
-      <div><b>Логін/Тел:</b> ${u.username||fmtPhone(u.phone)}</div>
+    <h2 style="margin:0 0 4px">${_mcEsc(u.display_name)||'Користувач'}</h2>
+    <div style="color:#888;font-size:13px;margin-bottom:12px"><span class="pill info">${u.role_name||u.role||''}</span>
+      <span class="pill ${u.is_active?'ok':'gray'}" style="margin-left:6px">${u.is_active?'активний':'вимкнено'}</span></div>
+    <div style="font-size:13px;line-height:1.9;margin-bottom:12px">
+      <div><b>Логін/Тел:</b> ${u.username||fmtPhone(u.phone)||'—'}</div>
       <div><b>Email:</b> ${u.email||'—'}</div>
-      <div><b>Пароль:</b> ${u.has_password?'встановлено':'нема'}</div>
-      <div><b>Активний:</b> ${u.is_active?'так':'ні'}</div>
       <div><b>Останній вхід:</b> ${u.last_login_at?new Date(u.last_login_at).toLocaleString('uk'):'—'}</div>
-      ${u.master_id?`<div><b>Картка майстра:</b> #${u.master_id}</div>`:''}
     </div>
-    <div style="display:flex;gap:6px;margin-top:14px">
-      <button class="btn sm" onclick="closeCard();setPassword(${u.id})">Змінити пароль</button>
-      <button class="btn sm ghost" onclick="closeCard();issueToken(${u.id})">Видати токен</button>
+    <div id="ucAccBody"><div class="empty">Завантаження прав…</div></div>
+    <div style="display:flex;gap:6px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn sm" onclick="setPassword(${u.id})">Змінити пароль</button>
+      <button class="btn sm ghost" onclick="issueToken(${u.id})">Видати токен</button>
+      ${u.is_active
+        ? `<button class="btn sm ghost" onclick="deactivateUser(${u.id});closeCard()">Деактивувати</button>`
+        : `<button class="btn sm" style="background:#dcfce7;color:#16a34a" onclick="reactivateUser(${u.id});closeCard()">✓ Активувати</button>`}
     </div>`;
+  _ucLoad(u);
+}
+async function _ucLoad(u){
+  const box = document.getElementById('ucAccBody'); if(!box) return;
+  try {
+    const [rl, gl] = await Promise.all([
+      api('/api/users/roles/list').catch(()=>({items:[]})),
+      api('/api/users/grantable-perms').catch(()=>({items:[]}))
+    ]);
+    _ucRoles = rl.items || []; _ucGrant = gl.items || [];
+  } catch(e){ box.innerHTML = '<div class="empty">Права недоступні: '+(e.message||e)+'</div>'; return; }
+  const extra = new Set(Array.isArray(u.extra_permissions)?u.extra_permissions:[]);
+  const roleOpts = _ucRoles.map(r=>`<option value="${r.code}"${r.code===u.role?' selected':''}>${_mcEsc(r.name)}</option>`).join('');
+  const groups = {}; for(const p of _ucGrant){ (groups[p.group]=groups[p.group]||[]).push(p); }
+  const permHtml = Object.keys(groups).map(g=>`
+    <div style="margin:10px 0 2px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px">${g}</div>
+    ${groups[g].map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 0;cursor:pointer;font-size:13px">
+      <input type="checkbox" data-ucperm="${p.key}" ${extra.has(p.key)?'checked':''} style="width:16px;height:16px">${_mcEsc(p.label)}</label>`).join('')}`).join('');
+  box.innerHTML = `
+    <div style="max-width:320px;margin-bottom:6px">
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Роль</label>
+      <select id="ucRole" class="inp">${roleOpts||'<option>—</option>'}</select>
+    </div>
+    <div style="border-top:1px solid #eee;margin-top:8px;padding-top:4px">
+      <div style="font-size:13px;font-weight:700">Додаткові права</div>
+      ${permHtml||'<div class="empty">Немає прав для видачі</div>'}
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+      <button class="btn sm" onclick="_ucSave(${u.id})">Зберегти доступ</button>
+      <span id="ucMsg" style="font-size:12.5px"></span>
+    </div>`;
+}
+async function _ucSave(uid){
+  const msg=document.getElementById('ucMsg');
+  const role_code=(document.getElementById('ucRole')||{}).value||undefined;
+  const extra_permissions=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].map(i=>i.getAttribute('data-ucperm'));
+  msg.style.color='#888'; msg.textContent='Збереження…';
+  try{
+    const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({role_code,extra_permissions})});
+    if(r&&(r.ok||r.id||r.user)){ msg.style.color='#16a34a'; msg.textContent='Збережено ✓'; loadUsers(); }
+    else { msg.style.color='#dc2626'; msg.textContent=(r&&(r.message||r.error))||'Помилка'; }
+  }catch(e){ msg.style.color='#dc2626'; msg.textContent='Помилка: '+(e.message||e); }
 }
 async function loadUsers(){
   try{
