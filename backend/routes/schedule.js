@@ -203,14 +203,23 @@ router.get('/masters/:id/portfolio', async (req, res) => {
 });
 
 // ── GET /api/schedule/unsettled — записи, які ЗАБУЛИ провести (Босс 19.07) ──
-// НАДІЙНИЙ критерій «проведено» = є ПРЯМА касова операція саме по цьому візиту
-// (ref_type='appointment', ref_id=візит). Жодних евристик-збігів — вони і брехали
-// (ховали 27.06, показували зайве). «Не проведено» = минулий візит, який відбувся або
-// був заброньований, price>0, не скасований, і БЕЗ прямої каси. Повертаємо ПОШТУЧНО з
-// майстром і клієнтом (Босс: «не видно на кому пропуск»), свіжі зверху.
+// «ОПЛАЧЕНО» = будь-який реальний платіж по візиту: пряма касова операція, явний прапор
+// закриття (pay_settled_at), АБО зафіксований у касі продаж послуги тому ж клієнту тим
+// же майстром того ж дня. Тобто якщо гроші є в касі — візит проведено. «Не проведено» =
+// минулий платний візит, за який у касі грошей НЕ знайдено і немає оплаченого дубля.
+// PAID(al) — той самий вираз і для запису, і для його «двійника» (антидубль).
 router.get('/unsettled', async (req, res) => {
   try {
     const pool = getPool();
+    const PAID = (al) => `(
+      ${al}.pay_settled_at IS NOT NULL
+      OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=${al}.id)
+      OR (${al}.bp_client IS NOT NULL AND ${al}.master_id IS NOT NULL AND EXISTS(
+            SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+              AND co.bp_client=${al}.bp_client AND co.master_id=${al}.master_id
+              AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                  = (${al}.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
+    )`;
     const r = await pool.query(
       `SELECT a.id, a.starts_at, a.master_id, a.price, a.status,
               COALESCE(m.name,'—') AS master_name,
@@ -223,20 +232,15 @@ router.get('/unsettled', async (req, res) => {
         WHERE a.starts_at < NOW()
           AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
           AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
-          AND a.pay_settled_at IS NULL                  -- явно закритий візит (будь-яка сума) — проведено
-          AND NOT EXISTS(SELECT 1 FROM cash_operations co
-                          WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-          -- ДУБЛІ (Босс 19.07): той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ/закриту
-          -- запис → цей незакритий = дубль тієї ж послуги (напр. Оксана 850 booked, а
-          -- реально оплатила 1000 тим же майстром о тій самій годині). Не показуємо.
+          AND NOT ${PAID('a')}                           -- у касі грошей по візиту немає
+          -- АНТИДУБЛЬ: той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ запис → це дубль
+          -- (напр. Оксана 850 booked, а реально оплатила 1000 тим же майстром о тій годині).
           AND NOT EXISTS(
             SELECT 1 FROM appointments b
              WHERE b.id <> a.id AND b.starts_at = a.starts_at
                AND (b.client_id = a.client_id
                     OR lower(btrim(COALESCE(b.client_name,''))) = lower(btrim(COALESCE(a.client_name,''))))
-               AND (b.pay_settled_at IS NOT NULL
-                    OR EXISTS(SELECT 1 FROM cash_operations co2
-                               WHERE co2.type='in' AND co2.ref_type='appointment' AND co2.ref_id=b.id)))
+               AND ${PAID('b')})
         ORDER BY a.starts_at DESC
         LIMIT 300`);
     const items = r.rows.map(x => ({
