@@ -203,11 +203,19 @@ router.get('/masters/:id/portfolio', async (req, res) => {
 });
 
 // ── GET /api/schedule/unsettled — дні із записами, які ЗАБУЛИ провести (Босс 19.07) ──
-// Минулі візити без проведеної оплати (pay_settled_at IS NULL), не скасовані, ЗА ВЕСЬ ЧАС
-// (Босс 19.07: показувати все, не лише останні дні). ГРУПУЄМО ПО ДНЯХ («цілий день забули»):
-// один рядок = день + скільки записів + сума. Клік → журнал переходить на цей день.
-// Джерело НЕ фільтруємо (BeautyPro-візити теж треба провести, напр. 27.06). Дедуп по
-// (час+майстер+клієнт) прибирає дублі-слоти синхро, щоб сума не задвоювалась.
+// «Не проведено» визначаємо ТОЧНО ТАК САМО, як журнал показує «оплачено» (див. /journal:
+// поле paid) — інакше було 1764 хибних (сирий флаг pay_settled_at не збігався з журналом).
+// Проведено = є касова операція по візиту АБО збіг продажу послуги того ж дня/майстра/клієнта.
+// Не проведено = НЕ те й НЕ інше. Групуємо по днях, дедуп слотів, за весь час.
+const PAID_SQL = `(
+  EXISTS(SELECT 1 FROM cash_operations co
+           WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
+  OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
+           WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
+             AND co.bp_client=a.bp_client AND co.master_id=a.master_id
+             AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                 = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
+)`;
 router.get('/unsettled', async (req, res) => {
   try {
     const pool = getPool();
@@ -217,9 +225,9 @@ router.get('/unsettled', async (req, res) => {
            SELECT DISTINCT ON (a.starts_at, a.master_id, COALESCE(a.client_name,''))
                   (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date AS day, a.price
              FROM appointments a
-            WHERE a.starts_at < NOW()
-              AND a.pay_settled_at IS NULL AND a.price > 0
+            WHERE a.starts_at < NOW() AND a.price > 0
               AND a.status NOT IN ('cancelled','noshow','no_show')
+              AND NOT ${PAID_SQL}
             ORDER BY a.starts_at, a.master_id, COALESCE(a.client_name,''), a.price DESC
          ) t
         GROUP BY day ORDER BY day DESC LIMIT 400`);
