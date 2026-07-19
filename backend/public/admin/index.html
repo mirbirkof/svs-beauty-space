@@ -1062,9 +1062,8 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-page="settings" data-tab="rooms" onclick="go('settings');setTab('rooms')">
             <span class="material-icons-round">meeting_room</span> Кабінети / ресурси
           </a>
-          <a class="sidebar-item" data-embed="/admin/crm-extra.html#users-access" onclick="openEmbed('/admin/crm-extra.html#users-access','admin_panel_settings Доступ до проєкту')" style="cursor:pointer">
-            <span class="material-icons-round">admin_panel_settings</span> Доступ до проєкту
-          </a>
+          <!-- «Доступ до проєкту» прибрано (Босс 19.07): дублювало Команда → Майстри /
+               Співробітники. Керування доступами/правами тепер у профілі співробітника. -->
           <a class="sidebar-item" data-embed="/admin/crm-migrate.html" onclick="openEmbed('/admin/crm-migrate.html','swap_horiz Міграція з іншої CRM')" style="cursor:pointer">
             <span class="material-icons-round">swap_horiz</span> Міграція з іншої CRM
           </a>
@@ -3018,7 +3017,7 @@ select.input { background:var(--card); }
   </div>
 
   <div id="masterCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMasterCard()">
-    <div class="modal" style="max-width:1080px;width:97vw;height:88vh;max-height:94vh;display:flex;flex-direction:column">
+    <div class="modal" style="max-width:960px;width:94vw;height:min(680px,82vh);max-height:82vh;display:flex;flex-direction:column">
       <div class="modal-header">
         <h3 id="masterCardTitle">Профіль співробітника</h3>
         <button type="button" class="info-i" data-t="<b>Профіль співробітника.</b> Все про одного майстра: контакти, які послуги надає, графік роботи, правила зарплати (відсоток/ставка) і доступи до системи. Звідси керуєш його роллю в салоні." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
@@ -12169,13 +12168,17 @@ function _mcAccRender(roleCode){
   const groups = {};
   for (const p of _mcAccGrant) { (groups[p.group] = groups[p.group] || []).push(p); }
   let onCount=0, total=0;
-  const permHtml = Object.keys(groups).map(g => `
-    <div style="margin:12px 0 2px;font-size:11.5px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px">${g}</div>
+  const permHtml = Object.keys(groups).map(g => { const allOn=groups[g].every(p=>_mcAccHasPerm(eff,p.key));
+    return `<div style="display:flex;align-items:center;gap:8px;margin:12px 0 2px">
+      <span style="font-size:11.5px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px">${g}</span>
+      <button type="button" onclick="_mcAccGroup('${g.replace(/'/g,'')}', ${!allOn})" style="margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--border,#ddd);border-radius:6px;background:${allOn?'#fee2e2':'#eef2ff'};color:${allOn?'#dc2626':'#4338ca'};cursor:pointer">${allOn?'Зняти всі':'Обрати всі'}</button>
+    </div>
     ${groups[g].map(p => { const on=_mcAccHasPerm(eff,p.key); total++; if(on)onCount++; const byRole=_mcAccHasPerm(rolePerms,p.key);
       return `<label class="set-toggle" style="padding:6px 0">
-      <input type="checkbox" data-perm="${p.key}" ${on?'checked':''}>
+      <input type="checkbox" data-perm="${p.key}" data-grp="${g.replace(/"/g,'')}" ${on?'checked':''} onchange="_mcAccUpdateCount()">
       <span style="font-size:13px">${_esc(p.label)}${byRole?' <span style="color:#16a34a;font-size:11px">роль</span>':''}</span></label>`;
-    }).join('')}`).join('');
+    }).join('')}`;
+  }).join('');
   box.innerHTML = `
     <div style="max-width:340px;margin-bottom:8px">
       <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Роль співробітника (базовий набір)</label>
@@ -12197,6 +12200,17 @@ function _mcAccOnRole(roleCode){
   // при зміні ролі показуємо права НОВОЇ ролі (override скидається візуально до збереження)
   _mcAccUser = Object.assign({}, _mcAccUser, { role: roleCode, permissions_override: null });
   _mcAccRender(roleCode);
+}
+// груповий вибір: увімкнути/зняти ВСІ галочки групи одним натиском (Босс 19.07)
+function _mcAccGroup(group, on){
+  document.querySelectorAll('#mcAccBody input[data-grp="'+group+'"]').forEach(i => { i.checked = on; });
+  _mcAccUpdateCount();
+}
+function _mcAccUpdateCount(){
+  const all = document.querySelectorAll('#mcAccBody input[data-perm]');
+  const on = document.querySelectorAll('#mcAccBody input[data-perm]:checked').length;
+  const h = document.querySelector('#mcAccBody div[style*="font-weight:700"]');
+  if (h && /увімкнено/.test(h.textContent)) h.textContent = 'Права ('+on+'/'+all.length+' увімкнено)';
 }
 async function _mcAccSave(){
   if (!_mcAccUser) return;
