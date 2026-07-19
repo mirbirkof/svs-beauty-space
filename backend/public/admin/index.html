@@ -12130,7 +12130,7 @@ function _mcTabAccess(){
   const ms = _mcData.ms;
   return `<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap">
       <h4 style="margin:0;font-size:14px">Доступ і права</h4>
-      <a class="btn btn-sm" style="margin-left:auto" href="/admin/crm-extra.html#users-access">Повний реєстр доступів</a>
+      <a class="btn btn-sm" style="margin-left:auto;cursor:pointer" onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')">Повний реєстр доступів</a>
     </div>
     <div id="mcAccBody"><div class="empty">Завантаження…</div></div>`;
 }
@@ -12148,7 +12148,7 @@ async function _mcAccLoad(){
   if (!_mcAccUser) {
     box.innerHTML = `<div class="empty" style="text-align:left;padding:14px 0">
       У цього співробітника ще немає облікового запису для входу в систему.<br>
-      Створіть логін у розділі <a href="/admin/crm-extra.html#users-access" style="color:#7c5cff">Доступи до системи</a>, після цього права можна буде видавати тут.</div>`;
+      Створіть логін у розділі <a onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="color:#7c5cff;cursor:pointer">Доступи до системи</a>, після цього права можна буде видавати тут.</div>`;
     return;
   }
   _mcAccRender(_mcAccUser.role);
