@@ -221,7 +221,7 @@ router.get('/unsettled', async (req, res) => {
          LEFT JOIN clients c ON c.id = a.client_id
          LEFT JOIN services s ON s.id = a.service_id
         WHERE a.starts_at < NOW() AND a.price > 0
-          AND a.status NOT IN ('cancelled','noshow','no_show')
+          AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
           AND NOT EXISTS(SELECT 1 FROM cash_operations co
                           WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
         ORDER BY a.starts_at DESC
@@ -1048,7 +1048,7 @@ router.patch('/appointments/:id', async (req, res) => {
         && service_id === undefined && price === undefined) {
       return res.status(400).json({ error: 'nothing-to-update' });
     }
-    const allowed = ['booked', 'confirmed', 'arrived', 'done', 'cancelled', 'noshow'];
+    const allowed = ['booked', 'confirmed', 'arrived', 'done', 'cancelled', 'noshow', 'refunded'];
     if (status !== undefined && !allowed.includes(status)) {
       return res.status(400).json({ error: 'bad-status' });
     }
