@@ -142,7 +142,11 @@ app.use('/api/files/upload', uploadLimiter);
 // статика админки — HTML без кэша, чтобы обновления панели сразу были видны (не залипал старый index.html)
 app.use('/admin', express.static(__dirname + '/public/admin', {
   setHeaders: (res, path) => {
-    if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    // no-cache для .html І .js (модулі mod-*.js) — інакше браузер кешує старий JS
+    // і виправлення не долітають до користувача (Босс 19.07: «фікси не з'являються»).
+    if (path.endsWith('.html') || path.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
   }
 }));
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
