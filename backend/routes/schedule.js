@@ -220,8 +220,10 @@ router.get('/unsettled', async (req, res) => {
          LEFT JOIN masters m ON m.id = a.master_id
          LEFT JOIN clients c ON c.id = a.client_id
          LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.starts_at < NOW() AND a.price > 0
-          AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
+        WHERE a.starts_at < NOW()
+          AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
+          AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
+          AND a.pay_settled_at IS NULL                  -- явно закритий візит (будь-яка сума) — проведено
           AND NOT EXISTS(SELECT 1 FROM cash_operations co
                           WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
         ORDER BY a.starts_at DESC
@@ -1759,7 +1761,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
         WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
     const matTotal = Number(mat.rows[0].total) || 0;
     const base = (Number(appt.price) || 0) + matTotal;   // повна вартість візиту до знижок
-    if (base <= 0) return res.status(400).json({ error: 'no-price', message: 'У запису не вказана ціна послуги' });
+    if (base < 0) return res.status(400).json({ error: 'no-price', message: 'Некоректна ціна послуги' });
+    if (base === 0) {
+      // Безкоштовний / компліментарний візит (0₴, напр. «включено») — раніше НЕ давало
+      // провести. Тепер закриваємо без каси: позначаємо проведеним і виконаним (Босс 19.07).
+      await pool.query(`UPDATE appointments SET pay_settled_at = COALESCE(pay_settled_at, NOW()), status='done', updated_at=NOW() WHERE id=$1`, [id]);
+      await emitAppointmentCompleted(id, appt.master_id).catch(() => {});
+      return res.json({ ok: true, comped: true, operation_id: null });
+    }
 
     // вже оплачено? (ідемпотентність): каса АБО маркер pay_settled_at (для випадку 0 готівки — все закрито сертифікатом/бонусами)
     const dup = await pool.query(

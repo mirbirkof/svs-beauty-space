@@ -435,7 +435,7 @@ select.input { background:var(--card); }
 .jst-arrived  { background:#f59e0b; }
 .jst-done     { background:#10b981; }
 .jst-noshow   { background:#9ca3af; }
-.jst-refunded { background:#8b5cf6; }  /* Повернення коштів — фіолетовий (Босс 19.07) */
+.jst-refunded { background:#1f2937; }  /* Повернення коштів — чорний (Босс 19.07) */
 /* Оплачено (підтверджено продажем у касі) — зелена рамка + позначка */
 .jappt.jpaid { box-shadow:0 0 0 2px #10b981 inset, 0 1px 3px rgba(0,0,0,.15); }
 .jappt .paid-ico { position:absolute; bottom:4px; right:5px; font-size:14px; color:#d1fae5; }
@@ -9222,7 +9222,7 @@ function renderJournalDay(container, data) {
       <span><i style="background:#0ea5e9"></i>Підтверджено</span>
       <span><i style="background:#10b981"></i>Виконано</span>
       <span><i style="background:#9ca3af"></i>Не прийшов</span>
-      <span><i style="background:#8b5cf6"></i>Повернення коштів</span>
+      <span><i style="background:#1f2937"></i>Повернення коштів</span>
     </div>`;
   if (IS_TOUCH) jBindTouchDrag(container);
 }
@@ -9554,7 +9554,7 @@ async function openAppt(id, masterId) {
       <div>
         <span style="color:var(--text-secondary);font-size:12px">Статус</span>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0 8px">
-          ${[['confirmed','Підтверджено','#0ea5e9'],['arrived','У салоні','#f59e0b'],['done','Виконано','#10b981'],['noshow','Не прийшов','#9ca3af'],['cancelled','Скасовано','#ef4444'],['refunded','Повернення коштів','#8b5cf6']].map(([s,lbl,col])=>`<button type="button" class="btn" style="padding:9px 6px;font-size:13px;font-weight:600;border:1.5px solid ${col};background:${a.status===s?col:'#fff'};color:${a.status===s?'#fff':col}" onclick="apptQuickStatus(${a.id},'${s}')">${lbl}</button>`).join('')}
+          ${[['confirmed','Підтверджено','#0ea5e9'],['arrived','У салоні','#f59e0b'],['done','Виконано','#10b981'],['noshow','Не прийшов','#9ca3af'],['cancelled','Скасовано','#ef4444'],['refunded','Повернення коштів','#1f2937']].map(([s,lbl,col])=>`<button type="button" class="btn" style="padding:9px 6px;font-size:13px;font-weight:600;border:1.5px solid ${col};background:${a.status===s?col:'#fff'};color:${a.status===s?'#fff':col}" onclick="apptQuickStatus(${a.id},'${s}')">${lbl}</button>`).join('')}
         </div>
         <select id="apptStatus" class="input">
           ${['booked','confirmed','arrived','done','noshow','cancelled','refunded'].map(s=>`<option value="${s}"${a.status===s?' selected':''}>${ST_LABEL[s]}</option>`).join('')}
