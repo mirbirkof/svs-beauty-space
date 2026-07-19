@@ -145,6 +145,12 @@ body.role-owner #grp-mysub { display:block !important; }
 /* Анти-мигання: меню приховане, поки не застосуються ролі/права (applyRoleUI
    додає .ui-role-ready). Кеш ролі показує одразу; fallback 4с у скрипті. */
 body:not(.ui-role-ready) .sidebar-nav { visibility:hidden !important; }
+/* Демо-вертикалі (Фітнес/Стоматологія/Велнес) створюються модулями асинхронно і
+   встигали блимнути. За замовч. ПРИХОВАНІ; показуємо ЛИШЕ у своїй вертикалі (Босс 19.07). */
+#grp-fitness, #grp-dental, #grp-wellness { display:none !important; }
+body.vert-fitness #grp-fitness,
+body.vert-dental #grp-dental,
+body.vert-wellness #grp-wellness { display:block !important; }
 .sidebar-group-items .sidebar-item { padding-left:42px; font-size:14px; margin:1px 8px 1px 16px; }
 .sidebar-group-items .sidebar-item .material-icons-round { font-size:18px; }
 .sidebar-footer { padding:12px 16px; border-top:1px solid rgba(255,255,255,.08); }
@@ -3121,12 +3127,14 @@ let USER = (() => { try { return JSON.parse(localStorage.getItem('svs_user')||'n
 // Раннє проставлення класу ролі (до першої відмальовки меню) — гасить мигання
 // owner-only розділів при оновленні сторінки (Босс 19.07).
 try { document.body.classList.toggle('role-owner', !!(USER && USER.role === 'owner')); document.body.classList.toggle('role-nonowner', !(USER && USER.role === 'owner')); } catch {}
-// Ховаємо меню, поки не застосуються ролі/права (applyRoleUI) — щоб НЕ мигали
-// зайві пункти. Якщо роль вже відома з кешу — показуємо одразу. Fallback 4с.
-try {
-  if (USER && USER.role) document.body.classList.add('ui-role-ready');
-  setTimeout(() => { try { document.body.classList.add('ui-role-ready'); } catch {} }, 4000);
-} catch {}
+// Ховаємо меню, поки applyRoleUI не відфільтрує пункти за роллю/правами — інакше
+// зайві пункти встигають блимнути (і на них можна натиснути). Показуємо меню ЛИШЕ
+// після повної фільтрації (applyRoleUI додає .ui-role-ready). Fallback 5с — щоб меню
+// не лишилось прихованим назавжди при збої. Босс 19.07.
+try { setTimeout(() => { try { document.body.classList.add('ui-role-ready'); } catch {} }, 5000); } catch {}
+// Ранній клас вертикалі (до асинхронного створення модульних груп) — щоб демо-
+// вертикалі не блимали. Дефолт beauty (домашній салон). Оновиться після entitlements.
+try { const _vt = localStorage.getItem('svs_vertical') || 'beauty'; document.body.classList.add('vert-' + _vt); } catch {}
 // Мультитенантність: салон визначається з ?tenant=<slug> у посиланні (після саморeєстрації)
 // і запам'ятовується. Для власника основного салону параметра немає → TENANT_SLUG порожній →
 // жоден заголовок не додається → поведінка ІДЕНТИЧНА попередній (дефолтний тенант).
@@ -3374,6 +3382,8 @@ async function applyEntitlements() {
   try { localStorage.removeItem('svs_vertical_preview'); } catch (_) {} // легасі-механіка прибрана
   try { localStorage.setItem('svs_vertical', window.BUSINESS_TYPE); } catch (_) {}
   document.body.classList.add('vertical-' + window.BUSINESS_TYPE);
+  // синхронізуємо ранній клас vert-* (CSS-гейт демо-вертикалей) з реальним типом
+  try { ['fitness','dental','wellness','beauty'].forEach(v => document.body.classList.remove('vert-'+v)); document.body.classList.add('vert-' + window.BUSINESS_TYPE); } catch (_) {}
   try {
     for (const v of ['fitness', 'dental', 'wellness']) {
       const g = document.getElementById('grp-' + v);
@@ -3742,7 +3752,6 @@ function applyRoleUI(){
     const isOwner = !!(USER && USER.role === 'owner');
     document.body.classList.toggle('role-owner', isOwner);
     document.body.classList.toggle('role-nonowner', !isOwner);
-    document.body.classList.add('ui-role-ready'); // ролі/права застосовані → показати меню
   } catch {}
   // показуємо ім'я та роль користувача у шапці
   try {
@@ -3798,6 +3807,8 @@ function applyRoleUI(){
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
   // Ховаємо пункти меню, на які у співробітника немає прав (власник бачить усе)
   applyMenuPerms();
+  // Уся фільтрація завершена → показуємо меню (до цього приховане .ui-role-ready).
+  try { document.body.classList.add('ui-role-ready'); } catch {}
 }
 
 // ── Приховування пунктів меню за правами ──────────────────────────────
