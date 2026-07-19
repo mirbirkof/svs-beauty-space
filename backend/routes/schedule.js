@@ -234,8 +234,9 @@ router.get('/unsettled', async (req, res) => {
           AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
           AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
           AND NOT ${PAID('a')}                           -- у касі грошей по візиту немає
-          -- тестові записи (E2E/авто-тести) — не показуємо
-          AND COALESCE(a.client_name,'') NOT ILIKE '%e2e%' AND COALESCE(a.client_name,'') NOT ILIKE '%test%'
+          -- тестові записи (E2E/авто-тести) — не показуємо. Імʼя може бути і в картці клієнта.
+          AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%e2e%'
+          AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%test%'
           -- АНТИДУБЛЬ: той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ запис → це дубль
           -- (напр. Оксана 850 booked, а реально оплатила 1000 тим же майстром о тій годині).
           AND NOT EXISTS(
