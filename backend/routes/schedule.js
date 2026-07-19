@@ -226,6 +226,17 @@ router.get('/unsettled', async (req, res) => {
           AND a.pay_settled_at IS NULL                  -- явно закритий візит (будь-яка сума) — проведено
           AND NOT EXISTS(SELECT 1 FROM cash_operations co
                           WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
+          -- ДУБЛІ (Босс 19.07): той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ/закриту
+          -- запис → цей незакритий = дубль тієї ж послуги (напр. Оксана 850 booked, а
+          -- реально оплатила 1000 тим же майстром о тій самій годині). Не показуємо.
+          AND NOT EXISTS(
+            SELECT 1 FROM appointments b
+             WHERE b.id <> a.id AND b.starts_at = a.starts_at
+               AND (b.client_id = a.client_id
+                    OR lower(btrim(COALESCE(b.client_name,''))) = lower(btrim(COALESCE(a.client_name,''))))
+               AND (b.pay_settled_at IS NOT NULL
+                    OR EXISTS(SELECT 1 FROM cash_operations co2
+                               WHERE co2.type='in' AND co2.ref_type='appointment' AND co2.ref_id=b.id)))
         ORDER BY a.starts_at DESC
         LIMIT 300`);
     const items = r.rows.map(x => ({
