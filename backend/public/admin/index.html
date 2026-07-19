@@ -975,9 +975,6 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
             <span class="material-icons-round">badge</span> Майстри / Співробітники
           </a>
-          <a class="sidebar-item" onclick="openMasterSvcPicker()" style="cursor:pointer" title="Послуги та розцінки майстрів — безпечний список для адміністраторів">
-            <span class="material-icons-round">design_services</span> Послуги майстрів
-          </a>
           <a class="sidebar-item" data-page="online" onclick="go('online')">
             <span class="material-icons-round">wifi</span> Хто онлайн
           </a>
@@ -11730,30 +11727,6 @@ function _mcSchedule(sj){
   }).join('');
   return `<div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div>`;
 }
-// ── «Послуги майстрів» — безпечний вхід для адмінів (Босс 19.07):
-// простий список працюючих майстрів → одразу вкладка «Послуги» єдиної картки.
-// Без списку співробітників/доступів/звільнень (розділ Майстри — owner-only).
-async function openMasterSvcPicker(){
-  const m = document.getElementById('masterCardModal');
-  const body = document.getElementById('masterCardBody');
-  document.getElementById('masterCardTitle').textContent = 'Послуги майстрів';
-  body.innerHTML = '<div class="empty">Завантаження…</div>';
-  m.style.display = 'flex';
-  try {
-    const r = await api('/api/schedule/masters');
-    const list = (r.items || r.masters || r || []).filter(x => x.active !== false && x.provides_services !== false);
-    if (!list.length) { body.innerHTML = '<div class="empty">Немає працюючих майстрів</div>'; return; }
-    body.innerHTML = `<p class="set-p" style="font-size:12.5px;margin:10px 0 12px">Оберіть майстра — відкриється керування його послугами та розцінками.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;padding-bottom:8px">` +
-      list.map(x => `<button class="btn" style="justify-content:flex-start;gap:10px;padding:12px 14px;font-size:13.5px;font-weight:600" onclick="openMasterCardServices(${x.id})">
-          <span class="material-icons-round" style="font-size:18px;color:#7c5cff">design_services</span>${x.name}${x.specialty?`<span style="font-weight:400;color:var(--text-secondary);font-size:11.5px;margin-left:auto">${x.specialty}</span>`:''}
-        </button>`).join('') + '</div>';
-  } catch(e){ body.innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
-}
-async function openMasterCardServices(id){
-  await openMasterCard(id);
-  try { mcTab('services'); } catch(_){}
-}
 async function openMasterCard(id){
   _mcId = id;
   const m = document.getElementById('masterCardModal');
@@ -11773,17 +11746,11 @@ const _MC_TABS = [
   ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
   ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
 ];
-// Безпека (Босс 19.07): чутливі вкладки картки — ЛИШЕ власнику.
-// Адмін бачить робочі вкладки (профіль/графік/послуги/онлайн/статистика/фото),
-// але НЕ Схему ЗП і НЕ Доступ. Кнопка «Звільнити» — теж лише власник.
-const _mcIsOwner = () => !!(USER && USER.role === 'owner');
-const _MC_OWNER_TABS = ['salary','access'];
-const _mcVisibleTabs = () => _MC_TABS.filter(([k]) => _mcIsOwner() || !_MC_OWNER_TABS.includes(k));
 function _mcRenderShell(){
   const ms = _mcData.ms;
   const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
   const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
-  const tabsHtml = _mcVisibleTabs().map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
+  const tabsHtml = _MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
   document.getElementById('masterCardBody').innerHTML = `
     <div style="display:flex;gap:22px;align-items:flex-start;padding:16px 0 14px;flex-wrap:wrap">
       <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:none">
@@ -11809,8 +11776,6 @@ function _mcRenderShell(){
   mcTab(_mcTabKey, true);
 }
 function mcTab(k, skipShell){
-  // Безпека: owner-only вкладки не відкриваються навіть прямим викликом
-  if (!_mcIsOwner() && _MC_OWNER_TABS.includes(k)) k = 'profile';
   _mcTabKey = k;
   if (!skipShell) {
     document.querySelectorAll('[data-mctab]').forEach(b=>{
@@ -11856,7 +11821,7 @@ function _mcTabProfile(){
       <div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Скільки записів можна ставити на майстра на один час. 1 — звичайний режим. 2+ — овербукінг (напр. поки схоплюється фарба, майстер бере наступного).</div></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding-top:14px">
       <button class="btn btn-primary" style="padding:11px 26px;font-size:15px;font-weight:700" onclick="saveMasterCard()">Зберегти профіль</button>
-      ${_mcIsOwner() ? `<button class="btn" style="margin-left:auto;padding:11px 28px;font-size:15px;font-weight:700;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'};border:1px solid ${ms.active?'#fca5a5':'#86efac'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>` : ''}
+      <button class="btn" style="margin-left:auto;padding:11px 28px;font-size:15px;font-weight:700;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'};border:1px solid ${ms.active?'#fca5a5':'#86efac'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
     </div>`;
 }
 function _mcTabSchedule(){
