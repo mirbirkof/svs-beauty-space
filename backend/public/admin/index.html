@@ -142,6 +142,10 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 body.role-owner #grp-ext-platform,
 body.role-owner #grp-system,
 body.role-owner #grp-mysub { display:block !important; }
+/* Owner-only модульні пункти (напр. Маркетинг-центр). Приховані за замовч.,
+   показуємо лише власнику. Босс 19.07: «адміну маркетинг-центр бачити необовʼязково». */
+.sidebar-item[data-owneronly] { display:none !important; }
+body.role-owner .sidebar-item[data-owneronly] { display:flex !important; }
 /* Анти-мигання: НЕ ховаємо все меню (це давало порожній екран). Мигали лише
    умовні РОЗДІЛИ — вони приховані за замовч. нижче (owner-only + демо-вертикалі),
    тож зʼявляються одразу правильно, без блимання і без порожнечі. Босс 19.07. */
