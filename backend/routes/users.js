@@ -8,6 +8,39 @@ const { hashPassword, checkPasswordComplexity, normalizePhone } = require('../li
 const router = express.Router();
 const pool = getPool();
 
+// Каталог прав, які власник може ВИДАВАТИ співробітнику персонально (extra_permissions),
+// понад його роль. Групи — для зручного UI у вкладці «Доступ» профілю (Босс 19.07).
+// Видати можна лише те, що є у самого власника (перевірка hasPermission нижче).
+const GRANTABLE_PERMS = [
+  { key: 'clients.write',   group: 'Клієнти',   label: 'Редагувати клієнтів' },
+  { key: 'clients.delete',  group: 'Клієнти',   label: 'Видаляти клієнтів' },
+  { key: 'cashbox.write',   group: 'Каса',      label: 'Проводити операції каси' },
+  { key: 'cashbox.manage',  group: 'Каса',      label: 'Керувати касою (Z-звіт, корекції)' },
+  { key: 'reports.read',    group: 'Звіти',     label: 'Дивитись звіти' },
+  { key: 'reports.finance', group: 'Звіти',     label: 'Фінансові звіти (P&L, виручка)' },
+  { key: 'masters.write',   group: 'Майстри',   label: 'Редагувати майстрів і послуги' },
+  { key: 'masters.manage',  group: 'Майстри',   label: 'Наймати/звільняти майстрів' },
+  { key: 'stock.write',     group: 'Склад',     label: 'Змінювати склад' },
+  { key: 'stock.manage',    group: 'Склад',     label: 'Керувати складом (інвентаризація, списання)' },
+  { key: 'shop.write',      group: 'Магазин',   label: 'Керувати товарами магазину' },
+  { key: 'marketing.write', group: 'Маркетинг', label: 'Розсилки й акції' },
+  { key: 'loyalty.write',   group: 'Маркетинг', label: 'Керувати лояльністю/бонусами' },
+  { key: 'settings.write',  group: 'Налаштування', label: 'Змінювати налаштування салону' },
+  { key: 'schedule.write',  group: 'Розклад',   label: 'Редагувати графіки роботи' },
+  { key: 'documents.write', group: 'Документи', label: 'Керувати документами' },
+  { key: 'export.read',     group: 'Дані',      label: 'Експорт даних (CSV)' },
+];
+
+// GET /api/users/grantable-perms — каталог прав для UI вкладки «Доступ» (тільки ті,
+// що має сам власник → може їх видати). Гард users.write = лише власник/адмін з правом.
+router.get('/grantable-perms', requirePerm('users.write'), async (req, res) => {
+  try {
+    const { hasPermission } = require('../lib/rbac');
+    const items = GRANTABLE_PERMS.filter(p => hasPermission(req.user.permissions, p.key));
+    res.json({ items });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'grantable-failed' }); }
+});
+
 // GET /api/users — список
 router.get('/', requirePerm('users.read'), async (req, res) => {
   try {
@@ -164,8 +197,10 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { display_name, role_code, is_active, branch_id, master_id, extra_permissions } = req.body || {};
-    // персональные тумблеры прав: белый список кодов + выдать можно только право, которое есть у самого выдающего
-    const TOGGLABLE_PERMS = ['stock.manage'];
+    // персональные тумблеры прав: белый список кодов + выдать можно только право, которое есть у самого выдающего.
+    // Босс 19.07: власник керує всіма можливими правами адміна через вкладку «Доступ» у профілі.
+    // Каталог групується у GRANTABLE_PERMS (той самий список читає фронт через /grantable-perms).
+    const TOGGLABLE_PERMS = GRANTABLE_PERMS.map(p => p.key);
     let extraPerms = null; // null = не менять
     if (extra_permissions !== undefined) {
       if (!Array.isArray(extra_permissions)) return res.status(400).json({ error: 'extra_permissions-must-be-array' });

@@ -11769,11 +11769,16 @@ const _MC_TABS = [
   ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
   ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
 ];
+// Безпека (Босс 19.07): «Схема ЗП» і «Доступ» + кнопка «Звільнити» — ЛИШЕ власнику.
+const _mcIsOwner = () => !!(USER && USER.role === 'owner');
+const _MC_OWNER_TABS = ['salary','access'];
 function _mcRenderShell(){
   const ms = _mcData.ms;
   const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
   const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
-  const tabsHtml = _MC_TABS.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
+  const _visTabs = _MC_TABS.filter(([k]) => _mcIsOwner() || !_MC_OWNER_TABS.includes(k));
+  if (!_mcIsOwner() && _MC_OWNER_TABS.includes(_mcTabKey)) _mcTabKey = 'profile';
+  const tabsHtml = _visTabs.map(([k,l])=>`<button onclick="mcTab('${k}')" data-mctab="${k}" style="border:none;background:none;cursor:pointer;padding:9px 13px;font-size:13px;font-weight:600;color:${k===_mcTabKey?'#7c5cff':'var(--text-secondary)'};border-bottom:2px solid ${k===_mcTabKey?'#7c5cff':'transparent'};white-space:nowrap">${l}</button>`).join('');
   document.getElementById('masterCardBody').innerHTML = `
     <div style="display:flex;gap:22px;align-items:flex-start;padding:16px 0 14px;flex-wrap:wrap">
       <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex:none">
@@ -11799,6 +11804,7 @@ function _mcRenderShell(){
   mcTab(_mcTabKey, true);
 }
 function mcTab(k, skipShell){
+  if (!_mcIsOwner() && _MC_OWNER_TABS.includes(k)) k = 'profile';
   _mcTabKey = k;
   if (!skipShell) {
     document.querySelectorAll('[data-mctab]').forEach(b=>{
@@ -11844,7 +11850,7 @@ function _mcTabProfile(){
       <div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Скільки записів можна ставити на майстра на один час. 1 — звичайний режим. 2+ — овербукінг (напр. поки схоплюється фарба, майстер бере наступного).</div></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border,#eee);padding-top:14px">
       <button class="btn btn-primary" style="padding:11px 26px;font-size:15px;font-weight:700" onclick="saveMasterCard()">Зберегти профіль</button>
-      <button class="btn" style="margin-left:auto;padding:11px 28px;font-size:15px;font-weight:700;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'};border:1px solid ${ms.active?'#fca5a5':'#86efac'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
+      ${_mcIsOwner() ? `<button class="btn" style="margin-left:auto;padding:11px 28px;font-size:15px;font-weight:700;background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'};border:1px solid ${ms.active?'#fca5a5':'#86efac'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>` : ''}
     </div>`;
 }
 function _mcTabSchedule(){
@@ -12064,12 +12070,73 @@ function _mcTabPhotos(){
     </div>
     <p class="set-p" style="font-size:12px">Фото видно клієнтам в онлайн-записі. JPG/PNG/WebP до 10 МБ. Галерея робіт до/після — у дорожній карті.</p>`;
 }
+// ── Вкладка «Доступ»: керування роллю і персональними правами прямо з профілю
+// (Босс 19.07). ТІЛЬКИ власник (вкладка схована для адмінів у _mcRenderShell). ──
+let _mcAccUser = null, _mcAccGrant = [], _mcAccRoles = [];
 function _mcTabAccess(){
+  setTimeout(_mcAccLoad, 0);
   const ms = _mcData.ms;
-  return `<h4 style="margin:0 0 10px;font-size:14px">Доступ до системи</h4>
-    <p class="set-p" style="font-size:13px;margin-bottom:12px">Логін, пароль і права (RBAC) співробітника <b>${_esc(ms.name)}</b> налаштовуються в єдиному реєстрі доступів.</p>
-    <a class="btn btn-primary btn-sm" href="/admin/crm-extra.html#users-access">Відкрити «Доступи до системи»</a>
-    <p class="set-p" style="font-size:12px;margin-top:12px">Майстер бачить лише свій графік і свої записи. Адміністратор — повний журнал без фінансів власника (залежить від ролі).</p>`;
+  return `<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap">
+      <h4 style="margin:0;font-size:14px">Доступ і права</h4>
+      <a class="btn btn-sm" style="margin-left:auto" href="/admin/crm-extra.html#users-access">Повний реєстр доступів</a>
+    </div>
+    <div id="mcAccBody"><div class="empty">Завантаження…</div></div>`;
+}
+async function _mcAccLoad(){
+  const box = document.getElementById('mcAccBody'); if(!box) return;
+  try {
+    const [ul, rl, gl] = await Promise.all([
+      api('/api/users'), api('/api/users/roles/list').catch(()=>({items:[]})), api('/api/users/grantable-perms').catch(()=>({items:[]}))
+    ]);
+    const users = ul.items || ul.users || [];
+    _mcAccUser = users.find(u => Number(u.master_id) === Number(_mcId)) || null;
+    _mcAccRoles = rl.items || [];
+    _mcAccGrant = gl.items || [];
+  } catch(e){ box.innerHTML = '<div class="empty">Не вдалося завантажити: '+(e.message||e)+'</div>'; return; }
+  if (!_mcAccUser) {
+    box.innerHTML = `<div class="empty" style="text-align:left;padding:14px 0">
+      У цього співробітника ще немає облікового запису для входу в систему.<br>
+      Створіть логін у розділі <a href="/admin/crm-extra.html#users-access" style="color:#7c5cff">Доступи до системи</a>, після цього права можна буде видавати тут.</div>`;
+    return;
+  }
+  const u = _mcAccUser;
+  const extra = new Set(Array.isArray(u.extra_permissions) ? u.extra_permissions : []);
+  const roleOpts = _mcAccRoles.map(r => `<option value="${r.code}"${r.code===u.role?' selected':''}>${_esc(r.name)}</option>`).join('');
+  // группируем каталог прав
+  const groups = {};
+  for (const p of _mcAccGrant) { (groups[p.group] = groups[p.group] || []).push(p); }
+  const permHtml = Object.keys(groups).map(g => `
+    <div style="margin:12px 0 2px;font-size:11.5px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px">${g}</div>
+    ${groups[g].map(p => `<label class="set-toggle" style="padding:6px 0">
+      <input type="checkbox" data-perm="${p.key}" ${extra.has(p.key)?'checked':''}>
+      <span style="font-size:13px">${_esc(p.label)}</span></label>`).join('')}`).join('');
+  box.innerHTML = `
+    <div style="max-width:340px;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Роль співробітника</label>
+      <select id="mcAccRole" class="input">${roleOpts||'<option>—</option>'}</select>
+      <div style="font-size:11.5px;color:var(--text-secondary);margin-top:4px">Роль = базовий набір прав. Нижче — додаткові права понад роль.</div>
+    </div>
+    <div style="border-top:1px solid var(--border,#eee);margin-top:10px;padding-top:6px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px">Додаткові права</div>
+      ${permHtml || '<div class="empty">Немає доступних прав для видачі</div>'}
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:14px">
+      <button class="btn btn-primary" onclick="_mcAccSave()">Зберегти доступ</button>
+      <span id="mcAccMsg" style="font-size:12.5px"></span>
+    </div>
+    <p class="set-p" style="font-size:12px;margin-top:12px">Логін: <b>${_esc(u.username||u.phone||'—')}</b>. Пароль скидається у «Повний реєстр доступів». Майстер бачить лише свій графік; адміністратор — журнал без фінансів власника.</p>`;
+}
+async function _mcAccSave(){
+  if (!_mcAccUser) return;
+  const msg = document.getElementById('mcAccMsg');
+  const role_code = (document.getElementById('mcAccRole')||{}).value || undefined;
+  const extra_permissions = [...document.querySelectorAll('#mcAccBody input[data-perm]:checked')].map(i => i.getAttribute('data-perm'));
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  try {
+    const r = await api('/api/users/'+_mcAccUser.id, { method:'PATCH', body: JSON.stringify({ role_code, extra_permissions }) });
+    if (r && (r.ok || r.id || r.user)) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; _mcAccUser.extra_permissions = extra_permissions; if(role_code) _mcAccUser.role = role_code; }
+    else { msg.style.color = '#ef4444'; msg.textContent = (r&&(r.message||r.error))||'Помилка'; }
+  } catch(e){ msg.style.color = '#ef4444'; msg.textContent = 'Помилка: '+(e.message||e); }
 }
 async function saveMasterCard(){
   if(!_mcId) return;
