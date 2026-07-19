@@ -3758,6 +3758,15 @@ function applyRoleUI(){
     mysubGrp.style.display = canSub ? '' : 'none';
     if (!canSub && currentPage === 'mysub') { try { go('dashboard'); } catch {} }
   }
+  // Платформа та інфраструктура (моніторинг, філії, інтеграції, міграція, аудит) —
+  // ЛИШЕ власник. Адміну там нема чого робити (Босс 19.07). Пункти й так гардяться
+  // 403, але тепер ховаємо весь розділ, щоб не плутав.
+  const sysGrp = document.getElementById('grp-system');
+  if (sysGrp) {
+    const canSys = !!USER && USER.role === 'owner';
+    sysGrp.style.display = canSys ? '' : 'none';
+    if (!canSys && currentPage === 'sync') { try { go('dashboard'); } catch {} }
+  }
   // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
   // Ховаємо пункти меню, на які у співробітника немає прав (власник бачить усе)

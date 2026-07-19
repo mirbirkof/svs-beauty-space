@@ -1313,7 +1313,9 @@ async function loadUsers(){
           <td style="white-space:nowrap">
             <button class="btn sm" onclick="setPassword(${u.id})">Пароль</button>
             <button class="btn sm" onclick="issueToken(${u.id})">Token</button>
-            ${u.is_active?`<button class="btn sm ghost" title="Деактивувати (доступ вимкнено, дані лишаються)" onclick="deactivateUser(${u.id})">✕</button>`:''}
+            ${u.is_active
+              ? `<button class="btn sm ghost" title="Деактивувати (доступ вимкнено, дані лишаються)" onclick="deactivateUser(${u.id})">✕</button>`
+              : `<button class="btn sm" style="background:#dcfce7;color:#16a34a" title="Активувати (повернути доступ)" onclick="reactivateUser(${u.id})">✓ Активувати</button>`}
             <button class="btn sm danger" title="Видалити назавжди" onclick="deleteUser(${u.id},'${(u.display_name||'').replace(/'/g,'')}')">🗑</button>
           </td></tr>`).join('') || '<tr><td colspan="7" class="empty">Співробітників немає</td></tr>';
   }catch(e){ alert(e.message); }
@@ -1358,6 +1360,14 @@ async function setPassword(uid){
 async function deactivateUser(uid){
   if(!confirm('Деактивувати співробітника? Він втратить доступ.')) return;
   try{ await api('/api/users/'+uid,{method:'DELETE'}); loadUsers(); }catch(e){ alert(e.message); }
+}
+async function reactivateUser(uid){
+  if(!confirm('Активувати співробітника? Доступ буде повернуто.')) return;
+  try{
+    const r = await api('/api/users/'+uid,{method:'PATCH', body: JSON.stringify({ is_active: true })});
+    if (r && (r.ok || r.user || r.id)) loadUsers();
+    else alert((r&&(r.message||r.error))||'Не вдалося активувати');
+  }catch(e){ alert(e.message); }
 }
 async function deleteUser(uid, name){
   if(!confirm('Видалити користувача "'+(name||'')+'" НАЗАВЖДИ?\n\nДію не можна скасувати — обліковий запис і його доступи зникнуть повністю.')) return;
