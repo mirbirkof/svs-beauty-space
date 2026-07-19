@@ -1,6 +1,7 @@
 /* routes/master-services.js — ручна курація звʼязки майстер↔послуга (наша CRM = джерело правди).
    Засіяно з BeautyPro лише для активних майстрів; далі редагується тут.
-   Гард: users.read / users.write (як і керування майстрами). */
+   Гард: masters.read / masters.write — керування послугами майстра доступне
+   ролям з правом masters.* (Власник + Адмін), а не лише users.* (Босс 19.07). */
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
@@ -11,7 +12,7 @@ const pool = getPool();
 const err = (res, e) => { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); };
 
 // послуги конкретного майстра (з базовою/персональною ціною)
-router.get('/by-master/:masterId', requirePerm('booking.read'), async (req, res) => {
+router.get('/by-master/:masterId', requirePerm('masters.read'), async (req, res) => {
   try {
     // майстер бачить лише ВЛАСНІ звʼязки (чужі персональні ціни закриті)
     if (req.user && req.user.role === 'master' && Number(req.user.master_id) !== Number(req.params.masterId)) {
@@ -32,7 +33,7 @@ router.get('/by-master/:masterId', requirePerm('booking.read'), async (req, res)
 });
 
 // майстри, що надають конкретну послугу
-router.get('/by-service/:serviceId', requirePerm('users.read'), async (req, res) => {
+router.get('/by-service/:serviceId', requirePerm('masters.read'), async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT ms.id, ms.master_id, ms.price, ms.duration_min, ms.active, ms.source,
@@ -48,7 +49,7 @@ router.get('/by-service/:serviceId', requirePerm('users.read'), async (req, res)
 });
 
 // додати звʼязку
-router.post('/', requirePerm('users.write'), async (req, res) => {
+router.post('/', requirePerm('masters.write'), async (req, res) => {
   try {
     const { master_id, service_id, price, duration_min } = req.body || {};
     if (!master_id || !service_id) return res.status(400).json({ error: 'master_id and service_id required' });
@@ -68,7 +69,7 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
 });
 
 // оновити ціну/тривалість/активність
-router.patch('/:id', requirePerm('users.write'), async (req, res) => {
+router.patch('/:id', requirePerm('masters.write'), async (req, res) => {
   try {
     const body = req.body || {};
     const fields = [], vals = [];
@@ -100,7 +101,7 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
 });
 
 // прибрати звʼязку
-router.delete('/:id', requirePerm('users.write'), async (req, res) => {
+router.delete('/:id', requirePerm('masters.write'), async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM master_services WHERE id=$1 RETURNING id', [Number(req.params.id)]);
     if (!r.rows.length) return res.status(404).json({ error: 'not found' });
