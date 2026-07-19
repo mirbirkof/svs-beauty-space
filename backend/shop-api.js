@@ -27,7 +27,8 @@ const catalogRoutes = require('./routes/catalog');
 const cabinetRoutes = require('./routes/cabinet-auth');
 const ordersRoutes = require('./routes/orders');
 const adminRoutes = require('./routes/admin');
-const syncRoutes = require('./routes/beautypro-sync');
+// BeautyPro-синхро відключена (Босс 19.07) — модуль більше не завантажується.
+// const syncRoutes = require('./routes/beautypro-sync');
 const npRoutes = require('./routes/novaposhta');
 const legacyRoutes = require('./routes/catalog-legacy');
 const notifyRoutes = require('./routes/telegram-notify');
@@ -200,7 +201,7 @@ app.get('/api/shop/readiness', (req, res) => {
       nova_poshta: ready(!!process.env.NOVAPOSHTA_API_KEY),
       sms_provider: ready(!!process.env.SMS_PROVIDER),
       telegram_bot: ready(!!(process.env.TELEGRAM_NOTIFY_TOKEN || process.env.TELEGRAM_BOT_TOKEN)),
-      beautypro_crm: ready(!!(process.env.BEAUTYPRO_ID_KEY && process.env.BEAUTYPRO_SECRET_KEY)),
+      // beautypro_crm видалено (Босс 19.07 — механіку beautypro прибрано)
       // Критичні секрети безпеки — лише булевий статус, значення ніколи не віддаються
       jwt_secret: ready(!!(process.env.JWT_SECRET && process.env.JWT_SECRET.length >= 32)),
       integration_encryption: ready(!!(process.env.INTEGRATION_ENC_KEY || process.env.JWT_SECRET)),
@@ -215,7 +216,6 @@ app.get('/api/shop/readiness', (req, res) => {
       promos: 'ready',
       csv_export: 'ready',
       notifications: 'ready (needs telegram_id on client)',
-      beautypro_sync: 'ready (fields param OK, awaiting BEAUTYPRO env keys)',
       nova_poshta: 'ready (awaiting api key)',
       mono_pay: 'ready (invoice + webhook + poller)',
     },
@@ -261,9 +261,12 @@ app.use('/api/cabinet', cabinetRoutes);
 app.use('/api/cabinet', require('./routes/cabinet')); // M20: visits/orders/loyalty/summary
 app.use('/api/orders', ordersRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/sync', syncRoutes);
-try { app.use('/api/sync', require('./routes/beautypro-sync-v2')); } catch(e) { /* v2 optional */ }
-try { app.use('/api/sync', require('./routes/beautypro-appointments-sync')); } catch(e) { console.error('[bp-appt-sync] mount failed:', e.message); }
+// BeautyPro-синхро ВІДКЛЮЧЕНА повністю (Босс 19.07: «прибери будь-яку механіку beautypro»).
+// Дані вже неактуальні, синк не потрібен. Історичні записи (source='beautypro') лишаються
+// в БД до перезавантаження еталону Боссом — видаляти зараз = втратити цифри для звірки.
+// app.use('/api/sync', syncRoutes);
+// try { app.use('/api/sync', require('./routes/beautypro-sync-v2')); } catch(e) { /* v2 optional */ }
+// try { app.use('/api/sync', require('./routes/beautypro-appointments-sync')); } catch(e) { console.error('[bp-appt-sync] mount failed:', e.message); }
 try { app.use('/api/files', require('./routes/files')); } catch(e) { console.error('[files] mount failed:', e.message); }
 app.use('/api/np', npRoutes);
 app.use('/api/catalog/legacy', legacyRoutes);

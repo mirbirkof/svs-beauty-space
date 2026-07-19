@@ -4,7 +4,10 @@
 PORT=3011
 LOG=/tmp/crm-local-prod.log
 cd /home/client/workspace/svs-beauty-space/backend || exit 1
-if curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then exit 0; fi
+# force-restart: `local-prod.sh restart` — перезапуск навіть якщо живий (застосувати нові зміни коду)
+if [ "$1" != "restart" ] && [ "$1" != "force" ]; then
+  if curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then exit 0; fi
+fi
 # подчистить зомби на порту
 PIDS=$(ss -tlnp 2>/dev/null | grep ":$PORT " | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u)
 for pid in $PIDS; do kill "$pid" 2>/dev/null; done

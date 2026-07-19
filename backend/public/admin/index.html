@@ -1102,9 +1102,6 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/integrations.html" onclick="openEmbed('/admin/integrations.html','hub Інтеграції')" style="cursor:pointer">
             <span class="material-icons-round">hub</span> Інтеграції
           </a>
-          <a class="sidebar-item" data-page="sync" onclick="go('sync')">
-            <span class="material-icons-round">sync</span> BeautyPro синхро
-          </a>
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#audit" onclick="openEmbed('/admin/crm-extra.html#audit','history Аудит')" style="cursor:pointer">
             <span class="material-icons-round">history</span> Аудит
           </a>
@@ -1339,16 +1336,6 @@ select.input { background:var(--card); }
 
         <div id="onbBanner"></div>
         <div class="kpi-grid" id="kpi"></div>
-
-        <!-- Забули провести (Босс 19.07): дні з непроведеними записами, за весь час -->
-        <div class="card unsettled-card" style="margin-bottom:24px;display:none">
-          <div class="card-header"><h3 style="display:flex;align-items:center;gap:8px">
-            <span class="material-icons-round" style="color:#c23b34">receipt_long</span> Забули провести
-            <span class="unsettled-count badge" style="background:#fdecec;color:#c23b34"></span>
-            <button type="button" class="info-i" data-t="<b>Забули провести.</b> Усі дні за весь час, де є минулі записи без проведеної оплати. Натисніть на день — журнал перейде на нього, і там кожну запис можна провести." onclick="showInfo(event,this.dataset.t)" style="margin-left:auto">i</button>
-          </h3></div>
-          <div class="card-body unsettled-list"></div>
-        </div>
 
         <!-- ═══ Панель витрат за місяць ═══ -->
         <div class="card" id="dashExpenseCard" style="margin-bottom:24px;display:none">
@@ -6635,7 +6622,6 @@ async function loadOnbChecklist(){
 async function loadDashboard() {
   loadOnbChecklist(); // онбординг-банер для салонів-орендарів (не платформа)
   loadManagerPanel();
-  loadUnsettled(); // «Забули провести» — дні з непроведеними записами (Босс 19.07)
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';
