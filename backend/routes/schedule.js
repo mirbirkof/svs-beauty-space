@@ -728,10 +728,13 @@ router.get('/journal', async (req, res) => {
                   WHERE aps.appointment_id = a.id) AS services_list,
               COALESCE(EXTRACT(EPOCH FROM (a.ends_at - a.starts_at))/60, s.duration_min) AS duration_min,
               m.name AS master_name,
-              -- Оплата = ПРАВДА: вручну (ref_type=appointment) АБО конкретний продаж послуги
-              -- у BeautyPro цьому ж клієнту тим же майстром того ж дня (точна привʼязка по GUID).
-              -- Без bp_client (не злінкований клієнт) — НЕ показуємо «оплачено» (краще пропуск, ніж брехня).
-              (EXISTS(SELECT 1 FROM cash_operations co
+              -- Оплата = ПРАВДА: явний прапор закриття (pay_settled_at — 0₴-візити та чеки,
+              -- повністю закриті сертифікатом/бонусами, каси не мають!) АБО вручну
+              -- (ref_type=appointment) АБО конкретний продаж послуги цьому ж клієнту тим же
+              -- майстром того ж дня (точна привʼязка по GUID). ТА САМА формула, що в
+              -- «Забули провести» і звірці каси — консистентність (Босс 19-20.07).
+              (a.pay_settled_at IS NOT NULL
+               OR EXISTS(SELECT 1 FROM cash_operations co
                         WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
                OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
                         WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
