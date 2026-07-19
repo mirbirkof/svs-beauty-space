@@ -141,8 +141,10 @@ async function issueSession(client, { user, req, rememberMe }) {
   return { accessToken, refreshToken, refreshTtlMs: ttlMs, sessionId: sess.rows[0].id, expiresAt };
 }
 
-// эффективные права = ролевые + персональные (extra_permissions, тумблеры доступа)
+// эффективные права. permissions_override (если задан массив) = ТОЧНЫЙ набор прав
+// юзера, перекрывает роль (Босс 19.07: полное per-user редактирование). Иначе роль+extra.
 function effectivePerms(u) {
+  if (Array.isArray(u.permissions_override)) return u.permissions_override;
   const base = Array.isArray(u.role_permissions) ? u.role_permissions : [];
   const extra = Array.isArray(u.extra_permissions) ? u.extra_permissions : [];
   return extra.length ? [...new Set([...base, ...extra])] : base;

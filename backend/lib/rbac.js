@@ -74,7 +74,7 @@ async function resolveUserByToken(token) {
   const hash = sha256(token);
   const r = await getPool().query(
     `SELECT u.id, u.display_name, u.branch_id, u.master_id, u.is_active,
-            u.extra_permissions,
+            u.extra_permissions, u.permissions_override,
             r.code AS role, r.permissions, r.level AS role_level
        FROM user_tokens t
        JOIN users u ON u.id = t.user_id
@@ -88,8 +88,11 @@ async function resolveUserByToken(token) {
   // обновить last_used (fire-and-forget)
   getPool().query(`UPDATE user_tokens SET last_used=NOW() WHERE token_hash=$1`, [hash]).catch(()=>{});
   const u = r.rows[0];
-  // персональные права (тумблеры в «Керуванні доступом») поверх ролевых
-  if (Array.isArray(u.extra_permissions) && u.extra_permissions.length) {
+  // permissions_override (если массив) = ТОЧНЫЙ набор прав юзера, перекрывает роль (Босс 19.07).
+  if (Array.isArray(u.permissions_override)) {
+    u.permissions = u.permissions_override;
+  } else if (Array.isArray(u.extra_permissions) && u.extra_permissions.length) {
+    // персональные добавки поверх ролевых
     u.permissions = [...new Set([...(u.permissions || []), ...u.extra_permissions])];
   }
   return u;

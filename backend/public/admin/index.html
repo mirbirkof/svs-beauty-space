@@ -12158,46 +12158,64 @@ function _mcAccHasPerm(perms, req){
 function _mcAccRender(roleCode){
   const box = document.getElementById('mcAccBody'); if(!box) return;
   const u = _mcAccUser;
-  const extra = new Set(Array.isArray(u.extra_permissions) ? u.extra_permissions : []);
   const roleObj = _mcAccRoles.find(r=>r.code===roleCode);
   const rolePerms = roleObj && Array.isArray(roleObj.permissions) ? roleObj.permissions : [];
+  const hasOverride = Array.isArray(u.permissions_override);
+  const eff = hasOverride ? u.permissions_override
+            : [...(rolePerms||[]), ...(Array.isArray(u.extra_permissions)?u.extra_permissions:[])];
   const roleOpts = _mcAccRoles.map(r => `<option value="${r.code}"${r.code===roleCode?' selected':''}>${_esc(r.name)}</option>`).join('');
   const groups = {};
   for (const p of _mcAccGrant) { (groups[p.group] = groups[p.group] || []).push(p); }
+  let onCount=0, total=0;
   const permHtml = Object.keys(groups).map(g => `
     <div style="margin:12px 0 2px;font-size:11.5px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px">${g}</div>
-    ${groups[g].map(p => { const byRole=_mcAccHasPerm(rolePerms,p.key); const on=byRole||extra.has(p.key);
-      return `<label class="set-toggle" style="padding:6px 0;${byRole?'opacity:.75':''}">
-      <input type="checkbox" data-perm="${p.key}" ${on?'checked':''} ${byRole?'disabled':''}>
-      <span style="font-size:13px">${_esc(p.label)}${byRole?' <span style="color:#16a34a;font-size:11px">✓ з ролі</span>':''}</span></label>`;
+    ${groups[g].map(p => { const on=_mcAccHasPerm(eff,p.key); total++; if(on)onCount++; const byRole=_mcAccHasPerm(rolePerms,p.key);
+      return `<label class="set-toggle" style="padding:6px 0">
+      <input type="checkbox" data-perm="${p.key}" ${on?'checked':''}>
+      <span style="font-size:13px">${_esc(p.label)}${byRole?' <span style="color:#16a34a;font-size:11px">роль</span>':''}</span></label>`;
     }).join('')}`).join('');
   box.innerHTML = `
     <div style="max-width:340px;margin-bottom:8px">
-      <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Роль співробітника (базовий набір прав)</label>
-      <select id="mcAccRole" class="input" onchange="_mcAccRender(this.value)">${roleOpts||'<option>—</option>'}</select>
-      <div style="font-size:11.5px;color:var(--text-secondary);margin-top:4px">Роль «${_esc((roleObj&&roleObj.name)||roleCode||'')}» дає ${rolePerms.length} прав (позначені «✓ з ролі»). Нижче можна ДОДАТИ права понад роль.</div>
+      <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Роль співробітника (базовий набір)</label>
+      <select id="mcAccRole" class="input" onchange="_mcAccOnRole(this.value)">${roleOpts||'<option>—</option>'}</select>
+      <div style="font-size:11.5px;color:var(--text-secondary);margin-top:4px">${hasOverride?'Персональний набір прав (перекриває роль).':'Права від ролі «'+_esc((roleObj&&roleObj.name)||roleCode||'')+'».'} Познач/зніми БУДЬ-ЯКЕ право — воно вмикається/вимикається саме цьому співробітнику.</div>
     </div>
     <div style="border-top:1px solid var(--border,#eee);margin-top:10px;padding-top:6px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:2px">Додаткові права</div>
-      ${permHtml || '<div class="empty">Немає доступних прав для видачі</div>'}
+      <div style="font-size:13px;font-weight:700;margin-bottom:2px">Права (${onCount}/${total} увімкнено)</div>
+      ${permHtml || '<div class="empty">Немає прав</div>'}
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:14px">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="_mcAccSave()">Зберегти доступ</button>
+      <button class="btn" onclick="_mcAccResetRole()" title="Прибрати персональні зміни — діятимуть права ролі">Скинути до ролі</button>
       <span id="mcAccMsg" style="font-size:12.5px"></span>
     </div>
-    <p class="set-p" style="font-size:12px;margin-top:12px">Логін: <b>${_esc(u.username||u.phone||'—')}</b>. Пароль скидається у «Повний реєстр доступів». Майстер бачить лише свій графік; адміністратор — журнал без фінансів власника.</p>`;
+    <p class="set-p" style="font-size:12px;margin-top:12px">Логін: <b>${_esc(u.username||u.phone||'—')}</b>. Пароль скидається у «Повний реєстр доступів».</p>`;
+}
+function _mcAccOnRole(roleCode){
+  // при зміні ролі показуємо права НОВОЇ ролі (override скидається візуально до збереження)
+  _mcAccUser = Object.assign({}, _mcAccUser, { role: roleCode, permissions_override: null });
+  _mcAccRender(roleCode);
 }
 async function _mcAccSave(){
   if (!_mcAccUser) return;
   const msg = document.getElementById('mcAccMsg');
   const role_code = (document.getElementById('mcAccRole')||{}).value || undefined;
-  const extra_permissions = [...document.querySelectorAll('#mcAccBody input[data-perm]:checked')].filter(i=>!i.disabled).map(i => i.getAttribute('data-perm'));
+  const permissions_override = [...document.querySelectorAll('#mcAccBody input[data-perm]:checked')].map(i => i.getAttribute('data-perm'));
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
   try {
-    const r = await api('/api/users/'+_mcAccUser.id, { method:'PATCH', body: JSON.stringify({ role_code, extra_permissions }) });
-    if (r && (r.ok || r.id || r.user)) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; _mcAccUser.extra_permissions = extra_permissions; if(role_code) _mcAccUser.role = role_code; }
+    const r = await api('/api/users/'+_mcAccUser.id, { method:'PATCH', body: JSON.stringify({ role_code, permissions_override }) });
+    if (r && (r.ok || r.id || r.user)) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; _mcAccUser.permissions_override = permissions_override; if(role_code) _mcAccUser.role = role_code; }
     else { msg.style.color = '#ef4444'; msg.textContent = (r&&(r.message||r.error))||'Помилка'; }
   } catch(e){ msg.style.color = '#ef4444'; msg.textContent = 'Помилка: '+(e.message||e); }
+}
+async function _mcAccResetRole(){
+  if (!_mcAccUser) return;
+  const msg = document.getElementById('mcAccMsg'); if(msg){msg.style.color='var(--text-secondary)'; msg.textContent='Скидання…';}
+  try {
+    const r = await api('/api/users/'+_mcAccUser.id, { method:'PATCH', body: JSON.stringify({ permissions_override: null }) });
+    if (r && (r.ok || r.id || r.user)) { _mcAccUser.permissions_override = null; _mcAccRender(_mcAccUser.role); const m=document.getElementById('mcAccMsg'); if(m){m.style.color='#10b981'; m.textContent='Права ролі відновлено ✓';} }
+    else if(msg){ msg.style.color='#ef4444'; msg.textContent=(r&&(r.message||r.error))||'Помилка'; }
+  } catch(e){ if(msg){msg.style.color='#ef4444'; msg.textContent='Помилка: '+(e.message||e);} }
 }
 async function saveMasterCard(){
   if(!_mcId) return;

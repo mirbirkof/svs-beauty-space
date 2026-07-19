@@ -11,28 +11,74 @@ const pool = getPool();
 // Каталог прав, які власник може ВИДАВАТИ співробітнику персонально (extra_permissions),
 // понад його роль. Групи — для зручного UI у вкладці «Доступ» профілю (Босс 19.07).
 // Видати можна лише те, що є у самого власника (перевірка hasPermission нижче).
+// ПОВНИЙ каталог можливостей CRM — власник вмикає/вимикає БУДЬ-ЯКЕ право адміну
+// прямо з профілю (Босс 19.07). Ключі = ті самі, що перевіряють ендпоінти (requirePerm).
 const GRANTABLE_PERMS = [
-  { key: 'clients.write',   group: 'Клієнти',   label: 'Редагувати клієнтів' },
-  { key: 'clients.delete',  group: 'Клієнти',   label: 'Видаляти клієнтів' },
-  { key: 'cashbox.write',   group: 'Каса',      label: 'Проводити операції каси' },
-  { key: 'cashbox.manage',  group: 'Каса',      label: 'Керувати касою (Z-звіт, корекції)' },
-  { key: 'reports.read',    group: 'Звіти',     label: 'Дивитись звіти' },
-  { key: 'reports.finance', group: 'Звіти',     label: 'Фінансові звіти (P&L, виручка)' },
-  { key: 'masters.write',   group: 'Майстри',   label: 'Редагувати майстрів і послуги' },
-  { key: 'masters.manage',  group: 'Майстри',   label: 'Наймати/звільняти майстрів' },
-  { key: 'stock.write',     group: 'Склад',     label: 'Змінювати склад' },
-  { key: 'stock.manage',    group: 'Склад',     label: 'Керувати складом (інвентаризація, списання)' },
-  { key: 'shop.write',      group: 'Магазин',   label: 'Керувати товарами магазину' },
-  { key: 'marketing.write', group: 'Маркетинг', label: 'Розсилки й акції' },
-  { key: 'loyalty.write',   group: 'Маркетинг', label: 'Керувати лояльністю/бонусами' },
-  { key: 'settings.write',  group: 'Налаштування', label: 'Змінювати налаштування салону' },
-  { key: 'schedule.write',  group: 'Розклад',   label: 'Редагувати графіки роботи' },
-  { key: 'documents.write', group: 'Документи', label: 'Керувати документами' },
-  { key: 'export.read',     group: 'Дані',      label: 'Експорт даних (CSV)' },
+  // Записи та журнал
+  { key: 'schedule.read',     group: 'Записи та графік', label: 'Дивитись журнал і графіки' },
+  { key: 'schedule.write',    group: 'Записи та графік', label: 'Створювати/редагувати записи і графіки' },
+  { key: 'waitlist.read',     group: 'Записи та графік', label: 'Лист очікування (перегляд)' },
+  { key: 'waitlist.write',    group: 'Записи та графік', label: 'Лист очікування (керування)' },
+  { key: 'booking.read',      group: 'Записи та графік', label: 'Онлайн-запис (перегляд)' },
+  // Клієнти
+  { key: 'clients.read',      group: 'Клієнти',   label: 'Дивитись клієнтів' },
+  { key: 'clients.write',     group: 'Клієнти',   label: 'Редагувати клієнтів' },
+  { key: 'clients.delete',    group: 'Клієнти',   label: 'Видаляти клієнтів' },
+  { key: 'blacklist.write',   group: 'Клієнти',   label: 'Чорний список' },
+  { key: 'favorites.read',    group: 'Клієнти',   label: 'Обрані/улюблені' },
+  // Продажі та магазин
+  { key: 'shop.read',         group: 'Продажі',   label: 'Дивитись магазин/товари' },
+  { key: 'shop.write',        group: 'Продажі',   label: 'Керувати товарами' },
+  { key: 'order.write',       group: 'Продажі',   label: 'Оформлювати продажі/замовлення' },
+  { key: 'catalog.write',     group: 'Продажі',   label: 'Керувати каталогом послуг' },
+  // Каса
+  { key: 'cashbox.read',      group: 'Каса',      label: 'Дивитись касу' },
+  { key: 'cashbox.write',     group: 'Каса',      label: 'Проводити операції каси' },
+  { key: 'cashbox.manage',    group: 'Каса',      label: 'Керувати касою (Z-звіт, корекції)' },
+  // Гроші та звіти
+  { key: 'reports.read',      group: 'Гроші та звіти', label: 'Базові звіти' },
+  { key: 'reports.finance',   group: 'Гроші та звіти', label: 'Фінансові звіти (P&L, виручка власника)' },
+  { key: 'accounting.write',  group: 'Гроші та звіти', label: 'Бухгалтерія (доходи/витрати)' },
+  { key: 'payroll.read',      group: 'Гроші та звіти', label: 'Зарплати (перегляд)' },
+  { key: 'payroll.write',     group: 'Гроші та звіти', label: 'Зарплати (нарахування)' },
+  { key: 'export.read',       group: 'Гроші та звіти', label: 'Експорт даних (CSV)' },
+  // Майстри/персонал
+  { key: 'masters.read',      group: 'Персонал',  label: 'Дивитись майстрів' },
+  { key: 'masters.write',     group: 'Персонал',  label: 'Редагувати майстрів і послуги майстра' },
+  { key: 'masters.manage',    group: 'Персонал',  label: 'Наймати/звільняти майстрів' },
+  { key: 'users.read',        group: 'Персонал',  label: 'Дивитись облікові записи/доступи' },
+  { key: 'users.write',       group: 'Персонал',  label: 'Керувати доступами (логіни, ролі, права)' },
+  // Склад
+  { key: 'stock.read',        group: 'Склад',     label: 'Дивитись склад' },
+  { key: 'stock.write',       group: 'Склад',     label: 'Змінювати склад' },
+  { key: 'stock.manage',      group: 'Склад',     label: 'Інвентаризація, списання, приход' },
+  // Маркетинг
+  { key: 'marketing.read',    group: 'Маркетинг', label: 'Маркетинг (перегляд, AI Відеостудія)' },
+  { key: 'marketing.write',   group: 'Маркетинг', label: 'Розсилки, кампанії, тригери' },
+  { key: 'loyalty.write',     group: 'Маркетинг', label: 'Лояльність/бонуси' },
+  { key: 'promo.write',       group: 'Маркетинг', label: 'Акції/промокоди' },
+  { key: 'reviews.write',     group: 'Маркетинг', label: 'Відгуки' },
+  { key: 'reviews.moderate',  group: 'Маркетинг', label: 'Модерація відгуків' },
+  // Робота салону
+  { key: 'tasks.write',       group: 'Робота салону', label: 'Задачі' },
+  { key: 'incidents.write',   group: 'Робота салону', label: 'Інциденти' },
+  { key: 'kb.write',          group: 'Робота салону', label: 'База знань' },
+  { key: 'surveys.write',     group: 'Робота салону', label: 'Опитування/NPS' },
+  { key: 'documents.write',   group: 'Робота салону', label: 'Документи' },
+  { key: 'qc.write',          group: 'Робота салону', label: 'Контроль якості' },
+  { key: 'medical.write',     group: 'Робота салону', label: 'Медичні карти' },
+  // Налаштування та інфраструктура (обережно — близько до власника)
+  { key: 'settings.write',    group: 'Налаштування', label: 'Змінювати налаштування салону' },
+  { key: 'branches.write',    group: 'Налаштування', label: 'Керувати філіями' },
+  { key: 'integrations.write',group: 'Налаштування', label: 'Інтеграції' },
+  { key: 'apikeys.write',     group: 'Налаштування', label: 'API-ключі' },
+  { key: 'audit.read',        group: 'Налаштування', label: 'Аудит дій' },
+  { key: 'monitoring.read',   group: 'Налаштування', label: 'Моніторинг' },
+  { key: 'security.manage',   group: 'Налаштування', label: 'Безпека' },
 ];
 
-// GET /api/users/grantable-perms — каталог прав для UI вкладки «Доступ» (тільки ті,
-// що має сам власник → може їх видати). Гард users.write = лише власник/адмін з правом.
+// GET /api/users/grantable-perms — ПОВНИЙ каталог для UI вкладки «Доступ».
+// Повертаємо ЛИШЕ ті, що має сам той, хто редагує (не можна видати більше, ніж маєш).
 router.get('/grantable-perms', requirePerm('users.write'), async (req, res) => {
   try {
     const { hasPermission } = require('../lib/rbac');
@@ -47,7 +93,7 @@ router.get('/', requirePerm('users.read'), async (req, res) => {
     const r = await pool.query(
       `SELECT u.id, u.phone, u.email, u.display_name, u.username, r.code AS role, r.name AS role_name,
               u.master_id, u.branch_id, u.is_active, u.last_login_at, u.created_at,
-              u.extra_permissions,
+              u.extra_permissions, u.permissions_override, r.permissions AS role_permissions,
               (u.password_hash IS NOT NULL) AS has_password
          FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id`
     );
@@ -196,22 +242,39 @@ router.delete('/:id', requirePerm('users.write'), async (req, res) => {
 router.patch('/:id', requirePerm('users.write'), async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { display_name, role_code, is_active, branch_id, master_id, extra_permissions } = req.body || {};
+    const { display_name, role_code, is_active, branch_id, master_id, extra_permissions, permissions_override } = req.body || {};
     // персональные тумблеры прав: белый список кодов + выдать можно только право, которое есть у самого выдающего.
     // Босс 19.07: власник керує всіма можливими правами адміна через вкладку «Доступ» у профілі.
     // Каталог групується у GRANTABLE_PERMS (той самий список читає фронт через /grantable-perms).
     const TOGGLABLE_PERMS = GRANTABLE_PERMS.map(p => p.key);
+    const { hasPermission } = require('../lib/rbac');
     let extraPerms = null; // null = не менять
     if (extra_permissions !== undefined) {
       if (!Array.isArray(extra_permissions)) return res.status(400).json({ error: 'extra_permissions-must-be-array' });
       const clean = [...new Set(extra_permissions.filter(p => TOGGLABLE_PERMS.includes(p)))];
-      const { hasPermission } = require('../lib/rbac');
       for (const p of clean) {
         if (!hasPermission(req.user.permissions, p)) {
           return res.status(403).json({ error: 'perm-not-owned', message: 'Нельзя выдать право, которого нет у себя' });
         }
       }
       extraPerms = JSON.stringify(clean);
+    }
+    // permissions_override: null → скинути до ролі; масив → ТОЧНИЙ набір прав юзера.
+    // '__KEEP__' (не передано) → не чіпати. Видати можна лише те, що є у самого редактора.
+    let overrideVal = '__KEEP__';
+    if (permissions_override !== undefined) {
+      if (permissions_override === null) { overrideVal = null; }
+      else if (Array.isArray(permissions_override)) {
+        const clean = [...new Set(permissions_override.filter(p => TOGGLABLE_PERMS.includes(p)))];
+        for (const p of clean) {
+          if (!hasPermission(req.user.permissions, p)) {
+            return res.status(403).json({ error: 'perm-not-owned', message: 'Не можна видати право, якого немає у себе: ' + p });
+          }
+        }
+        overrideVal = JSON.stringify(clean);
+      } else {
+        return res.status(400).json({ error: 'permissions_override-must-be-array-or-null' });
+      }
     }
     let roleId = null;
     if (role_code) {
@@ -239,9 +302,12 @@ router.patch('/:id', requirePerm('users.write'), async (req, res) => {
          branch_id    = COALESCE($4, branch_id),
          master_id    = COALESCE($5, master_id),
          extra_permissions = COALESCE($7::jsonb, extra_permissions),
+         permissions_override = CASE WHEN $8 = '__KEEP__' THEN permissions_override
+                                     WHEN $8 IS NULL THEN NULL
+                                     ELSE $8::jsonb END,
          updated_at   = NOW()
        WHERE id=$6 RETURNING id`,
-      [display_name || null, roleId, is_active, branch_id || null, master_id || null, id, extraPerms]
+      [display_name || null, roleId, is_active, branch_id || null, master_id || null, id, extraPerms, overrideVal]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
     await logAction({ user: req.user, action: 'user.update', entity: 'user', entity_id: id, meta: req.body });

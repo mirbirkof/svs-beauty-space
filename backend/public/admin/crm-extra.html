@@ -1328,46 +1328,66 @@ function _ucHasPerm(perms, req){
 }
 function _ucRenderPerms(u, roleCode){
   const box = document.getElementById('ucAccBody'); if(!box) return;
-  const extra = new Set(Array.isArray(u.extra_permissions)?u.extra_permissions:[]);
   const roleObj = _ucRoles.find(r=>r.code===roleCode);
   const rolePerms = roleObj && Array.isArray(roleObj.permissions) ? roleObj.permissions : [];
+  const hasOverride = Array.isArray(u.permissions_override);
+  // ефективний набір: override (якщо є) АБО роль+extra
+  const eff = hasOverride ? u.permissions_override
+            : [...(rolePerms||[]), ...(Array.isArray(u.extra_permissions)?u.extra_permissions:[])];
   const roleOpts = _ucRoles.map(r=>`<option value="${r.code}"${r.code===roleCode?' selected':''}>${_mcEsc(r.name)}</option>`).join('');
   const groups = {}; for(const p of _ucGrant){ (groups[p.group]=groups[p.group]||[]).push(p); }
+  let onCount=0, total=0;
   const permHtml = Object.keys(groups).map(g=>`
     <div style="margin:10px 0 2px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px">${g}</div>
     ${groups[g].map(p=>{
+      const on = _ucHasPerm(eff, p.key); total++; if(on) onCount++;
       const byRole = _ucHasPerm(rolePerms, p.key);
-      const on = byRole || extra.has(p.key);
-      return `<label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:13px;${byRole?'opacity:.75':'cursor:pointer'}">
-        <input type="checkbox" data-ucperm="${p.key}" ${on?'checked':''} ${byRole?'disabled':''} style="width:16px;height:16px">
-        ${_mcEsc(p.label)}${byRole?' <span style="font-size:11px;color:#16a34a">✓ з ролі</span>':''}</label>`;
+      return `<label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:13px;cursor:pointer">
+        <input type="checkbox" data-ucperm="${p.key}" ${on?'checked':''} style="width:16px;height:16px">
+        ${_mcEsc(p.label)}${byRole?' <span style="font-size:11px;color:#16a34a">роль</span>':''}</label>`;
     }).join('')}`).join('');
   box.innerHTML = `
     <div style="max-width:320px;margin-bottom:6px">
-      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Роль (базовий набір прав)</label>
-      <select id="ucRole" class="inp" onchange="_ucRenderPerms(${JSON.stringify(u).replace(/"/g,'&quot;')}, this.value)">${roleOpts||'<option>—</option>'}</select>
-      <div style="font-size:11.5px;color:#888;margin-top:4px">Роль «${_mcEsc((roleObj&&roleObj.name)||roleCode||'')}» дає ${rolePerms.length} прав (позначені «✓ з ролі»). Нижче можна ДОДАТИ права понад роль.</div>
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Роль (базовий набір)</label>
+      <select id="ucRole" class="inp" onchange="_ucOnRole(${u.id}, this.value)">${roleOpts||'<option>—</option>'}</select>
+      <div style="font-size:11.5px;color:#888;margin-top:4px">${hasOverride?'Персональний набір прав (перекриває роль).':'Права від ролі «'+_mcEsc((roleObj&&roleObj.name)||roleCode||'')+'».'} Познач/зніми БУДЬ-ЯКЕ право — воно вмикається/вимикається саме цьому співробітнику.</div>
     </div>
     <div style="border-top:1px solid #eee;margin-top:8px;padding-top:4px">
-      <div style="font-size:13px;font-weight:700">Права</div>
-      ${permHtml||'<div class="empty">Немає прав для видачі</div>'}
+      <div style="font-size:13px;font-weight:700">Права (${onCount}/${total} увімкнено)</div>
+      ${permHtml||'<div class="empty">Немає прав</div>'}
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
       <button class="btn sm" onclick="_ucSave(${u.id})">Зберегти доступ</button>
+      <button class="btn sm ghost" onclick="_ucResetRole(${u.id})" title="Прибрати персональні зміни — діятимуть права ролі">Скинути до ролі</button>
       <span id="ucMsg" style="font-size:12.5px"></span>
     </div>`;
+}
+function _ucOnRole(uid, roleCode){
+  const u = USERS_CACHE.find(x=>x.id===uid) || {};
+  // при зміні ролі показуємо права НОВОЇ ролі (ще не збережено)
+  const clone = Object.assign({}, u, { role: roleCode, permissions_override: null });
+  _ucRenderPerms(clone, roleCode);
 }
 async function _ucSave(uid){
   const msg=document.getElementById('ucMsg');
   const role_code=(document.getElementById('ucRole')||{}).value||undefined;
-  // тільки ДОДАТКОВІ права (не disabled = не з ролі), щоб не дублювати рольові
-  const extra_permissions=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].filter(i=>!i.disabled).map(i=>i.getAttribute('data-ucperm'));
+  // ПОВНИЙ набір відмічених прав → зберігаємо як персональний (permissions_override)
+  const permissions_override=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].map(i=>i.getAttribute('data-ucperm'));
   msg.style.color='#888'; msg.textContent='Збереження…';
   try{
-    const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({role_code,extra_permissions})});
-    if(r&&(r.ok||r.id||r.user)){ msg.style.color='#16a34a'; msg.textContent='Збережено ✓'; loadUsers(); }
+    const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({role_code, permissions_override})});
+    if(r&&(r.ok||r.id||r.user)){ msg.style.color='#16a34a'; msg.textContent='Збережено ✓'; await loadUsers(); }
     else { msg.style.color='#dc2626'; msg.textContent=(r&&(r.message||r.error))||'Помилка'; }
   }catch(e){ msg.style.color='#dc2626'; msg.textContent='Помилка: '+(e.message||e); }
+}
+async function _ucResetRole(uid){
+  const msg=document.getElementById('ucMsg'); if(msg){msg.style.color='#888'; msg.textContent='Скидання…';}
+  try{
+    const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({ permissions_override: null })});
+    if(r&&(r.ok||r.id||r.user)){ if(msg){msg.style.color='#16a34a'; msg.textContent='Права ролі відновлено ✓';} await loadUsers();
+      const u=USERS_CACHE.find(x=>x.id===uid); if(u){ u.permissions_override=null; openUserCard(uid);} }
+    else if(msg){ msg.style.color='#dc2626'; msg.textContent=(r&&(r.message||r.error))||'Помилка'; }
+  }catch(e){ if(msg){msg.style.color='#dc2626'; msg.textContent='Помилка: '+(e.message||e);} }
 }
 async function loadUsers(){
   try{
