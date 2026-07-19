@@ -770,6 +770,15 @@ const _MC_TABS = [
   ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
 ];
 async function openMasterCard(id){
+  // ЄДИНА картка майстра (Босс 19.07): цей модуль живе в iframe адмінки —
+  // відкриваємо картку КАРКАСА (index.html), щоб профіль був ОДИН звідусіль.
+  // Локальна модалка нижче — лише fallback для прямого відкриття crm-extra.html без каркаса.
+  try {
+    if (window.parent && window.parent !== window && typeof window.parent.openMasterCard === 'function') {
+      window.parent.openMasterCard(id);
+      return;
+    }
+  } catch(_){}
   _mcId=id;
   const box=document.getElementById('cardModal'); box.style.display='flex';
   document.getElementById('cardBody').innerHTML = '<div style="color:#888;padding:14px 0">Завантаження…</div>';
