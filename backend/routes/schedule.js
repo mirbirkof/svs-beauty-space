@@ -221,7 +221,8 @@ router.get('/unsettled', async (req, res) => {
                   = (${al}.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
     )`;
     const r = await pool.query(
-      `SELECT a.id, a.starts_at, a.master_id, a.price, a.status,
+      `SELECT DISTINCT ON (a.starts_at, lower(btrim(COALESCE(a.client_name, c.name, a.id::text))))
+              a.id, a.starts_at, a.master_id, a.price, a.status,
               COALESCE(m.name,'—') AS master_name,
               COALESCE(NULLIF(a.client_name,''), c.name, 'Клієнт') AS client_name,
               COALESCE(NULLIF(a.services_text,''), s.name, '—') AS service_name
@@ -233,6 +234,8 @@ router.get('/unsettled', async (req, res) => {
           AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
           AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
           AND NOT ${PAID('a')}                           -- у касі грошей по візиту немає
+          -- тестові записи (E2E/авто-тести) — не показуємо
+          AND COALESCE(a.client_name,'') NOT ILIKE '%e2e%' AND COALESCE(a.client_name,'') NOT ILIKE '%test%'
           -- АНТИДУБЛЬ: той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ запис → це дубль
           -- (напр. Оксана 850 booked, а реально оплатила 1000 тим же майстром о тій годині).
           AND NOT EXISTS(
@@ -241,7 +244,9 @@ router.get('/unsettled', async (req, res) => {
                AND (b.client_id = a.client_id
                     OR lower(btrim(COALESCE(b.client_name,''))) = lower(btrim(COALESCE(a.client_name,''))))
                AND ${PAID('b')})
-        ORDER BY a.starts_at DESC
+        -- DISTINCT ON вище: неоплачений ДВІЙНИК у той самий слот (той самий клієнт двічі,
+        -- обидва без грошей — 153 шт при аудиті) схлопується до ОДНОГО рядка (більша ціна).
+        ORDER BY a.starts_at DESC, lower(btrim(COALESCE(a.client_name, c.name, a.id::text))), a.price DESC
         LIMIT 300`);
     const items = r.rows.map(x => ({
       id: x.id,
