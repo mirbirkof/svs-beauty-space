@@ -1096,6 +1096,9 @@ select.input { background:var(--card); }
           <a class="sidebar-item" data-embed="/admin/crm-extra.html#audit" onclick="openEmbed('/admin/crm-extra.html#audit','history Аудит')" style="cursor:pointer">
             <span class="material-icons-round">history</span> Аудит
           </a>
+          <a class="sidebar-item" data-embed="/admin/security.html" onclick="openEmbed('/admin/security.html','security Безпека')" style="cursor:pointer">
+            <span class="material-icons-round">security</span> Безпека
+          </a>
         </div>
       </div>
 
@@ -4612,7 +4615,7 @@ function restoreSidebarGroups() {
 function openEmbed(url, title) {
   // Замок: власницькі embed-модулі (Система/Налаштування) закриті для всіх, крім owner
   if (USER && USER.role !== 'owner') {
-    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access','#users']; // shift-checklist відкрито адміну (заметка #123)
+    const OWNER_ONLY_EMBEDS = ['/monitoring.html','#branches','/integrations.html','#audit','/crm-migrate.html','#users-access','#users','/security.html']; // shift-checklist відкрито адміну (заметка #123)
     if (OWNER_ONLY_EMBEDS.some(f => url.includes(f))) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
     for (const [frag, p] of (typeof MENU_PERM_EMBED !== 'undefined' ? MENU_PERM_EMBED : [])) {
       if (url.includes(frag) && !userHasPerm(p)) { try { toast('Немає доступу до цього розділу', 'error'); } catch(_) {} return; }
