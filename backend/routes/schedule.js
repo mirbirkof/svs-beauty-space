@@ -202,28 +202,29 @@ router.get('/masters/:id/portfolio', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// ── GET /api/schedule/unsettled — записи, які ЗАБУЛИ провести (Босс 19.07) ──
-// Минулі візити без проведеної оплати (pay_settled_at IS NULL), не скасовані.
-// Виключаємо BeautyPro-синхро (стара навала дублів) — лише реальні записи салону,
-// останні 90 днів. Показуються під журналом, клікабельні → перехід і проведення.
+// ── GET /api/schedule/unsettled — дні із записами, які ЗАБУЛИ провести (Босс 19.07) ──
+// Минулі візити без проведеної оплати (pay_settled_at IS NULL), не скасовані, ЗА ВЕСЬ ЧАС
+// (Босс 19.07: показувати все, не лише останні дні). ГРУПУЄМО ПО ДНЯХ («цілий день забули»):
+// один рядок = день + скільки записів + сума. Клік → журнал переходить на цей день.
+// Джерело НЕ фільтруємо (BeautyPro-візити теж треба провести, напр. 27.06). Дедуп по
+// (час+майстер+клієнт) прибирає дублі-слоти синхро, щоб сума не задвоювалась.
 router.get('/unsettled', async (req, res) => {
   try {
     const pool = getPool();
     const r = await pool.query(
-      `SELECT a.id, a.starts_at, a.master_id, a.price,
-              COALESCE(m.name,'') AS master_name,
-              COALESCE(a.client_name, c.name, 'Клієнт') AS client_name,
-              COALESCE(NULLIF(a.services_text,''), s.name, '—') AS service_name
-         FROM appointments a
-         LEFT JOIN masters m ON m.id = a.master_id
-         LEFT JOIN clients c ON c.id = a.client_id
-         LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.starts_at < NOW() AND a.starts_at >= NOW() - INTERVAL '90 days'
-          AND a.pay_settled_at IS NULL AND a.price > 0
-          AND a.status NOT IN ('cancelled','noshow','no_show')
-          AND COALESCE(a.source,'') <> 'beautypro'
-        ORDER BY a.starts_at DESC LIMIT 100`);
-    res.json({ ok: true, items: r.rows });
+      `SELECT day, COUNT(*)::int AS cnt, COALESCE(SUM(price),0)::numeric AS sum
+         FROM (
+           SELECT DISTINCT ON (a.starts_at, a.master_id, COALESCE(a.client_name,''))
+                  (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date AS day, a.price
+             FROM appointments a
+            WHERE a.starts_at < NOW()
+              AND a.pay_settled_at IS NULL AND a.price > 0
+              AND a.status NOT IN ('cancelled','noshow','no_show')
+            ORDER BY a.starts_at, a.master_id, COALESCE(a.client_name,''), a.price DESC
+         ) t
+        GROUP BY day ORDER BY day DESC LIMIT 400`);
+    const items = r.rows.map(x => ({ day: (x.day instanceof Date ? x.day.toISOString().slice(0,10) : String(x.day).slice(0,10)), cnt: x.cnt, sum: Number(x.sum) }));
+    res.json({ ok: true, items });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

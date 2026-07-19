@@ -1340,6 +1340,16 @@ select.input { background:var(--card); }
         <div id="onbBanner"></div>
         <div class="kpi-grid" id="kpi"></div>
 
+        <!-- Забули провести (Босс 19.07): дні з непроведеними записами, за весь час -->
+        <div class="card unsettled-card" style="margin-bottom:24px;display:none">
+          <div class="card-header"><h3 style="display:flex;align-items:center;gap:8px">
+            <span class="material-icons-round" style="color:#c23b34">receipt_long</span> Забули провести
+            <span class="unsettled-count badge" style="background:#fdecec;color:#c23b34"></span>
+            <button type="button" class="info-i" data-t="<b>Забули провести.</b> Усі дні за весь час, де є минулі записи без проведеної оплати. Натисніть на день — журнал перейде на нього, і там кожну запис можна провести." onclick="showInfo(event,this.dataset.t)" style="margin-left:auto">i</button>
+          </h3></div>
+          <div class="card-body unsettled-list"></div>
+        </div>
+
         <!-- ═══ Панель витрат за місяць ═══ -->
         <div class="card" id="dashExpenseCard" style="margin-bottom:24px;display:none">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1563,14 +1573,14 @@ select.input { background:var(--card); }
             <div class="card jcash-card"><div class="card-body" id="jCashGauge"></div></div>
           </aside>
         </div>
-        <!-- Забули провести: минулі записи без проведеної оплати (Босс 19.07) -->
-        <div class="card" id="unsettledCard" style="margin-top:14px;display:none">
+        <!-- Забули провести: дні з минулими записами без проведеної оплати (Босс 19.07) -->
+        <div class="card unsettled-card" style="margin-top:14px;display:none">
           <div class="card-header"><h3 style="display:flex;align-items:center;gap:8px">
             <span class="material-icons-round" style="color:#c23b34">receipt_long</span> Забули провести
-            <span id="unsettledCount" class="badge" style="background:#fdecec;color:#c23b34"></span>
-            <button type="button" class="info-i" data-t="<b>Забули провести.</b> Минулі записи, у яких не проведена оплата (візит відбувся, але не закрито касу). Натисніть на запис — журнал перейде на потрібний день і відкриє її, щоб провести. BeautyPro-синхро сюди не потрапляє." onclick="showInfo(event,this.dataset.t)" style="margin-left:auto">i</button>
+            <span class="unsettled-count badge" style="background:#fdecec;color:#c23b34"></span>
+            <button type="button" class="info-i" data-t="<b>Забули провести.</b> Усі дні за весь час, де є минулі записи без проведеної оплати (візит був, а касу не закрито). Натисніть на день — журнал перейде на нього, і там кожну запис можна провести." onclick="showInfo(event,this.dataset.t)" style="margin-left:auto">i</button>
           </h3></div>
-          <div class="card-body" id="unsettledList"></div>
+          <div class="card-body unsettled-list"></div>
         </div>
       </div>
 
@@ -6625,6 +6635,7 @@ async function loadOnbChecklist(){
 async function loadDashboard() {
   loadOnbChecklist(); // онбординг-банер для салонів-орендарів (не платформа)
   loadManagerPanel();
+  loadUnsettled(); // «Забули провести» — дні з непроведеними записами (Босс 19.07)
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';
@@ -8977,39 +8988,41 @@ async function puAutoRun(){
   if(r&&r.ok){ toast('Кандидатів: '+r.candidates+', створено заказів: '+r.orders_created); loadPurchasing(); } else { toast((r&&r.error)||'Помилка','error'); }
 }
 
-// Забули провести (Босс 19.07): минулі записи без проведеної оплати — під журналом.
+// Забули провести (Босс 19.07): дні з минулими записами без проведеної оплати.
+// Групуємо по днях («цілий день забули»). Рендеримо в усі контейнери .unsettled-list
+// (журнал + дашборд). Клік по дню → журнал переходить на нього для проведення.
 async function loadUnsettled() {
-  const card = document.getElementById('unsettledCard');
-  const box = document.getElementById('unsettledList');
-  const cnt = document.getElementById('unsettledCount');
-  if (!card || !box) return;
+  const boxes = document.querySelectorAll('.unsettled-list');
+  const cards = document.querySelectorAll('.unsettled-card');
+  if (!boxes.length) return;
   try {
     const r = await api('/api/schedule/unsettled');
     const items = (r && r.items) || [];
-    if (!items.length) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    if (cnt) cnt.textContent = items.length;
-    box.innerHTML = items.map(a => {
-      const d = new Date(a.starts_at);
-      const iso = d.toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });      // YYYY-MM-DD
-      const dstr = d.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', year: 'numeric' });
-      const tstr = d.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
-      const mid = (a.master_id == null) ? 'null' : a.master_id;
-      return `<div onclick="openUnsettled(${a.id},'${iso}',${mid})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--border,#f0f0f0);cursor:pointer">
-        <div><b>${dstr}</b> <span style="color:var(--text-secondary)">${tstr}</span> · ${escapeHtml(a.master_name || '')} · ${escapeHtml(a.client_name || 'Клієнт')}
-          <div style="font-size:12.5px;color:var(--text-secondary)">${escapeHtml(a.service_name || '—')}</div></div>
-        <div style="text-align:right;white-space:nowrap"><b>${_money2(a.price)} ₴</b>
-          <div style="font-size:11.5px;color:#c23b34;font-weight:600">провести →</div></div>
+    const total = items.reduce((s, x) => s + (x.cnt || 0), 0);
+    if (!items.length) { cards.forEach(c => c.style.display = 'none'); return; }
+    cards.forEach(c => c.style.display = '');
+    document.querySelectorAll('.unsettled-count').forEach(el => el.textContent = total + ' у ' + items.length + ' дн.');
+    const html = items.map(a => {
+      const d = new Date(a.day + 'T00:00:00');
+      const dstr = d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const wd = d.toLocaleDateString('uk-UA', { weekday: 'short' });
+      return `<div onclick="openUnsettledDay('${a.day}')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--border,#f0f0f0);cursor:pointer">
+        <div><b>${dstr}</b> <span style="color:var(--text-secondary)">${wd}</span>
+          <div style="font-size:12.5px;color:#c23b34">${a.cnt} ${a.cnt === 1 ? 'запис' : (a.cnt < 5 ? 'записи' : 'записів')} не проведено</div></div>
+        <div style="text-align:right;white-space:nowrap"><b>${_money2(a.sum)} ₴</b>
+          <div style="font-size:11.5px;color:#c23b34;font-weight:600">відкрити день →</div></div>
       </div>`;
     }).join('');
-  } catch (e) { card.style.display = 'none'; }
+    boxes.forEach(b => b.innerHTML = html);
+  } catch (e) { cards.forEach(c => c.style.display = 'none'); }
 }
-async function openUnsettled(id, dateStr, masterId) {
+async function openUnsettledDay(dateStr) {
+  // переходимо в журнал на потрібний день
+  if (typeof go === 'function') go('journal');
   const di = document.getElementById('journalDate');
-  const cur = di ? di.value : null;
-  if (di && cur !== dateStr) { di.value = dateStr; await loadJournal(); }
-  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
-  openAppt(id, masterId);
+  if (di) di.value = dateStr;
+  await loadJournal();
+  try { document.getElementById('page-journal').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
 }
 async function loadJournal(silent) {
   const container = document.getElementById('journalContent');
