@@ -259,10 +259,14 @@
     if (lib) lib.innerHTML = empty('Завантаження…');
     try {
       var r = await window.modApi('/api/ai/video/readiness').catch(function () { return null; });
+      // readiness повертає storyboard/frames/video (можливості) + paid_key_configured.
+      // Поля .version немає — раніше через це показувало «недоступний» хоч рушій працює (Босс 19.07).
+      var montageOk = !!(r && (r.video || r.frames || r.storyboard));
+      var paidKey = !!(r && r.paid_key_configured);
       if (cards) cards.innerHTML =
-        card('Рушій монтажу', r && r.version ? 'готовий' : 'недоступний', r && r.version ? '#188038' : '#d93025') +
-        card('Версія', r && r.version ? String(r.version).slice(0, 18) : '—', '#1a73e8') +
-        card('Памʼять', r && r.rssMB != null ? r.rssMB + ' MB' : '—', '#9334e6');
+        card('Сценарій + підписи', r && r.storyboard ? 'працює' : '—', r && r.storyboard ? '#188038' : '#d93025') +
+        card('Рушій монтажу', montageOk ? 'готовий' : 'недоступний', montageOk ? '#188038' : '#d93025') +
+        card('Відео-рендер (Google AI)', paidKey ? 'підключено' : 'потрібен платний ключ', paidKey ? '#188038' : '#9334e6');
 
       var l = await window.modApi('/api/ai/video/library');
       var items = (l && l.items) || [];
@@ -363,6 +367,7 @@
             '<div id="airec-conv" class="card" style="' + BOX + '"></div>',
           video:
             '<div id="aivid-cards" style="' + CARDS + '"></div>' +
+            '<div style="margin:14px 0"><button onclick="if(window.parent&&window.parent.openEmbed){window.parent.openEmbed(\'/admin/video-studio.html\',\'movie AI Відеостудія\')}else{location.href=\'/admin/video-studio.html\'}" style="display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border:none;border-radius:10px;background:#7c5cff;color:#fff;font-size:14px;font-weight:600;cursor:pointer"><span class="material-icons-round" style="font-size:18px">movie</span> Відкрити повну студію (створити ролик)</button></div>' +
             '<h3 style="' + H3 + '">Бібліотека роликів</h3>' +
             '<div id="aivid-lib" class="card" style="' + BOX + '"></div>'
         };
