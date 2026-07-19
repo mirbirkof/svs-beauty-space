@@ -202,6 +202,31 @@ router.get('/masters/:id/portfolio', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── GET /api/schedule/unsettled — записи, які ЗАБУЛИ провести (Босс 19.07) ──
+// Минулі візити без проведеної оплати (pay_settled_at IS NULL), не скасовані.
+// Виключаємо BeautyPro-синхро (стара навала дублів) — лише реальні записи салону,
+// останні 90 днів. Показуються під журналом, клікабельні → перехід і проведення.
+router.get('/unsettled', async (req, res) => {
+  try {
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT a.id, a.starts_at, a.master_id, a.price,
+              COALESCE(m.name,'') AS master_name,
+              COALESCE(a.client_name, c.name, 'Клієнт') AS client_name,
+              COALESCE(NULLIF(a.services_text,''), s.name, '—') AS service_name
+         FROM appointments a
+         LEFT JOIN masters m ON m.id = a.master_id
+         LEFT JOIN clients c ON c.id = a.client_id
+         LEFT JOIN services s ON s.id = a.service_id
+        WHERE a.starts_at < NOW() AND a.starts_at >= NOW() - INTERVAL '90 days'
+          AND a.pay_settled_at IS NULL AND a.price > 0
+          AND a.status NOT IN ('cancelled','noshow','no_show')
+          AND COALESCE(a.source,'') <> 'beautypro'
+        ORDER BY a.starts_at DESC LIMIT 100`);
+    res.json({ ok: true, items: r.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 // ── PATCH /api/schedule/masters/:id/profile — редактирование профиля мастера ──
 // Body: { name, specialty, bio, phone, commission_pct }
 router.patch('/masters/:id/profile', async (req, res) => {
