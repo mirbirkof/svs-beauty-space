@@ -109,6 +109,9 @@
     var a = document.createElement('a');
     a.className = 'sidebar-item';
     a.setAttribute('data-page', cfg.page);
+    // owner-only модульний пункт (напр. Маркетинг-центр) — ховаємо адмінам через CSS
+    // body.role-nonowner (Босс 19.07: «адміну маркетинг-центр бачити необовʼязково»).
+    if (cfg.ownerOnly) a.setAttribute('data-owneronly', '1');
     a.setAttribute('onclick', "go('" + cfg.page + "')");
     a.innerHTML = '<span class="material-icons-round">' + (cfg.icon || 'widgets') + '</span>' +
       '<span class="lbl">' + window.modEsc(cfg.title) + '</span>';

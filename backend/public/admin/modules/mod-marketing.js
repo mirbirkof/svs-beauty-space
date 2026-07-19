@@ -22,6 +22,7 @@
     page: 'mktcenter',
     title: 'Маркетинг-центр',
     group: 'marketing',
+    ownerOnly: true, // Босс 19.07: адміну бачити необовʼязково — лише власник
     icon: 'campaign',
     section: '<div id="mktcenter-root"></div>',
     loader: async function () {
