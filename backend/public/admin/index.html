@@ -135,6 +135,16 @@ body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var
 .sidebar-group.open .sidebar-group-header .chevron { transform:rotate(90deg); }
 .sidebar-group-items { display:none; padding:2px 0 4px; }
 .sidebar-group.open .sidebar-group-items { display:block; }
+/* Owner-only розділи: платформа/інфраструктура, система, підписка (Босс 19.07).
+   ЗА ЗАМОВЧУВАННЯМ ПРИХОВАНІ (щоб не мигали при завантаженні до визначення ролі),
+   показуємо ЛИШЕ власнику. CSS = не залежить від часу створення динамічних груп. */
+#grp-ext-platform, #grp-system, #grp-mysub { display:none !important; }
+body.role-owner #grp-ext-platform,
+body.role-owner #grp-system,
+body.role-owner #grp-mysub { display:block !important; }
+/* Анти-мигання: меню приховане, поки не застосуються ролі/права (applyRoleUI
+   додає .ui-role-ready). Кеш ролі показує одразу; fallback 4с у скрипті. */
+body:not(.ui-role-ready) .sidebar-nav { visibility:hidden !important; }
 .sidebar-group-items .sidebar-item { padding-left:42px; font-size:14px; margin:1px 8px 1px 16px; }
 .sidebar-group-items .sidebar-item .material-icons-round { font-size:18px; }
 .sidebar-footer { padding:12px 16px; border-top:1px solid rgba(255,255,255,.08); }
@@ -3108,6 +3118,15 @@ const API = location.origin;
 const DIKIDI_API = location.origin; // dikidi-роуты смонтированы на /api того же сервиса
 let TOKEN = localStorage.getItem('svs_admin_token') || '';
 let USER = (() => { try { return JSON.parse(localStorage.getItem('svs_user')||'null'); } catch { return null; } })();
+// Раннє проставлення класу ролі (до першої відмальовки меню) — гасить мигання
+// owner-only розділів при оновленні сторінки (Босс 19.07).
+try { document.body.classList.toggle('role-owner', !!(USER && USER.role === 'owner')); document.body.classList.toggle('role-nonowner', !(USER && USER.role === 'owner')); } catch {}
+// Ховаємо меню, поки не застосуються ролі/права (applyRoleUI) — щоб НЕ мигали
+// зайві пункти. Якщо роль вже відома з кешу — показуємо одразу. Fallback 4с.
+try {
+  if (USER && USER.role) document.body.classList.add('ui-role-ready');
+  setTimeout(() => { try { document.body.classList.add('ui-role-ready'); } catch {} }, 4000);
+} catch {}
 // Мультитенантність: салон визначається з ?tenant=<slug> у посиланні (після саморeєстрації)
 // і запам'ятовується. Для власника основного салону параметра немає → TENANT_SLUG порожній →
 // жоден заголовок не додається → поведінка ІДЕНТИЧНА попередній (дефолтний тенант).
@@ -3717,6 +3736,14 @@ function isMasterRole(){ return !!USER && USER.role === 'master'; }
 function applyRoleUI(){
   // Майстер працює виключно у власному кабінеті — у хазяйську адмінку не пускаємо.
   if (USER && USER.role === 'master') { location.replace('/admin/master.html'); return; }
+  // Клас ролі на body → CSS ховає owner-only розділи навіть якщо їх створять
+  // динамічно ПІЗНІШЕ (модульні групи вантажаться асинхронно). Босс 19.07.
+  try {
+    const isOwner = !!(USER && USER.role === 'owner');
+    document.body.classList.toggle('role-owner', isOwner);
+    document.body.classList.toggle('role-nonowner', !isOwner);
+    document.body.classList.add('ui-role-ready'); // ролі/права застосовані → показати меню
+  } catch {}
   // показуємо ім'я та роль користувача у шапці
   try {
     const lbl = document.getElementById('userBadge');
