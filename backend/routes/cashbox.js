@@ -149,6 +149,33 @@ router.get('/today', async (req, res) => {
       [reqDate]
     );
     const row = r.rows[0];
+    // ── Звірка каси за день (Босс 19.07): розбивка «звідки гроші» + пояснення різниці.
+    // Послуги/товари з розбивкою готівка/картка беремо з cash_operations того дня.
+    const brk = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN category='sale_service' THEN amount ELSE 0 END),0)::float AS service,
+         COALESCE(SUM(CASE WHEN category='sale_service' AND method='cash'  THEN amount ELSE 0 END),0)::float AS service_cash,
+         COALESCE(SUM(CASE WHEN category='sale_service' AND method<>'cash' THEN amount ELSE 0 END),0)::float AS service_card,
+         COALESCE(SUM(CASE WHEN category='sale_product' THEN amount ELSE 0 END),0)::float AS product,
+         COALESCE(SUM(CASE WHEN category='sale_product' AND method='cash'  THEN amount ELSE 0 END),0)::float AS product_cash,
+         COALESCE(SUM(CASE WHEN category='sale_product' AND method<>'cash' THEN amount ELSE 0 END),0)::float AS product_card,
+         COALESCE(SUM(CASE WHEN type='in' AND category NOT IN ('sale_service','sale_product') THEN amount ELSE 0 END),0)::float AS other_in
+       FROM cash_operations
+       WHERE created_at >= $1::date AND created_at < ($1::date + INTERVAL '1 day')`,
+      [reqDate]
+    );
+    // Пояснення «недостачі»: непроведені записи (гроші ще не отримані), знижки, скасовані.
+    const ap = await pool.query(
+      `SELECT
+         COALESCE(SUM(discount_amount),0)::float AS discounts,
+         COUNT(*) FILTER (WHERE pay_settled_at IS NULL AND status NOT IN ('cancelled','no_show'))::int AS unsettled_cnt,
+         COALESCE(SUM(CASE WHEN pay_settled_at IS NULL AND status NOT IN ('cancelled','no_show') THEN price ELSE 0 END),0)::float AS unsettled_sum,
+         COUNT(*) FILTER (WHERE status IN ('cancelled','no_show'))::int AS cancelled_cnt
+       FROM appointments
+       WHERE starts_at >= $1::date AND starts_at < ($1::date + INTERVAL '1 day')`,
+      [reqDate]
+    );
+    const b = brk.rows[0], a = ap.rows[0];
     res.json({
       date: reqDate,
       cash: row.cash,
@@ -157,6 +184,15 @@ router.get('/today', async (req, res) => {
       total_out: row.total_out,
       net: row.total_in - row.total_out,
       ops_in: row.ops_in,
+      reconcile: {
+        service: b.service, service_cash: b.service_cash, service_card: b.service_card,
+        product: b.product, product_cash: b.product_cash, product_card: b.product_card,
+        other_in: b.other_in,
+        expected_cash: row.cash,      // скільки готівки має бути в ящику
+        discounts: a.discounts,
+        unsettled_cnt: a.unsettled_cnt, unsettled_sum: a.unsettled_sum,
+        cancelled_cnt: a.cancelled_cnt,
+      },
     });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

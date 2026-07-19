@@ -105,6 +105,12 @@ main { padding:24px 0; }
 
 <!-- ═══════════ КАССА ═══════════ -->
 <section id="tab-cashbox" class="tab active">
+  <div class="card" id="cb-recon-card">
+    <h2 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round">fact_check</span> Звірка каси за день
+      <input type="date" id="cb-recon-date" onchange="loadReconcile()" style="margin-left:auto;padding:6px 10px;border:1px solid #d8dae2;border-radius:9px;font-size:14px">
+    </h2>
+    <div id="cb-recon"><div style="color:#8b8f9c;padding:10px 0">Завантаження…</div></div>
+  </div>
   <div class="card">
     <h2><span class="material-icons-round">point_of_sale</span> Поточна зміна <span id="cb-status" class="badge">—</span></h2>
     <div id="cb-current"></div>
@@ -386,7 +392,63 @@ function onTab(t){
 }
 
 // ─────── CASHBOX ───────
+// Звірка каси за день (Босс 19.07): наочна розбивка звідки гроші + пояснення різниці.
+function _cbFmt(n){ return Number(n||0).toLocaleString('uk-UA',{maximumFractionDigits:2}); }
+async function loadReconcile(){
+  const di = document.getElementById('cb-recon-date');
+  if(di && !di.value) di.value = new Date().toISOString().slice(0,10);
+  const box = document.getElementById('cb-recon'); if(!box) return;
+  try{
+    const d = await api('/api/cashbox/today?date='+encodeURIComponent(di.value));
+    const r = d.reconcile || {};
+    const warn = (r.unsettled_cnt||0)>0 || (r.discounts||0)>0 || (r.cancelled_cnt||0)>0;
+    box.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+        <div style="background:#fff;border:1px solid #e9eaef;border-radius:14px;padding:14px 16px">
+          <div style="font-size:12px;color:#8b8f9c;margin-bottom:6px">🟢 Готівка в ящику</div>
+          <div style="font-size:23px;font-weight:750">${_cbFmt(d.cash)} ₴</div></div>
+        <div style="background:#fff;border:1px solid #e9eaef;border-radius:14px;padding:14px 16px">
+          <div style="font-size:12px;color:#8b8f9c;margin-bottom:6px">🔵 Безготівка (картка)</div>
+          <div style="font-size:23px;font-weight:750">${_cbFmt(d.cashless)} ₴</div></div>
+        <div style="background:linear-gradient(135deg,#7c5cff,#6a4dff);border-radius:14px;padding:14px 16px;color:#fff">
+          <div style="font-size:12px;opacity:.85;margin-bottom:6px">Разом у касі</div>
+          <div style="font-size:23px;font-weight:750">${_cbFmt(d.total)} ₴</div></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e9eaef;border-radius:14px;padding:6px 16px 10px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;margin:12px 0 6px">💰 Звідки гроші</div>
+        <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f1f2f5;font-size:14px">
+          <span>Послуги <span style="color:#8b8f9c;font-size:12px">готівка ${_cbFmt(r.service_cash)} · картка ${_cbFmt(r.service_card)}</span></span><b>${_cbFmt(r.service)} ₴</b></div>
+        <div style="display:flex;justify-content:space-between;padding:9px 0;${(r.other_in>0)?'border-bottom:1px solid #f1f2f5;':''}font-size:14px">
+          <span>Товари (продаж) <span style="color:#8b8f9c;font-size:12px">готівка ${_cbFmt(r.product_cash)} · картка ${_cbFmt(r.product_card)}</span></span><b>${_cbFmt(r.product)} ₴</b></div>
+        ${(r.other_in>0)?`<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px"><span>Інші надходження <span style="color:#8b8f9c;font-size:12px">передоплати, сертифікати, внесення</span></span><b>${_cbFmt(r.other_in)} ₴</b></div>`:''}
+      </div>
+      ${warn?`<div style="background:#fff8ec;border:1px solid #ffe4b3;border-radius:14px;padding:6px 16px 12px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#9a6b00;margin:12px 0 6px">⚠️ Чому може здаватись, що «не сходиться»</div>
+        ${(r.unsettled_cnt||0)>0?`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #fbe6c8;font-size:14px"><span>Непроведені записи <span style="background:#fdecec;color:#c23b34;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600">${r.unsettled_cnt}</span> <span style="color:#8b8f9c;font-size:12px">гроші ще не отримані — закрийте візит</span></span><b style="color:#8b8f9c">+${_cbFmt(r.unsettled_sum)} ₴ очікується</b></div>`:''}
+        ${(r.discounts||0)>0?`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #fbe6c8;font-size:14px"><span>Знижки надані сьогодні <span style="color:#8b8f9c;font-size:12px">на стільки менше за прайс</span></span><b style="color:#8b8f9c">−${_cbFmt(r.discounts)} ₴</b></div>`:''}
+        ${(r.cancelled_cnt||0)>0?`<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px"><span>Скасовані записи <span style="background:#fdecec;color:#c23b34;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600">${r.cancelled_cnt}</span> <span style="color:#8b8f9c;font-size:12px">грошей немає — це нормально</span></span><b style="color:#8b8f9c">0 ₴</b></div>`:''}
+      </div>`:''}
+      <div style="background:#fff;border:1px solid #e9eaef;border-radius:14px;padding:14px 16px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">🧮 Перерахунок ящика</div>
+        <div style="color:#8b8f9c;font-size:12.5px;margin-bottom:8px">Введіть, скільки готівки реально в ящику — різниця одразу:</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input id="cb-recon-count" type="number" placeholder="${_cbFmt(d.cash)}" oninput="cbReconDiff(${Number(d.cash)||0})" style="width:150px;padding:9px 12px;border:1.5px solid #d8dae2;border-radius:10px;font-size:15px">
+          <span style="font-size:18px;color:#c9ccd6">→</span>
+          <span id="cb-recon-diff" style="font-weight:700;color:#8b8f9c">очікується ${_cbFmt(d.cash)} ₴</span>
+        </div>
+      </div>`;
+  }catch(e){ box.innerHTML = '<div style="color:#c23b34;padding:10px 0">Не вдалося завантажити звірку: '+(e.message||e)+'</div>'; }
+}
+function cbReconDiff(expected){
+  const v = parseFloat(document.getElementById('cb-recon-count').value);
+  const out = document.getElementById('cb-recon-diff');
+  if(!Number.isFinite(v)){ out.textContent='очікується '+_cbFmt(expected)+' ₴'; out.style.color='#8b8f9c'; return; }
+  const diff = Math.round((v-expected)*100)/100;
+  if(diff===0){ out.textContent='Різниця 0 ₴ · все вірно ✓'; out.style.color='#1a8a4a'; }
+  else{ out.textContent='Різниця '+(diff>0?'+':'')+_cbFmt(diff)+' ₴ · '+(diff>0?'лишок у ящику':'недостача'); out.style.color='#c23b34'; }
+}
 async function loadCashbox(){
+  loadReconcile();
   try{
     const c = await api('/api/cashbox/shifts/current');
     const box = document.getElementById('cb-current');
@@ -1545,7 +1607,15 @@ async function loadAudit(){
   }catch(e){ document.getElementById('audit-list').innerHTML='<tr><td colspan="5" class="empty"><span class="material-icons-round">error_outline</span>Не вдалося завантажити журнал: '+e.message+'</td></tr>'; }
 }
 
-function init(){ setRange(30); if(location.hash && document.querySelector('nav.tabs button[data-tab="'+location.hash.slice(1)+'"]')) openHashTab(); else onTab('cashbox'); }
+function init(){ setRange(30);
+  // нормалізуємо аліаси хешу (напр. #users-access → таб users) — інакше init не
+  // знаходив кнопку і падав на Касу («невідповідне вікно», Босс 19.07).
+  const raw = location.hash.replace('#','');
+  const alias = { 'users-access':'users' };
+  const tab = alias[raw] || raw;
+  if(tab && document.querySelector('nav.tabs button[data-tab="'+tab+'"]')) openHashTab();
+  else onTab('cashbox');
+}
 init();
 </script>
 </div>
