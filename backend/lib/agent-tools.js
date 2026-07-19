@@ -108,13 +108,17 @@ const TOOLS = {
     parameters_schema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, limit: { type: 'number' } } },
     is_destructive: false,
     async impl(args) {
-      const w = [`a.status='done'`], p = [];
+      // Виручка по послугах = РЕАЛЬНІ гроші з каси (cash_operations), не ціни журналу
+      // (Босс 19.07: журнал роздутий дублями BeautyPro). Каса лінкується до візиту через ref_id.
+      const w = [`co.type='in'`, `co.category='sale_service'`], p = [];
       if (args.from) { p.push(args.from); w.push(`a.starts_at >= $${p.length}`); }
       if (args.to) { p.push(args.to); w.push(`a.starts_at <= $${p.length}`); }
       const lim = Math.min(parseInt(args.limit, 10) || 10, 30);
       const rows = await q(
-        `SELECT s.name, COUNT(*)::int cnt, COALESCE(SUM(a.price),0)::float revenue
-           FROM appointments a JOIN services s ON s.id=a.service_id
+        `SELECT s.name, COUNT(*)::int cnt, COALESCE(SUM(co.amount),0)::float revenue
+           FROM cash_operations co
+           JOIN appointments a ON co.ref_type='appointment' AND co.ref_id=a.id AND co.tenant_id=a.tenant_id
+           JOIN services s ON s.id=a.service_id
           WHERE ${w.join(' AND ')} GROUP BY s.name ORDER BY revenue DESC LIMIT ${lim}`, p).catch(() => []);
       return { top: rows.map(r => ({ service: r.name, count: r.cnt, revenue: Math.round(r.revenue) })) };
     },

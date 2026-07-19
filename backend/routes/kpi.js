@@ -68,7 +68,14 @@ async function computePeriod(masterId, from, to) {
     rating = r && r.r !== null ? Number(r.r) : null;
   } catch { rating = null; }
 
-  const revenue = Number(a.revenue);
+  // Виручка майстра = РЕАЛЬНІ гроші з каси (cash_operations), а не ціни журналу
+  // (Босс 19.07: журнал роздутий дублями BeautyPro → завищував. Єдине джерело — каса,
+  // синхронно з reports.js top_masters). Візити/no-show лишаються з appointments.
+  const cashRev = (await q(
+    `SELECT COALESCE(SUM(amount),0)::numeric AS revenue FROM cash_operations
+      WHERE master_id=$1 AND type='in' AND category IN ('sale_service','sale_product')
+        AND created_at>=$2 AND created_at<$3`, [masterId, from, to]))[0].revenue;
+  const revenue = Number(cashRev);
   const visits = a.visits;
   const occupancy = a.work_days > 0 ? Math.round((a.busy_min / (a.work_days * 480)) * 1000) / 10 : 0;
   return {

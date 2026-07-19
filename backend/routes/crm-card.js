@@ -35,7 +35,10 @@ router.get('/:id(\\d+)/card', async (req, res) => {
       safe(q(
         `SELECT COUNT(*) FILTER (WHERE status='done')::int AS visits_done,
                 COUNT(*) FILTER (WHERE status='noshow')::int AS noshow,
-                COALESCE(SUM(COALESCE(real_amount,price)) FILTER (WHERE status='done'),0) AS visits_sum,
+                -- витрати клієнта = РЕАЛЬНІ гроші з каси (не ціни журналу; Босс 19.07)
+                COALESCE((SELECT SUM(co.amount) FROM cash_operations co
+                          JOIN appointments a2 ON co.ref_type='appointment' AND co.ref_id=a2.id AND co.tenant_id=a2.tenant_id
+                         WHERE a2.client_id=$1 AND co.type='in' AND co.category IN ('sale_service','sale_product')),0) AS visits_sum,
                 MIN(starts_at) FILTER (WHERE status='done') AS first_visit,
                 MAX(starts_at) FILTER (WHERE status='done') AS last_visit
            FROM appointments WHERE client_id=$1`, [id]), [{}]),
