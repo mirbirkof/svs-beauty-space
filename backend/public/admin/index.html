@@ -2784,6 +2784,10 @@ select.input { background:var(--card); }
                     <input type="checkbox" id="set-masters-block" onchange="saveSettings()">
                     <span><b>Майстри можуть самі займати свій час</b><i>Коли увімкнено — майстер може у своєму кабінеті заблокувати відрізок часу (стає сірим, ніхто не запишеться). Власник і адміністратори займають час завжди.</i></span>
                   </label>
+                  <label class="set-toggle">
+                    <input type="checkbox" id="set-admin-msvc" onchange="saveSettings()">
+                    <span><b>Адміністратори можуть керувати послугами майстрів</b><i>Коли увімкнено — адміністратор у картці майстра (вкладка «Послуги») додає/вимикає послуги й міняє персональні ціни та тривалість. Коли вимкнено — адмін лише переглядає; змінює тільки власник.</i></span>
+                  </label>
                   <p id="settingsMsg" class="set-msg" style="margin-top:12px"></p>
                 </div>
               </div></div>
@@ -5496,6 +5500,7 @@ async function loadSettings() {
     const s = r.settings || {};
     document.getElementById('set-masters-phone').checked = s.masters_see_phone === true;
     { const mb = document.getElementById('set-masters-block'); if (mb) mb.checked = s.masters_can_block_time === true; }
+    { const am = document.getElementById('set-admin-msvc'); if (am) am.checked = s.admin_edit_master_services === true; }
     { const ep = document.getElementById('set-edit-past');
       if (ep) {
         const until = s.allow_edit_past_until || null;
@@ -6150,9 +6155,12 @@ async function saveSettings() {
   const masters_see_phone = document.getElementById('set-masters-phone').checked;
   const _mb = document.getElementById('set-masters-block');
   const masters_can_block_time = _mb ? _mb.checked : undefined;
+  const _am = document.getElementById('set-admin-msvc');
+  const admin_edit_master_services = _am ? _am.checked : undefined;
   msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
   const payload = { masters_see_phone };
   if (masters_can_block_time !== undefined) payload.masters_can_block_time = masters_can_block_time;
+  if (admin_edit_master_services !== undefined) payload.admin_edit_master_services = admin_edit_master_services;
   try {
     const r = await api('/api/settings', { method:'PATCH', body: JSON.stringify(payload) });
     if (r.ok) { msg.style.color = '#10b981'; msg.textContent = 'Збережено ✓'; setTimeout(()=>msg.textContent='', 2000); }
@@ -11830,8 +11838,9 @@ function _mcTabServices(){
     || '<tr><td colspan="3"><div class="empty">Ще немає виконаних послуг</div></td></tr>';
   return `<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap">
       <h4 style="margin:0;font-size:14px">Послуги та розцінки майстра</h4>
-      <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="_mcSvcAddToggle()">+ Додати послугу</button>
+      <button id="mcSvcAddBtn" class="btn btn-sm btn-primary" style="margin-left:auto;display:none" onclick="_mcSvcAddToggle()">+ Додати послугу</button>
     </div>
+    <div id="mcSvcRO" style="display:none;font-size:12px;color:var(--text-secondary);margin:0 0 8px">Перегляд лише. Керування послугами майстрів вимкнено для адміністраторів — увімкніть у Бізнес-налаштуваннях (власник).</div>
     <div id="mcSvcAddRow" style="display:none;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center"></div>
     <div id="mcSvcList"><div class="empty">Завантаження…</div></div>
     <p class="set-p" style="font-size:12px;margin-top:8px">Ціна/хв: порожньо = базова з каталогу, своє число = персональна розцінка. Вимкнена послуга (сірий тумблер) не пропонується цьому майстру в журналі та онлайн-записі.</p>
@@ -11843,6 +11852,10 @@ async function _mcSvcLoad(){
   let r; try { r = await api('/api/master-services/by-master/' + _mcId); }
   catch(e){ box.innerHTML = '<div class="empty">Не вдалося завантажити: '+(e.message||e)+'</div>'; return; }
   _mcSvcItems = r.items || [];
+  const canEdit = r.can_edit !== false;
+  { const b = document.getElementById('mcSvcAddBtn'); if (b) b.style.display = canEdit ? '' : 'none';
+    const ro = document.getElementById('mcSvcRO'); if (ro) ro.style.display = canEdit ? 'none' : 'block'; }
+  const dis = canEdit ? '' : 'disabled';
   if (!_mcSvcItems.length) { box.innerHTML = '<div class="empty">Звʼязок ще немає — додайте першу послугу кнопкою вище. Поки звʼязки не налаштовані, майстру доступний весь каталог.</div>'; return; }
   let html = '', cat = null;
   for (const it of _mcSvcItems) {
@@ -11851,16 +11864,16 @@ async function _mcSvcLoad(){
     const off = it.active === false;
     html += `<div style="display:flex;gap:8px;align-items:center;padding:7px 8px;border:1px solid var(--border,#e5e7eb);border-radius:9px;margin-bottom:5px;${off?'opacity:.55;background:var(--bg-secondary,#f9fafb)':''}">
       <label style="flex:none;cursor:pointer" title="${off?'Увімкнути':'Вимкнути'} послугу для майстра">
-        <input type="checkbox" ${off?'':'checked'} onchange="_mcSvcPatch(${it.id},'active',this.checked)" style="width:16px;height:16px;vertical-align:middle"></label>
+        <input type="checkbox" ${off?'':'checked'} ${dis} onchange="_mcSvcPatch(${it.id},'active',this.checked)" style="width:16px;height:16px;vertical-align:middle"></label>
       <div style="min-width:0;flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(it.service_name)}">${it.service_name}</div>
-      <input type="number" min="0" step="1" class="input" style="width:92px;padding:6px 8px;font-size:13px" value="${it.price!=null?Number(it.price):''}"
+      <input type="number" min="0" step="1" class="input" ${dis} style="width:92px;padding:6px 8px;font-size:13px" value="${it.price!=null?Number(it.price):''}"
         placeholder="${it.base_price!=null?Number(it.base_price):'—'}" title="Ціна майстра, грн (порожньо = базова ${it.base_price!=null?Number(it.base_price):''})"
         onchange="_mcSvcPatch(${it.id},'price',this.value)"> <span style="font-size:11px;color:var(--text-secondary)">₴</span>
-      <input type="number" min="0" step="5" class="input" style="width:74px;padding:6px 8px;font-size:13px" value="${it.duration_min!=null?it.duration_min:''}"
+      <input type="number" min="0" step="5" class="input" ${dis} style="width:74px;padding:6px 8px;font-size:13px" value="${it.duration_min!=null?it.duration_min:''}"
         placeholder="${it.base_duration!=null?it.base_duration:'—'}" title="Тривалість, хв (порожньо = базова)"
         onchange="_mcSvcPatch(${it.id},'duration_min',this.value)"> <span style="font-size:11px;color:var(--text-secondary)">хв</span>
-      <button class="btn btn-sm" style="flex:none;background:#fee2e2;color:#dc2626;padding:5px 8px" title="Прибрати послугу в майстра"
-        onclick="_mcSvcDel(${it.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button>
+      ${canEdit ? `<button class="btn btn-sm" style="flex:none;background:#fee2e2;color:#dc2626;padding:5px 8px" title="Прибрати послугу в майстра"
+        onclick="_mcSvcDel(${it.id})"><span class="material-icons-round" style="font-size:15px">delete</span></button>` : ''}
     </div>`;
   }
   box.innerHTML = html;

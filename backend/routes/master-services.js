@@ -1,15 +1,36 @@
 /* routes/master-services.js — ручна курація звʼязки майстер↔послуга (наша CRM = джерело правди).
    Засіяно з BeautyPro лише для активних майстрів; далі редагується тут.
-   Гард: masters.read / masters.write — керування послугами майстра доступне
-   ролям з правом masters.* (Власник + Адмін), а не лише users.* (Босс 19.07). */
+   Читання: masters.read. Редагування: Власник (права "*") завжди; Адмін —
+   ЛИШЕ якщо у Бізнес-налаштуваннях увімкнено admin_edit_master_services (Босс 19.07).
+   Дефолт вимкнено: власник свідомо відкриває цю можливість адмінам. */
 const express = require('express');
 const { getPool } = require('../db-pg');
-const { requirePerm, logAction } = require('../lib/rbac');
+const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
+const { getSetting } = require('../lib/settings');
 
 const router = express.Router();
 const pool = getPool();
 
 const err = (res, e) => { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); };
+
+// Чи може юзер РЕДАГУВАТИ послуги майстрів: власник ("*") завжди; інші — лише
+// коли увімкнено бізнес-тумблер admin_edit_master_services + мають masters.write.
+const isOwner = (u) => hasPermission((u && u.permissions) || [], '*');
+async function canEditMasterServices(req) {
+  const u = req.user;
+  if (!u) return false;
+  if (isOwner(u)) return true;
+  if (!hasPermission(u.permissions || [], 'masters.write')) return false;
+  return (await getSetting('admin_edit_master_services', false)) === true;
+}
+function requireEdit() {
+  return async (req, res, next) => {
+    try { if (await canEditMasterServices(req)) return next(); }
+    catch (e) { return err(res, e); }
+    return res.status(403).json({ error: 'master-services-edit-disabled',
+      message: 'Керування послугами майстрів вимкнено для адміністраторів. Увімкніть у Бізнес-налаштуваннях (доступно власнику).' });
+  };
+}
 
 // послуги конкретного майстра (з базовою/персональною ціною)
 router.get('/by-master/:masterId', requirePerm('masters.read'), async (req, res) => {
@@ -28,7 +49,7 @@ router.get('/by-master/:masterId', requirePerm('masters.read'), async (req, res)
         ORDER BY s.category NULLS LAST, s.name`,
       [Number(req.params.masterId)]
     );
-    res.json({ items: r.rows, count: r.rows.length });
+    res.json({ items: r.rows, count: r.rows.length, can_edit: await canEditMasterServices(req) });
   } catch (e) { err(res, e); }
 });
 
@@ -49,7 +70,7 @@ router.get('/by-service/:serviceId', requirePerm('masters.read'), async (req, re
 });
 
 // додати звʼязку
-router.post('/', requirePerm('masters.write'), async (req, res) => {
+router.post('/', requirePerm('masters.read'), requireEdit(), async (req, res) => {
   try {
     const { master_id, service_id, price, duration_min } = req.body || {};
     if (!master_id || !service_id) return res.status(400).json({ error: 'master_id and service_id required' });
@@ -69,7 +90,7 @@ router.post('/', requirePerm('masters.write'), async (req, res) => {
 });
 
 // оновити ціну/тривалість/активність
-router.patch('/:id', requirePerm('masters.write'), async (req, res) => {
+router.patch('/:id', requirePerm('masters.read'), requireEdit(), async (req, res) => {
   try {
     const body = req.body || {};
     const fields = [], vals = [];
@@ -101,7 +122,7 @@ router.patch('/:id', requirePerm('masters.write'), async (req, res) => {
 });
 
 // прибрати звʼязку
-router.delete('/:id', requirePerm('masters.write'), async (req, res) => {
+router.delete('/:id', requirePerm('masters.read'), requireEdit(), async (req, res) => {
   try {
     const r = await pool.query('DELETE FROM master_services WHERE id=$1 RETURNING id', [Number(req.params.id)]);
     if (!r.rows.length) return res.status(404).json({ error: 'not found' });

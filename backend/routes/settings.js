@@ -15,6 +15,8 @@ const ALLOWED = {
   masters_can_block_time: (v) => typeof v === 'boolean',
   // Чи може адмін редагувати записи минулих днів у журналі (заметка #95, дефолт false; власник може завжди)
   allow_edit_past: (v) => typeof v === 'boolean',
+  // Чи може адмін керувати послугами/розцінками майстрів (Босс 19.07, дефолт false; власник завжди)
+  admin_edit_master_services: (v) => typeof v === 'boolean',
   // Строк дії дозволу (ISO-час). null = безстроково. Коли час минув — дозвіл автоматично не діє.
   allow_edit_past_until: (v) => v === null || (typeof v === 'string' && !isNaN(Date.parse(v))),
   // Профіль салону (DIKIDI-style): назва, телефони, адреса, час роботи, опис, напрямки, фото
