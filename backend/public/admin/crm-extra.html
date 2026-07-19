@@ -1316,20 +1316,40 @@ async function _ucLoad(u){
     ]);
     _ucRoles = rl.items || []; _ucGrant = gl.items || [];
   } catch(e){ box.innerHTML = '<div class="empty">Права недоступні: '+(e.message||e)+'</div>'; return; }
+  _ucRenderPerms(u, u.role);
+}
+// клієнтська перевірка права з wildcard (як на бекенді)
+function _ucHasPerm(perms, req){
+  if(!Array.isArray(perms)) return false;
+  if(perms.includes('*')||perms.includes(req)) return true;
+  const area=String(req).split('.')[0]; if(perms.includes(area+'.*')) return true;
+  const act=String(req).split('.').slice(-1)[0]; if(perms.includes('*.'+act)) return true;
+  return false;
+}
+function _ucRenderPerms(u, roleCode){
+  const box = document.getElementById('ucAccBody'); if(!box) return;
   const extra = new Set(Array.isArray(u.extra_permissions)?u.extra_permissions:[]);
-  const roleOpts = _ucRoles.map(r=>`<option value="${r.code}"${r.code===u.role?' selected':''}>${_mcEsc(r.name)}</option>`).join('');
+  const roleObj = _ucRoles.find(r=>r.code===roleCode);
+  const rolePerms = roleObj && Array.isArray(roleObj.permissions) ? roleObj.permissions : [];
+  const roleOpts = _ucRoles.map(r=>`<option value="${r.code}"${r.code===roleCode?' selected':''}>${_mcEsc(r.name)}</option>`).join('');
   const groups = {}; for(const p of _ucGrant){ (groups[p.group]=groups[p.group]||[]).push(p); }
   const permHtml = Object.keys(groups).map(g=>`
     <div style="margin:10px 0 2px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px">${g}</div>
-    ${groups[g].map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 0;cursor:pointer;font-size:13px">
-      <input type="checkbox" data-ucperm="${p.key}" ${extra.has(p.key)?'checked':''} style="width:16px;height:16px">${_mcEsc(p.label)}</label>`).join('')}`).join('');
+    ${groups[g].map(p=>{
+      const byRole = _ucHasPerm(rolePerms, p.key);
+      const on = byRole || extra.has(p.key);
+      return `<label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:13px;${byRole?'opacity:.75':'cursor:pointer'}">
+        <input type="checkbox" data-ucperm="${p.key}" ${on?'checked':''} ${byRole?'disabled':''} style="width:16px;height:16px">
+        ${_mcEsc(p.label)}${byRole?' <span style="font-size:11px;color:#16a34a">✓ з ролі</span>':''}</label>`;
+    }).join('')}`).join('');
   box.innerHTML = `
     <div style="max-width:320px;margin-bottom:6px">
-      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Роль</label>
-      <select id="ucRole" class="inp">${roleOpts||'<option>—</option>'}</select>
+      <label style="font-size:12px;color:#888;display:block;margin-bottom:4px">Роль (базовий набір прав)</label>
+      <select id="ucRole" class="inp" onchange="_ucRenderPerms(${JSON.stringify(u).replace(/"/g,'&quot;')}, this.value)">${roleOpts||'<option>—</option>'}</select>
+      <div style="font-size:11.5px;color:#888;margin-top:4px">Роль «${_mcEsc((roleObj&&roleObj.name)||roleCode||'')}» дає ${rolePerms.length} прав (позначені «✓ з ролі»). Нижче можна ДОДАТИ права понад роль.</div>
     </div>
     <div style="border-top:1px solid #eee;margin-top:8px;padding-top:4px">
-      <div style="font-size:13px;font-weight:700">Додаткові права</div>
+      <div style="font-size:13px;font-weight:700">Права</div>
       ${permHtml||'<div class="empty">Немає прав для видачі</div>'}
     </div>
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
@@ -1340,7 +1360,8 @@ async function _ucLoad(u){
 async function _ucSave(uid){
   const msg=document.getElementById('ucMsg');
   const role_code=(document.getElementById('ucRole')||{}).value||undefined;
-  const extra_permissions=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].map(i=>i.getAttribute('data-ucperm'));
+  // тільки ДОДАТКОВІ права (не disabled = не з ролі), щоб не дублювати рольові
+  const extra_permissions=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].filter(i=>!i.disabled).map(i=>i.getAttribute('data-ucperm'));
   msg.style.color='#888'; msg.textContent='Збереження…';
   try{
     const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({role_code,extra_permissions})});
