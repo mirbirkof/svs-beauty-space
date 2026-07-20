@@ -393,7 +393,8 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
               COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost
          FROM appointments
         WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
-          AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`))[0] || { served: 0, lost: 0 };
+          AND starts_at <= NOW()
+          AND (bp_state IS NULL OR bp_state NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))`))[0] || { served: 0, lost: 0 };
     const clFin = clRow.served + clRow.lost;
     const closurePct = clFin > 0 ? Math.round(clRow.served / clFin * 100) : null;
 

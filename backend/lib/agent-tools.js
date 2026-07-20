@@ -229,7 +229,7 @@ const TOOLS = {
     parameters_schema: { type: 'object', properties: {} },
     is_destructive: false,
     async impl() {
-      const r = (await q(`SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served, COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost FROM appointments WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') AND starts_at <= NOW() AND bp_state IS DISTINCT FROM 'bp_deleted'`).catch(() => [{ served: 0, lost: 0 }]))[0];
+      const r = (await q(`SELECT COUNT(*) FILTER (WHERE status IN ('done','confirmed'))::int served, COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::int lost FROM appointments WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') AND starts_at <= NOW() AND (bp_state IS NULL OR bp_state NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))`).catch(() => [{ served: 0, lost: 0 }]))[0];
       const fin = r.served + r.lost;
       return { served: r.served, finished: fin, pct: fin > 0 ? Math.round(r.served / fin * 100) : null, target: 80 };
     },

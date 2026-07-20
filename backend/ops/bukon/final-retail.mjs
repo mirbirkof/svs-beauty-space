@@ -5,7 +5,7 @@ import pg from '/home/client/workspace/svs-beauty-space/backend/node_modules/pg/
 const { Client } = pg;
 const APPLY = process.argv.includes('--apply');
 const norm = s => String(s==null?'':s).toLowerCase().replace(/[^a-zа-яїієґ ]/gi,'').trim();
-const COLOR = /фарбув|тонув|освітл|airtouch|air touch|babyl|мелірув|балаяж|шатуш|розтяжк|деколор|блонд|complex|colorplex|змив волосс/i;
+const COLOR = /фарбув|тонув|тонір|освітл|airtouch|air touch|babyl|мелірув|балаяж|шатуш|розтяжк|розтон|деколор|блонд|контуринг|шейдин|калорув|платину|нюд|мультитон|вуаль|надання тону|complex|colorplex|змив волосс/i;
 const GRAM = /eterna|extremo|socolor|sync|окисник|оксид|фарб|краск|invidia|тонер|порош|бонд|освітл|окислюв|барвник|degreaser|complex|колорплекс|colorplex|аміак|оксид|пудра/i;
 // 1) по дням: клиенты на окрашивании (из реестра визитов cash_report.pdf)
 const vt = (await new PDFParse({ data: fs.readFileSync('/home/client/workspace/.media/bukon-export/cash_report.pdf') }).getText()).text;
@@ -23,8 +23,10 @@ const retail = []; let m;
 while ((m = re.exec(t))) {
   const day=`${m[3]}-${m[2]}-${m[1]}`, name=m[5].trim().replace(/\s+/g,' '), amt=parseFloat(m[7].replace(/,/g,'')), client=norm(m[8]), author=m[4].trim(), method=/готів|налич/i.test(m[6])?'cash':'card';
   const onColor = (colorByDay[day]||new Set()).has(client);
+  const dayHasColor = (colorByDay[day]||new Set()).size > 0;
+  const isPaint = GRAM.test(name);
   const HOME = /проти випадіння|puroxine|medavita|dr.?sorbie|додому/i;
-  const isMaterial = onColor && !HOME.test(name);
+  const isMaterial = (isPaint && dayHasColor) || (onColor && !HOME.test(name));
   if (!isMaterial) retail.push({ day, author, name, amt, method, client: m[8].trim() });
 }
 console.log('розничных продаж (не материал):', retail.length, 'на', retail.reduce((s,o)=>s+o.amt,0).toFixed(0));
