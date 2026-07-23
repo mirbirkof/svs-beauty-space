@@ -24,9 +24,12 @@ function densityCoeff(m, dens) {
   return ({ thin: m.coeff_thin, normal: m.coeff_normal, thick: m.coeff_thick }[dens]) ?? m.coeff_normal;
 }
 // себестоимость порции: опт.цена * (расход / объём упаковки). Если объём не распарсить — опт за 1 шт.
+// unit_ml (числовой объём/вес упаковки) надёжнее parseVol(volume): в volume часто лежит
+// ОТТЕНОК краски («тон 7.11»), а не объём — parseVol брал бы номер тона как размер упаковки.
+// Фолбэк на parseVol сохранён. Фикс 23.07 (аудит склада): чинит 210 вариантов, ухудшает 0.
 function unitCost(variant, qty) {
   const cost = Number(variant.wholesale ?? variant.price ?? 0);
-  const pkg = parseVol(variant.volume);
+  const pkg = (Number(variant.unit_ml) > 0) ? Number(variant.unit_ml) : parseVol(variant.volume);
   if (pkg && pkg > 0) return +(cost * qty / pkg).toFixed(2);
   return +(cost * qty).toFixed(2);
 }
@@ -66,7 +69,7 @@ router.get('/:id(\\d+)', R, async (req, res) => {
     const norm = (await q(`SELECT * FROM material_norms WHERE id=$1`, [req.params.id]))[0];
     if (!norm) return res.status(404).json({ error: 'not-found' });
     const materials = await q(
-      `SELECT pm.*, p.name AS product_name, pv.volume, pv.sku, pv.wholesale, pv.price, pv.stock_qty
+      `SELECT pm.*, p.name AS product_name, pv.volume, pv.unit_ml, pv.sku, pv.wholesale, pv.price, pv.stock_qty
          FROM procedure_materials pm
          JOIN product_variants pv ON pv.id=pm.variant_id
          LEFT JOIN products p ON p.id=pv.product_id
@@ -229,7 +232,7 @@ router.post('/consumption/write-off', W, async (req, res) => {
     const logged = [];
     if (norm) {
       const mats = (await client.query(
-        `SELECT pm.*, pv.wholesale, pv.price, pv.volume, pv.stock_qty FROM procedure_materials pm
+        `SELECT pm.*, pv.wholesale, pv.price, pv.volume, pv.unit_ml, pv.stock_qty FROM procedure_materials pm
            JOIN product_variants pv ON pv.id=pm.variant_id WHERE pm.norm_id=$1`, [norm.id])).rows;
       for (const m of mats) {
         const normQty = +(Number(m.quantity) * lengthCoeff(m, lenC) * densityCoeff(m, denC)).toFixed(2);
@@ -367,7 +370,7 @@ router.get('/service/:id(\\d+)/cost', R, async (req, res) => {
     let materials = [], normCost = 0;
     if (norm) {
       const mats = await q(
-        `SELECT pm.quantity, pm.unit, pv.id AS variant_id, p.name AS product_name, pv.wholesale, pv.price, pv.volume
+        `SELECT pm.quantity, pm.unit, pv.id AS variant_id, p.name AS product_name, pv.wholesale, pv.price, pv.volume, pv.unit_ml
            FROM procedure_materials pm JOIN product_variants pv ON pv.id=pm.variant_id
            LEFT JOIN products p ON p.id=pv.product_id WHERE pm.norm_id=$1`, [norm.id]);
       materials = mats.map(m => { const c = unitCost(m, Number(m.quantity)); normCost += c; return { ...m, cost: c }; });
@@ -394,7 +397,7 @@ router.get('/reports/profitability', R, async (req, res) => {
     const items = [];
     for (const s of norms) {
       const mats = await q(
-        `SELECT pm.quantity, pv.wholesale, pv.price, pv.volume FROM procedure_materials pm
+        `SELECT pm.quantity, pv.wholesale, pv.price, pv.volume, pv.unit_ml FROM procedure_materials pm
            JOIN product_variants pv ON pv.id=pm.variant_id
           WHERE pm.norm_id IN (SELECT id FROM material_norms WHERE service_id=$1 AND status='active')`, [s.service_id]);
       let cost = 0; for (const m of mats) cost += unitCost(m, Number(m.quantity));
