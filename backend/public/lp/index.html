@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zvetla CRM — система керування салоном краси, що працює за вас</title>
+<meta name="description" content="CRM для салону краси: онлайн-запис 24/7, база клієнтів, нагадування, склад, фінанси, лояльність та AI-адміністратор. Безкоштовно для майстра. Тарифи від 490 грн/міс.">
+<meta property="og:title" content="Zvetla CRM — керування салоном краси на автоматі">
+<meta property="og:description" content="Онлайн-запис, клієнти, склад, фінанси, AI-адміністратор. Старт безкоштовно.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Zvetla CRM","applicationCategory":"BusinessApplication","operatingSystem":"Web","offers":{"@type":"AggregateOffer","priceCurrency":"UAH","lowPrice":"0","highPrice":"1490","offerCount":"4"},"description":"CRM для салонів краси: онлайн-запис, клієнти, склад, фінанси, лояльність, AI-адміністратор."}
+</script>
+<style>
+:root{
+  --bg:#0d0b14; --card:#17141f; --card2:#1e1a29; --line:#2b2637;
+  --tx:#f4f1fa; --mut:#a49fb5; --brand:#b57edc; --brand2:#7c5cff; --acc:#ffd479;
+  --ok:#54d999; --radius:18px; --max:1180px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Manrope',system-ui,sans-serif;background:var(--bg);color:var(--tx);line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+a{color:inherit;text-decoration:none}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:14px 26px;border-radius:999px;font-weight:700;font-size:16px;cursor:pointer;border:0;transition:transform .15s,box-shadow .15s}
+.btn-p{background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;box-shadow:0 8px 30px rgba(124,92,255,.35)}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 12px 38px rgba(124,92,255,.5)}
+.btn-g{background:transparent;color:var(--tx);border:1px solid var(--line)}
+.btn-g:hover{border-color:var(--brand)}
+/* header */
+header{position:sticky;top:0;z-index:50;background:rgba(13,11,20,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;height:66px}
+.logo{font-weight:800;font-size:21px;letter-spacing:-.5px}
+.logo span{background:linear-gradient(135deg,var(--brand),var(--acc));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:28px;align-items:center}
+.nav-links a{color:var(--mut);font-weight:500;font-size:15px}
+.nav-links a:hover{color:var(--tx)}
+@media(max-width:820px){.nav-links .hide{display:none}}
+/* hero */
+.hero{padding:76px 0 60px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;top:-30%;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(circle,rgba(124,92,255,.22),transparent 60%);pointer-events:none}
+.pill{display:inline-block;padding:7px 16px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--brand);font-weight:600;margin-bottom:24px;background:var(--card)}
+.hero h1{font-size:clamp(32px,5.4vw,56px);font-weight:800;letter-spacing:-1.5px;line-height:1.08;max-width:900px;margin:0 auto 20px}
+.hero h1 em{font-style:normal;background:linear-gradient(135deg,var(--brand),var(--acc));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p.sub{font-size:clamp(16px,2.2vw,20px);color:var(--mut);max-width:660px;margin:0 auto 34px}
+.hero-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.hero-note{margin-top:18px;font-size:14px;color:var(--mut)}
+.hero-note b{color:var(--ok)}
+/* trust bar */
+.trust{margin-top:52px;display:flex;gap:40px;justify-content:center;flex-wrap:wrap;opacity:.9}
+.trust div{text-align:center}
+.trust .n{font-size:28px;font-weight:800;color:var(--tx)}
+.trust .l{font-size:13px;color:var(--mut)}
+/* sections */
+section{padding:70px 0}
+.h2{font-size:clamp(26px,3.6vw,40px);font-weight:800;letter-spacing:-1px;text-align:center;margin-bottom:14px}
+.lead{text-align:center;color:var(--mut);max-width:620px;margin:0 auto 46px;font-size:17px}
+/* problem */
+.probs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:820px){.probs{grid-template-columns:1fr}}
+.prob{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+.prob .x{color:#ff7b7b;font-weight:700;font-size:14px;margin-bottom:8px}
+.prob h3{font-size:18px;margin-bottom:6px}
+.prob p{color:var(--mut);font-size:15px}
+/* features */
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){.feats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.feats{grid-template-columns:1fr}}
+.feat{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:var(--radius);padding:26px;transition:border-color .2s,transform .2s}
+.feat:hover{border-color:var(--brand);transform:translateY(-3px)}
+.feat .ic{width:46px;height:46px;border-radius:12px;background:rgba(124,92,255,.15);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px}
+.feat h3{font-size:17px;margin-bottom:7px}
+.feat p{color:var(--mut);font-size:14.5px}
+/* pricing */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:stretch}
+@media(max-width:980px){.plans{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.plans{grid-template-columns:1fr}}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px 22px;display:flex;flex-direction:column;position:relative}
+.plan.pop{border-color:var(--brand);box-shadow:0 12px 40px rgba(124,92,255,.25)}
+.plan .tag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;font-size:12px;font-weight:700;padding:5px 14px;border-radius:999px;white-space:nowrap}
+.plan .pname{font-size:15px;font-weight:700;color:var(--brand)}
+.plan .pdesc{font-size:13px;color:var(--mut);min-height:34px;margin:6px 0 14px}
+.plan .price{font-size:38px;font-weight:800;letter-spacing:-1px}
+.plan .price small{font-size:15px;color:var(--mut);font-weight:600}
+.plan ul{list-style:none;margin:18px 0 22px;display:flex;flex-direction:column;gap:10px}
+.plan li{font-size:14px;color:var(--tx);display:flex;gap:9px;align-items:flex-start}
+.plan li::before{content:"✓";color:var(--ok);font-weight:800;flex-shrink:0}
+.plan .btn{width:100%;justify-content:center;margin-top:auto}
+.bill-note{text-align:center;color:var(--mut);font-size:14px;margin-top:22px}
+/* faq */
+.faq{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 22px}
+details[open]{border-color:var(--brand)}
+summary{font-weight:700;cursor:pointer;font-size:16px;list-style:none;display:flex;justify-content:space-between}
+summary::after{content:"+";color:var(--brand);font-size:22px}
+details[open] summary::after{content:"−"}
+details p{color:var(--mut);margin-top:12px;font-size:15px}
+/* final cta */
+.final{text-align:center;background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(181,126,220,.1));border:1px solid var(--line);border-radius:26px;padding:56px 26px;margin:20px 0}
+.final h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-1px;margin-bottom:14px}
+.final p{color:var(--mut);max-width:520px;margin:0 auto 28px;font-size:17px}
+/* footer */
+footer{border-top:1px solid var(--line);padding:34px 0;color:var(--mut);font-size:14px}
+.frow{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
+</style>
+</head>
+<body>
+<header><div class="wrap nav">
+  <div class="logo">Zvetla<span>CRM</span></div>
+  <nav class="nav-links">
+    <a href="#feats" class="hide">Можливості</a>
+    <a href="#pricing" class="hide">Тарифи</a>
+    <a href="#faq" class="hide">Питання</a>
+    <a href="#pricing" class="btn btn-p" style="padding:10px 20px;font-size:15px">Почати безкоштовно</a>
+  </nav>
+</div></header>
+
+<section class="hero"><div class="wrap">
+  <div class="pill">Створено власницею салону — для власників салонів</div>
+  <h1>CRM для салону краси, <em>що працює за вас</em></h1>
+  <p class="sub">Онлайн-запис 24/7, база клієнтів, нагадування, склад, фінанси й лояльність — в одному вікні. А AI-адміністратор веде запис, поки ви працюєте з клієнтом.</p>
+  <div class="hero-cta">
+    <a href="#pricing" class="btn btn-p">Почати безкоштовно →</a>
+    <a href="#feats" class="btn btn-g">Що всередині</a>
+  </div>
+  <p class="hero-note"><b>Безкоштовно</b> для майстра-одинака · без прив'язки картки · українською</p>
+  <div class="trust">
+    <div><div class="n">24/7</div><div class="l">запис без адміністратора</div></div>
+    <div><div class="n">−40%</div><div class="l">неявок завдяки нагадуванням</div></div>
+    <div><div class="n">1 вікно</div><div class="l">замість Excel, зошита й месенджерів</div></div>
+  </div>
+</div></section>
+
+<section id="problem"><div class="wrap">
+  <h2 class="h2">Знайомо?</h2>
+  <p class="lead">Салон росте, а керування тримається на пам'яті, зошиті й переписках. Щось обов'язково губиться.</p>
+  <div class="probs">
+    <div class="prob"><div class="x">✕ Хаос запису</div><h3>Записи в Direct і зошиті</h3><p>Клієнти пишуть уночі, ви відповідаєте вранці — половина йде до конкурента.</p></div>
+    <div class="prob"><div class="x">✕ Порожні вікна</div><h3>Неявки без попередження</h3><p>Клієнт забув — майстер простоює, а це прямий мінус у касі.</p></div>
+    <div class="prob"><div class="x">✕ Немає цифр</div><h3>Не видно, хто скільки заробив</h3><p>Зарплати, склад фарб, маржа — все «на око», а не по факту.</p></div>
+  </div>
+</div></section>
+
+<section id="feats"><div class="wrap">
+  <h2 class="h2">Все для салону — в одній системі</h2>
+  <p class="lead">Не набір розрізнених інструментів, а один робочий стіл для запису, клієнтів, складу й грошей.</p>
+  <div class="feats">
+    <div class="feat"><div class="ic">📅</div><h3>Онлайн-запис 24/7</h3><p>Клієнт бачить вільні вікна майстрів і записується сам — через сайт або Telegram-бот, будь-коли.</p></div>
+    <div class="feat"><div class="ic">🤖</div><h3>AI-адміністратор</h3><p>Бот веде запис, відповідає й нагадує замість вас. Працює, поки ви — з клієнтом у кріслі.</p></div>
+    <div class="feat"><div class="ic">👥</div><h3>База клієнтів</h3><p>Історія візитів, улюблені послуги, формула фарби, нотатки майстра — все під рукою.</p></div>
+    <div class="feat"><div class="ic">🔔</div><h3>Авто-нагадування</h3><p>SMS/Telegram за день до візиту — неявки падають, вікна не простоюють.</p></div>
+    <div class="feat"><div class="ic">🎨</div><h3>Склад матеріалів</h3><p>Облік фарб по тонах і грамах, списання за візит, контроль залишків і собівартості.</p></div>
+    <div class="feat"><div class="ic">💰</div><h3>Фінанси й зарплати</h3><p>Каса, маржа, зарплата майстрів за відсотком чи ставкою — рахується автоматично.</p></div>
+    <div class="feat"><div class="ic">💜</div><h3>Лояльність і бонуси</h3><p>Кешбек, сертифікати, знижки й абонементи — щоб клієнт повертався саме до вас.</p></div>
+    <div class="feat"><div class="ic">📣</div><h3>Маркетинг</h3><p>Розсилки, акції, повернення «сплячих» клієнтів — прямо із системи, без окремих сервісів.</p></div>
+    <div class="feat"><div class="ic">📊</div><h3>Аналітика</h3><p>Хто найкращий майстер, які послуги в плюсі, звідки клієнти — рішення по фактах, а не на око.</p></div>
+  </div>
+</div></section>
+
+<section id="pricing"><div class="wrap">
+  <h2 class="h2">Прості тарифи</h2>
+  <p class="lead">Почніть безкоштовно як майстер. Ростете в салон чи мережу — тариф росте разом.</p>
+  <div class="plans">
+    <div class="plan">
+      <div class="pname">Майстер</div>
+      <div class="pdesc">Старт для майстра-одинака</div>
+      <div class="price">0<small> грн</small></div>
+      <ul><li>Онлайн-запис</li><li>База клієнтів</li><li>Послуги й портфоліо</li><li>1 майстер</li></ul>
+      <a href="https://zvetlacrm.serveousercontent.com/signup" class="btn btn-g">Почати безкоштовно</a>
+    </div>
+    <div class="plan">
+      <div class="pname">Starter</div>
+      <div class="pdesc">Малий салон: базова автоматизація</div>
+      <div class="price">490<small> грн/міс</small></div>
+      <ul><li>Все з «Майстер»</li><li>До 3 майстрів</li><li>Нагадування SMS/Telegram</li><li>Склад матеріалів</li><li>Фінанси й зарплати</li></ul>
+      <a href="https://zvetlacrm.serveousercontent.com/signup" class="btn btn-g">Спробувати 14 днів</a>
+    </div>
+    <div class="plan pop">
+      <div class="tag">★ Найпопулярніший</div>
+      <div class="pname">Салон Pro</div>
+      <div class="pdesc">Зростаючий салон: маркетинг + AI</div>
+      <div class="price">790<small> грн/міс</small></div>
+      <ul><li>Все зі «Starter»</li><li>До 8 майстрів</li><li>AI-адміністратор</li><li>Лояльність і бонуси</li><li>Маркетинг-розсилки</li><li>Свій Telegram-бот запису</li><li>Розширена аналітика</li></ul>
+      <a href="https://zvetlacrm.serveousercontent.com/signup" class="btn btn-p">Спробувати 14 днів</a>
+    </div>
+    <div class="plan">
+      <div class="pname">Мережа</div>
+      <div class="pdesc">Мережа салонів: усе включено + кастом</div>
+      <div class="price">1490<small> грн/міс</small></div>
+      <ul><li>Все із «Салон Pro»</li><li>Безліміт майстрів і клієнтів</li><li>Кілька філій</li><li>API та інтеграції</li><li>Пріоритетна підтримка</li></ul>
+      <a href="https://zvetlacrm.serveousercontent.com/signup" class="btn btn-g">Зв'язатися</a>
+    </div>
+  </div>
+  <p class="bill-note">Ціни в гривнях, оплата помісячно або на рік (−2 місяці). Понад ліміт тарифу — +70 грн/міс за майстра. 14 днів безкоштовно на платних тарифах.</p>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2 class="h2">Часті питання</h2>
+  <div class="faq" style="margin-top:40px">
+    <details open><summary>Це справді безкоштовно?</summary><p>Так. Тариф «Майстер» — 0 грн назавжди для одного майстра: онлайн-запис, база клієнтів, послуги й портфоліо. Без прив'язки картки. Ростете — переходите на платний тариф.</p></details>
+    <details><summary>Скільки часу на запуск?</summary><p>Реєстрація й перший запис — того ж дня. Ми переносимо ваших клієнтів і послуги, налаштовуємо графік майстрів і бота запису.</p></details>
+    <details><summary>А мої дані в безпеці?</summary><p>Кожен салон — в ізольованому просторі, дані одного не бачить інший. Регулярні резервні копії. Ваша база належить вам.</p></details>
+    <details><summary>Чи можна перенести дані з іншої CRM або Excel?</summary><p>Так. Імпортуємо клієнтів, послуги та залишки складу з таблиці чи попередньої системи.</p></details>
+    <details><summary>Що таке AI-адміністратор?</summary><p>Telegram-бот, що спілкується з клієнтом, показує вільні вікна, оформлює запис і нагадує про візит — без вашої участі.</p></details>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="final">
+    <h2>Салон, що працює за вас</h2>
+    <p>Почніть безкоштовно вже сьогодні. Без картки, без ризику — просто спробуйте.</p>
+    <a href="https://zvetlacrm.serveousercontent.com/signup" class="btn btn-p">Створити салон безкоштовно →</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap frow">
+  <div>© 2026 Zvetla CRM — система для салонів краси</div>
+  <div>Створено практиками б'юті-індустрії 💜</div>
+</div></footer>
+</body>
+</html>
