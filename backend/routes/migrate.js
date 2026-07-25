@@ -188,7 +188,115 @@ async function importMasters(pool, colMap, dataRows) {
   return rep;
 }
 
-const IMPORTERS = { clients: importClients, services: importServices, masters: importMasters };
+/* ── Імпорт ІСТОРІЇ ВІЗИТІВ — серце «айфона в світі інтеграцій» (Бос 25.07) ────
+   Після нього нова CRM виглядає так, ніби салон завжди вів її: у клієнтів зʼявляється
+   перший візит, історія, суми — і вся аналітика (норми повернення, RFM, апсейл)
+   починає працювати на повній глибині. Правила:
+   • клієнт шукається за телефоном, потім за імʼям; не знайдений — СТВОРЮЄТЬСЯ
+     (телефон може бути відсутній у вивантаженні — це нормально для історії)
+   • майстер зіставляється за іменем (без ролей/дужок, порядок слів неважливий);
+     не знайдений — візит іде без майстра, імʼя зберігається в нотатці
+   • дублікат = той самий клієнт + той самий момент часу → пропуск (ідемпотентно)
+   • усе позначається import_batch → один клік «відкотити пакет»
+   • після імпорту — повний перерахунок лічильників клієнтів (first_visit_at і далі) */
+const V = require('../lib/visits-import');
+
+function parseAnyDate(sRaw) {
+  const s0 = String(sRaw || '').trim();
+  // дд.мм.рр(рр) [гг:хв]
+  let m = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:[\sT]+(\d{1,2}):(\d{2}))?/.exec(s0);
+  if (m) {
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return { date: `${yyyy}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`,
+             time: m[4] != null ? `${m[4].padStart(2, '0')}:${m[5]}` : '12:00' };
+  }
+  // yyyy-mm-dd [hh:mm]
+  m = /^(\d{4})-(\d{2})-(\d{2})(?:[\sT]+(\d{1,2}):(\d{2}))?/.exec(s0);
+  if (m) return { date: `${m[1]}-${m[2]}-${m[3]}`, time: m[4] != null ? `${m[4].padStart(2, '0')}:${m[5]}` : '12:00' };
+  return null;
+}
+
+async function importVisits(pool, colMap, dataRows, user, ip) {
+  const rep = { total: dataRows.length, imported: 0, updated: 0, skipped: 0, errors: [] };
+  const now = new Date();
+  const batch = `migrate_${now.toISOString().slice(0, 16).replace(/[:T]/g, '-')}`;
+  rep.batch = batch;
+
+  // майстри: стійкий ключ (імʼя без ролей, слова відсортовані)
+  const masters = (await pool.query(`SELECT id, name FROM masters`)).rows;
+  const masterByKey = new Map();
+  for (const m of masters) { const k = V.masterKey(m.name); if (k) masterByKey.set(k, m.id); }
+
+  // клієнти: за телефоном і за нормалізованим імʼям
+  const clients = (await pool.query(`SELECT id, phone, name FROM clients WHERE deleted_at IS NULL`)).rows;
+  const byPhone = new Map(), byName = new Map();
+  const nname = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const c of clients) {
+    if (c.phone) byPhone.set(String(c.phone), c.id);
+    const k = nname(c.name); if (k && !byName.has(k)) byName.set(k, c.id);
+  }
+
+  for (let r = 0; r < dataRows.length; r++) {
+    const cells = dataRows[r]; const rec = {};
+    colMap.forEach((f, i) => { if (f) rec[f] = (cells[i] != null ? String(cells[i]).trim() : ''); });
+    try {
+      const dt = parseAnyDate(rec.date);
+      const clientName = (rec.client || '').trim();
+      if (!dt) { rep.skipped++; continue; }               // рядок без дати — не візит
+      if (!clientName && !rec.phone) { rep.skipped++; continue; }
+
+      // статус: порожній у вивантаженні історії = «відбувся»
+      const status = rec.status ? (V.mapStatus(rec.status) || 'done') : 'done';
+      const price = M.toNumberOrNull(rec.price);
+      const durMin = Math.max(15, Math.min(600, Number(String(rec.duration || '').replace(/[^0-9]/g, '')) || 60));
+
+      // клієнт: телефон → імʼя → створити
+      const phone = rec.phone ? normalizePhoneDb(rec.phone) : null;
+      let clientId = (phone && byPhone.get(phone)) || byName.get(nname(clientName)) || null;
+      if (!clientId) {
+        const ins = await pool.query(
+          `INSERT INTO clients (phone, name, source, notes) VALUES ($1, $2, 'migrate', $3) RETURNING id`,
+          [phone, clientName || null, 'створено імпортом історії візитів']);
+        clientId = ins.rows[0].id;
+        if (phone) byPhone.set(phone, clientId);
+        if (clientName) byName.set(nname(clientName), clientId);
+      }
+
+      const masterId = masterByKey.get(V.masterKey(rec.master)) || null;
+
+      // дубль: той самий клієнт у той самий момент (ідемпотентність повторного файлу)
+      const dupe = await pool.query(
+        `SELECT 1 FROM appointments
+          WHERE client_id = $1
+            AND starts_at = (($2 || ' ' || $3)::timestamp AT TIME ZONE 'Europe/Kyiv') LIMIT 1`,
+        [clientId, dt.date, dt.time]);
+      if (dupe.rows[0]) { rep.skipped++; continue; }
+
+      await pool.query(
+        `INSERT INTO appointments
+           (client_id, master_id, starts_at, ends_at, status, price, real_amount,
+            services_text, client_name, source, import_batch, notes)
+         VALUES ($1, $2,
+                 (($3 || ' ' || $4)::timestamp AT TIME ZONE 'Europe/Kyiv'),
+                 (($3 || ' ' || $4)::timestamp AT TIME ZONE 'Europe/Kyiv') + ($5 || ' minutes')::interval,
+                 $6, $7, $8, $9, $10, 'migrate', $11, $12)`,
+        [clientId, masterId, dt.date, dt.time, String(durMin),
+         status, price, status === 'done' ? price : null,
+         rec.service || null, clientName || null, batch,
+         masterId ? null : (rec.master ? `Майстер з імпорту: ${rec.master}` : null)]);
+      rep.imported++;
+    } catch (e) { rep.errors.push({ line: r + 2, error: e.code || e.message }); }
+  }
+
+  // «ніби завжди вели цю CRM»: first_visit_at, total_spent, total_visits — з першоджерела
+  try {
+    const n = await require('../lib/client-stats').recalcClientStats(null);
+    rep.recalced_clients = n;
+  } catch (e) { rep.errors.push({ line: 0, error: 'recalc: ' + e.message }); }
+  return rep;
+}
+
+const IMPORTERS = { clients: importClients, services: importServices, masters: importMasters, visits: importVisits };
 
 // ── Застосувати перенос ──
 router.post('/commit', async (req, res) => {
@@ -209,6 +317,22 @@ router.post('/commit', async (req, res) => {
   } catch (e) {
     res.status(['no-csv','empty','bad-xlsx'].includes(e.code) ? 400 : 500).json({ ok: false, error: e.code || 'commit-failed', hint: e.message });
   }
+});
+
+// ── Відкат пакета імпорту візитів: одна кнопка «передумав» ────────────────────
+// Видаляються ЛИШЕ рядки цього пакета з source='migrate' — живі дані недоторкані.
+router.post('/rollback', async (req, res) => {
+  try {
+    const batch = String(req.body?.batch || '').trim();
+    if (!/^migrate_[0-9-]+$/.test(batch)) return res.status(400).json({ ok: false, error: 'bad-batch' });
+    const pool = getPool();
+    const del = await pool.query(
+      `DELETE FROM appointments WHERE import_batch = $1 AND source = 'migrate' RETURNING id`, [batch]);
+    const n = await require('../lib/client-stats').recalcClientStats(null).catch(() => 0);
+    logAction({ user: req.user, action: 'migrate.rollback', entity: 'appointments', entity_id: null, ip: req.ip,
+      meta: { batch, removed: del.rowCount } }).catch(() => {});
+    res.json({ ok: true, batch, removed: del.rowCount, recalced_clients: n });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 module.exports = router;
