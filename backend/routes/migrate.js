@@ -256,8 +256,10 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
       if (!dt) { rep.skipped++; continue; }               // рядок без дати — не візит
       if (!clientName && !rec.phone) { rep.skipped++; continue; }
 
-      // статус: порожній у вивантаженні історії = «відбувся»
-      const status = rec.status ? (V.mapStatus(rec.status) || 'done') : 'done';
+      // Статус: порожній у ІСТОРІЇ = «відбувся», але порожній у МАЙБУТНЬОМУ = бронь.
+      // Без цього майбутні записи з вивантаження ставали б «done» і фальшиво йшли у виручку.
+      const isFuture = new Date(`${dt.date}T${dt.time}:00+03:00`) > new Date();
+      const status = rec.status ? (V.mapStatus(rec.status) || 'done') : (isFuture ? 'booked' : 'done');
       const price = M.toNumberOrNull(rec.price);
       const durMin = Math.max(15, Math.min(600, Number(String(rec.duration || '').replace(/[^0-9]/g, '')) || 60));
 
@@ -293,7 +295,7 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
                  (($3 || ' ' || $4)::timestamp AT TIME ZONE 'Europe/Kyiv') + ($5 || ' minutes')::interval,
                  $6, $7, $8, $9, $10, 'migrate', $11, $12)`,
         [clientId, masterId, dt.date, dt.time, String(durMin),
-         status, price, status === 'done' ? price : null,
+         status, price, (status === 'done' && !isFuture) ? price : null,
          rec.service || null, clientName || null, batch,
          masterId ? null : (rec.master ? `Майстер з імпорту: ${rec.master}` : null)]);
       rep.imported++;
