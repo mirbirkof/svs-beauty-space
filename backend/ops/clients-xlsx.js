@@ -59,6 +59,23 @@ WHERE c.deleted_at IS NULL
 ORDER BY 4 DESC, 8 DESC NULLS LAST;
 `;
 
+// Лист 2: фарбувалась останні 3 міс, але жодного разу не була на нігтях
+const Q_UPSELL_NAIL = BASE + `
+SELECT c.id, c.name, c.phone,
+  (SELECT count(*) FROM done d WHERE d.client_id=c.id AND d.is_color AND d.starts_at > now()-interval '3 months') color_3m,
+  (SELECT count(*) FROM done d WHERE d.client_id=c.id AND d.is_color) color_all,
+  (SELECT max(starts_at)::date + time '12:00' FROM done d WHERE d.client_id=c.id AND d.is_color) last_color,
+  (SELECT round(avg(amount)) FROM done d WHERE d.client_id=c.id AND d.is_color AND amount>0) avg_color,
+  (SELECT round(sum(amount)) FROM done d WHERE d.client_id=c.id) total_spent,
+  EXISTS (SELECT 1 FROM done d WHERE d.client_id=c.id AND d.is_care) was_care,
+  EXISTS (SELECT 1 FROM v d WHERE d.client_id=c.id AND d.status='booked' AND d.starts_at>now()) has_booking
+FROM clients c
+WHERE c.deleted_at IS NULL
+  AND EXISTS (SELECT 1 FROM done d WHERE d.client_id=c.id AND d.is_color AND d.starts_at > now()-interval '3 months')
+  AND NOT EXISTS (SELECT 1 FROM done d WHERE d.client_id=c.id AND d.is_nail)
+ORDER BY 8 DESC NULLS LAST, 4 DESC;
+`;
+
 const Q_LAPSED = (kind) => BASE + `,
 last_k AS (SELECT DISTINCT ON (client_id) client_id, starts_at last_at FROM done WHERE is_${kind} ORDER BY client_id, starts_at DESC)
 SELECT c.id, c.name, c.phone, lk.last_at::date + time '12:00' last_at,
@@ -91,6 +108,7 @@ function styleSheet(ws, widths, headerColor) {
   const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
   const upsell = (await c.query(Q_UPSELL)).rows;
+  const upsellNail = (await c.query(Q_UPSELL_NAIL)).rows;
   const color = (await c.query(Q_LAPSED('color'))).rows;
   const nail = (await c.query(Q_LAPSED('nail'))).rows;
   await c.end();
@@ -122,7 +140,30 @@ function styleSheet(ws, widths, headerColor) {
   s1.getColumn(5).numFmt = 'dd.mm.yyyy';
   s1.eachRow((row, i) => { if (i > 1 && row.getCell(8).value === 'так') row.getCell(10).font = { bold: true, color: { argb: 'FF1E7B34' } }; });
 
-  // --- Листи 2-3: не повернулись
+  // --- Лист 2: фарбується, але не ходить на нігті
+  const s2 = wb.addWorksheet('Фарбування без манікюру');
+  s2.columns = [
+    { header: 'Клієнт', key: 'name' }, { header: 'Телефон', key: 'phone' },
+    { header: 'Фарбувань за 3 міс', key: 'c3' }, { header: 'Фарбувань всього', key: 'ca' },
+    { header: 'Останнє фарбування', key: 'last' }, { header: 'Серед. чек, грн', key: 'avg' },
+    { header: 'Витратила всього, грн', key: 'tot' }, { header: 'Робила догляд волосся', key: 'care' },
+    { header: 'Є майбутній запис', key: 'bk' }, { header: 'Пріоритет', key: 'prio' },
+  ];
+  upsellNail.forEach(r => {
+    const prio = Number(r.color_3m) >= 2 ? 'A — регулярна, найлегший апсейл'
+      : Number(r.avg_color || 0) >= 1500 ? 'B — дорогий чек, платоспроможна'
+      : 'C — разова';
+    s2.addRow({
+      name: r.name || 'без імені', phone: r.phone || '', c3: Number(r.color_3m), ca: Number(r.color_all),
+      last: r.last_color, avg: Number(r.avg_color || 0), tot: Number(r.total_spent || 0),
+      care: r.was_care ? 'так' : 'ні', bk: r.has_booking ? 'так' : 'ні', prio,
+    });
+  });
+  styleSheet(s2, [24, 16, 12, 12, 15, 13, 15, 15, 13, 32], 'FF2E7D6B');
+  s2.getColumn(5).numFmt = 'dd.mm.yyyy';
+  s2.eachRow((row, i) => { if (i > 1 && String(row.getCell(10).value)[0] === 'A') row.getCell(10).font = { bold: true, color: { argb: 'FF1E7B34' } }; });
+
+  // --- Листи 3-4: не повернулись
   const mkLapsed = (title, rows, kind, colorHex) => {
     const ws = wb.addWorksheet(title);
     ws.columns = [
@@ -168,6 +209,10 @@ function styleSheet(ws, widths, headerColor) {
     ['Всього таких клієнток за 3 місяці', upsell.length],
     ['З них вже стрижуться у нас (пріоритет А)', upsell.filter(r => r.was_cut).length],
     ['Постійні на нігтях (3+ візити за 3 міс)', upsell.filter(r => Number(r.nail_3m) >= 3).length],
+    ['— Апсейл: фарбування без манікюру —', ''],
+    ['Всього таких клієнток за 3 місяці', upsellNail.length],
+    ['З них фарбувались 2+ рази (пріоритет А)', upsellNail.filter(r => Number(r.color_3m) >= 2).length],
+    ['Середній чек фарбування у них, грн', upsellNail.length ? Math.round(upsellNail.reduce((s, r) => s + Number(r.avg_color || 0), 0) / upsellNail.length) : 0],
     ['— Не повернулись —', ''],
     ['Фарбування: прострочили норму', lapsedC.length],
     ['Фарбування: потенціал повернення, грн', money(lapsedC)],
