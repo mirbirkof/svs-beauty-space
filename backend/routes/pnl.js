@@ -71,12 +71,21 @@ function periodBounds(query) {
   return { type, start: st, end: fmt(ne.y, ne.m, 1), label: `${y}-${String(m).padStart(2, '0')}` };
 }
 
-// Попередній період тієї ж довжини (для MoM/тренду)
+// Попередній період для MoM/тренду.
+// Аудит 25.07: віднімалась ДОВЖИНА В ДНЯХ, тому липень (31д) порівнювався з вікном
+// «31 травня – 30 червня», березень — з «29 січня – 28 лютого», а Q2 — з вікном від
+// 31 грудня. Календарний період мусить порівнюватись із попереднім КАЛЕНДАРНИМ:
+// місяць-1, квартал-3 місяці, рік-1. Довільний період (custom) — як і було, тієї ж довжини.
 function prevBounds(b) {
+  const f = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   const s = new Date(b.start + 'T00:00:00Z'), e = new Date(b.end + 'T00:00:00Z');
+  const monthsBack = b.type === 'month' ? 1 : b.type === 'quarter' ? 3 : b.type === 'year' ? 12 : 0;
+  if (monthsBack > 0) {
+    const ps = new Date(s); ps.setUTCMonth(ps.getUTCMonth() - monthsBack);
+    return { start: f(ps), end: b.start };
+  }
   const days = Math.round((e - s) / 86400000);
   const ps = new Date(s); ps.setUTCDate(ps.getUTCDate() - days);
-  const f = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   return { start: f(ps), end: b.start };
 }
 // Той самий період торік (для YoY)

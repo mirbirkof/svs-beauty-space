@@ -43,9 +43,20 @@ function periodBounds(query) {
 }
 function fmt(d) { return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
 
-// Зсунути період назад на його довжину (для порівняння)
+// Попередній період для порівняння (аудит 25.07: зсув «на довжину в днях» порівнював
+// липень з вікном від 31 травня; календарний місяць/квартал/рік тепер зсуваються календарно)
 function prevBounds(fromD, toD) {
   const a = new Date(fromD + 'T12:00:00'), b = new Date(toD + 'T12:00:00');
+  // ціле число календарних місяців (1-ше — кінець місяця) → зсув на місяці
+  const isMonthStart = a.getDate() === 1;
+  const nextDay = new Date(b); nextDay.setDate(nextDay.getDate() + 1);
+  const isMonthEnd = nextDay.getDate() === 1;
+  if (isMonthStart && isMonthEnd) {
+    const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+    const pa = new Date(a); pa.setMonth(pa.getMonth() - months);
+    const pb2 = new Date(a); pb2.setDate(pb2.getDate() - 1);
+    return { from: `${fmt(pa)} 00:00:00+03`, to: `${fmt(pb2)} 23:59:59+03` };
+  }
   const days = Math.round((b - a) / 86400000) + 1;
   const pb = new Date(a); pb.setDate(a.getDate() - 1);
   const pa = new Date(pb); pa.setDate(pb.getDate() - (days - 1));
