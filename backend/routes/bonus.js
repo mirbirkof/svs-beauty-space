@@ -65,6 +65,15 @@ router.post('/adjust', async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// Звірка нарахованого кешбеку зі станом візитів: знімає бонуси за скасованими/зниклими
+// візитами. ?dry=1 — лише показати, скільки й на яку суму (нічого не змінює).
+router.post('/reconcile', async (req, res) => {
+  try {
+    const dryRun = String(req.query.dry || req.body?.dry || '') === '1';
+    res.json(await require('../lib/bonus-reconcile').reconcileBonusAccruals({ dryRun }));
+  } catch (e) { fail(res, e); }
+});
+
 // ── Сгорання вручну (зазвичай через cron) ───────────────────────────
 router.post('/expire', async (req, res) => {
   try { res.json(await bonus.expireBonuses()); } catch (e) { fail(res, e); }

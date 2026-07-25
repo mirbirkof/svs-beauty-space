@@ -10,7 +10,11 @@
 const { getPool } = require('../db-pg');
 
 // Подзапросы выполненных визитов (на масштаб салона ~5k клиентов — ок)
-const VISITS = `(SELECT count(*) FROM appointments a WHERE a.client_id=c.id AND a.status='done')`;
+// Візит = клієнт + день (аудит 25.07): count(*) рахував рядки послуг і завищував
+// кількість візитів, через що середній чек у сегментах був заниженим.
+const VISITS = `(SELECT count(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)
+                   FROM appointments a
+                  WHERE a.client_id=c.id AND a.status='done' AND a.starts_at <= NOW())`;
 
 // Белый список полей: field → { expr, type }
 const FIELDS = {

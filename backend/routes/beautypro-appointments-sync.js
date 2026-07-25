@@ -300,6 +300,14 @@ async function syncAppointments(from, to) {
   // Тепер повний перерахунок вітринних лічильників з першоджерела — один UPDATE, самовиліковний.
   await require('../lib/client-stats').recalcClientStats(null).catch((e) => console.warn('[bp-sync] client-stats recalc:', e.message));
 
+  // Кешбек за візити, які синхронізація щойно скасувала, мусить згаснути — інакше бонуси
+  // за неіснуючі візити лишаються доступними до списання (аудит 25.07). Звірка ідемпотентна.
+  if (reconciled > 0) {
+    await require('../lib/bonus-reconcile').reconcileBonusAccruals()
+      .then((r) => { if (r.revoked) console.log('[bp-sync] знято кешбек за скасованими візитами:', r.revoked, 'на', r.bonuses); })
+      .catch((e) => console.warn('[bp-sync] bonus-reconcile:', e.message));
+  }
+
   return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients, reconciled };
 }
 

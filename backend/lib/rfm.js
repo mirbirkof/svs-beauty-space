@@ -43,12 +43,16 @@ async function refresh() {
       WITH base AS (
         SELECT cl.id AS client_id,
                GREATEST(0, (CURRENT_DATE - cl.last_visit_at::date))::int AS recency_days,
-               COUNT(a.id) FILTER (WHERE a.status = 'done')::int AS frequency,
+               -- ВІЗИТИ, а не рядки: один прихід з кількома послугами — це один візит
+               -- (аудит 25.07, єдине правило CRM)
+               COUNT(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)
+                 FILTER (WHERE a.status = 'done' AND a.starts_at <= NOW())::int AS frequency,
                COALESCE(cl.total_spent, 0)::numeric AS monetary
           FROM clients cl
           LEFT JOIN appointments a ON a.client_id = cl.id
          GROUP BY cl.id, cl.last_visit_at, cl.total_spent
-        HAVING COUNT(a.id) FILTER (WHERE a.status = 'done') >= 1
+        HAVING COUNT(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)
+                 FILTER (WHERE a.status = 'done' AND a.starts_at <= NOW()) >= 1
       ),
       scored AS (
         SELECT client_id, recency_days, frequency, monetary,

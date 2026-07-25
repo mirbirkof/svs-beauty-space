@@ -112,7 +112,12 @@ async function liveFinance(pool, from, to) {
   const revTotal = revServices + revProducts;
 
   const commissionPct = Number(comm[0]?.comm || 0);
-  const fixedAccrued = Number(fixed[0]?.fx_month || 0) * (days / 30) + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
+  // Оклад пропорційно ЧАСТЦІ РЕАЛЬНОГО МІСЯЦЯ, а не умовним 30 дням (аудит 25.07:
+  // за 31-денний місяць нараховувалось +3.3% зайвого окладу, за лютий −6.7% недобору).
+  const _fromD = new Date(from), _toD = new Date(to);
+  const daysInMonth = new Date(Date.UTC(_fromD.getUTCFullYear(), _fromD.getUTCMonth() + 1, 0)).getUTCDate();
+  const monthShare = Math.min(1, days / (daysInMonth || 30));
+  const fixedAccrued = Number(fixed[0]?.fx_month || 0) * monthShare + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
   const salesCommission = Number(salesComm[0]?.s || 0); // % з продажу продукції (банки/POS)
   const commission = Math.round(commissionPct + fixedAccrued + salesCommission);
   // Матеріали = собівартість проданих товарів (COGS) + матеріали послуг як % від виручки послуг

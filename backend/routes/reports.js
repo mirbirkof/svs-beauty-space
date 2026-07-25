@@ -725,15 +725,39 @@ router.get('/utilization', requirePerm('reports.read'), cacheReport(), async (re
     const fromD = new Date(from), toD = new Date(to);
 
     const masters = await pool.query(`SELECT id, name, schedule_json FROM masters WHERE active=true ORDER BY name`);
+    // Аудит 25.07: тривалості записів просто підсумовувались, а в базі 306 пар записів
+    // ПЕРЕТИНАЮТЬСЯ в часі (паралельні послуги одного майстра, дубль-рядки одного візиту).
+    // Через це «завантаження» доходило до 1457%. Тепер зайнятий час — це ОБʼЄДНАННЯ
+    // інтервалів: перекриття рахується один раз (класичний sweep по відсортованих межах).
     const busy = await pool.query(
-      `SELECT master_id,
-              COALESCE(SUM(EXTRACT(EPOCH FROM (ends_at - starts_at))/60),0)::numeric AS busy_min,
-              COUNT(*)::int AS appts
-         FROM appointments
-        WHERE starts_at BETWEEN $1 AND $2
-          AND status NOT IN ('cancelled','noshow')
-          AND ends_at IS NOT NULL
-        GROUP BY master_id`, [from, to]
+      `WITH iv AS (
+         SELECT master_id, starts_at AS s, ends_at AS e
+           FROM appointments
+          WHERE starts_at BETWEEN $1 AND $2
+            AND status NOT IN ('cancelled','noshow')
+            AND ends_at IS NOT NULL AND ends_at > starts_at
+       ),
+       mark AS (
+         SELECT master_id, s, e,
+                MAX(e) OVER (PARTITION BY master_id ORDER BY s, e
+                             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max
+           FROM iv
+       ),
+       grp AS (
+         SELECT master_id, s, e,
+                SUM(CASE WHEN prev_max IS NULL OR s > prev_max THEN 1 ELSE 0 END)
+                  OVER (PARTITION BY master_id ORDER BY s, e) AS island
+           FROM mark
+       ),
+       merged AS (
+         SELECT master_id, MIN(s) AS s, MAX(e) AS e
+           FROM grp GROUP BY master_id, island
+       )
+       SELECT m.master_id,
+              COALESCE(SUM(EXTRACT(EPOCH FROM (m.e - m.s))/60),0)::numeric AS busy_min,
+              (SELECT COUNT(*) FROM iv WHERE iv.master_id = m.master_id)::int AS appts
+         FROM merged m
+        GROUP BY m.master_id`, [from, to]
     );
     const busyMap = new Map(busy.rows.map(r => [r.master_id, r]));
     // Доступний час — з тієї ж сітки графіка, що бачить адмін (а не лише з тижневого
@@ -753,7 +777,8 @@ router.get('/utilization', requirePerm('reports.read'), cacheReport(), async (re
         master_id: m.id, name: m.name,
         shifts: st.shifts, has_schedule: st.shifts > 0,
         busy_min: busyMin, avail_min: availMin, appts: b.appts,
-        util_pct: availMin > 0 ? Math.round(busyMin / availMin * 100) : null,
+        // стеля 100%: понад це — ознака накладок у графіку, а не понаднормової роботи
+        util_pct: availMin > 0 ? Math.min(100, Math.round(busyMin / availMin * 100)) : null,
       };
     }).sort((a,b) => (b.util_pct||0) - (a.util_pct||0));
 

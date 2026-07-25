@@ -193,8 +193,12 @@ async function redeem(opts = {}) {
     if (settings.enabled === false) throw new Error('redemption-disabled');
     if (amount < Number(settings.min_redeem_amount)) throw new Error('below-min-redeem');
 
-    // ліміт % від чека (у бонусах через exchange_rate: 1 бонус = rate грн)
-    if (opts.checkAmount != null) {
+    // Ліміт % від чека (у бонусах через exchange_rate: 1 бонус = rate грн).
+    // Аудит 25.07: ліміт діяв ЛИШЕ коли викликач сам передав checkAmount, а
+    // POST /api/bonus/redeem віддає тіло запиту як є → без цього поля списувався ВЕСЬ
+    // баланс повз стелю max_pay_percent. Тепер сума чека обовʼязкова: немає чека — немає списання.
+    if (opts.checkAmount == null || !(Number(opts.checkAmount) > 0)) throw new Error('checkAmount-required');
+    {
       const rate = Number(settings.exchange_rate) || 1;
       const maxMoney = round2(Number(opts.checkAmount) * Number(settings.max_pay_percent) / 100);
       const maxBonus = round2(maxMoney / rate);
