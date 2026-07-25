@@ -49,11 +49,16 @@ async function writeOffForAppointment(apptId) {
         );
         const before = Number(upd.rows[0]?.before_qty ?? 0);
         const shortage = qty > before ? +(qty - before).toFixed(3) : 0;
+        // Аудит 25.07: у рух писали ЗАЯВЛЕНЕ qty, а склад реально зменшився лише на
+        // min(qty, залишок) через кламп. Відкат потім повертав повне qty → +2 017 одиниць
+        // «повітря» на складі. Тепер delta = фактично списане (книга рухів = правда складу),
+        // а заявлений розхід і нестача лишаються в примітці — правда про розхід не губиться.
+        const deducted = Math.min(qty, before);
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
            VALUES ($1, $2, $3, $4, $5)`,
-          [m.variant_id, -qty, 'service:' + apptId, apptId,
-           'списання матеріалів візиту (#105/#109)' + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
+          [m.variant_id, -deducted, 'service:' + apptId, apptId,
+           `списання матеріалів візиту (#105/#109); заявлено ${qty}` + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
         );
         written++;
       }
@@ -86,11 +91,13 @@ async function writeOffForAppointment(apptId) {
       );
       const before = Number(upd.rows[0]?.before_qty ?? 0);
       const shortage = qty > before ? +(qty - before).toFixed(3) : 0;
+      // delta = фактично списане (аудит 25.07: інакше відкат повертає більше, ніж пішло)
+      const deducted = Math.min(qty, before);
       await client.query(
         `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
          VALUES ($1, $2, $3, $4, $5)`,
-        [c.variant_id, -qty, 'service:' + apptId, apptId,
-         'списание расходника по услуге' + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
+        [c.variant_id, -deducted, 'service:' + apptId, apptId,
+         `списание расходника по услуге; заявлено ${qty}` + (shortage ? `; нестача ${shortage}: факт розходу перевищив залишок` : '')]
       );
       written++;
     }

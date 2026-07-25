@@ -408,12 +408,9 @@ async function buildPlanContext(scope) {
 
   // Спільне для обох режимів
   const [churn, lowStock, reviews, waitlist, openShifts] = await Promise.all([
-    q(`SELECT c.name, COALESCE(c.total_spent,0)::int AS spent FROM clients c JOIN appointments a ON a.client_id=c.id
-       WHERE a.status NOT IN ('cancelled','noshow') GROUP BY c.id, c.name, c.total_spent
-       HAVING COUNT(a.id) >= 2
-          AND (NOW()::date - MAX(a.starts_at)::date)
-              > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (MAX(a.starts_at)-MIN(a.starts_at)))/86400) / (COUNT(a.id)-1))
-       ORDER BY spent DESC NULLS LAST LIMIT 8`),
+    // Аудит 25.07: тут жила ЛОКАЛЬНА копія формули відтоку (рахувала рядки, не візити) —
+    // AI-план називав ~75 «зниклих» проти 62 на дашборді. Тепер єдиний канон lib/churn.
+    q(`${CHURNED_CTE} SELECT name, spent::int AS spent FROM churned ORDER BY spent DESC NULLS LAST LIMIT 8`),
     q(`SELECT p.name AS product, pv.volume, COALESCE(pv.stock_qty,0)::int AS stock
        FROM product_variants pv JOIN products p ON p.id=pv.product_id
        WHERE pv.active=true AND COALESCE(pv.stock_qty,0) <= 5 ORDER BY pv.stock_qty ASC LIMIT 8`),

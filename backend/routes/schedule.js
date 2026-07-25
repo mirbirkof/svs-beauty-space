@@ -230,10 +230,17 @@ router.get('/unsettled', async (req, res) => {
          LEFT JOIN masters m ON m.id = a.master_id
          LEFT JOIN clients c ON c.id = a.client_id
          LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.starts_at < NOW()
+        -- Тільки ВЧОРА і раніше: сьогоднішні візити ще тривають (Босс 20.07: сьогодні не показувати,
+        -- нормально що не закриті — день не скінчився). Межа = початок сьогоднішнього дня по Києву.
+        WHERE a.starts_at < date_trunc('day', now() AT TIME ZONE 'Europe/Kyiv')
           AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
           AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
           AND NOT ${PAID('a')}                           -- у касі грошей по візиту немає
+          -- ОПЕРАЦІЙНИЙ список, НЕ історія: імпортні візити Букона до переїзду (source=beautypro,
+          -- каса лишилась у старій системі / в архіві bp_sale) — це НЕ «забули провести сьогодні»,
+          -- а історичне легасі. Показуємо лише наші візити або створені після переїзду 01.07.2026,
+          -- інакше список забивали ~498 імпортних без каси (Босс 20.07: «бере цифру незрозуміло звідки»).
+          AND (a.source NOT IN ('beautypro', 'bukon_import') OR a.starts_at >= '2026-07-01')
           -- тестові записи (E2E/авто-тести) — не показуємо. Імʼя може бути і в картці клієнта.
           AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%e2e%'
           AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%test%'
@@ -888,6 +895,24 @@ router.get('/journal', async (req, res) => {
       );
       blocks = blkRes.rows;
     } catch (_) { /* міграція 050 ще не застосована */ }
+
+    // Домішуємо майстрів, у яких Є записи цього дня, але їх немає в основному списку
+    // (звільнені active=false / provides_services=false). Інакше їх колонка не малюється,
+    // записи «зникають» з журналу, хоча каса дня їх рахує — виглядає як «каса є, записів нема»
+    // (баг 12.01: звільнена Анастасія Середа #32, 4 візити на 3075₴; Босс 20.07).
+    // working:false → фронт покаже колонку лише тому, що є записи (renderJournal: m.working||withAppt).
+    try {
+      const shownIds = new Set(masters.map(m => m.id));
+      const extraIds = [...new Set(appts.map(a => Number(a.master_id)).filter(id => id && !shownIds.has(id)))];
+      if (extraIds.length && !masterOnly) {
+        const ex = await pool.query('SELECT id, name, specialty, avatar FROM masters WHERE id = ANY($1)', [extraIds]);
+        ex.rows.forEach(m => masters.push({
+          id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar,
+          working: false, start: null, end: null, break_start: null, break_end: null,
+          day_off_reason: 'Звільнений (є записи)',
+        }));
+      }
+    } catch (_) { /* домішування не критичне — не валимо журнал */ }
 
     res.json({ date, day: dayKey, masters, appointments: appts, blocks, count: appts.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -1700,12 +1725,16 @@ router.post('/appointments/:id/unpay', async (req, res) => {
            VALUES ($1,'refund',$2,$3,$4,$5)`,
           [gc.rows[0].id, appt.pay_cert_amount, gc.rows[0].remaining_amount, id, `Скасування оплати візиту #${id}`]);
       }
+      // real_synced_at=NULL обовʼязково (аудит 25.07): нарахування % майстру живе за умовою
+      // «status=confirmed AND real_synced_at IS NOT NULL» — без очистки майстер продовжував
+      // отримувати % від ПЛАНОВОЇ ціни за візит, оплату якого щойно скасували.
       await client.query(
         `UPDATE appointments SET status='confirmed', updated_at=NOW(),
                 discount_amount=NULL, pay_cert_code=NULL, pay_cert_amount=NULL,
                 pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL,
-                real_amount=NULL
+                real_amount=NULL, real_synced_at=NULL
           WHERE id=$1`, [id]);
+      if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
       // передоплата: /pay позначає онлайн-передоплату спожитою (prepaid_consumed_at).
       // Без відкату мітки повторна оплата НЕ відніме передоплату — каса порахує
       // гроші двічі (аудит v7, регрес #4). Той самий жорсткий матч, що в /pay.
@@ -2068,6 +2097,9 @@ router.post('/appointments/:id/pay', async (req, res) => {
     }
     await emitAppointmentCompleted(id, appt.master_id);
 
+    // Вітринні лічильники клієнта (total_spent/total_visits/last_visit_at) — перерахунок
+    // з першоджерела, не інкремент (аудит 25.07: поле роками тільки зменшувалось). Fire-and-forget.
+    if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount }, bonus_accrued: accrued });
   } catch (e) {

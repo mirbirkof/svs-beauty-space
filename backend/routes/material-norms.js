@@ -252,11 +252,22 @@ router.post('/consumption/write-off', W, async (req, res) => {
         // склад: точна кількість без округлення (stock_qty NUMERIC з міграції 199;
         // Math.round різав 0.33 pcs → 0 і списання губилось). Списуємо всі одиниці, і g/ml теж.
         if (Number.isFinite(usedQty) && usedQty > 0) {
-          await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1) WHERE id=$2`, [usedQty, m.variant_id]);
+          // Аудит 25.07: у рух пишемо ФАКТИЧНО списане (кламп нулем), а не заявлене —
+          // інакше відкат візиту повертає на склад більше, ніж реально пішло.
+          const updN = await client.query(
+            `UPDATE product_variants pv
+                SET stock_qty = GREATEST(COALESCE(pv.stock_qty,0) - $1, 0)
+               FROM (SELECT id, COALESCE(stock_qty,0) AS before_qty
+                       FROM product_variants WHERE id=$2 FOR UPDATE) old
+              WHERE pv.id = old.id
+              RETURNING old.before_qty`, [usedQty, m.variant_id]);
+          const beforeN = Number(updN.rows[0]?.before_qty ?? 0);
+          const deductedN = Math.min(usedQty, beforeN);
           await client.query(
             `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
-             VALUES ($1, $2, 'service:' || $3::text, $3, 'списання за нормами процедур (material-norms)')`,
-            [m.variant_id, -usedQty, b.appointment_id]);
+             VALUES ($1, $2, 'service:' || $3::text, $3, $4)`,
+            [m.variant_id, -deductedN, b.appointment_id,
+             `списання за нормами процедур (material-norms); заявлено ${usedQty}` + (usedQty > beforeN ? `; нестача ${+(usedQty-beforeN).toFixed(3)}` : '')]);
         }
         logged.push(row);
       }

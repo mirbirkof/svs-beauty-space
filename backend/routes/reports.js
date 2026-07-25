@@ -120,16 +120,18 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
       // done_appts (для середнього чека і % відмін) = реально проведені візити: не скасовані/неявки і вже в минулому.
       `WITH appts AS (
          SELECT master_id,
-                -- знаменник % відмін мусить жити за тим самим правилом, що й чисельник:
-                -- видалені в BeautyPro записи не рахуємо ніде (аудит 25.07: 30.9% замість 35.9%)
-                COUNT(*) FILTER (WHERE COALESCE(bp_state,'')<>'bp_deleted')::int AS total_appts,
+                -- % відмін: технічні стани синхронізації BeautyPro (bp_deleted — видалені,
+                -- not_in_bukon — не знайдені в журналі й скасовані автоматом, phantom_dup —
+                -- дублі) НЕ є відмовами клієнтів. Рахуємо їх ні в чисельнику, ні в знаменнику
+                -- (аудит 25.07: інакше «30.9%» відмін замість чесних 11.5%).
+                COUNT(*) FILTER (WHERE COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS total_appts,
                 -- візит = клієнт + день, а не рядок: інакше один прихід з трьома послугами
                 -- ділив виручку мастера на три і занижував його середній чек (аудит 25.07)
                 COUNT(DISTINCT (COALESCE(client_id::text, 'anon-'||id),
                                 (starts_at AT TIME ZONE 'Europe/Kyiv')::date))
                   FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
-                COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS canceled_appts,
-                COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int    AS no_show_appts,
+                COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS canceled_appts,
+                COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2

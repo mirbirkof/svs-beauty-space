@@ -295,7 +295,10 @@ async function syncAppointments(from, to) {
   // сегменти, маркетинг-тригери, RFM, win-back) читають це поле — тримаємо його
   // = max(знімок, остання реальна відвідана запис). total_visits не чіпаємо
   // (заморожений еталон, імена клієнтів колізяться у звіті візитів).
-  await refreshClientLastVisit(from, to);
+  // Аудит 25.07: refreshClientLastVisit рухав дату лише ВПЕРЕД (скасований візит лишав
+  // хибну last_visit_at у 258 клієнтів), total_visits був заморожений, total_spent не ріс.
+  // Тепер повний перерахунок вітринних лічильників з першоджерела — один UPDATE, самовиліковний.
+  await require('../lib/client-stats').recalcClientStats(null).catch((e) => console.warn('[bp-sync] client-stats recalc:', e.message));
 
   return { fetched: items.length, created, updated, unlinked_clients: unlinkedClients, reconciled };
 }
