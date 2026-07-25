@@ -14,7 +14,7 @@ const CAT_LABELS = {
 async function liveFinance(pool, from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
   const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
-  const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm] = await Promise.all([
+  const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
               COUNT(DISTINCT CASE WHEN category IN ('sale_service','sale_product')
@@ -98,6 +98,13 @@ async function liveFinance(pool, from, to) {
         tot AS (SELECT mid, SUM(rev) AS rev FROM (SELECT * FROM bottles UNION ALL SELECT * FROM pos) t GROUP BY 1)
         SELECT COALESCE(SUM(ROUND(tot.rev * COALESCE(ps.sales_commission_pct,0) / 100, 2)),0)::numeric s
           FROM tot LEFT JOIN payroll_schemes ps ON ps.master_id = tot.mid::text AND ps.is_active = TRUE`, [from, to]),
+    // Реальні візити періоду — єдиний знаменник середнього чека для всієї CRM.
+    // Візит = клієнт + день (запис без картки клієнта рахується окремим візитом).
+    q(`SELECT COUNT(DISTINCT (COALESCE(client_id::text, 'anon-'||id),
+                              (starts_at AT TIME ZONE 'Europe/Kyiv')::date))::int n
+         FROM appointments
+        WHERE starts_at BETWEEN $1 AND $2 AND starts_at <= NOW()
+          AND status NOT IN ('cancelled','noshow')`, [from, to]),
   ]);
 
   const revServices = Number(revC[0]?.svc || 0);
@@ -124,13 +131,19 @@ async function liveFinance(pool, from, to) {
   ].filter(x => x.sum > 0).sort((a, b) => b.sum - a.sum);
 
   const txCount = Number(revC[0]?.cnt || 0) + Number(ordR[0]?.c || 0);
+  // Аудит 25.07: середній чек тут рахувався як виручка / кількість КАСОВИХ ОПЕРАЦІЙ, а на
+  // дашборді — як виручка / візити. Один показник мав два різні значення (1189 vs 1655).
+  // Єдине правило для всієї CRM: чек = виручка / реальні візити (клієнт + день).
+  const visitsCount = Number(visitsR?.[0]?.n || 0);
   const netProfit = revTotal - expTotal;
   return {
     revenue: { services: revServices, products: revProducts, total: revTotal },
     expenses: { by_category, total: expTotal, materials, commission, other: otherCats },
     profit: { net: netProfit, margin_pct: revTotal > 0 ? Math.round(netProfit / revTotal * 100) : 0 },
     tx_count: txCount,
-    avg_check: txCount > 0 ? Math.round(revTotal / txCount) : 0,
+    visits_count: visitsCount,
+    avg_check: visitsCount > 0 ? Math.round(revTotal / visitsCount)
+             : (txCount > 0 ? Math.round(revTotal / txCount) : 0),
     commission_appts: Number(comm[0]?.appts || 0),
   };
 }

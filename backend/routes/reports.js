@@ -125,7 +125,8 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
                 COUNT(*) FILTER (WHERE COALESCE(bp_state,'')<>'bp_deleted')::int AS total_appts,
                 -- візит = клієнт + день, а не рядок: інакше один прихід з трьома послугами
                 -- ділив виручку мастера на три і занижував його середній чек (аудит 25.07)
-                COUNT(DISTINCT (client_id, (starts_at AT TIME ZONE 'Europe/Kyiv')::date))
+                COUNT(DISTINCT (COALESCE(client_id::text, 'anon-'||id),
+                                (starts_at AT TIME ZONE 'Europe/Kyiv')::date))
                   FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
                 COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS canceled_appts,
                 COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int    AS no_show_appts,
@@ -514,7 +515,8 @@ router.get('/clients-by-service', requirePerm('reports.read'), async (req, res) 
       // Аудит 25.07: тут брали a.price (планову ціну) → недобирали 384 502 ₴ реальних грошей,
       // а INNER JOIN clients викидав 324 записи без прив'язки до клієнта (453 851 ₴).
       // Тепер сума — фактично отримана, а безіменні візити видно окремим рядком.
-      `SELECT a.client_id, COALESCE(cl.name, a.client_name, '(без картки клієнта)') AS client_name, cl.phone,
+      `SELECT a.id AS appt_id, a.client_id,
+              COALESCE(cl.name, NULLIF(a.client_name,''), '(візит без картки клієнта)') AS client_name, cl.phone,
               COALESCE(a.real_amount, a.price, 0) AS price, a.starts_at,
               s.name AS svc_name, s.category AS svc_cat
          FROM appointments a
@@ -527,14 +529,19 @@ router.get('/clients-by-service', requirePerm('reports.read'), async (req, res) 
 
     const map = new Map();
     for (const row of r.rows) {
-      if (!map.has(row.client_id)) {
-        map.set(row.client_id, {
+      // Візити без картки клієнта НЕ можна зливати в один рядок: раніше вони всі падали
+      // під ключ null, брали ім'я першого-ліпшого і ставали «клієнтом №1» з чужою сумою.
+      // Кожен такий візит — окремий рядок із власним ключем.
+      const key = row.client_id != null ? 'c' + row.client_id : 'a' + row.appt_id;
+      if (!map.has(key)) {
+        map.set(key, {
           client_id: row.client_id, name: row.client_name, phone: row.phone,
+          no_card: row.client_id == null,
           total_visits: 0, total_sum: 0,
           buckets: Object.fromEntries(SERVICE_BUCKETS.map(b=>[b,{count:0,sum:0}])),
         });
       }
-      const c = map.get(row.client_id);
+      const c = map.get(key);
       const b = classifyService(row.svc_name, row.svc_cat);
       const price = Number(row.price) || 0;
       c.buckets[b].count++; c.buckets[b].sum += price;

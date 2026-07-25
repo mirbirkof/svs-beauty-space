@@ -6815,7 +6815,7 @@ async function loadDashboard() {
     const _exp  = le ? le.total : (o.expense_month||0);
     kpis.push(['Витрати місяця', _money2(_exp) + _sub(`% майстрам ${_money2(o.master_commission_month||0)}`), 'orange', 'РЕАЛЬНІ витрати за період на цю секунду: собівартість матеріалів + нарахований % майстрам (по реальній схемі за завершені послуги) + оренда та інші витрати каси. Розбивку дивіться у панелі «Витрати за місяць» нижче.', 'fincenter']);
     kpis.push(['Прибуток місяця', _money2(_prof) + _sub(`реальні витрати ${_money2(_exp)}`), _prof>=0?'purple':'orange', 'Виручка за місяць мінус РЕАЛЬНІ витрати на цю секунду: собівартість матеріалів + нарахований % майстрам (по реальній схемі за завершені послуги) + оренда та інші витрати каси. Оновлюється щойно проходить послуга. Деталі — у панелі «Витрати за місяць» нижче.', 'fincenter']);
-    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.done_month||0} виконано/міс`), 'pink', 'Середня сума однієї оплати за місяць = виручка ÷ кількість продажів. Показує, скільки в середньому залишає клієнт за візит.', 'plan']);
+    kpis.push(['Середній чек', _money2(o.avg_check_month||0) + _sub(`${o.visits_month||0} візитів/міс`), 'pink', 'Виручка за місяць ÷ кількість реальних візитів. Візит = один клієнт за один день, скільки б послуг він не зробив. Саме тому число не дорівнює кількості рядків у журналі.', 'plan']);
   }
   kpis.push(['Записів сьогодні', (o.today?.appts ?? 0) + _sub(`${o.today?.appts_done ?? 0} виконано · ${o.today?.appts_upcoming ?? 0} попереду`), 'pink', 'Скільки записів на сьогодні всього, з них уже виконано і скільки ще попереду. Дані з журналу записів.', 'journal']);
   kpis.push(['Клієнтів усього', (o.clients_total ?? 0) + _sub(`+${o.new_clients_month ?? 0} за місяць`), 'blue', 'Загальна кількість клієнтів у базі та скільки нових додалося цього місяця.', 'clients']);
@@ -8252,7 +8252,7 @@ async function fcDrill(type){
     const m=d.metrics||{};
     title='🧾 Середній чек — як рахується';
     body = row('Разом виручка', d.revenue.total)
-      + `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0"><span>÷ кількість продажів</span><b>${m.tx_count||0}</b></div>`
+      + `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0"><span>÷ кількість візитів</span><b>${m.visits_count||m.tx_count||0}</b></div>`
       + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:18px"><span>= Середній чек</span><span>${_fcMoney(m.avg_check||0)}</span></div>`
       + `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:10px">Скільки в середньому залишає клієнт за одну оплату.</div>`;
   } else if(type==='checks'){
