@@ -1709,10 +1709,26 @@ router.post('/appointments/:id/unpay', async (req, res) => {
         await client.query('ROLLBACK');
         return res.json({ ok: true, nothing_to_cancel: true, already_cancelled: true });
       }
+      // Аудит 25.07: скасування оплати зносило касові операції БЕЗ розбору — переписувало
+      // історію вже закритих змін і Z-звітів (у видаленні запису такий захист є, тут забули).
+      // Тепер прибираємо лише те, що належить ще не закритому дню: привʼязане до відкритої
+      // зміни або безсменне, але пізніше за останню закриту зміну. Решту — сторнуємо.
       removed = await client.query(
         `DELETE FROM cash_operations
           WHERE ref_type='appointment' AND ref_id=$1 AND type='in'
+            AND (shift_id IN (SELECT id FROM cash_shifts WHERE status='open')
+                 OR (shift_id IS NULL
+                     AND created_at >= COALESCE((SELECT MAX(closed_at) FROM cash_shifts WHERE status='closed'),
+                                                '-infinity'::timestamptz)))
           RETURNING id, amount, method`, [id]);
+      // те, що лишилось у закритому періоді — компенсуємо сторно (ідемпотентно по ext_ref)
+      await client.query(
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, ref_id, master_id, description, ext_ref)
+         SELECT NULL, 'out', 'refund', co.amount, co.method, 'appointment', co.ref_id, co.master_id,
+                'Сторно оплати: скасування оплати візиту #' || co.ref_id, 'appt:' || co.ref_id || ':unpay:' || co.id
+           FROM cash_operations co
+          WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
+         ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`, [id]);
       // сертифікат назад: повертаємо суму + журнал refund
       if (appt.pay_cert_code && Number(appt.pay_cert_amount) > 0) {
         const gc = await client.query(

@@ -67,14 +67,38 @@ async function getOpenShift(branchId) {
   return r.rows[0] || null;
 }
 
+/* Операції зміни (аудит 25.07).
+   Салон працює з require_open_shift=false: оплата візиту проходить незалежно від того,
+   чи відкрита каса, і shift_id лишається порожнім. Через це до зміни було привʼязано
+   52 приходи з 2389 (58 519 ₴ з 2 685 166 ₴ = 2.2%) — Z-звіти й звірка каси показували
+   мізер від реальних грошей.
+   Правило: операція належить зміні, якщо привʼязана явно АБО потрапила у вікно зміни
+   [opened_at, closed_at) і не має власної привʼязки. Захист від подвійного рахунку:
+   якщо момент операції накриває більш ніж одна зміна (кілька філій/накладки) — беремо
+   лише явну привʼязку, бо вгадувати не можна. */
+const SHIFT_OPS_FROM = `
+  FROM cash_operations co
+  JOIN cash_shifts sh ON sh.id = $1
+ WHERE (
+   co.shift_id = sh.id
+   OR (co.shift_id IS NULL
+       AND co.created_at >= sh.opened_at
+       AND co.created_at <  COALESCE(sh.closed_at, NOW())
+       AND NOT EXISTS (
+         SELECT 1 FROM cash_shifts sh2
+          WHERE sh2.id <> sh.id
+            AND co.created_at >= sh2.opened_at
+            AND co.created_at <  COALESCE(sh2.closed_at, NOW())))
+ )`;
+
 async function recalcShiftTotals(shiftId) {
   const r = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN type='in' THEN amount ELSE 0 END),0) AS total_in,
-       COALESCE(SUM(CASE WHEN type='out' THEN amount ELSE 0 END),0) AS total_out,
-       COALESCE(SUM(CASE WHEN type='in' AND method='cash' THEN amount ELSE 0 END),0) AS cash_in,
-       COALESCE(SUM(CASE WHEN type='out' AND method='cash' THEN amount ELSE 0 END),0) AS cash_out
-     FROM cash_operations WHERE shift_id=$1`,
+       COALESCE(SUM(CASE WHEN co.type='in' THEN co.amount ELSE 0 END),0) AS total_in,
+       COALESCE(SUM(CASE WHEN co.type='out' THEN co.amount ELSE 0 END),0) AS total_out,
+       COALESCE(SUM(CASE WHEN co.type='in' AND co.method='cash' THEN co.amount ELSE 0 END),0) AS cash_in,
+       COALESCE(SUM(CASE WHEN co.type='out' AND co.method='cash' THEN co.amount ELSE 0 END),0) AS cash_out
+     ${SHIFT_OPS_FROM}`,
     [shiftId]
   );
   return r.rows[0];
@@ -196,7 +220,7 @@ router.get('/today', async (req, res) => {
                             AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
                                             WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
                                               AND (b.client_id=a.client_id
-                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,''))))))::float AS unsettled_sum,
+                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,'')))))))::float AS unsettled_sum,
          COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow','no_show'))::int AS cancelled_cnt
        FROM day_appts a JOIN paid_flag pf ON pf.id = a.id`,
       [reqDate]
@@ -402,8 +426,8 @@ router.post('/shifts/:id/close', async (req, res) => {
 
     // Z-отчёт: подробная сводка по категориям
     const breakdown = await client.query(
-      `SELECT type, category, method, COUNT(*) AS cnt, SUM(amount) AS total
-       FROM cash_operations WHERE shift_id=$1 GROUP BY type, category, method`,
+      `SELECT co.type, co.category, co.method, COUNT(*) AS cnt, SUM(co.amount) AS total
+       ${SHIFT_OPS_FROM} GROUP BY co.type, co.category, co.method`,
       [id]
     );
     const byCategory = {};
@@ -419,7 +443,7 @@ router.post('/shifts/:id/close', async (req, res) => {
       if (row.type === 'in' && row.method === 'card') cardIn += Number(row.total);
       if (row.type === 'in' && row.method === 'transfer') transferIn += Number(row.total);
     }
-    const opsCnt = await client.query(`SELECT COUNT(*)::int AS n FROM cash_operations WHERE shift_id=$1`, [id]);
+    const opsCnt = await client.query(`SELECT COUNT(*)::int AS n ${SHIFT_OPS_FROM}`, [id]);
 
     const z = await client.query(
       `INSERT INTO z_reports (shift_id, branch_id, period_start, period_end,
