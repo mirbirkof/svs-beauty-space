@@ -265,14 +265,22 @@ router.get('/finance', requireHistory, async (req, res) => {
     let { from, to } = req.query;
     if (!from) from = today.slice(0, 8) + '01';   // початок поточного місяця
     if (!to) to = today;
-    const params = [from, to];
+    // Аудит 25.07: тут межі доби бралися як $1::date (UTC), а єдине фінансове ядро
+    // рахувало по '+03' (зашитий літній зсув, узимку невірний). Через різні вікна суми
+    // по залах не збігалися з рядком «Послуги», і код домножав їх на коефіцієнт.
+    // Тепер ОДНЕ вікно: календарна доба Києва, з реальним зсувом (літо +3 / зима +2).
+    const bounds = await pool.query(
+      `SELECT ($1::date)::timestamp AT TIME ZONE 'Europe/Kyiv'            AS s,
+              (($2::date + 1))::timestamp AT TIME ZONE 'Europe/Kyiv'      AS e`, [from, to]);
+    const winFrom = bounds.rows[0].s, winTo = bounds.rows[0].e;
+    const params = [winFrom, winTo];
 
     // залишок на початок: усі in − out до дати from (розділ готівка / безготівка)
     const open = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN method='cash'  AND type='in' THEN amount WHEN method='cash'  AND type='out' THEN -amount ELSE 0 END),0)::float AS cash,
          COALESCE(SUM(CASE WHEN method<>'cash' AND type='in' THEN amount WHEN method<>'cash' AND type='out' THEN -amount ELSE 0 END),0)::float AS cashless
-       FROM cash_operations WHERE created_at < $1::date`, [from]);
+       FROM cash_operations WHERE created_at < $1`, [winFrom]);
 
     // доходи/витрати в періоді за категоріями + спосіб оплати
     const cats = await pool.query(
@@ -281,7 +289,7 @@ router.get('/finance', requireHistory, async (req, res) => {
               SUM(CASE WHEN method='cash'  THEN amount ELSE 0 END)::float AS cash,
               SUM(CASE WHEN method<>'cash' THEN amount ELSE 0 END)::float AS cashless
        FROM cash_operations
-       WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
+       WHERE created_at >= $1 AND created_at < $2
        GROUP BY type, category`, params);
 
     // список операцій
@@ -289,7 +297,7 @@ router.get('/finance', requireHistory, async (req, res) => {
       `SELECT o.id, o.type, o.category, o.amount::float AS amount, o.method, o.description, o.created_at,
               m.name AS master_name
        FROM cash_operations o LEFT JOIN masters m ON m.id = o.master_id
-       WHERE o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
+       WHERE o.created_at >= $1 AND o.created_at < $2
        ORDER BY o.created_at DESC LIMIT 300`, params);
 
     // Оборот послуг по залах/напрямках Фінцентру (майстри вже розподілені Босом
@@ -304,7 +312,7 @@ router.get('/finance', requireHistory, async (req, res) => {
        LEFT JOIN zone_masters zm ON zm.master_id = o.master_id
        LEFT JOIN salon_zones z ON z.id = zm.zone_id AND z.active = true
        WHERE o.type='in' AND o.category='sale_service'
-         AND o.created_at >= $1::date AND o.created_at < ($2::date + INTERVAL '1 day')
+         AND o.created_at >= $1 AND o.created_at < $2
        GROUP BY z.name, z.color, z.sort_order
        HAVING SUM(o.amount) > 0 ORDER BY sort, amount DESC`, params);
 
@@ -319,11 +327,17 @@ router.get('/finance', requireHistory, async (req, res) => {
     // з Дашбордом, Фінцентром і P&L. Витрати = матеріали + нарахований % майстрам + інші витрати.
     // Верхня межа = кінець вибраного дня (повний день). Виручка = всі гроші за день;
     // нарахований % майстрам усередині liveFinance і так капається на NOW() (майбутні послуги не рахуються).
-    const fin = await liveFinance(pool, `${from} 00:00:00+03`, `${to} 23:59:59+03`);
+    const fin = await liveFinance(pool, winFrom, winTo);
     // Розбивка послуг по відділах, масштабована до єдиного джерела правди
     // (fin.revenue.services) — щоб сума сегментів точно = рядку «Послуги».
+    // Коефіцієнт-підгонка більше не потрібна: зали й рядок «Послуги» рахуються з одного
+    // вікна і одного джерела. Лишаємо тотожність 1 і сигналізуємо в лог, якщо суми
+    // раптом розійшлись — це означало б реальну помилку, а не «підженемо множником».
     const svcRaw = svcDept.rows.reduce((s, r) => s + Number(r.amount || 0), 0);
-    const svcScale = svcRaw > 0 ? fin.revenue.services / svcRaw : 1;
+    if (svcRaw > 0 && Math.abs(svcRaw - fin.revenue.services) > 1) {
+      console.warn('[cashbox] розбіжність зали/послуги:', svcRaw, 'vs', fin.revenue.services);
+    }
+    const svcScale = 1;
     const svcSegs = svcDept.rows.map(r => ({
       category: 'svc_dept:' + r.dept,
       label: r.dept,
