@@ -170,7 +170,14 @@ app.get('/help', (req, res) => res.redirect(302, '/p/help.html'));       // ін
 app.get('/register', (req, res) => res.redirect(302, '/p/signup.html'));
 
 // Render health check (root + /health)
-app.get('/', (req, res) => res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() }));
+// Голий домен вів на технічний JSON — Бос відкривав zvetlacrm і бачив «якийсь текст»
+// замість входу (25.07). Людина, що прийшла на домен, мусить одразу бачити CRM.
+// Для моніторингу лишається /health, для машин — заголовок Accept: application/json.
+app.get('/', (req, res) => {
+  const wantsJson = String(req.headers.accept || '').includes('application/json');
+  if (wantsJson) return res.json({ ok: true, service: 'svs-shop-api', time: new Date().toISOString() });
+  return res.redirect(302, '/admin/');
+});
 app.get('/health', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*'); // ворота zvetlacrm.onrender.com пингуют /health с другого origin
   res.json({
