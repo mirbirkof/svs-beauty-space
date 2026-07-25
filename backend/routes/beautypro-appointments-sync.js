@@ -793,7 +793,12 @@ async function syncProductSales(from, to) {
       if (r.rows[0]?.inserted) posted++; else skipped++;
     }
   }
-  return { posted, updated: skipped, matched, linked };
+  // Списання складу за новими продажами BP (міграція 280 звʼязала реєстри; історію
+  // до 25.07 свідомо не чіпаємо — рішення Боса, чекає реальної інвентаризації)
+  const stockOff = await require('../lib/bp-sales-stock').writeOffBpSales()
+    .catch((e) => { console.warn('[bp-sales-stock]', e.message); return null; });
+  if (stockOff?.written) console.log('[bp-sync] списано склад за', stockOff.written, 'продажами BP');
+  return { posted, updated: skipped, matched, linked, stock_written: stockOff?.written || 0 };
 }
 
 // Backfill клиентов BP→local: для записей без client_id тянем клиента из BP и создаём карточку
