@@ -12,16 +12,26 @@
  */
 
 // CTE `churned` — выбирает выпавших клиентов. Без параметров.
+//
+// Аудит 25.07: считались СТРОКИ appointments, а один приход с тремя услугами — это три
+// строки. Из-за этого порог «≥2 визита» проходили люди, бывшие в салоне ОДИН раз, и отток
+// показывал 75 вместо 62. Теперь визит = уникальный день (Киев). Плюс будущие записи больше
+// не считаются визитами, а клиент, уже записанный наперёд, в отток не попадает вообще.
+const VISIT_DAYS = `COUNT(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kiev')::date) FILTER (WHERE a.starts_at <= NOW())`;
+const LAST_PAST = `MAX(a.starts_at) FILTER (WHERE a.starts_at <= NOW())`;
+const FIRST_PAST = `MIN(a.starts_at) FILTER (WHERE a.starts_at <= NOW())`;
 const CHURNED_CTE = `WITH churned AS (
   SELECT c.id, c.name, c.phone, COALESCE(c.total_spent,0)::numeric AS spent,
-         MAX(a.starts_at) AS last_visit,
-         COUNT(a.id)::int AS visits
+         ${LAST_PAST} AS last_visit,
+         ${VISIT_DAYS}::int AS visits
   FROM clients c JOIN appointments a ON a.client_id=c.id
   WHERE a.status NOT IN ('cancelled','noshow')
   GROUP BY c.id
-  HAVING COUNT(a.id) >= 2
-     AND (NOW()::date - MAX(a.starts_at)::date)
-         > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (MAX(a.starts_at)-MIN(a.starts_at)))/86400) / (COUNT(a.id)-1)))`;
+  HAVING ${VISIT_DAYS} >= 2
+     AND NOT bool_or(a.starts_at > NOW())
+     AND (NOW()::date - ${LAST_PAST}::date)
+         > GREATEST(90, 2 * (EXTRACT(EPOCH FROM (${LAST_PAST} - ${FIRST_PAST}))/86400)
+                          / NULLIF(${VISIT_DAYS} - 1, 0)))`;
 
 // Готовый запрос: количество клиентов в оттоке → { n }.
 const CHURN_COUNT_SQL = `${CHURNED_CTE}

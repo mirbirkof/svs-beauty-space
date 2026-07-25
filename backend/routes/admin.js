@@ -33,8 +33,24 @@ const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
 const { findDuplicateClients, mergeClients } = require('../lib/client-merge');
 
-// ── middleware: RBAC проверка (legacy X-Admin-Token поддерживается автоматически) ──
-router.use(requirePerm('admin.*'));
+// ── middleware: доступ до адмін-групи ──
+// Раніше стояло requirePerm('admin.*'), але права 'admin.*' немає у ролі admin (її набір —
+// schedule.*, stock.*, clients.* …). Тому адміністратор отримував forbidden на СТВОРЕННЯ ТОВАРУ
+// і взагалі всю /api/admin групу (Босс 20.07, відео: «Помилка створення товару: forbidden»).
+// Тепер: резолвимо юзера (requirePerm(null) — без жорсткого права), потім пускаємо власника,
+// адміна/менеджера АБО того, хто має admin.* / *. Чутливі дії (склад/ціни — canManageStock,
+// клієнти/майстри) перевіряються окремо на своїх ендпоінтах.
+router.use(requirePerm(null));
+router.use((req, res, next) => {
+  const u = req.user || {};
+  const perms = u.permissions || [];
+  const roleOk = ['owner', 'admin', 'manager'].includes(u.role);
+  const permOk = hasPermission(perms, 'admin.*') || hasPermission(perms, '*')
+    // запасний маркер адмін-доступу: має ключові адмін-права (склад + клієнти/майстри)
+    || (hasPermission(perms, 'stock.manage') && (hasPermission(perms, 'clients.write') || hasPermission(perms, 'masters.manage')));
+  if (roleOk || permOk) return next();
+  return res.status(403).json({ error: 'forbidden', need: 'admin-access', message: 'Немає доступу до адмін-панелі' });
+});
 
 // «Склад і ціни»: установка цен и правка остатков — только с правом stock.manage.
 // У owner оно есть через '*', администратору включается тумблером в «Керуванні доступом».
@@ -78,12 +94,15 @@ router.get('/products', async (req, res) => {
 router.post('/products', async (req, res) => {
   try {
     const { id, name, brand_id, category_id, photo, description, featured = false } = req.body || {};
-    if (!id || !name || !brand_id) return res.status(400).json({ error: 'id-name-brand-required' });
+    // Бренд НЕобовʼязковий (Босс 20.07: не давало створити товар без бренду, напр. «dr.sorbie»,
+    // хоча бренд часто невідомий). brand_id порожній → null (колонка nullable). Обовʼязкові лише id+назва.
+    if (!id || !name) return res.status(400).json({ error: 'id-name-required' });
+    const brandId = brand_id || null;
     const pool = getPool();
     const r = await pool.query(
       `INSERT INTO products (id, name, brand_id, category_id, photo, description, featured, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
-      [id, name, brand_id, category_id, photo, description, featured]
+      [id, name, brandId, category_id, photo, description, featured]
     );
     res.status(201).json({ ok: true, product: r.rows[0] });
   } catch (e) { console.error('[admin:create-product]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
@@ -175,15 +194,20 @@ router.get('/products/:id/variants', async (req, res) => {
 router.post('/products/:id/variants', async (req, res) => {
   try {
     const { volume, price, wholesale, sku, stock_qty = 0, branch_id } = req.body || {};
-    if (!volume || price == null) return res.status(400).json({ error: 'volume-price-required' });
+    // Ціна продажу НЕобовʼязкова (Босс 20.07: товар заводиться на склад для обліку, ціну ставлять
+    // пізніше). Немає ціни → беремо закупівельну, інакше 0. Обовʼязковий лише обʼєм/фасування.
+    if (!volume) return res.status(400).json({ error: 'volume-required' });
     if (!canManageStock(req)) return res.status(403).json(STOCK_MANAGE_403);
+    // ціна продажу > 0 → беремо її; інакше (порожньо/0) → закупівельна; якщо і її нема → 0.
+    const priceNum = Number(price), whNum = Number(wholesale);
+    const priceVal = priceNum > 0 ? priceNum : (whNum > 0 ? whNum : 0);
     const pool = getPool();
     const r = await pool.query(
       `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active, branch_id)
        VALUES ($1,$2,$3,$4,$5,$6,true,
                COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
        RETURNING *`,
-      [req.params.id, volume, price, wholesale || price, sku, stock_qty, branch_id || null]
+      [req.params.id, volume, priceVal, wholesale || priceVal, sku, stock_qty, branch_id || null]
     );
     res.status(201).json({ ok: true, variant: r.rows[0] });
   } catch (e) { console.error('[admin:add-variant]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
@@ -561,7 +585,10 @@ router.get('/clients/:id', async (req, res) => {
     );
     // Візити салону (записи BeautyPro/CRM)
     const appts = await pool.query(
-      `SELECT a.id, a.starts_at, a.status, a.price, a.services_text, a.payment_method,
+      // Аудит 25.07: картка рахувала планову ціну (a.price) замість фактично сплаченої —
+      // по базі це заниження на 384 502 ₴. Беремо реальну суму візиту.
+      `SELECT a.id, a.starts_at, a.status, COALESCE(a.real_amount, a.price, 0) AS price,
+              a.services_text, a.payment_method,
               m.name AS master_name
          FROM appointments a
          LEFT JOIN masters m ON m.id = a.master_id

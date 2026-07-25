@@ -120,8 +120,13 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
       // done_appts (для середнього чека і % відмін) = реально проведені візити: не скасовані/неявки і вже в минулому.
       `WITH appts AS (
          SELECT master_id,
-                COUNT(*)::int                    AS total_appts,
-                COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
+                -- знаменник % відмін мусить жити за тим самим правилом, що й чисельник:
+                -- видалені в BeautyPro записи не рахуємо ніде (аудит 25.07: 30.9% замість 35.9%)
+                COUNT(*) FILTER (WHERE COALESCE(bp_state,'')<>'bp_deleted')::int AS total_appts,
+                -- візит = клієнт + день, а не рядок: інакше один прихід з трьома послугами
+                -- ділив виручку мастера на три і занижував його середній чек (аудит 25.07)
+                COUNT(DISTINCT (client_id, (starts_at AT TIME ZONE 'Europe/Kyiv')::date))
+                  FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
                 COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS canceled_appts,
                 COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients
@@ -140,7 +145,9 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
          SELECT master_id::int AS master_id, COALESCE(SUM(total),0)::numeric AS payroll_sum
            FROM payroll_records
           WHERE period_start >= $1::date AND period_end <= $2::date
-            AND master_id ~ '^\d+$'
+            -- \\d, а не \d: це JS-шаблонний рядок, одинарний \d перетворювався на 'd',
+            -- фільтр не збігався ніколи і фактичні виплати ігнорувались (аудит 25.07)
+            AND master_id ~ '^\\d+$'
           GROUP BY master_id::int
        ),
        -- НАРАХОВАНА ЗП (виручка × % схеми) за період — щоб колонка ЗП не була 0 до дня виплати
@@ -200,7 +207,10 @@ router.get('/rfm', requirePerm('reports.read'), async (req, res) => {
        ap AS (
          SELECT a.client_id,
                 MAX(a.starts_at) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()) AS last_visit,
-                COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()) AS cnt,
+                -- ВІЗИТИ, а не рядки: один прихід з трьома послугами = три рядки appointments.
+                -- Через це частота була завищена на 269 «фантомних візитів» (аудит 25.07)
+                COUNT(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kiev')::date)
+                  FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW()) AS cnt,
                 COALESCE(SUM(COALESCE((SELECT SUM(co.amount) FROM cash_operations co
                                         WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id),
                                       COALESCE(a.real_amount, a.price)))
@@ -309,7 +319,7 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
           FROM orders WHERE status='paid'
       ),
       ap AS (
-        SELECT (starts_at AT TIME ZONE 'Europe/Kyiv') AS k, status, client_id
+        SELECT id, (starts_at AT TIME ZONE 'Europe/Kyiv') AS k, status, client_id
           FROM appointments
       )
       SELECT
@@ -325,6 +335,12 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
         (SELECT COALESCE(SUM(amount),0) FROM co,b WHERE co.category='sale_product' AND co.k>=b.m0 AND co.k<b.m1) AS products_month,
         (SELECT COUNT(*)            FROM ap,b WHERE ap.k>=b.d0 AND ap.k<b.d1 AND ap.status NOT IN ('cancelled','noshow'))  AS appts_today,
         (SELECT COUNT(*)            FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow'))  AS appts_month,
+        -- Аудит 25.07: середній чек ділили на КІЛЬКІСТЬ РЯДКІВ записів (одна людина з трьома
+        -- послугами = три «візити») → чек занижений на третину. Знаменник = реальні візити:
+        -- унікальна пара «клієнт + день», і тільки ті, що вже відбулись.
+        (SELECT COUNT(DISTINCT (COALESCE(ap.client_id::text, 'anon-'||ap.id), ap.k::date)) FROM ap,b
+          WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.k <= (NOW() AT TIME ZONE 'Europe/Kyiv')
+            AND ap.status NOT IN ('cancelled','noshow'))                                   AS visits_month,
         (SELECT COUNT(DISTINCT client_id) FROM ap,b WHERE ap.k>=b.m0 AND ap.k<b.m1 AND ap.status NOT IN ('cancelled','noshow')) AS clients_month
     `);
     const r0 = main.rows[0] || {}; // порожній тенант: захист від undefined (SaaS-аудит)
@@ -342,6 +358,7 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
     ]);
 
     const apptsMonth = Number(r0.appts_month);
+    const visitsMonth = Number(r0.visits_month || 0); // реальні візити (клієнт+день), знаменник чека
     const out = {
       revenue_today: Number(r0.revenue_today),
       low_stock_items: lowStock.rows[0].n,
@@ -361,7 +378,8 @@ router.get('/dashboard', requirePerm('reports.read'), cacheReport(), async (req,
       out.revenue_prev_month  = Number(r0.revenue_prev_month);
       out.services_month      = Number(r0.services_month);
       out.products_month      = Number(r0.products_month);
-      out.avg_check_month     = apptsMonth > 0 ? Math.round(revMonth / apptsMonth) : 0;
+      out.visits_month        = visitsMonth;
+      out.avg_check_month     = visitsMonth > 0 ? Math.round(revMonth / visitsMonth) : 0;
       out.top_master          = topMaster.rows[0] ? { name: topMaster.rows[0].name, revenue: Math.round(Number(topMaster.rows[0].rev)) } : null;
     }
     res.json(out);
@@ -374,17 +392,24 @@ router.get('/revenue-series', requirePerm('reports.finance'), cacheReport(), asy
   try {
     const { from, to } = parsePeriod(req.query);
     const r = await pool.query(
+      // Аудит 25.07: вісь днів будувалась як $1::date по UTC, а межа періоду приходить
+      // київська (01.07 → 30.06T21:00Z) — графік завжди починався з фальшивого нуля
+      // за попередній день. Тепер і вісь, і групування живуть у київському часі.
       `WITH days AS (
-         SELECT generate_series($1::date, $2::date, '1 day')::date AS d
+         -- кінець періоду приходить як 23:59:59.999 київських, що при округленні залазить
+         -- у наступну добу → мінус секунда, інакше в графіку зайвий порожній день у кінці
+         SELECT generate_series(($1::timestamptz AT TIME ZONE 'Europe/Kyiv')::date,
+                                (($2::timestamptz - interval '1 second') AT TIME ZONE 'Europe/Kyiv')::date,
+                                '1 day')::date AS d
        ),
        prod AS (
          SELECT d, SUM(rev)::numeric AS rev FROM (
-           SELECT created_at::date AS d, COALESCE(SUM(total),0)::numeric AS rev
+           SELECT (created_at AT TIME ZONE 'Europe/Kiev')::date AS d, COALESCE(SUM(total),0)::numeric AS rev
              FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2
             GROUP BY 1
            UNION ALL
            -- банки у візитах + POS-продажі з каси (без онлайн-замовлень — вони вище)
-           SELECT created_at::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
+           SELECT (created_at AT TIME ZONE 'Europe/Kiev')::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
              FROM cash_operations
             WHERE type='in' AND category='sale_product' AND ref_type IS DISTINCT FROM 'order'
               AND created_at BETWEEN $1 AND $2
@@ -392,7 +417,7 @@ router.get('/revenue-series', requirePerm('reports.finance'), cacheReport(), asy
           GROUP BY d
        ),
        serv AS (
-         SELECT created_at::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
+         SELECT (created_at AT TIME ZONE 'Europe/Kiev')::date AS d, COALESCE(SUM(amount),0)::numeric AS rev
            FROM cash_operations
           WHERE type='in' AND category='sale_service' AND created_at BETWEEN $1 AND $2
           GROUP BY 1
@@ -486,11 +511,14 @@ router.get('/clients-by-service', requirePerm('reports.read'), async (req, res) 
     const exclude = String(req.query.exclude || '').split(',').map(s=>s.trim()).filter(Boolean);
 
     const r = await pool.query(
-      `SELECT a.client_id, cl.name AS client_name, cl.phone,
-              a.price, a.starts_at,
+      // Аудит 25.07: тут брали a.price (планову ціну) → недобирали 384 502 ₴ реальних грошей,
+      // а INNER JOIN clients викидав 324 записи без прив'язки до клієнта (453 851 ₴).
+      // Тепер сума — фактично отримана, а безіменні візити видно окремим рядком.
+      `SELECT a.client_id, COALESCE(cl.name, a.client_name, '(без картки клієнта)') AS client_name, cl.phone,
+              COALESCE(a.real_amount, a.price, 0) AS price, a.starts_at,
               s.name AS svc_name, s.category AS svc_cat
          FROM appointments a
-         JOIN clients cl  ON cl.id = a.client_id
+         LEFT JOIN clients cl  ON cl.id = a.client_id
          LEFT JOIN services s ON s.id = a.service_id
         WHERE a.starts_at BETWEEN $1 AND $2
           AND a.status NOT IN ('cancelled','noshow')`,
@@ -901,9 +929,14 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                   FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [dayFrom, dayTo]),
       // новые клиенты за месяц — рахуємо за датою ПЕРШОГО візиту, а не clients.created_at
       // (вся база імпортована одним днем, тож created_at у всіх = дата імпорту → KPI був завищений у десятки разів)
+      // Аудит 25.07: сюди потрапляли СКАСОВАНІ записи і майбутні брони → «нових клієнтів»
+      // було 165 замість реальних 129 (+28%). Новий клієнт = той, хто реально дійшов.
       pool.query(`SELECT COUNT(*)::int AS n FROM (
                     SELECT client_id, MIN(starts_at) AS first_visit
-                      FROM appointments WHERE client_id IS NOT NULL
+                      FROM appointments
+                     WHERE client_id IS NOT NULL
+                       AND status NOT IN ('cancelled','noshow')
+                       AND starts_at <= NOW()
                      GROUP BY client_id
                   ) t WHERE first_visit BETWEEN $1 AND $2`, [periodFrom, periodTo]).catch(()=>({rows:[{n:0}]})),
       // топ мастеров месяца по выручке — источник правды касса (BeautyPro оставляет записи 'confirmed', а не 'done')
@@ -963,8 +996,19 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
       out.expense_month = finMonth.expenses.total;
       out.profit_month = finMonth.profit.net;
       out.master_commission_month = finMonth.expenses.commission;
-      const salesCnt = Number(rm.cnt || 0);
-      out.avg_check_month = salesCnt > 0 ? Math.round(out.revenue_month.total / salesCnt) : 0;
+      // Аудит 25.07: тут ділили на кількість КАСОВИХ ОПЕРАЦІЙ, а дашборд — на кількість рядків
+      // записів. Через це один і той самий середній чек мав три різні значення (1123/1379/1737).
+      // Єдиний знаменник для всієї CRM — реальні візити: унікальна пара «клієнт + день».
+      const visitsCnt = await pool.query(
+        `SELECT COUNT(DISTINCT (COALESCE(client_id::text, 'anon-'||id),
+                                (starts_at AT TIME ZONE 'Europe/Kyiv')::date))::int AS n
+           FROM appointments
+          WHERE starts_at BETWEEN $1 AND $2 AND starts_at <= NOW()
+            AND status NOT IN ('cancelled','noshow')`,
+        [periodFrom, periodTo]).catch(() => ({ rows: [{ n: 0 }] }));
+      const visitsN = Number(visitsCnt.rows[0]?.n || 0);
+      out.visits_month = visitsN;
+      out.avg_check_month = visitsN > 0 ? Math.round(out.revenue_month.total / visitsN) : 0;
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, revenue: Number(r.revenue), done: r.done }));
     } else {
       out.top_masters = topMasters.rows.map(r => ({ id: r.id, name: r.name, done: r.done }));
@@ -1013,17 +1057,37 @@ router.get('/top-masters', requirePerm('reports.finance'), cacheReport(), async 
       from = kyivDayBound(todayStr.slice(0,7) + '-01', false).toISOString();
       to = new Date().toISOString();
     }
+    // Дохід майстра = ПОСЛУГИ за візитами з матеріалами (як у Буконі: повна ціна візиту,
+    // краски/розхідники всередині), але БЕЗ проданих товарів. Джерело — appointments (не каса,
+    // бо каса містила відновлення/перекатегоризацію). Продані товари — ОКРЕМО: роздрібні продажі.
     const r = await pool.query(
-      `SELECT m.id, m.name,
-              COALESCE(SUM(co.amount),0)::numeric AS revenue,
-              COUNT(*) FILTER (WHERE co.category='sale_service')::int AS done
-         FROM cash_operations co JOIN masters m ON m.id=co.master_id
-        WHERE co.type='in' AND co.category IN ('sale_service','sale_product')
-          AND co.created_at BETWEEN $1 AND $2
-        GROUP BY m.id, m.name
-       HAVING SUM(co.amount) > 0
-        ORDER BY revenue DESC LIMIT 20`, [from, to]);
-    res.json({ from, to, masters: r.rows.map(x => ({ id: x.id, name: x.name, revenue: Number(x.revenue), done: x.done })) });
+      `WITH svc AS (
+         SELECT a.master_id,
+                COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_services,
+                COUNT(*)::int AS done
+           FROM appointments a
+          WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
+            AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+          GROUP BY a.master_id
+       ),
+       prod AS (
+         SELECT master_id, COALESCE(SUM(amount),0)::numeric AS revenue_products
+           FROM cash_operations
+          WHERE type='in' AND category='sale_product' AND ref_type IS NULL
+            AND created_at BETWEEN $1 AND $2 AND master_id IS NOT NULL
+          GROUP BY master_id
+       )
+       SELECT m.id, m.name,
+              COALESCE(s.revenue_services,0)::numeric AS revenue_services,
+              COALESCE(p.revenue_products,0)::numeric AS revenue_products,
+              (COALESCE(s.revenue_services,0)+COALESCE(p.revenue_products,0))::numeric AS revenue,
+              COALESCE(s.done,0)::int AS done
+         FROM masters m
+         LEFT JOIN svc s ON s.master_id=m.id
+         LEFT JOIN prod p ON p.master_id=m.id
+        WHERE COALESCE(s.revenue_services,0) > 0 OR COALESCE(p.revenue_products,0) > 0
+        ORDER BY revenue_services DESC LIMIT 20`, [from, to]);
+    res.json({ from, to, masters: r.rows.map(x => ({ id: x.id, name: x.name, revenue: Number(x.revenue), revenue_services: Number(x.revenue_services), revenue_products: Number(x.revenue_products), done: x.done })) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
