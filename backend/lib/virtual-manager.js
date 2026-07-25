@@ -250,7 +250,12 @@ async function weeklyMonthlyReminders(pool = getPool()) {
 
   // Понеділок — закупка
   if (dow === 1 && (await getSetting('vm_purchase_sent', null)) !== today) {
-    const low = (await q(`SELECT COUNT(*)::int n FROM salon_stock WHERE COALESCE(qty,0) <= 2`))[0] || { n: 0 };
+    // Аудит 25.07: алерт рахував по salon_stock — таблиця заморожена 12.06 і кодом не
+    // оновлюється, тобто «низькі залишки» були картинкою півторамісячної давності.
+    // Живий реєстр складу — product_variants.stock_qty (його рухає списання й прихід).
+    const low = (await q(
+      `SELECT COUNT(*)::int n FROM product_variants
+        WHERE active = TRUE AND COALESCE(stock_qty,0) <= 2`))[0] || { n: 0 };
     const lowLine = low.n > 0 ? `\n📉 На низькому залишку: <b>${low.n} позицій</b> — перевірте у розділі «Склад».` : '';
     await hub.enqueue({ recipient: String(chat), channel: 'telegram',
       body: `🛒 <b>Понеділок — день закупки</b>\nПеревірте залишки розхідників (фарби, окисники тощо) і замовте що закінчується.${lowLine}`,

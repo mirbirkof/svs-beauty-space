@@ -66,7 +66,14 @@ async function liveFinance(pool, from, to) {
          LEFT JOIN products p ON p.id=pv.product_id
         WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%'
                OR sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%')
-          AND sm.created_at BETWEEN $1 AND $2`, [from, to]),
+          AND sm.created_at BETWEEN $1 AND $2
+          -- Аудит 25.07: у собівартість падали тестові рухи (E2E-прогони) і списання за
+          -- замовленнями, які потім видалили — 36 634 ₴ з 45 770 ₴ червня, тобто 80%.
+          -- Дані не чіпаємо, але у гроші вони не йдуть: продажу не було.
+          AND COALESCE(sm.notes,'') !~* '^(e2e|тест|test)'
+          AND NOT (sm.notes ~ '^Замовлення #[0-9]+'
+                   AND NOT EXISTS (SELECT 1 FROM orders o
+                                    WHERE o.id = (regexp_match(sm.notes,'#([0-9]+)'))[1]::int))`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
         GROUP BY category ORDER BY s DESC`, [from, to]),

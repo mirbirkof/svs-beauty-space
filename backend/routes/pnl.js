@@ -174,7 +174,13 @@ async function aggregate(start, end, branchId) {
        LEFT JOIN products p ON p.id = pv.product_id
       WHERE (sm.reason IN ('sale','order','consumption','writeoff') OR sm.reason LIKE 'order:%'
              OR sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%')
-        AND sm.created_at >= $1 AND sm.created_at < $2`, [start, end]);
+        AND sm.created_at >= $1 AND sm.created_at < $2
+        -- Той самий фільтр, що в lib/live-finance (аудит 25.07): тестові прогони і
+        -- списання за вже видаленими замовленнями не є собівартістю — продажу не було.
+        AND COALESCE(sm.notes,'') !~* '^(e2e|тест|test)'
+        AND NOT (sm.notes ~ '^Замовлення #[0-9]+'
+                 AND NOT EXISTS (SELECT 1 FROM orders o
+                                  WHERE o.id = (regexp_match(sm.notes,'#([0-9]+)'))[1]::int))`, [start, end]);
   // ЗП відрядна (percent_part) — перетин періоду нарахування з [start,end)
   const salPiece = await safeRows(
     `SELECT COALESCE(SUM(percent_part),0)::numeric s FROM payroll_records
