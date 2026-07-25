@@ -24,6 +24,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
+const { liveFinance } = require('../lib/live-finance'); // єдине джерело правди по грошах (аудит 25.07)
 const { requirePerm } = require('../lib/rbac');
 
 const pool = getPool();
@@ -187,9 +188,24 @@ async function aggregate(start, end, branchId) {
       WHERE status IN ('approved','paid') AND period_start < $2 AND period_end >= $1`, [start, end]);
   // ЗП, проведена через «Підтвердження витрат» (у payroll_records НЕ потрапляє) —
   // касові операції ref_type='expense_confirm' категорії salary (аудит 06.07: випадала з P&L)
+  // Аудит 25.07: фільтр ref_type='expense_confirm' не знаходив НІЧОГО — усі 58 зарплатних
+  // операцій (654 583 ₴) записані з порожнім ref_type. Разом із порожньою payroll_records
+  // це давало ЗП = 0 у P&L і прибуток, завищений у рази. Тепер беремо всі виплати ЗП з каси,
+  // крім проведених через payroll_records (ref_type='payroll') — щоб не порахувати двічі.
+  // Єдина методика з Фінцентром (аудит 25.07): у прибутку показуємо НАРАХОВАНИЙ % майстрам
+  // за послуги періоду, а не касові виплати. Інакше прибуток стрибає: у місяць виплати падає,
+  // у місяць роботи — завищений, і два екрани CRM показують різну цифру за той самий місяць.
+  let accruedCommission = 0, accruedFixed = 0;
+  try {
+    const fin = await liveFinance(pool, start, end);
+    accruedCommission = Number(fin?.expenses?.commission || 0);
+    accruedFixed = Number(fin?.expenses?.by_category?.fixed_salary || 0);
+  } catch (_) { /* ядро недоступне — нижче лишається касовий розрахунок */ }
+
   const salConfirmed = await safeRows(
     `SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations
-      WHERE type='out' AND category='salary' AND ref_type='expense_confirm'
+      WHERE type='out' AND category='salary'
+        AND COALESCE(ref_type,'') <> 'payroll'
         AND created_at >= $1 AND created_at < $2`, [start, end]);
   // OpEx-витрати по категоріях cash_operations type=out (крім зарплати — вона з payroll)
   const opexCats = await safeRows(
@@ -232,9 +248,14 @@ async function aggregate(start, end, branchId) {
   add('cogs', 'materials', 'Розхідні матеріали', num(mat[0]?.s), 110, { source: 'stock_movements' });
   add('cogs', 'salary_piece', 'Зарплата майстрів (відрядна)', num(salPiece[0]?.s), 120, { source: 'payroll_records', part: 'percent_part' });
   // ЗП, проведена через «Підтвердження витрат» — окремий рядок (у payroll_records її нема; аудит 06.07)
-  add('cogs', 'salary_confirmed', 'Зарплата майстрів (через підтвердження)', num(salConfirmed[0]?.s), 121, { source: 'cash_operations', ref_type: 'expense_confirm' });
+  // Нараховано % майстрам за послуги періоду (те саме число, що у Фінцентрі).
+  // Якщо ядро не відповіло — фолбек на фактичні виплати з каси, щоб рядок не був 0.
+  add('cogs', 'salary_commission', 'Зарплата майстрів (нарахований %)',
+      accruedCommission || num(salConfirmed[0]?.s), 121,
+      { source: 'live-finance', part: 'commission' });
   // opex: salary fixed
-  add('opex', 'salary_fixed', 'Зарплати (оклад + адмін)', num(salFixed[0]?.s), 210, { source: 'payroll_records', part: 'fixed_part' });
+  add('opex', 'salary_fixed', 'Зарплати (оклад + адмін)',
+      num(salFixed[0]?.s) + accruedFixed, 210, { source: 'payroll_records + live-finance', part: 'fixed_part' });
   let so = 220;
   for (const c of opexCats) {
     add('opex', c.category, OPEX_LABELS[c.category] || c.category, num(c.s), so, { source: 'cash_operations', type: 'out', category: c.category });
