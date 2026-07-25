@@ -475,10 +475,13 @@ router.put('/appointments/:id/status', mobileAuth, needPerm('mobile.appointments
     if (!status || !ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({ error: 'status required', allowed: ALLOWED_STATUSES });
     }
+    // Аудит 25.07: словник CRM знає лише 'done' — візити зі статусом 'completed' були
+    // НЕВИДИМІ для всіх звітів (виручка, чек, RFM). API мобілки лишаємо як є, у базу — канон.
+    const dbStatus = status === 'completed' ? 'done' : status;
 
     const r = await pool.query(
       `UPDATE appointments SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING id, status`,
-      [status, id]
+      [dbStatus, id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'not-found' });
 
@@ -736,7 +739,7 @@ router.post('/payments', mobileAuth, needPerm('mobile.payments.create'), async (
 
     // Обновляем статус записи
     await pool.query(
-      `UPDATE appointments SET status='completed', payment_method=$1, updated_at=NOW() WHERE id=$2`,
+      `UPDATE appointments SET status='done', payment_method=$1, updated_at=NOW() WHERE id=$2`,
       [payment_method, appointment_id]
     );
 

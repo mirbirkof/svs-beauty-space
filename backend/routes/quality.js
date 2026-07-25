@@ -36,10 +36,13 @@ async function masterMetrics() {
         FROM m_appts GROUP BY master_id
     ),
     returners AS (
+      -- «Повернувся» = був у майстра ≥2 РІЗНІ дні (аудит 25.07: рахунок рядків давав
+      -- +8.5% до retention — один прихід з кількома послугами виглядав як повернення)
       SELECT master_id, COUNT(*)::int AS returning_clients FROM (
         SELECT master_id, client_id
           FROM m_appts WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW() AND client_id IS NOT NULL
-         GROUP BY master_id, client_id HAVING COUNT(*) >= 2
+         GROUP BY master_id, client_id
+        HAVING COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kyiv')::date) >= 2
       ) t GROUP BY master_id
     ),
     reviews_m AS (

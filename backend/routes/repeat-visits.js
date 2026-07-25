@@ -27,14 +27,21 @@ async function findDueClients() {
 
   // Средний интервал между визитами для каждого клиента с telegram_id
   const r = await pool.query(`
-    WITH visit_intervals AS (
+    WITH visit_days AS (
+      -- Аудит 25.07: інтервал рахувався по РЯДКАХ записів — 31.5% «розривів» були нульові
+      -- (той самий день, кілька послуг), середній ритм занижувався і 12 клієнтів ніколи
+      -- не отримували нагадування. Візит = унікальний день. Статусу 'confirmed' у базі
+      -- нема (лише done/cancelled/booked) — прибрано зі списку.
+      SELECT DISTINCT client_id, (starts_at AT TIME ZONE 'Europe/Kyiv')::date AS vday
+      FROM appointments
+      WHERE status = 'done' AND starts_at <= NOW()
+    ),
+    visit_intervals AS (
       SELECT
         client_id,
-        starts_at,
-        LAG(starts_at) OVER (PARTITION BY client_id ORDER BY starts_at) AS prev_visit,
-        starts_at - LAG(starts_at) OVER (PARTITION BY client_id ORDER BY starts_at) AS gap
-      FROM appointments
-      WHERE status IN ('done', 'confirmed')
+        vday::timestamptz AS starts_at,
+        (vday - LAG(vday) OVER (PARTITION BY client_id ORDER BY vday)) * INTERVAL '1 day' AS gap
+      FROM visit_days
     ),
     client_stats AS (
       SELECT

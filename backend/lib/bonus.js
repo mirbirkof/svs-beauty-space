@@ -146,9 +146,9 @@ async function accrue(opts = {}) {
     const tx = ins.rows[0];
 
     await client.query(
-      `UPDATE bonus_balances SET balance=$1, total_accrued=total_accrued+$2,
+      `UPDATE bonus_balances SET balance=ROUND((COALESCE(balance,0)+$1)::numeric,2), total_accrued=total_accrued+$2,
          last_accrual_at=now(), updated_at=now() WHERE client_id=$3`,
-      [newBal, amount, clientId]);
+      [amount, amount, clientId]); // інкремент, не абсолют (аудит 25.07: захист від втраченого оновлення)
     return tx;
   });
 }
@@ -237,9 +237,9 @@ async function redeem(opts = {}) {
       [clientId, opts.branchId || null, -amount, newBal,
         opts.sourceType || null, opts.sourceId || null, opts.description || null])).rows[0];
     await client.query(
-      `UPDATE bonus_balances SET balance=$1, total_redeemed=total_redeemed+$2,
+      `UPDATE bonus_balances SET balance=ROUND(GREATEST(COALESCE(balance,0)-$1,0)::numeric,2), total_redeemed=total_redeemed+$2,
          last_redemption_at=now(), updated_at=now() WHERE client_id=$3`,
-      [newBal, amount, clientId]);
+      [amount, amount, clientId]); // інкремент, не абсолют
     return { tx, redeemed: amount, money: round2(amount * (Number(settings.exchange_rate) || 1)) };
   });
 }
@@ -280,8 +280,8 @@ async function manualAdjust(opts = {}) {
         opts.description || 'Ручне списання', opts.adjustedBy || null])).rows[0];
     await client.query(
       // total_redeemed теж оновлюємо — інакше агрегат розсинхронізується з balance (formula ≠ balance)
-      `UPDATE bonus_balances SET balance=$1, total_redeemed=COALESCE(total_redeemed,0)+$3, updated_at=now() WHERE client_id=$2`,
-      [newBal, clientId, take]);
+      `UPDATE bonus_balances SET balance=ROUND(GREATEST(COALESCE(balance,0)-$1,0)::numeric,2), total_redeemed=COALESCE(total_redeemed,0)+$3, updated_at=now() WHERE client_id=$2`,
+      [take, clientId, take]); // інкремент, не абсолют (аудит 25.07)
     return tx;
   });
 }
