@@ -285,6 +285,18 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
             AND starts_at = (($2 || ' ' || $3)::timestamp AT TIME ZONE 'Europe/Kyiv') LIMIT 1`,
         [clientId, dt.date, dt.time]);
       if (dupe.rows[0]) { rep.skipped++; continue; }
+      // Той самий візит може вже жити в CRM під ІНШИМ написанням клієнта (синк з BeautyPro
+      // проти вивантаження Букона: «алена» ≠ картка «Олена»). Ознака — майстер уже зайнятий
+      // у цей момент. Це дубль, а не помилка: пропускаємо, існуючий запис головніший.
+      if (masterId) {
+        const busy = await pool.query(
+          `SELECT 1 FROM appointments
+            WHERE master_id = $1 AND status <> 'cancelled'
+              AND starts_at < (($2 || ' ' || $3)::timestamp AT TIME ZONE 'Europe/Kyiv') + ($4 || ' minutes')::interval
+              AND ends_at   > (($2 || ' ' || $3)::timestamp AT TIME ZONE 'Europe/Kyiv') LIMIT 1`,
+          [masterId, dt.date, dt.time, String(durMin)]);
+        if (busy.rows[0]) { rep.skipped++; continue; }
+      }
 
       await pool.query(
         `INSERT INTO appointments
@@ -299,7 +311,12 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
          rec.service || null, clientName || null, batch,
          masterId ? null : (rec.master ? `Майстер з імпорту: ${rec.master}` : null)]);
       rep.imported++;
-    } catch (e) { rep.errors.push({ line: r + 2, error: e.code || e.message }); }
+    } catch (e) {
+      // 23P01 (exclusion) = накладка з існуючим записом, яку не зловили перевірки вище —
+      // теж дубль, не помилка
+      if (e.code === '23P01') { rep.skipped++; }
+      else rep.errors.push({ line: r + 2, error: e.code || e.message });
+    }
   }
 
   // «ніби завжди вели цю CRM»: first_visit_at, total_spent, total_visits — з першоджерела
