@@ -293,7 +293,10 @@ select.input { background:var(--card); }
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 
 /* MODAL */
-.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:10000; padding:16px; }
+/* Fix 20.07 (Jarvis): AI-помічник (#aiFab/#aiPanel z-index:99999) перекривав модалки (було z-index:10000) —
+   форма «Новий запис» та вікно оплати ховалися під панеллю плану дня. Підняв модалку вище помічника,
+   але нижче тостів (100001), щоб сповіщення про збереження лишались видимими поверх модалки. */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100000; padding:16px; }
 .modal { background:var(--card); border-radius:var(--radius); max-width:640px; width:100%; max-height:90vh; overflow-y:auto; }
 .modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .modal-header h3 { font-size:16px; font-weight:600; }
@@ -874,6 +877,9 @@ select.input { background:var(--card); }
           </a>
           <a class="sidebar-item" data-page="repeat" onclick="go('repeat')">
             <span class="material-icons-round">replay</span> Повторні візити
+          </a>
+          <a class="sidebar-item" data-page="retention" onclick="go('retention')">
+            <span class="material-icons-round">trending_up</span> Апсейл і повернення
           </a>
           <a class="sidebar-item" data-page="formulas" onclick="go('formulas')">
             <span class="material-icons-round">palette</span> Пошук формул
@@ -1474,7 +1480,7 @@ select.input { background:var(--card); }
               </div>
             </div>
             <div class="card-body" style="padding:0">
-              <table class="tbl"><thead><tr><th>Майстер</th><th>Виконано</th><th>Виручка</th></tr></thead><tbody id="topMastersBody"></tbody></table>
+              <table class="tbl"><thead><tr><th>Майстер</th><th>Виконано</th><th>Послуги</th><th>Товари</th><th>Разом</th></tr></thead><tbody id="topMastersBody"></tbody></table>
             </div>
           </div>
           <div class="card">
@@ -2430,6 +2436,37 @@ select.input { background:var(--card); }
             <table class="tbl">
               <thead><tr><th>Клієнт</th><th>Телефон</th><th>Останній візит</th><th>Послуга</th><th>Сума</th><th>Дій</th></tr></thead>
               <tbody id="repBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ АПСЕЙЛ І ПОВЕРНЕННЯ (25.07) ═══ -->
+      <div class="page" id="page-retention">
+        <div class="kpi-grid" id="retKpi" style="max-width:1100px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+          <button onclick="loadRetention(true)" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
+          <a id="retExport" class="btn btn-outline btn-sm" href="#" onclick="retExport(event)"><span class="material-icons-round" style="font-size:16px">download</span> Вивантажити в Excel</a>
+          <input id="retSearch" class="input" placeholder="Пошук за імʼям або телефоном..." style="width:240px" oninput="retRender()">
+          <span id="retNorms" style="font-size:12px;color:var(--text-secondary)"></span>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-body" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px">
+            <button class="btn btn-sm ret-tab" data-seg="nail_no_color" onclick="retTab('nail_no_color')">Манікюр без фарбування</button>
+            <button class="btn btn-sm btn-outline ret-tab" data-seg="color_no_nail" onclick="retTab('color_no_nail')">Фарбування без манікюру</button>
+            <button class="btn btn-sm btn-outline ret-tab" data-seg="lapsed_color" onclick="retTab('lapsed_color')">Не повернулись — фарбування</button>
+            <button class="btn btn-sm btn-outline ret-tab" data-seg="lapsed_nail" onclick="retTab('lapsed_nail')">Не повернулись — нігті</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <h3 id="retTitle">Апсейл і повернення <button type="button" class="info-i" data-t="<b>Апсейл і повернення.</b> Чотири готові списки для дзвінка: хто ходить на нігті, але жодного разу не фарбувався; хто фарбується, але не робить нігті; і хто прострочив власну норму повернення. Норма рахується по фактичних інтервалах вашого салону, а не навмання. Пріоритет A — найлегші продажі." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <span id="retCount" style="font-size:13px;color:var(--text-secondary)"></span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <table class="tbl">
+              <thead id="retHead"></thead>
+              <tbody id="retBody"><tr><td class="empty">Завантаження…</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -3859,7 +3896,7 @@ function userHasPerm(req){
 }
 const MENU_PERM_PAGE = {
   journal:'booking.read', pipeline:'clients.read', shifts:'schedule.read', wsched:'schedule.read',
-  clients:'clients.read', waitlist:'waitlist.read', repeat:'clients.read', blacklist:'blacklist.read',
+  clients:'clients.read', waitlist:'waitlist.read', repeat:'clients.read', retention:'clients.read', blacklist:'blacklist.read',
   orders:'order.write', giftcerts:'order.write', subscriptions:'order.write',
   finance:'reports.finance', fincenter:'reports.finance', cashflow:'reports.finance',
   budgets:'reports.finance', contractors:'reports.finance', payroll:'reports.finance', plan:'reports.finance',
@@ -4423,7 +4460,7 @@ const pageTitles = {
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
   blacklist:'Чорний список', sync:'BeautyPro синхро',
-  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити', formulas:'Пошук формул фарбування',
+  waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити', retention:'Апсейл і повернення', formulas:'Пошук формул фарбування',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
   saas:'SaaS / Платформа',
   mysub:'Моя підписка',
@@ -4699,7 +4736,7 @@ function go(page) {
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, wsched:loadWorkSchedule, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, stock:loadStockPage, online:loadOnlinePage, reviews:loadReviews,
     promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
-    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat,
+    waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat, retention:loadRetention,
     finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
     suppliers:loadSuppliers, qcontrol:loadQControl, callcenter:loadCallCenter, viber:loadViber, branding:loadBranding, mobileapp:loadMobileApp };
   if (loaders[page]) loaders[page]();
@@ -6333,6 +6370,105 @@ async function loadRepeat() {
       <tr><td>${escapeHtml(c.client_name)||'—'}</td><td>${escapeHtml(c.client_phone)||''}</td><td>${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'}</td><td>${escapeHtml(c.service_name)||'—'}</td><td>${(c.total||0).toLocaleString()} ₴</td><td>${c.days_since||'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Кандидатів немає</td></tr>';
   } catch(e) { document.getElementById('repBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
 }
+// ── Апсейл і повернення (25.07) ───────────────────────────────
+// Норма повернення береться з API (медіана/p75 фактичних інтервалів салону), не хардкод.
+let _retSeg = 'nail_no_color', _retData = {}, _retNorms = null, _retSummary = null;
+const RET_SEGS = {
+  nail_no_color: { title: 'Ходить на нігті, але жодного разу не фарбувалась', cols: ['Клієнт','Телефон','Нігті за 3 міс','Нігті всього','Останній візит','Серед. чек','Витратила','Пріоритет'] },
+  color_no_nail: { title: 'Фарбується, але жодного разу не була на нігтях', cols: ['Клієнт','Телефон','Фарбувань за 3 міс','Фарбувань всього','Останнє фарбування','Серед. чек','Витратила','Пріоритет'] },
+  lapsed_color: { title: 'Прострочили фарбування', cols: ['Клієнт','Телефон','Останнє фарбування','Днів тому','Візитів','Серед. чек','Ходить на інше','Статус'] },
+  lapsed_nail: { title: 'Прострочили нігті', cols: ['Клієнт','Телефон','Останні нігті','Днів тому','Візитів','Серед. чек','Ходить на інше','Статус'] },
+};
+function retPrio(x) {
+  if (_retSeg === 'nail_no_color') {
+    if (Number(x.cut_all) > 0) return ['A', 'вже стрижеться — легкий апсейл'];
+    if (Number(x.nail_recent) >= 3) return ['B', 'постійна на нігтях'];
+    return ['C', 'рідкісна'];
+  }
+  if (_retSeg === 'color_no_nail') {
+    if (Number(x.color_recent) >= 2) return ['A', 'фарбується регулярно'];
+    if (Number(x.avg_color) >= 1500) return ['B', 'дорогий чек'];
+    return ['C', 'разова'];
+  }
+  return ['', ''];
+}
+function retDate(d) { return d ? new Date(d).toLocaleDateString('uk-UA') : '—'; }
+async function loadRetention(fresh) {
+  try {
+    const qs = fresh ? '?fresh=1' : '';
+    const s = await api('/api/analytics/clients/summary' + qs);
+    if (s && s.error) throw new Error(s.error === 'feature-locked' ? 'Розділ не входить у ваш тариф' : s.error);
+    _retSummary = s; _retNorms = s.norms;
+    const c = s.counts || {}, m = s.money || {};
+    document.getElementById('retKpi').innerHTML = [
+      ['Манікюр без фарбування', c.nail_no_color, 'purple', `з них ${c.nail_no_color_but_cut} вже стрижуться`],
+      ['Фарбування без манікюру', c.color_no_nail, 'green', `${c.color_no_nail_regular} ходять регулярно`],
+      ['Прострочили фарбування', c.lapsed_color, 'orange', `≈ ${Math.round((m.lapsed_color||0)*0.2).toLocaleString('uk-UA')} ₴ при відгуку 20%`],
+      ['Прострочили нігті', c.lapsed_nail, 'blue', `≈ ${Math.round((m.lapsed_nail||0)*0.2).toLocaleString('uk-UA')} ₴ при відгуку 20%`],
+    ].map(([l,v,col,sub]) => `<div class="kpi-card ${col}"><div class="kpi-label">${l}</div><div class="kpi-value">${v ?? '—'}</div><div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${sub}</div></div>`).join('');
+    document.getElementById('retNorms').textContent =
+      `Норма повернення салону: фарбування ~${s.norms.color.median} дн (прострочка від ${s.norms.color.p75}), нігті ~${s.norms.nail.median} дн (від ${s.norms.nail.p75})`;
+    await retTab(_retSeg, fresh);
+  } catch (e) {
+    document.getElementById('retBody').innerHTML = `<tr><td colspan="8" class="empty">Помилка: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+async function retTab(seg, fresh) {
+  _retSeg = seg;
+  document.querySelectorAll('.ret-tab').forEach(b => b.classList.toggle('btn-outline', b.dataset.seg !== seg));
+  document.getElementById('retTitle').firstChild.textContent = RET_SEGS[seg].title + ' ';
+  if (!_retData[seg] || fresh) {
+    document.getElementById('retBody').innerHTML = '<tr><td colspan="8" class="empty">Завантаження…</td></tr>';
+    const r = await api(`/api/analytics/clients/segment?key=${seg}&limit=1000` + (fresh ? '&fresh=1' : ''));
+    _retData[seg] = (r && r.items) || [];
+  }
+  retRender();
+}
+function retRender() {
+  const seg = _retSeg, cfg = RET_SEGS[seg];
+  const q = (document.getElementById('retSearch').value || '').trim().toLowerCase();
+  let items = _retData[seg] || [];
+  if (q) items = items.filter(x => (x.name || '').toLowerCase().includes(q) || (x.phone || '').includes(q));
+  document.getElementById('retHead').innerHTML = '<tr>' + cfg.cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  document.getElementById('retCount').textContent = `${items.length} клієнтів`;
+  if (!items.length) { document.getElementById('retBody').innerHTML = `<tr><td colspan="${cfg.cols.length}" class="empty">Порожньо</td></tr>`; return; }
+  const lapsed = seg.startsWith('lapsed_');
+  document.getElementById('retBody').innerHTML = items.map(x => {
+    const nm = `<a href="#" onclick="openClientCard(${x.id});return false">${escapeHtml(x.name || 'без імені')}</a>`;
+    const ph = escapeHtml(x.phone || '');
+    if (!lapsed) {
+      const isNail = seg === 'nail_no_color';
+      const [p, why] = retPrio(x);
+      const badge = p === 'A' ? 'style="color:#1e7b34;font-weight:600"' : p === 'B' ? 'style="color:#b36b00"' : '';
+      return `<tr><td>${nm}</td><td>${ph}</td><td>${isNail ? x.nail_recent : x.color_recent}</td><td>${isNail ? x.nail_all : x.color_all}</td>
+        <td>${retDate(isNail ? x.last_nail : x.last_color)}</td><td>${Number(isNail ? x.avg_nail : x.avg_color || 0).toLocaleString('uk-UA')} ₴</td>
+        <td>${Number(x.total_spent || 0).toLocaleString('uk-UA')} ₴</td><td ${badge}>${p} · ${why}</td></tr>`;
+    }
+    const isColor = seg === 'lapsed_color';
+    const days = isColor ? x.days_color : x.days_nail;
+    const lastAny = x.last_any, lastKind = isColor ? x.last_color : x.last_nail;
+    const came = lastAny && String(lastAny).slice(0,10) !== String(lastKind).slice(0,10);
+    const st = came ? '<span style="color:#0b6bcb">ходить, але не на цю послугу</span>'
+      : days > 90 ? '<span style="color:#b00020">втрачена</span>'
+      : '<span style="color:#b36b00;font-weight:600">можна повернути</span>';
+    return `<tr><td>${nm}</td><td>${ph}</td><td>${retDate(lastKind)}</td><td>${days}</td><td>${isColor ? x.color_all : x.nail_all}</td>
+      <td>${Number((isColor ? x.avg_color : x.avg_nail) || 0).toLocaleString('uk-UA')} ₴</td><td>${came ? retDate(lastAny) : '—'}</td><td>${st}</td></tr>`;
+  }).join('');
+}
+async function retExport(e) {
+  e.preventDefault();
+  try {
+    const r = await fetch(API + '/api/analytics/clients/export.xlsx', { headers: { 'X-Admin-Token': TOKEN, ...tenantHeader() } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const b = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `клієнти-сегменти-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (err) { toast('Не вдалося вивантажити: ' + err.message, 'error'); }
+}
+
 async function runRepeat() {
   if (!confirm('Запустити кампанію повторних візитів зараз?')) return;
   const r = await api('/api/repeat-visits/run', { method:'POST' });
@@ -6345,7 +6481,9 @@ let _timers = {};
 function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = setTimeout(fn, ms); }
 
 // ═══ DASHBOARD ═══════════════════════════════
-let _dashRange = { from:null, to:null }; // null/null = поточний місяць (дефолт бекенду)
+// Обраний період дашборда переживає перезавантаження сторінки (Босс 20.07: при F5 діапазон збивався).
+let _dashRange = (() => { try { const s = JSON.parse(localStorage.getItem('svs_dash_range') || 'null'); if (s && s.from && s.to) return { from: s.from, to: s.to }; } catch (_) {} return { from: null, to: null }; })(); // null/null = поточний місяць (дефолт бекенду)
+function _dashPersist(){ try { localStorage.setItem('svs_dash_range', JSON.stringify({ from: _dashRange.from, to: _dashRange.to, unit: _dashUnit })); } catch (_) {} }
 function _kyD(d){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(d); }
 function dashRange(preset){
   const now=new Date(); const today=_kyD(now); let from, to=today;
@@ -6359,6 +6497,7 @@ function dashRange(preset){
   document.querySelectorAll('.dash-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===preset));
   const f=document.getElementById('dashFrom'), t=document.getElementById('dashTo'); if(f)f.value=from; if(t)t.value=to;
   _dashRangeLabel(from,to);
+  _dashPersist();
   loadDashboard();
 }
 function dashRangeCustom(){
@@ -6368,11 +6507,12 @@ function dashRangeCustom(){
   _dashUnit='custom'; // стрелки шагают длиной выбранного диапазона
   document.querySelectorAll('.dash-rng').forEach(b=>b.classList.remove('active'));
   _dashRangeLabel(from,to);
+  _dashPersist();
   loadDashboard();
 }
 // ‹ › — прыжок на один выбранный период назад/вперёд (просьба Босса 05.07:
 // «выбираешь период и стрелочками прыгаешь в пределах выбранного периода»)
-let _dashUnit='month';
+let _dashUnit=(()=>{ try{ const s=JSON.parse(localStorage.getItem('svs_dash_range')||'null'); if(s&&s.unit) return s.unit; }catch(_){} return 'month'; })();
 function dashNav(dir){
   const today=_kyD(new Date());
   let {from,to}=_dashRange;
@@ -6397,6 +6537,7 @@ function dashNav(dir){
   _dashRange={from:from2, to:to2};
   const fi=document.getElementById('dashFrom'), ti=document.getElementById('dashTo'); if(fi)fi.value=from2; if(ti)ti.value=to2;
   _dashRangeLabel(from2,to2);
+  _dashPersist();
   loadDashboard();
 }
 function _dashRangeLabel(from,to){
@@ -6623,6 +6764,13 @@ async function loadOnbChecklist(){
 async function loadDashboard() {
   loadOnbChecklist(); // онбординг-банер для салонів-орендарів (не платформа)
   loadManagerPanel();
+  // Відновлюємо UI обраного періоду після перезавантаження (поля, підпис, активна кнопка).
+  if (_dashRange.from && _dashRange.to) {
+    const f=document.getElementById('dashFrom'), t=document.getElementById('dashTo');
+    if(f)f.value=_dashRange.from; if(t)t.value=_dashRange.to;
+    try { _dashRangeLabel(_dashRange.from,_dashRange.to); } catch(_){}
+    document.querySelectorAll('.dash-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===_dashUnit));
+  }
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';
@@ -6740,15 +6888,18 @@ async function loadTopMasters() {
   const from = document.getElementById('tmFrom')?.value || '';
   const to = document.getElementById('tmTo')?.value || '';
   const qs = (from ? `?from=${from}` : '') + (from && to ? `&to=${to}` : '');
-  body.innerHTML = '<tr><td colspan="3" class="empty">Завантаження…</td></tr>';
+  body.innerHTML = '<tr><td colspan="5" class="empty">Завантаження…</td></tr>';
   try {
     const r = await api('/api/reports/top-masters' + qs);
     const tm = r.masters || [];
     body.innerHTML = tm.length ? tm.map(m =>
-      `<tr><td>${m.name}</td><td>${m.done}</td><td>${m.revenue!=null?_money2(m.revenue):'—'}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="empty">Немає виручки за цей період</td></tr>';
+      `<tr><td>${m.name}</td><td>${m.done}</td>`
+      + `<td>${m.revenue_services!=null?_money2(m.revenue_services):'—'}</td>`
+      + `<td>${m.revenue_products>0?_money2(m.revenue_products):'<span style="color:var(--text-secondary)">—</span>'}</td>`
+      + `<td style="font-weight:600">${m.revenue!=null?_money2(m.revenue):'—'}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">Немає виручки за цей період</td></tr>';
   } catch {
-    body.innerHTML = '<tr><td colspan="3" class="empty">—</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty">—</td></tr>';
   }
 }
 // ═══ AI-07: повернення клієнтів ════════════════
@@ -10880,6 +11031,7 @@ async function openClientCard(id){
     const timelineHtml = _ccTimeline(c);
     document.getElementById('clientCardTitle').textContent = c.name || 'Картка клієнта';
     document.getElementById('clientCardBody').innerHTML = `
+      <div id="ccUpsellTags" style="margin-bottom:10px"></div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
         ${kpiBox('Візитів за весь час', (c.total_visits!=null?c.total_visits:(st.visits_done||0)))}
         ${kpiBox('Витрачено в салоні', (Number(c.total_spent!=null?c.total_spent:(st.visits_spent||0))).toLocaleString()+' ₴')}
@@ -10935,7 +11087,22 @@ async function openClientCard(id){
     loadClientMedical(id);
     loadClientRating(id);
     loadClientInsights(id);
+    loadClientUpsellTags(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// Підказка майстру прямо в картці: чого людина в нас ніколи не робила / що прострочила (25.07)
+async function loadClientUpsellTags(id){
+  const box = document.getElementById('ccUpsellTags');
+  if (!box) return;
+  let r; try { r = await api('/api/analytics/clients/client/'+id); } catch { r = null; }
+  if (!r || !r.ok || !(r.tags||[]).length) { box.innerHTML=''; return; }
+  box.innerHTML = r.tags.map(t => {
+    const up = t.kind === 'upsell';
+    const bg = up ? '#eaf6ec' : '#fff4e5', bd = up ? '#b6e0bf' : '#ffd9a0', fg = up ? '#1e7b34' : '#a35a00';
+    const ic = up ? 'lightbulb' : 'schedule';
+    return `<span style="display:inline-flex;align-items:center;gap:4px;background:${bg};border:1px solid ${bd};color:${fg};border-radius:14px;padding:3px 10px;font-size:12px;margin:0 6px 6px 0">
+      <span class="material-icons-round" style="font-size:14px">${ic}</span>${escapeHtml(t.t)}</span>`;
+  }).join('');
 }
 // Поведінкові прогнози (264): ризик скасування + особистий ритм + оцінки клієнта салону
 async function loadClientInsights(id){
@@ -12917,7 +13084,12 @@ async function newProductModal() {
   showModal('Новий товар', `
     <div style="display:flex;flex-direction:column;gap:10px">
       <input id="npName" class="input" placeholder="Назва товару *">
-      <select id="npBrand" class="input">${brandOpts || '<option value="">— бренд не знайдено —</option>'}</select>
+      <select id="npBrand" class="input" onchange="var n=document.getElementById('npBrandNew'); if(n) n.style.display=this.value==='__new__'?'block':'none';">
+        <option value="">— без бренду —</option>
+        ${brandOpts}
+        <option value="__new__">➕ Новий бренд…</option>
+      </select>
+      <input id="npBrandNew" class="input" placeholder="Назва нового бренду" style="display:none">
       <div style="display:flex;gap:8px">
         <input id="npVolume" class="input" placeholder="Обʼєм/фасування (напр. 250ml) *" style="flex:1">
         <input id="npSku" class="input" placeholder="Артикул (необов.)" style="flex:1">
@@ -12929,10 +13101,20 @@ async function newProductModal() {
       </div>
     </div>`, async () => {
     const name = document.getElementById('npName').value.trim();
-    const brand = document.getElementById('npBrand').value;
+    let brand = document.getElementById('npBrand').value;
     const volume = document.getElementById('npVolume').value.trim();
     const price = Number(document.getElementById('npPrice').value);
-    if (!name || !brand || !volume || !(price > 0)) { toast('Заповніть назву, бренд, обʼєм і ціну (> 0)', 'error'); throw new Error('validation'); }
+    // Бренд і ціна продажу НЕобовʼязкові (Босс 20.07: товар заводиться на склад для обліку,
+    // ціну ставлять пізніше — без ціни береться закупівельна). Обовʼязкові: назва + обʼєм.
+    if (!name || !volume) { toast('Заповніть назву та обʼєм/фасування', 'error'); throw new Error('validation'); }
+    // Новий бренд на льоту: створюємо і використовуємо його id. Порожній/«без бренду» → null.
+    if (brand === '__new__') {
+      const bn = (document.getElementById('npBrandNew').value || '').trim();
+      if (!bn) { toast('Впишіть назву нового бренду або оберіть «без бренду»', 'error'); throw new Error('validation'); }
+      const bid = bn.toLowerCase().replace(/[^a-z0-9а-яіїєґ]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 30) || ('brand-' + Date.now().toString(36).slice(-4));
+      try { const br = await api('/api/admin/brands', { method: 'POST', body: JSON.stringify({ id: bid, name: bn }) }); brand = (br.brand && br.brand.id) || bid; }
+      catch (e) { brand = bid; } // якщо вже існує — просто використовуємо id
+    }
     // slug-id: транслітерація назви + суфікс часу від колізій
     const translit = { 'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ie','ж':'zh','з':'z','и':'y','і':'i','ї':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'iu','я':'ia','ы':'y','э':'e','ё':'e','ъ':'' };
     const slug = name.toLowerCase().split('').map(c => translit[c] !== undefined ? translit[c] : c).join('')
@@ -12946,8 +13128,12 @@ async function newProductModal() {
     const v = await api(`/api/admin/products/${encodeURIComponent(id)}/variants`, { method:'POST',
       body: JSON.stringify({ volume, price, wholesale, sku, stock_qty }) });
     if (!v.ok && !v.variant && !v.id) { toast('Товар створено, але варіант не додався: ' + (v.error||''), 'error'); }
-    else toast('Товар додано' + (stock_qty ? `, залишок ${stock_qty}` : ''));
+    else toast('Товар додано — дозаповніть характеристики (фото, ціна за грам, вага упаковки, ще фасування)');
     loadProducts(); loadStockList();
+    // Одразу відкриваємо повну картку товару, щоб дозаповнити решту характеристик у той самий
+    // заход (ціна за грам/мл, собівартість, фото, опис, вага упаковки, додаткові фасування) —
+    // не шукати товар заново (Босс 20.07: «щоб по сто разів не заповнювати»).
+    try { setTimeout(() => openProduct(id), 250); } catch (_) {}
   });
 }
 
@@ -14595,8 +14781,11 @@ async function aiDailyBriefing(){
     if(localStorage.getItem('aiBriefingDay')===r.today) return; // вже показували сьогодні
     localStorage.setItem('aiBriefingDay',r.today);
     const html=_aiEsc(r.message).replace(/\n/g,'<br>').replace(/&lt;b&gt;/g,'<b>').replace(/&lt;\/b&gt;/g,'</b>');
-    // На мобільному соло НЕ відкриваємо панель самі — вона закриє весь екран (Босс 17.07)
-    if (!document.documentElement.classList.contains('solo-mobile')) aiFabToggle(true);
+    // План дня НЕ відкриваємо панель самі (Босс 20.07): вона перекривала журнал і форму запису.
+    // Замість авто-відкриття — показуємо згорнуту кнопку-робота з крапкою «є повідомлення»;
+    // адмін відкриє коли захоче. План дня лишається в історії помічника (нижче _aiAdd).
+    // (на мобільному соло теж не відкриваємо — Босс 17.07)
+    try { const fab=document.getElementById('aiFab'); if(fab){ fab.classList.remove('hidden'); const d=fab.querySelector('.dot'); if(d) d.style.display='block'; } } catch(_){}
     _aiAdd('bot',html);
     window._aiHist.push({role:'assistant',text:r.message.replace(/<[^>]+>/g,'')}); _aiSaveLog();
   }catch(_){}

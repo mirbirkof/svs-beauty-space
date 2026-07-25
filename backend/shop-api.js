@@ -339,6 +339,9 @@ try { app.use('/api/api-keys', require('./routes/api-keys')); } catch(e) { conso
 try { app.use('/api/v1', require('./routes/public-api')); } catch(e) { console.error('[public-api] mount failed:', e.message); }
 try { app.use('/api/portfolio', require('./routes/portfolio')); } catch(e) { console.error('[portfolio] mount failed:', e.message); }
 try { app.use('/api/saas/analytics', require('./routes/saas-analytics')); } catch(e) { console.error('[saas-analytics] mount failed:', e.message); }
+// Апсейл і повернення клієнтів (25.07): доступ адмінам салону за правом clients.read,
+// платність — існуюча фіча retention.analytics (увімкнена у всіх планах, крім free).
+try { app.use('/api/analytics/clients', require('./lib/feature-gate').requireFeature('retention.analytics'), require('./routes/analytics-clients')); } catch(e) { console.error('[analytics-clients] mount failed:', e.message); }
 try { app.use('/api/saas', require('./routes/saas')); } catch(e) { console.error('[saas] mount failed:', e.message); }
 try { app.use('/api/licenses', require('./routes/licenses')); } catch(e) { console.error('[licenses] mount failed:', e.message); }
 try { app.use('/api/white-label', require('./routes/white-label')); } catch(e) { console.error('[white-label] mount failed:', e.message); }
