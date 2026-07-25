@@ -69,6 +69,7 @@ th{background:#fafafb;font-weight:600;color:var(--muted)}
         <option value="">Визначити автоматично</option>
         <option value="clients">Клієнти</option>
         <option value="visits">Візити (історія)</option>
+        <option value="products">Товари і залишки</option>
         <option value="services">Послуги</option>
         <option value="masters">Майстри</option>
       </select>
@@ -165,8 +166,17 @@ async function analyze(){
 }
 function renderAnalyze(j){
   const body=document.getElementById('analyzeBody');
-  const cols=j.recognized.map(r=>`<span class="chip ok">${esc(r.column)} → ${esc(r.field)}</span>`).join('');
-  const ign=(j.ignored||[]).map(c=>`<span class="chip ign">${esc(c)}</span>`).join('');
+  // Ручний перемаппінг: кожна колонка файлу — селект «куди переносити».
+  // Авто-розпізнане вже вибране; будь-яку колонку можна перепризначити або вимкнути.
+  const mkSel=(i)=>{
+    const cur=(j.col_map||[])[i]||'';
+    const opts=['<option value="">— ігнорувати —</option>']
+      .concat((j.fields||[]).map(f=>`<option value="${esc(f)}" ${f===cur?'selected':''}>${esc(f)}</option>`));
+    return `<div class="chip ${cur?'ok':'ign'}" style="display:inline-flex;gap:6px;align-items:center">${esc((j.headers||[])[i]||('колонка '+(i+1)))}
+      → <select class="mapSel" data-i="${i}" onchange="this.closest('.chip').className='chip '+(this.value?'ok':'ign')" style="border:none;background:transparent;font:inherit">${opts.join('')}</select></div>`;
+  };
+  const cols=(j.headers||[]).map((_,i)=>mkSel(i)).join('');
+  const ign='';
   const fields=j.recognized.map(r=>r.field);
   let tbl='<table><tr>'+fields.map(f=>`<th>${esc(f)}</th>`).join('')+'</tr>';
   tbl+=j.preview.map(row=>'<tr>'+fields.map(f=>`<td>${esc(row[f]||'')}</td>`).join('')+'</tr>').join('');
@@ -174,8 +184,7 @@ function renderAnalyze(j){
   body.innerHTML=`
     <div class="row" style="margin-bottom:8px"><b style="font-size:15px">${esc(j.entity_label)}</b>
       <span class="muted">· знайдено рядків: <b>${j.total_rows}</b></span></div>
-    <div class="muted" style="font-size:12px">Розпізнані стовпці:</div><div class="chips">${cols||'<span class="muted">—</span>'}</div>
-    ${ign?`<div class="muted" style="font-size:12px">Проігноровані (не переносяться):</div><div class="chips">${ign}</div>`:''}
+    <div class="muted" style="font-size:12px">Стовпці файлу → поля CRM (можна поправити вручну):</div><div class="chips" id="mapChips">${cols||'<span class="muted">—</span>'}</div>
     <div class="muted" style="font-size:12px;margin-top:6px">Превʼю перших рядків:</div>${tbl}
     ${j.warn?`<div class="note warn">⚠ ${esc(j.warn)}</div>`:''}
     <div style="margin-top:16px">
@@ -193,7 +202,9 @@ async function commit(){
   const ent=document.getElementById('analyzeBody').dataset.entity;
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Переношу…';
   try{
-    const j=await api('/api/migrate/commit',{method:'POST',body:JSON.stringify({...(FILE_PAYLOAD||{csv:CSV_TEXT}),entity:ent})});
+    // зібрати ручний маппінг із селектів (якщо юзер щось міняв — передаємо завжди, це та сама карта)
+    const mapping=[...document.querySelectorAll('.mapSel')].sort((a,b)=>a.dataset.i-b.dataset.i).map(s2=>s2.value||null);
+    const j=await api('/api/migrate/commit',{method:'POST',body:JSON.stringify({...(FILE_PAYLOAD||{csv:CSV_TEXT}),entity:ent,mapping:mapping.length?mapping:undefined})});
     const card=document.getElementById('resultCard'), body=document.getElementById('resultBody');
     card.classList.remove('hidden');
     let errs='';

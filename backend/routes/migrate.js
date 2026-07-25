@@ -88,6 +88,10 @@ router.post('/analyze', (req, res) => {
       ok: true, entity, entity_label: M.ENTITIES[entity].label,
       total_rows: dataRows.length, has_key: hasKey,
       recognized, ignored, preview,
+      // для ручного перемаппінгу в UI: всі заголовки, поточна карта і доступні поля
+      headers: headerRow, col_map: colMap,
+      fields: Object.keys(M.ENTITIES[entity].fields),
+      key_fields: M.ENTITIES[entity].key,
       ready: hasKey,
       warn: hasKey ? null : `Не знайдено ключову колонку (${M.ENTITIES[entity].key.join(' або ')}). Перенос неможливий без неї.`,
     });
@@ -235,6 +239,13 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
     if (c.phone) byPhone.set(String(c.phone), c.id);
     const k = nname(c.name); if (k && !byName.has(k)) byName.set(k, c.id);
   }
+  // ліміт плану max_clients: імпорт історії створює нових клієнтів і не сміє
+  // обходити тариф (той самий блокер F2, що в /api/import/clients)
+  let clientCap = Infinity;
+  try {
+    const planLimit = await require('../lib/plan-limits').getPlanLimit('max_clients');
+    if (planLimit != null) clientCap = Math.max(0, planLimit - clients.length);
+  } catch (_) { /* fail-open */ }
 
   for (let r = 0; r < dataRows.length; r++) {
     const cells = dataRows[r]; const rec = {};
@@ -254,10 +265,11 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
       const phone = rec.phone ? normalizePhoneDb(rec.phone) : null;
       let clientId = (phone && byPhone.get(phone)) || byName.get(nname(clientName)) || null;
       if (!clientId) {
+        if (clientCap <= 0) { rep.errors.push({ line: r + 2, error: 'plan-limit: max_clients вичерпано' }); continue; }
         const ins = await pool.query(
           `INSERT INTO clients (phone, name, source, notes) VALUES ($1, $2, 'migrate', $3) RETURNING id`,
           [phone, clientName || null, 'створено імпортом історії візитів']);
-        clientId = ins.rows[0].id;
+        clientId = ins.rows[0].id; clientCap--;
         if (phone) byPhone.set(phone, clientId);
         if (clientName) byName.set(nname(clientName), clientId);
       }
@@ -296,7 +308,57 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
   return rep;
 }
 
-const IMPORTERS = { clients: importClients, services: importServices, masters: importMasters, visits: importVisits };
+/* ── Імпорт ТОВАРІВ І ЗАЛИШКІВ (стартовий склад при переїзді) ──────────────────
+   Правила безпеки: існуючий товар (за назвою або SKU) НЕ чіпаємо — живий склад
+   важливіший за файл. Новий — створюється з початковим залишком, рух 'migrate-opening'
+   пише книгу складу з нуля (інвентаризація «з коробки»). */
+async function importProducts(pool, colMap, dataRows, user, ip) {
+  const rep = { total: dataRows.length, imported: 0, updated: 0, skipped: 0, errors: [] };
+  const existing = (await pool.query(
+    `SELECT lower(trim(p.name)) AS n, lower(trim(COALESCE(pv.sku,''))) AS sku
+       FROM products p LEFT JOIN product_variants pv ON pv.product_id = p.id`)).rows;
+  const byName = new Set(existing.map(x => x.n));
+  const bySku = new Set(existing.map(x => x.sku).filter(Boolean));
+  for (let r = 0; r < dataRows.length; r++) {
+    const cells = dataRows[r]; const rec = {};
+    colMap.forEach((f, i) => { if (f) rec[f] = (cells[i] != null ? String(cells[i]).trim() : ''); });
+    const name = (rec.name || '').trim();
+    if (!name) { rep.skipped++; continue; }
+    const sku = (rec.sku || '').trim() || null;
+    if (byName.has(name.toLowerCase()) || (sku && bySku.has(sku.toLowerCase()))) { rep.skipped++; continue; }
+    try {
+      const qty = M.toNumberOrNull(rec.qty) || 0;
+      // products.id — текстовий slug (та сама схема, що у stock-import)
+      const { slugify } = require('../lib/stock-import');
+      let pid = slugify(name) || ('imp-' + r);
+      for (let i = 2; i < 30; i++) {
+        const dup = await pool.query(`SELECT 1 FROM products WHERE id = $1`, [pid]);
+        if (!dup.rows[0]) break;
+        pid = `${slugify(name)}-${i}`;
+      }
+      const prod = await pool.query(
+        `INSERT INTO products (id, name, active, description) VALUES ($1, $2, TRUE, $3) RETURNING id`,
+        [pid, name, rec.category ? `Категорія з імпорту: ${rec.category}` : null]);
+      // price у variants — NOT NULL: без ціни у файлі ставимо 0 (адмін виставить у складі)
+      const variant = await pool.query(
+        `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active)
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id`,
+        [prod.rows[0].id, rec.volume || rec.unit || null,
+         M.toNumberOrNull(rec.price) ?? 0, M.toNumberOrNull(rec.wholesale), sku, qty]);
+      if (qty > 0) {
+        await pool.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, notes)
+           VALUES ($1, $2, 'migrate-opening', 'початковий залишок з міграції')`,
+          [variant.rows[0].id, qty]);
+      }
+      byName.add(name.toLowerCase()); if (sku) bySku.add(sku.toLowerCase());
+      rep.imported++;
+    } catch (e) { rep.errors.push({ line: r + 2, error: e.code || e.message }); }
+  }
+  return rep;
+}
+
+const IMPORTERS = { clients: importClients, services: importServices, masters: importMasters, visits: importVisits, products: importProducts };
 
 // ── Застосувати перенос ──
 router.post('/commit', async (req, res) => {
@@ -304,7 +366,16 @@ router.post('/commit', async (req, res) => {
     const { headerRow, dataRows } = parseRows(req.body);
     const entity = (req.body && req.body.entity) || M.detectEntity(headerRow);
     if (!entity || !IMPORTERS[entity]) return res.status(422).json({ ok: false, error: 'unknown-entity' });
-    const colMap = M.buildColMap(entity, headerRow);
+    // Ручний перемаппінг (25.07): якщо авто-розпізнавання помилилось, UI шле mapping —
+    // масив імен полів по колонках (null/'' = ігнорувати колонку). Валідуємо по словнику.
+    let colMap;
+    const manual = req.body && Array.isArray(req.body.mapping) ? req.body.mapping : null;
+    if (manual) {
+      const allowed = new Set(Object.keys(M.ENTITIES[entity].fields));
+      colMap = headerRow.map((_, i) => (manual[i] && allowed.has(manual[i]) ? manual[i] : null));
+    } else {
+      colMap = M.buildColMap(entity, headerRow);
+    }
     if (!M.ENTITIES[entity].key.some(k => colMap.includes(k))) {
       return res.status(400).json({ ok: false, error: 'no-key-column',
         hint: `Потрібна колонка: ${M.ENTITIES[entity].key.join(' або ')}.` });
