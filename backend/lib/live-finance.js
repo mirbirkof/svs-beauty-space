@@ -13,7 +13,11 @@ const CAT_LABELS = {
 
 async function liveFinance(pool, from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
-  const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000));
+  // Межі періоду приходять рядком "YYYY-MM-DD HH:MM:SS Europe/Kyiv" — Postgres таке розуміє,
+  // а new Date() — НІ (Invalid Date → NaN заражав оклади → expTotal → «Прибуток: NaN ₴»
+  // у Telegram-зведенні, баг видно 26.07). Тому парсимо ЛИШЕ дату (перші 10 символів).
+  const dOnly = (x) => new Date((x instanceof Date ? x.toISOString() : String(x)).slice(0, 10) + 'T00:00:00Z');
+  const days = Math.max(1, Math.round((dOnly(to) - dOnly(from)) / 86400000) + 1); // включно
   const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
@@ -127,7 +131,7 @@ async function liveFinance(pool, from, to) {
   const commissionPct = Number(comm[0]?.comm || 0);
   // Оклад пропорційно ЧАСТЦІ РЕАЛЬНОГО МІСЯЦЯ, а не умовним 30 дням (аудит 25.07:
   // за 31-денний місяць нараховувалось +3.3% зайвого окладу, за лютий −6.7% недобору).
-  const _fromD = new Date(from), _toD = new Date(to);
+  const _fromD = dOnly(from);
   const daysInMonth = new Date(Date.UTC(_fromD.getUTCFullYear(), _fromD.getUTCMonth() + 1, 0)).getUTCDate();
   const monthShare = Math.min(1, days / (daysInMonth || 30));
   const fixedAccrued = Number(fixed[0]?.fx_month || 0) * monthShare + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
