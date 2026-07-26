@@ -233,14 +233,20 @@ async function enqueue(opts = {}) {
 // ── Rate-limit проверки перед отправкой ─────────────────────────────
 async function rateAllow(pool, n, settings) {
   if (n.priority === PRIORITY.critical || !n.client_id) return { ok: true };
+  // АУДИТ 26.07: лимиты считались по ВСЕМ салонам сразу (воркер идёт без tenant-контекста,
+  // RLS его не фильтрует) → рассылка одного салона глушила рассылку другого, а id клиентов
+  // разных салонов могли совпасть. Теперь tenant берётся из самой записи (как в
+  // smsMonthlyAllow ниже). Если его нет — не ослабляем лимит, просто не фильтруем.
+  const tId = n.tenant_id || null;
   // cooldown: было ли отправлено что-то этому клиенту недавно
   if (settings.cooldown_minutes > 0) {
     const cd = await pool.query(
       `SELECT 1 FROM notifications
        WHERE client_id = $1 AND status IN ('sent','delivered','read')
          AND sent_at > NOW() - ($2 || ' minutes')::interval
-         AND priority > 1 LIMIT 1`,
-      [n.client_id, String(settings.cooldown_minutes)]
+         AND priority > 1
+         AND ($3::uuid IS NULL OR tenant_id = $3::uuid) LIMIT 1`,
+      [n.client_id, String(settings.cooldown_minutes), tId]
     );
     if (cd.rowCount) return { ok: false, reason: 'cooldown' };
   }
@@ -250,8 +256,9 @@ async function rateAllow(pool, n, settings) {
       `SELECT count(*)::int c FROM notifications
        WHERE client_id = $1 AND category = 'marketing'
          AND status IN ('sent','delivered','read')
-         AND sent_at > NOW() - interval '24 hours'`,
-      [n.client_id]
+         AND sent_at > NOW() - interval '24 hours'
+         AND ($2::uuid IS NULL OR tenant_id = $2::uuid)`,
+      [n.client_id, tId]
     );
     if (dl.rows[0].c >= settings.daily_limit_client) return { ok: false, reason: 'daily-limit' };
   }
