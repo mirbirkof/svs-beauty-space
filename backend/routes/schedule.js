@@ -15,6 +15,31 @@ const { emit: emitEvent } = require('../lib/event-bus');
 const settlement = require('../lib/settlement');
 const router = express.Router();
 
+// АУДИТ 26.07: откаты бонусов после сбоя оплаты стояли с .catch(() => {}) — деньги
+// клиента исчезали МОЛЧА (типовой случай: insufficient-balance, когда начисленное уже
+// потрачено). Единая страховка: 3 попытки, затем громкий след — лог + Sentry + задача
+// администратору «вернуть вручную». Никогда не бросает наверх (не ломает основной путь).
+async function safeBonusRollback({ clientId, tenantId, apptId, amount, description, taskTitle }) {
+  const bonusLib = require('../lib/bonus');
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { return await bonusLib.manualAdjust({ clientId, amount, description }); }
+    catch (e) {
+      if (attempt < 3) { await new Promise(r => setTimeout(r, 300 * attempt)); continue; }
+      console.error(`[bonus-rollback] НЕ ВИКОНАНО візит #${apptId} клієнт ${clientId} сума ${amount}: ${e.message}`);
+      try { require('../lib/sentry').capture(e, { kind: 'bonus-rollback', appointment: apptId, client: clientId, amount }); } catch (_) {}
+      try {
+        await require('../lib/automations').createAdminTask({
+          tenant_id: tenantId, client_id: clientId, appointment_id: apptId, priority: 'high',
+          tag: `bonus-rollback-${apptId}`, cooldownDays: 30,
+          title: taskTitle || `Перевірити бонуси вручну: ${Math.abs(amount)} б.`,
+          description: `${description}. Автоматичний відкат не пройшов: ${e.message}. Перевірте баланс клієнта.`,
+        });
+      } catch (_) {}
+      return null;
+    }
+  }
+}
+
 // Единая точка эмита события «визит завершён». Подписчик lib/report-cache.js
 // сбрасывает кэш отчётов → цифры в отчётах/дашборде/аналитике обновляются сразу.
 // В try/catch: эмит НИКОГДА не должен ронять оплату/закрытие записи.
@@ -1692,7 +1717,7 @@ router.post('/appointments/:id/unpay', async (req, res) => {
       await client.query('BEGIN'); await applyTenant(client);
       // застосовані знижки/бонуси/сертифікат — для точного відкату
       const a = await client.query(
-        `SELECT client_id, starts_at, status, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
+        `SELECT client_id, tenant_id, starts_at, status, pay_cert_code, pay_cert_amount, pay_bonus_redeemed, pay_bonus_accrued, pay_settled_at
            FROM appointments WHERE id=$1 FOR UPDATE`, [id]);
       appt = a.rows[0] || {};
       // скасований візит уже сторновано в DELETE (каса+бонуси+серт). Повторний /unpay
@@ -1762,10 +1787,16 @@ router.post('/appointments/:id/unpay', async (req, res) => {
     } finally { client.release(); }
     if (!removed.rows[0] && !appt.pay_settled_at) return res.json({ ok: true, nothing_to_cancel: true });
     // бонуси: повертаємо списані, знімаємо нараховані (поза транзакцією — власні tx у lib/bonus)
+    // АУДИТ 26.07: раніше обидва виклики були .catch(() => {}) — помилка (найчастіше
+    // insufficient-balance, коли клієнт уже витратив нараховане) ковталася МОВЧКИ:
+    // каса скасована, бонуси не повернені/не зняті, і ніхто про це не дізнається.
+    // Тепер — через safeBonusRollback: 3 спроби, потім лог + Sentry + задача адміну.
     if (appt.client_id) {
-      if (Number(appt.pay_bonus_redeemed) > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: Number(appt.pay_bonus_redeemed), description: `Повернення бонусів: скасування оплати візиту #${id}` }).catch(() => {});
+      if (Number(appt.pay_bonus_redeemed) > 0) {
+        await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: Number(appt.pay_bonus_redeemed), description: `Повернення бонусів: скасування оплати візиту #${id}`, taskTitle: `Повернути бонуси вручну: ${Number(appt.pay_bonus_redeemed)} б.` });
+      }
       if (Number(appt.pay_bonus_accrued) > 0) {
-        await bonusLib.manualAdjust({ clientId: appt.client_id, amount: -Number(appt.pay_bonus_accrued), description: `Зняття нарахування: скасування оплати візиту #${id}` }).catch(() => {});
+        await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: -Number(appt.pay_bonus_accrued), description: `Зняття нарахування: скасування оплати візиту #${id}`, taskTitle: `Зняти нараховані бонуси вручну: ${Number(appt.pay_bonus_accrued)} б.` });
         // відв'язуємо старе нарахування від візиту: інакше dup-guard accrue() при
         // повторній оплаті поверне старий TX і клієнт ВТРАТИТЬ бонуси (аудит v8, блокер).
         // Рядок в історії лишається — слід не губиться.
@@ -1798,7 +1829,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
 
     // запис + ціна + майстер + GUID клієнта (для точної перевірки оплати в BP)
     const ap = await pool.query(
-      `SELECT a.id, a.master_id, a.client_id, a.status, a.bp_client, a.starts_at,
+      `SELECT a.id, a.master_id, a.client_id, a.status, a.bp_client, a.starts_at, a.tenant_id,
               COALESCE(a.price, s.price) AS price, s.name AS service_name
          FROM appointments a LEFT JOIN services s ON s.id = a.service_id
         WHERE a.id = $1`, [id]
@@ -1862,8 +1893,9 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // (інакше запис навічно «оплачений» — регрес v8) і повернути вже списані бонуси.
     const failPay = async (status, body) => {
       if (bonusRedeemed > 0 && appt.client_id) {
-        await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed,
-          description: `Повернення бонусів: скасована оплата візиту #${id}` }).catch(() => {});
+        await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id,
+          amount: bonusRedeemed, description: `Повернення бонусів: скасована оплата візиту #${id}`,
+          taskTitle: `Повернути бонуси вручну: ${bonusRedeemed} б. (оплата не пройшла)` });
         bonusRedeemed = 0;
       }
       if (res.locals._payClaim) {
@@ -2074,14 +2106,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
       // повертаємо вже списані бонуси (redeem був до транзакції)
-      if (bonusRedeemed > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed, description: `Відкат: помилка оплати візиту #${id}` }).catch(() => {});
+      if (bonusRedeemed > 0) await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: bonusRedeemed, description: `Відкат: помилка оплати візиту #${id}`, taskTitle: `Повернути бонуси вручну: ${bonusRedeemed} б. (збій оплати)` });
       throw e;
     } finally {
       client.release();
     }
     if (raceLost) {
       // проиграли гонку: оплату уже провёл параллельный запрос — повертаємо бонуси, відповідаємо як dup
-      if (bonusRedeemed > 0) await bonusLib.manualAdjust({ clientId: appt.client_id, amount: bonusRedeemed, description: `Відкат гонки оплати візиту #${id}` }).catch(() => {});
+      if (bonusRedeemed > 0) await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: bonusRedeemed, description: `Відкат гонки оплати візиту #${id}`, taskTitle: `Повернути бонуси вручну: ${bonusRedeemed} б. (подвійна оплата)` });
       const race = await pool.query(`SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
       await emitAppointmentCompleted(id, appt.master_id);
       return res.json({ ok: true, already_paid: true, operation_id: race.rows[0]?.id || null });
