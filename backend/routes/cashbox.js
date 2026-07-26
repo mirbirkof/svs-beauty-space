@@ -196,7 +196,11 @@ router.get('/today', async (req, res) => {
     const ap = await pool.query(
       `WITH day_appts AS (
          SELECT a.* FROM appointments a
-          WHERE a.starts_at >= $1::date AND a.starts_at < ($1::date + INTERVAL '1 day')),
+          LEFT JOIN clients c ON c.id = a.client_id
+          WHERE a.starts_at >= $1::date AND a.starts_at < ($1::date + INTERVAL '1 day')
+            -- демо-клієнти презентації (тег 'demo') не беруть участі у звірці каси —
+            -- та сама умова, що в /api/schedule/unsettled, інакше цифри знову розійдуться
+            AND NOT ('demo' = ANY(COALESCE(c.tags, '{}'::text[])))),
        paid_flag AS (
          SELECT a.id,
                 (a.pay_settled_at IS NOT NULL
