@@ -242,7 +242,8 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
               COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)::numeric AS revenue
          FROM appointments a
          LEFT JOIN services s ON s.id = a.service_id
-        WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
+        WHERE (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+          AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
         GROUP BY service ORDER BY cnt DESC LIMIT 15`
     ).then(r => r.rows).catch(() => []);
     const scale = horizon / 60;
@@ -296,7 +297,8 @@ router.post('/what-if', requirePerm('reports.finance'), async (req, res) => {
            SELECT a.master_id, to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') d,
                   SUM(COALESCE(a.real_amount,a.price)) daily
              FROM appointments a
-            WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
+            WHERE (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+              AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
             GROUP BY a.master_id, d) t`
       ).then(r => Number(r.rows[0]?.avg_daily || 0)).catch(() => 0);
       const fill = master_fill_pct != null ? Number(master_fill_pct) / 100 : 0.5;

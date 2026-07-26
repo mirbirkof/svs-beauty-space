@@ -39,7 +39,7 @@ function periodBounds(query) {
   }
   // Верхня межа = кінець вибраного дня (повний день). Нарахований % майстрам капається на NOW()
   // усередині liveFinance, тож майбутні послуги не зараховуються; а виручка = всі гроші за день.
-  return { from: `${fromD} 00:00:00+03`, to: `${toD} 23:59:59+03`, fromD, toD };
+  return { from: `${fromD} 00:00:00 Europe/Kyiv`, to: `${toD} 23:59:59 Europe/Kyiv`, fromD, toD };
 }
 function fmt(d) { return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
 
@@ -55,12 +55,12 @@ function prevBounds(fromD, toD) {
     const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
     const pa = new Date(a); pa.setMonth(pa.getMonth() - months);
     const pb2 = new Date(a); pb2.setDate(pb2.getDate() - 1);
-    return { from: `${fmt(pa)} 00:00:00+03`, to: `${fmt(pb2)} 23:59:59+03` };
+    return { from: `${fmt(pa)} 00:00:00 Europe/Kyiv`, to: `${fmt(pb2)} 23:59:59 Europe/Kyiv` };
   }
   const days = Math.round((b - a) / 86400000) + 1;
   const pb = new Date(a); pb.setDate(a.getDate() - 1);
   const pa = new Date(pb); pa.setDate(pb.getDate() - (days - 1));
-  return { from: `${fmt(pa)} 00:00:00+03`, to: `${fmt(pb)} 23:59:59+03` };
+  return { from: `${fmt(pa)} 00:00:00 Europe/Kyiv`, to: `${fmt(pb)} 23:59:59 Europe/Kyiv` };
 }
 
 // ── Консолідований знімок за період ──────────────────────
@@ -155,8 +155,8 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const fromD = (req.query.from && dRe.test(req.query.from)) ? req.query.from : today.slice(0, 8) + '01';
     const toD = (req.query.to && dRe.test(req.query.to)) ? req.query.to : today;
-    const from = `${fromD} 00:00:00+03`;
-    const to = `${toD} 23:59:59+03`;
+    const from = `${fromD} 00:00:00 Europe/Kyiv`;
+    const to = `${toD} 23:59:59 Europe/Kyiv`;
     const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
 
     const fin = await liveFinance(pool, from, to);
@@ -209,7 +209,7 @@ const CAT_LABELS = { rent: 'Оренда', salary: 'Зарплата', payroll: 
 
 async function buildDigest(opts = {}) {
   const today = kyivDate();
-  const from = `${today} 00:00:00+03`, to = `${today} 23:59:59+03`;
+  const from = `${today} 00:00:00 Europe/Kyiv`, to = `${today} 23:59:59 Europe/Kyiv`;
   const s = await snapshot(from, to);
   const lines = [];
   const dStr = new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kiev', day: '2-digit', month: 'long' }).format(new Date());
@@ -233,7 +233,7 @@ async function buildDigest(opts = {}) {
   if (opts.include_comparison !== false) {
     const lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
     const lw = kyivDate(lastWeek);
-    const sp = await snapshot(`${lw} 00:00:00+03`, `${lw} 23:59:59+03`);
+    const sp = await snapshot(`${lw} 00:00:00 Europe/Kyiv`, `${lw} 23:59:59 Europe/Kyiv`);
     const ch = pct(s.revenue.total, sp.revenue.total);
     const arrow = ch > 0 ? '📈' : ch < 0 ? '📉' : '➡️';
     lines.push(`${arrow} Тиждень тому виручка була ${sp.revenue.total.toLocaleString('uk-UA')} ₴ (${ch > 0 ? '+' : ''}${ch}%)`);
@@ -286,14 +286,14 @@ function snapBounds(type, dateStr) {
     const base = new Date(d + 'T12:00:00'); const dow = (base.getDay() + 6) % 7;
     const mon = new Date(base); mon.setDate(base.getDate() - dow);
     const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    return { from: `${fmt(mon)} 00:00:00+03`, to: `${fmt(sun)} 23:59:59+03`, period_date: fmt(mon) };
+    return { from: `${fmt(mon)} 00:00:00 Europe/Kyiv`, to: `${fmt(sun)} 23:59:59 Europe/Kyiv`, period_date: fmt(mon) };
   }
   if (type === 'monthly') {
     const first = d.slice(0, 8) + '01';
     const base = new Date(first + 'T12:00:00'); const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-    return { from: `${first} 00:00:00+03`, to: `${fmt(last)} 23:59:59+03`, period_date: first };
+    return { from: `${first} 00:00:00 Europe/Kyiv`, to: `${fmt(last)} 23:59:59 Europe/Kyiv`, period_date: first };
   }
-  return { from: `${d} 00:00:00+03`, to: `${d} 23:59:59+03`, period_date: d }; // daily
+  return { from: `${d} 00:00:00 Europe/Kyiv`, to: `${d} 23:59:59 Europe/Kyiv`, period_date: d }; // daily
 }
 
 router.get('/snapshots', requirePerm('reports.finance'), async (req, res) => {
