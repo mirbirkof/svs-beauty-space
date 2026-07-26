@@ -13,11 +13,29 @@ const CAT_LABELS = {
 
 async function liveFinance(pool, from, to) {
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
-  // Межі періоду приходять рядком "YYYY-MM-DD HH:MM:SS Europe/Kyiv" — Postgres таке розуміє,
-  // а new Date() — НІ (Invalid Date → NaN заражав оклади → expTotal → «Прибуток: NaN ₴»
-  // у Telegram-зведенні, баг видно 26.07). Тому парсимо ЛИШЕ дату (перші 10 символів).
-  const dOnly = (x) => new Date((x instanceof Date ? x.toISOString() : String(x)).slice(0, 10) + 'T00:00:00Z');
-  const days = Math.max(1, Math.round((dOnly(to) - dOnly(from)) / 86400000) + 1); // включно
+  // Межі періоду приходять у ЧОТИРЬОХ форматах (аудит 26.07):
+  //   "YYYY-MM-DD HH:MM:SS Europe/Kyiv" (Фінцентр, дайджест) — Postgres розуміє, Date.parse НІ
+  //     → раніше NaN заражав оклади → expTotal → «Прибуток: NaN ₴» у Telegram-зведенні;
+  //   Date-обʼєкти з pg (owner-report, cashbox); ISO-UTC рядки (reports.js); голі дати (pnl).
+  // ts() зводить усе до мілісекунд: назву зони міняємо на +03:00 (похибка DST ±1 год
+  // гаситься округленням днів). Конвенції меж ("23:59:59" включно і "+1 день 00:00"
+  // виключно) обидві дають правильний round — тому БЕЗ +1.
+  const ts = (x) => {
+    if (x instanceof Date) return x.getTime();
+    const s = String(x);
+    let t = Date.parse(s);
+    if (Number.isNaN(t)) t = Date.parse(s.replace(/ [A-Za-z]+\/[A-Za-z_]+$/, '+03:00'));
+    if (Number.isNaN(t)) t = Date.parse(s.slice(0, 10) + 'T00:00:00+03:00');
+    return t;
+  };
+  const days = Math.max(1, Math.round((ts(to) - ts(from)) / 86400000));
+  // Календарні дні меж — ЗА КИЇВСЬКИМ часом, для вікна змін (master_schedule_days).
+  // Раніше String(from).slice(0,10): Date-обʼєкт давав "Sat Jul 25" (запит падав → оклади
+  // губились), ISO-UTC давав учорашню дату (зайвий день змін → оклади дублювались).
+  // Для кінця періоду −1 мс: виключна межа "+1 день 00:00" не чіпляє зайвий день.
+  const kyivDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const fromDay = kyivDayFmt.format(new Date(ts(from)));
+  const toDay = kyivDayFmt.format(new Date(ts(to) - 1));
   const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
@@ -60,7 +78,7 @@ async function liveFinance(pool, from, to) {
          FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
          LEFT JOIN sched sc ON sc.master_id=m.id
         WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`,
-      [String(from).slice(0,10), String(to).slice(0,10)]),
+      [fromDay, toDay]),
     // COGS = собівартість ВСІХ списань (розниця + матеріали візитів, заметка #141).
     // Грамові товари (price_per_gram) з unit_ml: опт за упаковку ÷ грамів в упаковці;
     // без unit_ml опт уже за грам; штучні — опт за одиницю. Знак delta зберігаємо:
@@ -131,7 +149,9 @@ async function liveFinance(pool, from, to) {
   const commissionPct = Number(comm[0]?.comm || 0);
   // Оклад пропорційно ЧАСТЦІ РЕАЛЬНОГО МІСЯЦЯ, а не умовним 30 дням (аудит 25.07:
   // за 31-денний місяць нараховувалось +3.3% зайвого окладу, за лютий −6.7% недобору).
-  const _fromD = dOnly(from);
+  // Календарний день ПОЧАТКУ періоду — за КИЇВСЬКИМ часом (ISO-UTC "30.06 21:00Z" = 1 липня
+  // у Києві; раніше через getUTCMonth() місяць зʼїжджав на попередній → daysInMonth 30 замість 31).
+  const _fromD = new Date(fromDay + 'T00:00:00Z');
   const daysInMonth = new Date(Date.UTC(_fromD.getUTCFullYear(), _fromD.getUTCMonth() + 1, 0)).getUTCDate();
   const monthShare = Math.min(1, days / (daysInMonth || 30));
   const fixedAccrued = Number(fixed[0]?.fx_month || 0) * monthShare + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
