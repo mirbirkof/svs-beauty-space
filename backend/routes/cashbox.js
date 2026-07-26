@@ -211,12 +211,16 @@ router.get('/today', async (req, res) => {
          COALESCE(SUM(a.discount_amount),0)::float AS discounts,
          COUNT(*) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
                             AND COALESCE(a.real_amount,a.price,0) > 0
+                            AND a.starts_at <= NOW()
+                            AND COALESCE(a.source,'') <> 'migrate'
                             AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
                                             WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
                                               AND (b.client_id=a.client_id
                                                    OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,''))))))::int AS unsettled_cnt,
          COALESCE(SUM(a.price) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
                             AND COALESCE(a.real_amount,a.price,0) > 0
+                            AND a.starts_at <= NOW()
+                            AND COALESCE(a.source,'') <> 'migrate'
                             AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
                                             WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
                                               AND (b.client_id=a.client_id
