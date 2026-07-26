@@ -55,7 +55,9 @@
     { group: 'Продажі', icon: 'sell', items: [
       { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
       { icon: 'point_of_sale', label: 'Каса магазину', href: '/admin/crm-extra.html#cashbox' },
-      { icon: 'language', label: 'Вітрина (сайт)', href: 'https://svs-beauty-space.vercel.app' },
+      // Аудит 26.07: тут був захардкожений vercel-домен, який ВЖЕ віддає 404 (перевірено) —
+      // пункт меню вів у нікуди. Відносний шлях працює на будь-якому домені/тунелі.
+      { icon: 'language', label: 'Вітрина (сайт)', href: '/p/book.html' },
     ] },
     { group: 'Фінанси', icon: 'account_balance_wallet', items: [
       { icon: 'swap_vert', label: 'Доходи і Витрати', href: '/admin/index.html#finance' },

@@ -32,6 +32,12 @@ async function liveFinance(pool, from, to) {
          SELECT a.master_id,
                 GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                 GREATEST(0, COALESCE(a.real_amount,a.price,0)) rev_full  -- симетрія з rev_labor: комісія не в мінус
+                -- УВАГА (аудит 26.07): у lib/payroll-base.js REV_FULL — БЕЗ GREATEST.
+                -- Розбіжність проявилася б лише при відʼємному real_amount/price; станом на
+                -- 26.07 таких рядків у БД НЕМАЄ (перевірено, 0 шт) → обидві формули дають
+                -- однакове число. Свідомо НЕ уніфікую: правка торкнулася б нарахування ЗП
+                -- майстрам без практичної потреби. Зʼявляться повернення з мінусом —
+                -- спершу рішення Босса, потім правка ОБОХ файлів разом.
            FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
           WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
