@@ -20,8 +20,9 @@
      POST   /winback/run                   згенерувати win-back offer'и (graceful-стаб розсилки)
      GET    /analytics                     дашборд: live-метрики + воронка offer→accepted→paid
 
-   Зовнішня розсилка (COM-01 Notification Hub) — graceful-стаб: winback-offer пишемо у БД зі
-   status='queued' (sent_at=NULL), 'sent' проставить Notification Hub при реальній відправці.
+   Зовнішня розсилка (COM-01 Notification Hub) — ПІДКЛЮЧЕНА (26.07): winback-offer одразу
+   ставиться в Hub; status='sent' лише якщо Hub прийняв, інакше 'queued' + причина у reasons
+   (no-reachable-channel / marketing-opt-out / cooldown / daily-limit).
 
    Права (спека §RBAC, через requirePerm; owner '*' матчить усе):
      перегляд/рекомендації  ai.sales.read  (fallback reports.read)
@@ -433,6 +434,7 @@ router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => 
     const hub = require('../lib/notification-hub');
     const todayKey = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kiev' });
     let created = 0, enqueued = 0, skipped = 0;
+    const reasons = {}; // чому не доставлено: no-reachable-channel | marketing-opt-out | cooldown | daily-limit
     for (const c of cands) {
       const step = pickStep(c.days_since);
       const text = step && step.template ? step.template.replace('{name}', c.name || 'клієнте')
@@ -444,8 +446,9 @@ router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => 
           clientId: c.client_id, body: text, category: 'marketing', priority: 'low',
           source: 'ai-sales-winback', dedupKey: `winback:${c.client_id}:${todayKey}`,
         });
-        if (out && out.id) { delivered = out; enqueued++; } else { skipped++; }
-      } catch (e) { skipped++; console.error('[winback] enqueue:', e.message); }
+        if (out && out.id) { delivered = out; enqueued++; }
+        else { skipped++; const r = (out && out.reason) || 'unknown'; reasons[r] = (reasons[r] || 0) + 1; }
+      } catch (e) { skipped++; reasons.error = (reasons.error || 0) + 1; console.error('[winback] enqueue:', e.message); }
       await q(`
         INSERT INTO ai_sales_offers (client_id, type, offer_type, chain_id, chain_step, offer_text, channel, status, sent_at, ab_variant)
         VALUES ($1,'win_back',$2,$3,$4,$5,$6,$8,$9,$7)`,
@@ -456,8 +459,8 @@ router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => 
          delivered ? 'sent' : 'queued', delivered ? new Date() : null]);
       created++;
     }
-    logAction({ user: req.user, action: 'ai_sales.winback.run', entity: 'ai_sales_winback_chain', entity_id: chain ? chain.id : null, meta: { created, enqueued, skipped } }).catch(() => {});
-    res.json({ ok: true, created, enqueued, skipped, delivery: 'notification-hub', chain_id: chain ? chain.id : null });
+    logAction({ user: req.user, action: 'ai_sales.winback.run', entity: 'ai_sales_winback_chain', entity_id: chain ? chain.id : null, meta: { created, enqueued, skipped, reasons } }).catch(() => {});
+    res.json({ ok: true, created, enqueued, skipped, reasons, delivery: 'notification-hub', chain_id: chain ? chain.id : null });
   } catch (e) { ERR(res, e, 'winback:run'); }
 });
 
