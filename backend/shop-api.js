@@ -87,6 +87,15 @@ app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({ error: 'invalid-json', message: 'Request body is not valid JSON' });
   }
+  // Обрив зʼєднання КЛІЄНТОМ (мобільний блимок мережі, тіло не докачане) — не збій
+  // сервера: UI сам ретраїть, дані не губляться (перевірено 26.07 на PATCH
+  // /appointments/5790 — оновлення пройшло з другої спроби). Без фільтра кожен такий
+  // обрив летів у фінальний handler → «Помилка сервера CRM (500)» власнику в Telegram.
+  if (err && (err.type === 'request.aborted' || err.code === 'ECONNABORTED' || err.code === 'ECONNRESET')) {
+    console.warn(`[shop-api] client aborted: ${req.method} ${req.path}`);
+    if (!res.headersSent) res.status(400).json({ error: 'request-aborted' });
+    return;
+  }
   next(err);
 });
 
