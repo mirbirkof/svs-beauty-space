@@ -26,7 +26,7 @@
    Права: dwh.read (GET) / dwh.manage (мутації/ETL). Owner '*' матчить усе.
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
-const { getPool } = require('../db-pg');
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { isPlatformTenant } = require('../lib/tenant');
 const router = express.Router();
@@ -548,13 +548,31 @@ router.post('/query', platformOnly, requirePerm('dwh.query.execute'), async (req
 
     const client = await pool.connect();
     try {
+      // SaaS-страховка (Jarvis 26.07): вітрина містить ТЕНАНТСЬКІ таблиці
+      // (dwh_dim_clients, dwh_fact_visits_v2 — мають tenant_id). Зараз маршрут
+      // platformOnly, тож витоку немає. Але якщо право dwh.query.execute колись
+      // видадуть салону-орендарю, сирий SELECT читав би дані ВСІХ салонів:
+      // з'єднання береться напряму, тобто в обхід tenant-обгортки pool.query.
+      // Тому для НЕ-платформного контексту вмикаємо RLS-ізоляцію явно.
+      // Для платформи лишаємо повний зріз — вендору потрібна аналітика по всіх.
+      // ВАЖЛИВО: applyTenant робить `SET LOCAL ROLE` — діє ЛИШЕ всередині транзакції.
+      // Без BEGIN це був би фіктивний захист (SET LOCAL поза транзакцією ігнорується).
+      let platformCtx = false;
+      try { platformCtx = !!(require('../lib/tenant').isPlatformTenant()); } catch (_) {}
+      await client.query('BEGIN READ ONLY');
+      if (!platformCtx) await applyTenant(client);
       await client.query(`SET LOCAL statement_timeout = ${timeoutSec * 1000}`);
       const r = await client.query(wrapped, Array.isArray(req.body.params) ? req.body.params : []);
+      await client.query('COMMIT');
       const columns = r.fields.map(f => ({ name: f.name, type_oid: f.dataTypeID }));
       res.json({
         columns, rows: r.rows, row_count: r.rowCount,
         execution_time_ms: Date.now() - t0,
       });
+    } catch (inner) {
+      // без ROLLBACK з'єднання повернулось би в пул із відкритою транзакцією
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      throw inner;
     } finally { client.release(); }
   } catch (e) { res.status(400).json({ error: errOut(e), execution_time_ms: Date.now() - t0 }); }
 });
