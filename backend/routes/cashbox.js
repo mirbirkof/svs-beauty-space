@@ -7,6 +7,9 @@ const { requirePerm, hasPermission } = require('../lib/rbac');
 const { branchAndClause } = require('../lib/branch-scope');
 const { liveFinance } = require('../lib/live-finance');
 const { getSetting, setSetting } = require('../lib/settings');
+// ЄДИНА формула «проведено / не проведено» — спільна з панеллю «Забули провести»
+// (routes/schedule.js). Копіпасти тут бути НЕ повинно: див. lib/settlement.js.
+const settlement = require('../lib/settlement');
 const router = express.Router();
 const pool = getPool();
 
@@ -198,25 +201,17 @@ router.get('/today', async (req, res) => {
          SELECT a.* FROM appointments a
           LEFT JOIN clients c ON c.id = a.client_id
           WHERE a.starts_at >= $1::date AND a.starts_at < ($1::date + INTERVAL '1 day')
-            -- демо-клієнти презентації (тег 'demo') не беруть участі у звірці каси —
-            -- та сама умова, що в /api/schedule/unsettled, інакше цифри знову розійдуться
-            AND NOT ('demo' = ANY(COALESCE(c.tags, '{}'::text[])))),
+            -- ті самі виключення (імпорт/демо/тести), що й у панелі «Забули провести» —
+            -- береться з lib/settlement.js, щоб цифри двох панелей не розходились
+            AND ${settlement.operationalExpr('a', 'c')}),
        paid_flag AS (
-         SELECT a.id,
-                (a.pay_settled_at IS NOT NULL
-                 OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-                 OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(
-                       SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-                         AND co.bp_client=a.bp_client AND co.master_id=a.master_id
-                         AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
-                             = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))) AS paid
+         SELECT a.id, ${settlement.paidExpr('a')} AS paid
            FROM day_appts a)
        SELECT
          COALESCE(SUM(a.discount_amount),0)::float AS discounts,
          COUNT(*) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
                             AND COALESCE(a.real_amount,a.price,0) > 0
                             AND a.starts_at <= NOW()
-                            AND COALESCE(a.source,'') <> 'migrate'
                             AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
                                             WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
                                               AND (b.client_id=a.client_id
@@ -224,7 +219,6 @@ router.get('/today', async (req, res) => {
          COALESCE(SUM(a.price) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
                             AND COALESCE(a.real_amount,a.price,0) > 0
                             AND a.starts_at <= NOW()
-                            AND COALESCE(a.source,'') <> 'migrate'
                             AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
                                             WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
                                               AND (b.client_id=a.client_id

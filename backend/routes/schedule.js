@@ -9,6 +9,10 @@ const { buildMonthGrid } = require('../lib/schedule-month');
 const { findOverlap, wouldExceedParallel } = require('../lib/booking-guard');
 const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
+// ЄДИНЕ джерело формули «проведено / не проведено» — див. lib/settlement.js.
+// Та сама формула використовується у звірці каси (routes/cashbox.js), тому копіпасти
+// тут бути НЕ повинно: розходження цифр між панелями = баг, який ловили вже двічі.
+const settlement = require('../lib/settlement');
 const router = express.Router();
 
 // Единая точка эмита события «визит завершён». Подписчик lib/report-cache.js
@@ -211,15 +215,7 @@ router.get('/masters/:id/portfolio', async (req, res) => {
 router.get('/unsettled', async (req, res) => {
   try {
     const pool = getPool();
-    const PAID = (al) => `(
-      ${al}.pay_settled_at IS NOT NULL
-      OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=${al}.id)
-      OR (${al}.bp_client IS NOT NULL AND ${al}.master_id IS NOT NULL AND EXISTS(
-            SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-              AND co.bp_client=${al}.bp_client AND co.master_id=${al}.master_id
-              AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
-                  = (${al}.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
-    )`;
+    const PAID = settlement.paidExpr;   // ЄДИНА формула (lib/settlement.js)
     const r = await pool.query(
       `SELECT DISTINCT ON (a.starts_at, lower(btrim(COALESCE(a.client_name, c.name, a.id::text))))
               a.id, a.starts_at, a.master_id, a.price, a.status,
@@ -236,23 +232,10 @@ router.get('/unsettled', async (req, res) => {
           AND COALESCE(a.real_amount, a.price, 0) > 0   -- безкоштовні (0₴/комп) не потребують проведення
           AND a.status NOT IN ('cancelled','noshow','no_show','refunded')  -- повернення/неявки = вирішено
           AND NOT ${PAID('a')}                           -- у касі грошей по візиту немає
-          -- ОПЕРАЦІЙНИЙ список, НЕ історія: імпортні візити Букона до переїзду (source=beautypro,
-          -- каса лишилась у старій системі / в архіві bp_sale) — це НЕ «забули провести сьогодні»,
-          -- а історичне легасі. Показуємо лише наші візити або створені після переїзду 01.07.2026,
-          -- інакше список забивали ~498 імпортних без каси (Босс 20.07: «бере цифру незрозуміло звідки»).
-          AND (a.source NOT IN ('beautypro', 'bukon_import') OR a.starts_at >= '2026-07-01')
-          -- source='migrate' — перенесені візити (каса лишилась у старій системі): 52 шт з 01.07,
-          -- у ЖОДНОЇ немає ні pay_settled_at, ні касової операції. Це не «забули провести»,
-          -- а історія переїзду — інакше панель забита ними під зав'язку (Босс 26.07: «все проведено»).
-          AND COALESCE(a.source,'') <> 'migrate'
-          -- тестові записи (E2E/авто-тести) — не показуємо. Імʼя може бути і в картці клієнта.
-          AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%e2e%'
-          AND COALESCE(a.client_name, c.name, '') NOT ILIKE '%test%'
-          -- ДЕМО-клієнти (презентація CRM 18.07: Р1/Б1/Б3, «Мельник (демо)» з фейковими
-          -- номерами) — позначені тегом 'demo' у картці клієнта. Це не реальні візити,
-          -- вони висіли в панелі як «забули провести» (Босс 26.07). Тег, а не імʼя —
-          -- щоб нові демо теж відсікались автоматично.
-          AND NOT ('demo' = ANY(COALESCE(c.tags, '{}'::text[])))
+          -- ОПЕРАЦІЙНИЙ список, НЕ історія. Що саме відсікається (імпорт, демо, тести) —
+          -- описано в lib/settlement.js. Тримати умови ТАМ, а не тут: звірка каси бере
+          -- той самий вираз, інакше цифри двох панелей знову розійдуться.
+          AND ${settlement.operationalExpr('a', 'c')}
           -- АНТИДУБЛЬ: той самий клієнт у ТОЙ САМИЙ слот має ОПЛАЧЕНУ запис → це дубль
           -- (напр. Оксана 850 booked, а реально оплатила 1000 тим же майстром о тій годині).
           AND NOT EXISTS(
