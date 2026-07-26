@@ -9,6 +9,22 @@ const router = express.Router();
 let _pool = null;
 const pool = () => (_pool ||= new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 3 }));
 
+// ── SaaS-захист (Jarvis 26.07) ───────────────────────────────────────────────
+// Таблиці qa_* — це внутрішня кухня РОЗРОБКИ платформи: знайдені баги, причини,
+// SQL-фікси, назви гілок. Клієнтських даних тут немає, АЛЕ салон-орендар не має
+// бачити внутрішній трекер вендора (і тим більше — тиснути «застосувати фікс»).
+// Раніше вистачало будь-якої авторизації, тобто панель відкривалась усім тенантам.
+// Тепер доступ лише з платформенного тенанта (внутрішній салон вендора).
+// Обхід для локальних скриптів/дев-середовища: QA_PANEL_OPEN=1.
+const { isPlatformTenant } = require('../lib/tenant');
+router.use((req, res, next) => {
+  if (process.env.QA_PANEL_OPEN === '1') return next();
+  let platform = false;
+  try { platform = !!(isPlatformTenant && isPlatformTenant()); } catch (_) { platform = false; }
+  if (!platform) return res.status(404).json({ error: 'not_found' }); // 404, а не 403: не світимо існування панелі
+  return next();
+});
+
 const norm = (b) => ({
   id: b.id, sig: b.signature, sev: b.severity, module: b.module, role: b.role, title: b.title,
   scenario: b.scenario, expected: b.expected, actual: b.actual, cause: b.cause, fix: b.fix, steps: b.steps || [],
