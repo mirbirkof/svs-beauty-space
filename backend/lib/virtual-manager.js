@@ -180,9 +180,12 @@ async function ownerDailyReport(pool = getPool(), tenantId = DEFAULT_TENANT_ID) 
 // ── D) Ранковий план дня адміну ──────────────────────────────────────────
 // Скільки треба зробити сьогодні для плану, що вже записано, і КОГО дозаписати
 // (клієнти «під загрозою»: були 2+ рази, зникли 75-180 днів — їх легше повернути).
-async function adminDayPlan(pool = getPool()) {
-  const chat = process.env.ADMIN_TG_CHAT;
-  if (!chat) return 0;
+// tenantId — салон, для якого будуємо план (SaaS). Отримувачі: власники ЦЬОГО салону,
+// для салону платформи додатково ADMIN_TG_CHAT (сумісність зі старою поведінкою).
+async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
+  const recipients = new Set(await _ownerRecipients(pool, tenantId));
+  if (tenantId === DEFAULT_TENANT_ID && process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT));
+  if (!recipients.size) return 0;
   const today = kyivDate();
   if ((await getSetting('vm_admin_dayplan_sent', null)) === today) return 0;
 
@@ -229,8 +232,11 @@ async function adminDayPlan(pool = getPool()) {
     `📞 <b>Подзвонити — повернути клієнтів:</b>\n${callLines}\n\n` +
     `💡 Запропонуй зручний час і додаткову послугу — це закриє денну ціль.`;
 
-  await hub.enqueue({ recipient: String(chat), channel: 'telegram', body,
-    category: 'transactional', priority: 'normal', source: 'vm-admin-dayplan', dedupKey: `dayplan:${today}` });
+  for (const rcpt of recipients) {
+    await hub.enqueue({ recipient: String(rcpt), channel: 'telegram', body,
+      category: 'transactional', priority: 'normal', source: 'vm-admin-dayplan',
+      dedupKey: `dayplan:${tenantId}:${rcpt}:${today}` });
+  }
   await setSetting('vm_admin_dayplan_sent', today);
   return 1;
 }
@@ -238,9 +244,10 @@ async function adminDayPlan(pool = getPool()) {
 // ── E) Тижневі / місячні нагадування керуючому ───────────────────────────
 // Понеділок — закупка матеріалів (+ скільки позицій на нулі). 5 і 20 числа —
 // нагадування завести тайного покупця (2-3/міс). Шлеться в ADMIN_TG_CHAT.
-async function weeklyMonthlyReminders(pool = getPool()) {
-  const chat = process.env.ADMIN_TG_CHAT;
-  if (!chat) return 0;
+async function weeklyMonthlyReminders(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
+  const recipients = new Set(await _ownerRecipients(pool, tenantId));
+  if (tenantId === DEFAULT_TENANT_ID && process.env.ADMIN_TG_CHAT) recipients.add(String(process.env.ADMIN_TG_CHAT));
+  if (!recipients.size) return 0;
   const today = kyivDate();
   // день тижня (0=Нд..6=Сб) і число місяця — з київської дати
   const dow = new Date(today + 'T12:00:00Z').getUTCDay();
@@ -257,18 +264,18 @@ async function weeklyMonthlyReminders(pool = getPool()) {
       `SELECT COUNT(*)::int n FROM product_variants
         WHERE active = TRUE AND COALESCE(stock_qty,0) <= 2`))[0] || { n: 0 };
     const lowLine = low.n > 0 ? `\n📉 На низькому залишку: <b>${low.n} позицій</b> — перевірте у розділі «Склад».` : '';
-    await hub.enqueue({ recipient: String(chat), channel: 'telegram',
+    for (const rcpt of recipients) await hub.enqueue({ recipient: String(rcpt), channel: 'telegram',
       body: `🛒 <b>Понеділок — день закупки</b>\nПеревірте залишки розхідників (фарби, окисники тощо) і замовте що закінчується.${lowLine}`,
-      category: 'transactional', priority: 'normal', source: 'vm-purchase', dedupKey: `purchase:${today}` });
+      category: 'transactional', priority: 'normal', source: 'vm-purchase', dedupKey: `purchase:${tenantId}:${rcpt}:${today}` });
     await setSetting('vm_purchase_sent', today);
     sent++;
   }
 
   // 5 і 20 числа — тайний покупець
   if ((dom === 5 || dom === 20) && (await getSetting('vm_mystery_sent', null)) !== today) {
-    await hub.enqueue({ recipient: String(chat), channel: 'telegram',
+    for (const rcpt of recipients) await hub.enqueue({ recipient: String(rcpt), channel: 'telegram',
       body: `🕵️ <b>Нагадування: тайний покупець</b>\nЗаплануйте перевірку (2-3 на місяць): запис під виглядом клієнта, оцінка скриптів, сервісу й чистоти. Зафіксуйте результат.`,
-      category: 'transactional', priority: 'normal', source: 'vm-mystery', dedupKey: `mystery:${today}` });
+      category: 'transactional', priority: 'normal', source: 'vm-mystery', dedupKey: `mystery:${tenantId}:${rcpt}:${today}` });
     await setSetting('vm_mystery_sent', today);
     sent++;
   }
@@ -278,16 +285,39 @@ async function weeklyMonthlyReminders(pool = getPool()) {
 
 // Кроны запускаются ПОЗА HTTP-контекстом → pool.query без tenant бачив би ВСІ салони
 // (permissive RLS). runAs(DEFAULT_TENANT_ID) обмежує віртуального менеджера салоном Босса.
-// Для інших салонів VM поки не запускається (їх звіти — окремий етап SaaS).
 const _wrap = fn => (...a) => runAs(DEFAULT_TENANT_ID, () => fn(...a));
+
+// АУДИТ 26.07: розсилки, адресовані КЛІЄНТАМ і МАЙСТРАМ салону, працювали лише для
+// салону Босса — орендарі не отримували нічого. Тепер обходимо кожен живий салон під
+// його RLS-контекстом (той самий підхід, що в ownerDailyReportAll).
+// ВАЖЛИВО: adminDayPlan і weeklyMonthlyReminders НЕ обходимо — вони шлють жорстко на
+// ADMIN_TG_CHAT (чат Босса), і обхід салонами завалив би його копіями чужих звітів.
+// Їх треба спершу перевести на _ownerRecipients(tenantId) — окремий крок.
+const _forEachTenant = fn => async (...a) => {
+  const pool = a[0] || getPool();
+  const tenants = (await runAs(null, () => pool.query(
+    `SELECT id FROM tenants WHERE COALESCE(status,'active') NOT IN ('suspended','cancelled')`))
+    .then(r => r.rows).catch((e) => { console.error('[vm] tenant list failed:', e.message); return []; })) || [];
+  let total = 0;
+  for (const t of tenants) {
+    // tenantId передаём явно вторым аргументом (функции с получателями его используют),
+    // сам запрос при этом идёт под RLS-контекстом этого салона.
+    try { total += (await runAs(t.id, () => fn(pool, t.id))) || 0; }
+    catch (e) { console.error(`[vm] ${fn.name} tenant ${t.id}:`, e.message); }
+  }
+  return total;
+};
+
 module.exports = {
-  autoReviewRequests: _wrap(autoReviewRequests),
-  masterDailySchedules: _wrap(masterDailySchedules),
+  autoReviewRequests: _forEachTenant(autoReviewRequests),
+  masterDailySchedules: _forEachTenant(masterDailySchedules),
   ownerDailyReport: _wrap(ownerDailyReport),
   // НЕ обгортаємо: сам ітерує всі салони і передає явний tenantId (SaaS-розсилка).
   ownerDailyReportAll,
-  adminDayPlan: _wrap(adminDayPlan),
-  weeklyMonthlyReminders: _wrap(weeklyMonthlyReminders),
+  // Переведені на _ownerRecipients(tenantId) → тепер безпечно обходити всі салони:
+  // кожен власник отримує СВІЙ план дня і свої нагадування, Босс — лише свій.
+  adminDayPlan: _forEachTenant(adminDayPlan),
+  weeklyMonthlyReminders: _forEachTenant(weeklyMonthlyReminders),
   // Отримувачі = ВСІ власники салону з привʼязаним Telegram (для розсилок типу «підтвердити витрати»).
   ownerRecipients: _ownerRecipients,
 };
