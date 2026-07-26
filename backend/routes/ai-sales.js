@@ -426,23 +426,38 @@ router.post('/winback/run', requirePerm('reports.finance'), async (req, res) => 
     const pickChannel = (c) => c.telegram_id ? 'telegram' : (c.phone ? 'sms' : (c.email ? 'email' : 'master'));
     const pickStep = (days) => { let s = null; for (let i = 0; i < steps.length; i++) if (days >= (steps[i].day || 0)) s = { index: i, ...steps[i] }; return s; };
 
-    let created = 0;
+    // АУДИТ 26.07: раніше офери лише накопичувались у таблиці зі статусом 'queued' і
+    // delivery:'not_connected' — жодне повідомлення клієнту НЕ йшло. Тепер кожен офер
+    // одразу ставиться в Notification Hub (той самий шлях, що й нагадування): Hub сам
+    // обирає канал, поважає відписки, cooldown і денний ліміт маркетингу.
+    const hub = require('../lib/notification-hub');
+    const todayKey = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kiev' });
+    let created = 0, enqueued = 0, skipped = 0;
     for (const c of cands) {
       const step = pickStep(c.days_since);
       const text = step && step.template ? step.template.replace('{name}', c.name || 'клієнте')
         : `${c.name || 'Клієнт'}, давно вас не бачили. Запрошуємо назад!`;
-      // Доставки поки немає (stub) → 'queued', НЕ 'sent' — щоб статистика не брехала.
-      // sent_at проставить Notification Hub при реальній відправці.
+      // Спершу доставка: статус офера має відповідати РЕАЛЬНОСТІ, а не намірам.
+      let delivered = null;
+      try {
+        const out = await hub.enqueue({
+          clientId: c.client_id, body: text, category: 'marketing', priority: 'low',
+          source: 'ai-sales-winback', dedupKey: `winback:${c.client_id}:${todayKey}`,
+        });
+        if (out && out.id) { delivered = out; enqueued++; } else { skipped++; }
+      } catch (e) { skipped++; console.error('[winback] enqueue:', e.message); }
       await q(`
         INSERT INTO ai_sales_offers (client_id, type, offer_type, chain_id, chain_step, offer_text, channel, status, sent_at, ab_variant)
-        VALUES ($1,'win_back',$2,$3,$4,$5,$6,'queued',NULL,$7)`,
+        VALUES ($1,'win_back',$2,$3,$4,$5,$6,$8,$9,$7)`,
         [c.client_id, step && step.offer_type === 'discount' ? 'discount' : 'service',
-         chain ? chain.id : null, step ? step.index : null, text, pickChannel(c), Math.random() < 0.5 ? 'A' : 'B']);
+         chain ? chain.id : null, step ? step.index : null, text,
+         delivered ? (delivered.channel || pickChannel(c)) : pickChannel(c),
+         Math.random() < 0.5 ? 'A' : 'B',
+         delivered ? 'sent' : 'queued', delivered ? new Date() : null]);
       created++;
     }
-    // graceful-стаб: фактична доставка делегується COM-01 Notification Hub
-    logAction({ user: req.user, action: 'ai_sales.winback.run', entity: 'ai_sales_winback_chain', entity_id: chain ? chain.id : null, meta: { created } }).catch(() => {});
-    res.json({ ok: true, created, delivery: 'not_connected', chain_id: chain ? chain.id : null });
+    logAction({ user: req.user, action: 'ai_sales.winback.run', entity: 'ai_sales_winback_chain', entity_id: chain ? chain.id : null, meta: { created, enqueued, skipped } }).catch(() => {});
+    res.json({ ok: true, created, enqueued, skipped, delivery: 'notification-hub', chain_id: chain ? chain.id : null });
   } catch (e) { ERR(res, e, 'winback:run'); }
 });
 
