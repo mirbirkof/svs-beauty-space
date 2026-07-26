@@ -147,13 +147,23 @@ async function sendPending() {
 }
 
 // ── Cron tick ──
+// АУДИТ 26.07: раньше тик шёл ОДНИМ глобальным проходом без tenant-контекста →
+// напоминания строились по визитам ВСЕХ салонов и приписывались дефолтному
+// (клиент салона A мог получить сообщение по данным салона B). Теперь — по каждому
+// салону под его RLS-контекстом, по образцу остальных кронов (forEachTenant).
 async function cronTick() {
   try {
-    const scheduled = await scheduleReminders();
-    const delivery = await sendPending();
-    const total = scheduled.remind_24h + scheduled.remind_2h + scheduled.feedback;
-    if (total > 0 || delivery.sent > 0) {
-      console.log(`[reminders] scheduled=${JSON.stringify(scheduled)} sent=${delivery.sent} failed=${delivery.failed}`);
+    const { forEachTenant } = require('../lib/tenant');
+    const totals = { remind_24h: 0, remind_2h: 0, feedback: 0, sent: 0, failed: 0 };
+    await forEachTenant(async () => {
+      const scheduled = await scheduleReminders();
+      const delivery = await sendPending();
+      totals.remind_24h += scheduled.remind_24h; totals.remind_2h += scheduled.remind_2h;
+      totals.feedback += scheduled.feedback; totals.sent += delivery.sent; totals.failed += delivery.failed;
+    });
+    const total = totals.remind_24h + totals.remind_2h + totals.feedback;
+    if (total > 0 || totals.sent > 0) {
+      console.log(`[reminders] scheduled=${JSON.stringify(totals)}`);
     }
   } catch (e) {
     console.error('[reminders] cron error:', e.message);

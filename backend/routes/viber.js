@@ -708,9 +708,10 @@ router.get('/broadcasts', requirePerm('viber.broadcasts.create'), async (req, re
 
     const [rows, total] = await Promise.all([
       pool.query(
-        `SELECT vb.*, e.name AS created_by_name
+        `SELECT vb.*, COALESCE(e.display_name, e.username, e.email) AS created_by_name
            FROM viber_broadcasts vb
-           LEFT JOIN employees e ON e.id = vb.created_by
+           /* АУДИТ 26.07: таблицы employees нет (раздел падал); created_by = req.user.id → users */
+           LEFT JOIN users e ON e.id = vb.created_by
           WHERE ${whereStr}
           ORDER BY vb.created_at DESC
           LIMIT $${pi++} OFFSET $${pi++}`,
@@ -777,9 +778,9 @@ router.get('/broadcasts/:id', requirePerm('viber.broadcasts.create'), async (req
   try {
     const pool = getPool();
     const r = await pool.query(
-      `SELECT vb.*, e.name AS created_by_name
+      `SELECT vb.*, COALESCE(e.display_name, e.username, e.email) AS created_by_name
          FROM viber_broadcasts vb
-         LEFT JOIN employees e ON e.id = vb.created_by
+         LEFT JOIN users e ON e.id = vb.created_by
         WHERE vb.id = $1`,
       [req.params.id]
     );

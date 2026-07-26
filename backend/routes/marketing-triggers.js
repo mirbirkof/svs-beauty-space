@@ -84,12 +84,17 @@ async function dailyTick() {
     const today = new Date().toISOString().slice(0, 10);
     if (hour < 10 || lastDailyRun === today) return; // только после 10:00 и раз в день
     lastDailyRun = today;
-    const pool = getPool();
-    const trgs = await pool.query(`SELECT * FROM marketing_triggers WHERE enabled=TRUE`);
-    for (const trg of trgs.rows) {
-      const res = await runTrigger(trg);
-      if (res.enqueued) console.log(`[mkt-triggers] ${res.trigger}: enqueued=${res.enqueued} skipped=${res.skipped}`);
-    }
+    // АУДИТ 26.07: раньше тик шёл без tenant-контекста — триггеры одного салона
+    // (ДР, реактивация) видели клиентов ВСЕХ салонов. Теперь по-салонно, как остальные кроны.
+    const { forEachTenant } = require('../lib/tenant');
+    await forEachTenant(async () => {
+      const pool = getPool();
+      const trgs = await pool.query(`SELECT * FROM marketing_triggers WHERE enabled=TRUE`);
+      for (const trg of trgs.rows) {
+        const res = await runTrigger(trg);
+        if (res.enqueued) console.log(`[mkt-triggers] ${res.trigger}: enqueued=${res.enqueued} skipped=${res.skipped}`);
+      }
+    });
   } catch (e) { console.error('[mkt-triggers] tick error:', e.message); }
 }
 
