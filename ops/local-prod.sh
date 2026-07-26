@@ -8,8 +8,23 @@ cd "$APP_DIR" || exit 1
 
 # Один запуск за раз: без блокировки крон */5 мог наплодить параллельные старты,
 # пока предыдущий 25с ждал health → лишние инстансы с живыми внутренними кронами.
-exec 9>/tmp/crm-local-prod.lock
-flock -n 9 || exit 0
+# Крон — неблокирующий (занято = просто пропустить тик), ручной restart — ЖДЁТ до 90с,
+# иначе `local-prod.sh restart` молча выходил бы, не применив новый код.
+LOCK=/tmp/crm-local-prod.lock
+exec 9>"$LOCK"
+# Замок держит ТОЛЬКО другой запуск этого скрипта. Если его унаследовал сам сервер
+# (старт до фикса 9>&-), это не конкурент — иначе рестарт навсегда заблокирован собой же.
+lock_held_by_server() {
+  for p in $(fuser "$LOCK" 2>/dev/null); do
+    [ "$(ps -o comm= -p "$p" 2>/dev/null)" = "node" ] && return 0
+  done
+  return 1
+}
+if [ "$1" = "restart" ] || [ "$1" = "force" ]; then
+  flock -w 90 9 || lock_held_by_server || { echo "[$(date '+%F %H:%M')] restart: lock busy 90s, abort" >> "$LOG"; exit 1; }
+else
+  flock -n 9 || lock_held_by_server || exit 0
+fi
 
 # force-restart: `local-prod.sh restart` — перезапуск навіть якщо живий (застосувати нові зміни коду)
 if [ "$1" != "restart" ] && [ "$1" != "force" ]; then
@@ -34,7 +49,10 @@ for pid in $(pgrep -x -f "node shop-api.js"); do
   [ "$(readlink -f /proc/$pid/cwd 2>/dev/null)" = "$APP_DIR" ] && kill -9 "$pid" 2>/dev/null
 done
 sleep 1
-PORT=$PORT setsid nohup node shop-api.js >> "$LOG" 2>&1 &
+# 9>&- ОБЯЗАТЕЛЬНО: без закрытия дескриптора сервер наследует flock и держит его вечно →
+# ни крон, ни ручной restart больше не могут взять замок, сторож фактически мёртв
+# (поймано 26.07 сразу после введения flock).
+PORT=$PORT setsid nohup node shop-api.js >> "$LOG" 2>&1 9>&- &
 sleep 25
 if curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
   echo "[$(date '+%F %H:%M')] started ok" >> "$LOG"
