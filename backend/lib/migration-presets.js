@@ -74,7 +74,13 @@ const ENTITIES = {
       service: ['service', 'услуга', 'послуга', 'услуги', 'послуги', 'услуги / товары', 'услуги/товары', 'послуги/товари', 'послуги / товари', 'services', 'назва послуги', 'процедура', 'наименование услуги'],
       price: ['price', 'цена', 'ціна', 'стоимость', 'вартість', 'сумма', 'сума', 'ціна, uah', 'цена, uah', 'ціна,uah', 'цена,uah', 'ціна uah', 'cost', 'total', 'сума, грн', 'сума грн', 'до сплати'],
       status: ['status', 'статус', 'стан', 'state', 'статус визита', 'статус візиту'],
-      duration: ['duration', 'тривалість', 'длительность', 'время', 'хвилин', 'минут', 'тривалість, хв'],
+      // Час початку ОКРЕМОЮ колонкою — так вивантажують більшість CRM («Дата» + «Час»).
+      // Раніше такої колонки не було, «Время» падало в duration, і ВСІ перенесені візити
+      // ставали на 12:00 — розклад майстра після міграції перетворювався на кашу (26.07).
+      // 'начало'/'початок' свідомо НЕ тут: вони лишаються за полем date (там це часто
+      // повний datetime «01.07.2026 14:30»). Дублювання зробило б розпізнавання лотереєю.
+      time: ['time', 'час', 'время', 'час візиту', 'время визита', 'час запису', 'время записи', 'час початку', 'время начала'],
+      duration: ['duration', 'тривалість', 'длительность', 'хвилин', 'минут', 'тривалість, хв', 'тривалість (хв)'],
       rating: ['rating', 'оцінка', 'оценка', 'відгук'],
       payment: ['payment', 'тип оплати', 'тип оплаты', 'оплата', 'спосіб оплати', 'способ оплаты', 'метод оплати'],
     },
@@ -119,21 +125,77 @@ const SOURCE_PRESETS = [
   { id: 'excel', label: 'Власна таблиця Excel', hint: 'Будь-яка таблиця з колонками. Перший рядок — назви стовпців.', entities: ALL_ENTITIES },
 ];
 
-function normHeader(h) { return String(h || '').trim().toLowerCase().replace(/\s+/g, ' '); }
-
-// Сопоставить один заголовок с полем заданной сущности
-function mapHeaderFor(entity, h) {
-  const norm = normHeader(h);
-  const fields = ENTITIES[entity].fields;
-  for (const [field, syn] of Object.entries(fields)) {
-    if (syn.includes(norm)) return field;
-  }
-  return null;
+// Нормалізація заголовка: регістр, пробіли, пунктуація, ё→е, різнобій апострофів.
+// «ПІБ клієнта:» / «Ф.И.О. клиента» / «имʼя  клієнта» → однакова основа для порівняння.
+function normHeader(h) {
+  return String(h || '')
+    .replace(/[’'`´]/g, "'")
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[.:;,_/\\|()\[\]{}"«»*#№]/g, ' ')
+    .replace(/-/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    // «ф и о» → «фио», «п и б» → «піб»: після зняття крапок абревіатура розсипається
+    // на окремі літери й перестає збігатись зі словником (реальний заголовок «Ф.И.О.»).
+    .replace(/(^| )((?:[а-яa-zіїєґ] ){1,3}[а-яa-zіїєґ])(?= |$)/g, (m, pre, abbr) => pre + abbr.replace(/ /g, ''));
 }
 
-// Карта колонок для сущности: индекс → каноничное поле (или null)
+// Чи міститься синонім у заголовку ЯК ОКРЕМЕ СЛОВО (а не всередині іншого слова).
+// «дата народження» ⊂ «дата народження клієнта» → так. «ім'я» ⊄ «прізвище» → ні.
+function containsWord(haystack, needle) {
+  if (!needle) return false;
+  const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^| )' + esc + '( |$)').test(haystack);
+}
+
+/* Сопоставить один заголовок с полем сущности.
+   ДВА ПРОХОДИ — навмисно (Jarvis 26.07):
+   раніше було лише точне співпадіння зі словником, тому «ФИО клиента» не збігалось
+   із 'фио' і колонка ТИХО ігнорувалась — салон переносив клієнтів БЕЗ імен і дізнавався
+   про це вже після імпорту. Для SaaS це неприпустимо: кожна CRM називає колонки по-своєму.
+   Тепер: 1) точний збіг (найнадійніший), 2) якщо ні — синонім як окреме слово всередині
+   заголовка; з кількох кандидатів беремо НАЙДОВШИЙ (найспецифічніший), щоб «дата запису»
+   не перетворилась на «дата» від іншого поля. */
+function mapHeaderFor(entity, h, opts = {}) {
+  const norm = normHeader(h);
+  if (!norm) return null;
+  const fields = ENTITIES[entity].fields;
+  const taken = opts.taken || new Set();
+  for (const [field, syn] of Object.entries(fields)) {
+    if (syn.some((s) => normHeader(s) === norm)) return field;
+  }
+  let best = null, bestLen = 0;
+  for (const [field, syn] of Object.entries(fields)) {
+    if (taken.has(field)) continue;      // поле вже зайняте точним збігом — не перебиваємо
+    for (const s of syn) {
+      const ns = normHeader(s);
+      if (ns.length < 3) continue;       // короткі ('др','тел') лише точним збігом — інакше шум
+      if (containsWord(norm, ns) && ns.length > bestLen) { best = field; bestLen = ns.length; }
+    }
+  }
+  return best;
+}
+
+// Карта колонок для сущности: индекс → каноничное поле (или null).
+// Спочатку розставляємо ТОЧНІ збіги по всьому рядку, і лише потім — нечіткі,
+// щоб точний збіг завжди мав пріоритет над «схожим» у сусідній колонці.
 function buildColMap(entity, headerRow) {
-  return headerRow.map(h => mapHeaderFor(entity, h));
+  const exact = headerRow.map((h) => {
+    const norm = normHeader(h);
+    if (!norm) return null;
+    for (const [field, syn] of Object.entries(ENTITIES[entity].fields)) {
+      if (syn.some((s) => normHeader(s) === norm)) return field;
+    }
+    return null;
+  });
+  const taken = new Set(exact.filter(Boolean));
+  return exact.map((f, i) => {
+    if (f) return f;
+    const guess = mapHeaderFor(entity, headerRow[i], { taken });
+    if (guess && !taken.has(guess)) { taken.add(guess); return guess; }
+    return null;
+  });
 }
 
 // Авто-определение сущности по строке заголовков: у кого больше совпадений.

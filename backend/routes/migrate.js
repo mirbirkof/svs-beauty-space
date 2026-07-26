@@ -252,6 +252,19 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
     colMap.forEach((f, i) => { if (f) rec[f] = (cells[i] != null ? String(cells[i]).trim() : ''); });
     try {
       const dt = parseAnyDate(rec.date);
+      // Час ОКРЕМОЮ колонкою («Дата» + «Час» — типова вивантаження Dikidi/YClients/Excel).
+      // Без цього ВСІ перенесені візити ставали на 12:00 і розклад майстра після міграції
+      // перетворювався на кашу (знайдено 26.07 живим прогоном файлу).
+      // Формати: 14:30 / 14.30 / 9:00 / 09:00:00. Сміття ігноруємо — лишається дефолт.
+      if (dt && rec.time) {
+        const tm = /^(\d{1,2})[:.](\d{2})/.exec(String(rec.time).trim());
+        if (tm) {
+          const hh = Number(tm[1]), mm = Number(tm[2]);
+          if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+            dt.time = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+          }
+        }
+      }
       const clientName = (rec.client || '').trim();
       if (!dt) { rep.skipped++; continue; }               // рядок без дати — не візит
       if (!clientName && !rec.phone) { rep.skipped++; continue; }
