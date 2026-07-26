@@ -23,6 +23,9 @@ async function liveFinance(pool, from, to) {
   const ts = (x) => {
     if (x instanceof Date) return x.getTime();
     const s = String(x);
+    // Гола дата (pnl) = київська північ, НЕ UTC-північ (інакше -1мс від ексклюзивної межі
+    // "2026-08-01" давав 03:00 Києва 1 серпня → вікно змін чіпляло день наступного місяця).
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Date.parse(s + 'T00:00:00+03:00');
     let t = Date.parse(s);
     if (Number.isNaN(t)) t = Date.parse(s.replace(/ [A-Za-z]+\/[A-Za-z_]+$/, '+03:00'));
     if (Number.isNaN(t)) t = Date.parse(s.slice(0, 10) + 'T00:00:00+03:00');
