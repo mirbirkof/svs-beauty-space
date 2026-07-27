@@ -310,6 +310,16 @@ async function createInvoiceRow(sub, { subtotal, discount = 0, tax = 0, total, l
 
 // Счёт за период подписки (с учётом промокода).
 async function generateInvoice(sub, { promoId = null } = {}) {
+  // Идемпотентность (SaaS-аудит 27.07): если за ЭТОТ период уже есть живой счёт (open/paid) —
+  // возвращаем его, а не плодим второй. Первый слой (до вставки); второй — DB unique index
+  // uq_invoices_saas_sub_period_live (миграция 283) на случай гонки мульти-инстанса.
+  const ps = sub.current_period_start;
+  if (ps) {
+    const existing = (await getPool().query(
+      `SELECT * FROM invoices_saas WHERE subscription_id=$1 AND period_start=$2
+         AND status IN ('open','paid') ORDER BY id DESC LIMIT 1`, [sub.id, ps])).rows[0];
+    if (existing) return existing;
+  }
   const price = await planPrice(sub.plan_code, sub.billing_cycle);
   let promo = null;
   const pid = promoId || sub.promo_code_id;

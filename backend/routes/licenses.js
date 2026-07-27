@@ -62,11 +62,16 @@ async function checkDeactivateSafe(moduleId) {
   return deps; // Якщо не пусто — деактивація заблокована
 }
 
-/** Проста stub-генерація "ліцензійного ключа" (JWT-like base64 payload + SHA-256 hash) */
+/** Генерація on-premise ліцензійного ключа (JWT-like base64 payload + HMAC-підпис).
+    SaaS-аудит 27.07: прибрано хардкод-фолбек 'svs-license-2026' (лежав у git → підпис
+    підробний). Тепер fail-closed: без LICENSE_KEY_SECRET у env генерація кидає помилку,
+    а не підписує публічною константою. Безпечно: verify звіряє за key_hash у БД, ключів
+    ще 0 — зміна секрету нічого не ламає. */
 function generateLicenseKey(payload) {
+  const secret = process.env.LICENSE_KEY_SECRET;
+  if (!secret) { const e = new Error('LICENSE_KEY_SECRET не налаштовано — генерація ключів вимкнена'); e.code = 'no-license-secret'; throw e; }
   const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig   = crypto.createHmac('sha256', process.env.LICENSE_KEY_SECRET || 'svs-license-2026')
-                      .update(data).digest('base64url');
+  const sig  = crypto.createHmac('sha256', secret).update(data).digest('base64url');
   return `${data}.${sig}`;
 }
 
