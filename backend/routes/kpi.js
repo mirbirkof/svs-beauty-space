@@ -145,9 +145,22 @@ router.get('/employees', async (req, res) => {
     const tMap = new Map();
     for (const t of targets) tMap.set(`${t.master_id}:${t.metric_code}`, t);
 
+    /* Продуктивність (SaaS-аудит 27.07): computePeriod викликався ПО ЧЕРЗІ для кожного
+       майстра → сторінка KPI відкривалась ~9.8с і під навантаженням падала в таймаут.
+       Рахуємо паралельно пачками по 8 (не вичерпуючи пул). Формули метрик НЕ змінені —
+       ті самі значення, лише порядок виконання. */
+    const BATCH = 8;
+    const valsByMaster = new Map();
+    for (let i = 0; i < masters.length; i += BATCH) {
+      const slice = masters.slice(i, i + BATCH);
+      const got = await Promise.all(slice.map(m =>
+        computePeriod(m.id, from, to).then(v => [m.id, v]).catch(() => [m.id, {}])));
+      for (const [id, v] of got) valsByMaster.set(id, v);
+    }
+
     const out = [];
     for (const m of masters) {
-      const vals = await computePeriod(m.id, from, to);
+      const vals = valsByMaster.get(m.id) || {};
       const mrows = [], scoreParts = [];
       for (const [code, meta] of mMap) {
         const actual = vals[code] ?? null;

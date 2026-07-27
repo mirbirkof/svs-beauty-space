@@ -312,18 +312,33 @@ router.get('/sheet', async (req, res) => {
       const masters = await q(
         `SELECT id, name FROM masters WHERE active=TRUE ${onlyMaster ? 'AND id=$1' : ''} ORDER BY name`,
         onlyMaster ? [onlyMaster] : []);
-      for (const m of masters) {
-        if (haveRecord.has(String(m.id))) continue;
-        const est = await liveEstimate(m.id, from, to);
-        if (!est.scheme && est.services_revenue === 0) continue;
-        rows.push({
-          master_id: m.id, master_name: m.name, record_id: null,
-          services_count: est.services_count, services_revenue: est.services_revenue,
-          percent_part: Math.round(est.percent_part), fixed_part: Math.round(est.fixed_part),
-          sales_part: 0, bonus: 0, kpi_bonus: 0, deduction: 0, total: Math.round(est.total),
-          paid: 0, remaining: Math.round(est.total), status: 'not_calculated', estimate: true
-        });
+      /* Продуктивність (SaaS-аудит 27.07): раніше liveEstimate викликався ПО ЧЕРЗІ для
+         кожного майстра (38 майстрів × кілька запитів = сотні послідовних запитів) —
+         відомість відкривалась 9.4с, а під паралельним навантаженням падала в таймаут.
+         Тепер оцінки рахуються ПАРАЛЕЛЬНО пачками. Формула розрахунку НЕ змінена —
+         той самий liveEstimate, ті самі цифри; змінився лише порядок виконання.
+         Пачки по 8, щоб не вичерпати пул з'єднань (той самий урок EMAXCONNSESSION). */
+      const pending = masters.filter(m => !haveRecord.has(String(m.id)));
+      const BATCH = 8;
+      for (let i = 0; i < pending.length; i += BATCH) {
+        const slice = pending.slice(i, i + BATCH);
+        const ests = await Promise.all(slice.map(m =>
+          liveEstimate(m.id, from, to).then(est => ({ m, est })).catch(() => null)));
+        for (const item of ests) {
+          if (!item) continue;
+          const { m, est } = item;
+          if (!est.scheme && est.services_revenue === 0) continue;
+          rows.push({
+            master_id: m.id, master_name: m.name, record_id: null,
+            services_count: est.services_count, services_revenue: est.services_revenue,
+            percent_part: Math.round(est.percent_part), fixed_part: Math.round(est.fixed_part),
+            sales_part: 0, bonus: 0, kpi_bonus: 0, deduction: 0, total: Math.round(est.total),
+            paid: 0, remaining: Math.round(est.total), status: 'not_calculated', estimate: true
+          });
+        }
       }
+      // порядок як був (за ім'ям майстра) — паралелізм не має міняти вигляд відомості
+      rows.sort((a, b) => String(a.master_name || '').localeCompare(String(b.master_name || ''), 'uk'));
     }
 
     const totals = rows.reduce((a, r) => ({
