@@ -15,6 +15,8 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+// 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
+const { payrollEligibleExpr } = require('../lib/settlement');
 const router = express.Router();
 const pool = getPool();
 
@@ -94,7 +96,8 @@ router.get('/', async (req, res) => {
                            COALESCE(a.real_amount,a.price,0) rev_full
                       FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
                      WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
-                       AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
+                       AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+                       AND ${payrollEligibleExpr('a')})
                   SELECT da.master_id,
                          COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full')}),0)::float comm
                     FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE

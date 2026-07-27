@@ -124,17 +124,34 @@ router.get('/fiscal-receipts', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+/* ── ЧЕСНІСТЬ ПРО ФІСКАЛІЗАЦІЮ (SaaS-аудит 27.07) ───────────────────────────
+   Цей ендпоінт НЕ реєструє чек у ДПС — він веде РЕЄСТР чеків у нашій БД.
+   Реального виклику Checkbox/ПРРО немає (потрібні договір, ключі, каса власника).
+   Раніше статус за замовчуванням був 'created' — салон бачив «чек створено» і міг
+   вважати, що фіскалізація відбулась. Для України це юридичний ризик (закон про РРО).
+   Тепер без налаштованого провайдера чек отримує 'not_fiscalized' + явне попередження. */
+const fiscalProviderConfigured = () =>
+  !!(process.env.CHECKBOX_LOGIN && process.env.CHECKBOX_PASSWORD && process.env.CHECKBOX_LICENSE_KEY);
+
 router.post('/fiscal-receipts', async (req, res) => {
   try {
     const b = req.body || {};
     if (b.amount == null) return res.status(400).json({ error: 'amount_required' });
+    const configured = fiscalProviderConfigured();
+    // 'created' дозволено ЛИШЕ коли провайдер налаштований (тоді статус проставить адаптер
+    // після успішної реєстрації у ДПС). Інакше — чесний 'not_fiscalized'.
+    const status = configured ? (b.status || 'created') : 'not_fiscalized';
     const row = (await q(
       `INSERT INTO fiscal_receipts (provider, receipt_number, fiscal_number, amount, status, cash_operation_id, order_id, payload)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [b.provider || 'checkbox', b.receipt_number || null, b.fiscal_number || null, b.amount,
-       b.status || 'created', b.cash_operation_id || null, b.order_id || null,
+       status, b.cash_operation_id || null, b.order_id || null,
        b.payload ? JSON.stringify(b.payload) : null]))[0];
     await logAction({ user: req.user, action: 'fiscal.create', entity: 'fiscal_receipts', entity_id: row.id, ip: req.ip });
+    if (!configured) {
+      row.warning = 'Чек збережено в реєстрі CRM, але НЕ зареєстровано у ДПС: фіскальний провайдер (Checkbox/ПРРО) не налаштований.';
+      row.needs_config = ['CHECKBOX_LOGIN', 'CHECKBOX_PASSWORD', 'CHECKBOX_LICENSE_KEY'];
+    }
     res.json(row);
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

@@ -81,4 +81,28 @@ function paidTwinExists(a, tbl = 'appointments') {
                AND ${paidExpr('b')})`;
 }
 
-module.exports = { paidExpr, operationalExpr, paidTwinExists, LEGACY_IMPORT_SOURCES, DEFAULT_MIGRATION_DATE };
+/**
+ * НАРАХУВАННЯ % МАЙСТРУ рахується лише по візитах, ЗА ЯКІ САЛОН ПЛАТИТЬ САМ.
+ *
+ * Чому це ОКРЕМИЙ, вужчий вираз, а не operationalExpr (урок 27.07):
+ * operationalExpr викидає ще й легасі-історію BeautyPro до дати переїзду. Для панелей
+ * «Забули провести» / звірки каси це правильно. Для ГРОШЕЙ — ні: архівні продажі BeautyPro
+ * лежать у нашій касі (cash_operations ref_type='bp_sale') і рахуються у ВИРУЧКУ. Викинути
+ * по них ЗП, лишивши виручку, = асиметрія: прибуток червня роздувся б на ~200 тис. з повітря
+ * (зловлено живим прогоном ДО викатки).
+ * Дані ж мастера міграції (import_batch) каси не мають НІДЕ — вони не у виручці, тому і в
+ * ЗП їх бути не повинно. Це і є єдиний чесний виняток.
+ * @param {string} a — аліас appointments
+ */
+function payrollEligibleExpr(a) {
+  // ЄДИНИЙ критерій — СИМЕТРІЯ З ВИРУЧКОЮ. Виручка живе в cash_operations. Отже:
+  //   • bp_export/bp_gap (source beautypro/bukon_import) — касу МАЮТЬ (bp_sale + прив'язані
+  //     операції, живий факт 27.07: 1103 з 1463 і 116 з 233) → їх ЗП рахувати ТРЕБА;
+  //   • мастер міграції (source='migrate') каси не створює НІКОЛИ → і ЗП по них бути не може.
+  // Перевірено ДВІЧІ до викатки: спершу взяв operationalExpr (червень −200к ЗП при тій самій
+  // виручці), потім import_batch IS NULL (червень −36к) — обидва створювали фальшивий прибуток.
+  // Цей вираз лишає червень/липень копійка в копійку і б'є рівно по даних мастера міграції.
+  return `(COALESCE(${a}.source,'') <> 'migrate')`;
+}
+
+module.exports = { paidExpr, operationalExpr, paidTwinExists, payrollEligibleExpr, LEGACY_IMPORT_SOURCES, DEFAULT_MIGRATION_DATE };

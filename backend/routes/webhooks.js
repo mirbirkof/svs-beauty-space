@@ -131,6 +131,7 @@ router.post('/', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
       [url, description || null, JSON.stringify(ev), secret || null, active !== false]))[0];
     await logAction({ user: req.user, action: 'webhook.create', entity: 'webhooks', entity_id: row.id, ip: req.ip });
+    if (row) delete row.secret; // 27.07 SaaS-аудит: не повертати HMAC-секрет підпису у відповідь/браузер
     res.json(row);
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -156,6 +157,7 @@ router.patch('/:id', async (req, res) => {
     const row = (await q(`UPDATE webhooks SET ${sets.join(', ')}, updated_at=now()
                           WHERE id=$${params.length} AND tenant_id=current_tenant_id() RETURNING *`, params))[0];
     if (!row) return res.status(404).json({ error: 'not_found' });
+    delete row.secret; // 27.07 SaaS-аудит: секрет підпису не віддаємо назад у браузер
     res.json(row);
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

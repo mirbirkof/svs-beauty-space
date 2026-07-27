@@ -6,6 +6,8 @@ const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+// 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
+const { payrollEligibleExpr } = require('../lib/settlement');
 const { cacheReport } = require('../lib/report-cache');
 const { liveFinance } = require('../lib/live-finance');
 
@@ -163,7 +165,8 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
                         COALESCE(a.real_amount,a.price,0) rev_full
                    FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
                   WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
-                    AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))) da
+                    AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+                    AND ${payrollEligibleExpr('a')}) da
            LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
           GROUP BY da.master_id
        )

@@ -20,9 +20,12 @@ const BASE = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api-backup.onrende
 function kyivDate(d = new Date()) { return d.toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }); }
 
 // ── A) Авто-запит відгуку після візиту ──────────────────────────────────
-async function autoReviewRequests(pool = getPool()) {
+// tenantId приходить із _forEachTenant (обхід усіх салонів). SaaS-фікс 27.07: раніше
+// налаштування відгуків бралися ЖОРСТКО з салону Босса (TENANT) для ВСІХ орендарів —
+// чужий request_enabled/cooldown керував розсилкою клієнтам іншого салону. Тепер по своєму.
+async function autoReviewRequests(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
   let st;
-  try { st = (await pool.query(`SELECT * FROM reputation_settings WHERE tenant_id=$1`, [TENANT])).rows[0]; } catch (_) {}
+  try { st = (await pool.query(`SELECT * FROM reputation_settings WHERE tenant_id=$1`, [tenantId])).rows[0]; } catch (_) {}
   st = st || { request_enabled: true, request_cooldown_days: 30 };
   if (st.request_enabled === false) return 0;
   const cooldown = st.request_cooldown_days || 30;

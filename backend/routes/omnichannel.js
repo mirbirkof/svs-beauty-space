@@ -142,8 +142,16 @@ router.post('/conversations/:id/send', async (req, res) => {
 
     // канал настроен?
     const ch = (await q(`SELECT enabled, config FROM omni_channels WHERE channel=$1 AND tenant_id=current_tenant_id()`, [conv.channel]))[0];
-    const configured = ch && ch.enabled && ch.config && (ch.config.token || ch.config.api_key);
-    const status = configured ? 'sent' : 'pending'; // без ключей — копим, отправит адаптер позже
+    const hasKeys = !!(ch && ch.enabled && ch.config && (ch.config.token || ch.config.api_key));
+    /* SaaS-аудит 27.07: раніше 'sent' ставився ЛИШЕ за наявністю ключа. Але для
+       whatsapp/messenger адаптера у lib/channels/ НЕМАЄ ВЗАГАЛІ — повідомлення позначалось
+       «надіслано», а клієнт нічого не отримував (тихий провал гірший за помилку).
+       Тепер 'sent' лише коли є І ключі, І реальний адаптер. Інакше 'pending' + no_adapter,
+       щоб UI чесно показав «канал ще не підключено», а не фальшиву галочку. */
+    const ADAPTERS = { instagram: 'instagram-meta', email: 'email-resend', sms: 'sms-turbosms', viber: 'viber-channel' };
+    const hasAdapter = !!ADAPTERS[conv.channel];
+    const configured = hasKeys && hasAdapter;
+    const status = configured ? 'sent' : 'pending'; // без ключів/адаптера — копимо, не брешемо
 
     const msg = (await q(
       `INSERT INTO omni_messages (conversation_id, direction, channel, body, status)
@@ -153,7 +161,8 @@ router.post('/conversations/:id/send', async (req, res) => {
     await pool.query(`UPDATE omni_conversations SET last_message=$2, last_message_at=now(),
         first_response_at=COALESCE(first_response_at, now()) WHERE id=$1`,
       [conv.id, body.slice(0, 500)]);
-    res.json({ ok: true, message: msg, needs_config: !configured });
+    res.json({ ok: true, message: msg, needs_config: !configured, no_adapter: !hasAdapter,
+      ...(!hasAdapter ? { warning: `Канал «${conv.channel}» ще не має інтеграції відправки — повідомлення збережено, але клієнту НЕ надіслано.` } : {}) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

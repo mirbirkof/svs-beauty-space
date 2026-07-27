@@ -85,16 +85,22 @@ router.post('/set-pin', pinLimiter, async (req, res) => {
 /* ── Вхід за PIN ── */
 router.post('/login', pinLimiter, async (req, res) => {
   try {
+    const { getTenantId } = require('../lib/tenant');
+    // SaaS-фікс 27.07 (рішення Босса): вхід за PIN — ОПЦІЙНИЙ перемикач у бізнес-налаштуваннях
+    // 'paydesk_require_pin' (дефолт false). У салоні Босса вимкнено → екран відкритий, як і був.
+    // Салон-орендар, якому потрібна безпека каси, вмикає перемикач → PIN стає обовʼязковим.
+    // Раніше «відкрито поки PIN не задано» було глобально → нові тенанти мали касу без пароля.
+    const requirePin = await require('../lib/settings').getSetting('paydesk_require_pin', false);
     const hash = await getPinHash();
-    // Босс (18.07): «убери пока что пинкод» — поки PIN не встановлено, екран
-    // відкривається БЕЗ нього. Механіка лишається: щойно власник задасть PIN
-    // (set-pin), вхід знову вимагатиме код.
-    if (!hash) {
-      const { getTenantId } = require('../lib/tenant');
-      return res.json({ ok: true, token: newSession(getTenantId()), open: true });
+    if (!requirePin) {
+      // Режим Босса: без PIN. Але якщо власник ВСЕ Ж задав PIN — поважаємо його й вимагаємо код.
+      if (!hash) return res.json({ ok: true, token: newSession(getTenantId()), open: true });
+    } else if (!hash) {
+      // Перемикач увімкнено, але PIN ще не встановлено → вхід закрито до встановлення власником.
+      return res.status(409).json({ error: 'pin-setup-required',
+        message: 'Увімкнено вхід за PIN, але код ще не встановлено. Власник має задати PIN.' });
     }
     if (sha(String(req.body?.pin || '')) !== hash) return res.status(401).json({ error: 'bad-pin' });
-    const { getTenantId } = require('../lib/tenant');
     res.json({ ok: true, token: newSession(getTenantId()) });
   } catch (e) { console.error('[paydesk:login]', e.message); res.status(500).json({ error: 'login-failed' }); }
 });

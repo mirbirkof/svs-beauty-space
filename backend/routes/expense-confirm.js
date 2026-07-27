@@ -6,6 +6,8 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { COMMISSION_EXPR } = require('../lib/payroll-base');
+// 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
+const { payrollEligibleExpr } = require('../lib/settlement');
 
 const router = express.Router();
 const pool = getPool();
@@ -54,7 +56,8 @@ router.get('/pending', async (req, res) => {
                    (a.starts_at AT TIME ZONE 'Europe/Kiev')::date day_kyiv
               FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
              WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
-               AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))),
+               AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+               AND ${payrollEligibleExpr('a')}),
           rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full,
                          COUNT(DISTINCT day_kyiv) work_days FROM da GROUP BY master_id)
           SELECT DISTINCT ON (m.id) m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,

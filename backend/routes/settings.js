@@ -40,6 +40,9 @@ const ALLOWED = {
   payment_methods: (v) => isObj(v),
   // Робочий час салону за замовчуванням (графік по днях тижня)
   working_hours: (v) => isObj(v),
+  // Каса-екран: вимагати PIN на вході (SaaS 27.07, дефолт false — у Босса вимкнено).
+  // true → екран каси відкривається лише за PIN; false → відкритий (як зараз у Босса).
+  paydesk_require_pin: (v) => typeof v === 'boolean',
 };
 
 router.use(requirePerm()); // будь-який авторизований може читати

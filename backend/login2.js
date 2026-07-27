@@ -1,0 +1,33 @@
+const {chromium} = require('playwright');
+const fs = require('fs');
+const PASS = (fs.readFileSync('/home/client/workspace/own-engine/.env','utf8').match(/^JRV61116GMAILCOM=(.*)$/m)||[])[1];
+const MAIL = 'Jrv61116@gmail.com';
+(async function(){
+  const b = await chromium.launch({args:['--no-sandbox']});
+  const ctx = await b.newContext({viewport:{width:1280,height:900},
+    userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'});
+  const p = await ctx.newPage();
+  await p.goto('https://davinci.ai/app/home', {waitUntil:'domcontentloaded', timeout:60000});
+  await p.waitForTimeout(8000);
+  await p.locator('text=Continue with Google').first().click({timeout:12000}).catch(function(){});
+  await p.waitForTimeout(10000);
+  const g = ctx.pages()[ctx.pages().length-1];
+  await g.waitForSelector('input[type=email]', {timeout:25000}).catch(function(){});
+  await g.click('input[type=email]').catch(function(){});
+  await g.keyboard.type(MAIL, {delay:80});
+  await g.waitForTimeout(1500);
+  await g.keyboard.press('Enter');
+  await g.waitForTimeout(9000);
+  console.log('після пошти URL:', g.url().slice(0,70));
+  await g.waitForSelector('input[type=password]', {timeout:25000}).catch(function(){ console.log('поля пароля нема'); });
+  await g.click('input[type=password]').catch(function(){});
+  await g.keyboard.type(PASS, {delay:80});
+  await g.waitForTimeout(1200);
+  await g.keyboard.press('Enter');
+  await g.waitForTimeout(14000);
+  console.log('фінальний URL:', g.url().slice(0,80));
+  console.log('текст:', (await g.locator('body').innerText().catch(function(){return '';})).replace(/\s+/g,' ').slice(0,220));
+  await g.screenshot({path:'/tmp/login2.png'});
+  await ctx.storageState({path:'/tmp/davinci-state.json'});
+  await b.close();
+})();

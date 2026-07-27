@@ -5,6 +5,9 @@
              (оренда/реклама/закупівлі — БЕЗ касової категорії salary, бо її замінює нарахований %).
    Прибуток = виручка − витрати. Працює для будь-якого періоду [from, to]. */
 
+// 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
+const { payrollEligibleExpr } = require('./settlement');
+
 const CAT_LABELS = {
   rent: 'Оренда', salary: 'Зарплата', payroll: 'Зарплата', purchase: 'Закупівлі', purchasing: 'Закупівлі',
   marketing: 'Маркетинг', utilities: 'Комуналка', supplies: 'Витратні', taxes: 'Податки', other: 'Інше',
@@ -65,7 +68,8 @@ async function liveFinance(pool, from, to) {
                 -- спершу рішення Босса, потім правка ОБОХ файлів разом.
            FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
           WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
-            AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
+            AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+            AND ${payrollEligibleExpr('a')})
        SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid')
                 THEN (CASE WHEN ps.percent_base='gross' THEN da.rev_full ELSE da.rev_labor END)*COALESCE(ps.percent,0)/100
                 ELSE 0 END),0)::numeric comm,

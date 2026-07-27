@@ -10,6 +10,8 @@ const { requirePerm } = require('../lib/rbac');
 const { tgSend } = require('./telegram-notify');
 const { liveFinance } = require('../lib/live-finance');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+// 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
+const { payrollEligibleExpr } = require('../lib/settlement');
 
 const router = express.Router();
 const pool = getPool();
@@ -170,7 +172,8 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
                         GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                         COALESCE(a.real_amount,a.price,0) rev_full
                    FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
-                  WHERE a.starts_at BETWEEN $1 AND $2 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL)))
+                  WHERE a.starts_at BETWEEN $1 AND $2 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+                    AND ${payrollEligibleExpr('a')})
           SELECT m.name, MAX(ps.percent) percent, ROUND(SUM(da.rev_labor))::numeric revenue,
                  ROUND(SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full')}))::numeric sum
             FROM da JOIN masters m ON m.id=da.master_id

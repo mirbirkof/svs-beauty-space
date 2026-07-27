@@ -9,7 +9,9 @@ const { requirePerm, logAction } = require('../lib/rbac');
 
 const router = express.Router();
 const pool = getPool();
-router.use(requirePerm('admin.*'));
+// Було requirePerm('admin.*') (є лише у власника) — адмін не міг працювати з тегами клієнтів,
+// хоча з клієнтами працює. Теги = клієнтська функція → clients.write (той самий клас бага, Босс 20.07).
+router.use(requirePerm('clients.write'));
 
 function slugify(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9а-яёіїєґ]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80);

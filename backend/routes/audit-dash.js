@@ -6,9 +6,12 @@ const express = require('express');
 const router = express.Router();
 
 let SNAP = { ts: null, note: 'ждём первый снимок с рабочей машины…' };
-const TOKEN = process.env.AUDIT_DASH_TOKEN || 'jarvis-audit-2026';
+// 27.07 (SaaS-аудит): убран хардкод-дефолт токена (лежал в гите → любой мог дефейснуть
+// публичную страницу). Теперь fail-closed: нет AUDIT_DASH_TOKEN в env → push запрещён вовсе.
+const TOKEN = process.env.AUDIT_DASH_TOKEN || null;
 
 router.post('/push', express.json({ limit: '2mb' }), (req, res) => {
+  if (!TOKEN) return res.status(503).json({ ok: false, error: 'audit-dash disabled: no token configured' });
   if ((req.headers['x-audit-token'] || '') !== TOKEN) return res.status(403).json({ ok: false });
   SNAP = req.body || {};
   SNAP.ts = new Date().toISOString();

@@ -478,11 +478,49 @@ async function sendPayLinkToClient(orderId, pageUrl) {
   return { ok: true };
 }
 
+/* ── Хто має право чіпати оплату конкретного замовлення (SaaS-фікс 27.07) ──
+   Раніше /invoice і /status були ВІДКРИТІ: будь-хто перебором order_id читав статуси
+   оплат салону і міг розсилати pay-посилання його клієнтам. Навісити staff-права не можна —
+   ці ендпоінти дьоргає КЛІЄНТСЬКИЙ кабінет (cabinet.html), клієнт платить за своє замовлення.
+   Тому перевіряємо ВОЛОДІННЯ, а не роль:
+     • клієнт із валідною сесією кабінету → тільки СВОЄ замовлення (orders.client_id);
+     • співробітник із правом фінансів/записів → будь-яке замовлення свого салону;
+     • без жодного доказу → 401.
+   RLS зверху вже обмежує вибірку своїм тенантом — це другий шар, не заміна. */
+async function assertOrderAccess(req, orderId) {
+  // 1) Клієнт кабінету: Bearer-сесія → замовлення має належати саме йому
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (token) {
+      const sha = require('crypto').createHash('sha256').update(String(token)).digest('hex');
+      const r = await getPool().query(
+        `SELECT o.id FROM sessions s
+           JOIN orders o ON o.client_id = s.client_id
+          WHERE (s.token = $1 OR s.token = $2) AND s.expires_at > NOW() AND o.id = $3 LIMIT 1`,
+        [sha, token, orderId]);
+      if (r.rowCount) return true;
+    }
+  } catch (_) { /* не падаємо — нижче ще перевірка персоналу */ }
+  // 2) Співробітник салону з правом на фінанси/записи
+  try {
+    const { resolveUserByToken, hasPermission } = require('../lib/rbac');
+    const auth = req.headers.authorization || '';
+    const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    const user = await resolveUserByToken(bearer || req.headers['x-admin-token']);
+    if (user && (hasPermission(user.permissions, '*')
+      || hasPermission(user.permissions, 'finance.read')
+      || hasPermission(user.permissions, 'booking.write'))) return true;
+  } catch (_) {}
+  return false;
+}
+
 // ── HTTP: создать инвойс ──
 router.post('/invoice', async (req, res) => {
   try {
     const orderId = parseInt(req.body?.order_id, 10);
     if (!orderId) return res.status(400).json({ error: 'order-id-required' });
+    if (!(await assertOrderAccess(req, orderId))) return res.status(401).json({ error: 'unauthorized' });
     const inv = await createInvoiceForOrder(orderId);
     sendPayLinkToClient(orderId, inv.pageUrl).catch(() => {});
     res.json({ ok: true, order_id: orderId, invoice_id: inv.invoiceId, pay_url: inv.pageUrl, reused: !!inv.reused });
@@ -520,6 +558,8 @@ router.get('/status/:orderId', async (req, res) => {
     const pool = getPool();
     const orderId = parseInt(req.params.orderId, 10);
     if (!orderId) return res.status(400).json({ error: 'bad-id' });
+    // Той самий захист володіння, що і в /invoice: статус оплати — не публічні дані.
+    if (!(await assertOrderAccess(req, orderId))) return res.status(401).json({ error: 'unauthorized' });
     const r = await pool.query(
       `SELECT invoice_id, page_url, status, amount, updated_at FROM payments
        WHERE order_id = $1 AND provider = 'mono' ORDER BY id DESC LIMIT 1`,

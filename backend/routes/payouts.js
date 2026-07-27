@@ -23,6 +23,11 @@ const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { MATLINES_CTE } = require('../lib/payroll-base');
+// 27.07 (SaaS-аудит): ведомость выплат — ЕДИНСТВЕННОЕ место расчёта ЗП, где забыли
+// исключить перенесённую историю миграции (source='migrate'). Все остальные пути
+// (live-finance/zones/expense-confirm/reports) фильтр уже применяют. Симметрия с выручкой:
+// у данных мастера миграции кассы нет нигде → и в оплату они попадать не должны.
+const { payrollEligibleExpr } = require('../lib/settlement');
 const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
 const router = express.Router();
 const pool = getPool();
@@ -220,7 +225,8 @@ async function liveEstimate(masterId, from, to) {
         AND a.starts_at >= ($2||' 00:00:00+03')::timestamptz
         AND a.starts_at <  ($3||' 00:00:00+03')::timestamptz
         AND a.starts_at <= NOW()
-        AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))`,
+        AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+        AND ${payrollEligibleExpr('a')}`,
     [masterId, from, to]))[0];
   const revenue = num(ob.revenue), cnt = ob.cnt || 0;
   const revenueFull = num(ob.revenue_full);

@@ -103,6 +103,18 @@ router.post('/analyze', (req, res) => {
 // ── Імпортери по сутностям ──
 async function importClients(pool, colMap, dataRows, user, ip) {
   const rep = { total: dataRows.length, imported: 0, updated: 0, skipped: 0, errors: [] };
+  // SaaS-фікс 27.07: раніше майстер міграції створював клієнтів БЕЗ перевірки ліміту тарифу
+  // (той самий обхід, що вже закритий у /api/import і в importVisits) → салон на Free/Solo
+  // міг залити необмежену базу через вкладку «клієнти». Той самий clientCap, що в importVisits:
+  // рахуємо ЛИШЕ нових; апдейти існуючих карток ліміт НЕ чіпає.
+  let clientCap = Infinity;
+  try {
+    const planLimit = await require('../lib/plan-limits').getPlanLimit('max_clients');
+    if (planLimit != null && planLimit >= 0) {
+      const cur = (await pool.query(`SELECT COUNT(*)::int n FROM clients WHERE deleted_at IS NULL`)).rows[0]?.n || 0;
+      clientCap = Math.max(0, planLimit - cur);
+    }
+  } catch (_) { /* fail-open */ }
   for (let r = 0; r < dataRows.length; r++) {
     const cells = dataRows[r]; const rec = {};
     colMap.forEach((f, i) => { if (f) rec[f] = (cells[i] != null ? String(cells[i]).trim() : ''); });
@@ -111,9 +123,16 @@ async function importClients(pool, colMap, dataRows, user, ip) {
     if (!phone && !name) { rep.skipped++; continue; }
     try {
       if (!phone) {
+        if (clientCap <= 0) { rep.errors.push({ line: r + 2, error: 'plan-limit: max_clients вичерпано' }); continue; }
         await pool.query(`INSERT INTO clients (phone, name, email, birthday, source, notes) VALUES (NULL,$1,$2,$3,$4,$5)`,
           [name, rec.email || null, M.toDateOrNull(rec.birthday), rec.source || 'migrate', rec.notes || null]);
-        rep.imported++; continue;
+        rep.imported++; clientCap--; continue;
+      }
+      // Ліміт: якщо картки з таким телефоном ще НЕМАЄ (буде новий INSERT) і квота вичерпана — стоп.
+      // Існуюча картка (буде UPDATE) ліміт не витрачає, тому її пропускаємо далі.
+      if (clientCap <= 0) {
+        const ex = await pool.query(`SELECT 1 FROM clients WHERE phone=$1 LIMIT 1`, [phone]);
+        if (!ex.rows[0]) { rep.errors.push({ line: r + 2, error: 'plan-limit: max_clients вичерпано' }); continue; }
       }
       const q = await pool.query(
         `INSERT INTO clients (phone, name, email, birthday, source, notes) VALUES ($1,$2,$3,$4,$5,$6)
@@ -125,7 +144,7 @@ async function importClients(pool, colMap, dataRows, user, ip) {
            updated_at=NOW()
          RETURNING (xmax=0) AS inserted`,
         [phone, name || null, rec.email || null, M.toDateOrNull(rec.birthday), rec.source || 'migrate', rec.notes || null]);
-      if (q.rows[0] && q.rows[0].inserted) rep.imported++; else rep.updated++;
+      if (q.rows[0] && q.rows[0].inserted) { rep.imported++; clientCap--; } else rep.updated++;
     } catch (e) { rep.errors.push({ line: r + 2, error: e.code || e.message }); }
   }
   return rep;
@@ -221,7 +240,7 @@ function parseAnyDate(sRaw) {
 }
 
 async function importVisits(pool, colMap, dataRows, user, ip) {
-  const rep = { total: dataRows.length, imported: 0, updated: 0, skipped: 0, errors: [] };
+  const rep = { total: dataRows.length, imported: 0, updated: 0, skipped: 0, errors: [], dupes_same_day: 0, dupe_samples: [] };
   const now = new Date();
   const batch = `migrate_${now.toISOString().slice(0, 16).replace(/[:T]/g, '-')}`;
   rep.batch = batch;
@@ -309,6 +328,31 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
               AND ends_at   > (($2 || ' ' || $3)::timestamp AT TIME ZONE 'Europe/Kyiv') LIMIT 1`,
           [masterId, dt.date, dt.time, String(durMin)]);
         if (busy.rows[0]) { rep.skipped++; continue; }
+
+        // ТРЕТІЙ заслін (27.07, після інциденту): час у вивантаженні майже ніколи не збігається
+        // з часом у CRM (інша система, інша ТЗ, ручні правки) — перші дві перевірки в'яжуться
+        // до моменту і пропускають ТОЙ САМИЙ візит, зсунутий на години. Підпис візиту, який
+        // переживає зсув: майстер + КАЛЕНДАРНИЙ ДЕНЬ + сума чека. Збіг = візит уже в CRM.
+        // Факт 27.07: з 436 імпортованих 415 були саме такі дублі історії BeautyPro —
+        // 66к грн фантомної виручки за липень, ЗП-сторож орав два дні.
+        // Ціна помилки асиметрична: пропустити дубль = криві гроші й ЗП; зайвий скіп =
+        // рядок у звіті «схоже на дубль», який власник бачить і може донести руками.
+        if (price != null) {
+          const sameDay = await pool.query(
+            `SELECT 1 FROM appointments
+              WHERE master_id = $1 AND status <> 'cancelled'
+                AND (starts_at AT TIME ZONE 'Europe/Kyiv')::date = $2::date
+                AND ABS(COALESCE(real_amount, price, 0) - $3::numeric) < 0.01 LIMIT 1`,
+            [masterId, dt.date, price]);
+          if (sameDay.rows[0]) {
+            rep.skipped++;
+            rep.dupes_same_day = (rep.dupes_same_day || 0) + 1;
+            if (rep.dupe_samples.length < 20) {
+              rep.dupe_samples.push(`${dt.date} · ${rec.master || '?'} · ${price}грн · ${clientName || rec.phone || '?'}`);
+            }
+            continue;
+          }
+        }
       }
 
       await pool.query(
