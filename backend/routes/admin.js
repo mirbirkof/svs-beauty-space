@@ -1033,6 +1033,10 @@ router.get('/masters', async (req, res) => {
 });
 
 router.post('/masters',
+  // Тарифікація по «кріслах» (27.07): майстер, що надає послуги, займає крісло плану.
+  // Адмін/ресепшн — ні (для них окремий max_employees). Деталі: routes/employees.js SEATS_SQL.
+  require('../lib/plan-limits').enforcePlanLimit('max_masters',
+    "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true AND COALESCE(provides_services,true)=true"),
   require('../lib/plan-limits').enforcePlanLimit('max_employees',
     "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
   async (req, res) => {

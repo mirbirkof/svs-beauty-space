@@ -160,7 +160,16 @@ const employeeSchema = (required) => ({
   branch_id: t.id({ required: false }),
 });
 
+/* ТАРИФІКАЦІЯ ПО «КРІСЛАХ» (рішення 27.07, SaaS-аудит).
+   max_masters рахує ЛИШЕ тих, хто НАДАЄ ПОСЛУГИ (provides_services) — тобто заробляє гроші.
+   Адміністратор/ресепшн/бухгалтер крісло НЕ займають: для них окремий, значно щедріший
+   ліміт max_employees. Це чесніше за конкурентів (там часто рахують усіх працівників) і
+   водночас не роздає продукт задарма: салон на 8 крісел платить за 8 крісел.
+   Ліміт блокує лише СТВОРЕННЯ понад план — наявні майстри працюють далі (салон не локається). */
+const SEATS_SQL = "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true AND COALESCE(provides_services,true)=true";
+
 router.post('/', validateBody(employeeSchema(true)),
+  require('../lib/plan-limits').enforcePlanLimit('max_masters', SEATS_SQL),
   require('../lib/plan-limits').enforcePlanLimit('max_employees',
     "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
   async (req, res) => {
