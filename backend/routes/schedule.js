@@ -1632,6 +1632,22 @@ router.post('/appointments', async (req, res) => {
       cid = nc.rows[0].id;
     }
 
+    // Аудит 28.07 (касса завышена): подвійний клік адміна створював запис-БЛИЗНЮК
+    // (той самий майстер/час/послуга/клієнт, створені за 2-6 секунд), обидва потім
+    // оплачувались → каса рахувала одну стрижку двічі (+400 за 28.07, те саме 18.07).
+    // Захист перетинів це пропускав: у майстра max_parallel>1 — паралельний слот легальний.
+    // Точний близнюк, створений < 2 хв тому → ідемпотентно повертаємо існуючий запис.
+    {
+      const twin = await pool.query(
+        `SELECT id FROM appointments
+          WHERE master_id=$1 AND starts_at=$2::timestamptz AND status NOT IN ('cancelled','noshow')
+            AND COALESCE(service_id,0)=COALESCE($3::int,0) AND COALESCE(client_id,0)=COALESCE($4::int,0)
+            AND created_at > NOW() - INTERVAL '2 minutes'
+          ORDER BY id LIMIT 1`,
+        [Number(master_id), startDate.toISOString(), Number(service_id) || null, cid]);
+      if (twin.rows[0]) return res.json({ ok: true, id: twin.rows[0].id, deduped: true });
+    }
+
     // Атомарна вставка: INSERT лише якщо слот НЕ перетинається (гейт у тому ж запиті).
     // findOverlap вище дає ранню відповідь для UX, але між ним і INSERT є вікно гонки
     // (подвійний клік оператора / два оператори). WHERE NOT EXISTS закриває його в одному
