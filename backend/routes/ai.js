@@ -9,6 +9,12 @@ const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const llm = require('../lib/llm');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
+const { notArtifact } = require('../lib/appt-quality');
+const { getServiceCadence } = require('../lib/service-cadence');
+
+// Аудит 28.07: артефакты синка BeautyPro/Букон (bp_deleted/not_in_bukon/phantom_dup)
+// раздували отмены больше чем вдвое (111 «отмен» при 50 реальных). Фильтр — везде.
+const CLEAN = notArtifact('a');
 
 const router = express.Router();
 const pool = getPool();
@@ -27,7 +33,8 @@ const WEEKDAYS = ['Неділя','Понеділок','Вівторок','Сер
 async function buildSnapshot() {
   const q = (sql, params=[]) => pool.query(sql, params).then(r=>r.rows).catch(()=>[]);
   const [
-    rev30, revByWeekday, masters, churn, lowStock, newClients, monthSales, prevMonthSales, cancelStats
+    rev30, revByWeekday, masters, churn, lowStock, newClients, monthSales, prevMonthSales, cancelStats,
+    rebookedCancels, svcCadence
   ] = await Promise.all([
     // выручка по дням за 30 дней (услуги+товары из кассы)
     q(`SELECT to_char(created_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS d,
@@ -54,8 +61,8 @@ async function buildSnapshot() {
                         WHERE co.master_id=m.id AND co.type='in'
                           AND co.category IN ('sale_service','sale_product')
                           AND co.created_at >= NOW() - INTERVAL '30 days'),0)::numeric AS revenue,
-              COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
-              COUNT(a.id) FILTER (WHERE a.status IN ('cancelled','noshow') AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS lost
+              COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND ${CLEAN})::int AS done,
+              COUNT(a.id) FILTER (WHERE a.status IN ('cancelled','noshow') AND ${CLEAN})::int AS lost
        FROM masters m LEFT JOIN appointments a
          ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '30 days'
        WHERE m.active=true AND COALESCE(m.provides_services,true)=true
@@ -68,8 +75,9 @@ async function buildSnapshot() {
     // новые клиенты за 30 дней = те, у кого ПЕРВЫЙ визит в последние 30 дней.
     // НЕ по clients.created_at — там у 5000+ записей дата массового импорта из Букона (13.06), не реальная регистрация.
     q(`SELECT COUNT(*)::int AS n FROM (
-         SELECT client_id FROM appointments WHERE status NOT IN ('cancelled','noshow')
-         GROUP BY client_id HAVING MIN(starts_at) >= NOW() - INTERVAL '30 days'
+         SELECT a.client_id FROM appointments a
+         WHERE a.status NOT IN ('cancelled','noshow') AND ${CLEAN}
+         GROUP BY a.client_id HAVING MIN(a.starts_at) >= NOW() - INTERVAL '30 days'
        ) t`),
     // продажи текущий мес
     q(`SELECT COALESCE(SUM(amount),0)::numeric AS total, COUNT(*)::int AS cnt
@@ -80,11 +88,19 @@ async function buildSnapshot() {
        FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
          AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') - INTERVAL '1 month'
          AND created_at <  date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev') - INTERVAL '1 month' + (NOW() - date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev'))`),
-    // отмены за 30 дней
-    q(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
-              COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS cancelled,
-              COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'')<>'bp_deleted')::int AS noshow
-       FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'`),
+    // отмены за 30 дней (только реальные записи, без артефактов синка)
+    q(`SELECT COUNT(*) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
+              COUNT(*) FILTER (WHERE a.status='cancelled')::int AS cancelled,
+              COUNT(*) FILTER (WHERE a.status='noshow')::int AS noshow
+       FROM appointments a WHERE a.starts_at >= NOW() - INTERVAL '30 days' AND ${CLEAN}`),
+    // из отменённых — сколько ПЕРЕНОСОВ (у клиента есть живая запись ±3 дня): это не потеря выручки
+    q(`SELECT COUNT(*)::int AS n FROM appointments a
+       WHERE a.starts_at >= NOW() - INTERVAL '30 days' AND a.status='cancelled' AND ${CLEAN}
+         AND EXISTS (SELECT 1 FROM appointments b
+           WHERE b.client_id=a.client_id AND b.id<>a.id AND b.status NOT IN ('cancelled','noshow')
+             AND ABS(EXTRACT(EPOCH FROM (b.starts_at - a.starts_at))) < 3*86400)`),
+    // фактический ритм возврата по услугам (ногти/волосы/ресницы — разные циклы)
+    getServiceCadence(pool, 15).catch(() => []),
   ]);
 
   // Среднее за ОДИН такой день недели (не сумма за 90 дней — иначе цифры выглядят дикими и читаются как фейк).
@@ -112,7 +128,9 @@ async function buildSnapshot() {
       churn_clients: 'клієнти, що НЕ поверталися довше за 2× свого звичного інтервалу (мін. 90 днів). Це НЕ "за 30 днів" — вони зникли місяці тому',
       new_clients_30d: 'клієнти, чий ПЕРШИЙ візит був за останні 30 днів',
       month_vs_prev: 'цей місяць проти тієї самої частини минулого',
-      appointments_30d: 'останні 30 днів',
+      appointments_30d: 'останні 30 днів. cancelled_with_rebook — скасування-ПЕРЕНОСИ (клієнт має живий запис ±3 дні, виручка НЕ втрачена). Реальні втрати = cancelled - cancelled_with_rebook + noshow',
+      masters_note: 'у майстрів done/cancelled_visits — це ЗАПИСИ (візити), НЕ клієнти. НЕ називай їх "втраченими клієнтами"',
+      service_cadence: 'фактичний ритм повернення по услугах: median_days — типовий цикл, overdue_threshold_days — поріг "клієнт випав з ритму". У різних напрямків (нігті/волосся/вії) цикли РІЗНІ — порівнюй кожну послугу з ЇЇ порогом',
     },
     period: 'різні метрики — різні періоди, див. metrics_periods',
     revenue_30d_total: totalRev30,
@@ -121,7 +139,7 @@ async function buildSnapshot() {
       note: 'avg_revenue_per_day — середня виручка за ОДИН такий день тижня (грн). НЕ сумувати по днях тижня — це вже середні значення.',
       days: wd,
     },
-    masters: masters.map(m => ({ name: m.name, revenue: Math.round(Number(m.revenue)), done: m.done, lost: m.lost })),
+    masters: masters.map(m => ({ name: m.name, revenue: Math.round(Number(m.revenue)), done: m.done, cancelled_visits: m.lost })),
     churn_clients: churn[0]?.n || 0,
     new_clients_30d: newClients[0]?.n || 0,
     low_stock_positions: lowStock[0]?.n || 0,
@@ -129,7 +147,11 @@ async function buildSnapshot() {
       this_month: Math.round(Number(monthSales[0]?.total || 0)),
       prev_month_same_period: Math.round(Number(prevMonthSales[0]?.total || 0)),
     },
-    appointments_30d: cancelStats[0] || { done: 0, cancelled: 0, noshow: 0 },
+    appointments_30d: {
+      ...(cancelStats[0] || { done: 0, cancelled: 0, noshow: 0 }),
+      cancelled_with_rebook: rebookedCancels[0]?.n || 0,
+    },
+    service_cadence: svcCadence,
   };
 }
 
@@ -144,7 +166,7 @@ async function drillData(topic) {
       // База відтоку (cadence-aware): ≥2 візити І не повертався довше за 2× свого звичного інтервалу
       // (але не менше 90 днів). Клієнт на циклі "раз на 2 міс" не вважається відтоком на 95-й день.
       const base = CHURNED_CTE;
-      const [rows, byMaster, byService, agg] = await Promise.all([
+      const [rows, byMaster, byService, agg, cadence] = await Promise.all([
         q(`${base}
            SELECT ch.id, ch.name, ch.phone, ch.spent, ch.visits,
                   (NOW()::date - ch.last_visit::date) AS days_since,
@@ -167,6 +189,7 @@ async function drillData(topic) {
            GROUP BY s.name ORDER BY lost_clients DESC LIMIT 8`),
         q(`${base} SELECT COUNT(*)::int AS n, COALESCE(SUM(ch.spent),0)::numeric AS potential,
                           ROUND(AVG(NOW()::date - ch.last_visit::date))::int AS avg_days FROM churned ch`),
+        getServiceCadence(pool, 12).catch(() => []),
       ]);
       return {
         title: 'Відтік клієнтів',
@@ -176,6 +199,8 @@ async function drillData(topic) {
           lost_revenue_potential: Math.round(Number(agg[0]?.potential || 0)),
           avg_days_since_visit: agg[0]?.avg_days || 0,
           by_master: byMaster, by_service: byService,
+          service_cadence: cadence,
+          cadence_note: 'Фактичний ритм повернення по услугах (median_days). У нігтьових, перукарських і вієвих послуг цикли РІЗНІ — оцінюй "зникнення" клієнта відносно ритму ЙОГО послуги, а не загального порогу.',
         },
         rows: rows.map(r => ({ name: r.name, phone: r.phone, spent: Math.round(Number(r.spent||0)),
           visits: r.visits, days_since: r.days_since, last_service: r.last_service, last_master: r.last_master })),
@@ -184,9 +209,9 @@ async function drillData(topic) {
     }
     case 'masters': {
       const rows = await q(`SELECT m.name,
-          COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS done,
-          COUNT(a.id) FILTER (WHERE a.status='cancelled' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS cancelled,
-          COUNT(a.id) FILTER (WHERE a.status='noshow' AND COALESCE(a.bp_state,'')<>'bp_deleted')::int AS noshow,
+          COUNT(a.id) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW() AND ${CLEAN})::int AS done,
+          COUNT(a.id) FILTER (WHERE a.status='cancelled' AND ${CLEAN})::int AS cancelled,
+          COUNT(a.id) FILTER (WHERE a.status='noshow' AND ${CLEAN})::int AS noshow,
           COALESCE((SELECT SUM(co.amount) FROM cash_operations co
                     WHERE co.master_id=m.id AND co.type='in'
                       AND co.category IN ('sale_service','sale_product')
@@ -244,18 +269,19 @@ async function drillData(topic) {
     case 'new_clients': {
       // "Новий клієнт" = тиждень ПЕРШОГО реального візиту (не дата імпорту в clients).
       const rows = await q(`WITH first_visit AS (
-          SELECT client_id, MIN(starts_at) AS first_at
-          FROM appointments WHERE status NOT IN ('cancelled','noshow')
-          GROUP BY client_id)
+          SELECT a.client_id, MIN(a.starts_at) AS first_at
+          FROM appointments a WHERE a.status NOT IN ('cancelled','noshow') AND ${CLEAN}
+          GROUP BY a.client_id)
         SELECT to_char(date_trunc('week', first_at AT TIME ZONE 'Europe/Kiev'),'YYYY-MM-DD') AS week,
                COUNT(*)::int AS n
         FROM first_visit WHERE first_at >= NOW() - INTERVAL '84 days'
         GROUP BY week ORDER BY week`);
       // Повторюваність: серед тих, чий перший візит у межах 90 днів, скільки мають ≥2 реальні візити.
       const repeat = await q(`WITH v AS (
-          SELECT client_id, MIN(starts_at) AS first_at, COUNT(*)::int AS cnt
-          FROM appointments WHERE status NOT IN ('cancelled','noshow')
-          GROUP BY client_id)
+          SELECT a.client_id, MIN(a.starts_at) AS first_at,
+                 COUNT(DISTINCT (a.starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS cnt
+          FROM appointments a WHERE a.status NOT IN ('cancelled','noshow') AND ${CLEAN}
+          GROUP BY a.client_id)
         SELECT COUNT(*)::int AS n FROM v
         WHERE first_at >= NOW() - INTERVAL '90 days' AND cnt >= 2`);
       return { title: 'Притік нових клієнтів',

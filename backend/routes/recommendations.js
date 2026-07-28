@@ -14,6 +14,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const llm = require('../lib/llm');
+const { SVC_CADENCE_CTE } = require('../lib/service-cadence');
 
 const router = express.Router();
 const pool = getPool();
@@ -130,8 +131,13 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
     //   2) жива синхронізація appointments (status не cancelled/noshow, включно з майбутніми записами).
     // Знімок 24.05 застарілий: клієнт міг повернутися ПІСЛЯ нього → у списку на повернення
     // його бути НЕ повинно. Тому фільтр і days_since рахуємо від eff_last (реальний останній контакт).
+    // #Аудит 28.07 (Босс): у ВСІХ послуг rebook_interval_days = NULL → smart-режим фактично
+    // працював за одним загальним порогом. Тепер поріг = задане значення АБО фактичний ритм
+    // послуги з даних (svc_cadence.threshold_days: 75-й перцентиль / 1.5×медіана повернень).
+    // Нігті ~3 тижні, перукарські ~місяць, вії ~1-4 тижні — у кожної послуги СВІЙ поріг.
     const rows = await pool.query(
-      `SELECT * FROM (
+      `WITH ${SVC_CADENCE_CTE}
+       SELECT * FROM (
          SELECT c.id, c.name, c.phone, c.total_spent,
                 GREATEST(c.last_visit_at::date, COALESCE(lv.live_last, c.last_visit_at::date)) AS last_visit,
                 c.last_visit_at::date AS snapshot_visit,
@@ -143,8 +149,9 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
                 (SELECT COALESCE(NULLIF(a3.services_text,''), s.name)
                    FROM appointments a3 LEFT JOIN services s ON s.id=a3.service_id
                   WHERE a3.client_id=c.id AND a3.status NOT IN ('cancelled','noshow') AND a3.starts_at <= NOW() ORDER BY a3.starts_at DESC LIMIT 1) AS last_service,
-                (SELECT s4.rebook_interval_days
+                (SELECT COALESCE(s4.rebook_interval_days, sc.threshold_days)
                    FROM appointments a4 LEFT JOIN services s4 ON s4.id=a4.service_id
+                   LEFT JOIN svc_cadence sc ON sc.service_id=a4.service_id
                   WHERE a4.client_id=c.id AND a4.status NOT IN ('cancelled','noshow') AND a4.starts_at <= NOW() ORDER BY a4.starts_at DESC LIMIT 1) AS rebook_interval
            FROM clients c
            LEFT JOIN LATERAL (

@@ -47,15 +47,19 @@ async function dailySeries(metric, days = 90) {
               AND created_at >= NOW() - ($1 || ' days')::interval
             GROUP BY 1 ORDER BY 1`;
   } else if (metric === 'appointments') {
+    // Аудит 28.07: раніше рахувались і скасовані, і артефакти синка → фальшиві сплески.
     sql = `SELECT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS d, COUNT(*)::numeric AS v
              FROM appointments
             WHERE starts_at >= NOW() - ($1 || ' days')::interval
+              AND status NOT IN ('cancelled','noshow')
+              AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             GROUP BY 1 ORDER BY 1`;
   } else if (metric === 'noshow') {
     sql = `SELECT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS d,
                   COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::numeric AS v
              FROM appointments
             WHERE starts_at >= NOW() - ($1 || ' days')::interval
+              AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             GROUP BY 1 ORDER BY 1`;
   } else if (metric === 'avg_check') {
     sql = `SELECT to_char(created_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS d,
@@ -87,12 +91,17 @@ async function dailySeries(metric, days = 90) {
 async function computeChurn(limit = 100) {
   const rows = (await pool.query(
     `WITH visits AS (
+        -- Аудит 28.07: раніше рахувались і майбутні 'booked', і скасовані рядки, і
+        -- артефакти синка → ризик відтоку занижувався. Візит = унікальний МИНУЛИЙ день.
         SELECT client_id,
-               COUNT(*) FILTER (WHERE status IN ('done','confirmed','booked')) AS visit_count,
-               MIN(starts_at) AS first_visit,
-               MAX(starts_at) AS last_visit
+               COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)
+                 FILTER (WHERE starts_at <= NOW()) AS visit_count,
+               MIN(starts_at) FILTER (WHERE starts_at <= NOW()) AS first_visit,
+               MAX(starts_at) FILTER (WHERE starts_at <= NOW()) AS last_visit
           FROM appointments
          WHERE client_id IS NOT NULL
+           AND status NOT IN ('cancelled','noshow')
+           AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
          GROUP BY client_id
       )
       SELECT c.id, c.name, c.phone, c.total_spent, c.loyalty_points,
@@ -217,7 +226,8 @@ async function scanInsights() {
   // 3) No-show рівень
   const ap = (await pool.query(
     `SELECT COUNT(*) FILTER (WHERE status IN ('noshow','cancelled'))::numeric AS bad, COUNT(*)::numeric AS total
-       FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'`)).rows[0];
+       FROM appointments WHERE starts_at >= NOW() - INTERVAL '30 days'
+         AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')`)).rows[0];
   const total = num(ap.total), bad = num(ap.bad);
   if (total >= 20) {
     const rate = bad / total;
