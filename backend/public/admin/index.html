@@ -10576,7 +10576,7 @@ async function openCreate(masterId, dateStr, minutes) {
         <button class="btn btn-outline" style="color:#6E7191" onclick="closeAppt();openBlockModal(${masterId||'null'},'${hh}:${mm}')" title="Зайняти цей час, щоб ніхто не записався"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">lock</span> Зайняти час</button>
         <div style="display:flex;gap:8px">
           <button class="btn btn-outline" onclick="closeAppt()">Скасувати</button>
-          <button class="btn btn-primary" onclick="saveCreate()">Записати</button>
+          <button class="btn btn-primary" data-create-btn onclick="saveCreate()">Записати</button>
         </div>
       </div>
       <div id="ncMsg" style="font-size:13px"></div>
@@ -10657,6 +10657,14 @@ function ncPickClient(id, name, phone) {
   document.getElementById('ncNewPhone').value = '';
 }
 async function saveCreate() {
+  // Аудит 28.07 (каса завищена на дублях): guard подвійного кліку тут БУВ ВІДСУТНІЙ,
+  // хоча на оплаті стоїть з аудиту v8. Два швидкі натиски «Записати» → два POST →
+  // два записи-близнюки → обидва оплачувались → каса рахувала візит двічі.
+  if (window._createBusy) return;
+  window._createBusy = true;
+  const _btn = document.querySelector('[data-create-btn]');
+  if (_btn) _btn.disabled = true;
+  const _createRelease = () => { window._createBusy = false; if (_btn) _btn.disabled = false; };
   const msg = document.getElementById('ncMsg');
   // #104: усі обрані послуги (може бути кілька рядків)
   const svcIds = Array.from(document.querySelectorAll('#ncSvcRows .ncSvcSel')).map(s=>Number(s.value)).filter(Boolean);
@@ -10665,11 +10673,11 @@ async function saveCreate() {
   const note = document.getElementById('ncNote').value;
   const newName = document.getElementById('ncNewName').value.trim();
   const newPhone = document.getElementById('ncNewPhone').value.trim();
-  if (!svc || !time) { msg.style.color='#ef4444'; msg.textContent='Оберіть послугу і час'; return; }
-  if (!_createCtx.clientId && !newName && !newPhone) { msg.style.color='#ef4444'; msg.textContent='Оберіть клієнта або введіть імʼя/телефон'; return; }
+  if (!svc || !time) { msg.style.color='#ef4444'; msg.textContent='Оберіть послугу і час'; _createRelease(); return; }
+  if (!_createCtx.clientId && !newName && !newPhone) { msg.style.color='#ef4444'; msg.textContent='Оберіть клієнта або введіть імʼя/телефон'; _createRelease(); return; }
   const masterSel = document.getElementById('ncMaster');
   const masterId = _createCtx.masterId || (masterSel ? Number(masterSel.value) : null);
-  if (!masterId) { msg.style.color='#ef4444'; msg.textContent='Оберіть майстра'; return; }
+  if (!masterId) { msg.style.color='#ef4444'; msg.textContent='Оберіть майстра'; _createRelease(); return; }
   // ISO з зоною браузера (Київ) — щоб сервер у UTC не зсував час запису.
   const starts_at = new Date(`${_createCtx.dateStr}T${time}:00`).toISOString();
   msg.style.color='var(--text-secondary)'; msg.textContent='Збереження…';
@@ -10703,6 +10711,7 @@ async function saveCreate() {
     }
     else { msg.style.color='#ef4444'; msg.textContent = r.message || r.error || 'Помилка'; }
   } catch { msg.style.color='#ef4444'; msg.textContent='Помилка мережі'; }
+  finally { _createRelease(); }
 }
 
 // Швидка зміна статусу одним кліком (підтверджено / виконано / не прийшов / скасовано)

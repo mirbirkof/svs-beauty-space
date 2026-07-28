@@ -1680,8 +1680,19 @@ router.post('/appointments', async (req, res) => {
       await _apptClient.query('COMMIT');
     } catch (e) {
       await _apptClient.query('ROLLBACK').catch(() => {});
+      // Міграція 285: унікальний індекс uq_appt_no_exact_dup фізично забороняє запис-близнюк.
+      // Це не помилка для адміна — повертаємо вже існуючий запис (ідемпотентно), як при дедупі.
+      if (e && e.code === '23505') {
+        const ex = await pool.query(
+          `SELECT id FROM appointments
+            WHERE master_id=$1 AND starts_at=$2::timestamptz AND status NOT IN ('cancelled','noshow')
+              AND COALESCE(service_id,0)=COALESCE($3::int,0) AND COALESCE(client_id,0)=COALESCE($4::int,0)
+            ORDER BY id LIMIT 1`,
+          [Number(master_id), startDate.toISOString(), Number(service_id) || null, cid]).catch(() => ({ rows: [] }));
+        if (ex.rows[0]) { _apptClient.release(); return res.json({ ok: true, id: ex.rows[0].id, deduped: true }); }
+      }
       throw e;
-    } finally { _apptClient.release(); }
+    } finally { try { _apptClient.release(); } catch {} }
     if (!r.rows[0]) {
       return res.status(409).json({ error: 'slot-busy', can_force: true, message: 'У майстра вже є запис на цей час (щойно зайняли)' });
     }
