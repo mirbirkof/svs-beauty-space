@@ -1128,4 +1128,63 @@ router.get('/top-masters', requirePerm('reports.finance'), cacheReport(), async 
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+/* GET /api/reports/duplicates?days=60 — детектор задвоенной выручки.
+   Аудит 28.07: касса завышалась записями-близнецами (двойной клик админа). Механизм
+   закрыт индексом uq_appt_no_exact_dup (миграция 285), но нужен ПОСТОЯННЫЙ контроль:
+   дубли бывают и «не точные» (тот же клиент и услуга в один день, но другое время —
+   админ не нашёл запись и создал заново). Такое база запретить не может: это может быть
+   и настоящий повторный визит. Поэтому — отчёт для человека, а не блокировка.
+   Класс A (exact)   — тот же мастер/время/клиент/услуга: почти наверняка дубль.
+   Класс B (same_day) — тот же клиент/услуга в один день, разное время: проверить. */
+router.get('/duplicates', requirePerm('reports.finance'), async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 60, 1), 365);
+    const paidSum = `(SELECT COALESCE(SUM(o.amount),0)::numeric FROM cash_operations o
+                       WHERE o.ref_type='appointment' AND o.ref_id=a.id AND o.type='in')`;
+    const base = `FROM appointments a LEFT JOIN clients c ON c.id=a.client_id
+       WHERE a.status NOT IN ('cancelled','noshow') AND a.client_id IS NOT NULL AND a.service_id IS NOT NULL
+         AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+         AND a.starts_at >= NOW() - ($1 || ' days')::interval`;
+    const rows = await pool.query(
+      `WITH x AS (
+         SELECT a.id, a.master_id, a.starts_at, a.client_id, a.service_id,
+                COALESCE(c.name, a.client_name, '?') AS client,
+                ${paidSum} AS paid ${base}
+       ),
+       exact AS (
+         SELECT 'exact' AS kind, master_id, client, service_id,
+                to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS day,
+                array_agg(id ORDER BY id) AS ids, array_agg(paid ORDER BY id) AS paid_each,
+                SUM(paid) - MAX(paid) AS excess
+         FROM x GROUP BY master_id, client, service_id, starts_at, day HAVING COUNT(*) > 1
+       ),
+       same_day AS (
+         SELECT 'same_day' AS kind, master_id, client, service_id,
+                to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD') AS day,
+                array_agg(id ORDER BY id) AS ids, array_agg(paid ORDER BY id) AS paid_each,
+                SUM(paid) - MAX(paid) AS excess
+         FROM x GROUP BY master_id, client, service_id, day HAVING COUNT(*) > 1
+       )
+       SELECT * FROM exact
+       UNION ALL
+       SELECT sd.* FROM same_day sd
+        WHERE NOT EXISTS (SELECT 1 FROM exact e WHERE e.ids && sd.ids)
+       ORDER BY day DESC`, [days]).then(r => r.rows).catch(() => []);
+
+    const items = rows.map(r => ({
+      kind: r.kind, day: r.day, client: r.client, master_id: r.master_id,
+      appointment_ids: r.ids, paid_each: (r.paid_each || []).map(Number),
+      excess_amount: Math.round(Number(r.excess || 0) * 100) / 100,
+      hint: r.kind === 'exact'
+        ? 'Точний близнюк — той самий клієнт, послуга і хвилина. Майже напевно подвійний клік.'
+        : 'Той самий клієнт і послуга в один день у різний час — перевірити, чи це справді два візити.',
+    }));
+    res.json({
+      ok: true, days,
+      total_excess: Math.round(items.reduce((s, i) => s + i.excess_amount, 0) * 100) / 100,
+      count: items.length, items,
+    });
+  } catch (e) { console.error('[reports:duplicates]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 module.exports = router;
