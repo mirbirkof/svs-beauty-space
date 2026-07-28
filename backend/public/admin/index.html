@@ -7448,6 +7448,7 @@ function renderForecast(d){
     html += `<div style="margin-top:16px">
       <div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Які послуги замовлятимуть найчастіше (наступні ${d.horizon} дн.)</div>
       <table class="tbl" style="font-size:13px"><thead><tr><th>Послуга</th><th style="text-align:center">Було за 60 днів</th><th style="text-align:center">Очікуємо разів</th><th style="text-align:right">Принесе грошей</th></tr></thead><tbody>${rows}</tbody></table>
+      ${d._demand.unnamed ? `<div style="margin-top:8px;font-size:12px;color:var(--text-secondary);background:var(--bg-soft,#f8f9fb);border-radius:6px;padding:8px 10px">Окремо: ще <b>${d._demand.unnamed.last_60d}</b> візитів за 60 днів (${_fcMoney(d._demand.unnamed.forecast_revenue)} очікувано) перенесені зі старої програми <b>без назви послуги</b> — у рейтинг не входять, бо невідомо, що саме робили.</div>` : ''}
     </div>`;
   }
   // AI-пояснення (якщо є)

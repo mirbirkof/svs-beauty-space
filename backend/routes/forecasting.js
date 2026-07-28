@@ -151,12 +151,34 @@ router.get('/revenue', requirePerm('reports.finance'), async (req, res) => {
     if (series.length < 14) {
       return res.json({ ok: true, enough_data: false, message: 'Замало історії для прогнозу (потрібно ≥2 тижні даних).', history_days: series.length });
     }
-    const fc = forecast(series, horizon);
-    // факт за минулі дні для overlay (останні 30)
+    // Аудит 28.07 (Босс: «перевір період»): ряд історії будується ДО вчора, тому перший день
+    // прогнозу випадав на СЬОГОДНІ — день, який уже майже прожитий і по якому є факт у касі.
+    // Виходило «прогноз на 30 днів» = сьогодні + 29 майбутніх, а сьогоднішня цифра
+    // суперечила касі. Тепер прогноз стартує ЗАВТРА, а сьогодні показуємо фактом.
+    const fcRaw = forecast(series, horizon + 1);
+    const todayKyiv = ymdKyiv(new Date());
+    const daily = fcRaw.daily.filter(d => d.date > todayKyiv).slice(0, horizon);
+    const sum = (k) => daily.reduce((s, d) => s + d[k], 0);
+    const fc = {
+      ...fcRaw, horizon, daily,
+      total: sum('point'), total_lo80: sum('lo80'), total_hi80: sum('hi80'),
+      total_lo95: sum('lo95'), total_hi95: sum('hi95'),
+    };
+    // Факт за минулі дні для графіка + СЬОГОДНІШНЯ каса (щоб цифра збігалась з дашбордом)
     const recent = series.slice(-30).map(p => ({ date: p.date, value: p.value }));
+    const todaySum = await pool.query(
+      `SELECT COALESCE(SUM(amount),0)::numeric v FROM cash_operations
+        WHERE type='in' AND category IN ('sale_service','sale_product')
+          AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date`
+    ).then(r => Math.round(Number(r.rows[0]?.v || 0))).catch(() => null);
+    if (todaySum !== null && !recent.some(r => r.date === todayKyiv)) {
+      recent.push({ date: todayKyiv, value: todaySum, partial: true });
+    }
     const payload = {
       ok: true, enough_data: true, generated_at: new Date().toISOString(),
       ...fc, recent_actual: recent,
+      period: { from: daily[0]?.date || null, to: daily[daily.length - 1]?.date || null, days: daily.length },
+      today_fact: todaySum,
     };
     if (req.query.explain === '1' && llm.available()) {
       try {
@@ -256,14 +278,23 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
         GROUP BY service ORDER BY cnt DESC LIMIT 15`
     ).then(r => r.rows).catch(() => []);
     const scale = horizon / 60;
-    const out = rows.map(r => ({
+    const map = r => ({
       service: r.service,
       last_60d: r.cnt,
       forecast_next: Math.round(r.cnt * scale),
       avg_price: r.cnt ? Math.round(Number(r.revenue) / r.cnt) : 0,
       forecast_revenue: Math.round(Number(r.revenue) * scale),
-    }));
-    res.json({ ok: true, horizon, services: out });
+    });
+    // Аудит 28.07: візити з імпорту без назви послуги — це НЕ послуга, і в рейтингу
+    // «що замовлятимуть» вони займали перше місце, збиваючи з пантелику. Виносимо окремо:
+    // рейтинг показує реальні послуги, а неопізнані йдуть приміткою під таблицею.
+    const UNNAMED = 'Без назви (перенесено з Букона)';
+    const named = rows.filter(r => r.service !== UNNAMED).map(map);
+    const un = rows.find(r => r.service === UNNAMED);
+    res.json({
+      ok: true, horizon, services: named,
+      unnamed: un ? { ...map(un), note: 'Візити, перенесені зі старої програми без назви послуги. У рейтинг не входять — назву відновити нема з чого.' } : null,
+    });
   } catch (e) {
     console.error('[forecast:demand]', e);
     res.status(500).json({ error: 'internal' });
