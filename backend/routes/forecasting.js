@@ -186,6 +186,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(DISTINCT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD'))::int AS days
            FROM appointments
           WHERE status NOT IN ('cancelled','noshow')
+            AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             AND starts_at >= NOW() - INTERVAL '90 days'
           GROUP BY dow ORDER BY dow`).then(r => r.rows).catch(() => []),
       pool.query(
@@ -193,6 +194,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(*)::int AS appts
            FROM appointments
           WHERE status NOT IN ('cancelled','noshow')
+            AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             AND starts_at >= NOW() - INTERVAL '90 days'
           GROUP BY hr ORDER BY hr`).then(r => r.rows).catch(() => []),
       pool.query(
@@ -201,6 +203,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(DISTINCT to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD')) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS work_days
            FROM masters m LEFT JOIN appointments a
              ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '90 days'
+             AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
           WHERE m.active=true AND COALESCE(m.provides_services,true)=true
           GROUP BY m.id, m.name ORDER BY done DESC`).then(r => r.rows).catch(() => []),
     ]);
@@ -237,12 +240,18 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
     const horizon = Math.min(Math.max(parseInt(req.query.horizon, 10) || 30, 7), 90);
     // попит по послугах: останні 60 днів → екстраполяція на horizon
     const rows = await pool.query(
-      `SELECT COALESCE(NULLIF(a.services_text,''), s.name, 'Послуга #'||a.service_id) AS service,
+      // Аудит 28.07: у 103 візитів з імпорту Букона немає ні service_id, ні services_text →
+      // COALESCE давав NULL і в таблиці попиту був ПОРОЖНІЙ рядок на першому місці (102 візити).
+      // Тепер такі візити мають чесну назву, і додано фільтр артефактів синка.
+      `SELECT COALESCE(NULLIF(a.services_text,''), s.name,
+                       CASE WHEN a.service_id IS NOT NULL THEN 'Послуга #'||a.service_id
+                            ELSE 'Без назви (перенесено з Букона)' END) AS service,
               COUNT(*)::int AS cnt,
               COALESCE(SUM(COALESCE(a.real_amount,a.price)),0)::numeric AS revenue
          FROM appointments a
          LEFT JOIN services s ON s.id = a.service_id
         WHERE (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
+          AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
           AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
         GROUP BY service ORDER BY cnt DESC LIMIT 15`
     ).then(r => r.rows).catch(() => []);

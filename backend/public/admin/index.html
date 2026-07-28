@@ -7425,12 +7425,16 @@ function renderForecast(d){
   let html = '';
   // KPI рядок
   html += '<div class="kpi-grid" style="margin-bottom:16px">';
-  html += `<div class="kpi"><div class="kpi-label">Прогноз виручки (${d.horizon} дн.)</div><div class="kpi-value">${_fcMoney(d.total)}</div>${_sub('інтервал 80%: '+_fcMoney(d.total_lo80)+' – '+_fcMoney(d.total_hi80))}</div>`;
+  // Аудит 28.07 (Босс: «неясно ничего»): цифри були в мові статистики — «інтервал 80%»,
+  // «×1.35 від середнього». Переписано людською мовою: скільки грошей і наскільки більше/менше.
+  const _pctOf = f => Math.round((f - 1) * 100);
+  const _fcPct = f => { const p = _pctOf(f); return p > 0 ? `на ${p}% більше за звичайний день` : p < 0 ? `на ${Math.abs(p)}% менше за звичайний день` : 'як звичайний день'; };
+  html += `<div class="kpi"><div class="kpi-label">Очікуємо заробити за ${d.horizon} дн.</div><div class="kpi-value">${_fcMoney(d.total)}</div>${_sub('швидше за все від '+_fcMoney(d.total_lo80)+' до '+_fcMoney(d.total_hi80))}</div>`;
   html += `<div class="kpi"><div class="kpi-label">У середньому за день</div><div class="kpi-value">${_fcMoney(Math.round(d.total/d.horizon))}</div>${_sub('тренд: '+trendTxt)}</div>`;
   const bestWd = [...d.model.weekday_factors].sort((a,b)=>b.factor-a.factor)[0];
   const worstWd = [...d.model.weekday_factors].sort((a,b)=>a.factor-b.factor)[0];
-  html += `<div class="kpi"><div class="kpi-label">Найсильніший день</div><div class="kpi-value" style="font-size:20px">${bestWd.day}</div>${_sub('×'+bestWd.factor+' від середнього')}</div>`;
-  html += `<div class="kpi"><div class="kpi-label">Найслабший день</div><div class="kpi-value" style="font-size:20px">${worstWd.day}</div>${_sub('×'+worstWd.factor+' від середнього')}</div>`;
+  html += `<div class="kpi"><div class="kpi-label">Найприбутковіший день</div><div class="kpi-value" style="font-size:20px">${bestWd.day}</div>${_sub(_fcPct(bestWd.factor))}</div>`;
+  html += `<div class="kpi"><div class="kpi-label">Найслабший день</div><div class="kpi-value" style="font-size:20px">${worstWd.day}</div>${_sub(_fcPct(worstWd.factor))}</div>`;
   html += '</div>';
   // графік
   html += _fcChart(d);
@@ -7440,15 +7444,15 @@ function renderForecast(d){
   }
   // прогноз попиту на послуги (з /demand)
   if (d._demand && Array.isArray(d._demand.services) && d._demand.services.length){
-    const rows = d._demand.services.slice(0,6).map(s=>`<tr><td style="padding:6px 8px">${escapeHtml(s.service)}</td><td style="padding:6px 8px;text-align:center">${s.last_60d}</td><td style="padding:6px 8px;text-align:center;font-weight:600">${s.forecast_next}</td><td style="padding:6px 8px;text-align:right">${_fcMoney(s.forecast_revenue)}</td></tr>`).join('');
+    const rows = d._demand.services.slice(0,6).map(s=>`<tr><td style="padding:6px 8px">${escapeHtml(s.service||'—')}</td><td style="padding:6px 8px;text-align:center">${s.last_60d}</td><td style="padding:6px 8px;text-align:center;font-weight:600">${s.forecast_next}</td><td style="padding:6px 8px;text-align:right">${_fcMoney(s.forecast_revenue)}</td></tr>`).join('');
     html += `<div style="margin-top:16px">
-      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Прогноз попиту на послуги (${d.horizon} дн.)</div>
-      <table class="tbl" style="font-size:13px"><thead><tr><th>Послуга</th><th style="text-align:center">За 60 дн.</th><th style="text-align:center">Прогноз</th><th style="text-align:right">Виручка</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="font-weight:600;font-size:13px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Які послуги замовлятимуть найчастіше (наступні ${d.horizon} дн.)</div>
+      <table class="tbl" style="font-size:13px"><thead><tr><th>Послуга</th><th style="text-align:center">Було за 60 днів</th><th style="text-align:center">Очікуємо разів</th><th style="text-align:right">Принесе грошей</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
   // AI-пояснення (якщо є)
   if (d.ai_summary) html += `<div style="margin-top:14px;padding:12px 14px;background:var(--bg-soft,#f8f9fb);border-radius:8px;font-size:14px;line-height:1.55;white-space:pre-wrap">${escapeHtml(d.ai_summary)}</div>`;
-  html += `<p style="font-size:11px;color:var(--text-secondary);margin:10px 0 0">Прогноз на основі ${d.model.based_on_days} днів історії: тижнева сезонність + тренд + святкові піки. Затінена смуга — діапазон 80%.</p>`;
+  html += `<p style="font-size:11px;color:var(--text-secondary);margin:10px 0 0">Рахуємо за ${d.model.based_on_days} днями роботи салону: як зазвичай іде виручка по днях тижня, куди рухається тренд і свята. Суцільна лінія — очікувана виручка, затінена смуга — реальний коридор, у який вона потрапить у 8 випадках з 10.</p>`;
   body.innerHTML = html;
 }
 function _fcChart(d){
