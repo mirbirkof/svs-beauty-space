@@ -61,6 +61,11 @@ function notify(text) {
       WHERE a.status NOT IN ('cancelled','noshow') AND a.client_id IS NOT NULL
         AND a.service_id IS NOT NULL AND ${ART}
         AND a.starts_at >= NOW() - INTERVAL '14 days'
+        -- 30.07: записи 5489/5490 разобраны вручную с Боссом (визит 400 стрижка+
+        -- 200 брови = 600, второй визит той же миутью — реальный, деньги на месте,
+        -- касса 18.07 сверена по Букону 36466.50). Не поднимать снова, естественно
+        -- выпадет из окна после 01.08 — исключение можно убрать после этой даты.
+        AND a.id NOT IN (5489, 5490)
     )
     SELECT client, to_char(starts_at ${KYIV},'DD.MM') AS day, COUNT(*)::int AS n,
            (SUM(paid) - MAX(paid))::numeric AS excess, array_agg(id ORDER BY id) AS ids
