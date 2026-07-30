@@ -6,7 +6,11 @@
      десктопна версія CRM (width=1280). КАТЕГОРИЧНО НЕ міняти на device-width НІКОЛИ.
      Будь-який «мобільний режим» / адаптив для admin/index|login|reset = ПРЯМЕ ПОРУШЕННЯ.
      Якщо треба полагодити модалку/таблицю — робити В МЕЖАХ десктопу 1280. -->
-<meta name="viewport" content="width=1280">
+<!-- Бос 30.07: щипок двома пальцями не працював. Причина — без initial-scale/
+     user-scalable Chrome на Android непередбачувано вимикає pinch-zoom для
+     фіксованої (не device-width) ширини. ШИРИНУ (1280) НЕ ЧІПАВ — додав лише
+     дозвіл на масштаб, це не «мобільний режим», директиву не порушує. -->
+<meta name="viewport" content="width=1280, initial-scale=1, minimum-scale=0.25, maximum-scale=5, user-scalable=yes">
 <title>SVS Beauty — CRM</title>
 <script>try{
   if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');
