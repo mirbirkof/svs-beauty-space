@@ -30,7 +30,12 @@ const ART = "COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phanto
 
 function money(v) { return Math.round(Number(v || 0)).toLocaleString('uk-UA') + ' ₴'; }
 
+// --dry / MONEY_WATCH_DRY=1 — надрукувати текст у консоль і НЕ надсилати власнику.
+// Потрібно, щоб перевіряти правки сторожа без спаму в Telegram (урок 30.07).
+const DRY = process.argv.includes('--dry') || process.env.MONEY_WATCH_DRY === '1';
+
 function notify(text) {
+  if (DRY) { console.log('--- DRY, текст не надіслано ---\n' + text + '\n--- кінець ---'); return true; }
   try {
     execSync(
       `curl -s -m 15 -X POST http://127.0.0.1:3005/notify -H "x-notify-token: ${process.env.RESTART_TOKEN || 'jarvis-restart-2026'}" -H "Content-Type: application/json" -d @-`,
@@ -145,10 +150,32 @@ function notify(text) {
      WHERE d.day = (NOW() ${KYIV})::date - 1 AND s.n >= 5 AND s.sd_v IS NOT NULL`);
   if (anom.length && Math.abs(Number(anom[0].z)) >= 2) {
     const a = anom[0];
+    const up = Number(a.z) > 0;
+    // Алерт без причини = марний алерт. Одразу показуємо, ЩО саме дало відхилення:
+    // розбивку послуги/товар і найбільші операції дня — щоб не питати «а чому?».
+    const split = await q(`
+      SELECT category, COUNT(*)::int n, SUM(amount)::numeric s
+        FROM cash_operations
+       WHERE type='in' AND category IN ('sale_service','sale_product')
+         AND (created_at ${KYIV})::date = (NOW() ${KYIV})::date - 1
+       GROUP BY 1 ORDER BY 3 DESC`);
+    const NAMES = { sale_service: 'послуги', sale_product: 'товар/матеріали' };
+    const top = await q(`
+      SELECT amount::numeric, COALESCE(description,'') AS d
+        FROM cash_operations
+       WHERE type='in' AND category IN ('sale_service','sale_product')
+         AND (created_at ${KYIV})::date = (NOW() ${KYIV})::date - 1
+       ORDER BY amount DESC LIMIT 3`);
+    const lines = [`Вчора ${money(a.v)}, зазвичай у цей день тижня ${money(a.avg_v)}.`];
+    if (split.length) lines.push('Склад: ' + split.map(s => `${NAMES[s.category] || s.category} ${money(s.s)} (${s.n})`).join(' · '));
+    if (top.length) lines.push('Найбільші: ' + top.map(t => `${money(t.amount)} — ${t.d.slice(0, 40)}`).join('; '));
+    lines.push(up
+      ? 'Зростання зазвичай дає один дорогий візит або роздрібний продаж — перевірте, чи немає задвоєння серед найбільших.'
+      : 'Падіння — перевірте, чи всі оплати проведені.');
     findings.push({
       level: 'warn',
-      title: Number(a.z) < 0 ? 'Вчора виручка помітно нижча за звичайну' : 'Вчора виручка помітно вища за звичайну',
-      detail: `Вчора ${money(a.v)}, зазвичай у цей день тижня ${money(a.avg_v)}. Якщо падіння — перевірте, чи всі оплати проведені.`,
+      title: up ? 'Вчора виручка помітно вища за звичайну' : 'Вчора виручка помітно нижча за звичайну',
+      detail: lines.join('\n'),
     });
   }
 
