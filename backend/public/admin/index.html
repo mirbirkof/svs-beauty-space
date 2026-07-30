@@ -531,9 +531,28 @@ select.input { background:var(--card); }
 .pl-card-master { font-size:11.5px; color:var(--primary,#6366f1); margin-top:3px; }
 @media(max-width:768px){ .pl-col{ flex:1 0 78%; min-width:78%; } }
 /* Журнал: права панель — календар + каса */
-.journal-layout { display:flex; gap:16px; align-items:flex-start; }
+.journal-layout { display:flex; gap:16px; align-items:flex-start; position:relative; min-height:200px; }
 .journal-main { flex:1; min-width:0; overflow-x:hidden; }
-.journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+/* Вільне перетягування картки журналу (Бос 30.07, третя спроба — «в будь-яку сторону,
+   і щоб сусідні квадратики самі відсувались»). У «плаваючому» режимі — після першого
+   перетягування хендлом — картка стає position:absolute всередині .journal-layout і
+   more не бере участі в flex-потоці; .journal-side (календар+каса) під час
+   перетягування зсувається вниз програмно (JS), якщо картки перетинаються. */
+.journal-main.jfloating { position:absolute; z-index:15; }
+/* Сітка журналу без обмеження висоти розтягується на весь робочий день (15+ годин) —
+   у звичайному режимі це ОК (гортає сторінка), але в плаваючому режимі через це
+   .journal-main ставав величезним і зсував бокову панель на тисячі пікселів вниз.
+   Обмежуємо висоту ЛИШЕ в плаваючому режимі — звичайний вигляд журналу не чіпаємо. */
+.journal-main.jfloating #journalContent { max-height: 65vh; }
+.jdrag-handle {
+  position:absolute; left:6px; top:6px; z-index:21; width:34px; height:34px;
+  border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.75;
+  display:flex; align-items:center; justify-content:center; cursor:move; touch-action:none;
+  font-size:18px; user-select:none;
+}
+.jdrag-handle:active { opacity:1; }
+.journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px;
+  transition:margin-top .15s ease; }
 .jcal-card .card-body, .jcash-card .card-body { padding:14px; }
 .jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .jcal-title { font-size:14px; font-weight:700; text-transform:capitalize; }
@@ -9322,6 +9341,93 @@ function renderJournalList(container, data) {
         dragging = false; save(el.offsetWidth, el.offsetHeight);
         document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
       }
+      document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
+  else attach();
+})();
+
+// Вільне перетягування картки журналу в будь-яку сторону (Бос 30.07, третя ітерація).
+// Хендлом (значок ⠿ у лівому верхньому куті) тягнемо .journal-main куди завгодно
+// всередині .journal-layout; при перетині з .journal-side (календар+каса) той
+// автоматично зсувається вниз, звільняючи місце — тому нічого не «ламається» накладенням.
+(function initJournalFreeDrag() {
+  const KEY = 'svs_journal_pos';
+  let layout = null, main = null, side = null, handle = null;
+  let dragging = false, startX = 0, startY = 0, startL = 0, startT = 0;
+
+  function rectsOverlap(a, b) {
+    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+  }
+  function reflowSide() {
+    if (!main.classList.contains('jfloating')) { side.style.marginTop = '0px'; return; }
+    // Баг (знайдений тестом 30.07): якщо рахувати зсув від ПОТОЧНОГО (вже зсунутого)
+    // положення side, кожен виклик додає зсув до зсуву — margin-top накручувався
+    // до тисяч пікселів за кілька touchmove. Фікс: спершу скидаємо margin у 0,
+    // міряємо «природне» положення, і лише тоді рахуємо новий зсув з нуля.
+    side.style.marginTop = '0px';
+    const mr = main.getBoundingClientRect(), sr = side.getBoundingClientRect();
+    if (rectsOverlap(mr, sr)) {
+      side.style.marginTop = Math.max(0, mr.bottom - sr.top + 12) + 'px';
+    }
+  }
+  function save(l, t) { try { localStorage.setItem(KEY, JSON.stringify({ l, t })); } catch (e) {} }
+  function startDrag(x, y) {
+    dragging = true; startX = x; startY = y;
+    const lr = layout.getBoundingClientRect(), mr = main.getBoundingClientRect();
+    startL = mr.left - lr.left; startT = mr.top - lr.top;
+    if (!main.classList.contains('jfloating')) {
+      main.classList.add('jfloating');
+      main.style.left = startL + 'px'; main.style.top = startT + 'px';
+      main.style.width = mr.width + 'px';
+    }
+  }
+  function moveDrag(x, y) {
+    if (!dragging) return;
+    const dx = x - startX, dy = y - startY;
+    const l = Math.max(0, startL + dx), t = Math.max(0, startT + dy);
+    main.style.left = l + 'px'; main.style.top = t + 'px';
+    reflowSide();
+  }
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    save(parseFloat(main.style.left) || 0, parseFloat(main.style.top) || 0);
+  }
+  function attach() {
+    layout = document.querySelector('.journal-layout');
+    main = document.querySelector('.journal-main');
+    side = document.querySelector('.journal-side');
+    if (!layout || !main || !side || layout.dataset.dragInit) return;
+    layout.dataset.dragInit = '1';
+    handle = document.createElement('div');
+    handle.className = 'jdrag-handle';
+    handle.title = 'Потягнути — перемістити журнал куди завгодно';
+    handle.textContent = '⠿';
+    main.appendChild(handle);
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (saved) {
+        main.classList.add('jfloating');
+        main.style.left = saved.l + 'px'; main.style.top = saved.t + 'px';
+        main.style.width = (document.getElementById('journalContent').offsetWidth || 600) + 'px';
+        reflowSide();
+      }
+    } catch (e) {}
+    handle.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      startDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchend', endDrag);
+    handle.addEventListener('mousedown', (e) => {
+      startDrag(e.clientX, e.clientY); e.preventDefault();
+      function onMove(ev) { moveDrag(ev.clientX, ev.clientY); }
+      function onUp() { endDrag(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
       document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
     });
   }
