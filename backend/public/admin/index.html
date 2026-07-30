@@ -531,28 +531,19 @@ select.input { background:var(--card); }
 .pl-card-master { font-size:11.5px; color:var(--primary,#6366f1); margin-top:3px; }
 @media(max-width:768px){ .pl-col{ flex:1 0 78%; min-width:78%; } }
 /* Журнал: права панель — календар + каса */
-.journal-layout { display:flex; gap:16px; align-items:flex-start; position:relative; min-height:200px; }
+.journal-layout { display:flex; gap:16px; align-items:flex-start; }
 .journal-main { flex:1; min-width:0; overflow-x:hidden; }
-/* Вільне перетягування картки журналу (Бос 30.07, третя спроба — «в будь-яку сторону,
-   і щоб сусідні квадратики самі відсувались»). У «плаваючому» режимі — після першого
-   перетягування хендлом — картка стає position:absolute всередині .journal-layout і
-   more не бере участі в flex-потоці; .journal-side (календар+каса) під час
-   перетягування зсувається вниз програмно (JS), якщо картки перетинаються. */
-.journal-main.jfloating { position:absolute; z-index:15; }
-/* Сітка журналу без обмеження висоти розтягується на весь робочий день (15+ годин) —
-   у звичайному режимі це ОК (гортає сторінка), але в плаваючому режимі через це
-   .journal-main ставав величезним і зсував бокову панель на тисячі пікселів вниз.
-   Обмежуємо висоту ЛИШЕ в плаваючому режимі — звичайний вигляд журналу не чіпаємо. */
-.journal-main.jfloating #journalContent { max-height: 65vh; }
-.jdrag-handle {
-  position:absolute; left:6px; top:6px; z-index:21; width:34px; height:34px;
-  border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.75;
-  display:flex; align-items:center; justify-content:center; cursor:move; touch-action:none;
-  font-size:18px; user-select:none;
+.journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px; }
+/* «На весь екран» (Бос 30.07, після відео): попередні спроби (перетягування, ручка
+   розміру, CSS-zoom) тупили й «дивно рухались» — прибрано повністю. Проста надійна
+   заміна: кнопка складає розкладку в СТОВПЧИК — журнал на всю ширину (влазять УСІ
+   майстри), календар+каса йдуть ВНИЗ рядком. Плавний зум — рідний щипок браузера. */
+.journal-layout.jstacked { flex-direction:column; }
+.journal-layout.jstacked .journal-main { width:100%; flex:1 1 100%; }
+.journal-layout.jstacked .journal-side {
+  flex:1 1 100%; width:100%; position:static; flex-direction:row; flex-wrap:wrap; margin-top:14px;
 }
-.jdrag-handle:active { opacity:1; }
-.journal-side { flex:0 0 268px; display:flex; flex-direction:column; gap:16px; position:sticky; top:16px;
-  transition:margin-top .15s ease; }
+.journal-layout.jstacked .journal-side > .card { flex:1 1 240px; min-width:0; }
 .jcal-card .card-body, .jcash-card .card-body { padding:14px; }
 .jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .jcal-title { font-size:14px; font-weight:700; text-transform:capitalize; }
@@ -725,30 +716,10 @@ select.input { background:var(--card); }
   .jt-right .jt-menu-wrap .jt-icon-btn { width:100%; }
   .jt-menu { right:auto; left:0; }
   .jt-date { min-width:140px; font-size:13px; }
-  /* журнал на мобільному: менші відступи картки (#18). overflow:hidden замінено на
-     auto (Бос 30.07) — інакше WebKit ховає ручку зміни розміру #journalContent і
-     розтягнути сітку пальцем не можна; max-width:100% лишається — сторінка вбік не поїде. */
+  /* журнал на мобільному: менші відступи картки (#18) */
   .journal-main .card-body { padding:8px; }
   .journal-main .card { overflow:auto; max-width:100%; }
 }
-/* Масштаб сітки журналу двома пальцями (Бос 30.07): збільшується ТІЛЬКИ сама сітка
-   записів/майстрів (#journalContent) — міні-календар і каса праворуч не чіпаються,
-   viewport сторінки лишається 1280 (директиву Боса не порушено, зум локальний). */
-#journalContent { touch-action: pan-y; overflow: auto; -webkit-overflow-scrolling: touch;
-  min-width: 320px; min-height: 240px; }
-/* Нативний CSS resize:both зникав/глючив під пальцем (Бос 30.07: «уголок исчезает при
-   движении») — розрахований на мишу, не на дотик. Замінено власною ручкою (нижче в JS):
-   .journal-main має position:relative, а сама ручка — position:absolute у куточку картки,
-   ЖИВЕ ПОЗА #journalContent (яка перемальовується щодня) — тому не зникає при зміні дня. */
-.journal-main { position: relative; }
-.jresize-handle {
-  position: absolute; right: 4px; bottom: 4px; width: 30px; height: 30px; z-index: 20;
-  cursor: nwse-resize; touch-action: none;
-  background: linear-gradient(135deg, transparent 0 42%, var(--primary,#7c5cff) 42% 54%, transparent 54% 62%,
-    var(--primary,#7c5cff) 62% 74%, transparent 74%);
-  opacity: .55; border-radius: 4px;
-}
-.jresize-handle:active { opacity: 1; }
 /* ── Інфо-іконки «i» з поясненнями (#15) ── */
 .info-i { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; min-width:18px;
   border-radius:50%; border:1px solid var(--primary,#7c5cff); color:var(--primary,#7c5cff); background:transparent;
@@ -1558,6 +1529,7 @@ select.input { background:var(--card); }
             <button class="btn btn-outline btn-sm j-mode" data-mode="week" onclick="setJournalMode('week')">Тиждень</button>
             <button class="btn btn-outline btn-sm j-mode" data-mode="list" onclick="setJournalMode('list')">Список</button>
           </div>
+          <button class="btn btn-outline btn-sm" id="jStackToggle" onclick="toggleJournalStack()" title="Розгорнути журнал на всю ширину — усі майстри в одному вікні, календар і каса переходять вниз"><span class="material-icons-round" style="font-size:18px">fit_screen</span></button>
           <select id="journalFocus" class="input btn-sm jt-focus" onchange="journalFocusMaster=this.value; renderJournalDay(document.getElementById('journalContent'), journalData)">
             <option value="">Усі майстри</option>
           </select>
@@ -9256,183 +9228,28 @@ function renderJournalList(container, data) {
     }).join('')}</tbody></table>`;
 }
 
-// Масштаб сітки журналу двома пальцями (Бос 30.07). Слухач вішається ОДИН РАЗ на сам
-// #journalContent — цей DOM-вузол не перестворюється при кожному renderJournalDay()
-// (перезаписується лише innerHTML), тому слухач переживає перемальовку дня/тижня.
-// Масштабується ЛИШЕ ця сітка (записи+майстри) — міні-календар і каса праворуч не займані,
-// глобальний viewport сторінки (1280, директива Боса) не чіпається взагалі.
-(function initJournalPinchZoom() {
-  const MIN_Z = 0.6, MAX_Z = 2.5;
-  const KEY = 'svs_journal_zoom';
-  let el = null, startDist = 0, startZoom = 1;
-  function dist(t0, t1) { return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY); }
-  function clamp(z) { return Math.max(MIN_Z, Math.min(MAX_Z, z)); }
-  function apply(z) { if (el) el.style.zoom = String(z); try { localStorage.setItem(KEY, String(z)); } catch (e) {} }
-  function attach() {
-    el = document.getElementById('journalContent');
-    if (!el || el.dataset.pinchInit) return;
-    el.dataset.pinchInit = '1';
-    let saved = 1;
-    try { saved = parseFloat(localStorage.getItem(KEY)) || 1; } catch (e) {}
-    apply(clamp(saved));
-    el.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) { startDist = dist(e.touches[0], e.touches[1]); startZoom = parseFloat(el.style.zoom) || 1; }
-    }, { passive: true });
-    el.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 2 || !startDist) return;
-      e.preventDefault(); // блокуємо нативний зум сторінки — масштабуємо лише сітку
-      const d = dist(e.touches[0], e.touches[1]);
-      apply(clamp(startZoom * (d / startDist)));
-    }, { passive: false });
-    el.addEventListener('touchend', () => { startDist = 0; });
+// «На весь екран» (Бос 30.07): складає журнал у стовпчик — сітка на всю ширину,
+// календар+каса вниз. Стан запамʼятовується. Плавний зум — рідний щипок браузера.
+function toggleJournalStack() {
+  const layout = document.querySelector('.journal-layout');
+  if (!layout) return;
+  const on = layout.classList.toggle('jstacked');
+  const btn = document.getElementById('jStackToggle');
+  if (btn) btn.classList.toggle('active', on);
+  try { localStorage.setItem('svs_journal_stacked', on ? '1' : '0'); } catch (e) {}
+}
+(function restoreJournalStack() {
+  function apply() {
+    let on = false;
+    try { on = localStorage.getItem('svs_journal_stacked') === '1'; } catch (e) {}
+    if (!on) return;
+    const layout = document.querySelector('.journal-layout');
+    const btn = document.getElementById('jStackToggle');
+    if (layout) layout.classList.add('jstacked');
+    if (btn) btn.classList.add('active');
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
-  else attach();
-})();
-
-// Ручка «потягнути за куточок» (Бос 30.07, друга спроба): нативний CSS resize:both
-// зникав/глючив під пальцем — розрахований на мишу. Тут власна ручка, повністю під
-// контролем touch-подій, живе поза #journalContent (не зникає при зміні дня/тижня).
-(function initJournalResizeHandle() {
-  const KEY = 'svs_journal_size';
-  const MIN_W = 320, MIN_H = 240, MAX_W = 3000, MAX_H = 3000;
-  let dragging = false, startX = 0, startY = 0, startW = 0, startH = 0;
-  function clampW(w) { return Math.max(MIN_W, Math.min(MAX_W, w)); }
-  function clampH(h) { return Math.max(MIN_H, Math.min(MAX_H, h)); }
-  function save(w, h) { try { localStorage.setItem(KEY, JSON.stringify({ w, h })); } catch (e) {} }
-  function attach() {
-    const host = document.querySelector('.journal-main');
-    const el = document.getElementById('journalContent');
-    if (!host || !el || host.dataset.resizeInit) return;
-    host.dataset.resizeInit = '1';
-    try {
-      const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (saved && saved.w && saved.h) { el.style.width = clampW(saved.w) + 'px'; el.style.height = clampH(saved.h) + 'px'; }
-    } catch (e) {}
-    const handle = document.createElement('div');
-    handle.className = 'jresize-handle';
-    handle.title = 'Потягнути — змінити розмір сітки';
-    host.appendChild(handle);
-    handle.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      dragging = true;
-      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
-      startW = el.offsetWidth; startH = el.offsetHeight;
-      e.preventDefault();
-    }, { passive: false });
-    handle.addEventListener('touchmove', (e) => {
-      if (!dragging || e.touches.length !== 1) return;
-      e.preventDefault();
-      const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
-      const w = clampW(startW + dx), h = clampH(startH + dy);
-      el.style.width = w + 'px'; el.style.height = h + 'px';
-    }, { passive: false });
-    handle.addEventListener('touchend', () => { if (dragging) { dragging = false; save(el.offsetWidth, el.offsetHeight); } });
-    // На випадок якщо хтось відкриє з мишею (планшет+стилус/тачпад) — той самий хендлер, інші події
-    handle.addEventListener('mousedown', (e) => {
-      dragging = true; startX = e.clientX; startY = e.clientY; startW = el.offsetWidth; startH = el.offsetHeight;
-      e.preventDefault();
-      function onMove(ev) {
-        if (!dragging) return;
-        const dx = ev.clientX - startX, dy = ev.clientY - startY;
-        el.style.width = clampW(startW + dx) + 'px'; el.style.height = clampH(startH + dy) + 'px';
-      }
-      function onUp() {
-        dragging = false; save(el.offsetWidth, el.offsetHeight);
-        document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
-      }
-      document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
-    });
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
-  else attach();
-})();
-
-// Вільне перетягування картки журналу в будь-яку сторону (Бос 30.07, третя ітерація).
-// Хендлом (значок ⠿ у лівому верхньому куті) тягнемо .journal-main куди завгодно
-// всередині .journal-layout; при перетині з .journal-side (календар+каса) той
-// автоматично зсувається вниз, звільняючи місце — тому нічого не «ламається» накладенням.
-(function initJournalFreeDrag() {
-  const KEY = 'svs_journal_pos';
-  let layout = null, main = null, side = null, handle = null;
-  let dragging = false, startX = 0, startY = 0, startL = 0, startT = 0;
-
-  function rectsOverlap(a, b) {
-    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-  }
-  function reflowSide() {
-    if (!main.classList.contains('jfloating')) { side.style.marginTop = '0px'; return; }
-    // Баг (знайдений тестом 30.07): якщо рахувати зсув від ПОТОЧНОГО (вже зсунутого)
-    // положення side, кожен виклик додає зсув до зсуву — margin-top накручувався
-    // до тисяч пікселів за кілька touchmove. Фікс: спершу скидаємо margin у 0,
-    // міряємо «природне» положення, і лише тоді рахуємо новий зсув з нуля.
-    side.style.marginTop = '0px';
-    const mr = main.getBoundingClientRect(), sr = side.getBoundingClientRect();
-    if (rectsOverlap(mr, sr)) {
-      side.style.marginTop = Math.max(0, mr.bottom - sr.top + 12) + 'px';
-    }
-  }
-  function save(l, t) { try { localStorage.setItem(KEY, JSON.stringify({ l, t })); } catch (e) {} }
-  function startDrag(x, y) {
-    dragging = true; startX = x; startY = y;
-    const lr = layout.getBoundingClientRect(), mr = main.getBoundingClientRect();
-    startL = mr.left - lr.left; startT = mr.top - lr.top;
-    if (!main.classList.contains('jfloating')) {
-      main.classList.add('jfloating');
-      main.style.left = startL + 'px'; main.style.top = startT + 'px';
-      main.style.width = mr.width + 'px';
-    }
-  }
-  function moveDrag(x, y) {
-    if (!dragging) return;
-    const dx = x - startX, dy = y - startY;
-    const l = Math.max(0, startL + dx), t = Math.max(0, startT + dy);
-    main.style.left = l + 'px'; main.style.top = t + 'px';
-    reflowSide();
-  }
-  function endDrag() {
-    if (!dragging) return;
-    dragging = false;
-    save(parseFloat(main.style.left) || 0, parseFloat(main.style.top) || 0);
-  }
-  function attach() {
-    layout = document.querySelector('.journal-layout');
-    main = document.querySelector('.journal-main');
-    side = document.querySelector('.journal-side');
-    if (!layout || !main || !side || layout.dataset.dragInit) return;
-    layout.dataset.dragInit = '1';
-    handle = document.createElement('div');
-    handle.className = 'jdrag-handle';
-    handle.title = 'Потягнути — перемістити журнал куди завгодно';
-    handle.textContent = '⠿';
-    main.appendChild(handle);
-    try {
-      const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (saved) {
-        main.classList.add('jfloating');
-        main.style.left = saved.l + 'px'; main.style.top = saved.t + 'px';
-        main.style.width = (document.getElementById('journalContent').offsetWidth || 600) + 'px';
-        reflowSide();
-      }
-    } catch (e) {}
-    handle.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      startDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
-    }, { passive: false });
-    handle.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
-    }, { passive: false });
-    handle.addEventListener('touchend', endDrag);
-    handle.addEventListener('mousedown', (e) => {
-      startDrag(e.clientX, e.clientY); e.preventDefault();
-      function onMove(ev) { moveDrag(ev.clientX, ev.clientY); }
-      function onUp() { endDrag(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-      document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
-    });
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
-  else attach();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
 })();
 
 function renderJournalDay(container, data) {
