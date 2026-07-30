@@ -545,6 +545,27 @@ select.input { background:var(--card); }
 }
 .journal-layout.jstacked .journal-side > .card { flex:1 1 240px; min-width:0; }
 .jcal-card .card-body, .jcash-card .card-body { padding:14px; }
+/* Вільне переміщення + масштаб квадрата журналу (Бос 30.07, четверта правка).
+   Урок з попередніх спроб: CSS-перехід (transition) на margin-top боковій панелі
+   ВІЗУАЛЬНО ВІДСТАВАВ від пальця під час руху — це і відчувалося як «дивно рухається».
+   Тепер: під час руху палець рухає ТІЛЬКИ сам квадрат (миттєво, без transition);
+   сусідня панель перерахунок відбувається ОДИН РАЗ по відпусканню пальця, не на
+   кожному кадрі — тому нічого не «смикається» під час самого перетягування. */
+.journal-layout { position:relative; }
+.journal-main.jfree { position:absolute; z-index:15; overflow:auto; -webkit-overflow-scrolling:touch; }
+.jmove-handle {
+  position:absolute; left:6px; top:6px; z-index:21; width:38px; height:38px;
+  border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.85;
+  display:flex; align-items:center; justify-content:center; cursor:move; touch-action:none;
+  font-size:20px; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.jscale-handle {
+  position:absolute; right:6px; bottom:6px; z-index:21; width:38px; height:38px;
+  border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.85;
+  display:flex; align-items:center; justify-content:center; cursor:nwse-resize; touch-action:none;
+  font-size:18px; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.jmove-handle:active, .jscale-handle:active { opacity:1; }
 .jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .jcal-title { font-size:14px; font-weight:700; text-transform:capitalize; }
 .jcal-nav { display:flex; gap:4px; }
@@ -9228,6 +9249,111 @@ function renderJournalList(container, data) {
     }).join('')}</tbody></table>`;
 }
 
+// Вільне переміщення + масштаб квадрата журналу БУКВАЛЬНО куди завгодно (Бос 30.07,
+// четверта правка: «как угодно» — жодних штучних обмежень крім мінімального розміру,
+// щоб не зникнути в нуль). Дві ручки: ⠿ зліва зверху — тягнути; ⤡ справа знизу —
+// міняти розмір. Під час руху оновлюється ЛИШЕ сам квадрат (без transition, без
+// перерахунку сусідів на кожному кадрі — саме це відчувалось як «дивно рухається»
+// у попередніх версіях). Сусідня панель (календар+каса) відсувається вниз ОДИН РАЗ,
+// коли палець відпущено — не смикається під час самого перетягування.
+(function initJournalFreeMoveScale() {
+  const POS_KEY = 'svs_journal_pos2', SIZE_KEY = 'svs_journal_size2';
+  let layout = null, main = null, side = null;
+  let moveHandle = null, scaleHandle = null;
+  let dragging = null; // 'move' | 'scale' | null
+  let sx = 0, sy = 0, sl = 0, st = 0, sw = 0, sh = 0;
+
+  function ensureFree() {
+    if (main.classList.contains('jfree')) return;
+    const r = main.getBoundingClientRect(), lr = layout.getBoundingClientRect();
+    main.classList.add('jfree');
+    main.style.left = (r.left - lr.left) + 'px';
+    main.style.top = (r.top - lr.top) + 'px';
+    main.style.width = r.width + 'px';
+    main.style.height = r.height + 'px';
+  }
+  function savePos() { try { localStorage.setItem(POS_KEY, JSON.stringify({ l: parseFloat(main.style.left), t: parseFloat(main.style.top) })); } catch (e) {} }
+  function saveSize() { try { localStorage.setItem(SIZE_KEY, JSON.stringify({ w: parseFloat(main.style.width), h: parseFloat(main.style.height) })); } catch (e) {} }
+  function rectsOverlap(a, b) { return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom); }
+  function reflowSideOnce() {
+    // Скидаємо ПЕРЕД виміром — інакше рахуємо від уже зсунутого положення й накручуємо
+    // (той самий баг, що вже ловили сьогодні на попередній версії — тут та сама обережність).
+    side.style.marginTop = '0px';
+    const mr = main.getBoundingClientRect(), sr = side.getBoundingClientRect();
+    if (rectsOverlap(mr, sr)) side.style.marginTop = Math.max(0, mr.bottom - sr.top + 12) + 'px';
+  }
+
+  function onStart(kind, x, y) {
+    ensureFree();
+    dragging = kind;
+    sx = x; sy = y;
+    sl = parseFloat(main.style.left) || 0; st = parseFloat(main.style.top) || 0;
+    sw = main.offsetWidth; sh = main.offsetHeight;
+  }
+  function onMove(x, y) {
+    if (!dragging) return;
+    const dx = x - sx, dy = y - sy;
+    if (dragging === 'move') {
+      // «Как угодно» — жодного clamp по краях контейнера, можна тягнути хоч за межі.
+      main.style.left = (sl + dx) + 'px';
+      main.style.top = (st + dy) + 'px';
+    } else {
+      main.style.width = Math.max(120, sw + dx) + 'px';
+      main.style.height = Math.max(100, sh + dy) + 'px';
+    }
+  }
+  function onEnd() {
+    if (!dragging) return;
+    const kind = dragging; dragging = null;
+    if (kind === 'move') savePos(); else saveSize();
+    reflowSideOnce();
+  }
+
+  function wireHandle(handle, kind) {
+    handle.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      onStart(kind, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      onMove(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
+    }, { passive: false });
+    handle.addEventListener('touchend', onEnd);
+    handle.addEventListener('mousedown', (e) => {
+      onStart(kind, e.clientX, e.clientY); e.preventDefault();
+      function mv(ev) { onMove(ev.clientX, ev.clientY); }
+      function up() { onEnd(); document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); }
+      document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    });
+  }
+
+  function attach() {
+    layout = document.querySelector('.journal-layout');
+    main = document.querySelector('.journal-main');
+    side = document.querySelector('.journal-side');
+    if (!layout || !main || !side || layout.dataset.freeInit) return;
+    layout.dataset.freeInit = '1';
+    moveHandle = document.createElement('div'); moveHandle.className = 'jmove-handle';
+    moveHandle.title = 'Перетягнути журнал куди завгодно'; moveHandle.textContent = '⠿';
+    scaleHandle = document.createElement('div'); scaleHandle.className = 'jscale-handle';
+    scaleHandle.title = 'Змінити розмір'; scaleHandle.textContent = '⤡';
+    main.appendChild(moveHandle); main.appendChild(scaleHandle);
+    wireHandle(moveHandle, 'move'); wireHandle(scaleHandle, 'scale');
+    try {
+      const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+      const s = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null');
+      if (p || s) {
+        ensureFree();
+        if (p) { main.style.left = p.l + 'px'; main.style.top = p.t + 'px'; }
+        if (s) { main.style.width = s.w + 'px'; main.style.height = s.h + 'px'; }
+        reflowSideOnce();
+      }
+    } catch (e) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
+  else attach();
+})();
+
 // «На весь екран» (Бос 30.07): складає журнал у стовпчик — сітка на всю ширину,
 // календар+каса вниз. Стан запамʼятовується. Плавний зум — рідний щипок браузера.
 function toggleJournalStack() {
@@ -9240,8 +9366,14 @@ function toggleJournalStack() {
 }
 (function restoreJournalStack() {
   function apply() {
-    let on = false;
-    try { on = localStorage.getItem('svs_journal_stacked') === '1'; } catch (e) {}
+    // Бос 30.07 (друга правка того ж дня): «не має бути кнопки, яку треба шукати —
+    // має працювати само». viewport сторінки завжди 1280 (директива Боса), тому на
+    // телефоні реальна фізична ширина екрана (screen.width) значно менша за 1280 —
+    // саме її й перевіряємо, а не layout-viewport. Автоматично, без жодного натискання.
+    const isPhone = Math.min(screen.width, screen.height) <= 500;
+    let saved = null;
+    try { const v = localStorage.getItem('svs_journal_stacked'); if (v !== null) saved = v === '1'; } catch (e) {}
+    const on = saved === null ? isPhone : saved; // ручний вибір користувача має пріоритет над автовизначенням
     if (!on) return;
     const layout = document.querySelector('.journal-layout');
     const btn = document.getElementById('jStackToggle');
