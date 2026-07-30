@@ -6,11 +6,12 @@
      десктопна версія CRM (width=1280). КАТЕГОРИЧНО НЕ міняти на device-width НІКОЛИ.
      Будь-який «мобільний режим» / адаптив для admin/index|login|reset = ПРЯМЕ ПОРУШЕННЯ.
      Якщо треба полагодити модалку/таблицю — робити В МЕЖАХ десктопу 1280. -->
-<!-- Бос 30.07: щипок двома пальцями не працював. Причина — без initial-scale/
-     user-scalable Chrome на Android непередбачувано вимикає pinch-zoom для
-     фіксованої (не device-width) ширини. ШИРИНУ (1280) НЕ ЧІПАВ — додав лише
-     дозвіл на масштаб, це не «мобільний режим», директиву не порушує. -->
-<meta name="viewport" content="width=1280, initial-scale=1, minimum-scale=0.25, maximum-scale=5, user-scalable=yes">
+<!-- Бос 30.07: пробував initial-scale=1 — стало ГІРШЕ (телефон перестав сам стискати
+     1280 під екран, показував лише ~47% ширини «як є»). Відкат: без initial-scale —
+     повертається автостиснення «під екран», user-scalable=yes лишається як єдина
+     спроба дозволити щипок, не ламаючи автостиснення. Якщо й це не допоможе — це,
+     схоже, фундаментальне обмеження фіксованої ширини 1280 на Android Chrome. -->
+<meta name="viewport" content="width=1280, user-scalable=yes">
 <title>SVS Beauty — CRM</title>
 <script>try{
   if(localStorage.getItem('svs_sb_collapsed')==='1')document.documentElement.classList.add('sb-collapsed');
@@ -549,27 +550,34 @@ select.input { background:var(--card); }
 }
 .journal-layout.jstacked .journal-side > .card { flex:1 1 240px; min-width:0; }
 .jcal-card .card-body, .jcash-card .card-body { padding:14px; }
-/* Вільне переміщення + масштаб квадрата журналу (Бос 30.07, четверта правка).
-   Урок з попередніх спроб: CSS-перехід (transition) на margin-top боковій панелі
-   ВІЗУАЛЬНО ВІДСТАВАВ від пальця під час руху — це і відчувалося як «дивно рухається».
-   Тепер: під час руху палець рухає ТІЛЬКИ сам квадрат (миттєво, без transition);
-   сусідня панель перерахунок відбувається ОДИН РАЗ по відпусканню пальця, не на
-   кожному кадрі — тому нічого не «смикається» під час самого перетягування. */
+/* Вільне переміщення + масштаб КОЖНОГО з трьох квадратів (журнал, календар, каса) —
+   Бос 30.07, п'ята правка: «каждый... сам перетаскивать и делать любого размера...
+   после нажатия специальной кнопки». Ручки існують у DOM завжди, але ВИДНІ лише в
+   режимі редагування (.journal-layout.jedit) — кнопка в тулбарі перемикає режим.
+   Поза режимом редагування сторінка виглядає звично, нічого не заважає. */
 .journal-layout { position:relative; }
-.journal-main.jfree { position:absolute; z-index:15; overflow:auto; -webkit-overflow-scrolling:touch; }
+.jfree-panel { position:absolute; z-index:15; overflow:auto; -webkit-overflow-scrolling:touch; }
+.jmove-handle, .jscale-handle { display:none; }
+.journal-layout.jedit .jmove-handle, .journal-layout.jedit .jscale-handle { display:flex; }
 .jmove-handle {
   position:absolute; left:6px; top:6px; z-index:21; width:38px; height:38px;
   border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.85;
-  display:flex; align-items:center; justify-content:center; cursor:move; touch-action:none;
+  align-items:center; justify-content:center; cursor:move; touch-action:none;
   font-size:20px; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
 }
 .jscale-handle {
   position:absolute; right:6px; bottom:6px; z-index:21; width:38px; height:38px;
   border-radius:8px; background:var(--primary,#7c5cff); color:#fff; opacity:.85;
-  display:flex; align-items:center; justify-content:center; cursor:nwse-resize; touch-action:none;
+  align-items:center; justify-content:center; cursor:nwse-resize; touch-action:none;
   font-size:18px; user-select:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
 }
 .jmove-handle:active, .jscale-handle:active { opacity:1; }
+/* Рамка навколо квадратів у режимі редагування — видно, що саме можна чіпати */
+.journal-layout.jedit .jfree-panel, .journal-layout.jedit .journal-main .card,
+.journal-layout.jedit .jcal-card, .journal-layout.jedit .jcash-card {
+  outline:2px dashed var(--primary,#7c5cff); outline-offset:2px;
+}
+#jEditToggle.active { background:var(--primary,#7c5cff); color:#fff; }
 .jcal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
 .jcal-title { font-size:14px; font-weight:700; text-transform:capitalize; }
 .jcal-nav { display:flex; gap:4px; }
