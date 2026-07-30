@@ -93,7 +93,11 @@ async function verifyWebhookSecret(provider, req) {
   const secret = (provider.config && provider.config.webhook_secret)
     || provider.webhook_secret
     || null;
-  if (!secret) return true; // секрет не задан — пропускаем проверку
+  // Аудит безопасности 30.07 (MEDIUM): было return true (пропуск проверки) если
+  // секрет не задан — провайдер без секрета фактически принимал вебхуки от
+  // кого угодно. Проверил живую базу: сейчас ни один салон call-center ещё не
+  // подключал (0 строк в call_providers) — фикс безопасен, ломать нечего.
+  if (!secret) return false;
 
   const headerAuth   = req.headers['x-binotel-auth']
     || req.headers['x-ringostat-signature']
@@ -183,12 +187,18 @@ router.post('/webhook/:provider_type', async (req, res) => {
     );
     const provider = providers[0];
 
-    // Проверка секрета (если провайдер найден)
-    if (provider) {
-      const valid = await verifyWebhookSecret(provider, req);
-      if (!valid) {
-        return res.status(403).json({ error: 'invalid_signature' });
-      }
+    // Аудит безопасности 30.07 (MEDIUM): раньше при отсутствующем провайдере
+    // (тенант не настроил именно этот тип интеграции) проверка секрета целиком
+    // пропускалась, и код всё равно писал в callback_requests чужого тенанта —
+    // любой, кто знал/угадал tenant_id, мог подсовывать фейковые заявки без
+    // единого секрета. Теперь без сконфигурированного и подтверждённого
+    // провайдера запрос отклоняется сразу, до всякой записи в БД.
+    if (!provider) {
+      return res.status(404).json({ error: 'provider_not_configured' });
+    }
+    const valid = await verifyWebhookSecret(provider, req);
+    if (!valid) {
+      return res.status(403).json({ error: 'invalid_signature' });
     }
 
     // ── Нормализация события (адаптер по провайдеру) ──────────────────────────

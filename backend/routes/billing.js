@@ -47,10 +47,17 @@ const ADMIN_W = requirePerm('saas.write');
 // а запит адмінки йде з платформенним GUC → запис/читання платежів ЧУЖОГО салону
 // мовчки ламалися. Операції над конкретним салоном — у контексті цього салону,
 // списки по всіх — без tenant-фільтра (runAs(null) = прямий запит повз RLS-обгортку).
-router.use('/admin', (req, res, next) => {
+// Аудит безопасности 30.07 (CRITICAL, исправлено): эта функция раньше монтировалась
+// ДО platformOnly (строка ~202) — а она форсирует isPlatformTenant()=true в том же
+// контексте, который platformOnly потом читает. Итог: проверка всегда проходила,
+// потому что проверяла собственную подмену. Владелец САЛОНА (роль owner имеет
+// permissions=["*"], этим покрывается saas.write) мог выписать себе бесплатный
+// тариф, увидеть чужой биллинг, возместить чужой платёж. Теперь platformOnly
+// подключается ПЕРВЫМ (см. ниже), эта функция — только после него.
+function adminRLSContext(req, res, next) {
   const m = req.path.match(/^\/subscriptions\/([0-9a-f-]{36})(\/|$)/i);
   return runAsPlatform(m ? m[1] : null, () => next());
-});
+}
 
 const fail = (res, e) => {
   console.error('[billing]', e);
@@ -200,6 +207,9 @@ function platformOnly(req, res, next) {
   next();
 }
 router.use('/admin', platformOnly);
+// adminRLSContext — ПОСЛЕ platformOnly (см. большой комментарий у объявления
+// функции выше). Порядок здесь и есть весь фикс.
+router.use('/admin', adminRLSContext);
 router.get('/admin/subscriptions', ADMIN_R, async (req, res) => {
   try {
     const { getPool } = require('../db-pg');

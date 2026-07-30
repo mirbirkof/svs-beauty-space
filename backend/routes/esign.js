@@ -9,6 +9,11 @@ const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { emit, on } = require('../lib/event-bus');
+// Аудит безопасности 30.07 (HIGH): публичный /sign/:token принимал signer_name
+// без санитизации, а audit-trail PDF (доступен staff с esign.read) выводит его
+// через res.send(`...${actor_name}...`) без экранирования — XSS, кража токена
+// сотрудника, открывшего трейл. Та же функция, что закрыла дыру в booking.js.
+const { stripHtmlTags } = require('../lib/validate');
 
 const router = express.Router();
 const pool = getPool();
@@ -90,6 +95,9 @@ publicRouter.post('/:token/sign', async (req, res) => {
     const r = await loadByToken(req.params.token);
     if (r.error) return res.status(r.code).json({ error: r.error });
     const b = req.body || {};
+    // Публичный (без логина) вход подписанта — обязательно чистим имя от HTML-тегов
+    // до того как оно попадёт в БД и потом в audit-trail, который читает staff.
+    if (typeof b.signer_name === 'string') b.signer_name = stripHtmlTags(b.signer_name);
     const sigs = await q(`SELECT * FROM esign_signatures WHERE request_id=$1 ORDER BY sort_order`, [r.reqRow.id]);
     const sig = pickSignature(sigs, r.reqRow, b.signature_id);
     if (!sig) return res.status(409).json({ error: 'no-pending-signature' });
@@ -208,7 +216,7 @@ async function createRequest(b, user) {
     const s = signers[i];
     await q(`INSERT INTO esign_signatures (request_id, signer_type, signer_client_id, signer_employee_id, signer_name, signer_email, signer_phone, sort_order)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [r.id, s.signer_type || 'client', num(s.signer_client_id ?? s.client_id), num(s.signer_employee_id ?? s.employee_id), s.signer_name || '', s.signer_email || null, s.signer_phone || null, i]);
+      [r.id, s.signer_type || 'client', num(s.signer_client_id ?? s.client_id), num(s.signer_employee_id ?? s.employee_id), stripHtmlTags(String(s.signer_name || '')), s.signer_email || null, s.signer_phone || null, i]);
   }
   await audit(r, { action: 'request_created', actor_type: 'employee', actor_id: user?.id ?? null, actor_name: user?.name, hash: docHash });
   emit('esign.request_created', { request_id: r.id, document_id: r.document_id });

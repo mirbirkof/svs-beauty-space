@@ -142,6 +142,12 @@ async function audit(flagId, action, actorId, prev, next, details = {}) {
 ══════════════════════════════════════════════════════════════════ */
 const internalRouter = express.Router();
 
+// Аудит безопасности 30.07: этот роутер был смонтирован БЕЗ единой проверки —
+// любой мог указать чужой tenant_id в query и узнать, какие платные фичи/тариф
+// у него включены (внутренним SDK сейчас никто в коде не пользуется — грепнул,
+// вызовов нет). Закрываю тем же платформенным гейтом, что и /admin/flags.
+internalRouter.use(requirePlatform());
+
 // GET /internal/flags/evaluate?tenant_id=&keys=f1,f2,f3
 internalRouter.get('/evaluate', async (req, res) => {
   try {
@@ -206,11 +212,13 @@ tenantRouter.get('/:key', async (req, res) => {
 const adminRouter = express.Router();
 const platformOnly = requirePlatform();
 
-// Read: saas.read; Write: platformOnly (superadmin only)
-adminRouter.use((req, res, next) => {
-  if (req.method === 'GET') return requirePerm('saas.read')(req, res, next);
-  return platformOnly(req, res, next);
-});
+// Аудит безопасности 30.07: GET требовал только saas.read, а не platformOnly.
+// Задумывалось как «чтение мягче записи», но роль 'owner' любого арендованного
+// салона имеет permissions=["*"] — и saas.read этим покрывается. В итоге ЛЮБОЙ
+// владелец салона мог запросом /admin/flags/:id/overrides?tenant_id=<чужой>
+// узнать флаги/тариф чужого салона (эта панель по смыслу — только для платформы,
+// показывает срез по ВСЕМ салонам). GET и запись теперь под одним гейтом.
+adminRouter.use(platformOnly);
 
 /* ── Flag CRUD ─────────────────────────────────────────────────── */
 

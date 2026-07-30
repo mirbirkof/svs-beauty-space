@@ -6,7 +6,11 @@ const { requirePerm, logAction } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
 
-router.get('/', async (req, res) => {
+// Аудит безопасности 30.07 (MEDIUM): единственная ручка в файле без requirePerm —
+// отдавала адреса/телефоны/служебный settings-jsonb кому угодно без входа.
+// Проверил: используется только в админке (crm-extra.html), публичный виджет
+// записи её не вызывает — требование входа ничего не ломает.
+router.get('/', requirePerm(), async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM branches WHERE is_active=TRUE ORDER BY is_default DESC, id`);
     res.json({ items: r.rows, count: r.rows.length });

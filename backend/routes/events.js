@@ -6,11 +6,17 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const { getPool } = require('../db-pg');
-const { requirePerm } = require('../lib/rbac');
+const { requirePerm, requirePlatform } = require('../lib/rbac');
 const bus = require('../lib/event-bus');
 
 const router = express.Router();
 const pool = getPool();
+// Аудит безопасности 30.07: journal доменных событий (domain_events) не имеет RLS
+// на таблице, а роль 'owner' любого салона имеет permissions=["*"], поэтому
+// requirePerm('admin.read') пропускала ЛЮБОГО владельца салона — он мог читать
+// платежи/визиты/клиентов ЧУЖОГО салона и даже "переиграть" их через /replay
+// с чужим tenant_id. Это инструмент платформы (диагностика), не для арендаторов.
+router.use(requirePlatform());
 const ADMIN = requirePerm('admin.read');
 
 // Список событий

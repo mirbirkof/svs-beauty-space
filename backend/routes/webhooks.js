@@ -79,7 +79,12 @@ function hookBus() {
     try {
       const type = evt?.event_type;
       if (!type) return;
-      const hooks = await q(`SELECT * FROM webhooks WHERE active=true`);
+      // Аудит безопасности 30.07: раньше грузились ВСЕ активные вебхуки без учёта
+      // tenant_id — салон, подписавшийся на "*", получал бы чужие платежи/визиты/
+      // клиентов на свой внешний URL. Событие несёт tenant_id (event-bus.js) —
+      // фильтруем по нему, как и остальной код в этом же файле (CRUD-роуты).
+      if (!evt?.tenant_id) return;
+      const hooks = await q(`SELECT * FROM webhooks WHERE active=true AND tenant_id=$1`, [evt.tenant_id]);
       for (const wh of hooks) {
         if (matches(wh.events, type)) {
           deliver(wh, type, evt.payload ?? evt).catch(() => {});

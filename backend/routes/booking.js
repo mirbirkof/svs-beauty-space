@@ -184,7 +184,14 @@ router.post('/init', validateBody({
   channel: t.string({ min: 1, max: 40, required: false }),
 }), async (req, res) => {
   try {
-    const { service_id, employee_id, date_from, date_to, client_name, channel } = req.body;
+    const { service_id, employee_id, date_from, date_to, channel } = req.body;
+    // Аудит безопасности 30.07 (CRITICAL): client_name берём из req.valid, а не
+    // req.body — validateBody() кладёт очищенное от HTML-тегов значение именно
+    // туда (req.body намеренно не мутируется — см. комментарий в validate.js).
+    // Читать отсюда сырое поле = свести на нет фикс в t.string(). Заявка с
+    // client_name="<img onerror=...>" исполнялась бы у любого сотрудника,
+    // открывшего журнал записей (кража токена админа, CSP выключен).
+    const client_name = req.valid.client_name;
     if (!service_id || !employee_id || !date_from || !date_to) {
       return res.status(400).json({ error: 'service_id, employee_id, date_from, date_to обовʼязкові' });
     }

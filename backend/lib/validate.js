@@ -23,9 +23,25 @@ const PHONE_RE = /^[+\d][\d\s()\-]{6,19}$/;
 function fail(msg) { return { ok: false, msg }; }
 function pass(value) { return { ok: true, value }; }
 
+// Аудит безопасности 30.07 (CRITICAL): анонимный виджет записи (routes/booking.js
+// POST /init) принимал client_name без какой-либо HTML-санитизации, а часть мест
+// в админ-панели (public/admin/index.html) выводит такие поля через innerHTML БЕЗ
+// escapeHtml(). CSP у нас выключен (шоп-api.js — «в SPA инлайн-скрипты повсюду»),
+// токен админа лежит в localStorage. Итог: заявка с client_name = "<img
+// onerror=... >" исполнялась бы в браузере ЛЮБОГО сотрудника, открывшего журнал
+// записей — кража токена, полный доступ к CRM, без единого логина у атакующего.
+// Чиним у ГРАНИЦЫ (здесь, в общем валидаторе), а не расковыриваем 13000-строчный
+// SPA-файл — так закрывается сразу везде, где используется t.string(), и не
+// зависит от того, вспомнит ли кто-то вызвать escapeHtml() на очередном экране.
+// Вырезаем только похожее на реальный HTML-тег: сразу после "<" должна идти
+// буква (<img>), "/" (закрывающий </script>) или "!" (<!--комментарий-->).
+// Первая версия (<[^>]*>) резала и невинный текст вроде "5 < 10 and 10 > 5" —
+// проверил юнит-тестом, поймал до продакшена, переписал точнее.
+function stripHtmlTags(v) { return v.replace(/<[a-zA-Z!/][^<>]*>/g, ''); }
+
 const t = {
   string(opts = {}) {
-    const { min = 0, max = 100000, required = true, trim = true, pattern = null, enum: en = null } = opts;
+    const { min = 0, max = 100000, required = true, trim = true, pattern = null, enum: en = null, allowHtml = false } = opts;
     return (raw, key) => {
       if (raw === undefined || raw === null || raw === '') {
         if (required) return fail(`${key} обязательно`);
@@ -33,6 +49,7 @@ const t = {
       }
       if (typeof raw !== 'string') return fail(`${key} должно быть строкой`);
       let v = trim ? raw.trim() : raw;
+      if (!allowHtml) v = stripHtmlTags(v);
       if (v.length < min) return fail(`${key}: минимум ${min} символов`);
       if (v.length > max) return fail(`${key}: максимум ${max} символов`);
       if (pattern && !pattern.test(v)) return fail(`${key}: неверный формат`);
@@ -130,4 +147,4 @@ function validateBody(schema) {
   };
 }
 
-module.exports = { t, check, validateBody, EMAIL_RE, PHONE_RE };
+module.exports = { t, check, validateBody, EMAIL_RE, PHONE_RE, stripHtmlTags };
