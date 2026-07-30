@@ -706,15 +706,25 @@ select.input { background:var(--card); }
   .jt-right .jt-menu-wrap .jt-icon-btn { width:100%; }
   .jt-menu { right:auto; left:0; }
   .jt-date { min-width:140px; font-size:13px; }
-  /* журнал на мобільному: менші відступи картки + жорстке обрізання, щоб сітка не виходила за екран (#18) */
+  /* журнал на мобільному: менші відступи картки (#18). overflow:hidden замінено на
+     auto (Бос 30.07) — інакше WebKit ховає ручку зміни розміру #journalContent і
+     розтягнути сітку пальцем не можна; max-width:100% лишається — сторінка вбік не поїде. */
   .journal-main .card-body { padding:8px; }
-  .journal-main .card { overflow:hidden; max-width:100%; }
-  #journalContent { max-width:100%; overflow-x:hidden; }
+  .journal-main .card { overflow:auto; max-width:100%; }
 }
 /* Масштаб сітки журналу двома пальцями (Бос 30.07): збільшується ТІЛЬКИ сама сітка
    записів/майстрів (#journalContent) — міні-календар і каса праворуч не чіпаються,
    viewport сторінки лишається 1280 (директиву Боса не порушено, зум локальний). */
-#journalContent { touch-action: pan-y; overflow: auto; -webkit-overflow-scrolling: touch; }
+#journalContent { touch-action: pan-y; overflow: auto; -webkit-overflow-scrolling: touch;
+  resize: both; min-width: 320px; min-height: 240px; }
+/* Ручка зміни розміру за замовчуванням маленька й важко влучити пальцем — робимо
+   помітний куточок у нижньому правому куті сітки журналу (Бос 30.07: «потягнути
+   за угол»). Працює разом із зумом двома пальцями вище — незалежні механізми. */
+#journalContent::-webkit-resizer {
+  background: linear-gradient(135deg, transparent 0 40%, var(--primary,#7c5cff) 40% 55%, transparent 55% 65%,
+    var(--primary,#7c5cff) 65% 80%, transparent 80%);
+  background-size: 10px 10px; width: 22px; height: 22px;
+}
 /* ── Інфо-іконки «i» з поясненнями (#15) ── */
 .info-i { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; min-width:18px;
   border-radius:50%; border:1px solid var(--primary,#7c5cff); color:var(--primary,#7c5cff); background:transparent;
