@@ -711,6 +711,10 @@ select.input { background:var(--card); }
   .journal-main .card { overflow:hidden; max-width:100%; }
   #journalContent { max-width:100%; overflow-x:hidden; }
 }
+/* Масштаб сітки журналу двома пальцями (Бос 30.07): збільшується ТІЛЬКИ сама сітка
+   записів/майстрів (#journalContent) — міні-календар і каса праворуч не чіпаються,
+   viewport сторінки лишається 1280 (директиву Боса не порушено, зум локальний). */
+#journalContent { touch-action: pan-y; overflow: auto; -webkit-overflow-scrolling: touch; }
 /* ── Інфо-іконки «i» з поясненнями (#15) ── */
 .info-i { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; min-width:18px;
   border-radius:50%; border:1px solid var(--primary,#7c5cff); color:var(--primary,#7c5cff); background:transparent;
@@ -9217,6 +9221,40 @@ function renderJournalList(container, data) {
       </tr>`;
     }).join('')}</tbody></table>`;
 }
+
+// Масштаб сітки журналу двома пальцями (Бос 30.07). Слухач вішається ОДИН РАЗ на сам
+// #journalContent — цей DOM-вузол не перестворюється при кожному renderJournalDay()
+// (перезаписується лише innerHTML), тому слухач переживає перемальовку дня/тижня.
+// Масштабується ЛИШЕ ця сітка (записи+майстри) — міні-календар і каса праворуч не займані,
+// глобальний viewport сторінки (1280, директива Боса) не чіпається взагалі.
+(function initJournalPinchZoom() {
+  const MIN_Z = 0.6, MAX_Z = 2.5;
+  const KEY = 'svs_journal_zoom';
+  let el = null, startDist = 0, startZoom = 1;
+  function dist(t0, t1) { return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY); }
+  function clamp(z) { return Math.max(MIN_Z, Math.min(MAX_Z, z)); }
+  function apply(z) { if (el) el.style.zoom = String(z); try { localStorage.setItem(KEY, String(z)); } catch (e) {} }
+  function attach() {
+    el = document.getElementById('journalContent');
+    if (!el || el.dataset.pinchInit) return;
+    el.dataset.pinchInit = '1';
+    let saved = 1;
+    try { saved = parseFloat(localStorage.getItem(KEY)) || 1; } catch (e) {}
+    apply(clamp(saved));
+    el.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) { startDist = dist(e.touches[0], e.touches[1]); startZoom = parseFloat(el.style.zoom) || 1; }
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2 || !startDist) return;
+      e.preventDefault(); // блокуємо нативний зум сторінки — масштабуємо лише сітку
+      const d = dist(e.touches[0], e.touches[1]);
+      apply(clamp(startZoom * (d / startDist)));
+    }, { passive: false });
+    el.addEventListener('touchend', () => { startDist = 0; });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach);
+  else attach();
+})();
 
 function renderJournalDay(container, data) {
   const appts = data.appointments || [];
