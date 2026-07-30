@@ -6,8 +6,10 @@
 # ── 1. QA-loop (автономная QA-платформа 24/7) ──
 QA_DIR="$HOME/workspace/svs-beauty-space/qa-platform"
 QA_LOG="/tmp/qa-platform.log"
+# Ручная пауза: пока лежит data/pause.flag — QA-loop не поднимаем (экономия RAM на 4ГБ-проде).
+# Снять паузу: rm data/pause.flag → следующий heartbeat поднимет свежий процесс.
 # Точный шаблон именно node-процесса, чтобы не спутать с watcher'ом/эхом bash.
-if ! pgrep -f "node run.js --loop" >/dev/null 2>&1; then
+if [ ! -f "$QA_DIR/data/pause.flag" ] && ! pgrep -f "node run.js --loop" >/dev/null 2>&1; then
   cd "$QA_DIR" && QA_COOLDOWN_MS=600000 nohup node run.js --loop >> "$QA_LOG" 2>&1 &
   echo "[keepalive $(date '+%F %T')] QA-loop поднят (PID $!)" >> "$QA_LOG"
 fi

@@ -8,6 +8,7 @@
    Без сторонніх SDK — чистий https. Ніколи не кидає необроблене назовні:
    код, що викликає, сам вирішує що робити при null. */
 const https = require('https');
+const meter = require('./llm-meter');   // учёт расхода + «отдых» лежащих провайдеров
 
 function _post(opts, body) {
   return new Promise((resolve, reject) => {
@@ -27,7 +28,7 @@ function _post(opts, body) {
 // gemini-2.5-flash: окремий квота-бакет від 2.0-flash (яку вичерпує gemini-бот),
 // працює з датацентрового IP. thinkingBudget:0 — вимикаємо "мислення", інакше
 // воно зʼїдає maxOutputTokens і JSON обрізається (finishReason MAX_TOKENS).
-async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-flash', apiKey } = {}) {
+async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-flash', apiKey, usageBox } = {}) {
   const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('no GEMINI_API_KEY');
   const body = JSON.stringify({
@@ -44,12 +45,15 @@ async function _gemini(prompt, { system, maxTokens = 2048, model = 'gemini-2.5-f
   }, body);
   const j = JSON.parse(raw);
   const text = j.candidates?.[0]?.content?.parts?.[0]?.text;
+  // Расход токенов кладём в «конверт» из опций, а наружу отдаём ЧИСТУЮ строку —
+  // вызывающий код (десятки мест в CRM) не должен ничего знать про учёт.
+  if (usageBox) usageBox.usage = meter.extractUsage(j);
   if (text) return text.trim();
   throw new Error(j.error?.message || `gemini empty (status ${status})`);
 }
 
 // ── Groq (OpenAI-совместимый) — fallback ───────────────────
-async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-versatile', apiKey } = {}) {
+async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-versatile', apiKey, usageBox } = {}) {
   const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) throw new Error('no GROQ_API_KEY');
   const messages = [];
@@ -65,12 +69,13 @@ async function _groq(prompt, { system, maxTokens = 2048, model = 'llama-3.3-70b-
   }, body);
   const j = JSON.parse(raw);
   const text = j.choices?.[0]?.message?.content;
+  if (usageBox) usageBox.usage = meter.extractUsage(j);
   if (text) return text.trim();
   throw new Error(j.error?.message || `groq empty (status ${status})`);
 }
 
 // ── OpenRouter (OpenAI-совместимый шлюз) — primary на проде ─
-async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-llama/llama-3.3-70b-instruct', apiKey } = {}) {
+async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-llama/llama-3.3-70b-instruct', apiKey, usageBox } = {}) {
   const key = apiKey || process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('no OPENROUTER_API_KEY');
   const messages = [];
@@ -86,6 +91,7 @@ async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-lla
   }, body);
   const j = JSON.parse(raw);
   const text = j.choices?.[0]?.message?.content;
+  if (usageBox) usageBox.usage = meter.extractUsage(j);
   if (text) return text.trim();
   throw new Error(j.error?.message || `openrouter empty (status ${status})`);
 }
@@ -108,13 +114,44 @@ async function ask(prompt, opts = {}) {
   // Якщо явно обрано провайдера (налаштування користувача) — пробуємо його першим,
   // потім падаємо у звичайний каскад (надійність важливіша за впертість).
   if (opts.provider && PROVIDER_FNS[opts.provider]) {
-    try { return await PROVIDER_FNS[opts.provider](prompt, opts); }
-    catch (e) { /* далі — каскад за замовчуванням */ }
+    // Учитываем и этот путь тоже: иначе вызовы с выбранным в настройках «мозгом»
+    // проходили бы мимо журнала, и расход выглядел бы меньше реального.
+    const t0 = Date.now(); const box = {};
+    try {
+      const text = await PROVIDER_FNS[opts.provider](prompt, { ...opts, usageBox: box });
+      meter.record({ provider: opts.provider + ' (обраний)', ok: true, ms: Date.now() - t0,
+                     tokensIn: box.usage?.in || 0, tokensOut: box.usage?.out || 0 });
+      return text;
+    } catch (e) {
+      meter.record({ provider: opts.provider + ' (обраний)', ok: false, ms: Date.now() - t0,
+                     error: String(e.message).slice(0, 120) });
+      /* далі — каскад за замовчуванням */
+    }
   }
   const errors = [];
+  const skipped = [];
   for (const [name, fn] of PROVIDERS) {
-    try { return await fn(prompt, opts); }
-    catch (e) { errors.push(`${name}: ${e.message}`); }
+    // Пропускаем «отдыхающих»: у кого недавно кончилась квота или не принят ключ.
+    // Раньше каскад долбился в них при КАЖДОМ вызове и ждал отказа — лишние
+    // секунды на каждой AI-функции, пока квота не восстановится.
+    if (meter.isResting(name)) { skipped.push(name); continue; }
+    const t0 = Date.now();
+    const box = {};                 // «конверт» для расхода токенов этого вызова
+    try {
+      const text = await fn(prompt, { ...opts, usageBox: box });
+      meter.record({ provider: name, ok: true, ms: Date.now() - t0,
+                     tokensIn: box.usage?.in || 0, tokensOut: box.usage?.out || 0 });
+      return text;
+    } catch (e) {
+      const punished = meter.penalize(name, e);
+      meter.record({ provider: name, ok: false, ms: Date.now() - t0, error: String(e.message).slice(0, 120),
+                     resting: punished || undefined });
+      errors.push(`${name}: ${e.message}`);
+    }
+  }
+  // Все отдыхают и пробовать было некого — честно говорим об этом, а не «все упали»
+  if (!errors.length && skipped.length) {
+    throw new Error(`all LLM providers resting (${skipped.join(', ')}) — квота/ключі, спробуйте пізніше`);
   }
   throw new Error('all LLM providers failed → ' + errors.join(' | '));
 }

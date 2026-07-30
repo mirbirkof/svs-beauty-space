@@ -616,11 +616,26 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: safeMessage(err, 'internal') });
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[shop-api] listening on http://0.0.0.0:${PORT}`);
-  console.log(`[shop-api] DB: ${process.env.DATABASE_URL ? 'connected' : 'MISSING'}`);
-  // Запуск cron напоминаний
-  if (process.env.DATABASE_URL) {
+// ── Деплой без простоя (задача #6, приём из Coolify) ───────────────────────
+// БЫЛО: убить старый → поднять новый → ждать 25с. Касса недоступна ~28с при КАЖДОЙ
+// правке, а если новый код сломан — CRM лежит совсем, и крон каждые 5 мин поднимает
+// то же сломанное. СТАЛО: новый процесс встаёт РЯДОМ на тот же порт (reusePort,
+// есть с Node 22.12; у нас 22.22 — проверено), доказывает здоровье, и только потом
+// старый гасится (у него уже есть graceful drain по SIGTERM — активные оплаты дойдут).
+// ВАЖНО про фоновые задачи: пока живы ДВА инстанса, напоминания/рассылки/биллинг
+// обязаны молчать у нового — иначе клиент получит два одинаковых сообщения.
+// Поэтому в режиме деплоя они ждут SIGUSR2 («ты теперь главный»), а если сигнал
+// не пришёл за 3 минуты — включаются сами, чтобы система не осталась без кронов.
+const DEFER_JOBS = process.env.CRM_DEFER_JOBS === '1';
+const REUSE_PORT = process.env.CRM_REUSEPORT === '1';
+let _jobsStarted = false;
+
+function startBackgroundJobs(why) {
+  if (_jobsStarted) return;               // защита от двойного старта (сигнал + страховка)
+  _jobsStarted = true;
+  if (!process.env.DATABASE_URL) return;
+  console.log(`[shop-api] фоновые задачи запущены (${why})`);
+  {
     // Підвантажити секрети інтеграцій, задані з UI, у process.env (env Render пріоритетніший)
     try { require('./lib/integration-secrets').loadIntegrationSecrets(); } catch (e) { console.error('[integration-secrets]', e.message); }
     remindersRoutes.startCron();
@@ -639,7 +654,38 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     // GDPR: фоновая дошифровка ПД новых клиентов (phone_enc/phone_bidx). No-op без PII_KEY.
     try { require('./lib/pii-backfill-cron').startCron(); } catch (e) { console.error('[pii] cron start failed:', e.message); }
   }
-});
+}
+
+// «Ты теперь главный» — старый инстанс погашен, можно включать фоновые задачи.
+process.on('SIGUSR2', () => startBackgroundJobs('SIGUSR2 — стал главным'));
+
+// Диагностический вход только для деплоя. Нужен потому, что при reusePort основной
+// порт слушают ОБА инстанса, и запрос /health попадёт в случайный — так можно принять
+// здоровье СТАРОГО за здоровье нового и выкатить сломанный код. На этом порту отвечает
+// гарантированно новый процесс. Живёт только во время деплоя, наружу не выставлен.
+if (process.env.CRM_PROBE_PORT) {
+  const probe = app.listen(Number(process.env.CRM_PROBE_PORT), '127.0.0.1', () => {
+    console.log(`[shop-api] probe-порт ${process.env.CRM_PROBE_PORT} (только для проверки деплоя)`);
+  });
+  probe.unref();
+  process.on('SIGUSR2', () => { try { probe.close(); } catch {} });  // стал главным — probe не нужен
+}
+
+const server = app.listen(
+  REUSE_PORT ? { port: PORT, host: '0.0.0.0', reusePort: true } : PORT,
+  ...(REUSE_PORT ? [] : ['0.0.0.0']),
+  () => {
+    console.log(`[shop-api] listening on http://0.0.0.0:${PORT}${REUSE_PORT ? ' (reusePort)' : ''}`);
+    console.log(`[shop-api] DB: ${process.env.DATABASE_URL ? 'connected' : 'MISSING'}`);
+    if (DEFER_JOBS) {
+      // страховка: сигнал мог не дойти (деплой прерван) — не оставляем прод без кронов
+      console.log('[shop-api] режим деплоя: фоновые задачи ждут сигнала (страховка 180с)');
+      setTimeout(() => startBackgroundJobs('страховка 180с — сигнала не было'), 180000).unref();
+    } else {
+      startBackgroundJobs('обычный старт');
+    }
+  }
+);
 
 // ── Graceful shutdown (audit #32) ──────────────────────────────────────────
 // Render шлёт SIGTERM при деплое и даёт ~30с до SIGKILL. Без дренажа активные

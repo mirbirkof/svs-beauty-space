@@ -1,0 +1,62 @@
+{
+ "ops": [
+  {
+   "id": 512145,
+   "shift_id": 191,
+   "type": "in",
+   "category": "sale_service",
+   "amount": "400.00",
+   "method": "card",
+   "ref_type": "appointment",
+   "ref_id": 8053,
+   "master_id": 29,
+   "description": "Стрижка чоловіча",
+   "created_at": "2026-07-28T15:48:20.985Z",
+   "tenant_id": "00000000-0000-0000-0000-000000000001",
+   "ext_ref": null,
+   "bp_client": null,
+   "bp_calendar": null
+  }
+ ],
+ "app": [
+  {
+   "id": 8053,
+   "client_id": 6287,
+   "master_id": 29,
+   "service_id": 156,
+   "starts_at": "2026-07-28T14:00:00.000Z",
+   "ends_at": "2026-07-28T15:00:00.000Z",
+   "status": "done",
+   "price": "400.00",
+   "beautypro_id": null,
+   "source": "admin",
+   "notes": "",
+   "created_at": "2026-07-28T14:09:09.441Z",
+   "updated_at": "2026-07-28T15:48:20.985Z",
+   "branch_id": null,
+   "bp_state": null,
+   "synced_at": null,
+   "bp_client": null,
+   "tenant_id": "00000000-0000-0000-0000-000000000001",
+   "room_id": null,
+   "stock_written_off": false,
+   "payment_method": null,
+   "rating": null,
+   "cashback": null,
+   "client_name": null,
+   "services_text": null,
+   "import_batch": null,
+   "manual_override": true,
+   "real_amount": "400",
+   "real_synced_at": null,
+   "discount_amount": null,
+   "pay_cert_code": null,
+   "pay_cert_amount": null,
+   "pay_bonus_redeemed": null,
+   "pay_bonus_money": null,
+   "pay_settled_at": "2026-07-28T15:48:20.985Z",
+   "pay_bonus_accrued": "12.00",
+   "cancelled_at": null
+  }
+ ]
+}
