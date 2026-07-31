@@ -6485,13 +6485,24 @@ function debounce(fn, ms) { clearTimeout(_timers[fn.name]); _timers[fn.name] = s
 let _dashRange = (() => { try { const s = JSON.parse(localStorage.getItem('svs_dash_range') || 'null'); if (s && s.from && s.to) return { from: s.from, to: s.to }; } catch (_) {} return { from: null, to: null }; })(); // null/null = поточний місяць (дефолт бекенду)
 function _dashPersist(){ try { localStorage.setItem('svs_dash_range', JSON.stringify({ from: _dashRange.from, to: _dashRange.to, unit: _dashUnit })); } catch (_) {} }
 function _kyD(d){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Kiev',year:'numeric',month:'2-digit',day:'2-digit'}).format(d); }
-function dashRange(preset){
+// Чисті межі пресету від СЬОГОДНІ (без DOM/persist) — щоб при кожному заході
+// відносний період («місяць/тиждень/рік/сьогодні/минулий місяць») рахувався
+// заново від поточної дати, а не брався замороженим з localStorage.
+// Баг 31.07: період «місяць», обраний 27-го, зберіг to=27.07 → «Каса за місяць»
+// показувала суму по 27-е (462 683) замість реальної (522 313). Верхня межа застигала.
+function _presetBounds(preset){
   const now=new Date(); const today=_kyD(now); let from, to=today;
   if(preset==='today'){ from=today; }
   else if(preset==='week'){ const d=new Date(now); d.setDate(d.getDate()-6); from=_kyD(d); }
   else if(preset==='month'){ from=today.slice(0,7)+'-01'; }
   else if(preset==='prevmonth'){ const d=new Date(now.getFullYear(), now.getMonth()-1, 1); from=_kyD(d).slice(0,7)+'-01'; const e=new Date(now.getFullYear(), now.getMonth(), 0); to=_kyD(e); }
   else if(preset==='year'){ from=today.slice(0,4)+'-01-01'; }
+  else return null; // custom — абсолютні дати, не чіпаємо
+  return {from, to};
+}
+function dashRange(preset){
+  const b=_presetBounds(preset)||{from:_kyD(new Date()), to:_kyD(new Date())};
+  const from=b.from, to=b.to;
   _dashRange={from, to};
   _dashUnit = preset==='prevmonth' ? 'month' : preset; // стрелки шагают выбранным периодом
   document.querySelectorAll('.dash-rng').forEach(b=>b.classList.toggle('active', b.dataset.r===preset));
@@ -6764,6 +6775,13 @@ async function loadOnbChecklist(){
 async function loadDashboard() {
   loadOnbChecklist(); // онбординг-банер для салонів-орендарів (не платформа)
   loadManagerPanel();
+  // Відносний період (місяць/тиждень/рік/сьогодні/минулий) — ПЕРЕРАХУНОК від сьогодні
+  // при кожному заході. Інакше збережена в localStorage верхня межа застигає на дні,
+  // коли період обрали, і «Каса за місяць» показує старі дані (баг 31.07).
+  if (_dashUnit && _dashUnit !== 'custom') {
+    const _b = _presetBounds(_dashUnit);
+    if (_b) { _dashRange = _b; _dashPersist(); }
+  }
   // Відновлюємо UI обраного періоду після перезавантаження (поля, підпис, активна кнопка).
   if (_dashRange.from && _dashRange.to) {
     const f=document.getElementById('dashFrom'), t=document.getElementById('dashTo');
@@ -6810,7 +6828,11 @@ async function loadDashboard() {
     // Каса сьогодні + динаміка до вчора + розбивка послуги/товари
     const today = o.revenue_today.total, yest = o.revenue_yesterday || 0;
     kpis.push(['Каса сьогодні', _money2(today) + _trend(today, yest) + _sub(`послуги ${_money2(o.revenue_today.services)} · товари ${_money2(o.revenue_today.products)}`), 'green', 'Сума всіх оплат у касі за сьогодні (послуги + товари). Стрілка поряд — порівняння з учорашнім днем у відсотках. Дані з реально проведених операцій каси.', 'finance']);
-    kpis.push(['Каса за місяць', _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Загальна виручка з початку поточного календарного місяця: окремо за послуги і за продані товари.', 'finance']);
+    // Підпис чесний: «за місяць» лише коли обрано весь поточний календарний місяць,
+    // інакше «за період» — щоб цифра діапазону не читалась як цифра всього місяця.
+    const _tdY=_kyD(new Date()); const _isFullMonth = _dashRange.from===(_tdY.slice(0,7)+'-01') && _dashRange.to===_tdY;
+    const _casaLbl = (!_dashRange.from || _isFullMonth) ? 'Каса за місяць' : 'Каса за період';
+    kpis.push([_casaLbl, _money2(o.revenue_month.total) + _sub(`послуги ${_money2(o.revenue_month.services)} · товари ${_money2(o.revenue_month.products)}`), 'blue', 'Виручка за обраний період (за замовчуванням — поточний календарний місяць): окремо за послуги і за продані товари. Період змінюється кнопками та стрілками вгорі дашборду.', 'finance']);
     const _prof = le ? le.profit : o.profit_month;
     const _exp  = le ? le.total : (o.expense_month||0);
     kpis.push(['Витрати місяця', _money2(_exp) + _sub(`% майстрам ${_money2(o.master_commission_month||0)}`), 'orange', 'РЕАЛЬНІ витрати за період на цю секунду: собівартість матеріалів + нарахований % майстрам (по реальній схемі за завершені послуги) + оренда та інші витрати каси. Розбивку дивіться у панелі «Витрати за місяць» нижче.', 'fincenter']);
