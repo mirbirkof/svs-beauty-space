@@ -14,3 +14,4 @@ backend/shop.db-*
 
 backend/uploads/
 .env.bak-*
+ops/.truth-watch-profile/
