@@ -724,17 +724,55 @@ router.delete('/operations/:id', async (req, res) => {
     );
     if (!op.rows[0]) return res.status(404).json({ error: 'not-found' });
     // Блокер C1: системні операції (Mono/онлайн/передоплата/ЗП/кешбек — ext_ref != null)
-    // привʼязані до реальної транзакції. Раніше вони мали shift_id=NULL → умова закритої
-    // зміни їх не чіпала → рядок можна було безслідно видалити (обхід обліку). Забороняємо;
-    // повернення грошей — через unpay/refund, не видаленням касового рядка.
-    if (op.rows[0].ext_ref != null) {
+    // привʼязані до реальної транзакції — видаляти їх вручну заборонено (обхід обліку),
+    // повернення грошей — через unpay/refund.
+    // ВИНЯТОК (01.08, Босс не міг видалити продаж): POS-продаж з каси теж має ext_ref
+    // ('pos-…' — це лише захист від подвійного кліку, НЕ звʼязок із зовнішньою системою).
+    // Це РУЧНА операція касира — її видаляти можна, як і будь-яку ручну.
+    const isPos = String(op.rows[0].ext_ref || '').startsWith('pos-');
+    if (op.rows[0].ext_ref != null && !isPos) {
       return res.status(400).json({ error: 'system-operation', message: 'Системну операцію (онлайн/Mono/ЗП/кешбек) не можна видалити вручну. Скористайтесь поверненням оплати.' });
     }
     if (op.rows[0].shift_id != null && op.rows[0].shift_status !== 'open') {
       return res.status(400).json({ error: 'shift-closed' });
     }
-    await pool.query(`DELETE FROM cash_operations WHERE id=$1`, [id]);
-    res.json({ ok: true });
+    // POS-продаж списав товар зі складу в момент проведення → при видаленні ПОВЕРТАЄМО,
+    // інакше гроші зникли, а залишок так і лишився зменшеним (тихий розсинхрон складу).
+    // Атомарно з видаленням рядка каси. variant_id відновлюємо з ext_ref 'pos-<batch>:<variantId>'.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (isPos) {
+        const vId = Number(String(op.rows[0].ext_ref).split(':').pop());
+        // qty у касовому рядку не зберігається — беремо з руху складу по цій операції
+        const mv = await client.query(
+          `SELECT id, variant_id, delta FROM stock_movements
+            WHERE reason='sale' AND notes = $1 ORDER BY id DESC LIMIT 1`,
+          ['каса: продаж товару, операція #' + id]
+        );
+        const q = mv.rows[0] ? -Number(mv.rows[0].delta) : 0;
+        const realVid = mv.rows[0] ? mv.rows[0].variant_id : (Number.isFinite(vId) && vId > 0 ? vId : null);
+        if (realVid && q > 0) {
+          await client.query(
+            `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,
+            [q, realVid]
+          );
+          await client.query(
+            `INSERT INTO stock_movements (variant_id, delta, reason, notes)
+             VALUES ($1, $2, 'return', $3)`,
+            [realVid, q, 'повернення: видалення продажу, операція #' + id]
+          );
+        }
+      }
+      await client.query(`DELETE FROM cash_operations WHERE id=$1`, [id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      throw e;
+    } finally {
+      client.release();
+    }
+    res.json({ ok: true, stock_returned: isPos });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
