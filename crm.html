@@ -26,9 +26,11 @@
 (function(){
   // Стабильная точка входа в CRM. Сама находит живой backend и ведёт туда.
   // primary в приоритете; если он лежит (suspended/biling) — backup.
+  // 01.08 ФИКС: ПРОД — наш дроплет (shop-api.js :3011, наружу через serveo).
+  // Render ОТВЯЗАН ещё 19.07, но эта точка входа продолжала вести именно туда —
+  // Босс открывал CRM и попадал на мёртвый onrender. Порядок исправлен.
   var ENDPOINTS = [
-    'https://svs-shop-api.onrender.com',
-    'https://svs-shop-api-backup.onrender.com'
+    'https://zvetlacrm.serveousercontent.com'
   ];
   var TARGET = '/admin/login.html';
   var msg = document.getElementById('msg');
