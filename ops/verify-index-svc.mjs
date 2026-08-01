@@ -3,7 +3,7 @@
  * Запуск: PLAYWRIGHT_BROWSERS_PATH=... ADMIN_TOKEN=... [SMOKE_BASE=...] node ops/verify-index-svc.mjs */
 import pkg from '/home/client/workspace/node_modules/playwright/index.js';
 const { chromium } = pkg;
-const BASE = process.env.SMOKE_BASE || 'https://svs-shop-api-backup.onrender.com';
+const BASE = process.env.SMOKE_BASE || 'https://zvetlacrm.serveousercontent.com';
 const TOKEN = process.env.ADMIN_TOKEN;
 const SHOT = '/tmp/index-svc-verify.png';
 

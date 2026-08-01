@@ -7,7 +7,7 @@
  */
 import pkg from '/home/client/workspace/node_modules/playwright/index.js';
 const { chromium } = pkg;
-const BASE = process.env.SMOKE_BASE || 'https://svs-shop-api.onrender.com';
+const BASE = process.env.SMOKE_BASE || 'https://zvetlacrm.serveousercontent.com';
 const TOKEN = process.env.ADMIN_TOKEN;
 const fails = [];
 const ok = (n, c) => { console.log((c ? '[+] ' : '[-] FAIL ') + n); if (!c) fails.push(n); };

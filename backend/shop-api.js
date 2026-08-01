@@ -189,7 +189,7 @@ app.get('/', (req, res) => {
   return res.redirect(302, '/admin/');
 });
 app.get('/health', (req, res) => {
-  res.set('Access-Control-Allow-Origin', '*'); // ворота zvetlacrm.onrender.com пингуют /health с другого origin
+  res.set('Access-Control-Allow-Origin', '*'); // внешние ворота пингуют /health с другого origin
   res.json({
     ok: true, service: 'svs-shop-api', time: new Date().toISOString(),
     rev: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),  // какой код реально задеплоен

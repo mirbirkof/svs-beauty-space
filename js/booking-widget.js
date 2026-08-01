@@ -5,12 +5,12 @@
 (function () {
   'use strict';
 
-  const API = window.SVS_BOOKING_API || 'https://svs-shop-api.onrender.com';
+  const API = window.SVS_BOOKING_API || 'https://zvetlacrm.serveousercontent.com';
   // Каталог (послуги + реальна звʼязка майстер↔послуга) беремо з НАШОЇ CRM — джерело правди.
   // Слоти/доступність/створення запису лишаються на booking-api (там ключі BeautyPro).
-  const CRM = window.SVS_CRM_API || 'https://svs-shop-api.onrender.com';
+  const CRM = window.SVS_CRM_API || 'https://zvetlacrm.serveousercontent.com';
   // Відмовостійкий доступ до CRM: основний Render → резервний при відмові основного.
-  const CRM_ENDPOINTS = ['https://svs-shop-api.onrender.com', 'https://svs-shop-api-backup.onrender.com'];
+  const CRM_ENDPOINTS = ['https://zvetlacrm.serveousercontent.com', 'https://zvetlacrm.serveousercontent.com'];
   function crmFetch(path, opts) {
     let eps = CRM_ENDPOINTS.slice(), cached;
     try { cached = sessionStorage.getItem('svs_shop_base'); } catch (e) {}

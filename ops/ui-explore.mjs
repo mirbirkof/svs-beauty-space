@@ -8,7 +8,7 @@
 import pkg from '/home/client/workspace/node_modules/playwright/index.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 const { chromium } = pkg;
-const BASE = process.env.SMOKE_BASE || 'https://svs-shop-api.onrender.com';
+const BASE = process.env.SMOKE_BASE || 'https://zvetlacrm.serveousercontent.com';
 const TOKEN = process.env.ADMIN_TOKEN;
 const COV_FILE = '/tmp/ui-explore-coverage.json';
 const PICKS = Number(process.env.EXPLORE_PICKS || 8);   // комбинаций за прогон

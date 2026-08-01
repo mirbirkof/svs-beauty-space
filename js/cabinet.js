@@ -8,7 +8,7 @@
   'use strict';
 
   // Відмовостійкий доступ до CRM: основний Render → резервний при відмові основного.
-  var ENDPOINTS = ['https://svs-shop-api.onrender.com', 'https://svs-shop-api-backup.onrender.com'];
+  var ENDPOINTS = ['https://zvetlacrm.serveousercontent.com'];
   function liveBase() {
     try { var c = sessionStorage.getItem('svs_shop_base'); if (c && ENDPOINTS.indexOf(c) >= 0) return c; } catch (e) {}
     return ENDPOINTS[0];
