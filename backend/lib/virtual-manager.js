@@ -14,7 +14,7 @@ const { getSetting, setSetting } = require('./settings');
 const { shiftDaysByMaster } = require('./schedule-month');
 
 const TENANT = DEFAULT_TENANT_ID; // салон Босса (раніше тут був НЕІСНУЮЧИЙ uuid ...000 — reputation_settings не знаходились)
-const BASE = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api-backup.onrender.com';
+const BASE = process.env.PUBLIC_BASE_URL || 'https://zvetlacrm.serveousercontent.com';
 
 // Київська дата YYYY-MM-DD
 function kyivDate(d = new Date()) { return d.toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }); }

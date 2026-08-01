@@ -5,7 +5,7 @@
    потому что Босс пользуется и телефоном — вёрстка админки не адаптивная.
    Запуск:
      PLAYWRIGHT_BROWSERS_PATH=~/workspace/.pw-browsers \
-       node backend/scripts/ui-smoke.mjs [https://svs-shop-api.onrender.com]
+       node backend/scripts/ui-smoke.mjs [https://zvetlacrm.serveousercontent.com]
    Выход: код 0 если всё PASS, 1 если хоть один FAIL.
 */
 import { readFileSync } from 'fs';
@@ -14,7 +14,7 @@ import { dirname, join } from 'path';
 import { chromium, devices } from 'playwright';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BASE = process.argv[2] || 'https://svs-shop-api.onrender.com';
+const BASE = process.argv[2] || 'https://zvetlacrm.serveousercontent.com';
 
 function readToken() {
   if (process.env.ADMIN_TOKEN) return process.env.ADMIN_TOKEN;

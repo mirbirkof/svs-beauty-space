@@ -8,7 +8,7 @@ const https = require('https');
 
 const url = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
-const BP = 'https://svs-booking-api.onrender.com/api/booking';
+const BP = 'https://zvetlacrm.serveousercontent.com/api/booking';
 
 function get(u) {
   return new Promise((res, rej) => {

@@ -657,7 +657,7 @@ router.post('/forgot-password', validateBody({
     const tokenHash = sha256(token);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
 
-    const base = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api.onrender.com';
+    const base = process.env.PUBLIC_BASE_URL || 'https://zvetlacrm.serveousercontent.com';
     const link = `${base}/admin/reset-password.html?token=${token}`;
     const resetHtml = `🔑 <b>Скидання пароля SVS CRM</b>\nПерейдіть за посиланням, щоб задати новий пароль:\n<a href="${link}">${link}</a>\n\nПосилання дійсне 30 хв. Якщо ви не запитували — проігноруйте.`;
 
@@ -822,7 +822,7 @@ router.post('/send-email-verification', authRequired, async (req, res) => {
        VALUES ($1,$2,'email-verify',$3,$4)`,
       [u.id, sha256(token), expiresAt, req.ip]);
 
-    const base = process.env.PUBLIC_BASE_URL || 'https://svs-shop-api.onrender.com';
+    const base = process.env.PUBLIC_BASE_URL || 'https://zvetlacrm.serveousercontent.com';
     const link = `${base}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
     const html = `<b>Підтвердження пошти SVS CRM</b><br><br>Натисніть, щоб підтвердити адресу <b>${u.email}</b>:<br><a href="${link}">${link}</a><br><br>Посилання дійсне 24 години. Якщо це були не ви — проігноруйте лист.`;
 

@@ -82,7 +82,7 @@ app.listen(PORT, () => {
 if (process.env.RENDER_EXTERNAL_URL) {
   const KEEPALIVE_URLS = [
     process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/api/health',
-    'https://svs-booking-api.onrender.com/api/health',
+    'https://zvetlacrm.serveousercontent.com/api/health',
   ];
   setInterval(() => {
     for (const url of KEEPALIVE_URLS) {

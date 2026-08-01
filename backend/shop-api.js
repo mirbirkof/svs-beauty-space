@@ -67,7 +67,8 @@ app.use(cors({
     /\.vercel\.app$/,
     /\.lhr\.life$/,
     /\.pinggy\.link$/,
-    /\.onrender\.com$/,
+    // 01.08: Render убран из белого списка — сервисы погашены, прод только дроплет.
+    /\.serveousercontent\.com$/,
     'https://svsbeautyworld.com',
     'https://www.svsbeautyworld.com',
   ],

@@ -24,7 +24,7 @@ const router = express.Router();
 // Fallback URL для отправки TG через svs-booking-api (у него есть BOT_TOKEN)
 // Используется если локальный TELEGRAM_NOTIFY_TOKEN отсутствует/не работает.
 const BOOKING_RELAY_URL = process.env.BOOKING_RELAY_URL
-  || 'https://svs-booking-api.onrender.com/api/internal/tg-send-by-phone';
+  || 'https://zvetlacrm.serveousercontent.com/api/internal/tg-send-by-phone';
 
 // Универсальная отправка: пробуем локально, если no-bot-token → через booking-api по phone
 async function sendOtpToUser({ telegram_id, phone, text }) {
@@ -206,7 +206,7 @@ router.post('/link', adminOnly, async (req, res) => {
         `<b>Telegram прив'язано до акаунту SVS CRM</b>\n` +
         `Ласкаво просимо, ${r.rows[0].display_name}!\n\n` +
         `Тепер ви можете логінитися через OTP-код:\n` +
-        `<a href="https://svs-shop-api.onrender.com/admin/login.html">Відкрити сторінку входу</a>\n\n` +
+        `<a href="https://zvetlacrm.serveousercontent.com/admin/login.html">Відкрити сторінку входу</a>\n\n` +
         `Введіть телефон <code>${phone}</code> — код прийде сюди.`
       );
     } catch (e) {

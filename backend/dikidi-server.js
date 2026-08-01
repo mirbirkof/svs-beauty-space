@@ -10,7 +10,8 @@ app.use(cors({
     'http://localhost:8080',
     'http://127.0.0.1:8080',
     /\.github\.io$/,
-    /svs-shop-api\.onrender\.com$/,
+    // 01.08: Render убран — сервисы погашены, прод только дроплет через serveo.
+    /\.serveousercontent\.com$/,
     'https://svsbeautyworld.com',
     'https://www.svsbeautyworld.com',
   ],
