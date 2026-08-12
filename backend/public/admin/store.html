@@ -51,7 +51,7 @@
 </style>
 </head>
 <body>
-<script src="/admin/assets/admin-shell.js" data-title="Магазин (дистрибуція)"></script>
+<div class="content">
 <div class="store-banner">🟢 МАГАЗИН — дистрибуція <span class="sub">окремий бізнес: свій склад, свої продажі. Салон — один із клієнтів</span></div>
 
 <div class="cards">
@@ -558,7 +558,12 @@ async function paySale(id,rest){
 }
 
 document.getElementById('rcDate').value=new Date().toISOString().slice(0,10);
-loadDash();loadOnline();loadStock();loadHistory();loadCps();
+// Каркас (admin-shell.js) подключается ПОСЛЕ этого скрипта и только он определяет
+// adminFetch. Поэтому первичную загрузку данных запускаем после полной загрузки страницы,
+// иначе запросы уходят в пустоту и все цифры остаются прочерками.
+window.addEventListener('load', () => { loadDash();loadOnline();loadStock();loadHistory();loadCps(); });
 </script>
+</div>
+<script src="/admin/assets/admin-shell.js" data-title="Магазин (дистрибуція)"></script>
 </body>
 </html>

@@ -4755,7 +4755,19 @@ function openEmbed(url, title) {
   }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-embed').classList.add('active');
-  document.getElementById('pageTitle').textContent = title || 'Модуль';
+  // 12.08: в шапке торчало служебное слово иконки («storefront Магазин», «loyalty Бонуси»).
+  // Соглашение проекта: title = "иконка Назва". Иконку показываем значком, а не текстом.
+  (function () {
+    const raw = String(title || 'Модуль');
+    const m = raw.match(/^([a-z][a-z0-9_]*)\s+(.+)$/);
+    const el = document.getElementById('pageTitle');
+    if (m) {
+      el.innerHTML = '<span class="material-icons-round" style="font-size:20px;vertical-align:-4px;margin-right:6px;opacity:.7">'
+        + m[1] + '</span>' + m[2].replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    } else {
+      el.textContent = raw;
+    }
+  })();
   document.body.dataset.page = 'embed';
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.embed === url));
   document.getElementById('sidebar').classList.remove('open');
