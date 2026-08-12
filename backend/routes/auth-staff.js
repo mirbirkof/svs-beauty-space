@@ -112,9 +112,22 @@ function gen6() {
 
 function normalizePhone(p) {
   // Только цифры. Плюс, пробелы, скобки, дефисы — убираем.
-  // Это нормализует "+380000000000" и "380000000000" к одному виду.
-  return String(p || '').replace(/\D/g, '');
+  // 12.08 (Босс не мог зайти): в базе номер лежит как 380506300614, а человек вводит
+  // привычное 0506300614 — строки не совпадали и вход отвечал «користувача не знайдено».
+  // Приводим украинские номера к международному виду: 0XX… → 380XX…, 9 цифр → 380XX…,
+  // 00380… → 380…  Иностранные (напр. 39…) остаются как есть.
+  let d = String(p || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 10 && d.startsWith('0')) d = '38' + d;
+  else if (d.length === 9) d = '380' + d;
+  return d;
 }
+
+// Поиск по телефону, устойчивый к формату записи в базе (легаси-строки бывают
+// и с +, и с нулём вместо кода страны). Сначала точное совпадение, потом — по
+// последним 9 цифрам (абонентский номер), чтобы старые записи тоже находились.
+const PHONE_MATCH = `(regexp_replace(phone, '\\D', '', 'g') = $1
+   OR right(regexp_replace(phone, '\\D', '', 'g'), 9) = right($1, 9))`;
 
 async function throttle(pool, key) {
   const r = await pool.query(
@@ -253,7 +266,8 @@ router.post('/request', async (req, res) => {
 
     // Ищем юзера
     const u = await pool.query(
-      `SELECT id, display_name, telegram_id, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`,
+      `SELECT id, display_name, telegram_id, is_active FROM users WHERE ${PHONE_MATCH}
+        ORDER BY (regexp_replace(phone, '\\D', '', 'g') = $1) DESC, is_active DESC, id LIMIT 1`,
       [phone]
     );
     if (!u.rowCount) {
@@ -437,7 +451,8 @@ router.post('/login-password', async (req, res) => {
     }
 
     const u = await pool.query(
-      `SELECT id, display_name, role_id, password_hash, is_active FROM users WHERE regexp_replace(phone, '\\D', '', 'g') = $1`,
+      `SELECT id, display_name, role_id, password_hash, is_active FROM users WHERE ${PHONE_MATCH}
+        ORDER BY (regexp_replace(phone, '\\D', '', 'g') = $1) DESC, is_active DESC, id LIMIT 1`,
       [phone]
     );
     // Единый ответ при любой неудаче — не раскрываем, есть ли юзер/пароль
