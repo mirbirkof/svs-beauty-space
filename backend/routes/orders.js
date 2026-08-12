@@ -300,7 +300,8 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
     // возврат остатков: для оплаченного заказа товар уже списан со склада → восстанавливаем stock_qty;
     // для нового (ещё не оплачен) — только снимаем резерв.
     const stockTaken = ['paid', 'packing'].includes(order.status);
-    const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [id]);
+    const items = await client.query(
+      `SELECT variant_id, qty, stock_taken_qty FROM order_items WHERE order_id = $1`, [id]);
     // SLS-11: если заказ выдал склад магазина — возвращаем товар ТУДА ЖЕ, склад салона не трогаем
     let backToStore = false;
     if (stockTaken) {
@@ -311,14 +312,18 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
       if (it.variant_id == null) continue;
       if (backToStore) continue;
       if (stockTaken) {
+        // возвращаем РОВНО столько, сколько реально списали при оплате.
+        // stock_taken_qty IS NULL = заказ оплачен до 12.08 → как раньше, по позиции.
+        const back = it.stock_taken_qty == null ? Number(it.qty) : Number(it.stock_taken_qty);
+        if (!(back > 0)) continue;
         await client.query(
           `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,
-          [it.qty, it.variant_id]
+          [back, it.variant_id]
         );
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id)
            VALUES ($1, $2, $3, $4)`,
-          [it.variant_id, it.qty, `cancel:order:${id}`, id]
+          [it.variant_id, back, `cancel:order:${id}`, id]
         );
       } else {
         await client.query(

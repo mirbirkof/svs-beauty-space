@@ -370,7 +370,7 @@ router.patch('/orders/:id/status', async (req, res) => {
 
     // переход new → paid: списываем со склада и снимаем резерв
     if (prevStatus === 'new' && status === 'paid') {
-      const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [orderId]);
+      const items = await client.query(`SELECT id, variant_id, qty FROM order_items WHERE order_id = $1`, [orderId]);
       // SLS-11: если владелец включил режим «онлайн обслуживает магазин» и товар там есть —
       // выдаёт склад магазина (продажа попадает в его выручку). Иначе всё как раньше — салон.
       let byStore = false;
@@ -382,20 +382,31 @@ router.patch('/orders/:id/status', async (req, res) => {
           await client.query(
             `UPDATE product_variants SET reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1) WHERE id = $2`,
             [it.qty, it.variant_id]);
+          await client.query(`UPDATE order_items SET stock_taken_qty = 0 WHERE id = $1`, [it.id]);
           continue;
         }
+        // ФАКТИЧЕСКОЕ списание: остаток не уходит в минус (GREATEST), поэтому реально
+        // списать можно не больше, чем есть. Пишем в журнал именно эту величину —
+        // иначе возврат вернёт больше, чем забрали, и создаст товар из воздуха (аудит 12.08).
+        const cur = await client.query(
+          `SELECT COALESCE(stock_qty,0) AS q FROM product_variants WHERE id = $1 FOR UPDATE`,
+          [it.variant_id]);
+        const have = Number((cur.rows[0] || {}).q || 0);
+        const actual = Math.max(0, Math.min(Number(it.qty), have));
         await client.query(
           `UPDATE product_variants SET
-             stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1),
-             reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1)
-           WHERE id = $2`,
-          [it.qty, it.variant_id]
+             stock_qty = COALESCE(stock_qty,0) - $1,
+             reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $2)
+           WHERE id = $3`,
+          [actual, it.qty, it.variant_id]
         );
-        await client.query(
+        if (actual > 0) await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
            VALUES ($1, $2, 'sale', $3, $4)`,
-          [it.variant_id, -it.qty, String(orderId), `Замовлення #${orderId}`]
+          [it.variant_id, -actual, String(orderId), `Замовлення #${orderId}`]
         );
+        // фиксируем факт списания в позиции — возврат вернёт ровно столько же
+        await client.query(`UPDATE order_items SET stock_taken_qty = $2 WHERE id = $1`, [it.id, actual]);
       }
       // Бонусы: начисление идёт ТОЛЬКО в единый кошелёк (bonus.accrue после коммита ниже).
       // Аудит v6: раньше здесь был ВТОРОЙ (+3% в loyalty_points/ledger) — заказ начислял
@@ -422,7 +433,8 @@ router.patch('/orders/:id/status', async (req, res) => {
 
     // переход paid → refunded: возвращаем товар, отзываем бонусы
     if (prevStatus === 'paid' && status === 'refunded') {
-      const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [orderId]);
+      const items = await client.query(
+        `SELECT variant_id, qty, stock_taken_qty FROM order_items WHERE order_id = $1`, [orderId]);
       // SLS-11: если заказ выдавал склад МАГАЗИНА — товар возвращается туда же,
       // иначе остатки разошлись бы (магазин недосчитался, салон получил лишнее).
       let backToStore = false;
@@ -430,14 +442,18 @@ router.patch('/orders/:id/status', async (req, res) => {
       catch (_) { backToStore = false; }
       for (const it of items.rows) {
         if (backToStore) continue;
+        // возвращаем РОВНО столько, сколько реально списали при оплате.
+        // stock_taken_qty IS NULL = заказ оплачен до 12.08 → как раньше, по позиции.
+        const back = it.stock_taken_qty == null ? Number(it.qty) : Number(it.stock_taken_qty);
+        if (!(back > 0)) continue;
         await client.query(
           `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,
-          [it.qty, it.variant_id]
+          [back, it.variant_id]
         );
         await client.query(
           `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
            VALUES ($1, $2, 'refund', $3, $4)`,
-          [it.variant_id, it.qty, String(orderId), `Повернення замовлення #${orderId}`]
+          [it.variant_id, back, String(orderId), `Повернення замовлення #${orderId}`]
         );
       }
       // Возврат: total_spent корректируем в транзакции; отзыв бонусов — из ЕДИНОГО
