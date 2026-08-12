@@ -62,11 +62,7 @@ function buildCatalog() {
         how: 'Кабінет Нової Пошти → API → згенерувати ключ → NOVAPOSHTA_API_KEY.' },
     ]},
     { category: 'Синхронізація і AI', items: [
-      { key: 'beautypro', name: 'BeautyPro синхро', icon: 'sync',
-        desc: 'Імпорт записів/клієнтів зі старої CRM BeautyPro.',
-        configured: has('BEAUTYPRO_ID_KEY','BEAUTYPRO_SECRET_KEY'),
-        needs: ['BEAUTYPRO_ID_KEY','BEAUTYPRO_SECRET_KEY','BEAUTYPRO_DATABASE_CODE'],
-        how: 'Запросити ключі доступу до API BeautyPro у підтримки сервісу.' },
+      // 02.08: інтеграцію зі сторонньою CRM прибрано назавжди — система самостійна (наказ власника 31.07).
       { key: 'gemini', name: 'AI-движок (Gemini)', icon: 'auto_awesome',
         desc: 'AI-аналітика, рекомендації, аналіз дзвінків і контроль якості.',
         configured: has('GEMINI_API_KEY'), needs: ['GEMINI_API_KEY'],

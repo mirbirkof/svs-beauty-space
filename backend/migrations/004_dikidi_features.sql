@@ -4,9 +4,9 @@ CREATE TABLE IF NOT EXISTS reviews (
   id            SERIAL PRIMARY KEY,
   client_id     INTEGER REFERENCES clients(id) ON DELETE SET NULL,
   client_phone  TEXT,
-  master_id     TEXT,                          -- BeautyPro employee guid
+  master_id     TEXT,                          -- стара CRM employee guid
   master_name   TEXT,
-  service_id    TEXT,                          -- BeautyPro service guid
+  service_id    TEXT,                          -- стара CRM service guid
   service_name  TEXT,
   rating        INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
   text          TEXT,

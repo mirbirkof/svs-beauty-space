@@ -1,8 +1,8 @@
 -- 105: Реальна звʼязка майстер↔послуга в НАШІЙ CRM (джерело правди).
 -- Проблема: ні в БД, ні в коді не було мапінгу хто яку послугу робить. masters.provides_services — лише boolean.
 -- Онлайн-запис фільтрував майстрів по порожньому списку → показував ВСІХ на кожну послугу (баг з війками).
--- BeautyPro налаштований не до кінця (його settings можуть брехати), тому НЕ довіряємо йому наосліп:
--- сід беремо з BeautyPro mapping АЛЕ тільки для активних майстрів нашої БД — звільнені відсікаються автоматом.
+-- стара CRM налаштований не до кінця (його settings можуть брехати), тому НЕ довіряємо йому наосліп:
+-- сід беремо з стара CRM mapping АЛЕ тільки для активних майстрів нашої БД — звільнені відсікаються автоматом.
 -- Далі редагується вручну в адмінці (наша CRM = curation point).
 BEGIN;
 
@@ -11,10 +11,10 @@ CREATE TABLE IF NOT EXISTS master_services (
   tenant_id    UUID NOT NULL DEFAULT current_tenant_id() REFERENCES tenants(id),
   master_id    INTEGER NOT NULL,
   service_id   INTEGER NOT NULL,
-  price        NUMERIC(12,2),            -- персональна ціна майстра на послугу (з BeautyPro), NULL = базова
+  price        NUMERIC(12,2),            -- персональна ціна майстра на послугу (з стара CRM), NULL = базова
   duration_min INTEGER,                  -- персональна тривалість, NULL = базова з services
   active       BOOLEAN NOT NULL DEFAULT TRUE,
-  source       TEXT NOT NULL DEFAULT 'manual', -- manual|beautypro_seed
+  source       TEXT NOT NULL DEFAULT 'manual', -- manual|legacy_seed
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

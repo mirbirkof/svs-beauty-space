@@ -8,7 +8,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../backend/.en
 const cfg = {
   // База API CRM. Для прод-сверок читаем напрямую из БД (быстрее, без CF).
   apiBase: process.env.QA_API_BASE || 'http://127.0.0.1:3011',
-  prodApiBase: 'https://zvetlacrm.serveousercontent.com',
+  prodApiBase: 'https://zvetlacrm.tailed6c1a.ts.net',
   adminToken: process.env.ADMIN_TOKEN || '',
 
   // Изолированный таргет для деструктивных тестов: ОТДЕЛЬНАЯ Neon-ветка (qa-sandbox).

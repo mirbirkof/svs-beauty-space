@@ -148,7 +148,7 @@ router.get('/appointments.csv', async (req, res) => {
            COALESCE(m.name, '')           AS master_name,
            COALESCE(s.name, a.services_text) AS service_name,
            a.price, a.payment_method, a.source,
-           CASE WHEN a.beautypro_id IS NOT NULL THEN 'BeautyPro' ELSE 'Власна' END AS origin
+           CASE WHEN a.legacy_ref IS NOT NULL THEN 'стара CRM' ELSE 'Власна' END AS origin
     FROM appointments a
     LEFT JOIN clients  c ON c.id = a.client_id
     LEFT JOIN masters  m ON m.id = a.master_id
@@ -346,7 +346,7 @@ router.get('/appointments', requirePerm('clients.read'), async (req, res) => {
            COALESCE(m.name, '')           AS master_name,
            COALESCE(s.name, a.services_text) AS service_name,
            a.price, a.payment_method, a.source,
-           CASE WHEN a.beautypro_id IS NOT NULL THEN 'BeautyPro' ELSE 'Власна' END AS origin
+           CASE WHEN a.legacy_ref IS NOT NULL THEN 'стара CRM' ELSE 'Власна' END AS origin
     FROM appointments a
     LEFT JOIN clients  c ON c.id = a.client_id
     LEFT JOIN masters  m ON m.id = a.master_id

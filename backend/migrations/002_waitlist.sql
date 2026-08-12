@@ -1,14 +1,14 @@
 -- Waitlist: единая очередь на онлайн-запись из бота и сайта
--- BeautyPro API НЕ имеет endpoint waitlist (проверено 2026-06-07), ведём локально
+-- стара CRM API НЕ имеет endpoint waitlist (проверено 2026-06-07), ведём локально
 
 CREATE TABLE IF NOT EXISTS waitlist (
   id              SERIAL PRIMARY KEY,
   client_id       INTEGER REFERENCES clients(id),
   client_phone    TEXT NOT NULL,
   client_name     TEXT,
-  service_id      TEXT NOT NULL,           -- BeautyPro service GUID
+  service_id      TEXT NOT NULL,           -- стара CRM service GUID
   service_name    TEXT,
-  master_id       TEXT,                    -- BeautyPro employee GUID или NULL = любой
+  master_id       TEXT,                    -- стара CRM employee GUID или NULL = любой
   master_name     TEXT,
   preferred_from  TIMESTAMPTZ NOT NULL,    -- желаемое окно "с"
   preferred_to    TIMESTAMPTZ NOT NULL,    -- желаемое окно "до"
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS waitlist (
   offered_slot    TIMESTAMPTZ,             -- предложенное время (когда освободилось)
   offered_at      TIMESTAMPTZ,
   confirmed_at    TIMESTAMPTZ,
-  appointment_id  TEXT,                    -- BeautyPro appointment ID после подтверждения
+  appointment_id  TEXT,                    -- стара CRM appointment ID после подтверждения
   telegram_id     BIGINT,                  -- для уведомления о свободном слоте
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS online_bookings (
   date_from       TIMESTAMPTZ NOT NULL,
   date_to         TIMESTAMPTZ NOT NULL,
   channel         TEXT NOT NULL,           -- 'bot' | 'site_salon' | 'site_shop' | 'admin'
-  bp_appointment_id TEXT,                  -- ID из BeautyPro
+  legacy_appointment_ref TEXT,                  -- ID из стара CRM
   status          TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | cancelled | completed | no_show
   source_token    TEXT,                    -- токен из booking flow
   telegram_id     BIGINT,

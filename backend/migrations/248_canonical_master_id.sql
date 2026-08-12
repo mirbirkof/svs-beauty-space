@@ -1,5 +1,5 @@
 -- 248: канонизация online_bookings.master_id (закрывает major аудита v7).
--- Проблема: каталог/виджет отдают id мастера как 'mst-<id>' или BeautyPro GUID,
+-- Проблема: каталог/виджет отдают id мастера как 'mst-<id>' или стара CRM GUID,
 -- и это значение попадало в online_bookings.master_id как есть. Журнал
 -- (appointments.master_id) — всегда числовой. Из-за этого:
 --   * advisory-ключи hashtext('mst-42') и hashtext('42') РАЗНЫЕ → web- и admin-
@@ -10,12 +10,12 @@
 -- по имени) приводит NEW.master_id к m.id::text для ЛЮБОГО пути записи:
 -- виджет, бот, waitlist, ручной SQL. Кросс-защита 247 начинает работать как задумано.
 
--- 1. Функция канонизации: 'mst-42' | '42' | BeautyPro GUID → m.id::text
+-- 1. Функция канонизации: 'mst-42' | '42' | стара CRM GUID → m.id::text
 CREATE OR REPLACE FUNCTION canon_master_id(mid text) RETURNS text AS $$
   SELECT COALESCE(
     (SELECT m.id::text FROM masters m
       WHERE m.id::text = regexp_replace(mid, '^mst-', '')
-         OR m.beautypro_id::text = mid
+         OR m.legacy_ref::text = mid
       LIMIT 1),
     NULLIF(regexp_replace(mid, '^mst-', ''), ''));
 $$ LANGUAGE sql STABLE;

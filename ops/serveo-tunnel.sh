@@ -16,6 +16,8 @@ tunnel_alive(){ curl -s -m 12 "$1/health" 2>/dev/null | grep -q "svs-shop-api"; 
 
 CUR=$(cat "$STATE" 2>/dev/null || true)
 case "$CUR" in *console.serveo.net*|"") CUR="" ;; esac
+# постоянный домен приоритетнее запасного: пока он жив — все ссылки в системе ведут на него
+write_live(){ mkdir -p /home/client/workspace/svs-beauty-space/tunnel; echo "$1" > /home/client/workspace/svs-beauty-space/tunnel/current-url.txt; }
 if [ -n "$CUR" ] && tunnel_alive "$CUR"; then exit 0; fi
 
 pkill -f "serveo_key -R zvetlacrm" 2>/dev/null
@@ -28,10 +30,7 @@ NEW=$(url_from_log)
 if [ -n "$NEW" ] && tunnel_alive "$NEW"; then
   if [ "$NEW" != "$CUR" ]; then
     echo "$NEW" > "$STATE"
-    if echo "$NEW" | grep -q "zvetlacrm"; then
-      notify "ПОСТІЙНА адреса CRM знову активна: ${NEW}/admin/ — та сама, із закладок."
-    else
-      notify "Адреса CRM оновилась: ${NEW}/admin/ (тисни Continue один раз на сірій сторінці)."
-    fi
+    # Молча: уведомления об адресе шлёт ТОЛЬКО public-url-watch.sh (антиспам, приказ Босса 11.08).
+    :
   fi
 fi

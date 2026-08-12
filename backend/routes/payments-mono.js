@@ -128,16 +128,16 @@ async function applyInvoiceStatus(data) {
     const upd = await pool.query(
       `UPDATE online_bookings SET visit_paid_at = NOW(), updated_at = NOW()
        WHERE id = $1 AND visit_paid_at IS NULL
-       RETURNING id, client_id, client_name, client_phone, service_name, telegram_id, bp_appointment_id`,
+       RETURNING id, client_id, client_name, client_phone, service_name, telegram_id, legacy_appointment_ref`,
       [p.booking_id]
     );
     if (upd.rowCount) {
       const b = upd.rows[0];
       // деньги в кассу (идемпотентно по ext_ref) — иначе онлайн-оплата визита невидима для P&L/ДДС.
-      // ВАЖНО: если визит привязан к BeautyPro (bp_appointment_id), closeAppointmentAsPaid создаст
+      // ВАЖНО: если визит привязан к стара CRM (legacy_appointment_ref), closeAppointmentAsPaid создаст
       // продажу в BP, а наш BP-синк импортирует её как bp_sale sale_service. Чтобы НЕ задвоить выручку,
       // пишем sale_service сами ТОЛЬКО когда привязки к BP нет (иначе деньги учтёт синк).
-      if (!b.bp_appointment_id) {
+      if (!b.legacy_appointment_ref) {
         try {
           await recordCashIn({ category: 'sale_service', amount: paid, method: 'mono',
             ref_type: 'online_booking', ref_id: b.id, description: b.service_name || 'Послуга (онлайн)',
@@ -147,13 +147,6 @@ async function applyInvoiceStatus(data) {
       }
       // телефон в уведомлении = телефон владельца кабинета (clients.phone), не телефон из карточки BP
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
-      // провести в BeautyPro: чеки на счёт TG-бот + зелёная запись (fire-and-forget)
-      if (b.bp_appointment_id) {
-        const bp = require('../beautyproClient');
-        bp.closeAppointmentAsPaid(b.bp_appointment_id, paid)
-          .then(r => console.log('[mono:bp-close]', b.bp_appointment_id, JSON.stringify(r)))
-          .catch(e => console.error('[mono:bp-close]', b.bp_appointment_id, e.message));
-      }
       if (b.telegram_id) {
         bookingBotSend(b.telegram_id,
           `✅ Оплату ${Math.round(paid)} грн отримано. Дякуємо, що ви з нами! 💛`)
@@ -371,7 +364,7 @@ async function createInvoiceForBooking(bookingId) {
             s.price, s.name AS local_service_name,
             cl.prepayment_required
      FROM online_bookings b
-     LEFT JOIN services s ON s.beautypro_id = b.service_id
+     LEFT JOIN services s ON s.legacy_ref = b.service_id
      LEFT JOIN clients cl ON cl.id = b.client_id
      WHERE b.id = $1`,
     [bookingId]
@@ -424,8 +417,8 @@ async function createInvoiceForVisit(bookingId) {
     `SELECT b.id, b.service_name, b.telegram_id, b.visit_paid_at,
             a.price AS visit_price, s.price AS svc_price, s.name AS local_service_name
      FROM online_bookings b
-     LEFT JOIN appointments a ON a.beautypro_id = b.bp_appointment_id
-     LEFT JOIN services s ON s.beautypro_id = b.service_id
+     LEFT JOIN appointments a ON a.legacy_ref = b.legacy_appointment_ref
+     LEFT JOIN services s ON s.legacy_ref = b.service_id
      WHERE b.id = $1`,
     [bookingId]
   );
@@ -657,8 +650,8 @@ async function monoScanTick() {
       //    рассчитались на месте) → шлём ссылку на полную сумму, один раз ──
       const fv = await pool.query(
         `SELECT b.id, b.telegram_id FROM online_bookings b
-         JOIN appointments a ON a.beautypro_id = b.bp_appointment_id
-         WHERE a.status = 'done' AND LOWER(COALESCE(a.bp_state,'')) <> 'paid'
+         JOIN appointments a ON a.legacy_ref = b.legacy_appointment_ref
+         WHERE a.status = 'done' AND LOWER(COALESCE(a.legacy_state,'')) <> 'paid'
            AND b.telegram_id IS NOT NULL
            AND b.visit_paid_at IS NULL AND b.visit_invoice_sent_at IS NULL
            AND a.ends_at > NOW() - INTERVAL '3 days' AND a.ends_at < NOW()

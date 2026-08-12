@@ -10,13 +10,13 @@
 
    ВАЖЛИВО ДЛЯ SaaS: жодних «магічних» назв систем-джерел у бізнес-логіці.
    Історичний імпорт визначається штатним полем appointments.import_batch,
-   яке проставляє будь-який імпортер, а не переліком 'beautypro'/'bukon_import'.
+   яке проставляє будь-який імпортер, а не переліком джерел.
    Список назв лишається лише як сумісність зі старими рядками цього салону.
    ═══════════════════════════════════════════════════════════════════════ */
 
 // Назви джерел до появи import_batch (легасі ЦЬОГО салону). Нові тенанти сюди
 // нічого не додають — у них імпорт завжди має import_batch.
-const LEGACY_IMPORT_SOURCES = ['beautypro', 'bukon_import', 'migrate'];
+const LEGACY_IMPORT_SOURCES = ['legacy_import', 'bukon_import', 'migrate'];
 // Дата переїзду салону в CRM: візити ДО неї — історія, каса за них лишилась у
 // старій системі. Для інших тенантів береться з їх власного налаштування.
 const DEFAULT_MIGRATION_DATE = '2026-07-01';
@@ -33,10 +33,10 @@ function paidExpr(al) {
   return `(
       ${al}.pay_settled_at IS NOT NULL
       OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=${al}.id)
-      OR (${al}.bp_client IS NOT NULL AND ${al}.master_id IS NOT NULL AND EXISTS(
+      OR (${al}.legacy_client_ref IS NOT NULL AND ${al}.master_id IS NOT NULL AND EXISTS(
             SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-              AND co.bp_client=${al}.bp_client AND co.master_id=${al}.master_id
-              AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+              AND co.legacy_client_ref=${al}.legacy_client_ref AND co.master_id=${al}.master_id
+              AND (COALESCE(co.legacy_calendar_ref,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
                   = (${al}.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
     )`;
 }
@@ -85,8 +85,8 @@ function paidTwinExists(a, tbl = 'appointments') {
  * НАРАХУВАННЯ % МАЙСТРУ рахується лише по візитах, ЗА ЯКІ САЛОН ПЛАТИТЬ САМ.
  *
  * Чому це ОКРЕМИЙ, вужчий вираз, а не operationalExpr (урок 27.07):
- * operationalExpr викидає ще й легасі-історію BeautyPro до дати переїзду. Для панелей
- * «Забули провести» / звірки каси це правильно. Для ГРОШЕЙ — ні: архівні продажі BeautyPro
+ * operationalExpr викидає ще й легасі-історію стара CRM до дати переїзду. Для панелей
+ * «Забули провести» / звірки каси це правильно. Для ГРОШЕЙ — ні: архівні продажі стара CRM
  * лежать у нашій касі (cash_operations ref_type='bp_sale') і рахуються у ВИРУЧКУ. Викинути
  * по них ЗП, лишивши виручку, = асиметрія: прибуток червня роздувся б на ~200 тис. з повітря
  * (зловлено живим прогоном ДО викатки).
@@ -96,7 +96,7 @@ function paidTwinExists(a, tbl = 'appointments') {
  */
 function payrollEligibleExpr(a) {
   // ЄДИНИЙ критерій — СИМЕТРІЯ З ВИРУЧКОЮ. Виручка живе в cash_operations. Отже:
-  //   • bp_export/bp_gap (source beautypro/bukon_import) — касу МАЮТЬ (bp_sale + прив'язані
+  //   • історичний імпорт (source legacy_import/bukon_import) — касу МАЮТЬ (bp_sale + прив'язані
   //     операції, живий факт 27.07: 1103 з 1463 і 116 з 233) → їх ЗП рахувати ТРЕБА;
   //   • мастер міграції (source='migrate') каси не створює НІКОЛИ → і ЗП по них бути не може.
   // Перевірено ДВІЧІ до викатки: спершу взяв operationalExpr (червень −200к ЗП при тій самій

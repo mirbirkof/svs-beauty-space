@@ -48,14 +48,14 @@ async function computePeriod(masterId, from, to) {
        COALESCE(SUM(GREATEST(EXTRACT(EPOCH FROM (COALESCE(ends_at, starts_at) - starts_at))/60, 0)) FILTER (WHERE status IN ('done','confirmed','booked')),0)::int AS busy_min,
        COUNT(DISTINCT date(starts_at)) FILTER (WHERE status IN ('done','confirmed','booked'))::int AS work_days
      FROM appointments WHERE master_id=$1 AND starts_at >= $2 AND starts_at < $3
-       AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')`,
+       AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')`,
     [masterId, from, to]))[0];
 
   const rep = (await q(
     `SELECT COUNT(*)::int AS c FROM (
        SELECT client_id FROM appointments
         WHERE master_id=$1 AND status='done' AND client_id IS NOT NULL AND starts_at>=$2 AND starts_at<$3
-          AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+          AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
         GROUP BY client_id
         HAVING COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)>1) t`, [masterId, from, to]))[0].c;
 
@@ -75,7 +75,7 @@ async function computePeriod(masterId, from, to) {
   } catch { rating = null; }
 
   // Виручка майстра = РЕАЛЬНІ гроші з каси (cash_operations), а не ціни журналу
-  // (Босс 19.07: журнал роздутий дублями BeautyPro → завищував. Єдине джерело — каса,
+  // (Босс 19.07: журнал роздутий дублями стара CRM → завищував. Єдине джерело — каса,
   // синхронно з reports.js top_masters). Візити/no-show лишаються з appointments.
   const cashRev = (await q(
     `SELECT COALESCE(SUM(amount),0)::numeric AS revenue FROM cash_operations

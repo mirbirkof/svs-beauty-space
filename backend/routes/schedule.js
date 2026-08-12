@@ -1,4 +1,4 @@
-/* Schedule: расписание мастеров — CRUD + синк с BeautyPro
+/* Schedule: расписание мастеров — CRUD + синк с стара CRM
    Подключается как /api/schedule */
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
@@ -85,7 +85,7 @@ router.get('/masters', async (req, res) => {
     const pool = getPool();
     const all = req.query.all === '1' || req.query.all === 'true';
     const r = await pool.query(
-      `SELECT m.id, m.name, m.specialty, m.avatar, m.schedule_json, m.active, m.beautypro_id,
+      `SELECT m.id, m.name, m.specialty, m.avatar, m.schedule_json, m.active, m.legacy_ref,
               COALESCE(m.provides_services, true) AS provides_services, m.staff_role,
               u.id AS user_id, rr.code AS login_role, rr.name AS login_role_name,
               (u.id IS NOT NULL) AS has_login
@@ -95,9 +95,9 @@ router.get('/masters', async (req, res) => {
         WHERE COALESCE(m.provides_services, true) = true ${all ? '' : 'AND m.active = true'}
         ORDER BY m.active DESC, m.name`
     );
-    // Типовий тижневий графік: агрегуємо реальні зміни з BeautyPro (master_schedule_days)
+    // Типовий тижневий графік: агрегуємо реальні зміни з стара CRM (master_schedule_days)
     // за вікно [-7..+35 днів] по днях тижня — найчастіша зміна per день стає шаблоном.
-    // BeautyPro має пріоритет над ручним schedule_json (єдина правда, як у журналі).
+    // стара CRM має пріоритет над ручним schedule_json (єдина правда, як у журналі).
     const DAYK = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']; // індекс = EXTRACT(DOW)
     const bp = await pool.query(
       `SELECT master_id, EXTRACT(DOW FROM work_date)::int AS dow,
@@ -117,7 +117,7 @@ router.get('/masters', async (req, res) => {
       wd[key][slot] = (wd[key][slot] || 0) + 1;
     }
 
-    // BeautyPro формально віддає графік лише для 2 майстрів (решта працюють,
+    // стара CRM формально віддає графік лише для 2 майстрів (решта працюють,
     // але графік у BP не заведений). Щоб дошка була повна і ПРАВДИВА — для решти
     // виводимо реальні робочі години з фактичних записів: для кожного дня тижня
     // беремо найраніший початок і найпізніший кінець записів за останні 8 тижнів,
@@ -147,10 +147,10 @@ router.get('/masters', async (req, res) => {
       const week = {};
       ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
         if (wd[k]) {
-          // найчастіша зміна для цього дня тижня (графік BeautyPro — пріоритет)
+          // найчастіша зміна для цього дня тижня (графік стара CRM — пріоритет)
           const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0];
           const [start, end] = best.split('-');
-          week[k] = { start, end, source: 'beautypro' };
+          week[k] = { start, end, source: 'history' };
         } else if (tmpl[k]) {
           week[k] = { start: tmpl[k].start, end: tmpl[k].end,
             break_start: tmpl[k].break_start || null, break_end: tmpl[k].break_end || null, source: 'template' };
@@ -199,7 +199,7 @@ router.get('/masters/:id/portfolio', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const m = await pool.query('SELECT * FROM masters WHERE id = $1', [id]);
     if (!m.rows[0]) return res.status(404).json({ error: 'master not found' });
-    // Статистика — з каси (реально оплачене). BeautyPro не присилає статус 'done',
+    // Статистика — з каси (реально оплачене). стара CRM не присилає статус 'done',
     // тому рахуємо за cash_operations(sale_service/sale_product), а не за appointments.status.
     const stat = await pool.query(
       `SELECT
@@ -399,7 +399,7 @@ router.delete('/masters/:id/dayoff/:date', async (req, res) => {
 // ── GET /api/schedule/month?ym=YYYY-MM — місячна матриця графіків (як DIKIDI) ──
 // Рядки = майстри, колонки = дні місяця, клітинка = зміна (start-end) або вихідний.
 // Пріоритет на конкретний день: явний per-day запис (master_schedule_days) >
-//   виняток-відгул (schedule_json.exceptions) > тижневий шаблон (beautypro>template>auto).
+//   виняток-відгул (schedule_json.exceptions) > тижневий шаблон (історія>template>auto).
 router.get('/month', async (req, res) => {
   try {
     const pool = getPool();
@@ -435,7 +435,7 @@ router.post('/day', async (req, res) => {
 });
 
 // ── POST /api/schedule/apply-pattern-batch — згенерувати графік на N місяців для КІЛЬКОХ майстрів ──
-// Замінює BeautyPro-синк: салон сам тримає графік на місяці вперед.
+// Замінює синхронізацію зі старою CRM: салон сам тримає графік на місяці вперед.
 // Body: { master_ids:[Int] | 'all', months_ahead:Int(1..6), work_days, off_days, anchor:"YYYY-MM-DD",
 //         start:"09:00", end:"18:00", from_ym?:"YYYY-MM" (default поточний місяць) }
 router.post('/apply-pattern-batch', async (req, res) => {
@@ -505,7 +505,7 @@ router.post('/apply-pattern-batch', async (req, res) => {
 // Body: { master_id, ym:"YYYY-MM", work_days:Int, off_days:Int, anchor:"YYYY-MM-DD" (перший робочий день циклу),
 //         start:"09:00", end:"18:00", overwrite_offs:true }
 // Генерує робочі дні та вихідні за циклом (work_days підряд, потім off_days вихідних) від дати anchor.
-// Всі записи source='manual' (захищені від синхронізації BeautyPro). Ідемпотентно (ON CONFLICT).
+// Всі записи source='manual' (захищені від синхронізації стара CRM). Ідемпотентно (ON CONFLICT).
 // overwrite_offs:false → у дні-вихідні схеми НЕ чіпає наявний графік (тільки виставляє робочі зміни).
 router.post('/apply-pattern', async (req, res) => {
   try {
@@ -645,44 +645,6 @@ router.get('/availability', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
-// ── POST /api/schedule/sync-beautypro — подтянуть мастеров из BeautyPro ──
-router.post('/sync-beautypro', async (req, res) => {
-  try {
-    const pool = getPool();
-    const bp = require('../beautyproClient');
-    const employees = await bp.listEmployees();
-
-    let synced = 0;
-    const errors = [];
-    for (const emp of employees) {
-      const bpId = String(emp.id || '').trim();
-      if (!bpId || !emp.name) continue;
-      // Upsert: проверяем есть ли уже мастер с таким beautypro_id
-      const existing = await pool.query(
-        'SELECT id FROM masters WHERE beautypro_id = $1', [bpId]
-      );
-      try {
-        if (existing.rows.length > 0) {
-          await pool.query(
-            'UPDATE masters SET name = $1, active = true WHERE beautypro_id = $2',
-            [emp.name, bpId]
-          );
-        } else {
-          await pool.query(
-            'INSERT INTO masters (name, beautypro_id, active) VALUES ($1, $2, true)',
-            [emp.name, bpId]
-          );
-        }
-        synced++;
-      } catch (insertErr) {
-        errors.push({ name: emp.name, bpId, error: insertErr.message });
-      }
-    }
-
-    res.json({ ok: true, synced, errors: errors.length ? errors : undefined });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
-});
-
 // ── GET /api/schedule/journal?date=YYYY-MM-DD ──────────────
 // Журнал записів на день у стилі DIKIDI: майстри-колонки + записи з усіма деталями.
 router.get('/journal', async (req, res) => {
@@ -701,7 +663,7 @@ router.get('/journal', async (req, res) => {
         WHERE active = true AND COALESCE(provides_services, true) = true ${masterOnly ? 'AND id = $1' : ''} ORDER BY name`,
       masterOnly ? [masterOnly] : []
     );
-    // реальний графік з BeautyPro на цю дату (пріоритет над тижневим schedule_json)
+    // реальний графік з стара CRM на цю дату (пріоритет над тижневим schedule_json)
     const bpRes = await pool.query(
       `SELECT master_id, to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
          FROM master_schedule_days WHERE work_date = $1`, [date]
@@ -711,7 +673,7 @@ router.get('/journal', async (req, res) => {
       const s = m.schedule_json || {};
       const bp = bpMap.get(m.id);
       if (bp) {
-        // BeautyPro має запис на цей день: є години → працює, немає → вихідний
+        // стара CRM має запис на цей день: є години → працює, немає → вихідний
         const working = !!(bp.start && bp.end);
         return {
           id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar,
@@ -766,10 +728,10 @@ router.get('/journal', async (req, res) => {
               (a.pay_settled_at IS NOT NULL
                OR EXISTS(SELECT 1 FROM cash_operations co
                         WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-               OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
+               OR (a.legacy_client_ref IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(SELECT 1 FROM cash_operations co
                         WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-                          AND co.bp_client = a.bp_client AND co.master_id = a.master_id
-                          AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                          AND co.legacy_client_ref = a.legacy_client_ref AND co.master_id = a.master_id
+                          AND (COALESCE(co.legacy_calendar_ref, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
                               = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date))
               ) AS paid,
               -- Спосіб оплати (cash/card) — той самий матчинг, що й «оплачено».
@@ -780,9 +742,9 @@ router.get('/journal', async (req, res) => {
                    HAVING COUNT(*) > 0),
                 (SELECT co.method FROM cash_operations co
                    WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-                     AND a.bp_client IS NOT NULL AND a.master_id IS NOT NULL
-                     AND co.bp_client = a.bp_client AND co.master_id = a.master_id
-                     AND (COALESCE(co.bp_calendar, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                     AND a.legacy_client_ref IS NOT NULL AND a.master_id IS NOT NULL
+                     AND co.legacy_client_ref = a.legacy_client_ref AND co.master_id = a.master_id
+                     AND (COALESCE(co.legacy_calendar_ref, co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
                          = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date
                    ORDER BY co.id DESC LIMIT 1)
               ) AS pay_method,
@@ -793,15 +755,15 @@ router.get('/journal', async (req, res) => {
                  WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id) AS paid_total,
               COALESCE(
                 NULLIF(c.name,''),
-                CASE WHEN a.bp_client ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.bp_client END,
+                CASE WHEN a.legacy_client_ref ~* '^[0-9a-f]{8}-[0-9a-f]{4}-' THEN NULL ELSE a.legacy_client_ref END,
                 'Клієнт'
               ) AS client_name,
               c.phone AS client_phone,
-              -- Побажання клієнта з ОНЛАЙН-ЗАПИСУ (наша таблиця online_bookings, не BeautyPro).
+              -- Побажання клієнта з ОНЛАЙН-ЗАПИСУ (наша таблиця online_bookings, не стара CRM).
               -- Тримаємо ОКРЕМО від notes (notes = формула/замітка майстра), щоб в картці
               -- було чітко видно: де написав клієнт, а де адмін. Звʼязок по клієнту+даті
               -- (онлайн-бронь завжди привʼязана до конкретного клієнта й дня). Працює і без
-              -- BeautyPro — джерело наша БД.
+              -- стара CRM — джерело наша БД.
               (SELECT ob.note FROM online_bookings ob
                  WHERE ob.note IS NOT NULL AND btrim(ob.note) <> ''
                    AND ((a.client_id IS NOT NULL AND ob.client_id = a.client_id)
@@ -833,7 +795,7 @@ router.get('/journal', async (req, res) => {
       masterOnly ? [date, masterOnly] : [date]
     );
 
-    // Один візит у BeautyPro може містити послуги РІЗНИХ майстрів (напр. манікюр у
+    // Один візит у стара CRM може містити послуги РІЗНИХ майстрів (напр. манікюр у
     // Кушнерук + мелірування у Вери в одному записі). Запис цілком висів на майстрі
     // ПЕРШОЇ послуги, тягнучи чужу послугу та її тривалість у його колонку (баг
     // «у нігтьового майстра стоїть мелір на 7 годин»). Розбиваємо такий запис на
@@ -946,7 +908,7 @@ router.get('/online-events', async (req, res) => {
     const pool = getPool();
 
     // Курсор «нових записів» — по id (SERIAL завжди зростає). Надійніше за час:
-    // booking-bridge синкає брони з BeautyPro зі СТАРИМ created_at (час створення
+    // booking-bridge синкає брони з стара CRM зі СТАРИМ created_at (час створення
     // у BP, не момент синку), тож детект по часу пропускав би їх. id-курсор ловить
     // будь-який новий рядок незалежно від created_at.
     const sinceId = parseInt(req.query.since_id, 10);
@@ -1006,7 +968,7 @@ router.get('/appointments/:id/details', async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
 
     const aRes = await pool.query(
-      `SELECT a.id, a.master_id, a.client_id, a.bp_client, a.starts_at, a.status,
+      `SELECT a.id, a.master_id, a.client_id, a.legacy_client_ref, a.starts_at, a.status,
               COALESCE(a.price, s.price) AS price, a.real_amount,
               s.name AS service_name
          FROM appointments a
@@ -1041,15 +1003,15 @@ router.get('/appointments/:id/details', async (req, res) => {
     // DISTINCT ON знімає дублі синхри (та сама позиція з різним ext_ref) —
     // інакше картка показала б подвоєні товари (баг подвоєння BP-sales).
     let products = [];
-    if (a.bp_client) {
+    if (a.legacy_client_ref) {
       const pRes = await pool.query(
         `SELECT DISTINCT ON (product_name, total_price, qty)
                 product_name AS name, qty, total_price, master_name
            FROM salon_product_sales
-          WHERE bp_client = $1
+          WHERE legacy_client_ref = $1
             AND (sale_date AT TIME ZONE 'Europe/Kyiv')::date
                 = (($2::timestamptz) AT TIME ZONE 'Europe/Kyiv')::date
-          ORDER BY product_name, total_price, qty, id`, [a.bp_client, a.starts_at]
+          ORDER BY product_name, total_price, qty, id`, [a.legacy_client_ref, a.starts_at]
       );
       products = pRes.rows;
     }
@@ -1235,8 +1197,8 @@ router.patch('/appointments/:id', async (req, res) => {
     }
 
     // Ручний перенос (час/майстер/тривалість/послуга/сума) → позначаємо manual_override,
-    // (нижче) щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
-    // щоб автосинхронізація BeautyPro не перетирала ці поля назад кожні 5 хв.
+    // (нижче) щоб автосинхронізація стара CRM не перетирала ці поля назад кожні 5 хв.
+    // щоб автосинхронізація стара CRM не перетирала ці поля назад кожні 5 хв.
     const markManual = (starts_at !== undefined || master_id !== undefined || duration_min !== undefined || service_id !== undefined || price !== undefined);
     // Аудит v6: UPDATE записи + синк её онлайн-брони = ОДНА транзакция.
     // Раньше: (а) set_config шёл отдельным pool.query — движок оборачивает каждый запрос
@@ -1521,7 +1483,7 @@ router.delete('/appointments/:id/services/:rowId', async (req, res) => {
 
 // ── PATCH /api/schedule/appointments/:id/services/:rowId — змінити ціну послуги у складі візиту (заметки #94/#96) ──
 // Ціна пишеться в нашу БД (вона головна), планова сума запису перераховується,
-// manual_override=true — щоб синхронізація BeautyPro не перетерла правку.
+// manual_override=true — щоб синхронізація стара CRM не перетерла правку.
 router.patch('/appointments/:id/services/:rowId', async (req, res) => {
   try {
     const pool = getPool();
@@ -1856,7 +1818,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
 
     // запис + ціна + майстер + GUID клієнта (для точної перевірки оплати в BP)
     const ap = await pool.query(
-      `SELECT a.id, a.master_id, a.client_id, a.status, a.bp_client, a.starts_at, a.tenant_id,
+      `SELECT a.id, a.master_id, a.client_id, a.status, a.legacy_client_ref, a.starts_at, a.tenant_id,
               COALESCE(a.price, s.price) AS price, s.name AS service_name
          FROM appointments a LEFT JOIN services s ON s.id = a.service_id
         WHERE a.id = $1`, [id]
@@ -2006,21 +1968,21 @@ router.post('/appointments/:id/pay', async (req, res) => {
       if (!payParts.length && finalCash > 0)
         return await failPay(400, { error: 'mixed-empty', message: 'Вкажіть суми готівки та/або картки' });
     }
-    // вже оплачено в BeautyPro? Конкретний продаж послуги цьому клієнту тим же
+    // вже оплачено в стара CRM? Конкретний продаж послуги цьому клієнту тим же
     // майстром того ж дня (точна привʼязка по GUID) — гроші вже в касі. Не дублюємо.
-    if (appt.master_id && appt.bp_client) {
+    if (appt.master_id && appt.legacy_client_ref) {
       const bp = await pool.query(
         `SELECT id FROM cash_operations
           WHERE type='in' AND ref_type='bp_sale' AND category='sale_service'
-            AND master_id=$1 AND bp_client=$2
-            AND (COALESCE(bp_calendar, created_at) AT TIME ZONE 'Europe/Kyiv')::date
+            AND master_id=$1 AND legacy_client_ref=$2
+            AND (COALESCE(legacy_calendar_ref, created_at) AT TIME ZONE 'Europe/Kyiv')::date
                 = ($3::timestamptz AT TIME ZONE 'Europe/Kyiv')::date
-          LIMIT 1`, [appt.master_id, appt.bp_client, appt.starts_at]
+          LIMIT 1`, [appt.master_id, appt.legacy_client_ref, appt.starts_at]
       );
       if (bp.rows[0]) {
         await pool.query(`UPDATE appointments SET status='done', updated_at=NOW() WHERE id=$1 AND status<>'done'`, [id]);
         await emitAppointmentCompleted(id, appt.master_id);
-        return res.json({ ok: true, already_paid: true, paid_via: 'beautypro', operation_id: bp.rows[0].id });
+        return res.json({ ok: true, already_paid: true, paid_via: 'legacy_import', operation_id: bp.rows[0].id });
       }
     }
 
@@ -2187,7 +2149,7 @@ router.delete('/appointments/:id', async (req, res) => {
     const pool = getPool();
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
-    const chk = await pool.query(`SELECT id, beautypro_id, starts_at FROM appointments WHERE id=$1`, [id]);
+    const chk = await pool.query(`SELECT id, legacy_ref, starts_at FROM appointments WHERE id=$1`, [id]);
     if (!chk.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
     // #95: видалення записів минулих днів — лише коли увімкнено allow_edit_past
     if (await pastEditDenied(req, chk.rows[0].starts_at)) return res.status(403).json(PAST_LOCKED);
@@ -2200,7 +2162,7 @@ router.delete('/appointments/:id', async (req, res) => {
     } catch (e) { console.error('[appt-delete/stock-return]', e.message); }
     // Возврат кассы + удаление/отмена записи — АТОМАРНО. Иначе при падении между ними
     // деньги вернулись, а запись осталась (или наоборот) → рассинхрон кассы.
-    const soft = !!chk.rows[0].beautypro_id;
+    const soft = !!chk.rows[0].legacy_ref;
     const client = await pool.connect();
     try {
       await client.query('BEGIN'); await applyTenant(client);
@@ -2221,7 +2183,7 @@ router.delete('/appointments/:id', async (req, res) => {
           WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
          ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`, [id]
       );
-      // BeautyPro-запис не можна видаляти жорстко: автосинк побачить його в BP і
+      // стара CRM-запис не можна видаляти жорстко: автосинк побачить його в BP і
       // відтворить знову. Тому мʼяке видалення: cancelled + manual_override.
       if (soft) {
         await client.query(
@@ -2233,10 +2195,10 @@ router.delete('/appointments/:id', async (req, res) => {
       // Синхронізуємо привʼязану онлайн-запис: якщо візит скасовано в журналі, онлайн-запис
       // теж має стати 'cancelled' (інакше слот назавжди заблокований тригером 241/247).
       // РАУНД3-FIX (MAJOR-R1): справжній звʼязок — online_bookings.appointment_id (міграція 247).
-      // bp_appointment_id залишаємо як legacy-fallback для старих записів до бекфілу.
+      // legacy_appointment_ref залишаємо як legacy-fallback для старих записів до бекфілу.
       await client.query(
         `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
-           WHERE (appointment_id = $1 OR bp_appointment_id = $1::text) AND status <> 'cancelled'`, [id]
+           WHERE (appointment_id = $1 OR legacy_appointment_ref = $1::text) AND status <> 'cancelled'`, [id]
       );
       await client.query('COMMIT');
     } catch (e) {

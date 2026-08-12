@@ -12,7 +12,7 @@ const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 const { notArtifact } = require('../lib/appt-quality');
 const { getServiceCadence } = require('../lib/service-cadence');
 
-// Аудит 28.07: артефакты синка BeautyPro/Букон (bp_deleted/not_in_bukon/phantom_dup)
+// Аудит 28.07: артефакты синка стара CRM/Букон (bp_deleted/not_in_bukon/phantom_dup)
 // раздували отмены больше чем вдвое (111 «отмен» при 50 реальных). Фильтр — везде.
 const CLEAN = notArtifact('a');
 
@@ -54,7 +54,7 @@ async function buildSnapshot() {
        GROUP BY dow ORDER BY dow`),
     // KPI мастеров за 30 дней.
     // ВАЖНО: выручку берём из КАССЫ (cash_operations.master_id), а НЕ из appointments.price WHERE done —
-    // BeautyPro оставляет визиты в статусе 'confirmed', поэтому 'done'-сумма недосчитывает выручку вдвое.
+    // стара CRM оставляет визиты в статусе 'confirmed', поэтому 'done'-сумма недосчитывает выручку вдвое.
     // done/lost (для % отмен) считаем по appointments — это про кол-во визитов, там это корректно.
     q(`SELECT m.name,
               COALESCE((SELECT SUM(co.amount) FROM cash_operations co

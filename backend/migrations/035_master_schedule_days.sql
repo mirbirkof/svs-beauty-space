@@ -1,4 +1,4 @@
--- 035: Per-date робочий графік майстрів з BeautyPro (/schedule)
+-- 035: Per-date робочий графік майстрів з стара CRM (/schedule)
 -- /employees.worktime порожній → реальне джерело графіків це /schedule (по даті).
 -- Журнал читає цю таблицю першою, fallback на тижневий masters.schedule_json.
 CREATE TABLE IF NOT EXISTS master_schedule_days (
@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS master_schedule_days (
   work_date   DATE NOT NULL,
   start_time  TIME,                 -- NULL = вихідний цього дня
   end_time    TIME,
-  source      TEXT DEFAULT 'beautypro',
+  source      TEXT DEFAULT 'legacy',
   synced_at   TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (master_id, work_date)
 );

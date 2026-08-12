@@ -33,7 +33,7 @@ const SVC_CADENCE_INNER = `
       FROM appointments a
       WHERE a.status NOT IN ('cancelled','noshow')
         AND a.starts_at <= NOW()
-        AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+        AND COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
         AND a.client_id IS NOT NULL AND a.service_id IS NOT NULL
       GROUP BY 1,2,3
     ) vd

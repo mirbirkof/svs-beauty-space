@@ -3,9 +3,9 @@
    Только чтение, без авторизации — бьёт по публичным ручкам.
 
    Запуск:  node scripts/smoke.js
-   Цель:    SMOKE_URL=https://zvetlacrm.serveousercontent.com node scripts/smoke.js */
+   Цель:    SMOKE_URL=https://zvetlacrm.tailed6c1a.ts.net node scripts/smoke.js */
 
-const BASE = process.env.SMOKE_URL || 'https://zvetlacrm.serveousercontent.com';
+const BASE = process.env.SMOKE_URL || 'https://zvetlacrm.tailed6c1a.ts.net';
 const TIMEOUT = 15000;
 
 async function hit(path, { expect = 200, allow = [], want } = {}) {

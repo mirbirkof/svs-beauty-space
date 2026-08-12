@@ -12,7 +12,6 @@ const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const { resolveBookingIds } = require('./booking');
-const bp = require('../beautyproClient');
 const { requirePerm } = require('../lib/rbac');
 const { authClient } = require('./cabinet-auth');
 const { normalizePhoneDb } = require('../lib/phone');
@@ -132,128 +131,6 @@ router.patch('/waitlist/:id', requirePerm('waitlist.write'), async (req, res) =>
 
 // ════════════════════ BOOKING ════════════════════
 
-// GET /api/booking/schedule?service_id=&master_id=&from=&to=
-// Возвращает свободные слоты из BeautyPro
-router.get('/booking/schedule', async (req, res) => {
-  try {
-    const { service_id, master_id, from, to, duration } = req.query;
-    if (!from || !to) return res.status(400).json({ error: 'from, to обовʼязкові (ISO format)' });
-    const dur = duration || 60;
-    // BP free_time: если master_id указан и не возвращает слоты — пробуем без фильтра
-    let slots = await bp.freeTime({
-      duration: dur,
-      professional: master_id,
-      from, to,
-    });
-    // если пусто — пробуем без master
-    if (!slots || (typeof slots === 'object' && Object.keys(slots).length === 0)) {
-      slots = await bp.freeTime({ duration: dur, from, to });
-    }
-    res.json({ ok: true, slots });
-  } catch (e) {
-    console.error('[booking/schedule]', e.message);
-    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
-  }
-});
-
-// POST /api/booking/confirm
-// Создаёт запись в BP + локально в online_bookings
-// Body: { phone, name, telegram_id, service_id, service_name, master_id, master_name, date_from, date_to, channel, note }
-router.post('/booking/confirm', async (req, res) => {
-  try {
-    const {
-      phone, name, telegram_id,
-      service_id, service_name,
-      master_id, master_name,
-      date_from, date_to,
-      channel, note, source_token,
-    } = req.body;
-    if (!phone || !service_id || !master_id || !date_from || !date_to) {
-      return res.status(400).json({ error: 'phone, service_id, master_id, date_from, date_to обовʼязкові' });
-    }
-    // валидация дат: не в прошлом, конец после начала, не дальше года
-    const from = new Date(date_from), to = new Date(date_to);
-    if (isNaN(from) || isNaN(to)) return res.status(400).json({ error: 'Невірний формат дати' });
-    if (to <= from) return res.status(400).json({ error: 'date_to має бути пізніше date_from' });
-    if (from < new Date(Date.now() - 5 * 60 * 1000)) return res.status(400).json({ error: 'Не можна записатись у минуле' });
-    if (from > new Date(Date.now() + 366 * 24 * 3600 * 1000)) return res.status(400).json({ error: 'Дата занадто далеко' });
-
-    const ph = normalizePhone(phone);
-
-    // Чорний список: якщо номер заблокований для запису — не дозволяємо бронювання.
-    // Порівнюємо по цифрах: у blacklist історично лежать номери з '+', канон — без.
-    const blk = await pool.query(
-      `SELECT reason FROM blacklist
-        WHERE regexp_replace(client_phone, '\\D', '', 'g') = regexp_replace($1, '\\D', '', 'g')
-          AND COALESCE(blocks_booking,true)=true LIMIT 1`, [ph]);
-    if (blk.rows[0]) return res.status(403).json({ error: 'client-blocked', message: 'Запис неможливий: номер у чорному списку' + (blk.rows[0].reason ? ' (' + blk.rows[0].reason + ')' : '') });
-
-    const client_id = await getOrCreateClient(ph, name, telegram_id);
-
-    // слот занят подтверждённой записью? (защита от двойного бронирования)
-    const busy = await pool.query(
-      `SELECT 1 FROM online_bookings
-       WHERE master_id = $1 AND status = 'confirmed'
-         AND date_from < $3 AND date_to > $2
-       LIMIT 1`,
-      [master_id, date_from, date_to]
-    );
-    if (busy.rowCount) return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
-
-    // Аудит v6: бронь + тень в журнале = ОДНА транзакция (как в bot-потоке, раунд 3).
-    // Раньше: (а) между busy-проверкой и INSERT не было лока — гонка давала 500 от
-    // триггера вместо 409; (б) тень в appointments не создавалась вовсе — бронь была
-    // НЕВИДИМА в календаре админа. BeautyPro отвязан 03.07 — мёртвый вызов BP убран.
-    const txc = await pool.connect();
-    let out;
-    try {
-      await txc.query('BEGIN');
-      await applyTenant(txc);
-      const r = await txc.query(`
-        INSERT INTO online_bookings
-          (client_id, client_phone, client_name, service_id, service_name,
-           master_id, master_name, date_from, date_to, channel,
-           bp_appointment_id, status, source_token, telegram_id, note)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'confirmed',$12,$13,$14)
-        RETURNING id, status, bp_appointment_id
-      `, [client_id, ph, name || null, service_id, service_name || null,
-          master_id, master_name || null, date_from, date_to, channel || 'site_salon',
-          null, source_token || null, telegram_id || null, note || null]);
-      out = r.rows[0];
-
-      // Тень в журнале appointments — иначе мастер/админ не видят бронь в расписании.
-      const ids = await resolveBookingIds(txc, service_id, master_id);
-      if (ids.masterId && ids.serviceId) {
-        // Слот уже проверен триггером брони в ЭТОЙ ЖЕ транзакции под тем же замком —
-        // повторная проверка тени дала бы ложный отказ (бронь уже видна счётчику).
-        await txc.query(`SELECT set_config('app.skip_overbook','on', true)`);
-        const ap = await txc.query(
-          `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, status, price, source, notes)
-           VALUES ($1,$2,$3,$4,$5,'booked',$6,'online',$7) RETURNING id`,
-          [client_id, ids.masterId, ids.serviceId, date_from, date_to, ids.price,
-           `Онлайн-запис #${out.id} (${channel || 'site'})`]);
-        await txc.query(`UPDATE online_bookings SET appointment_id=$1 WHERE id=$2`, [ap.rows[0].id, out.id]);
-      }
-      await txc.query('COMMIT');
-    } catch (txErr) {
-      await txc.query('ROLLBACK').catch(() => {});
-      if (txErr.code === '23P01') {
-        return res.status(409).json({ error: 'slot-taken', message: 'Цей час вже зайнято, оберіть інший' });
-      }
-      throw txErr;
-    } finally {
-      txc.release();
-    }
-
-    res.json({ ok: true, ...out });
-  } catch (e) {
-    console.error('[booking/confirm]', e.message);
-    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
-  }
-});
-
-// GET /api/booking/history — все онлайн-записи + waitlist + покупки.
-// Телефон берём ТОЛЬКО из авторизованной сессии (раньше ?phone= отдавал чужую историю без auth).
 router.get('/booking/history', authClient(), async (req, res) => {
   try {
     const phone = normalizePhone(req.client.phone);
@@ -287,7 +164,7 @@ router.get('/booking/admin/all', requirePerm('booking.read'), async (req, res) =
 });
 
 // /booking/services и /booking/masters ПЕРЕНЕСЕНЫ в routes/booking.js
-// (там они читают из нашей БД, а не из отвязанного BeautyPro). Дубли убраны 04.07,
+// (там они читают из нашей БД, а не из отвязанного стара CRM). Дубли убраны 04.07,
 // чтобы waitlist не перехватывал их раньше booking.js своими 503-заглушками.
 
 module.exports = router;

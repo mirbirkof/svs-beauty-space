@@ -112,6 +112,33 @@ try{if(Math.min(screen.width,screen.height)<=520&&matchMedia('(pointer:coarse)')
 const API = '';  // same-origin
 const $ = (id) => document.getElementById(id);
 
+/* ── Вхід за персональним посиланням (?k=…) ───────────────────────────────
+   НАВІЩО (скарга Власника 11.08.2026): «постійно треба вводити логін при
+   кожному переході по посиланню». Причина НЕ в сервері: сесійний токен живий
+   до 2036 року. Він губиться в браузері — сховище прив'язане до адреси, а
+   адреса CRM цього тижня змінювалась (serveo → запасний → постійна), плюс
+   посилання з Telegram відкриваються у вбудованому переглядачі, де сховище
+   своє і часто чиститься. Кожен такий випадок = чистий браузер = логін.
+
+   РІШЕННЯ: особисте посилання-закладка з ключем. Відкрив з будь-якого місця —
+   CRM входить сама. Ключ ОДРАЗУ прибирається з адресного рядка (не потрапляє
+   в історію та в referer) і залишається лише у сховищі цього браузера.
+   Ключ іменний, відкликається в «Керування доступом» без зміни пароля. */
+(async function () {
+  const k = new URLSearchParams(location.search).get('k');
+  if (!k || !/^[a-f0-9]{64}$/i.test(k)) return;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const r = await fetch('/api/auth/staff/me', { headers: { Authorization: 'Bearer ' + k } });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      localStorage.setItem('svs_admin_token', k);
+      localStorage.setItem('svs_user', JSON.stringify(d.user));
+      location.href = '/admin/index.html';
+    }
+  } catch (e) { /* мережа впала — покажемо звичайний вхід */ }
+})();
+
 function showMsg(el, type, text) {
   el.className = 'msg ' + type;
   el.textContent = text;
@@ -137,6 +164,10 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 function saveSession(data) {
   localStorage.setItem('svs_admin_token', data.token);
   localStorage.setItem('svs_user', JSON.stringify(data.user));
+  // Довгий ключ (14-30 днів). Раніше НЕ зберігався — і сесія вмирала разом
+  // з 15-хвилинним токеном: власник вводив пароль при кожному заході (11.08).
+  // Cookie з ним HttpOnly (JS не читає), тому дублюємо у сховище як страховку.
+  if (data.refresh) localStorage.setItem('svs_refresh', data.refresh);
 }
 
 $('btn-request').addEventListener('click', async () => {

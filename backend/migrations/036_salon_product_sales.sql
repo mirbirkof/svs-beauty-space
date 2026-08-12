@@ -1,4 +1,4 @@
--- 036: Детальні продажі салонних товарів з BeautyPro (/sales type=Product)
+-- 036: Детальні продажі салонних товарів з стара CRM (/sales type=Product)
 -- BP віддає кожну позицію окремим рядком: name + quantity + sum + майстер.
 -- Тут зберігаємо позиційно для аналітики (по товару, бренду, майстру, періоду).
 CREATE TABLE IF NOT EXISTS salon_product_sales (
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS salon_product_sales (
   master_name   TEXT,
   stock_id      INTEGER REFERENCES salon_stock(id) ON DELETE SET NULL,  -- fuzzy-match до складу
   matched       BOOLEAN DEFAULT FALSE,
-  source        TEXT DEFAULT 'beautypro',
+  source        TEXT DEFAULT 'legacy',
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sps_date ON salon_product_sales(sale_date);

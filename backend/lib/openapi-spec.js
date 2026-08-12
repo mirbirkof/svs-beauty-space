@@ -4,7 +4,7 @@
    рендериться Swagger UI на /api-docs.html. Спека статична (без зовнішніх залежностей). */
 
 function buildSpec(baseUrl) {
-  const server = baseUrl || 'https://zvetlacrm.serveousercontent.com';
+  const server = baseUrl || 'https://zvetlacrm.tailed6c1a.ts.net';
   return {
     openapi: '3.0.3',
     info: {

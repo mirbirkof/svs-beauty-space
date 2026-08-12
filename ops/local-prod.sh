@@ -30,7 +30,7 @@ fi
 if [ "$1" != "restart" ] && [ "$1" != "force" ]; then
   if curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
     # порт жив, но рядом могли остаться «немые» дубли — снимаем их
-    for pid in $(pgrep -x -f "node shop-api.js"); do
+    for pid in $(pgrep -f "node .*shop-api\.js"); do
       [ "$(readlink -f /proc/$pid/cwd 2>/dev/null)" = "$APP_DIR" ] || continue
       ss -ltnp 2>/dev/null | grep -q "pid=$pid," && continue
       kill "$pid" 2>/dev/null
@@ -39,13 +39,16 @@ if [ "$1" != "restart" ] && [ "$1" != "force" ]; then
     exit 0
   fi
 fi
+# ВАЖНО (11.08): было pgrep -x -f "node shop-api.js" — точное совпадение строки запуска.
+# Прод, поднятый с ПОЛНЫМ путём (node /path/shop-api.js), под шаблон не попадал → restart
+# «успешно» выходил, НЕ применив новый код. Теперь ищем по шаблону пути.
 # подчистить ВСЕ инстансы приложения (а не только слушающего порт: зависший на старте
 # процесс порт не держит, но продолжает крутить внутренние таймеры → дубли рассылок)
-for pid in $(pgrep -x -f "node shop-api.js"); do
+for pid in $(pgrep -f "node .*shop-api\.js"); do
   [ "$(readlink -f /proc/$pid/cwd 2>/dev/null)" = "$APP_DIR" ] && kill "$pid" 2>/dev/null
 done
 sleep 3
-for pid in $(pgrep -x -f "node shop-api.js"); do
+for pid in $(pgrep -f "node .*shop-api\.js"); do
   [ "$(readlink -f /proc/$pid/cwd 2>/dev/null)" = "$APP_DIR" ] && kill -9 "$pid" 2>/dev/null
 done
 sleep 1

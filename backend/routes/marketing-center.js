@@ -74,7 +74,7 @@ router.get('/dashboard', async (req, res) => {
                            WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL GROUP BY client_id`;
     const newClients = (await q(`SELECT COUNT(*)::int n FROM (${FIRST_VISIT}) t WHERE fv BETWEEN $1 AND $2`, [from, to]))[0].n;
     const prevNew = (await q(`SELECT COUNT(*)::int n FROM (${FIRST_VISIT}) t WHERE fv BETWEEN $1 AND $2`, [prevFrom, prevTo]))[0].n;
-    // Виручка — з КАСИ (BeautyPro лишає візити 'confirmed', тому appointments.price WHERE done недораховує).
+    // Виручка — з КАСИ (стара CRM лишає візити 'confirmed', тому appointments.price WHERE done недораховує).
     const revenue = (await q(`SELECT COALESCE(SUM(amount),0)::numeric s FROM cash_operations
                                 WHERE type='in' AND category IN ('sale_service','sale_product')
                                   AND created_at::date BETWEEN $1 AND $2`, [from, to]))[0].s;
@@ -239,7 +239,7 @@ router.post('/utm', async (req, res) => {
     let short = null;
     if (shorten) {
       const slug = require('crypto').createHash('sha1').update(full).digest('hex').slice(0, 7);
-      short = `${(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '')}/u/${slug}`;
+      short = `${require('../lib/public-url').getPublicBase(req) || ''}/u/${slug}`;
     }
     res.json({ full_url: full, url: full, short_url: short });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

@@ -56,7 +56,6 @@ const ALLOWED = new Set([
   'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM',
   'RESEND_API_KEY',
   'NOVAPOSHTA_API_KEY',
-  'BEAUTYPRO_ID_KEY', 'BEAUTYPRO_SECRET_KEY', 'BEAUTYPRO_DATABASE_CODE',
   'GEMINI_API_KEY',
   // Instagram (Meta) — платформенный уровень: подпись и верификация вебхука.
   // Токены конкретного салона хранятся per-tenant в omni_channels.config.

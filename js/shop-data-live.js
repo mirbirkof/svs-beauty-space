@@ -6,7 +6,16 @@
 (function () {
   // Відмовостійкий доступ до CRM: основний Render → резервний, якщо основний лежить.
   // Живий адрес кешуємо в sessionStorage, щоб не пінгувати щоразу.
-  var ENDPOINTS = ['https://zvetlacrm.serveousercontent.com'];
+  // 12.08: адрес CRM НЕ зашиваем. Если страница открыта с самой CRM — берём её же origin,
+  // иначе постоянный адрес (Tailscale). serveo закрыл анонимные туннели, его домен мёртв.
+  var SVS_DEFAULT_BASE = (function () {
+    try {
+      var o = location.origin;
+      if (/^https?:/.test(o) && !/github\.io|vercel\.app|localhost|127\.0\.0\.1/.test(o)) return o;
+    } catch (e) {}
+    return 'https://zvetlacrm.tailed6c1a.ts.net';
+  })();
+  var ENDPOINTS = [SVS_DEFAULT_BASE];
   function liveBase() {
     try { var c = sessionStorage.getItem('svs_shop_base'); if (c && ENDPOINTS.indexOf(c) >= 0) return c; } catch (e) {}
     return ENDPOINTS[0];

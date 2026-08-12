@@ -18,15 +18,23 @@ const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 const { tgSend } = require('./telegram-notify');
 const { hashPassword, verifyPassword } = require('../lib/auth-core');
+const { getPublicBase } = require('../lib/public-url');
 
 const router = express.Router();
 
-// Fallback URL для отправки TG через svs-booking-api (у него есть BOT_TOKEN)
-// Используется если локальный TELEGRAM_NOTIFY_TOKEN отсутствует/не работает.
-const BOOKING_RELAY_URL = process.env.BOOKING_RELAY_URL
-  || 'https://zvetlacrm.serveousercontent.com/api/internal/tg-send-by-phone';
+// 12.08: адрес CRM больше НЕ зашиваем константой. serveo закрыл анонимные туннели
+// («Anonymous HTTP tunnel capacity is currently full» — проверено вручную), домен
+// zvetlacrm.serveousercontent.com мёртв, а ссылки в письмах и Telegram вели именно на него.
+// Живой адрес ведёт сторож ops/public-url-watch.sh → tunnel/current-url.txt.
+const FALLBACK_BASE = 'https://zvetlacrm.tailed6c1a.ts.net';
+const liveBase = (req) => getPublicBase(req) || FALLBACK_BASE;
 
-// Универсальная отправка: пробуем локально, если no-bot-token → через booking-api по phone
+// Fallback URL для отправки TG через внешний релей (у него есть BOT_TOKEN)
+// Используется если локальный TELEGRAM_NOTIFY_TOKEN отсутствует/не работает.
+const relayUrl = () => process.env.BOOKING_RELAY_URL
+  || `${liveBase()}/api/internal/tg-send-by-phone`;
+
+// Универсальная отправка: пробуем локально, если no-bot-token → через релей по phone
 async function sendOtpToUser({ telegram_id, phone, text }) {
   try {
     await tgSend(telegram_id, text);
@@ -34,7 +42,7 @@ async function sendOtpToUser({ telegram_id, phone, text }) {
   } catch (e) {
     if (!/no-bot-token/.test(e.message)) throw e;
     // Локального токена нет — fallback через booking-api
-    const r = await fetch(BOOKING_RELAY_URL, {
+    const r = await fetch(relayUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -206,7 +214,7 @@ router.post('/link', adminOnly, async (req, res) => {
         `<b>Telegram прив'язано до акаунту SVS CRM</b>\n` +
         `Ласкаво просимо, ${r.rows[0].display_name}!\n\n` +
         `Тепер ви можете логінитися через OTP-код:\n` +
-        `<a href="https://zvetlacrm.serveousercontent.com/admin/login.html">Відкрити сторінку входу</a>\n\n` +
+        `<a href="${liveBase(req)}/admin/login.html">Відкрити сторінку входу</a>\n\n` +
         `Введіть телефон <code>${phone}</code> — код прийде сюди.`
       );
     } catch (e) {

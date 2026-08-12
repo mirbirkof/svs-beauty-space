@@ -26,7 +26,7 @@ const CHURNED_CTE = `WITH churned AS (
          ${VISIT_DAYS}::int AS visits
   FROM clients c JOIN appointments a ON a.client_id=c.id
   WHERE a.status NOT IN ('cancelled','noshow')
-    AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+    AND COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
   GROUP BY c.id
   HAVING ${VISIT_DAYS} >= 2
      AND NOT bool_or(a.starts_at > NOW())

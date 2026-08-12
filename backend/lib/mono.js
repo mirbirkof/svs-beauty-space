@@ -87,6 +87,9 @@ function _monoRequestOnce(method, apiPath, body, token) {
  *  Приоритет: MONO_PUBLIC_URL (постоянный домен) → tunnel/current-url.txt (ротируется).
  *  Читаем файл при КАЖДОМ создании инвойса — туннель мог ротироваться. */
 function getPublicBase() {
+  // живой адрес туннеля важнее env: постоянный домен может лежать (serveo, 11.08)
+  const live = require('./public-url').getPublicBase();
+  if (live) return live;
   if (process.env.MONO_PUBLIC_URL) return process.env.MONO_PUBLIC_URL.replace(/\/$/, '');
   try {
     const p = path.join(__dirname, '..', '..', 'tunnel', 'current-url.txt');

@@ -5,12 +5,21 @@
 (function () {
   'use strict';
 
-  const API = window.SVS_BOOKING_API || 'https://zvetlacrm.serveousercontent.com';
+  // 12.08: адрес CRM НЕ зашиваем. Если страница открыта с самой CRM — берём её же origin,
+  // иначе постоянный адрес (Tailscale). serveo закрыл анонимные туннели, его домен мёртв.
+  const SVS_DEFAULT_BASE = (function () {
+    try {
+      var o = location.origin;
+      if (/^https?:/.test(o) && !/github\.io|vercel\.app|localhost|127\.0\.0\.1/.test(o)) return o;
+    } catch (e) {}
+    return 'https://zvetlacrm.tailed6c1a.ts.net';
+  })();
+  const API = window.SVS_BOOKING_API || SVS_DEFAULT_BASE;
   // Каталог (послуги + реальна звʼязка майстер↔послуга) беремо з НАШОЇ CRM — джерело правди.
   // Слоти/доступність/створення запису лишаються на booking-api (там ключі BeautyPro).
-  const CRM = window.SVS_CRM_API || 'https://zvetlacrm.serveousercontent.com';
+  const CRM = window.SVS_CRM_API || SVS_DEFAULT_BASE;
   // Відмовостійкий доступ до CRM: основний Render → резервний при відмові основного.
-  const CRM_ENDPOINTS = ['https://zvetlacrm.serveousercontent.com', 'https://zvetlacrm.serveousercontent.com'];
+  const CRM_ENDPOINTS = [CRM];
   function crmFetch(path, opts) {
     let eps = CRM_ENDPOINTS.slice(), cached;
     try { cached = sessionStorage.getItem('svs_shop_base'); } catch (e) {}

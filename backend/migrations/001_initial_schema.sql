@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS clients (
   name          TEXT,
   birthday      DATE,
   avatar        TEXT,
-  source        TEXT DEFAULT 'shop',         -- 'shop' | 'salon' | 'telegram' | 'beautypro'
-  beautypro_id  INTEGER,                     -- зеркало для синхронизации
+  source        TEXT DEFAULT 'shop',         -- 'shop' | 'salon' | 'telegram' | 'legacy'
+  legacy_ref  INTEGER,                     -- зеркало для синхронизации
   telegram_id   BIGINT UNIQUE,
   loyalty_points INTEGER DEFAULT 0,
   total_spent   NUMERIC(12,2) DEFAULT 0,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS masters (
   specialty     TEXT,                          -- 'colorist', 'cosmetolog', 'manicurist'
   bio           TEXT,
   avatar        TEXT,
-  beautypro_id  INTEGER,
+  legacy_ref  INTEGER,
   schedule_json JSONB,                         -- {mon:[10,19],tue:[10,19],...}
   commission_pct NUMERIC(5,2) DEFAULT 40,      -- % с услуги
   active        BOOLEAN DEFAULT TRUE,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS services (
   category      TEXT,                          -- 'hair', 'nails', 'face', 'body'
   duration_min  INTEGER NOT NULL,
   price         NUMERIC(10,2) NOT NULL,
-  beautypro_id  INTEGER,
+  legacy_ref  INTEGER,
   description   TEXT,
   active        BOOLEAN DEFAULT TRUE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   ends_at       TIMESTAMPTZ NOT NULL,
   status        TEXT DEFAULT 'booked',         -- 'booked'|'confirmed'|'done'|'cancelled'|'noshow'
   price         NUMERIC(10,2),                 -- зафиксированная на момент брони
-  beautypro_id  INTEGER,
+  legacy_ref  INTEGER,
   source        TEXT DEFAULT 'web',            -- 'web'|'telegram'|'phone'|'walkin'
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW(),

@@ -23,7 +23,7 @@ async function buildMonthGrid(pool, ym) {
       ORDER BY (staff_role='admin') ASC, name`
   )).rows;
 
-  // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з BeautyPro)
+  // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з стара CRM)
   const expl = await pool.query(
     `SELECT master_id, to_char(work_date,'YYYY-MM-DD') AS d,
             to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end,
@@ -36,7 +36,7 @@ async function buildMonthGrid(pool, ym) {
     explMap.get(row.master_id)[row.d] = { start: row.start, end: row.end, off: row.off, source: row.source };
   }
 
-  // Тижневий шаблон: beautypro agg (найчастіший слот per день тижня) > template > auto(записи)
+  // Тижневий шаблон: історична агрегація (найчастіший слот per день тижня) > template > auto(записи)
   const bp = await pool.query(
     `SELECT master_id, EXTRACT(DOW FROM work_date)::int AS dow,
             to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
@@ -67,7 +67,7 @@ async function buildMonthGrid(pool, ym) {
     const wd = agg.get(m.id) || {}; const rl = real.get(m.id) || {};
     const week = {};
     ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((k) => {
-      if (wd[k]) { const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0]; const [s, e] = best.split('-'); week[k] = { start: s, end: e, source: 'beautypro' }; }
+      if (wd[k]) { const best = Object.entries(wd[k]).sort((a, b) => b[1] - a[1])[0][0]; const [s, e] = best.split('-'); week[k] = { start: s, end: e, source: 'history' }; }
       else if (tmpl[k]) week[k] = { start: tmpl[k].start, end: tmpl[k].end, source: 'template' };
       else if (rl[k]) week[k] = { start: rl[k].start, end: rl[k].end, source: 'auto' };
       else week[k] = null;

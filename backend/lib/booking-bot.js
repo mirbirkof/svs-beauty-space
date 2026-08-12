@@ -48,10 +48,10 @@ async function loadCatalog(pool) {
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
   const r = await pool.query(
     // Паритет з веб-формою (booking-catalog.js): показуємо послугу, якщо вона активна
-    // і має хоча б одного онлайн-майстра. Раніше вимагали beautypro_id IS NOT NULL —
-    // залишок від залежності від BeautyPro; нативні послуги салону (без BP) були
+    // і має хоча б одного онлайн-майстра. Раніше вимагали legacy_ref IS NOT NULL —
+    // залишок від залежності від стара CRM; нативні послуги салону (без BP) були
     // невидимі боту (аудит v8, M6). Движок слотів працює по внутрішніх id, BP не потрібен.
-    `SELECT s.id, s.beautypro_id AS bp_id, s.name,
+    `SELECT s.id, s.legacy_ref AS bp_id, s.name,
             COALESCE(s.duration_min, 60) AS duration_min, s.price::float AS price, s.category
        FROM services s
       WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL
@@ -160,7 +160,7 @@ async function clearSession(pool, uid) {
 }
 
 // ── вільні слоти: ВЛАСНИЙ движок по CRM (master_schedule_days − appointments) ──
-// BeautyPro тут більше не потрібен: графік і зайнятість живуть у нашій БД.
+// стара CRM тут більше не потрібен: графік і зайнятість живуть у нашій БД.
 function selectedMasterIds(session) {
   const all = (session.data.masters || []).map(m => Number(m.id));
   const sel = session.data.master;
@@ -507,7 +507,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
       const ob = await client.query(
         `INSERT INTO online_bookings
            (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
-            date_from, date_to, channel, bp_appointment_id, status, telegram_id, appointment_id)
+            date_from, date_to, channel, legacy_appointment_ref, status, telegram_id, appointment_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
                  'bot',$11,'confirmed',$12,$13) RETURNING id`,
         [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
@@ -629,7 +629,7 @@ function salonSocialLinks(sp) {
   return links.length ? `✨ Ми в соцмережах: ${links.join(' · ')}` : '';
 }
 
-// ── постійне меню (замінює старе меню погашеного svs-booking-api в чатах клієнтів) ──
+// ── постійне меню (замінює старе меню погашеного сервісу запису в чатах клієнтів)
 function mainMenu() {
   return {
     keyboard: [
@@ -1273,7 +1273,7 @@ async function onCallback(cq, ctx) {
         try {
           await ctx.pool.query(
             `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
-              WHERE bp_appointment_id = ANY($1::text[]) AND COALESCE(status,'') <> 'cancelled'`,
+              WHERE legacy_appointment_ref = ANY($1::text[]) AND COALESCE(status,'') <> 'cancelled'`,
             [cnIds.map(String)]);
         } catch (e) { console.error('[bookbot/ob-cancel]', e.message); }
         await respond(ctx.tg, target,

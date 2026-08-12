@@ -156,7 +156,7 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const u = req.user || { permissions: [], role: 'guest', display_name: '' };
     // RBAC: каталог лише з дозволених інструментів — модель навіть не бачить недоступне
     const catalog = ASSISTANT_TOOLS.filter(n => canUseTool(u, n)).map(n => `- ${n}: ${TOOLS[n].description}`).join('\n');
-    const ALL_PAGES = { dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', services:'Послуги', svccats:'Категорії послуг', clients:'Усі клієнти', waitlist:'Лист очікування', repeat:'Повторні візити', blacklist:'Чорний список', orders:'Замовлення', giftcerts:'Сертифікати', subscriptions:'Абонементи', finance:'Доходи і витрати', fincenter:'Фінансовий центр', cashflow:'Грошовий потік', budgets:'Бюджети', contractors:'Контрагенти', reminders:'Нагадування', promos:'Акції / Промокоди', reviews:'Відгуки', payroll:'Зарплата', plan:'План місяця', products:'Товари', stock:'Залишки на складі', purchasing:'Закупівлі', suppliers:'Постачальники', qcontrol:'Контроль якості', callcenter:'Колл-центр', viber:'Viber', branding:'Брендинг', mobileapp:'Мобільний застосунок', sync:'BeautyPro синхро', wsched:'Графіки роботи', formulas:'Пошук формул', online:'Хто онлайн', tasks:'Задачі', documents:'Документи', incidents:'Інциденти', surveys:'Опитування / NPS', kb:'База знань', mysub:'Моя підписка', settings:'Налаштування' };
+    const ALL_PAGES = { dashboard:'Дашборд', journal:'Журнал записів', pipeline:'Воронка візитів', shifts:'Зміни / Табель', services:'Послуги', svccats:'Категорії послуг', clients:'Усі клієнти', waitlist:'Лист очікування', repeat:'Повторні візити', blacklist:'Чорний список', orders:'Замовлення', giftcerts:'Сертифікати', subscriptions:'Абонементи', finance:'Доходи і витрати', fincenter:'Фінансовий центр', cashflow:'Грошовий потік', budgets:'Бюджети', contractors:'Контрагенти', reminders:'Нагадування', promos:'Акції / Промокоди', reviews:'Відгуки', payroll:'Зарплата', plan:'План місяця', products:'Товари', stock:'Залишки на складі', purchasing:'Закупівлі', suppliers:'Постачальники', qcontrol:'Контроль якості', callcenter:'Колл-центр', viber:'Viber', branding:'Брендинг', mobileapp:'Мобільний застосунок', sync:'стара CRM синхро', wsched:'Графіки роботи', formulas:'Пошук формул', online:'Хто онлайн', tasks:'Задачі', documents:'Документи', incidents:'Інциденти', surveys:'Опитування / NPS', kb:'База знань', mysub:'Моя підписка', settings:'Налаштування' };
     const ALL_EMBEDS = { cashbox:['Каса магазину','/admin/crm-extra.html#cashbox'], reports:['Звіти (P&L, RFM)','/admin/crm-extra.html#reports'], bi:['Конструктор звітів','/admin/bi.html'], exportcsv:['Експорт CSV','/admin/export.html'], masters:['Майстри / Співробітники','/admin/crm-extra.html#users'], inventory:['Інвентаризація','/admin/crm-extra.html#inventory'], msgcenter:['Центр повідомлень','/admin/crm-marketing.html#center'], segments:['Сегменти','/admin/crm-marketing.html#segments'], campaigns:['Кампанії / Розсилки','/admin/crm-marketing.html#campaigns'], triggers:['Авто-тригери','/admin/crm-marketing.html#triggers'], videostudio:['AI Відеостудія','/admin/video-studio.html'], integrations:['Інтеграції','/admin/integrations.html'], audit:['Аудит','/admin/crm-extra.html#audit'], monitoring:['Системний статус','/admin/monitoring.html'], branches:['Управління магазинами','/admin/crm-extra.html#branches'], access:['Доступ до проєкту','/admin/crm-extra.html#users-access'], migrate:['Міграція з іншої CRM','/admin/crm-migrate.html'], checklist:['Чек-лист зміни','/admin/shift-checklist.html'] };
     const pageAllowed = (k) => !PAGE_PERMS[k] || hasPermission(u.permissions, PAGE_PERMS[k]);
     const embedAllowed = (k) => !EMBED_PERMS[k] || hasPermission(u.permissions, EMBED_PERMS[k]);
@@ -394,7 +394,7 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
          FROM appointments
         WHERE starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
           AND starts_at <= NOW()
-          AND (bp_state IS NULL OR bp_state NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))`))[0] || { served: 0, lost: 0 };
+          AND (legacy_state IS NULL OR legacy_state NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))`))[0] || { served: 0, lost: 0 };
     const clFin = clRow.served + clRow.lost;
     const closurePct = clFin > 0 ? Math.round(clRow.served / clFin * 100) : null;
 
@@ -452,7 +452,7 @@ router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) =>
             AND am.seller_master_id IS NOT NULL AND am.seller_master_id <> a.master_id
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
             AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
-            AND a.bp_state IS DISTINCT FROM 'bp_deleted')
+            AND a.legacy_state IS DISTINCT FROM 'bp_deleted')
        SELECT m.id, m.name,
               COUNT(a.id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int visits,
               COUNT(DISTINCT a.client_id) FILTER (WHERE a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))::int uniq,
@@ -464,7 +464,7 @@ router.get('/staff-metrics', requirePerm('reports.finance'), async (req, res) =>
          FROM masters m
          LEFT JOIN appointments a ON a.master_id=m.id
               AND a.starts_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Kiev')
-              AND a.bp_state IS DISTINCT FROM 'bp_deleted'
+              AND a.legacy_state IS DISTINCT FROM 'bp_deleted'
          LEFT JOIN LATERAL (
               SELECT NULLIF(SUM(co.amount), 0)::numeric AS paid
                 FROM cash_operations co

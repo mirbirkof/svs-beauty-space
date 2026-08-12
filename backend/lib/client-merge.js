@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    Слияние дублей клиентов (client dedup / merge)
 
-   Дубли возникают при синке с BeautyPro, ручном вводе и
+   Дубли возникают при синке с стара CRM, ручном вводе и
    разном формате телефона ("+380.." vs "0..").
 
    findDuplicateClients(pool) — кандидаты-группы по нормализ.
@@ -168,7 +168,7 @@ async function mergeClients(client, primaryId, dupId) {
       birthday      = COALESCE(birthday, $4),
       avatar        = COALESCE(avatar, $5),
       telegram_id   = COALESCE(telegram_id, $6),
-      beautypro_id  = COALESCE(beautypro_id, $7),
+      legacy_ref  = COALESCE(legacy_ref, $7),
       -- loyalty_points НЕ складываем вручную ($8 игнор): это зеркало bonus_balances,
       -- баланс дубля уже слит в primary выше (шаг 0), триггер зеркалит актуальное.
       total_spent    = COALESCE(total_spent,0)   + COALESCE($9,0),
@@ -179,7 +179,7 @@ async function mergeClients(client, primaryId, dupId) {
       updated_at    = NOW()
     WHERE id = $1`,
     [primaryId, dup.name, dup.email, dup.birthday, dup.avatar, dup.telegram_id,
-     dup.beautypro_id, dup.loyalty_points, dup.total_spent, tags, mergedNotes,
+     dup.legacy_ref, dup.loyalty_points, dup.total_spent, tags, mergedNotes,
      dup.last_visit_at, dup.created_at]);
 
   // 3) Освобождаем уникальные поля дубля и архивируем его.

@@ -118,22 +118,22 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
 
     const r = await pool.query(
       // Виручку беремо з КАСИ (cash_operations), а НЕ з appointments.price WHERE done —
-      // BeautyPro лишає візити у статусі 'confirmed', тому 'done'-сума недораховує виручку вдвічі.
+      // стара CRM лишає візити у статусі 'confirmed', тому 'done'-сума недораховує виручку вдвічі.
       // done_appts (для середнього чека і % відмін) = реально проведені візити: не скасовані/неявки і вже в минулому.
       `WITH appts AS (
          SELECT master_id,
-                -- % відмін: технічні стани синхронізації BeautyPro (bp_deleted — видалені,
+                -- % відмін: технічні стани синхронізації стара CRM (bp_deleted — видалені,
                 -- not_in_bukon — не знайдені в журналі й скасовані автоматом, phantom_dup —
                 -- дублі) НЕ є відмовами клієнтів. Рахуємо їх ні в чисельнику, ні в знаменнику
                 -- (аудит 25.07: інакше «30.9%» відмін замість чесних 11.5%).
-                COUNT(*) FILTER (WHERE COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS total_appts,
+                COUNT(*) FILTER (WHERE COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS total_appts,
                 -- візит = клієнт + день, а не рядок: інакше один прихід з трьома послугами
                 -- ділив виручку мастера на три і занижував його середній чек (аудит 25.07)
                 COUNT(DISTINCT (COALESCE(client_id::text, 'anon-'||id),
                                 (starts_at AT TIME ZONE 'Europe/Kyiv')::date))
                   FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done_appts,
-                COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS canceled_appts,
-                COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int    AS no_show_appts,
+                COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int AS canceled_appts,
+                COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup'))::int    AS no_show_appts,
                 COUNT(DISTINCT client_id)::int   AS unique_clients
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2
@@ -585,8 +585,8 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
     const mr = await pool.query(`SELECT id, name FROM masters WHERE id=$1`, [masterId]);
     if (!mr.rows.length) return res.status(404).json({ error: 'master not found' });
 
-    // Услуги — из реально проведённых продаж кассы (BeautyPro /sales), как и план месяца.
-    // Раньше брали appointments.status='done', но BeautyPro не присылает 'done'
+    // Услуги — из реально проведённых продаж кассы (стара CRM /sales), как и план месяца.
+    // Раньше брали appointments.status='done', но стара CRM не присылает 'done'
     // (записи остаются confirmed) → отчёт показывал почти ноль. Касса = источник правды.
     const services = await pool.query(
       `SELECT COALESCE(NULLIF(description,''),'(без назви)') AS name,
@@ -599,7 +599,7 @@ router.get('/master-detail', requirePerm('reports.read'), async (req, res) => {
       [masterId, from, to]
     );
 
-    // Товары — продажи товаров мастером из кассы (то же, что в BeautyPro)
+    // Товары — продажи товаров мастером из кассы (то же, что в стара CRM)
     const products = await pool.query(
       `SELECT COALESCE(NULLIF(description,''),'(без назви)') AS name,
               COUNT(*)::int AS count,
@@ -668,7 +668,7 @@ router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (
 
     const total = byBrand.rows.reduce((a,r)=>a+Number(r.revenue),0);
 
-    // ── Салонні продажі товарів (BeautyPro, позиційно) ──
+    // ── Салонні продажі товарів (стара CRM, позиційно) ──
     const salonByProduct = await pool.query(
       `SELECT sps.product_name AS name,
               COALESCE(ss.category,'(без категорії)') AS category,
@@ -919,7 +919,7 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                            COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int AS done,
                            COUNT(*) FILTER (WHERE status IN ('booked','confirmed') AND starts_at > NOW())::int AS upcoming
                     FROM appointments WHERE master_id=$1 AND starts_at BETWEEN $2 AND $3`, [mid, dayFrom, dayTo]),
-        // Виручку майстра беремо з КАСИ (BeautyPro лишає візити 'confirmed' → appointments.price WHERE done недораховує вдвічі)
+        // Виручку майстра беремо з КАСИ (стара CRM лишає візити 'confirmed' → appointments.price WHERE done недораховує вдвічі)
         pool.query(`SELECT
                       (SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int
                          FROM appointments WHERE master_id=$1 AND starts_at >= $2) AS done,
@@ -976,7 +976,7 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
                        AND starts_at <= NOW()
                      GROUP BY client_id
                   ) t WHERE first_visit BETWEEN $1 AND $2`, [periodFrom, periodTo]).catch(()=>({rows:[{n:0}]})),
-      // топ мастеров месяца по выручке — источник правды касса (BeautyPro оставляет записи 'confirmed', а не 'done')
+      // топ мастеров месяца по выручке — источник правды касса (стара CRM оставляет записи 'confirmed', а не 'done')
       pool.query(`SELECT m.id, m.name,
                          COALESCE(SUM(co.amount),0)::numeric AS revenue,
                          COUNT(*) FILTER (WHERE co.category='sale_service')::int AS done
@@ -1143,7 +1143,7 @@ router.get('/duplicates', requirePerm('reports.finance'), async (req, res) => {
                        WHERE o.ref_type='appointment' AND o.ref_id=a.id AND o.type='in')`;
     const base = `FROM appointments a LEFT JOIN clients c ON c.id=a.client_id
        WHERE a.status NOT IN ('cancelled','noshow') AND a.client_id IS NOT NULL AND a.service_id IS NOT NULL
-         AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+         AND COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
          AND a.starts_at >= NOW() - ($1 || ' days')::interval`;
     const rows = await pool.query(
       `WITH x AS (

@@ -1,6 +1,6 @@
-/* lib/bp-sales-stock.js — списання складу за продажами з BeautyPro-синку.
+/* lib/bp-sales-stock.js — списання складу за продажами з синхронізацію зі старою CRMу.
  *
- * Аудит 25.07: продажі товарів, що приходили з BeautyPro (salon_product_sales),
+ * Аудит 25.07: продажі товарів, що приходили з стара CRM (salon_product_sales),
  * писались у виручку, але НЕ чіпали склад — залишки завищувались із кожним чеком.
  * Причина: імпортований реєстр salon_stock не був звʼязаний із живим product_variants.
  * Після міграції 280 звʼязок є → нові продажі списуються автоматично.
@@ -45,7 +45,7 @@ async function writeOffBpSales() {
         `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
          VALUES ($1, $2, 'bp-sale:' || $3, $3, $4)`,
         [r.variant_id, -deducted, r.id,
-         `продаж товару (BeautyPro чек); заявлено ${qty}` + (qty > before ? `; нестача ${+(qty - before).toFixed(3)}` : '')]);
+         `продаж товару (стара CRM чек); заявлено ${qty}` + (qty > before ? `; нестача ${+(qty - before).toFixed(3)}` : '')]);
       await client.query('COMMIT');
       written++;
     } catch (e) {

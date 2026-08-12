@@ -208,7 +208,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(DISTINCT to_char(starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD'))::int AS days
            FROM appointments
           WHERE status NOT IN ('cancelled','noshow')
-            AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+            AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             AND starts_at >= NOW() - INTERVAL '90 days'
           GROUP BY dow ORDER BY dow`).then(r => r.rows).catch(() => []),
       pool.query(
@@ -216,7 +216,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(*)::int AS appts
            FROM appointments
           WHERE status NOT IN ('cancelled','noshow')
-            AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+            AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
             AND starts_at >= NOW() - INTERVAL '90 days'
           GROUP BY hr ORDER BY hr`).then(r => r.rows).catch(() => []),
       pool.query(
@@ -225,7 +225,7 @@ router.get('/load', requirePerm('reports.finance'), async (req, res) => {
                 COUNT(DISTINCT to_char(a.starts_at AT TIME ZONE 'Europe/Kiev','YYYY-MM-DD')) FILTER (WHERE a.status NOT IN ('cancelled','noshow') AND a.starts_at <= NOW())::int AS work_days
            FROM masters m LEFT JOIN appointments a
              ON a.master_id=m.id AND a.starts_at >= NOW() - INTERVAL '90 days'
-             AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+             AND COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
           WHERE m.active=true AND COALESCE(m.provides_services,true)=true
           GROUP BY m.id, m.name ORDER BY done DESC`).then(r => r.rows).catch(() => []),
     ]);
@@ -273,7 +273,7 @@ router.get('/demand', requirePerm('reports.finance'), async (req, res) => {
          FROM appointments a
          LEFT JOIN services s ON s.id = a.service_id
         WHERE (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
-          AND COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+          AND COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
           AND a.starts_at <= NOW() AND a.starts_at >= NOW() - INTERVAL '60 days'
         GROUP BY service ORDER BY cnt DESC LIMIT 15`
     ).then(r => r.rows).catch(() => []);

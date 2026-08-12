@@ -33,7 +33,7 @@ const DONE = `a.status IN ('done','completed','paid','finished','closed')`;
 // отменённые/неявки (в БД встречается и 'noshow' без подчёркивания)
 const CANCELLED = `a.status IN ('cancelled','canceled','no_show','noshow')`;
 
-// У исторических записей branch_id пуст (импорт из Букона/BeautyPro не знал о филиалах).
+// У исторических записей branch_id пуст (импорт из Букона/стара CRM не знал о филиалах).
 // Такие визиты относим к главному (минимальному активному) филиалу, иначе все KPI = 0.
 async function defaultBranchId() {
   const r = await pool.query(`SELECT MIN(id) AS id FROM branches WHERE is_active`);

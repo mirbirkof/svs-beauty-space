@@ -11,8 +11,23 @@ const { execSync } = require('child_process');
 
 const EPS = 1.0; // грн
 
+// ПРЕДОХРАНИТЕЛЬ (02.08): экземпляр этого сторожа провисел 25 ЧАСОВ, ожидая ответа
+// базы без таймаута — держал соединение и молча не делал работу. Ежедневная задача
+// не имеет права жить дольше 10 минут: не успел — выходим с ошибкой, крон повторит завтра.
+const HARD_LIMIT_MS = 10 * 60 * 1000;
+const _killer = setTimeout(() => {
+  console.error(`[payroll-audit] ПРЕВЫШЕН ЛИМИТ ${HARD_LIMIT_MS / 60000} мин — выхожу, чтобы не висеть`);
+  process.exit(2);
+}, HARD_LIMIT_MS);
+_killer.unref?.();
+
 (async () => {
-  const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  const c = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,   // не ждать соединение вечно
+    statement_timeout: 120000,        // ни один запрос не длиннее 2 минут
+  });
   await c.connect();
   // Окно: с 1-го числа по ВЧЕРА включительно. Сегодняшний день не сверяем —
   // живые операции (оплата пробита, визит ещё не закрыт) дают ложные расхождения

@@ -90,6 +90,9 @@ app.use(cors({
     /\.pinggy\.link$/,
     // 01.08: Render убран из белого списка — сервисы погашены, прод только дроплет.
     /\.serveousercontent\.com$/,
+    // 12.08: постоянный публичный адрес CRM (Tailscale Funnel). serveo закрыл анонимные
+    // туннели («capacity is currently full») → его домен мёртв, витрина и кабинет ходят сюда.
+    /\.ts\.net$/,
     'https://svsbeautyworld.com',
     'https://www.svsbeautyworld.com',
   ],

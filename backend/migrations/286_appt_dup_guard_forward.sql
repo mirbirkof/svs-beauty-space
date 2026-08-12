@@ -17,7 +17,7 @@ BEGIN
       ON appointments (tenant_id, master_id, starts_at, client_id, service_id)
       WHERE status NOT IN ('cancelled','noshow')
         AND client_id IS NOT NULL AND service_id IS NOT NULL
-        AND COALESCE(bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
+        AND COALESCE(legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')
         AND created_at >= TIMESTAMPTZ '2026-07-28 21:00:00+03';
     RAISE NOTICE '[286] forward-only duplicate guard created';
   ELSE

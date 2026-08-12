@@ -89,11 +89,11 @@ function durMin(s){ // '3 ч. 30 мин.'
     await pool.query(
       `INSERT INTO appointments
         (tenant_id,client_id,master_id,service_id,starts_at,ends_at,status,price,
-         payment_method,cashback,client_name,services_text,source,import_batch,bp_state)
+         payment_method,cashback,client_name,services_text,source,import_batch,legacy_state)
        VALUES ($1,$2,$3,$4,
          ($5::timestamp AT TIME ZONE 'Europe/Kiev'),
          ($5::timestamp AT TIME ZONE 'Europe/Kiev') + ($6 || ' minutes')::interval,
-         $7,$8,$9,$10,$11,$12,'beautypro',$13,'imported')`,
+         $7,$8,$9,$10,$11,$12,'legacy_import',$13,'imported')`,
       [TENANT,cid,m?m.id:null,sid,dts,dur,status,price,pay,cashback,cname,servText,BATCH]);
     ins++;
   }

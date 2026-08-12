@@ -73,8 +73,8 @@ async function snapshot(from, to) {
     liveFinance(pool, from, to),
     q(`SELECT COUNT(*) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int done,
               COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND starts_at <= NOW())::int uniq,
-              COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(bp_state,'') <> 'bp_deleted')::int cancelled,
-              COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(bp_state,'') <> 'bp_deleted')::int noshow
+              COUNT(*) FILTER (WHERE status='cancelled' AND COALESCE(legacy_state,'') <> 'bp_deleted')::int cancelled,
+              COUNT(*) FILTER (WHERE status='noshow' AND COALESCE(legacy_state,'') <> 'bp_deleted')::int noshow
          FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COUNT(*)::int c FROM (
          SELECT client_id, MIN(starts_at) AS fv FROM appointments

@@ -64,7 +64,7 @@ app.use((err, req, res, next) => {
 });
 
 // Глобальная страховка стабильности: у backend много фоновых работников (напоминания,
-// поллинг оплат, рассылки, синк BeautyPro). Необработанная ошибка в любом из них НЕ должна
+// поллинг оплат, рассылки, синк стара CRM). Необработанная ошибка в любом из них НЕ должна
 // ронять весь процесс — логируем и продолжаем работать. Без этого один сбой в фоне = падение CRM.
 process.on('unhandledRejection', (reason) => {
   console.error('[SVS-Shop] UNHANDLED REJECTION:', reason instanceof Error ? (reason.stack || reason.message) : reason);

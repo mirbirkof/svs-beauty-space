@@ -35,6 +35,12 @@ async function liveFinance(pool, from, to) {
     return t;
   };
   const days = Math.max(1, Math.round((ts(to) - ts(from)) / 86400000));
+  // Сьогоднішня дата за Києвом — межа «вже відпрацьовано». Поточний день не рахуємо:
+  // робота ще йде (наказ власника 02.08).
+  const todayKyiv = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // Скільки днів періоду ПОВНІСТЮ завершено (для пропорції місячного окладу).
+  const _tsToday = Date.parse(todayKyiv + 'T00:00:00+03:00');
+  const daysDone = Math.max(0, Math.round((Math.min(ts(to), _tsToday) - ts(from)) / 86400000));
   // Календарні дні меж — ЗА КИЇВСЬКИМ часом, для вікна змін (master_schedule_days).
   // Раніше String(from).slice(0,10): Date-обʼєкт давав "Sat Jul 25" (запит падав → оклади
   // губились), ISO-UTC давав учорашню дату (зайвий день змін → оклади дублювались).
@@ -77,15 +83,21 @@ async function liveFinance(pool, from, to) {
          FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [from, to]),
     // фікс-оклади: fixed_per_month (пропорційно періоду) + fixed_per_day × реальні зміни графіка.
     // Раніше fixed_per_day ігнорувався повністю (аудит 06.07).
+    // 02.08 (наказ власника): день, який ЩЕ ЙДЕ, не є витратою — робота не виконана,
+    // зміна може змінитись або скасуватись. Тому рахуємо ТІЛЬКИ повністю відпрацьовані
+    // дні: work_date < сьогодні (Київ). Раніше дашборд зранку показував оклади за
+    // сьогоднішні та майбутні зміни при нульовій виручці.
     q(`WITH sched AS (
          SELECT master_id, COUNT(*)::int shifts FROM master_schedule_days
-          WHERE work_date >= $1::date AND work_date <= $2::date GROUP BY master_id)
+          WHERE work_date >= $1::date AND work_date <= $2::date
+            AND work_date < $3::date
+          GROUP BY master_id)
        SELECT COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::numeric fx_month,
               COALESCE(SUM(COALESCE(ps.fixed_per_day,0) * COALESCE(sc.shifts,0)),0)::numeric fx_day
          FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
          LEFT JOIN sched sc ON sc.master_id=m.id
         WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE`,
-      [fromDay, toDay]),
+      [fromDay, toDay, todayKyiv]),
     // COGS = собівартість ВСІХ списань (розниця + матеріали візитів, заметка #141).
     // Грамові товари (price_per_gram) з unit_ml: опт за упаковку ÷ грамів в упаковці;
     // без unit_ml опт уже за грам; штучні — опт за одиницю. Знак delta зберігаємо:
@@ -160,7 +172,9 @@ async function liveFinance(pool, from, to) {
   // у Києві; раніше через getUTCMonth() місяць зʼїжджав на попередній → daysInMonth 30 замість 31).
   const _fromD = new Date(fromDay + 'T00:00:00Z');
   const daysInMonth = new Date(Date.UTC(_fromD.getUTCFullYear(), _fromD.getUTCMonth() + 1, 0)).getUTCDate();
-  const monthShare = Math.min(1, days / (daysInMonth || 30));
+  // Пропорція рахується по ЗАВЕРШЕНИХ днях (daysDone), а не по всьому періоду:
+  // інакше зранку 1-го числа вже «висів» оклад за день, який тільки почався.
+  const monthShare = Math.min(1, daysDone / (daysInMonth || 30));
   const fixedAccrued = Number(fixed[0]?.fx_month || 0) * monthShare + Number(fixed[0]?.fx_day || 0); // оклад пропорц. + ставка×зміни
   const salesCommission = Number(salesComm[0]?.s || 0); // % з продажу продукції (банки/POS)
   const commission = Math.round(commissionPct + fixedAccrued + salesCommission);

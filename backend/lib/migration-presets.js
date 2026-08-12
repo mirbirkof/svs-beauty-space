@@ -120,7 +120,6 @@ const SOURCE_PRESETS = [
   { id: 'generic', label: 'Інша CRM / Excel / Google Sheets', hint: 'Підійде будь-який експорт у CSV або .xlsx. Стовпці визначимо автоматично, помилку можна поправити вручну.', entities: ALL_ENTITIES },
   { id: 'dikidi', label: 'DIKIDI', hint: 'Кабінет → Клієнти → Експорт, і Журнал записів → Експорт. Беремо .xlsx напряму — переносимо клієнтів і всю історію візитів за всі роки.', entities: ALL_ENTITIES },
   { id: 'bukon', label: 'Букон', hint: 'Звіти → Візити → Вивантажити. Формат «Дата / Співробітник / Послуги / Клієнт / Статус / Ціна» розпізнається з коробки.', entities: ALL_ENTITIES },
-  { id: 'beautypro', label: 'BeautyPro', hint: 'Експорт клієнтів/візитів/товарів у Excel, або пряме підтягування через API (у Інтеграціях).', entities: ALL_ENTITIES },
   { id: 'yclients', label: 'YCLIENTS / Altegio', hint: 'Налаштування → Експорт даних → CSV: клієнти, записи, послуги, товари.', entities: ALL_ENTITIES },
   { id: 'excel', label: 'Власна таблиця Excel', hint: 'Будь-яка таблиця з колонками. Перший рядок — назви стовпців.', entities: ALL_ENTITIES },
 ];

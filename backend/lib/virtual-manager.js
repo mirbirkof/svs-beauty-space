@@ -14,7 +14,7 @@ const { getSetting, setSetting } = require('./settings');
 const { shiftDaysByMaster } = require('./schedule-month');
 
 const TENANT = DEFAULT_TENANT_ID; // салон Босса (раніше тут був НЕІСНУЮЧИЙ uuid ...000 — reputation_settings не знаходились)
-const BASE = process.env.PUBLIC_BASE_URL || 'https://zvetlacrm.serveousercontent.com';
+const { getPublicBase } = require('./public-url'); // живой адрес: файл туннеля > env
 
 // Київська дата YYYY-MM-DD
 function kyivDate(d = new Date()) { return d.toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }); }
@@ -47,7 +47,7 @@ async function autoReviewRequests(pool = getPool(), tenantId = DEFAULT_TENANT_ID
   for (const a of rows) {
     try {
       const c = (await pool.query(`SELECT name FROM clients WHERE id=$1`, [a.client_id])).rows[0] || {};
-      const link = `${BASE}/p/feedback.html?c=${a.client_id}&a=${a.id}`;
+      const link = `${getPublicBase()}/p/feedback.html?c=${a.client_id}&a=${a.id}`;
       const body = `Дякуємо за візит${c.name ? ', ' + c.name : ''}! 💛\nБудь ласка, оцініть нас — це займе 10 секунд:\n${link}`;
       const out = await hub.enqueue({ clientId: a.client_id, body, category: 'transactional', priority: 'low', dedupKey: `review_req:${a.id}`, source: 'review-request-auto' });
       // лог завжди (навіть skip) — щоб не довбати клієнта повторно щотіку

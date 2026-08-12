@@ -1,6 +1,6 @@
 /* Перевірка входу в CRM ззовні — очима Боса (десктоп + телефон). */
 const { chromium, devices } = require('playwright');
-const URL = process.argv[2] || 'https://zvetlacrm.serveousercontent.com/';
+const URL = process.argv[2] || 'https://zvetlacrm.tailed6c1a.ts.net/';
 
 (async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] });

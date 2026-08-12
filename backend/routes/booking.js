@@ -3,7 +3,7 @@
    POST /api/booking/init        → создать pending + deep-link
    POST /api/booking/telegram    → webhook Telegram бота
    GET  /api/booking/status/:tk  → опрос с фронта (poll)
-   GET  /api/booking/services    → список услуг из BeautyPro
+   GET  /api/booking/services    → список услуг из стара CRM
    GET  /api/booking/masters     → мастера для услуги
    GET  /api/booking/slots       → свободные слоты
    ═══════════════════════════════════════════════════════ */
@@ -11,7 +11,6 @@ const express = require('express');
 const crypto = require('crypto');
 const https = require('https');
 const router = express.Router();
-const bp = require('../beautyproClient');
 const { getPool, applyTenant } = require('../db-pg');
 const slotEngine = require('./../lib/slot-engine');
 const bookingBot = require('../lib/booking-bot');
@@ -65,17 +64,17 @@ function genToken() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-// Резолв id онлайн-записи (BeautyPro GUID / 'svc-N'/'mst-N' / наш numeric) → внутренние
+// Резолв id онлайн-записи (стара CRM GUID / 'svc-N'/'mst-N' / наш numeric) → внутренние
 // masters.id, services.id + цена/длительность. Нужен чтобы писать запись в НАШУ таблицу
-// appointments (журнал мастера) без BeautyPro. Урок 02.07 — самостоятельность от BP.
+// appointments (журнал мастера) без стара CRM. Урок 02.07 — самостоятельность от BP.
 async function resolveBookingIds(pool, serviceRef, masterRef) {
   const digits = (s) => String(s || '').replace(/^svc-|^mst-/, '');
   const svcRef = digits(serviceRef), mstRef = digits(masterRef);
   const svc = await pool.query(
     `SELECT id, price, COALESCE(duration_min, 60) AS dur FROM services
-      WHERE beautypro_id::text = $1 OR id::text = $1 LIMIT 1`, [svcRef]).catch(() => ({ rows: [] }));
+      WHERE legacy_ref::text = $1 OR id::text = $1 LIMIT 1`, [svcRef]).catch(() => ({ rows: [] }));
   const mst = await pool.query(
-    `SELECT id FROM masters WHERE beautypro_id::text = $1 OR id::text = $1 LIMIT 1`, [mstRef])
+    `SELECT id FROM masters WHERE legacy_ref::text = $1 OR id::text = $1 LIMIT 1`, [mstRef])
     .catch(() => ({ rows: [] }));
   return {
     serviceId: svc.rows[0]?.id || null,
@@ -348,7 +347,7 @@ async function processUpdate(upd, tg, salon) {
         return tg('sendMessage', { chat_id: msg.chat.id, text: '❌ Можна поділитись лише власним номером.' });
       }
       const phoneDigits = msg.contact.phone_number.replace(/\D/g, ''); // локальная БД хранит цифры (380...)
-      const phone = '+' + phoneDigits; // для BeautyPro — с плюсом
+      const phone = '+' + phoneDigits; // для стара CRM — с плюсом
       // повний профіль Telegram (зберігаємо один раз, щоб упізнавати клієнта)
       const tgFirst = msg.contact.first_name || msg.from.first_name || null;
       const tgLast  = msg.contact.last_name  || msg.from.last_name  || null;
@@ -487,23 +486,7 @@ async function processUpdate(upd, tg, salon) {
           }
         } catch (slotErr) { console.error('[booking/slot-check]', slotErr.message); }
 
-        // BeautyPro — НЕОБЯЗАТЕЛЬНЫЙ синк (нас могли отключить). Источник правды —
-        // наша БД online_bookings ниже. BP-запись best-effort: получилось — хорошо, нет — не рушим запись.
-        let bp_id = '';
-        try {
-          const client = await bp.createClient({ phone, name: row.client_name || msg.from.first_name });
-          const appt = await bp.createAppointment({
-            client_id: client.id || client.client_id,
-            service_id: row.service_id,
-            employee_id: row.employee_id,
-            date_from: row.date_from,
-            date_to: row.date_to,
-          });
-          bp_id = String(appt.id || appt.appointment_id || '');
-        } catch (bpErr) {
-          if (!/bp-disabled/.test(bpErr.message))
-            console.warn('[booking/bp-optional] BeautyPro недоступен, запись только в нашей БД:', bpErr.message);
-        }
+        const bp_id = '';   // 02.08: інтеграцію зі сторонньою CRM прибрано повністю
         await db.update(row.token, { status: 'confirmed', phone, appointment_id: bp_id, verified_at: new Date().toISOString() });
 
         // Запись в общий журнал online_bookings — для unified history по телефону
@@ -550,7 +533,7 @@ async function processUpdate(upd, tg, salon) {
             const ob = await txc.query(
               `INSERT INTO online_bookings
                 (client_id, client_phone, client_name, service_id, master_id,
-                 date_from, date_to, channel, bp_appointment_id, status,
+                 date_from, date_to, channel, legacy_appointment_ref, status,
                  source_token, telegram_id)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'confirmed',$10,$11)
                RETURNING id`,
@@ -560,7 +543,7 @@ async function processUpdate(upd, tg, salon) {
             );
             bookingId = ob.rows[0].id;
 
-            // Тень в НАШЕМ журнале appointments (самостоятельность от BeautyPro, 02.07):
+            // Тень в НАШЕМ журнале appointments (самостоятельность от стара CRM, 02.07):
             // без неё мастер не видит онлайн-запись в расписании дня.
             const ids = await resolveBookingIds(txc, row.service_id, row.employee_id);
             if (ids.masterId && ids.serviceId) {
@@ -713,16 +696,16 @@ router.post('/telegram/t/:slug', async (req, res) => {
 });
 
 // === Catalog endpoints ==================================
-// Ошибки апстрима BeautyPro (401 без ключа, 5xx, таймаут) НЕ протекают клиенту:
+// Ошибки апстрима стара CRM (401 без ключа, 5xx, таймаут) НЕ протекают клиенту:
 // логируем полностью, наружу — аккуратный 503 без внутренних деталей (фикс 02.07).
 function upstreamFail(res, e, where) {
   console.error(`[booking:${where}]`, e.message);
   res.status(503).json({ error: 'Сервіс онлайн-запису тимчасово недоступний. Спробуйте пізніше або зателефонуйте в салон.' });
 }
-// GUID-совместимый id как в /catalog: beautypro_id или 'svc-'/'mst-'+id
-const catId = (pref) => `COALESCE(beautypro_id::text, '${pref}-'||id)`;
+// GUID-совместимый id как в /catalog: legacy_ref или 'svc-'/'mst-'+id
+const catId = (pref) => `COALESCE(legacy_ref::text, '${pref}-'||id)`;
 
-// Услуги из НАШЕЙ БД (BeautyPro отвязан 03.07). Формат совместим с book.html.
+// Услуги из НАШЕЙ БД (стара CRM отвязан 03.07). Формат совместим с book.html.
 router.get('/services', async (req, res) => {
   try {
     const r = await getPool().query(
@@ -741,7 +724,7 @@ router.get('/masters', async (req, res) => {
       `SELECT ${catId('mst')} AS id,
               COALESCE(NULLIF(online_title,''), name) AS name, specialty,
               COALESCE((
-                SELECT json_agg(COALESCE(s.beautypro_id::text, 'svc-'||s.id))
+                SELECT json_agg(COALESCE(s.legacy_ref::text, 'svc-'||s.id))
                   FROM services s JOIN master_services ms ON ms.service_id = s.id
                  WHERE ms.master_id = m.id AND ms.active IS NOT FALSE
                    AND s.active IS NOT FALSE AND s.deleted_at IS NULL
@@ -754,7 +737,7 @@ router.get('/masters', async (req, res) => {
   } catch (e) { upstreamFail(res, e, 'masters'); }
 });
 
-// Свободные слоты из НАШЕГО движка (lib/slot-engine) вместо BeautyPro.
+// Свободные слоты из НАШЕГО движка (lib/slot-engine) вместо стара CRM.
 router.get('/slots', async (req, res) => {
   try {
     const { service_id, date, duration, professional } = req.query;
@@ -762,19 +745,19 @@ router.get('/slots', async (req, res) => {
     const pool = getPool();
 
     // мастера: конкретный выбранный ИЛИ все, кто оказывает услугу
-    const mGid = `COALESCE(m.beautypro_id::text, 'mst-'||m.id)`;
+    const mGid = `COALESCE(m.legacy_ref::text, 'mst-'||m.id)`;
     let masters;
     if (professional) {
       masters = (await pool.query(
         `SELECT m.id, ${mGid} AS gid FROM masters m
-          WHERE (m.beautypro_id::text = $1 OR ('mst-'||m.id) = $1 OR m.id::text = $1)
+          WHERE (m.legacy_ref::text = $1 OR ('mst-'||m.id) = $1 OR m.id::text = $1)
             AND m.online_booking_enabled IS NOT FALSE`, [professional])).rows;
     } else if (service_id) {
       masters = (await pool.query(
         `SELECT DISTINCT m.id, ${mGid} AS gid
            FROM masters m JOIN master_services ms ON ms.master_id = m.id
            JOIN services s ON s.id = ms.service_id
-          WHERE (s.beautypro_id::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
+          WHERE (s.legacy_ref::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
             AND ms.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE
             AND m.provides_services IS NOT FALSE
             AND m.active IS NOT FALSE`, [service_id])).rows;
@@ -802,13 +785,13 @@ router.get('/slots', async (req, res) => {
 });
 
 // === GET /catalog — нормализованный каталог из НАШЕЙ БД ==========
-// Не зависит от BeautyPro env-ключей: наша БД — синхронизированное зеркало
-// каталога (beautypro_id = GUID, совместим с /init и подтверждением бота).
+// Не зависит от стара CRM env-ключей: наша БД — синхронизированное зеркало
+// каталога (legacy_ref = GUID, совместим с /init и подтверждением бота).
 // Источник правды для онлайн-записи: услуги active, мастера online_booking_enabled.
 router.get('/catalog', async (req, res) => {
   try {
     const svc = await getPool().query(
-      `SELECT COALESCE(beautypro_id::text, 'svc-'||id) AS id,
+      `SELECT COALESCE(legacy_ref::text, 'svc-'||id) AS id,
               name, COALESCE(name_ua, name) AS name_ua,
               duration_min AS duration, price::float AS price,
               category, color, photo_urls
@@ -817,7 +800,7 @@ router.get('/catalog', async (req, res) => {
         ORDER BY sort_order NULLS LAST, name`
     );
     const mst = await getPool().query(
-      `SELECT COALESCE(beautypro_id::text, 'mst-'||id) AS id,
+      `SELECT COALESCE(legacy_ref::text, 'mst-'||id) AS id,
               COALESCE(NULLIF(online_title,''), name) AS name,
               specialty, avatar, online_rank, provides_services
          FROM masters

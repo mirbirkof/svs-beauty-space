@@ -40,3 +40,190 @@
 {"ts":"2026-08-01T13:37:15.398Z","provider":"gemini-2.5-flash","ok":true,"ms":2443,"tokensIn":733,"tokensOut":507}
 {"ts":"2026-08-01T13:37:17.130Z","provider":"gemini-2.5-flash","ok":true,"ms":4526,"tokensIn":4394,"tokensOut":850}
 {"ts":"2026-08-01T15:42:33.804Z","provider":"gemini-2.5-flash","ok":true,"ms":2782,"tokensIn":742,"tokensOut":581}
+{"ts":"2026-08-01T16:18:38.211Z","provider":"gemini-2.5-flash","ok":false,"ms":189,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-01T16:18:38.251Z","provider":"gemini-2.5-flash","ok":false,"ms":72,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-01T16:18:40.914Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2663,"tokensIn":742,"tokensOut":645}
+{"ts":"2026-08-01T16:18:41.410Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3197,"tokensIn":4394,"tokensOut":795}
+{"ts":"2026-08-01T17:02:37.604Z","provider":"gemini-2.5-flash","ok":false,"ms":170,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-01T17:02:40.105Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2500,"tokensIn":742,"tokensOut":925}
+{"ts":"2026-08-01T22:37:16.492Z","provider":"gemini-2.5-flash","ok":false,"ms":65,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-01T22:37:18.996Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2503,"tokensIn":745,"tokensOut":596}
+{"ts":"2026-08-01T22:37:20.114Z","provider":"gemini-2.5-flash","ok":true,"ms":4011,"tokensIn":4394,"tokensOut":827}
+{"ts":"2026-08-02T03:37:13.771Z","provider":"gemini-2.5-flash","ok":false,"ms":63,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T03:37:16.433Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2661,"tokensIn":745,"tokensOut":635}
+{"ts":"2026-08-02T03:37:18.043Z","provider":"gemini-2.5-flash","ok":true,"ms":4619,"tokensIn":4394,"tokensOut":907}
+{"ts":"2026-08-02T05:31:17.503Z","provider":"gemini-2.5-flash","ok":false,"ms":191,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T05:31:17.546Z","provider":"gemini-2.5-flash","ok":false,"ms":78,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T05:31:19.579Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2075,"tokensIn":745,"tokensOut":602}
+{"ts":"2026-08-02T05:31:21.007Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3461,"tokensIn":4394,"tokensOut":810}
+{"ts":"2026-08-02T06:13:15.133Z","provider":"gemini-2.5-flash","ok":false,"ms":205,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T06:13:15.145Z","provider":"gemini-2.5-flash","ok":false,"ms":164,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T06:13:17.777Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2643,"tokensIn":745,"tokensOut":647}
+{"ts":"2026-08-02T06:13:19.298Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":4153,"tokensIn":4427,"tokensOut":860}
+{"ts":"2026-08-02T06:20:57.534Z","provider":"gemini-2.5-flash","ok":false,"ms":186,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T06:20:57.536Z","provider":"gemini-2.5-flash","ok":false,"ms":73,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T06:20:59.892Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2356,"tokensIn":745,"tokensOut":644}
+{"ts":"2026-08-02T06:21:01.237Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3703,"tokensIn":4427,"tokensOut":919}
+{"ts":"2026-08-02T08:37:15.066Z","provider":"gemini-2.5-flash","ok":true,"ms":2764,"tokensIn":745,"tokensOut":557}
+{"ts":"2026-08-02T08:37:16.443Z","provider":"gemini-2.5-flash","ok":true,"ms":4470,"tokensIn":4427,"tokensOut":883}
+{"ts":"2026-08-02T09:14:11.231Z","provider":"gemini-2.5-flash","ok":true,"ms":2856,"tokensIn":745,"tokensOut":556}
+{"ts":"2026-08-02T12:00:13.313Z","provider":"gemini-2.5-flash","ok":true,"ms":2585,"tokensIn":740,"tokensOut":512}
+{"ts":"2026-08-02T12:00:14.609Z","provider":"gemini-2.5-flash","ok":true,"ms":4201,"tokensIn":4427,"tokensOut":764}
+{"ts":"2026-08-02T12:55:56.677Z","provider":"gemini-2.5-flash","ok":true,"ms":2589,"tokensIn":740,"tokensOut":545}
+{"ts":"2026-08-02T15:37:14.865Z","provider":"gemini-2.5-flash","ok":true,"ms":3041,"tokensIn":743,"tokensOut":632}
+{"ts":"2026-08-02T15:37:16.031Z","provider":"gemini-2.5-flash","ok":true,"ms":4552,"tokensIn":4395,"tokensOut":852}
+{"ts":"2026-08-02T18:00:14.738Z","provider":"gemini-2.5-flash","ok":true,"ms":3002,"tokensIn":743,"tokensOut":601}
+{"ts":"2026-08-02T18:00:16.349Z","provider":"gemini-2.5-flash","ok":true,"ms":4923,"tokensIn":4395,"tokensOut":882}
+{"ts":"2026-08-02T21:37:11.741Z","provider":"gemini-2.5-flash","ok":false,"ms":182,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-02T21:37:13.253Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1415,"tokensIn":749,"tokensOut":613}
+{"ts":"2026-08-02T21:37:14.019Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2278,"tokensIn":4395,"tokensOut":805}
+{"ts":"2026-08-03T04:37:10.186Z","provider":"gemini-2.5-flash","ok":false,"ms":61,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-03T04:37:11.874Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1687,"tokensIn":749,"tokensOut":592}
+{"ts":"2026-08-03T04:37:13.569Z","provider":"gemini-2.5-flash","ok":true,"ms":3679,"tokensIn":4395,"tokensOut":763}
+{"ts":"2026-08-03T06:00:12.498Z","provider":"gemini-2.5-flash","ok":false,"ms":68,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-03T06:00:13.867Z","provider":"gemini-2.5-flash","ok":false,"ms":1706,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T06:00:14.177Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1679,"tokensIn":748,"tokensOut":511}
+{"ts":"2026-08-03T06:00:16.654Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2787,"tokensIn":4395,"tokensOut":835}
+{"ts":"2026-08-03T08:37:19.999Z","provider":"gemini-2.5-flash","ok":true,"ms":3034,"tokensIn":746,"tokensOut":679}
+{"ts":"2026-08-03T08:37:21.126Z","provider":"gemini-2.5-flash","ok":true,"ms":4408,"tokensIn":4425,"tokensOut":816}
+{"ts":"2026-08-03T12:00:12.247Z","provider":"gemini-2.5-flash","ok":false,"ms":385,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T12:00:12.797Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":549,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T12:00:12.798Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-03T12:00:13.815Z","provider":"gemini-2.5-flash","ok":false,"ms":2328,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T12:00:15.647Z","provider":"groq","ok":true,"ms":2849,"tokensIn":773,"tokensOut":416}
+{"ts":"2026-08-03T12:00:15.944Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":2129,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T12:00:15.944Z","provider":"openrouter","ok":false,"ms":0,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-03T12:00:18.780Z","provider":"groq","ok":true,"ms":2836,"tokensIn":3640,"tokensOut":588}
+{"ts":"2026-08-03T14:46:22.115Z","provider":"gemini-2.5-flash","ok":true,"ms":2707,"tokensIn":742,"tokensOut":526}
+{"ts":"2026-08-03T14:46:23.288Z","provider":"gemini-2.5-flash","ok":true,"ms":3909,"tokensIn":4394,"tokensOut":745}
+{"ts":"2026-08-03T15:37:20.455Z","provider":"gemini-2.5-flash","ok":true,"ms":2827,"tokensIn":742,"tokensOut":542}
+{"ts":"2026-08-03T18:00:11.957Z","provider":"gemini-2.5-flash","ok":false,"ms":827,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T18:00:12.080Z","provider":"gemini-2.5-flash","ok":false,"ms":636,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-03T18:00:14.421Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2341,"tokensIn":742,"tokensOut":667}
+{"ts":"2026-08-03T18:00:14.726Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2768,"tokensIn":4394,"tokensOut":777}
+{"ts":"2026-08-04T06:00:11.981Z","provider":"gemini-2.5-flash","ok":false,"ms":81,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-04T06:00:13.847Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1865,"tokensIn":745,"tokensOut":634}
+{"ts":"2026-08-04T06:00:14.191Z","provider":"gemini-2.5-flash","ok":false,"ms":2581,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-04T06:00:16.846Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2655,"tokensIn":4394,"tokensOut":711}
+{"ts":"2026-08-04T09:37:11.323Z","provider":"gemini-2.5-flash","ok":false,"ms":1490,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-04T09:37:12.367Z","provider":"gemini-2.5-flash","ok":true,"ms":2381,"tokensIn":745,"tokensOut":495}
+{"ts":"2026-08-04T09:37:14.282Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2957,"tokensIn":4390,"tokensOut":830}
+{"ts":"2026-08-04T12:00:14.626Z","provider":"gemini-2.5-flash","ok":true,"ms":3123,"tokensIn":745,"tokensOut":570}
+{"ts":"2026-08-04T12:00:16.213Z","provider":"gemini-2.5-flash","ok":true,"ms":4922,"tokensIn":4358,"tokensOut":877}
+{"ts":"2026-08-04T16:37:22.202Z","provider":"gemini-2.5-flash","ok":true,"ms":3411,"tokensIn":741,"tokensOut":681}
+{"ts":"2026-08-04T16:37:23.332Z","provider":"gemini-2.5-flash","ok":true,"ms":4770,"tokensIn":4391,"tokensOut":886}
+{"ts":"2026-08-04T18:00:15.395Z","provider":"gemini-2.5-flash","ok":true,"ms":3960,"tokensIn":741,"tokensOut":608}
+{"ts":"2026-08-04T18:00:15.828Z","provider":"gemini-2.5-flash","ok":true,"ms":4688,"tokensIn":4391,"tokensOut":822}
+{"ts":"2026-08-05T04:37:15.095Z","provider":"gemini-2.5-flash","ok":false,"ms":183,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-05T04:37:16.185Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1043,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-05T04:37:16.186Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-05T04:37:17.294Z","provider":"groq","ok":true,"ms":1108,"tokensIn":761,"tokensOut":359}
+{"ts":"2026-08-05T04:37:18.694Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3597,"tokensIn":4391,"tokensOut":838}
+{"ts":"2026-08-05T09:37:20.597Z","provider":"gemini-2.5-flash","ok":true,"ms":2583,"tokensIn":732,"tokensOut":541}
+{"ts":"2026-08-05T09:37:22.454Z","provider":"gemini-2.5-flash","ok":true,"ms":4591,"tokensIn":4424,"tokensOut":864}
+{"ts":"2026-08-05T16:37:16.780Z","provider":"gemini-2.5-flash","ok":true,"ms":3139,"tokensIn":742,"tokensOut":627}
+{"ts":"2026-08-05T16:37:17.499Z","provider":"gemini-2.5-flash","ok":true,"ms":4086,"tokensIn":4392,"tokensOut":781}
+{"ts":"2026-08-05T22:37:13.437Z","provider":"gemini-2.5-flash","ok":false,"ms":74,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-05T22:37:14.849Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1412,"tokensIn":731,"tokensOut":422}
+{"ts":"2026-08-05T22:37:17.387Z","provider":"gemini-2.5-flash","ok":true,"ms":4313,"tokensIn":4392,"tokensOut":850}
+{"ts":"2026-08-06T09:25:53.199Z","provider":"gemini-2.5-flash","ok":true,"ms":2695,"tokensIn":746,"tokensOut":530}
+{"ts":"2026-08-06T09:25:54.927Z","provider":"gemini-2.5-flash","ok":true,"ms":4673,"tokensIn":4424,"tokensOut":988}
+{"ts":"2026-08-07T00:37:13.511Z","provider":"gemini-2.5-flash","ok":false,"ms":67,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-07T00:37:15.189Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1677,"tokensIn":731,"tokensOut":464}
+{"ts":"2026-08-07T00:37:17.136Z","provider":"gemini-2.5-flash","ok":true,"ms":3959,"tokensIn":4392,"tokensOut":842}
+{"ts":"2026-08-07T06:00:13.570Z","provider":"gemini-2.5-flash","ok":false,"ms":79,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-07T06:00:14.595Z","provider":"gemini-2.5-flash","ok":false,"ms":1475,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-07T06:00:15.594Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2017,"tokensIn":731,"tokensOut":498}
+{"ts":"2026-08-07T06:00:17.456Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2861,"tokensIn":4392,"tokensOut":743}
+{"ts":"2026-08-07T06:37:23.739Z","provider":"gemini-2.5-flash","ok":false,"ms":186,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-07T06:37:26.216Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2477,"tokensIn":731,"tokensOut":527}
+{"ts":"2026-08-07T11:37:19.368Z","provider":"gemini-2.5-flash","ok":false,"ms":2212,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-07T11:37:20.896Z","provider":"gemini-2.5-flash","ok":true,"ms":4048,"tokensIn":4423,"tokensOut":806}
+{"ts":"2026-08-07T11:37:21.358Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1989,"tokensIn":731,"tokensOut":500}
+{"ts":"2026-08-07T12:00:16.606Z","provider":"gemini-2.5-flash","ok":true,"ms":3485,"tokensIn":731,"tokensOut":527}
+{"ts":"2026-08-07T16:37:20.575Z","provider":"gemini-2.5-flash","ok":true,"ms":2839,"tokensIn":746,"tokensOut":639}
+{"ts":"2026-08-07T16:37:21.742Z","provider":"gemini-2.5-flash","ok":true,"ms":4410,"tokensIn":4394,"tokensOut":821}
+{"ts":"2026-08-07T18:00:13.626Z","provider":"gemini-2.5-flash","ok":false,"ms":776,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-07T18:00:15.755Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2129,"tokensIn":746,"tokensOut":619}
+{"ts":"2026-08-07T18:00:17.525Z","provider":"gemini-2.5-flash","ok":true,"ms":4688,"tokensIn":4394,"tokensOut":866}
+{"ts":"2026-08-08T04:37:11.286Z","provider":"gemini-2.5-flash","ok":false,"ms":168,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-08T04:37:12.634Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1346,"tokensIn":735,"tokensOut":406}
+{"ts":"2026-08-08T04:37:15.194Z","provider":"gemini-2.5-flash","ok":true,"ms":4336,"tokensIn":4394,"tokensOut":861}
+{"ts":"2026-08-08T06:00:12.595Z","provider":"gemini-2.5-flash","ok":false,"ms":82,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-08T06:00:14.418Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1822,"tokensIn":734,"tokensOut":492}
+{"ts":"2026-08-08T06:00:16.898Z","provider":"gemini-2.5-flash","ok":true,"ms":4652,"tokensIn":4492,"tokensOut":801}
+{"ts":"2026-08-08T09:37:22.212Z","provider":"gemini-2.5-flash","ok":true,"ms":2434,"tokensIn":734,"tokensOut":529}
+{"ts":"2026-08-08T09:37:23.356Z","provider":"gemini-2.5-flash","ok":true,"ms":3782,"tokensIn":4489,"tokensOut":808}
+{"ts":"2026-08-08T12:00:15.198Z","provider":"gemini-2.5-flash","ok":true,"ms":2828,"tokensIn":735,"tokensOut":513}
+{"ts":"2026-08-08T12:00:16.403Z","provider":"gemini-2.5-flash","ok":true,"ms":4309,"tokensIn":4490,"tokensOut":788}
+{"ts":"2026-08-08T16:37:14.321Z","provider":"gemini-2.5-flash","ok":true,"ms":3344,"tokensIn":735,"tokensOut":581}
+{"ts":"2026-08-08T16:37:15.051Z","provider":"gemini-2.5-flash","ok":true,"ms":4295,"tokensIn":4456,"tokensOut":897}
+{"ts":"2026-08-09T04:37:10.781Z","provider":"gemini-2.5-flash","ok":false,"ms":196,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-09T04:37:12.497Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1590,"tokensIn":726,"tokensOut":437}
+{"ts":"2026-08-09T04:37:14.095Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3313,"tokensIn":4456,"tokensOut":758}
+{"ts":"2026-08-09T06:00:13.882Z","provider":"gemini-2.5-flash","ok":false,"ms":71,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-09T06:00:15.261Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1377,"tokensIn":726,"tokensOut":441}
+{"ts":"2026-08-09T06:00:18.080Z","provider":"gemini-2.5-flash","ok":true,"ms":4524,"tokensIn":4456,"tokensOut":784}
+{"ts":"2026-08-09T12:37:14.235Z","provider":"gemini-2.5-flash","ok":false,"ms":86,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-09T12:37:16.094Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1626,"tokensIn":726,"tokensOut":442}
+{"ts":"2026-08-09T12:37:17.543Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3306,"tokensIn":4455,"tokensOut":729}
+{"ts":"2026-08-09T18:00:12.367Z","provider":"gemini-2.5-flash","ok":false,"ms":156,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-09T18:00:13.814Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1446,"tokensIn":726,"tokensOut":425}
+{"ts":"2026-08-09T18:00:16.476Z","provider":"gemini-2.5-flash","ok":true,"ms":4449,"tokensIn":4422,"tokensOut":871}
+{"ts":"2026-08-09T18:37:17.689Z","provider":"gemini-2.5-flash","ok":true,"ms":2459,"tokensIn":726,"tokensOut":532}
+{"ts":"2026-08-09T23:37:16.153Z","provider":"gemini-2.5-flash","ok":false,"ms":183,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-09T23:37:17.464Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1274,"tokensIn":726,"tokensOut":421}
+{"ts":"2026-08-09T23:37:18.611Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2457,"tokensIn":4422,"tokensOut":771}
+{"ts":"2026-08-10T00:00:16.335Z","provider":"gemini-2.5-flash","ok":false,"ms":189,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-10T00:00:17.484Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1148,"tokensIn":726,"tokensOut":463}
+{"ts":"2026-08-10T06:00:14.649Z","provider":"gemini-2.5-flash","ok":true,"ms":3044,"tokensIn":726,"tokensOut":557}
+{"ts":"2026-08-10T10:37:16.950Z","provider":"gemini-2.5-flash","ok":true,"ms":2426,"tokensIn":726,"tokensOut":477}
+{"ts":"2026-08-10T10:37:18.487Z","provider":"gemini-2.5-flash","ok":true,"ms":4317,"tokensIn":4421,"tokensOut":862}
+{"ts":"2026-08-10T12:00:13.626Z","provider":"gemini-2.5-flash","ok":false,"ms":797,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-10T12:00:14.037Z","provider":"gemini-2.5-flash","ok":false,"ms":912,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-10T12:00:15.828Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1791,"tokensIn":726,"tokensOut":414}
+{"ts":"2026-08-10T12:00:17.431Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3804,"tokensIn":4419,"tokensOut":726}
+{"ts":"2026-08-10T16:37:18.658Z","provider":"gemini-2.5-flash","ok":true,"ms":2361,"tokensIn":726,"tokensOut":471}
+{"ts":"2026-08-10T16:37:20.314Z","provider":"gemini-2.5-flash","ok":true,"ms":4429,"tokensIn":4386,"tokensOut":795}
+{"ts":"2026-08-10T18:00:13.427Z","provider":"gemini-2.5-flash","ok":false,"ms":611,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-10T18:00:15.219Z","provider":"gemini-2.5-flash","ok":false,"ms":2062,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-10T18:00:16.167Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2739,"tokensIn":4386,"tokensOut":793}
+{"ts":"2026-08-10T18:00:16.934Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1715,"tokensIn":726,"tokensOut":424}
+{"ts":"2026-08-11T00:00:14.418Z","provider":"gemini-2.5-flash","ok":false,"ms":410,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-11T00:00:15.795Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1376,"tokensIn":726,"tokensOut":448}
+{"ts":"2026-08-11T00:00:15.920Z","provider":"gemini-2.5-flash","ok":false,"ms":2237,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-11T00:00:19.095Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3175,"tokensIn":4386,"tokensOut":809}
+{"ts":"2026-08-11T06:00:12.366Z","provider":"gemini-2.5-flash","ok":false,"ms":78,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T06:00:13.050Z","provider":"gemini-2.5-flash","ok":false,"ms":985,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-11T06:00:13.994Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1626,"tokensIn":726,"tokensOut":390}
+{"ts":"2026-08-11T06:00:16.886Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3836,"tokensIn":4386,"tokensOut":809}
+{"ts":"2026-08-11T07:37:14.090Z","provider":"gemini-2.5-flash","ok":true,"ms":2620,"tokensIn":726,"tokensOut":493}
+{"ts":"2026-08-11T07:37:15.523Z","provider":"gemini-2.5-flash","ok":true,"ms":4296,"tokensIn":4386,"tokensOut":884}
+{"ts":"2026-08-11T10:06:12.015Z","provider":"gemini-2.5-flash","ok":false,"ms":203,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T10:06:14.546Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2083,"tokensIn":726,"tokensOut":411}
+{"ts":"2026-08-11T10:06:15.377Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3359,"tokensIn":4385,"tokensOut":785}
+{"ts":"2026-08-11T10:32:41.215Z","provider":"gemini-2.5-flash","ok":false,"ms":196,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T10:32:43.063Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1847,"tokensIn":726,"tokensOut":491}
+{"ts":"2026-08-11T12:00:12.632Z","provider":"gemini-2.5-flash","ok":false,"ms":198,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T12:00:14.797Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2063,"tokensIn":726,"tokensOut":456}
+{"ts":"2026-08-11T12:00:15.941Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3307,"tokensIn":4352,"tokensOut":746}
+{"ts":"2026-08-11T12:49:26.619Z","provider":"gemini-2.5-flash","ok":false,"ms":197,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T12:49:28.341Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1720,"tokensIn":726,"tokensOut":431}
+{"ts":"2026-08-11T13:37:16.909Z","provider":"gemini-2.5-flash","ok":false,"ms":198,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T13:37:19.017Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2020,"tokensIn":746,"tokensOut":649}
+{"ts":"2026-08-11T13:37:20.862Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3952,"tokensIn":4387,"tokensOut":788}
+{"ts":"2026-08-11T18:37:15.889Z","provider":"gemini-2.5-flash","ok":false,"ms":177,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T18:37:17.889Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1997,"tokensIn":742,"tokensOut":573}
+{"ts":"2026-08-11T18:37:19.918Z","provider":"gemini-2.5-flash","ok":true,"ms":4497,"tokensIn":4455,"tokensOut":854}
+{"ts":"2026-08-11T22:37:16.962Z","provider":"gemini-2.5-flash","ok":false,"ms":194,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-11T22:37:18.710Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1728,"tokensIn":731,"tokensOut":525}
+{"ts":"2026-08-11T22:37:19.786Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2822,"tokensIn":4455,"tokensOut":708}
+{"ts":"2026-08-12T04:37:19.936Z","provider":"gemini-2.5-flash","ok":false,"ms":62,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-12T04:37:21.639Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1702,"tokensIn":731,"tokensOut":551}
+{"ts":"2026-08-12T04:37:24.129Z","provider":"gemini-2.5-flash","ok":true,"ms":4525,"tokensIn":4455,"tokensOut":884}
+{"ts":"2026-08-12T11:37:17.007Z","provider":"gemini-2.5-flash","ok":true,"ms":2646,"tokensIn":745,"tokensOut":554}
+{"ts":"2026-08-12T11:37:18.596Z","provider":"gemini-2.5-flash","ok":true,"ms":4506,"tokensIn":4487,"tokensOut":907}
+{"ts":"2026-08-12T18:00:16.128Z","provider":"gemini-2.5-flash","ok":true,"ms":2982,"tokensIn":740,"tokensOut":573}
+{"ts":"2026-08-12T18:00:18.190Z","provider":"gemini-2.5-flash","ok":true,"ms":5394,"tokensIn":4491,"tokensOut":978}
+{"ts":"2026-08-12T18:37:13.323Z","provider":"gemini-2.5-flash","ok":false,"ms":210,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-12T18:37:15.669Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2345,"tokensIn":740,"tokensOut":717}

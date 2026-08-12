@@ -1,7 +1,7 @@
-// Безопасный полный исторический бэкфилл BeautyPro: визиты + оплаты, помесячно.
-// НИЧЕГО не удаляет. syncAppointments/syncSales идемпотентны по beautypro_id/ext_ref.
+// Безопасный полный исторический бэкфилл стара CRM: визиты + оплаты, помесячно.
+// НИЧЕГО не удаляет. syncAppointments/syncSales идемпотентны по legacy_ref/ext_ref.
 require('dotenv').config();
-const m = require('./routes/beautypro-appointments-sync.js');
+const m = require('./routes/legacy-appointments-sync.js');
 
 function months(fromY, fromM, toY, toM) {
   const out = [];

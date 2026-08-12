@@ -63,7 +63,7 @@ async function syncOnce() {
       const phone = normalize(r.client_phone);
       // skip if already exists
       const ex = await pool.query(
-        `SELECT id FROM online_bookings WHERE bp_appointment_id = $1`,
+        `SELECT id FROM online_bookings WHERE legacy_appointment_ref = $1`,
         [r.appointment_id]
       );
       const startMs = Date.parse(r.start_at);
@@ -76,7 +76,7 @@ async function syncOnce() {
       if (ex.rows.length) {
         // update status only
         await pool.query(
-          `UPDATE online_bookings SET status = $1, updated_at = NOW() WHERE bp_appointment_id = $2 AND status != $1`,
+          `UPDATE online_bookings SET status = $1, updated_at = NOW() WHERE legacy_appointment_ref = $2 AND status != $1`,
           [status, r.appointment_id]
         );
       } else {
@@ -85,7 +85,7 @@ async function syncOnce() {
           `INSERT INTO online_bookings
             (client_id, client_phone, client_name, service_id, service_name,
              master_id, master_name, date_from, date_to, channel,
-             bp_appointment_id, status, created_at)
+             legacy_appointment_ref, status, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
            ON CONFLICT DO NOTHING`,
           [client_id, phone, r.client_name || null, r.service_id, r.service_name || null,

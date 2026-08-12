@@ -1,7 +1,7 @@
 /* routes/booking-catalog.js — публічний каталог для онлайн-запису (БЕЗ авторизації).
    Джерело правди — НАША БД: послуги + реальна звʼязка майстер↔послуга (master_services).
    Віддає лише активних майстрів з увімкненим онлайн-записом, що реально надають послугу.
-   id послуг/майстрів = beautypro_id (GUID) щоб /slots на booking-api приймав їх напряму. */
+   id послуг/майстрів = legacy_ref (GUID) щоб /slots на booking-api приймав їх напряму. */
 const express = require('express');
 const { getPool } = require('../db-pg');
 const router = express.Router();
@@ -10,7 +10,7 @@ const pool = getPool();
 router.get('/catalog', async (req, res) => {
   try {
     const svc = await pool.query(`
-      SELECT COALESCE(s.beautypro_id::text,'svc-'||s.id) AS id, s.name,
+      SELECT COALESCE(s.legacy_ref::text,'svc-'||s.id) AS id, s.name,
              COALESCE(s.name_ua,s.name) AS name_ua, s.duration_min AS duration,
              s.price::float AS price, s.category, s.color, s.photo_urls
         FROM services s
@@ -25,11 +25,11 @@ router.get('/catalog', async (req, res) => {
        ORDER BY s.sort_order NULLS LAST, s.name`);
 
     const mst = await pool.query(`
-      SELECT COALESCE(m.beautypro_id::text,'mst-'||m.id) AS id,
+      SELECT COALESCE(m.legacy_ref::text,'mst-'||m.id) AS id,
              COALESCE(NULLIF(m.online_title,''), m.name) AS name,
              m.specialty, m.avatar, m.online_rank,
              COALESCE(
-               json_agg(COALESCE(s.beautypro_id::text,'svc-'||s.id))
+               json_agg(COALESCE(s.legacy_ref::text,'svc-'||s.id))
                  FILTER (WHERE s.id IS NOT NULL), '[]'
              ) AS services
         FROM masters m
@@ -57,7 +57,7 @@ router.get('/catalog', async (req, res) => {
    Query-параметри (усі опційні):
      q          — пошук по name / name_ua / name_en / description (ILIKE)
      category   — точна категорія (services.category)
-     master_id  — фільтр по майстру (внутрішній masters.id АБО beautypro_id)
+     master_id  — фільтр по майстру (внутрішній masters.id АБО legacy_ref)
      price_min  — мінімальна ціна (грн)
      price_max  — максимальна ціна (грн)
      sort       — price_asc | price_desc | name | popular (дефолт: ручний порядок)
@@ -106,7 +106,7 @@ router.get('/catalog/services', async (req, res) => {
     if (priceMin != null) { params.push(priceMin); conds.push(`s.price >= $${params.length}`); }
     if (priceMax != null) { params.push(priceMax); conds.push(`s.price <= $${params.length}`); }
     if (req.query.master_id && String(req.query.master_id).trim()) {
-      // приймаємо і внутрішній id (число), і beautypro_id (GUID/текст)
+      // приймаємо і внутрішній id (число), і legacy_ref (GUID/текст)
       params.push(String(req.query.master_id).trim());
       const mp = '$' + params.length;
       conds.push(`EXISTS (
@@ -114,7 +114,7 @@ router.get('/catalog/services', async (req, res) => {
            JOIN masters m2 ON m2.id = ms2.master_id
           WHERE ms2.service_id = s.id AND ms2.active IS NOT FALSE
             AND m2.active IS NOT FALSE AND m2.online_booking_enabled IS NOT FALSE
-            AND (m2.id::text = ${mp} OR m2.beautypro_id::text = ${mp}))`);
+            AND (m2.id::text = ${mp} OR m2.legacy_ref::text = ${mp}))`);
     }
 
     const where = conds.join(' AND ');
@@ -130,14 +130,14 @@ router.get('/catalog/services', async (req, res) => {
 
     // popularity рахуємо тільки коли реально сортуємо по ній (економимо JOIN).
     const popSelect = req.query.sort === 'popular'
-      ? `, (SELECT COUNT(*) FROM online_bookings ob WHERE ob.service_id = COALESCE(s.beautypro_id::text, 'svc-'||s.id)) AS popularity`
+      ? `, (SELECT COUNT(*) FROM online_bookings ob WHERE ob.service_id = COALESCE(s.legacy_ref::text, 'svc-'||s.id)) AS popularity`
       : '';
 
     params.push(limit); const lp = params.length;
     params.push(offset); const op = params.length;
 
     const rows = await pool.query(`
-      SELECT COALESCE(s.beautypro_id::text,'svc-'||s.id) AS id, s.id AS internal_id,
+      SELECT COALESCE(s.legacy_ref::text,'svc-'||s.id) AS id, s.id AS internal_id,
              s.name, COALESCE(s.name_ua,s.name) AS name_ua, s.name_en,
              s.description, s.slug, s.duration_min AS duration,
              s.price::float AS price, s.category, s.color, s.photo_urls,
@@ -169,7 +169,7 @@ router.get('/catalog/services', async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /catalog/seo — SEO-метадані каталогу (загальні OG-теги салону)
-   GET /catalog/seo/:id — SEO-метадані конкретної послуги (за beautypro_id або id)
+   GET /catalog/seo/:id — SEO-метадані конкретної послуги (за legacy_ref або id)
 
    Повертає title, description, OG-теги та JSON-LD у форматі JSON, щоб фронт/SSR
    міг віддати правильні meta-теги. Тенант-ізоляція — через RLS (як вище).
@@ -218,14 +218,14 @@ router.get('/catalog/seo/:id', async (req, res) => {
   try {
     const id = String(req.params.id);
     const r = await pool.query(`
-      SELECT COALESCE(s.beautypro_id::text,'svc-'||s.id) AS id,
+      SELECT COALESCE(s.legacy_ref::text,'svc-'||s.id) AS id,
              s.name, COALESCE(s.name_ua,s.name) AS name_ua,
              s.description, s.meta_title, s.meta_description,
              s.price::float AS price, s.duration_min AS duration,
              s.photo_urls, s.category
         FROM services s
        WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL
-         AND (s.beautypro_id::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
+         AND (s.legacy_ref::text = $1 OR ('svc-'||s.id) = $1 OR s.id::text = $1)
        LIMIT 1`, [id]);
     if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
     const s = r.rows[0];
@@ -277,7 +277,7 @@ router.get('/catalog/sitemap.xml', async (req, res) => {
     const host = req.headers['x-forwarded-host'] || req.get('host') || '';
     const base = host ? `${proto}://${host}` : '';
     const r = await pool.query(`
-      SELECT COALESCE(s.slug, COALESCE(s.beautypro_id::text,'svc-'||s.id)) AS ref,
+      SELECT COALESCE(s.slug, COALESCE(s.legacy_ref::text,'svc-'||s.id)) AS ref,
              s.updated_at
         FROM services s
        WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL

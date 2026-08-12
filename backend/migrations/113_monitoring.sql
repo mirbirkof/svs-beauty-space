@@ -96,11 +96,11 @@ CREATE TABLE IF NOT EXISTS sla_configs (
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Базовые проверки: сам shop-api, booking-api и БД.
+-- Базовые проверки: сам shop-api (локальный прод на дроплете) и БД.
+-- 02.08: убраны внешние адреса погашенных сервисов — прод только локальный :3011.
 INSERT INTO health_checks (service_name, check_type, endpoint, interval_sec, expected_status)
 VALUES
-  ('shop-api',    'http', 'https://svs-shop-api.onrender.com/health',        60, 200),
-  ('booking-api', 'http', 'https://svs-booking-api.onrender.com/api/health', 60, 200),
+  ('shop-api',    'http', 'http://127.0.0.1:3011/health',                    60, 200),
   ('database',    'db',   'self',                                            60, 200)
 ON CONFLICT (service_name, endpoint) DO NOTHING;
 

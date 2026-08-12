@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS payroll_schemes (
   id            SERIAL PRIMARY KEY,
-  master_id     TEXT NOT NULL,                 -- BeautyPro employee guid
+  master_id     TEXT NOT NULL,                 -- стара CRM employee guid
   master_name   TEXT,
   scheme_type   TEXT NOT NULL,                 -- percent|fixed|hybrid
   percent       NUMERIC(5,2),                  -- 0..100

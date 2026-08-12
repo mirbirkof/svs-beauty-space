@@ -19,32 +19,32 @@ async function main() {
     console.log('migrate appts WITH direct cash op:', migCash.rows[0].n, 'sum:', migCash.rows[0].s,
                 '=> if >0, revenue counts it but ZP does not (asymmetry)');
 
-    // 2) beautypro/bukon appts: ZP IS counted (source<>migrate). Verify they have cash (symmetry).
+    // 2) legacy/bukon appts: ZP IS counted (source<>migrate). Verify they have cash (symmetry).
     const bp = await pool.query(`SELECT COALESCE(source,'(null)') src, COUNT(*) n
-       FROM appointments WHERE COALESCE(source,'') IN ('beautypro','bukon_import') GROUP BY 1`);
-    console.log('\n=== beautypro/bukon appts (ZP counted) ===');
+       FROM appointments WHERE COALESCE(source,'') IN ('legacy_import','bukon_import') GROUP BY 1`);
+    console.log('\n=== legacy/bukon appts (ZP counted) ===');
     console.log(bp.rows);
     const bpCash = await pool.query(`SELECT COUNT(*) n FROM cash_operations WHERE type='in' AND ref_type='bp_sale'`);
     console.log('bp_sale cash ops (their revenue lives here):', bpCash.rows[0].n);
 
     // 3) The commission query in live-finance filters status + payrollEligible. But does it also
-    //    accrue ZP for beautypro appts that DON'T have matching cash (over-accrual)?
-    //    Count beautypro 'done' appts whose paidExpr is FALSE (ZP accrued but no cash = phantom expense).
+    //    accrue ZP for legacy appts that DON'T have matching cash (over-accrual)?
+    //    Count legacy 'done' appts whose paidExpr is FALSE (ZP accrued but no cash = phantom expense).
     const phantom = await pool.query(`
       SELECT COUNT(*) n, COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0) amt
         FROM appointments a
-       WHERE COALESCE(a.source,'') IN ('beautypro','bukon_import')
+       WHERE COALESCE(a.source,'') IN ('legacy_import','bukon_import')
          AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
          AND a.starts_at BETWEEN '2026-07-01 00:00:00 Europe/Kyiv' AND '2026-07-31 23:59:59 Europe/Kyiv'
          AND NOT (
            a.pay_settled_at IS NOT NULL
            OR EXISTS(SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='appointment' AND co.ref_id=a.id)
-           OR (a.bp_client IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(
+           OR (a.legacy_client_ref IS NOT NULL AND a.master_id IS NOT NULL AND EXISTS(
                  SELECT 1 FROM cash_operations co WHERE co.type='in' AND co.ref_type='bp_sale' AND co.category='sale_service'
-                   AND co.bp_client=a.bp_client AND co.master_id=a.master_id
-                   AND (COALESCE(co.bp_calendar,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
+                   AND co.legacy_client_ref=a.legacy_client_ref AND co.master_id=a.master_id
+                   AND (COALESCE(co.legacy_calendar_ref,co.created_at) AT TIME ZONE 'Europe/Kyiv')::date
                        = (a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)))`);
-    console.log('\n=== July beautypro DONE appts that get ZP but have NO matching cash (phantom ZP) ===');
+    console.log('\n=== July legacy DONE appts that get ZP but have NO matching cash (phantom ZP) ===');
     console.log('count:', phantom.rows[0].n, 'nominal:', phantom.rows[0].amt,
                 '(live-finance commission does NOT apply paidExpr, only payrollEligibleExpr=source<>migrate)');
   });

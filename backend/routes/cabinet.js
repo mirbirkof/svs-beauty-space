@@ -2,7 +2,7 @@
    SVS Beauty World — Cabinet Content (M20)
    Все endpoints под Bearer-токеном клиента (cabinet-auth).
 
-   GET /api/cabinet/visits   → визиты: майбутні + історія (BeautyPro sync)
+   GET /api/cabinet/visits   → визиты: майбутні + історія (стара CRM sync)
    GET /api/cabinet/orders   → замовлення магазину + статус оплати
    GET /api/cabinet/loyalty  → бонуси: баланс, рівень, до наступного
    GET /api/cabinet/summary  → зведення для головної кабінету
@@ -84,8 +84,8 @@ async function loyaltyFor(client) {
     [client.id]
   );
 
-  // потрачено всего: max(total_spent из BeautyPro, сумма прошедших визитов) + оплаченные заказы
-  // (GREATEST — чтобы не задвоить, если BeautyPro начнёт отдавать total_spent)
+  // потрачено всего: max(total_spent из стара CRM, сумма прошедших визитов) + оплаченные заказы
+  // (GREATEST — чтобы не задвоить, если стара CRM начнёт отдавать total_spent)
   const spent = await pool.query(
     `SELECT
        GREATEST(

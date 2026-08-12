@@ -76,7 +76,7 @@ async function finalizeSignup(data) {
   try {
     const emailCh = require('./channels/email-resend');
     if (email && emailCh.isConfigured()) {
-      const base = process.env.APP_URL || 'https://zvetlacrm.serveousercontent.com';
+      const base = require('./public-url').getPublicBase() || process.env.APP_URL || 'https://zvetlacrm.tailed6c1a.ts.net';
       await emailCh.send(email, {
         subject: 'Вітаємо у SVS CRM — кабінет створено',
         body: `Вітаємо, ${ownerName}!<br><br>Кабінет «${salonName}» створено.<br>` +

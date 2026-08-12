@@ -61,7 +61,7 @@ function tenantMiddleware() {
       slug = req.headers['x-tenant-slug'] || null;
       if (!slug && process.env.TENANT_BASE_DOMAIN) {
         // сабдомен: {slug}.TENANT_BASE_DOMAIN → slug. Включается ТОЛЬКО на нашем
-        // SaaS-домене (SAS-09). Иначе хосты платформ (svs-shop-api.onrender.com)
+        // SaaS-домене (SAS-09). Иначе служебные хосты хостинга/туннеля
         // ошибочно резолвятся как slug → tenant-not-found на ВСЕХ запросах (баг 12.06).
         const host = String(req.headers.host || '').split(':')[0];
         const base = '.' + process.env.TENANT_BASE_DOMAIN;

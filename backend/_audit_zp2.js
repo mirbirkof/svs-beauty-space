@@ -6,12 +6,12 @@ const MAIN = '00000000-0000-0000-0000-000000000001';
 
 async function main() {
   await runAs(MAIN, async () => {
-    // Distribution of beautypro appts by month
+    // Distribution of legacy appts by month
     const dist = await pool.query(`SELECT to_char(starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM') ym,
        COUNT(*) n, COUNT(*) FILTER (WHERE status IN ('done','completed')) done
-       FROM appointments WHERE COALESCE(source,'') IN ('beautypro','bukon_import')
+       FROM appointments WHERE COALESCE(source,'') IN ('legacy_import','bukon_import')
        GROUP BY 1 ORDER BY 1 DESC LIMIT 8`);
-    console.log('=== beautypro appts by month ===');
+    console.log('=== legacy appts by month ===');
     dist.rows.forEach(r=>console.log(' ',r.ym,'total',r.n,'done',r.done));
 
     // What ref_types exist in cash_operations type=in? Where does bp revenue actually sit?
@@ -20,7 +20,7 @@ async function main() {
     console.log('\n=== cash_operations type=in by ref_type/category ===');
     rt.rows.forEach(r=>console.log(' ',r.rt,'/',r.category,'n',r.n,'sum',r.s));
 
-    // July: how much ZP commission is accrued for beautypro appts specifically (part of the 260281)?
+    // July: how much ZP commission is accrued for legacy appts specifically (part of the 260281)?
     const bpZp = await pool.query(`
       WITH matlines AS (SELECT asv.appointment_id aid, 0 mat FROM appointment_services asv GROUP BY 1),
         da AS (SELECT a.master_id, GREATEST(0,COALESCE(a.real_amount,a.price,0)) rev_labor, a.source

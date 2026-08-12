@@ -217,7 +217,7 @@ function zipStore(files) {
 
 // Базовый URL для публичных ссылок (для QR/iframe).
 function baseUrl(req) {
-  return process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return require('../lib/public-url').getPublicBase(req);
 }
 
 // ───────────────────────────────────────────────────────────────────────────

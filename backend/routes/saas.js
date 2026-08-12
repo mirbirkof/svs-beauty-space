@@ -302,7 +302,7 @@ router.get('/referral', async (req, res) => {
   try {
     const tenantId = (await q(`SELECT current_tenant_id() AS id`))[0]?.id;
     if (!tenantId) return res.status(400).json({ error: 'no_tenant' });
-    const base = process.env.PUBLIC_BASE_URL || (req.protocol + '://' + req.get('host'));
+    const base = require('../lib/public-url').getPublicBase(req);
     const data = await require('../lib/partner-referrals').summaryFor(tenantId, base);
     res.json(data);
   } catch (e) { console.error('[saas/referral]', e.message); res.status(500).json({ error: 'internal' }); }

@@ -46,7 +46,7 @@ const junkName=n=>{const s=(n||'').trim().toLowerCase();return !s||s===','||s===
     } else {
       const ins=await pool.query(
         `INSERT INTO clients (tenant_id,phone,name,email,total_spent,tags,source)
-         VALUES ($1,$2,$3,$4,$5,$6,'beautypro') RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,$6,'legacy_import') RETURNING id`,
         [TENANT,phone,name,email,spent,tags.length?tags:null]);
       byPhone.set(phone,{id:ins.rows[0].id});
       inserted++;

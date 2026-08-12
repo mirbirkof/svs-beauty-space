@@ -18,11 +18,11 @@ grep -oE "https://[a-z0-9]+\.lhr\.life" shop-tunnel.log | head -1
 
 ## Перевірка
 ```bash
-curl -s https://XXXXX.lhr.life/api/shop/readiness
+curl -s https://zvetlacrm.serveousercontent.com/api/shop/readiness
 ```
 
 ## Важливо
 - При перезапуску URL змінюється — треба оновити `current-url.txt` і пушнути в репозиторій вітрини
-- lhr.life показує interstitial першому браузеру без cookies — потрібно "Continue" один раз
+- (історично) публічні тунелі показували interstitial першому браузеру без cookies — потрібно "Continue" один раз
 - Cloudflare tunnels в Україні не працюють без VPN — використовуємо localhost.run
 - Коли отримаємо постійний хостинг (Railway / Render / VPS) — туннель не потрібен

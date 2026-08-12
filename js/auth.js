@@ -9,7 +9,16 @@
 
   // Прод-API (override через window.SVS_API_BASE для white-label доменів).
   // Раніше був хардкод http://localhost:3001 → вхід/авторизація на проді не працювали взагалі.
-  var API = (window.SVS_API_BASE || 'https://zvetlacrm.serveousercontent.com') + '/api';
+  // 12.08: адрес CRM НЕ зашиваем. Если страница открыта с самой CRM — берём её же origin,
+  // иначе постоянный адрес (Tailscale). serveo закрыл анонимные туннели, его домен мёртв.
+  var SVS_DEFAULT_BASE = (function () {
+    try {
+      var o = location.origin;
+      if (/^https?:/.test(o) && !/github\.io|vercel\.app|localhost|127\.0\.0\.1/.test(o)) return o;
+    } catch (e) {}
+    return 'https://zvetlacrm.tailed6c1a.ts.net';
+  })();
+  var API = (window.SVS_API_BASE || SVS_DEFAULT_BASE) + '/api';
 
   var currentUser = JSON.parse(localStorage.getItem('svs_user') || 'null');
   var authToken   = localStorage.getItem('svs_token') || null;
