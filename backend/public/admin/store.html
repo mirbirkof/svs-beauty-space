@@ -62,10 +62,106 @@
 </div>
 
 <div class="tabs">
-  <div class="tab active" data-pane="stock" onclick="showPane('stock')">Залишки</div>
+  <div class="tab active" data-pane="dash" onclick="showPane('dash')">Дашборд</div>
+  <div class="tab" data-pane="stock" onclick="showPane('stock')">Залишки</div>
   <div class="tab" data-pane="receipt" onclick="showPane('receipt')">Приймання поставки</div>
+  <div class="tab" data-pane="sale" onclick="showPane('sale')">Продаж (опт / роздріб)</div>
   <div class="tab" data-pane="transfer" onclick="showPane('transfer')">Продаж салону</div>
+  <div class="tab" data-pane="clients" onclick="showPane('clients')">Клієнти (опт)</div>
   <div class="tab" data-pane="history" onclick="showPane('history')">Історія</div>
+</div>
+
+<!-- ДАШБОРД -->
+<div class="pane active" id="pane-dash">
+  <div class="card">
+    <h3>Економіка магазину
+      <select id="dashDays" onchange="loadDash()" style="float:right;padding:6px 10px;border-radius:8px;border:1px solid var(--border,#ddd);font-size:13px">
+        <option value="7">7 днів</option><option value="30" selected>30 днів</option>
+        <option value="90">90 днів</option><option value="365">Рік</option>
+      </select>
+    </h3>
+    <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="lbl">Виторг усього</div><div class="val" id="dRev">—</div><div class="muted" id="dRevSub"></div></div>
+      <div class="kpi"><div class="lbl">Маржа</div><div class="val" id="dMargin">—</div><div class="muted" id="dMarginSub"></div></div>
+      <div class="kpi"><div class="lbl">Борги клієнтів</div><div class="val" id="dDebt">—</div><div class="muted" id="dDebtSub"></div></div>
+      <div class="kpi"><div class="lbl">Склад у грошах</div><div class="val" id="dStock">—</div><div class="muted" id="dStockSub"></div></div>
+    </div>
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <h3 style="font-size:14px;margin:8px 0">Виторг по каналах</h3>
+        <table><tbody id="dChannels"></tbody></table>
+        <h3 style="font-size:14px;margin:16px 0 8px">Закупівлі за період</h3>
+        <table><tbody id="dPurch"></tbody></table>
+      </div>
+      <div>
+        <h3 style="font-size:14px;margin:8px 0">Топ товарів</h3>
+        <table><tbody id="dTopProd"></tbody></table>
+        <h3 style="font-size:14px;margin:16px 0 8px">Топ клієнтів</h3>
+        <table><tbody id="dTopCli"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ПРОДАЖ (ОПТ/РОЗДРІБ) -->
+<div class="pane" id="pane-sale">
+  <div class="card">
+    <h3>Продаж зі складу магазину</h3>
+    <div class="row3">
+      <div class="fld"><label>Тип продажу</label>
+        <select id="slType" onchange="onSaleType()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px">
+          <option value="wholesale">Опт (салону / майстру)</option>
+          <option value="retail">Роздріб (фізособа)</option>
+        </select>
+      </div>
+      <div class="fld" id="slCpWrap"><label>Клієнт (опт)</label>
+        <select id="slCp" style="width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px"></select>
+      </div>
+      <div class="fld" id="slBuyerWrap" style="display:none"><label>Покупець (необовʼязково)</label><input id="slBuyer" placeholder="Імʼя"></div>
+    </div>
+    <div class="fld suggest"><label>Додати товар (з залишків магазину)</label>
+      <input id="slSearch" placeholder="Почніть вводити назву…" autocomplete="off">
+      <div class="list" id="slSuggest"></div>
+    </div>
+    <table><thead><tr><th>Товар</th><th class="r">На складі</th><th class="r">К-сть</th><th class="r">Ціна</th><th class="r">Сума</th><th></th></tr></thead>
+    <tbody id="slBody"><tr><td colspan="6" class="muted">Додайте товари через пошук вище</td></tr></tbody></table>
+    <div class="total-line">
+      <span>Сплачено зараз: <input id="slPaid" type="number" min="0" step="0.01" value="0" style="width:110px;text-align:right;padding:6px 8px;border:1px solid var(--border,#ddd);border-radius:8px"> грн</span>
+      <span>Разом: <b id="slTotal">0.00</b> грн</span>
+      <button class="btn" id="slApply" onclick="applySale()">Провести продаж</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Опт — ціни оптові, з відстрочкою клієнта. Роздріб — роздрібні ціни. Залишок неоплаченого стає боргом клієнта.</div>
+    <div class="ok-note" id="slOk"></div><div class="err-note" id="slErr"></div>
+  </div>
+</div>
+
+<!-- КЛІЄНТИ ОПТ -->
+<div class="pane" id="pane-clients">
+  <div class="card">
+    <h3>Оптові клієнти</h3>
+    <table><thead><tr><th>Назва</th><th>Тип</th><th>Телефон</th><th class="r">Ліміт боргу</th><th class="r">Відстрочка</th><th class="r">Поточний борг</th><th class="r">Оборот</th></tr></thead>
+    <tbody id="cpBody"><tr><td colspan="7" class="muted">—</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h3>Новий клієнт</h3>
+    <div class="row3">
+      <div class="fld"><label>Назва</label><input id="cpName" placeholder="Салон «Промінь» / ФОП Іваненко"></div>
+      <div class="fld"><label>Тип</label>
+        <select id="cpKind" style="width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px">
+          <option value="salon">Салон</option><option value="master">Майстер</option>
+          <option value="shop">Магазин</option><option value="other">Інше</option>
+        </select>
+      </div>
+      <div class="fld"><label>Телефон</label><input id="cpPhone" placeholder="+380…"></div>
+    </div>
+    <div class="row3">
+      <div class="fld"><label>ЄДРПОУ / ІПН</label><input id="cpTax"></div>
+      <div class="fld"><label>Ліміт боргу, грн</label><input id="cpLimit" type="number" min="0" step="100" value="0"></div>
+      <div class="fld"><label>Відстрочка, днів</label><input id="cpDays" type="number" min="0" step="1" value="30"></div>
+    </div>
+    <button class="btn" onclick="addCp()">Додати клієнта</button>
+    <div class="ok-note" id="cpOk"></div><div class="err-note" id="cpErr"></div>
+  </div>
 </div>
 
 <!-- ЗАЛИШКИ -->
@@ -134,6 +230,11 @@
     <table><thead><tr><th>№</th><th>Коли</th><th class="r">Позицій</th><th class="r">Сума (опт), грн</th><th class="r">Маржа, грн</th><th>Провів</th></tr></thead>
     <tbody id="histTrBody"><tr><td colspan="6" class="muted">—</td></tr></tbody></table>
   </div>
+  <div class="card">
+    <h3>Продажі (опт / роздріб)</h3>
+    <table><thead><tr><th>№</th><th>Коли</th><th>Тип</th><th>Клієнт</th><th class="r">Сума</th><th class="r">Маржа</th><th class="r">Борг</th><th>Оплата до</th><th></th></tr></thead>
+    <tbody id="histSlBody"><tr><td colspan="9" class="muted">—</td></tr></tbody></table>
+  </div>
 </div>
 
 <script>
@@ -146,6 +247,8 @@ function showPane(id){
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
   document.getElementById('pane-'+id).classList.add('active');
   if(id==='stock')loadStock(); if(id==='history')loadHistory();
+  if(id==='dash')loadDash(); if(id==='clients')loadCps();
+  if(id==='sale'){loadCps();loadStock()}
 }
 
 /* ── остатки ── */
@@ -185,7 +288,9 @@ function bindSuggest(inputId,listId,source,onPick){
 const rcItems=[];
 bindSuggest('rcSearch','rcSuggest',async q=>{
   const d=await api('/api/admin/stock/list?q='+encodeURIComponent(q));
-  return (d.items||[]).slice(0,12).map(x=>({...x,hint:'роздріб '+fmt(x.price)}));
+  // приёмка идёт упаковками — «вагові» варіанти (продаж за грам/мл) у поставку не попадають
+  return (d.items||[]).filter(x=>!/^\s*(г|мл)\s*$|за\s*(грам|мл)/i.test(String(x.volume||'')))
+    .slice(0,12).map(x=>({...x,hint:'роздріб '+fmt(x.price)}));
 },v=>{
   if(rcItems.some(i=>i.variant_id===v.id))return;
   rcItems.push({variant_id:v.id,name:v.product_name+' '+(v.volume||''),qty:1,unit_cost:''});
@@ -278,10 +383,152 @@ async function loadHistory(){
     <td>${esc(t.created_by||'—')}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Внутрішніх продажів ще не було</td></tr>';
   const sum=(tr.items||[]).reduce((s,t)=>s+Number(t.total_amount||0),0);
   document.getElementById('kTr').textContent=fmt(sum)+' грн';
+  const sl=await api('/api/store/sales');
+  const TYPE={wholesale:'Опт',retail:'Роздріб'};
+  document.getElementById('histSlBody').innerHTML=(sl.items||[]).map(s=>{
+    const debt=Number(s.debt);
+    return `<tr>
+    <td>${s.id}</td><td>${esc(String(s.created_at).slice(0,16).replace('T',' '))}</td>
+    <td>${TYPE[s.sale_type]||s.sale_type}${s.channel==='online'?' <span class="muted">online</span>':''}</td>
+    <td>${esc(s.counterparty_name||s.buyer_name||'—')}</td>
+    <td class="r">${fmt(s.total_amount)}</td><td class="r">${fmt(s.margin)}</td>
+    <td class="r" style="${s.overdue?'color:var(--danger,#E5484D);font-weight:700':''}">${debt>0?fmt(debt):'—'}${s.overdue?' ⚠':''}</td>
+    <td>${s.due_date?esc(String(s.due_date).slice(0,10)):'—'}</td>
+    <td>${debt>0?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="paySale(${s.id},${debt})">Оплата</button>`:''}</td>
+  </tr>`}).join('')||'<tr><td colspan="9" class="muted">Продажів ще не було</td></tr>';
+}
+
+/* ── дашборд ── */
+async function loadDash(){
+  const days=document.getElementById('dashDays').value;
+  const d=await api('/api/store/dashboard?days='+days);
+  if(d.error)return;
+  const r=d.revenue,m=d.margin;
+  document.getElementById('dRev').textContent=fmt(r.total)+' грн';
+  document.getElementById('dRevSub').textContent=`${d.sales_count} продажів за ${d.days} дн`;
+  document.getElementById('dMargin').textContent=fmt(m.total)+' грн';
+  document.getElementById('dMarginSub').textContent=r.total>0?('рентабельність '+(m.total/r.total*100).toFixed(1)+'%'):'—';
+  document.getElementById('dDebt').textContent=fmt(d.receivables.total)+' грн';
+  const ov=Number(d.receivables.overdue);
+  const dd=document.getElementById('dDebtSub');
+  dd.textContent=ov>0?('прострочено '+fmt(ov)+' грн'):'прострочень немає';
+  dd.style.color=ov>0?'var(--danger,#E5484D)':'var(--primary)';
+  document.getElementById('dStock').textContent=fmt(d.stock.value)+' грн';
+  document.getElementById('dStockSub').textContent=d.stock.positions+' позицій';
+  const row=(l,v,extra='')=>`<tr><td>${l}</td><td class="r"><b>${fmt(v)}</b> грн ${extra}</td></tr>`;
+  document.getElementById('dChannels').innerHTML=
+    row('Опт (салони, майстри)',r.wholesale)+row('Роздріб',r.retail)+
+    row('З них онлайн (вітрина)',r.online)+row('Внутрішній продаж салону',r.internal);
+  document.getElementById('dPurch').innerHTML=
+    row('Товари від постачальників',d.purchases.goods,`<span class="muted">(${d.purchases.receipts} поставок)</span>`)+
+    row('Витрати на доставку',d.purchases.delivery);
+  document.getElementById('dTopProd').innerHTML=(d.top_products||[]).map(p=>
+    `<tr><td>${esc(p.product_name)} <span class="muted">${esc(p.volume||'')}</span></td><td class="r">${Number(p.qty)} шт · <b>${fmt(p.amount)}</b> грн</td></tr>`).join('')
+    ||'<tr><td class="muted">Продажів ще не було</td></tr>';
+  document.getElementById('dTopCli').innerHTML=(d.top_clients||[]).map(c=>
+    `<tr><td>${esc(c.name)}</td><td class="r">${c.cnt} шт · <b>${fmt(c.amount)}</b> грн</td></tr>`).join('')
+    ||'<tr><td class="muted">Оптових продажів ще не було</td></tr>';
+}
+
+/* ── опт-клиенты ── */
+let CPS=[];
+async function loadCps(){
+  const d=await api('/api/store/counterparties');
+  CPS=d.items||[];
+  const KIND={salon:'Салон',master:'Майстер',shop:'Магазин',other:'Інше'};
+  document.getElementById('cpBody').innerHTML=CPS.length?CPS.map(c=>{
+    const over=Number(c.overdue_debt)>0;
+    return `<tr>
+    <td>${esc(c.name)}${c.is_own_salon?' <span class="muted">(мій салон)</span>':''}</td>
+    <td>${KIND[c.kind]||c.kind}</td><td>${esc(c.phone||'—')}</td>
+    <td class="r">${Number(c.credit_limit)>0?fmt(c.credit_limit):'—'}</td>
+    <td class="r">${c.payment_days} дн</td>
+    <td class="r" style="${over?'color:var(--danger,#E5484D);font-weight:700':''}">${fmt(c.debt)}${over?' ⚠':''}</td>
+    <td class="r">${fmt(c.turnover)}</td></tr>`}).join(''):'<tr><td colspan="7" class="muted">Клієнтів ще немає</td></tr>';
+  const sel=document.getElementById('slCp');
+  if(sel)sel.innerHTML=CPS.map(c=>`<option value="${c.id}">${esc(c.name)}${Number(c.debt)>0?' — борг '+fmt(c.debt):''}</option>`).join('');
+}
+async function addCp(){
+  const ok=document.getElementById('cpOk'),err=document.getElementById('cpErr');
+  ok.style.display='none';err.style.display='none';
+  const name=document.getElementById('cpName').value.trim();
+  if(!name){err.textContent='Вкажіть назву клієнта';err.style.display='block';return}
+  const d=await api('/api/store/counterparties',{method:'POST',body:JSON.stringify({
+    name,kind:document.getElementById('cpKind').value,phone:document.getElementById('cpPhone').value.trim()||null,
+    tax_id:document.getElementById('cpTax').value.trim()||null,
+    credit_limit:Number(document.getElementById('cpLimit').value)||0,
+    payment_days:Number(document.getElementById('cpDays').value)||0})});
+  if(d.ok){ok.textContent='Клієнта додано';ok.style.display='block';
+    document.getElementById('cpName').value='';document.getElementById('cpPhone').value='';document.getElementById('cpTax').value='';
+    loadCps();}
+  else{err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+
+/* ── продажа опт/розница ── */
+const slItems=[];
+function onSaleType(){
+  const t=document.getElementById('slType').value;
+  document.getElementById('slCpWrap').style.display=t==='wholesale'?'':'none';
+  document.getElementById('slBuyerWrap').style.display=t==='retail'?'':'none';
+  slItems.forEach(it=>{it.price=t==='wholesale'?it.wholesale:it.retail});
+  renderSl();
+}
+bindSuggest('slSearch','slSuggest',async q=>{
+  if(!STORE_STOCK.length)await loadStock();
+  const qq=q.toLowerCase();
+  return STORE_STOCK.filter(x=>(x.product_name+' '+(x.volume||'')+' '+(x.sku||'')).toLowerCase().includes(qq))
+    .slice(0,12).map(x=>({...x,hint:'на складі '+Number(x.qty)}));
+},v=>{
+  if(slItems.some(i=>i.variant_id===v.variant_id))return;
+  const wholesale=Number(v.wholesale!=null?v.wholesale:v.price)||0, retail=Number(v.price)||0;
+  const t=document.getElementById('slType').value;
+  slItems.push({variant_id:v.variant_id,name:v.product_name+' '+(v.volume||''),avail:Number(v.qty),
+    wholesale,retail,price:t==='wholesale'?wholesale:retail,qty:1});
+  renderSl();
+});
+function renderSl(){
+  const b=document.getElementById('slBody');
+  b.innerHTML=slItems.length?slItems.map((it,i)=>`<tr>
+    <td>${esc(it.name)}</td><td class="r">${it.avail}</td>
+    <td class="r"><input style="width:80px;text-align:right" type="number" min="1" step="1" max="${it.avail}" value="${it.qty}" onchange="slItems[${i}].qty=this.value;renderSl()"></td>
+    <td class="r"><input style="width:100px;text-align:right" type="number" min="0" step="0.01" value="${it.price}" onchange="slItems[${i}].price=this.value;renderSl()"></td>
+    <td class="r">${fmt(Number(it.qty)*Number(it.price))}</td>
+    <td><span class="del" onclick="slItems.splice(${i},1);renderSl()">×</span></td>
+  </tr>`).join(''):'<tr><td colspan="6" class="muted">Додайте товари через пошук вище</td></tr>';
+  document.getElementById('slTotal').textContent=fmt(slItems.reduce((s,it)=>s+Number(it.qty)*Number(it.price),0));
+}
+async function applySale(){
+  const ok=document.getElementById('slOk'),err=document.getElementById('slErr');
+  ok.style.display='none';err.style.display='none';
+  if(!slItems.length){err.textContent='Додайте хоча б один товар';err.style.display='block';return}
+  const bad=slItems.find(it=>!(Number(it.qty)>0)||Number(it.qty)>it.avail);
+  if(bad){err.textContent=`«${bad.name}»: кількість не більша за залишок (${bad.avail})`;err.style.display='block';return}
+  const type=document.getElementById('slType').value;
+  const btn=document.getElementById('slApply');btn.disabled=true;
+  const d=await api('/api/store/sales',{method:'POST',body:JSON.stringify({
+    sale_type:type,
+    counterparty_id:type==='wholesale'?Number(document.getElementById('slCp').value)||null:null,
+    buyer_name:type==='retail'?(document.getElementById('slBuyer').value.trim()||null):null,
+    paid_amount:Number(document.getElementById('slPaid').value)||0,
+    items:slItems.map(it=>({variant_id:it.variant_id,qty:Number(it.qty),unit_price:Number(it.price)}))})});
+  btn.disabled=false;
+  if(d.ok){
+    let msg=`Продаж №${d.sale_id}: ${fmt(d.total)} грн, маржа ${fmt(d.margin)} грн.`;
+    if(Number(d.debt)>0)msg+=` Борг ${fmt(d.debt)} грн${d.due_date?' до '+d.due_date:''}.`;
+    if(d.warning)msg+=' ⚠ '+d.warning;
+    ok.textContent=msg;ok.style.display='block';
+    slItems.length=0;renderSl();document.getElementById('slPaid').value=0;loadStock();loadCps();
+  } else {err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+async function paySale(id,rest){
+  const v=prompt(`Внести оплату (залишок боргу ${fmt(rest)} грн):`,rest);
+  if(v==null)return;
+  const d=await api('/api/store/sales/'+id+'/pay',{method:'POST',body:JSON.stringify({amount:Number(v)})});
+  if(d.ok){loadHistory();loadCps();loadDash()}else alert(d.error||'Помилка')
 }
 
 document.getElementById('rcDate').value=new Date().toISOString().slice(0,10);
-loadStock();loadHistory();
+loadDash();loadStock();loadHistory();loadCps();
 </script>
 </body>
 </html>
