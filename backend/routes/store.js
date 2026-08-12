@@ -53,61 +53,24 @@ router.get('/receipts', async (req, res) => {
 
 // ── приёмка поставки ────────────────────────────────────
 router.post('/receipts', async (req, res) => {
-  const { supplier_name, doc_date, delivery_cost = 0, notes, items } = req.body || {};
-  if (!doc_date || !/^\d{4}-\d{2}-\d{2}$/.test(String(doc_date)))
-    return res.status(400).json({ error: 'doc_date обовʼязкова (YYYY-MM-DD)' });
-  if (!Array.isArray(items) || !items.length)
-    return res.status(400).json({ error: 'порожній список позицій' });
-  const dc = Number(delivery_cost) || 0;
-  if (dc < 0) return res.status(400).json({ error: 'delivery_cost не може бути відʼємною' });
-  for (const it of items) {
-    if (!it.variant_id || !(Number(it.qty) > 0) || !(Number(it.unit_cost) >= 0))
-      return res.status(400).json({ error: 'позиція: потрібні variant_id, qty>0, unit_cost>=0' });
-  }
+  // Расчёт приёмки живёт в lib/store-receipt.js — им же пользуется импорт накладной
+  // файлом/фото, чтобы себестоимость с доставкой считалась одинаково на обоих путях.
+  const { createStoreReceipt } = require('../lib/store-receipt');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const goodsTotal = items.reduce((s, it) => s + Number(it.qty) * Number(it.unit_cost), 0);
-    const rec = (await client.query(
-      `INSERT INTO store_receipts (supplier_name, doc_date, goods_total, delivery_cost, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [supplier_name || null, doc_date, goodsTotal, dc, notes || null,
-       (req.user && (req.user.name || req.user.login)) || null])).rows[0];
-    for (const it of items) {
-      const qty = Number(it.qty), cost = Number(it.unit_cost);
-      // landed cost: доля доставки пропорционально стоимости позиции
-      const landed = goodsTotal > 0 ? cost * (1 + dc / goodsTotal) : cost;
-      await client.query(
-        `INSERT INTO store_receipt_items (receipt_id, variant_id, qty, unit_cost, landed_unit_cost)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [rec.id, it.variant_id, qty, cost, landed]);
-      // средневзвешенная себестоимость остатка (все SET считаются от старой строки — порядок безопасен)
-      await client.query(
-        `INSERT INTO warehouse_stock (variant_id, warehouse_id, qty, avg_cost)
-         VALUES ($1,'store',$2,$3)
-         ON CONFLICT (variant_id, warehouse_id) DO UPDATE SET
-           avg_cost = CASE WHEN warehouse_stock.qty + EXCLUDED.qty > 0
-             THEN (warehouse_stock.qty * warehouse_stock.avg_cost + EXCLUDED.qty * EXCLUDED.avg_cost)
-                  / (warehouse_stock.qty + EXCLUDED.qty)
-             ELSE EXCLUDED.avg_cost END,
-           qty = warehouse_stock.qty + EXCLUDED.qty,
-           updated_at = NOW()`,
-        [it.variant_id, qty, landed]);
-      await client.query(
-        `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes, warehouse_id)
-         VALUES ($1,$2,'store:receipt',$3,$4,'store')`,
-        [it.variant_id, qty, rec.id,
-         `Поставка ${doc_date}${supplier_name ? ' — ' + String(supplier_name).slice(0, 80) : ''}`]);
-    }
+    const out = await createStoreReceipt(client, {
+      ...(req.body || {}),
+      created_by: (req.user && (req.user.name || req.user.login)) || null,
+    });
     await client.query('COMMIT');
-    res.json({ ok: true, receipt_id: rec.id, goods_total: Math.round(goodsTotal * 100) / 100, delivery_cost: dc });
+    res.json({ ok: true, ...out });
   } catch (e) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: e.message });
+    res.status(e.user ? 400 : 500).json({ error: e.message });
   } finally { client.release(); }
 });
 
-// ── история внутренних продаж ───────────────────────────
 router.get('/transfers', async (req, res) => {
   try {
     const r = await pool.query(`

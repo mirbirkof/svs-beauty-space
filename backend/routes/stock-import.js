@@ -74,7 +74,10 @@ router.post('/parse', requirePerm('stock.manage'), upload.single('file'), async 
 });
 
 router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
-  const { kind, filename, items, doc_date, force } = req.body || {};
+  // 12.08 (запит Босса): накладну можна вантажити не тільки на склад САЛОНУ, а й на склад
+  // МАГАЗИНУ (дистрибуція). Розбір документа спільний — різниця лише куди лягає прихід.
+  const { kind, filename, items, doc_date, force, warehouse, supplier_name, delivery_cost } = req.body || {};
+  const toStore = String(warehouse || 'salon') === 'store';
   if (!['invoice', 'pricelist'].includes(kind)) return res.status(400).json({ error: 'bad-kind' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'no-items' });
   if (items.length > 500) return res.status(400).json({ error: 'too-many-items' });
@@ -104,6 +107,7 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
 
   const client = await pool.connect();
   const result = { received: 0, created: 0, skipped: 0, lines: [] };
+  const storeItems = []; // позиції, що лягають на склад МАГАЗИНУ (проводяться однією поставкою)
   try {
     await client.query('BEGIN');
     await applyTenant(client);
@@ -112,6 +116,21 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
       const qty = Number(it.qty);
       const name = String(it.name || '').trim().slice(0, 200);
 
+      if (kind === 'invoice' && toStore) {
+        // Склад магазину ведеться в УПАКОВКАХ (як і внутрішні передачі салону),
+        // тому кількість беремо як є, без перерахунку в мл.
+        if (!Number.isFinite(qty) || qty <= 0) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'кількість' }); continue; }
+        let variantId = it.variant_id ? Number(it.variant_id) : null;
+        if (!variantId && it.create) {
+          variantId = await createItem(client, name, it.price);
+          if (variantId) result.created++;
+        }
+        if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'нема збігу' }); continue; }
+        storeItems.push({ variant_id: variantId, qty, unit_cost: Number(it.price) || 0 });
+        result.received++;
+        result.lines.push({ name, status: 'ok', qty, variant_id: variantId, warehouse: 'store' });
+        continue;
+      }
       if (kind === 'invoice') {
         if (!Number.isFinite(qty) || qty <= 0) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'кількість' }); continue; }
         let variantId = it.variant_id ? Number(it.variant_id) : null;
@@ -154,6 +173,20 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
         result.lines.push({ name, status: 'created', variant_id: variantId });
       }
     }
+    // Магазин: одна накладна = один документ поставки (з доставкою в собівартості)
+    let storeReceiptId = null;
+    if (toStore && storeItems.length) {
+      const { createStoreReceipt } = require('../lib/store-receipt');
+      const out = await createStoreReceipt(client, {
+        supplier_name: supplier_name || null,
+        doc_date: docDate,
+        delivery_cost: Number(delivery_cost) || 0,
+        notes: filename ? `Імпорт накладної: ${filename}` : 'Імпорт накладної',
+        created_by: (req.user && (req.user.name || req.user.login)) || 'admin',
+        items: storeItems,
+      });
+      storeReceiptId = out.receipt_id;
+    }
     const doc = await client.query(
       `INSERT INTO stock_import_docs (kind, filename, items, totals, created_by, doc_date)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
@@ -162,7 +195,7 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
        (req.user && (req.user.name || req.user.login)) || 'admin', docDate]);
     docId = doc.rows[0].id;
     await client.query('COMMIT');
-    res.json({ ok: true, doc_id: docId, ...result });
+    res.json({ ok: true, doc_id: docId, store_receipt_id: storeReceiptId, warehouse: toStore ? 'store' : 'salon', ...result });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[stock-import/apply]', e.message);

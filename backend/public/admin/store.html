@@ -185,6 +185,31 @@
 
 <!-- ПРИЙМАННЯ -->
 <div class="pane" id="pane-receipt">
+  <!-- 12.08 (запит Босса): склад можна заповнювати не тільки руками, а й накладною —
+       Excel, CSV, текст або ФОТО/PDF документа (розпізнавання). -->
+  <div class="card">
+    <h3>Завантажити накладну (Excel, CSV, фото або PDF)</h3>
+    <div class="muted" style="margin-bottom:10px">Прочитаю документ, покажу позиції та збіги з номенклатурою — ви лише перевірите й підтвердите. Прихід ляже на склад <b>магазину</b>.</div>
+    <div class="row3">
+      <div class="fld"><label>Постачальник</label><input id="upSupplier" placeholder="Напр., Raywell Italia"></div>
+      <div class="fld"><label>Дата накладної</label><input id="upDate" type="date"></div>
+      <div class="fld"><label>Доставка, грн</label><input id="upDelivery" type="number" min="0" step="0.01" value="0"></div>
+    </div>
+    <div class="fld"><label>Файл накладної</label><input id="upFile" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf,image/*"></div>
+    <div class="fld"><label>або вставте текст накладної</label><textarea id="upText" rows="3" placeholder="Назва товару 10 шт 250 грн…" style="width:100%"></textarea></div>
+    <div class="total-line">
+      <button class="btn" id="upParse" onclick="parseInvoice()">Прочитати документ</button>
+    </div>
+    <div id="upResult" style="display:none">
+      <table><thead><tr><th>Рядок з накладної</th><th>Товар у системі</th><th class="r">К-сть</th><th class="r">Ціна</th></tr></thead>
+      <tbody id="upBody"></tbody></table>
+      <div class="total-line">
+        <span>Позицій: <b id="upCount">0</b></span>
+        <button class="btn" id="upApply" onclick="applyInvoice()">Провести накладну</button>
+      </div>
+    </div>
+    <div class="ok-note" id="upOk"></div><div class="err-note" id="upErr"></div>
+  </div>
   <div class="card">
     <h3>Нова поставка на склад магазину</h3>
     <div class="row3">
@@ -557,7 +582,70 @@ async function paySale(id,rest){
   if(d.ok){loadHistory();loadCps();loadDash()}else alert(d.error||'Помилка')
 }
 
+/* ── накладна файлом/фото: читання і проведення ────────────────────────
+   Розбір документа спільний із салонним імпортом (/api/stock-import), різниця
+   лише в тому, що прихід іде на склад МАГАЗИНУ (warehouse:'store'). */
+let INVOICE_ROWS = [];
+async function parseInvoice(){
+  const err=document.getElementById('upErr'), okEl=document.getElementById('upOk');
+  err.textContent=''; okEl.textContent='';
+  const btn=document.getElementById('upParse'); btn.disabled=true; btn.textContent='Читаю…';
+  try{
+    const f=document.getElementById('upFile').files[0];
+    const text=document.getElementById('upText').value.trim();
+    if(!f && !text){ err.textContent='Оберіть файл або вставте текст накладної'; return; }
+    let r;
+    if(f){
+      const fd=new FormData(); fd.append('file',f);
+      r=await fetch('/api/stock-import/parse',{method:'POST',headers:{'X-Admin-Token':adminToken()},body:fd});
+    }else{
+      r=await fetch('/api/stock-import/parse',{method:'POST',
+        headers:{'X-Admin-Token':adminToken(),'Content-Type':'application/json'},
+        body:JSON.stringify({text})});
+    }
+    const d=await r.json();
+    if(!r.ok){ err.textContent=d.message||d.error||'не вдалося прочитати документ'; return; }
+    INVOICE_ROWS=(d.rows||d.items||[]).map(x=>({...x, variant_id:(x.matches&&x.matches[0]&&x.matches[0].variant_id)||x.variant_id||null}));
+    if(d.doc_date && !document.getElementById('upDate').value) document.getElementById('upDate').value=d.doc_date;
+    if(d.supplier && !document.getElementById('upSupplier').value) document.getElementById('upSupplier').value=d.supplier;
+    renderInvoice();
+  }catch(e){ err.textContent=e.message; }
+  finally{ btn.disabled=false; btn.textContent='Прочитати документ'; }
+}
+function renderInvoice(){
+  const body=document.getElementById('upBody');
+  document.getElementById('upResult').style.display=INVOICE_ROWS.length?'block':'none';
+  document.getElementById('upCount').textContent=INVOICE_ROWS.length;
+  body.innerHTML=INVOICE_ROWS.map((x,i)=>{
+    const opts=(x.matches||[]).map(m=>`<option value="${m.variant_id}"${m.variant_id===x.variant_id?' selected':''}>${esc(m.label||m.name)}</option>`).join('');
+    const sel=opts?`<select onchange="INVOICE_ROWS[${i}].variant_id=Number(this.value)">${opts}</select>`
+                  :`<span class="muted">нема збігу — буде створено новий</span>`;
+    return `<tr><td>${esc(x.name||'')}</td><td>${sel}</td><td class="r">${x.qty||''}</td><td class="r">${x.price||''}</td></tr>`;
+  }).join('');
+}
+async function applyInvoice(){
+  const err=document.getElementById('upErr'), okEl=document.getElementById('upOk');
+  err.textContent=''; okEl.textContent='';
+  const date=document.getElementById('upDate').value;
+  if(!date){ err.textContent='Вкажіть дату накладної'; return; }
+  const btn=document.getElementById('upApply'); btn.disabled=true; btn.textContent='Проводжу…';
+  try{
+    const items=INVOICE_ROWS.map(x=>({name:x.name,qty:x.qty,price:x.price,variant_id:x.variant_id,create:!x.variant_id}));
+    const d=await api('/api/stock-import/apply',{method:'POST',body:JSON.stringify({
+      kind:'invoice', warehouse:'store', doc_date:date, filename:(document.getElementById('upFile').files[0]||{}).name||null,
+      supplier_name:document.getElementById('upSupplier').value||null,
+      delivery_cost:Number(document.getElementById('upDelivery').value)||0, items})});
+    if(d.error){ err.textContent=d.message||d.error; return; }
+    okEl.textContent=`Проведено: ${d.received} позицій${d.created?`, створено нових: ${d.created}`:''}${d.skipped?`, пропущено: ${d.skipped}`:''}`;
+    INVOICE_ROWS=[]; renderInvoice();
+    document.getElementById('upFile').value=''; document.getElementById('upText').value='';
+    loadStock(); loadDash(); loadHistory();
+  }catch(e){ err.textContent=e.message; }
+  finally{ btn.disabled=false; btn.textContent='Провести накладну'; }
+}
+
 document.getElementById('rcDate').value=new Date().toISOString().slice(0,10);
+document.getElementById('upDate').value=new Date().toISOString().slice(0,10);
 // Каркас (admin-shell.js) подключается ПОСЛЕ этого скрипта и только он определяет
 // adminFetch. Поэтому первичную загрузку данных запускаем после полной загрузки страницы,
 // иначе запросы уходят в пустоту и все цифры остаются прочерками.

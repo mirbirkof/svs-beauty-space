@@ -33,7 +33,8 @@ const b = await chromium.launch({ args: ['--no-sandbox'] });
 const p = await b.newPage();
 const jsErrors = [];
 p.on('pageerror', e => jsErrors.push(String(e.message).slice(0, 200)));
-p.on('console', m => { if (m.type() === 'error') jsErrors.push('console: ' + m.text().slice(0, 160)); });
+let watchErrors = false; // до установки токена 401 — ожидаемо, это не дефект страницы
+p.on('console', m => { if (watchErrors && m.type() === 'error') jsErrors.push('console: ' + m.text().slice(0, 160)); });
 
 const created = { receiptId: null, saleId: null, cpId: null, transferId: null, productId: null };
 
@@ -43,6 +44,7 @@ try {
   await p.evaluate(t => localStorage.setItem('svs_admin_token', t), TOKEN);
   await p.goto(BASE + '/admin/store.html?standalone=1', { waitUntil: 'networkidle' });
   await p.waitForTimeout(2500);
+  watchErrors = true;
 
   const title = await p.title();
   ok('экран «Магазин» открылся', /магазин|store|svs/i.test(title) || (await p.locator('body').innerText()).length > 100, title);
@@ -108,7 +110,7 @@ try {
     return { status: r.status, body: await r.json().catch(() => null) };
   }, prod.id);
   ok('приёмка поставки принята', rec.status === 200 || rec.status === 201, rec);
-  created.receiptId = rec.body && (rec.body.id || (rec.body.receipt && rec.body.receipt.id));
+  created.receiptId = rec.body && (rec.body.receipt_id || rec.body.id);
 
   const afterStock = await p.evaluate(async (pid) => {
     const h = { 'X-Admin-Token': localStorage.getItem('svs_admin_token') };
@@ -146,7 +148,7 @@ try {
     return { status: r.status, body: await r.json().catch(() => null) };
   }, [prod.id, created.cpId]);
   ok('оптовая продажа проводится', sale.status === 200 || sale.status === 201, sale);
-  created.saleId = sale.body && (sale.body.id || (sale.body.sale && sale.body.sale.id));
+  created.saleId = sale.body && (sale.body.sale_id || sale.body.id);
 
   const debt = await p.evaluate(async (cpid) => {
     const h = { 'X-Admin-Token': localStorage.getItem('svs_admin_token') };
@@ -185,7 +187,32 @@ try {
     return { status: r.status, body: await r.json().catch(() => null) };
   }, prod.id);
   ok('передача товара салону проходит', tr.status === 200 || tr.status === 201, tr);
-  created.transferId = tr.body && (tr.body.id || (tr.body.transfer && tr.body.transfer.id));
+  created.transferId = tr.body && (tr.body.transfer_id || tr.body.id);
+
+  // ── 8. Накладная файлом: приход на склад МАГАЗИНА (запрос Босса 12.08) ──
+  const inv = await p.evaluate(async (pid) => {
+    const h = { 'X-Admin-Token': localStorage.getItem('svs_admin_token'), 'Content-Type': 'application/json' };
+    const r = await fetch('/api/stock-import/apply', {
+      method: 'POST', headers: h,
+      body: JSON.stringify({
+        kind: 'invoice', warehouse: 'store', doc_date: new Date().toISOString().slice(0, 10),
+        supplier_name: 'ТЕСТ-НАКЛАДНА (smoke)', delivery_cost: 200, filename: 'smoke-invoice.csv',
+        items: [{ name: 'позиція з накладної', qty: 10, price: 100, variant_id: pid }],
+      }),
+    });
+    return { status: r.status, body: await r.json().catch(() => null) };
+  }, prod.id);
+  ok('накладная файлом проводится на склад магазина',
+    inv.status === 200 && inv.body && inv.body.warehouse === 'store' && inv.body.store_receipt_id, inv);
+
+  const invStock = await p.evaluate(async (pid) => {
+    const h = { 'X-Admin-Token': localStorage.getItem('svs_admin_token') };
+    const s = await fetch('/api/store/stock', { headers: h }).then(x => x.json()).catch(() => null);
+    const list = (s && (s.items || s.stock || s)) || [];
+    return (Array.isArray(list) ? list : []).find(x => String(x.variant_id) === String(pid));
+  }, prod.id);
+  ok('накладная подняла остаток и себестоимость с доставкой',
+    !!invStock && Number(invStock.qty) > 0 && Number(invStock.avg_cost || invStock.cost || 0) > 100, invStock);
 
   ok('ошибок JavaScript на экране нет', jsErrors.length === 0, jsErrors.slice(0, 5));
 
