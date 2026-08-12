@@ -27,8 +27,7 @@ const catalogRoutes = require('./routes/catalog');
 const cabinetRoutes = require('./routes/cabinet-auth');
 const ordersRoutes = require('./routes/orders');
 const adminRoutes = require('./routes/admin');
-// BeautyPro-синхро відключена (Босс 19.07) — модуль більше не завантажується.
-// const syncRoutes = require('./routes/beautypro-sync');
+// стара CRM-синхро відключена (Босс 19.07) — модуль більше не завантажується.
 const npRoutes = require('./routes/novaposhta');
 const legacyRoutes = require('./routes/catalog-legacy');
 const notifyRoutes = require('./routes/telegram-notify');
@@ -44,6 +43,28 @@ const repeatVisitsRoutes = require('./routes/repeat-visits');
 
 const app = express();
 const PORT = process.env.SHOP_API_PORT || process.env.PORT || 3011;
+
+// ── Канонический адрес: перенаправление со старых входов ──────────────────
+// 11.08.2026: serveo лёг, CRM переехала на запасной канал, у Босса и сотрудников
+// в закладках/письмах остались СТАРЫЕ адреса. Чтобы никто не упирался в «не работает»,
+// любой запрос, пришедший НЕ на текущий живой адрес, уводим на него же (301).
+// Условия безопасности:
+//   • только GET/HEAD — POST не трогаем (вебхук Telegram, оплата mono, формы);
+//   • /api/* и /health не редиректим — их дёргают машины по фиксированным адресам;
+//   • локальные обращения (127.0.0.1, tailscale-IP, сам домен) пропускаем как есть.
+const { getPublicBase } = require('./lib/public-url');
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api') || req.path === '/health') return next();
+  const base = getPublicBase();
+  if (!base) return next();
+  let canonHost;
+  try { canonHost = new URL(base).host; } catch { return next(); }
+  const host = req.get('host');
+  if (!host || host === canonHost) return next();
+  if (/^(127\.0\.0\.1|localhost|10\.|100\.|\[?::1)/.test(host)) return next();
+  return res.redirect(301, base + req.originalUrl);
+});
 
 // ── Security headers (helmet) ───────────────────────────
 // Базовые HTTP-заголовки безопасности: nosniff, frameguard, HSTS, referrer-policy,
@@ -218,7 +239,7 @@ app.get('/api/shop/readiness', (req, res) => {
       nova_poshta: ready(!!process.env.NOVAPOSHTA_API_KEY),
       sms_provider: ready(!!process.env.SMS_PROVIDER),
       telegram_bot: ready(!!(process.env.TELEGRAM_NOTIFY_TOKEN || process.env.TELEGRAM_BOT_TOKEN)),
-      // beautypro_crm видалено (Босс 19.07 — механіку beautypro прибрано)
+      // legacy_crm видалено (Босс 19.07 — механіку legacy прибрано)
       // Критичні секрети безпеки — лише булевий статус, значення ніколи не віддаються
       jwt_secret: ready(!!(process.env.JWT_SECRET && process.env.JWT_SECRET.length >= 32)),
       integration_encryption: ready(!!(process.env.INTEGRATION_ENC_KEY || process.env.JWT_SECRET)),
@@ -278,16 +299,14 @@ app.use('/api/cabinet', cabinetRoutes);
 app.use('/api/cabinet', require('./routes/cabinet')); // M20: visits/orders/loyalty/summary
 app.use('/api/orders', ordersRoutes);
 app.use('/api/admin', adminRoutes);
-// BeautyPro-синхро ВІДКЛЮЧЕНА повністю (Босс 19.07: «прибери будь-яку механіку beautypro»).
-// Дані вже неактуальні, синк не потрібен. Історичні записи (source='beautypro') лишаються
+// стара CRM-синхро ВІДКЛЮЧЕНА повністю (Босс 19.07: «прибери будь-яку механіку legacy»).
+// Дані вже неактуальні, синк не потрібен. Історичні записи (source='legacy') лишаються
 // в БД до перезавантаження еталону Боссом — видаляти зараз = втратити цифри для звірки.
-// app.use('/api/sync', syncRoutes);
-// try { app.use('/api/sync', require('./routes/beautypro-sync-v2')); } catch(e) { /* v2 optional */ }
-// try { app.use('/api/sync', require('./routes/beautypro-appointments-sync')); } catch(e) { console.error('[bp-appt-sync] mount failed:', e.message); }
 try { app.use('/api/files', require('./routes/files')); } catch(e) { console.error('[files] mount failed:', e.message); }
 app.use('/api/np', npRoutes);
 app.use('/api/catalog/legacy', legacyRoutes);
 app.use('/api/notify', notifyRoutes);
+try { app.use('/api/store', require('./routes/store')); } catch(e) { console.error('[store] mount failed:', e.message); } // SLS-11: магазин (дистрибьютор)
 app.use('/api/promo', promoRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/import', require('./routes/import'));
@@ -304,6 +323,7 @@ try { app.use('/api/instagram-content', require('./routes/instagram-content')); 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/auth/staff', require('./routes/auth-staff'));
 app.use('/api/cashbox', require('./routes/cashbox'));
+app.use('/api/shift-control', require('./routes/shift-control'));  // хто на зміні / чия зміна (11.08)
 app.use('/api/users', require('./routes/users'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/inventory', require('./routes/inventory'));
@@ -478,6 +498,30 @@ try {
   }
 } catch(e) { console.error('[virtual-manager] init failed:', e.message); }
 
+// ── Автопілот касових змін (задача Боса 11.08.2026) ────────────────────────
+// ПРИЧИНА: зміну відкривали/закривали руками — і не робили. Факт: зміна #191 висіла
+// відкритою з 02.07 по 11.08, відповідальний (opened_by) скрізь NULL, тобто по касі
+// неможливо сказати, хто в ній працював.
+// ТЕПЕР: відкриття/закриття за реальним графіком (master_schedule_days), відповідальний —
+// акаунт, який справді працював у CRM цієї зміни (журнал shift_login_audit).
+try {
+  const shiftControl = require('./lib/shift-control');
+  if (process.env.DATABASE_URL) {
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const r = await forEachTenant(() => shiftControl.tick());
+        if (r && (r.fail || 0) > 0) console.warn(`[shift-autopilot] помилок по салонах: ${r.fail}`);
+      } catch (e) { console.error('[shift-autopilot] tick:', e.message); }
+      finally { running = false; }
+    };
+    setTimeout(tick, 60000);
+    setInterval(tick, 5 * 60 * 1000);
+  }
+} catch (e) { console.error('[shift-autopilot] init failed:', e.message); }
+
 // ── Прострочені ліцензії модулів (SaaS-аудит 06.07): trial/підписка не «вічні».
 // active + expires_at у минулому → grace_period (7 днів), далі → expired.
 // Платформенний крон: runAs(null) → без tenant-фільтра, обробляє ВСІ салони.
@@ -567,7 +611,7 @@ try { app.use('/api/wellness', require('./lib/vertical').requireVertical('wellne
 try { app.use('/api/paydesk', require('./routes/paydesk')); } catch(e) { console.error('[paydesk] mount failed:', e.message); }
 try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) { console.error('[booking-catalog] mount failed:', e.message); }
 // Повний booking-роутер: telegram-вебхук бота @Svs_beautybot + розмовна запис + нагадування.
-// З 03.07 вебхук вказує СЮДИ (svs-shop-api) — окремий сервіс svs-booking-api деплоївся
+// З 03.07 вебхук вказує СЮДИ (svs-shop-api) — старий окремий сервіс запису деплоївся
 // з іншого репо і застряг на червневому коді. /catalog перехоплює booking-catalog вище.
 try { app.use('/api/booking', require('./routes/booking')); } catch(e) { console.error('[booking] mount failed:', e.message); }
 // SAS этап 1: самостоятельное подключение ТГ-бота салона (BotFather token → всё само)
@@ -775,7 +819,7 @@ if (process.env.DATABASE_URL) {
 }
 
 // ── Render keep-alive: free tier засыпает после 15 мин простоя ──
-// Пингуем себя каждые 10 мин (svs-booking-api погашено 03.07 — бот тепер тут).
+// Пингуем себя каждые 10 мин (старий сервіс запису погашеноо 03.07 — бот тепер тут).
 if (process.env.RENDER_EXTERNAL_URL) {
   const KEEPALIVE_URLS = [
     process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '') + '/health',
