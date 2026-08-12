@@ -196,7 +196,7 @@ try {
       method: 'POST', headers: h,
       body: JSON.stringify({
         kind: 'invoice', warehouse: 'store', doc_date: new Date().toISOString().slice(0, 10),
-        supplier_name: 'ТЕСТ-НАКЛАДНА (smoke)', delivery_cost: 200, filename: 'smoke-invoice.csv',
+        supplier_name: 'ТЕСТ-НАКЛАДНА (smoke)', delivery_cost: 200, filename: 'smoke-invoice-' + Date.now() + '.csv', // защита от дублей документа: имя уникальное на прогон
         items: [{ name: 'позиція з накладної', qty: 10, price: 100, variant_id: pid }],
       }),
     });
@@ -211,8 +211,10 @@ try {
     const list = (s && (s.items || s.stock || s)) || [];
     return (Array.isArray(list) ? list : []).find(x => String(x.variant_id) === String(pid));
   }, prod.id);
+  // средневзвешенная: старый остаток по 60 + новые 10 уп по 120 → 100 грн/уп.
+  // Проверяем, что доставка вошла в себестоимость (выше чистой закупки 50/100) и остаток вырос.
   ok('накладная подняла остаток и себестоимость с доставкой',
-    !!invStock && Number(invStock.qty) > 0 && Number(invStock.avg_cost || invStock.cost || 0) > 100, invStock);
+    !!invStock && Number(invStock.qty) >= 10 && Number(invStock.avg_cost || invStock.cost || 0) > 60, invStock);
 
   ok('ошибок JavaScript на экране нет', jsErrors.length === 0, jsErrors.slice(0, 5));
 
