@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <script src="/p/tenant-boot.js"></script>
+<meta charset="utf-8">
+<title>SVS Admin — Магазин (дистрибуція)</title>
+<meta name="viewport" content="width=1280">
+<script>try{if(localStorage.getItem("svs_sb_collapsed")==="1")document.documentElement.classList.add("sb-collapsed");}catch(e){}</script>
+<link rel="stylesheet" href="/admin/assets/admin-shell.css">
+<style>
+  /* ЦВЕТОВАЯ ЗОНА МАГАЗИНА: изумруд вместо салонного индиго — сразу видно, где находишься */
+  :root{--primary:#0E9F6E;--primary-hover:#0B8A5F;--primary-light:#E6F6EF}
+  .store-banner{background:linear-gradient(90deg,#0E9F6E,#0B8A5F);color:#fff;border-radius:12px;
+    padding:10px 16px;margin:0 0 16px;display:flex;align-items:center;gap:10px;font-weight:600}
+  .store-banner .sub{font-weight:400;opacity:.85;font-size:12.5px}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpi{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:14px 16px}
+  .kpi .lbl{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+  .kpi .val{font-size:22px;font-weight:700}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  .tab{padding:8px 16px;border-radius:10px;border:1px solid var(--border,#ddd);background:#fff;
+    cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text-secondary)}
+  .tab.active{background:var(--primary);border-color:var(--primary);color:#fff}
+  .pane{display:none}.pane.active{display:block}
+  .card{border:1px solid var(--border,#eee);border-radius:14px;background:var(--card,#fff);padding:16px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border,#f0f0f0)}
+  th{font-size:11.5px;color:var(--text-secondary);text-transform:uppercase;font-weight:600}
+  td.r,th.r{text-align:right}
+  .fld{margin-bottom:10px}
+  .fld label{display:block;font-size:12.5px;color:var(--text-secondary);margin-bottom:4px}
+  .fld input{width:100%;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:9px;font-size:13.5px;font-family:inherit;box-sizing:border-box}
+  .row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px}
+  .btn{background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px 18px;
+    font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--primary-hover)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn-ghost{background:#fff;color:var(--text,#333);border:1px solid var(--border,#ddd)}
+  .suggest{position:relative}
+  .suggest .list{position:absolute;left:0;right:0;top:100%;z-index:30;background:#fff;border:1px solid var(--border,#ddd);
+    border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.10);max-height:260px;overflow:auto;display:none}
+  .suggest .list div{padding:8px 12px;cursor:pointer;font-size:13px}
+  .suggest .list div:hover{background:var(--primary-light)}
+  .muted{color:var(--text-secondary);font-size:12.5px}
+  .total-line{display:flex;justify-content:flex-end;gap:24px;font-size:14px;margin-top:10px;align-items:center}
+  .total-line b{font-size:16px}
+  .ok-note{background:var(--primary-light);border:1px solid var(--primary);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13.5px;display:none}
+  .err-note{background:#FDECEC;border:1px solid var(--danger,#E5484D);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13.5px;display:none}
+  .del{color:var(--danger,#E5484D);cursor:pointer;font-weight:700;padding:0 6px}
+</style>
+</head>
+<body>
+<script src="/admin/assets/admin-shell.js" data-title="Магазин (дистрибуція)"></script>
+<div class="store-banner">🟢 МАГАЗИН — дистрибуція <span class="sub">окремий бізнес: свій склад, свої продажі. Салон — один із клієнтів</span></div>
+
+<div class="cards">
+  <div class="kpi"><div class="lbl">Позицій на складі</div><div class="val" id="kPos">—</div></div>
+  <div class="kpi"><div class="lbl">Одиниць всього</div><div class="val" id="kQty">—</div></div>
+  <div class="kpi"><div class="lbl">Склад у грошах (собівартість)</div><div class="val" id="kVal">—</div></div>
+  <div class="kpi"><div class="lbl">Продано салону (внутрішні)</div><div class="val" id="kTr">—</div></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-pane="stock" onclick="showPane('stock')">Залишки</div>
+  <div class="tab" data-pane="receipt" onclick="showPane('receipt')">Приймання поставки</div>
+  <div class="tab" data-pane="transfer" onclick="showPane('transfer')">Продаж салону</div>
+  <div class="tab" data-pane="history" onclick="showPane('history')">Історія</div>
+</div>
+
+<!-- ЗАЛИШКИ -->
+<div class="pane active" id="pane-stock">
+  <div class="card">
+    <h3>Залишки складу магазину</h3>
+    <table><thead><tr><th>Товар</th><th>Обʼєм</th><th class="r">К-сть</th><th class="r">Собівартість/уп</th><th class="r">Опт</th><th class="r">Роздріб</th><th class="r">Вартість</th></tr></thead>
+    <tbody id="stockBody"><tr><td colspan="7" class="muted">Завантаження…</td></tr></tbody></table>
+  </div>
+</div>
+
+<!-- ПРИЙМАННЯ -->
+<div class="pane" id="pane-receipt">
+  <div class="card">
+    <h3>Нова поставка на склад магазину</h3>
+    <div class="row3">
+      <div class="fld"><label>Постачальник</label><input id="rcSupplier" placeholder="Напр., Raywell Italia"></div>
+      <div class="fld"><label>Дата поставки</label><input id="rcDate" type="date"></div>
+      <div class="fld"><label>Доставка, грн (цієї поставки)</label><input id="rcDelivery" type="number" min="0" step="0.01" value="0"></div>
+    </div>
+    <div class="fld suggest"><label>Додати товар (пошук по назві / SKU)</label>
+      <input id="rcSearch" placeholder="Почніть вводити назву…" autocomplete="off">
+      <div class="list" id="rcSuggest"></div>
+    </div>
+    <table><thead><tr><th>Товар</th><th class="r">К-сть, уп</th><th class="r">Закупівельна, грн/уп</th><th class="r">Сума</th><th></th></tr></thead>
+    <tbody id="rcBody"><tr><td colspan="5" class="muted">Додайте товари через пошук вище</td></tr></tbody></table>
+    <div class="total-line">
+      <span>Товари: <b id="rcGoods">0.00</b> грн</span>
+      <span>Доставка: <b id="rcDel2">0.00</b> грн</span>
+      <span>Разом: <b id="rcTotal">0.00</b> грн</span>
+      <button class="btn" id="rcApply" onclick="applyReceipt()">Провести приймання</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Доставка автоматично розкладається у собівартість товарів пропорційно — маржа рахується чесно.</div>
+    <div class="ok-note" id="rcOk"></div><div class="err-note" id="rcErr"></div>
+  </div>
+</div>
+
+<!-- ПРОДАЖ САЛОНУ -->
+<div class="pane" id="pane-transfer">
+  <div class="card">
+    <h3>Внутрішній продаж: Магазин → Салон</h3>
+    <div class="muted" style="margin-bottom:10px">Одна дія: списання зі складу магазину, прихід на склад салону, накладна з сумою за <b>оптовими цінами</b> і маржою. Продати більше, ніж є на складі, неможливо.</div>
+    <div class="fld suggest"><label>Додати товар (з залишків магазину)</label>
+      <input id="trSearch" placeholder="Почніть вводити назву…" autocomplete="off">
+      <div class="list" id="trSuggest"></div>
+    </div>
+    <table><thead><tr><th>Товар</th><th class="r">На складі</th><th class="r">К-сть, уп</th><th class="r">Опт, грн</th><th class="r">Сума</th><th></th></tr></thead>
+    <tbody id="trBody"><tr><td colspan="6" class="muted">Додайте товари через пошук вище</td></tr></tbody></table>
+    <div class="total-line">
+      <span>Разом (опт): <b id="trTotal">0.00</b> грн</span>
+      <button class="btn" id="trApply" onclick="applyTransfer()">Продати салону</button>
+    </div>
+    <div class="ok-note" id="trOk"></div><div class="err-note" id="trErr"></div>
+  </div>
+</div>
+
+<!-- ІСТОРІЯ -->
+<div class="pane" id="pane-history">
+  <div class="card">
+    <h3>Приймання поставок</h3>
+    <table><thead><tr><th>№</th><th>Дата</th><th>Постачальник</th><th class="r">Позицій</th><th class="r">Товари, грн</th><th class="r">Доставка, грн</th><th>Провів</th></tr></thead>
+    <tbody id="histRcBody"><tr><td colspan="7" class="muted">—</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h3>Внутрішні продажі салону</h3>
+    <table><thead><tr><th>№</th><th>Коли</th><th class="r">Позицій</th><th class="r">Сума (опт), грн</th><th class="r">Маржа, грн</th><th>Провів</th></tr></thead>
+    <tbody id="histTrBody"><tr><td colspan="6" class="muted">—</td></tr></tbody></table>
+  </div>
+</div>
+
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+async function api(path,opts){const r=await adminFetch(path,opts);let j;try{j=await r.json()}catch(_){j={error:'bad-response'}}if(!r.ok&&!j.error)j.error='HTTP '+r.status;return j}
+const fmt=n=>Number(n||0).toLocaleString('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function showPane(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.pane===id));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pane-'+id).classList.add('active');
+  if(id==='stock')loadStock(); if(id==='history')loadHistory();
+}
+
+/* ── остатки ── */
+let STORE_STOCK=[];
+async function loadStock(){
+  const d=await api('/api/store/stock');
+  const items=d.items||[]; STORE_STOCK=items;
+  document.getElementById('kPos').textContent=items.length;
+  document.getElementById('kQty').textContent=items.reduce((s,x)=>s+Number(x.qty),0);
+  document.getElementById('kVal').textContent=fmt(d.total_value)+' грн';
+  const b=document.getElementById('stockBody');
+  b.innerHTML=items.length?items.map(x=>`<tr>
+    <td>${esc(x.product_name)}</td><td>${esc(x.volume)}</td>
+    <td class="r">${Number(x.qty)}</td>
+    <td class="r">${fmt(x.avg_cost)}</td>
+    <td class="r">${x.wholesale!=null?fmt(x.wholesale):'—'}</td>
+    <td class="r">${fmt(x.price)}</td>
+    <td class="r">${fmt(Number(x.qty)*Number(x.avg_cost||0))}</td>
+  </tr>`).join(''):'<tr><td colspan="7" class="muted">Склад магазину порожній — проведіть перше приймання</td></tr>';
+}
+
+/* ── общий саджест-поиск ── */
+function bindSuggest(inputId,listId,source,onPick){
+  const inp=document.getElementById(inputId),list=document.getElementById(listId);
+  let t;
+  inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(async()=>{
+    const q=inp.value.trim(); if(q.length<2){list.style.display='none';return}
+    const rows=await source(q);
+    list.innerHTML=rows.map((r,i)=>`<div data-i="${i}">${esc(r.product_name)} ${esc(r.volume||'')} <span class="muted">${r.hint||''}</span></div>`).join('')||'<div class="muted">Нічого не знайдено</div>';
+    list.style.display='block';
+    [...list.querySelectorAll('div[data-i]')].forEach(el=>el.onclick=()=>{onPick(rows[Number(el.dataset.i)]);inp.value='';list.style.display='none'});
+  },250)});
+  document.addEventListener('click',e=>{if(!inp.parentNode.contains(e.target))list.style.display='none'});
+}
+
+/* ── приёмка ── */
+const rcItems=[];
+bindSuggest('rcSearch','rcSuggest',async q=>{
+  const d=await api('/api/admin/stock/list?q='+encodeURIComponent(q));
+  return (d.items||[]).slice(0,12).map(x=>({...x,hint:'роздріб '+fmt(x.price)}));
+},v=>{
+  if(rcItems.some(i=>i.variant_id===v.id))return;
+  rcItems.push({variant_id:v.id,name:v.product_name+' '+(v.volume||''),qty:1,unit_cost:''});
+  renderRc();
+});
+function renderRc(){
+  const b=document.getElementById('rcBody');
+  b.innerHTML=rcItems.length?rcItems.map((it,i)=>`<tr>
+    <td>${esc(it.name)}</td>
+    <td class="r"><input style="width:80px;text-align:right" type="number" min="0.001" step="1" value="${it.qty}" onchange="rcItems[${i}].qty=this.value;renderRc()"></td>
+    <td class="r"><input style="width:110px;text-align:right" type="number" min="0" step="0.01" value="${it.unit_cost}" placeholder="0.00" onchange="rcItems[${i}].unit_cost=this.value;renderRc()"></td>
+    <td class="r">${fmt(Number(it.qty)*Number(it.unit_cost||0))}</td>
+    <td><span class="del" onclick="rcItems.splice(${i},1);renderRc()">×</span></td>
+  </tr>`).join(''):'<tr><td colspan="5" class="muted">Додайте товари через пошук вище</td></tr>';
+  const goods=rcItems.reduce((s,it)=>s+Number(it.qty)*Number(it.unit_cost||0),0);
+  const del=Number(document.getElementById('rcDelivery').value)||0;
+  document.getElementById('rcGoods').textContent=fmt(goods);
+  document.getElementById('rcDel2').textContent=fmt(del);
+  document.getElementById('rcTotal').textContent=fmt(goods+del);
+}
+document.getElementById('rcDelivery').addEventListener('input',renderRc);
+async function applyReceipt(){
+  const ok=document.getElementById('rcOk'),err=document.getElementById('rcErr');
+  ok.style.display='none';err.style.display='none';
+  if(!rcItems.length){err.textContent='Додайте хоча б один товар';err.style.display='block';return}
+  if(rcItems.some(it=>!(Number(it.qty)>0)||!(Number(it.unit_cost)>=0)||it.unit_cost==='')){err.textContent='У кожній позиції потрібні кількість і закупівельна ціна';err.style.display='block';return}
+  const btn=document.getElementById('rcApply');btn.disabled=true;
+  const d=await api('/api/store/receipts',{method:'POST',body:JSON.stringify({
+    supplier_name:document.getElementById('rcSupplier').value.trim()||null,
+    doc_date:document.getElementById('rcDate').value,
+    delivery_cost:Number(document.getElementById('rcDelivery').value)||0,
+    items:rcItems.map(it=>({variant_id:it.variant_id,qty:Number(it.qty),unit_cost:Number(it.unit_cost)}))
+  })});
+  btn.disabled=false;
+  if(d.ok){ok.textContent=`Поставку №${d.receipt_id} проведено: товари ${fmt(d.goods_total)} грн + доставка ${fmt(d.delivery_cost)} грн. Собівартість оновлено.`;ok.style.display='block';
+    rcItems.length=0;renderRc();loadStock();}
+  else{err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+
+/* ── продажа салону ── */
+const trItems=[];
+bindSuggest('trSearch','trSuggest',async q=>{
+  if(!STORE_STOCK.length)await loadStock();
+  const qq=q.toLowerCase();
+  return STORE_STOCK.filter(x=>(x.product_name+' '+(x.volume||'')+' '+(x.sku||'')).toLowerCase().includes(qq))
+    .slice(0,12).map(x=>({...x,product_name:x.product_name,hint:'на складі '+Number(x.qty)}));
+},v=>{
+  if(trItems.some(i=>i.variant_id===v.variant_id))return;
+  trItems.push({variant_id:v.variant_id,name:v.product_name+' '+(v.volume||''),avail:Number(v.qty),price:Number(v.wholesale!=null?v.wholesale:v.price)||0,qty:1});
+  renderTr();
+});
+function renderTr(){
+  const b=document.getElementById('trBody');
+  b.innerHTML=trItems.length?trItems.map((it,i)=>`<tr>
+    <td>${esc(it.name)}</td>
+    <td class="r">${it.avail}</td>
+    <td class="r"><input style="width:80px;text-align:right" type="number" min="1" step="1" max="${it.avail}" value="${it.qty}" onchange="trItems[${i}].qty=this.value;renderTr()"></td>
+    <td class="r">${fmt(it.price)}</td>
+    <td class="r">${fmt(Number(it.qty)*it.price)}</td>
+    <td><span class="del" onclick="trItems.splice(${i},1);renderTr()">×</span></td>
+  </tr>`).join(''):'<tr><td colspan="6" class="muted">Додайте товари через пошук вище</td></tr>';
+  document.getElementById('trTotal').textContent=fmt(trItems.reduce((s,it)=>s+Number(it.qty)*it.price,0));
+}
+async function applyTransfer(){
+  const ok=document.getElementById('trOk'),err=document.getElementById('trErr');
+  ok.style.display='none';err.style.display='none';
+  if(!trItems.length){err.textContent='Додайте хоча б один товар';err.style.display='block';return}
+  const bad=trItems.find(it=>!Number.isInteger(Number(it.qty))||Number(it.qty)<1||Number(it.qty)>it.avail);
+  if(bad){err.textContent=`«${bad.name}»: кількість має бути цілою і не більшою за залишок (${bad.avail})`;err.style.display='block';return}
+  const btn=document.getElementById('trApply');btn.disabled=true;
+  const d=await api('/api/store/transfer',{method:'POST',body:JSON.stringify({
+    items:trItems.map(it=>({variant_id:it.variant_id,qty:Number(it.qty)}))
+  })});
+  btn.disabled=false;
+  if(d.ok){ok.textContent=`Накладну №${d.transfer_id} проведено: салон купив на ${fmt(d.total_amount)} грн (маржа магазину ${fmt(d.margin)} грн). Товар вже на складі салону.`;ok.style.display='block';
+    trItems.length=0;renderTr();loadStock();}
+  else{err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+
+/* ── история ── */
+async function loadHistory(){
+  const [rc,tr]=await Promise.all([api('/api/store/receipts'),api('/api/store/transfers')]);
+  document.getElementById('histRcBody').innerHTML=(rc.items||[]).map(r=>`<tr>
+    <td>${r.id}</td><td>${esc(String(r.doc_date).slice(0,10))}</td><td>${esc(r.supplier_name||'—')}</td>
+    <td class="r">${r.positions}</td><td class="r">${fmt(r.goods_total)}</td><td class="r">${fmt(r.delivery_cost)}</td>
+    <td>${esc(r.created_by||'—')}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">Поставок ще не було</td></tr>';
+  document.getElementById('histTrBody').innerHTML=(tr.items||[]).map(t=>`<tr>
+    <td>${t.id}</td><td>${esc(String(t.created_at).slice(0,16).replace('T',' '))}</td>
+    <td class="r">${t.positions}</td><td class="r">${fmt(t.total_amount)}</td><td class="r">${fmt(t.margin)}</td>
+    <td>${esc(t.created_by||'—')}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Внутрішніх продажів ще не було</td></tr>';
+  const sum=(tr.items||[]).reduce((s,t)=>s+Number(t.total_amount||0),0);
+  document.getElementById('kTr').textContent=fmt(sum)+' грн';
+}
+
+document.getElementById('rcDate').value=new Date().toISOString().slice(0,10);
+loadStock();loadHistory();
+</script>
+</body>
+</html>

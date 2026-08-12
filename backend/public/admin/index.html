@@ -1063,6 +1063,19 @@ select.input { background:var(--card); }
         </div>
       </div>
 
+      <!-- SLS-11: Магазин (дистрибуція) — окремий бізнес зі своїм складом. Зелена зона. -->
+      <div class="sidebar-group" id="grp-store">
+        <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
+          <span class="material-icons-round" style="color:#0E9F6E">storefront</span> Магазин
+          <span class="material-icons-round chevron">chevron_right</span>
+        </div>
+        <div class="sidebar-group-items">
+          <a class="sidebar-item" data-embed="/admin/store.html" onclick="openEmbed('/admin/store.html','storefront Магазин (дистрибуція)')" style="cursor:pointer">
+            <span class="material-icons-round">storefront</span> Склад і продажі
+          </a>
+        </div>
+      </div>
+
       <!-- Налаштування (підменю в самому сайдбарі, без другої колонки на сторінці) -->
       <div class="sidebar-group" id="grp-settings">
         <div class="sidebar-group-header" onclick="toggleSidebarGroup(this)">
@@ -1213,6 +1226,13 @@ select.input { background:var(--card); }
         <button type="button" class="info-i" id="pageHelpBtn" title="Як користуватись цим розділом — коротка інструкція" onclick="showPageHelp(event)" style="margin-left:8px">i</button>
       </div>
       <div class="topbar-right">
+        <!-- Контроль змін (11.08): хто зараз на зміні + чи своя вона в того, хто працює.
+             Клік — деталі: графік, хто реально працює в CRM, стан каси. -->
+        <button id="shiftBadge" onclick="showShiftControl()" title="Хто зараз на зміні"
+          style="display:none;align-items:center;gap:5px;border:1px solid #cfe3d4;background:#f2f9f4;color:#2f6b45;font-size:12px;font-weight:600;border-radius:14px;padding:3px 10px;cursor:pointer">
+          <span class="material-icons-round" style="font-size:15px">badge</span>
+          <span id="shiftBadgeText">Зміна</span>
+        </button>
         <span id="userBadge" style="display:none;font-size:13px;color:var(--text-muted,#888);font-weight:600"></span>
         <button id="emailVerifyChip" onclick="sendEmailVerify(this)" title="Підтвердіть свою пошту, щоб відновлювати доступ і отримувати службові листи"
           style="display:none;align-items:center;gap:5px;border:1px solid #f0c36d;background:#fff8e6;color:#8a6d1a;font-size:12px;font-weight:600;border-radius:14px;padding:3px 10px;cursor:pointer">
@@ -1426,7 +1446,7 @@ select.input { background:var(--card); }
         <!-- ═══ AI-рекомендації: повернення клієнтів ═══ -->
         <div class="card" id="reactCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів). Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся з BeautyPro.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів). Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="reactInfo" style="font-size:12px;color:var(--text-secondary)"></span>
               <select id="reactMode" class="input btn-sm" style="max-width:190px" onchange="loadReactivation()" title="Розумний: порівнює «скільки днів не був» з рекомендованим інтервалом останньої послуги клієнта. Простий: усі, хто зник довше за обраний поріг днів.">
@@ -2499,20 +2519,6 @@ select.input { background:var(--card); }
       </div>
 
       <!-- ═══ SYNC ═══ -->
-      <div class="page" id="page-sync">
-        <div class="kpi-grid" id="syncStats" style="max-width:600px"></div>
-        <button onclick="runSync()" class="btn btn-primary" style="margin-bottom:6px">
-          <span class="material-icons-round" style="font-size:16px">sync</span> Звʼязати клієнтів
-        </button>
-        <p class="set-p" style="margin:0 0 14px;font-size:12.5px;color:var(--text-secondary)">📌 <b>Записи, продажі, послуги й графіки</b> синхронізуються з BeautyPro <b>автоматично</b> кожні 5–30 хв — нічого тиснути не треба. Ця кнопка <b>звʼязує клієнтів</b> за телефоном (за раз до 50). Статус зверху: скільки клієнтів уже звʼязано.</p>
-        <div class="card">
-          <div class="card-body">
-            <pre id="syncLog" style="font-size:12px;max-height:400px;overflow:auto;white-space:pre-wrap">Натисніть «Запустити синхро» для початку</pre>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══ FINANCE (Доходи і Витрати, день-сітка) ═══ -->
       <div class="page" id="page-finance">
         <div class="fin-toolbar">
           <div class="fin-periods" id="finPeriods">
@@ -3868,7 +3874,6 @@ function applyRoleUI(){
   if (sysGrp) {
     const canSys = !!USER && USER.role === 'owner';
     sysGrp.style.display = canSys ? '' : 'none';
-    if (!canSys && currentPage === 'sync') { try { go('dashboard'); } catch {} }
   }
   // Якщо майстер відкрив заборонену сторінку (через hash) — повертаємо на дашборд
   if (master && !allowForMaster.includes(currentPage)) { try { go('dashboard'); } catch {} }
@@ -3911,12 +3916,12 @@ const MENU_PERM_EMBED = [
   ['/export.html','export.read'], ['#center','marketing.read'], ['#segments','marketing.read'],
   ['#campaigns','marketing.read'], ['#triggers','marketing.read'], ['/video-studio.html','marketing.read'],
   ['/dikidi.html','reviews.write'], ['#users-access','users.write'], ['#users','users.read'],
-  ['#inventory','stock.manage'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
+  ['#inventory','stock.manage'], ['/store.html','stock.manage'], ['/monitoring.html','admin.read'], ['#branches','branches.write'],
   ['/integrations.html','integrations.read'], ['#audit','audit.read'],
 ];
 // Сторінки платформи/інфраструктури/налаштувань — ЛИШЕ власник, незалежно від прав ролі
 const OWNER_ONLY_PAGES = ['online','saasplans','licenses','featflags','dwh','eventbus','searchadmin',
-  'settings','sync','branding','mobileapp','shifts','payroll','plan'];
+  'settings','branding','mobileapp','shifts','payroll','plan'];
 // Цілі групи меню, які бачить лише власник (Система, Налаштування, Команда)
 const OWNER_ONLY_GROUPS = ['grp-settings','grp-system','grp-team'];
 function applyMenuPerms(){
@@ -4091,6 +4096,63 @@ async function posSubmit(){
 }
 
 // ── Generic modal + toast (переиспользують стилі .modal-overlay/.modal) ──
+
+// ── Контроль змін (задача Боса 11.08.2026) ─────────────────────────────────
+// Бейдж у шапці: скільки людей за графіком на зміні зараз + чи є ті, хто працює
+// НЕ у свою зміну. Дані з /api/shift-control/status. Оновлення раз на 5 хв —
+// частіше не має сенсу, графік протягом дня не змінюється.
+async function loadShiftBadge() {
+  const btn = document.getElementById('shiftBadge');
+  const txt = document.getElementById('shiftBadgeText');
+  if (!btn || !txt) return;
+  try {
+    const d = await api('/api/shift-control/status');
+    window._shiftStatus = d;
+    const n = (d.on_shift || []).length;
+    const bad = (d.anomalies || []).length;
+    txt.textContent = bad ? `Зміна: ${n} · ${bad} поза графіком` : `На зміні: ${n}`;
+    btn.style.background = bad ? '#fdf1f1' : '#f2f9f4';
+    btn.style.borderColor = bad ? '#e6b8b8' : '#cfe3d4';
+    btn.style.color = bad ? '#a33' : '#2f6b45';
+    btn.style.display = 'inline-flex';
+  } catch (e) { btn.style.display = 'none'; }
+}
+
+function showShiftControl() {
+  const d = window._shiftStatus || {};
+  const hhmm = t => (t || '').slice(0, 5);
+  const when = v => v ? new Date(v).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' }) : '—';
+  const VERD = { owner: 'власник', own_shift: 'своя зміна', off_shift: 'поза своєю зміною', no_schedule: 'немає в графіку' };
+  const sched = (d.on_shift || []).map(r =>
+    `<tr><td>${r.name || '—'}</td><td>${hhmm(r.start_time)}–${hhmm(r.end_time)}</td>
+         <td style="color:${r.user_id ? '#2f6b45' : '#999'}">${r.user_id ? 'є акаунт' : 'без акаунта'}</td></tr>`).join('')
+    || '<tr><td colspan="3" style="color:#999">за графіком зараз нікого</td></tr>';
+  const work = (d.working_now || []).map(r => {
+    const bad = r.verdict === 'off_shift' || r.verdict === 'no_schedule';
+    return `<tr><td>${r.display_name || ('акаунт #' + r.user_id)}</td>
+      <td style="color:${bad ? '#a33' : '#2f6b45'};font-weight:600">${VERD[r.verdict] || r.verdict}</td>
+      <td>${when(r.first_seen_at)}–${when(r.last_seen_at)}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" style="color:#999">сьогодні ще ніхто не працював у CRM</td></tr>';
+  const c = d.cash_shift;
+  const cash = c
+    ? `Зміна №${c.id} відкрита ${when(c.opened_at)}${c.auto_opened ? ' (автоматично)' : ''} ·
+       старт ${Math.round(c.opening_cash).toLocaleString('uk-UA')} ₴ ·
+       розрахунково зараз <b>${Math.round(c.expected_cash).toLocaleString('uk-UA')} ₴</b>`
+    : '<span style="color:#a33">касова зміна не відкрита</span>';
+  showModal('Контроль зміни', `
+    <div style="font-size:13.5px;line-height:1.5">
+      <div style="margin-bottom:10px;padding:9px 12px;background:#f7f7f9;border-radius:8px">${cash}</div>
+      <div style="font-weight:700;margin:12px 0 5px">За графіком на зміні</div>
+      <table class="tbl"><thead><tr><th>Хто</th><th>Час</th><th>Доступ</th></tr></thead><tbody>${sched}</tbody></table>
+      <div style="font-weight:700;margin:14px 0 5px">Хто справді працює в CRM сьогодні</div>
+      <table class="tbl"><thead><tr><th>Акаунт</th><th>Вердикт</th><th>Активність</th></tr></thead><tbody>${work}</tbody></table>
+      <div style="margin-top:10px;color:#888;font-size:12px">Зміна відкривається й закривається автоматично за графіком. Робота поза графіком не блокується — власник отримує сповіщення.</div>
+    </div>`);
+}
+if (document.readyState !== 'loading') setTimeout(loadShiftBadge, 1500);
+else document.addEventListener('DOMContentLoaded', () => setTimeout(loadShiftBadge, 1500));
+setInterval(loadShiftBadge, 5 * 60 * 1000);
+
 function showModal(title, bodyHtml, onOk) {
   document.getElementById('genModal')?.remove();
   const ov = document.createElement('div');
@@ -4428,7 +4490,6 @@ const PAGE_HELP = {
   services: '<b>Послуги.</b> Прайс салону: назва, ціна, тривалість, категорія. Кнопка «+» — нова послуга. Саме з цього списку клієнт обирає послугу при записі.',
   svccats: '<b>Категорії послуг.</b> Групи для прайсу (стрижки, фарбування, манікюр). Допомагають упорядкувати послуги, щоб клієнту було легше знайти.',
   blacklist: '<b>Чорний список.</b> Проблемні клієнти (не приходять, конфліктні). Додаєш телефон → система попереджає при спробі запису.',
-  sync: '<b>Синхронізація BeautyPro.</b> Технічний розділ обміну зі старою CRM. Зараз салон працює самостійно — цей розділ переважно не потрібен.',
   waitlist: '<b>Лист очікування.</b> Клієнти, які хочуть записатись, але немає вільного часу. Звільнився слот → бачиш, кому запропонувати.',
   reminders: '<b>Нагадування клієнтам.</b> Автоматичні повідомлення про майбутній запис (щоб не забули і не пропали). Тут вмикаєш і налаштовуєш, за скільки годин слати.',
   repeat: '<b>Повторні візити.</b> Клієнти, яким час прийти знову (напр. корекція через 3 тижні). Допомагає повертати людей і не втрачати їх.',
@@ -4459,7 +4520,7 @@ const pageTitles = {
   fincenter:'Фінансовий центр', budgets:'Бюджети', cashflow:'Грошовий потік', giftcerts:'Подарункові сертифікати', subscriptions:'Абонементи', purchasing:'Закупівлі', orders:'Замовлення', products:'Товари', stock:'Склад',
   reviews:'Відгуки', promos:'Акції', payroll:'Зарплата', plan:'План місяця та аналітика',
   services:'Послуги', svccats:'Категорії послуг',
-  blacklist:'Чорний список', sync:'BeautyPro синхро',
+  blacklist:'Чорний список',
   waitlist:'Лист очікування', reminders:'Нагадування клієнтам', repeat:'Повторні візити', retention:'Апсейл і повернення', formulas:'Пошук формул фарбування',
   finance:'Доходи і Витрати', contractors:'Контрагенти',
   saas:'SaaS / Платформа',
@@ -4482,7 +4543,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Мастера / Сотрудники','Зарплата':'Зарплата','План місяця':'План месяца','Графіки роботи':'Графики работы',
     'Товари':'Товары','Залишки на складі':'Остатки на складе','Закупівлі':'Закупки','Інвентаризація':'Инвентаризация','Розхідники':'Расходники',
     'Профіль':'Профиль','Онлайн-запис':'Онлайн-запись','Передплата':'Предоплата','Конфіденційність':'Конфиденциальность','Бізнес-налаштування':'Бизнес-настройки','Кабінети / ресурси':'Кабинеты / ресурсы','Доступ до проєкту':'Доступ к проекту','Міграція з іншої CRM':'Миграция из другой CRM',
-    'Системний статус':'Системный статус','Управління магазинами':'Управление магазинами','Інтеграції':'Интеграции','BeautyPro синхро':'BeautyPro синхро','Аудит':'Аудит',
+    'Системний статус':'Системный статус','Управління магазинами':'Управление магазинами','Інтеграції':'Интеграции','Аудит':'Аудит',
     'Моя підписка':'Моя подписка','Панель SaaS':'Панель SaaS',
     'Вийти':'Выйти','Експорт':'Экспорт','Підтвердити пошту':'Подтвердить почту',
     'Подарункові сертифікати':'Подарочные сертификаты','Нагадування клієнтам':'Напоминания клиентам','Акції':'Акции','План місяця та аналітика':'План месяца и аналитика'
@@ -4497,7 +4558,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Staff / Masters','Зарплата':'Payroll','План місяця':'Monthly plan','Графіки роботи':'Work schedules',
     'Товари':'Products','Залишки на складі':'Stock levels','Закупівлі':'Purchasing','Інвентаризація':'Inventory count','Розхідники':'Consumables',
     'Профіль':'Profile','Онлайн-запис':'Online booking','Передплата':'Prepayment','Конфіденційність':'Privacy','Бізнес-налаштування':'Business settings','Кабінети / ресурси':'Rooms / resources','Доступ до проєкту':'Project access','Міграція з іншої CRM':'Migrate from another CRM',
-    'Системний статус':'System status','Управління магазинами':'Manage shops','Інтеграції':'Integrations','BeautyPro синхро':'BeautyPro sync','Аудит':'Audit',
+    'Системний статус':'System status','Управління магазинами':'Manage shops','Інтеграції':'Integrations','Аудит':'Audit',
     'Моя підписка':'My subscription','Панель SaaS':'SaaS panel',
     'Вийти':'Log out','Експорт':'Export','Підтвердити пошту':'Verify email',
     'Подарункові сертифікати':'Gift certificates','Нагадування клієнтам':'Client reminders','Акції':'Promos','План місяця та аналітика':'Monthly plan & analytics'
@@ -4512,7 +4573,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Pracownicy / Mistrzowie','Зарплата':'Wynagrodzenia','План місяця':'Plan miesiąca','Графіки роботи':'Grafiki pracy',
     'Товари':'Towary','Залишки на складі':'Stany magazynowe','Закупівлі':'Zakupy','Інвентаризація':'Inwentaryzacja','Розхідники':'Materiały zużywalne',
     'Профіль':'Profil','Онлайн-запис':'Rezerwacja online','Передплата':'Przedpłata','Конфіденційність':'Prywatność','Бізнес-налаштування':'Ustawienia biznesu','Кабінети / ресурси':'Gabinety / zasoby','Доступ до проєкту':'Dostęp do projektu','Міграція з іншої CRM':'Migracja z innego CRM',
-    'Системний статус':'Status systemu','Управління магазинами':'Zarządzanie sklepami','Інтеграції':'Integracje','BeautyPro синхро':'Synchronizacja BeautyPro','Аудит':'Audyt',
+    'Системний статус':'Status systemu','Управління магазинами':'Zarządzanie sklepami','Інтеграції':'Integracje','Аудит':'Audyt',
     'Моя підписка':'Moja subskrypcja','Панель SaaS':'Panel SaaS',
     'Вийти':'Wyloguj','Експорт':'Eksport','Підтвердити пошту':'Potwierdź e-mail',
     'Подарункові сертифікати':'Bony podarunkowe','Нагадування клієнтам':'Przypomnienia dla klientów','Акції':'Promocje','План місяця та аналітика':'Plan miesiąca i analityka'
@@ -4527,7 +4588,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Mitarbeiter / Stylisten','Зарплата':'Gehalt','План місяця':'Monatsplan','Графіки роботи':'Arbeitspläne',
     'Товари':'Produkte','Залишки на складі':'Lagerbestände','Закупівлі':'Einkauf','Інвентаризація':'Inventur','Розхідники':'Verbrauchsmaterial',
     'Профіль':'Profil','Онлайн-запис':'Online-Buchung','Передплата':'Anzahlung','Конфіденційність':'Datenschutz','Бізнес-налаштування':'Geschäftseinstellungen','Кабінети / ресурси':'Räume / Ressourcen','Доступ до проєкту':'Projektzugriff','Міграція з іншої CRM':'Migration aus anderem CRM',
-    'Системний статус':'Systemstatus','Управління магазинами':'Filialverwaltung','Інтеграції':'Integrationen','BeautyPro синхро':'BeautyPro-Sync','Аудит':'Audit',
+    'Системний статус':'Systemstatus','Управління магазинами':'Filialverwaltung','Інтеграції':'Integrationen','Аудит':'Audit',
     'Моя підписка':'Mein Abonnement','Панель SaaS':'SaaS-Panel',
     'Вийти':'Abmelden','Експорт':'Export','Підтвердити пошту':'E-Mail bestätigen',
     'Подарункові сертифікати':'Geschenkgutscheine','Нагадування клієнтам':'Kundenerinnerungen','Акції':'Aktionen','План місяця та аналітика':'Monatsplan & Analyse'
@@ -4542,7 +4603,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Personal / Estilistas','Зарплата':'Nómina','План місяця':'Plan del mes','Графіки роботи':'Horarios de trabajo',
     'Товари':'Productos','Залишки на складі':'Existencias','Закупівлі':'Compras','Інвентаризація':'Inventario','Розхідники':'Consumibles',
     'Профіль':'Perfil','Онлайн-запис':'Reserva online','Передплата':'Anticipo','Конфіденційність':'Privacidad','Бізнес-налаштування':'Ajustes del negocio','Кабінети / ресурси':'Salas / recursos','Доступ до проєкту':'Acceso al proyecto','Міграція з іншої CRM':'Migración desde otro CRM',
-    'Системний статус':'Estado del sistema','Управління магазинами':'Gestión de tiendas','Інтеграції':'Integraciones','BeautyPro синхро':'Sincronización BeautyPro','Аудит':'Auditoría',
+    'Системний статус':'Estado del sistema','Управління магазинами':'Gestión de tiendas','Інтеграції':'Integraciones','Аудит':'Auditoría',
     'Моя підписка':'Mi suscripción','Панель SaaS':'Panel SaaS',
     'Вийти':'Cerrar sesión','Експорт':'Exportar','Підтвердити пошту':'Verificar correo',
     'Подарункові сертифікати':'Tarjetas regalo','Нагадування клієнтам':'Recordatorios a clientes','Акції':'Promociones','План місяця та аналітика':'Plan del mes y analítica'
@@ -4557,7 +4618,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Personnel / Stylistes','Зарплата':'Salaire','План місяця':'Plan du mois','Графіки роботи':'Plannings de travail',
     'Товари':'Produits','Залишки на складі':'Stocks','Закупівлі':'Achats','Інвентаризація':'Inventaire','Розхідники':'Consommables',
     'Профіль':'Profil','Онлайн-запис':'Réservation en ligne','Передплата':'Acompte','Конфіденційність':'Confidentialité','Бізнес-налаштування':'Paramètres entreprise','Кабінети / ресурси':'Salles / ressources','Доступ до проєкту':'Accès au projet','Міграція з іншої CRM':'Migration depuis un autre CRM',
-    'Системний статус':'État du système','Управління магазинами':'Gestion des boutiques','Інтеграції':'Intégrations','BeautyPro синхро':'Sync BeautyPro','Аудит':'Audit',
+    'Системний статус':'État du système','Управління магазинами':'Gestion des boutiques','Інтеграції':'Intégrations','Аудит':'Audit',
     'Моя підписка':'Mon abonnement','Панель SaaS':'Panneau SaaS',
     'Вийти':'Déconnexion','Експорт':'Export','Підтвердити пошту':"Vérifier l'e-mail",
     'Подарункові сертифікати':'Cartes cadeaux','Нагадування клієнтам':'Rappels clients','Акції':'Promotions','План місяця та аналітика':'Plan du mois et analyse'
@@ -4572,7 +4633,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Staff / Stilisti','Зарплата':'Stipendio','План місяця':'Piano del mese','Графіки роботи':'Orari di lavoro',
     'Товари':'Prodotti','Залишки на складі':'Giacenze','Закупівлі':'Acquisti','Інвентаризація':'Inventario','Розхідники':'Materiali di consumo',
     'Профіль':'Profilo','Онлайн-запис':'Prenotazione online','Передплата':'Acconto','Конфіденційність':'Privacy','Бізнес-налаштування':'Impostazioni aziendali','Кабінети / ресурси':'Sale / risorse','Доступ до проєкту':'Accesso al progetto','Міграція з іншої CRM':'Migrazione da altro CRM',
-    'Системний статус':'Stato sistema','Управління магазинами':'Gestione negozi','Інтеграції':'Integrazioni','BeautyPro синхро':'Sincronizzazione BeautyPro','Аудит':'Audit',
+    'Системний статус':'Stato sistema','Управління магазинами':'Gestione negozi','Інтеграції':'Integrazioni','Аудит':'Audit',
     'Моя підписка':'Il mio abbonamento','Панель SaaS':'Pannello SaaS',
     'Вийти':'Esci','Експорт':'Esporta','Підтвердити пошту':'Verifica email',
     'Подарункові сертифікати':'Buoni regalo','Нагадування клієнтам':'Promemoria clienti','Акції':'Promozioni','План місяця та аналітика':'Piano del mese e analisi'
@@ -4587,7 +4648,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Personal / Stiliști','Зарплата':'Salariu','План місяця':'Planul lunii','Графіки роботи':'Programe de lucru',
     'Товари':'Produse','Залишки на складі':'Stocuri','Закупівлі':'Achiziții','Інвентаризація':'Inventar','Розхідники':'Consumabile',
     'Профіль':'Profil','Онлайн-запис':'Rezervare online','Передплата':'Avans','Конфіденційність':'Confidențialitate','Бізнес-налаштування':'Setări de business','Кабінети / ресурси':'Cabinete / resurse','Доступ до проєкту':'Acces la proiect','Міграція з іншої CRM':'Migrare din alt CRM',
-    'Системний статус':'Stare sistem','Управління магазинами':'Gestionarea magazinelor','Інтеграції':'Integrări','BeautyPro синхро':'Sincronizare BeautyPro','Аудит':'Audit',
+    'Системний статус':'Stare sistem','Управління магазинами':'Gestionarea magazinelor','Інтеграції':'Integrări','Аудит':'Audit',
     'Моя підписка':'Abonamentul meu','Панель SaaS':'Panou SaaS',
     'Вийти':'Deconectare','Експорт':'Export','Підтвердити пошту':'Confirmă e-mailul',
     'Подарункові сертифікати':'Carduri cadou','Нагадування клієнтам':'Memento-uri clienți','Акції':'Promoții','План місяця та аналітика':'Planul lunii și analiză'
@@ -4602,7 +4663,7 @@ const I18N_DICT = {
     'Майстри / Співробітники':'Personel / Stilistler','Зарплата':'Maaş','План місяця':'Aylık plan','Графіки роботи':'Çalışma programları',
     'Товари':'Ürünler','Залишки на складі':'Stok durumu','Закупівлі':'Satın alma','Інвентаризація':'Envanter','Розхідники':'Sarf malzemeleri',
     'Профіль':'Profil','Онлайн-запис':'Online rezervasyon','Передплата':'Ön ödeme','Конфіденційність':'Gizlilik','Бізнес-налаштування':'İşletme ayarları','Кабінети / ресурси':'Odalar / kaynaklar','Доступ до проєкту':'Proje erişimi','Міграція з іншої CRM':"Başka CRM'den geçiş",
-    'Системний статус':'Sistem durumu','Управління магазинами':'Mağaza yönetimi','Інтеграції':'Entegrasyonlar','BeautyPro синхро':'BeautyPro senkron','Аудит':'Denetim',
+    'Системний статус':'Sistem durumu','Управління магазинами':'Mağaza yönetimi','Інтеграції':'Entegrasyonlar','Аудит':'Denetim',
     'Моя підписка':'Aboneliğim','Панель SaaS':'SaaS paneli',
     'Вийти':'Çıkış','Експорт':'Dışa aktar','Підтвердити пошту':'E-postayı doğrula',
     'Подарункові сертифікати':'Hediye kartları','Нагадування клієнтам':'Müşteri hatırlatmaları','Акції':'Promosyonlar','План місяця та аналітика':'Aylık plan ve analiz'
@@ -4735,7 +4796,7 @@ function go(page) {
   document.getElementById('sidebar').classList.remove('open');
   const loaders = { dashboard:loadDashboard, journal:loadJournal, pipeline:loadPipeline, wsched:loadWorkSchedule, tasks:loadTasksBoard, incidents:loadIncidents, kb:loadKb, surveys:loadSurveys, documents:loadDocuments, shifts:loadShifts, clients:loadClients,
     orders:loadOrders, products:loadProducts, stock:loadStockPage, online:loadOnlinePage, reviews:loadReviews,
-    promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist, sync:loadSync,
+    promos:loadPromos, payroll:loadPayroll, plan:loadPlanPage, blacklist:loadBlacklist,
     waitlist:loadWaitlist, reminders:loadReminders, repeat:loadRepeat, retention:loadRetention,
     finance:loadFinance, fincenter:loadFinCenter, budgets:loadBudgets, cashflow:loadCashFlow, giftcerts:loadGiftCerts, subscriptions:loadSubs, purchasing:loadPurchasing, contractors:loadContractors, settings:loadSettings, services:loadServices, svccats:loadSvcCats, saas:loadSaaS, mysub:loadMySub,
     suppliers:loadSuppliers, qcontrol:loadQControl, callcenter:loadCallCenter, viber:loadViber, branding:loadBranding, mobileapp:loadMobileApp };
@@ -5810,13 +5871,13 @@ async function renderScheduleOverview(grid) {
          ${specs.map(sp=>`<option value="${escapeHtml(sp)}"${window._schSpecFilter===sp?' selected':''}>${escapeHtml(sp)}</option>`).join('')}
        </select>
        <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одному майстру"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
-       <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — заміна автосинку BeautyPro"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
+       <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — генератор графіків"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
        <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
        <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
      </div>
      <div class="schmon"><div class="schmon-grid" style="grid-template-columns:${colW}">${head}${rows}</div></div>
-     <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня, або на <b>число дати</b> вгорі — щоб виділити весь стовпець (видно хто працює, а в кого вихідний). <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується синхронізацією BeautyPro). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>
+     <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня, або на <b>число дати</b> вгорі — щоб виділити весь стовпець (видно хто працює, а в кого вихідний). <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується автоматично). <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>
      </div>`;
 }
 // SAL-04 — копіювання тижня графіка на інший тиждень
@@ -5843,7 +5904,7 @@ function schCopyWeek(){
     else { toast((r&&r.error)||'Помилка','error'); throw new Error('copy'); }
   });
 }
-// Генератор графіка на кілька місяців уперед для ВСІХ (або обраних) майстрів — заміна BeautyPro-синку
+// Генератор графіка на кілька місяців уперед для ВСІХ (або обраних) майстрів — генератор графіків
 function schGenBatch(){
   const items = (_schMonthData && _schMonthData.items) || _schMastersCache || [];
   const mopts = items.map(m=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0"><input type="checkbox" class="gbMaster" value="${m.id}" checked> ${escapeHtml(m.name)}</label>`).join('') || '<i>Немає майстрів</i>';
@@ -5851,7 +5912,7 @@ function schGenBatch(){
   const presetOpts = presets.map(p=>`<option value="${p[0]}/${p[1]}">${p[2]}</option>`).join('');
   const nextMonth = (()=>{ const d=new Date(); d.setDate(1); const ym=new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit'}).format(d); return ym+'-01'; })();
   showModal('Генерувати графік на місяці вперед', `
-    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Заповнює графік за схемою на кілька місяців уперед — щоб онлайн-запис завжди мала вільні вікна. Замінює автосинк BeautyPro.</div>
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Заповнює графік за схемою на кілька місяців уперед — щоб онлайн-запис завжди мала вільні вікна. Генерує графік автоматично.</div>
     <label class="set-p" style="display:block;margin-bottom:4px">Схема</label>
     <select id="gbPreset" class="inp" style="margin-bottom:12px" onchange="document.getElementById('gbCustom').style.display=this.value==='custom/'?'flex':'none'">${presetOpts}</select>
     <div id="gbCustom" style="display:none;gap:10px;margin-bottom:12px">
@@ -5895,7 +5956,7 @@ function schApplyPattern(){
   const presets = [['2','2','2/2 — два через два'],['3','2','3/2'],['5','2','5/2 — пн-пт'],['6','1','6/1'],['1','1','1/1 — день через день'],['custom','','Своя схема…']];
   const presetOpts = presets.map(p=>`<option value="${p[0]}/${p[1]}">${p[2]}</option>`).join('');
   showModal('Схема графіка — '+monName, `
-    <p class="set-p" style="margin-bottom:12px">Виставить робочі дні та вихідні за обраним циклом на весь місяць. Перший робочий день — дата-якір. Усі зміни захищені від перезапису синхронізацією BeautyPro.</p>
+    <p class="set-p" style="margin-bottom:12px">Виставить робочі дні та вихідні за обраним циклом на весь місяць. Перший робочий день — дата-якір. Усі зміни захищені від автоматичного перезапису.</p>
     <label class="set-p" style="display:block;margin-bottom:4px">Майстер</label>
     <select id="apMaster" class="inp" style="margin-bottom:12px">${opts||'<option value="">Немає майстрів</option>'}</select>
     <label class="set-p" style="display:block;margin-bottom:4px">Схема</label>
@@ -5967,7 +6028,7 @@ function schEditDay(mid, date){
      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;font-size:13px;color:var(--text-secondary)">
        <input type="checkbox" id="edAll"><span>Застосувати до всіх «${_SCH_WD[dow]}» цього місяця</span>
      </label>
-     ${isManual?`<div style="margin-top:12px"><button class="btn btn-sm" onclick="schRevertDay(${mid},'${date}')">↺ Повернути до графіка BeautyPro</button></div>`:''}`;
+     ${isManual?`<div style="margin-top:12px"><button class="btn btn-sm" onclick="schRevertDay(${mid},'${date}')">↺ Повернути до базового графіка</button></div>`:''}`;
   showModal('Робочий час', body, async () => {
     const off = document.getElementById('edOff').checked;
     const start = document.getElementById('edStart').value;
@@ -5988,7 +6049,7 @@ function schEditDay(mid, date){
 async function schRevertDay(mid, date){
   await api('/api/schedule/day?master_id='+mid+'&date='+date, { method:'DELETE' });
   document.getElementById('genModal')?.remove(); _unlockScroll();
-  toast('Повернуто до графіка BeautyPro');
+  toast('Повернуто до базового графіка');
   renderScheduleOverview(_schActiveGrid());
 }
 async function schToggleActive(id, makeActive) {
@@ -7840,7 +7901,7 @@ async function loadProductSales(){
     if(brSel.options.length<=1 && r.branches?.length) brSel.innerHTML='<option value="">Усі склади</option>'+r.branches.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
     const salon = r.salon || { total:0, by_product:[], by_category:[], by_master:[] };
     const _q = v => Number(v||0).toLocaleString('uk-UA', { maximumFractionDigits: 1 });
-    // Салонні товари (BeautyPro) — позиційно
+    // Салонні товари — позиційно
     const spCat = salon.by_category.map(c=>`<tr><td>${c.category}</td><td>${_q(c.qty)}</td><td>${_money2(c.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає даних</td></tr>';
     const spProd = salon.by_product.map(p=>`<tr><td>${p.name}${p.matched?'':' <span style="color:#f59e0b" title="Не зіставлено зі складом">⚠</span>'}</td><td style="color:var(--text-secondary);font-size:12px">${p.category||''}</td><td>${_q(p.qty)}</td><td>${_money2(p.revenue)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Немає продажів</td></tr>';
     const spMaster = salon.by_master.map(m=>`<tr><td>${m.master}</td><td>${_q(m.qty)}</td><td>${_money2(m.revenue)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">Немає даних</td></tr>';
@@ -7853,7 +7914,7 @@ async function loadProductSales(){
         <div><h4 style="margin:0 0 8px">За товарами</h4><table class="tbl"><thead><tr><th>Товар</th><th>Бренд</th><th>Шт</th><th>Сума</th></tr></thead><tbody>${r.by_product.map(p=>`<tr><td>${p.name}</td><td style="font-size:12px">${p.brand||''}</td><td>${p.qty}</td><td>${_money2(p.revenue)}</td></tr>`).join('')}</tbody></table></div>
       </div>` : '';
     box.innerHTML=`
-      <div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Салон (BeautyPro): <b style="font-size:18px">${_money2(salon.total)}</b>${r.total?` &nbsp;·&nbsp; Магазин: <b>${_money2(r.total)}</b>`:''}</div>
+      <div style="padding:12px 16px;border-radius:10px;background:var(--bg-secondary);margin-bottom:14px">Салон: <b style="font-size:18px">${_money2(salon.total)}</b>${r.total?` &nbsp;·&nbsp; Магазин: <b>${_money2(r.total)}</b>`:''}</div>
       <h3 style="margin:0 0 8px">Салонні товари <button type="button" class="info-i" data-t="<b>Салонні товари.</b> Внутрішні матеріали для роботи майстрів: фарби, оксиди, витратники. На сайті їх не видно — вони списуються зі складу при візитах. Тут же задається ціна продажу за грам (колонка ₴/грам)." onclick="showInfo(event,this.dataset.t)">i</button></h3>
       <div class="grid-2" style="gap:20px">
         <div><h4 style="margin:0 0 8px">За категоріями</h4><table class="tbl"><thead><tr><th>Категорія</th><th>К-сть</th><th>Сума</th></tr></thead><tbody>${spCat}</tbody></table></div>
@@ -9371,7 +9432,7 @@ function renderJournalDay(container, data) {
     </div>`;
   }).join('');
 
-  // колонка для записів без призначеного майстра (у BeautyPro трапляється бронь без майстра) — щоб жодна не губилась
+  // колонка для записів без призначеного майстра (трапляється бронь без майстра) — щоб жодна не губилась
   const orphan = appts.filter(a => !a.master_id);
   let orphanCol = '';
   if (orphan.length && !journalFocusMaster) {
@@ -10316,7 +10377,7 @@ async function apptDelService(id, rowId) {
 }
 
 // Змінити планову суму запису вручну (заметки #94/#96) — сума пишеться в нашу БД,
-// синхронізація BeautyPro її не перетирає (manual_override)
+// автоматика її не перетирає (manual_override)
 async function apptEditPrice(id) {
   const a = (journalData?.appointments||[]).find(x => x.id === id);
   if (!a) return;
@@ -11106,7 +11167,7 @@ async function openClientCard(id){
         const lifetime = (c.total_visits!=null ? Number(c.total_visits) : (st.visits_done||0));
         if (lifetime > shown) {
           return `<div style="font-size:12px;color:var(--text-secondary);margin:0 0 8px;line-height:1.4">
-            Усього візитів за весь час — <b>${lifetime}</b> (з BeautyPro по телефону). Нижче показано ${shown} —
+            Усього візитів за весь час — <b>${lifetime}</b> (звірка по телефону). Нижче показано ${shown} —
             у систему підтягуються лише записи за останні ~3 місяці, тому давніші візити сюди не потрапляють.</div>`;
         }
         return '<div style="margin-bottom:8px"></div>';
@@ -12095,7 +12156,7 @@ const _mcIsOwner = () => !!(USER && USER.role === 'owner');
 const _MC_OWNER_TABS = ['salary','access'];
 function _mcRenderShell(){
   const ms = _mcData.ms;
-  const bpBadge = ms.beautypro_id ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">BeautyPro</span>' : '';
+  const bpBadge = ms.legacy_ref ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">Імпорт</span>' : '';
   const fullName = [ms.name, ms.surname].filter(Boolean).join(' ');
   const _visTabs = _MC_TABS.filter(([k]) => _mcIsOwner() || !_MC_OWNER_TABS.includes(k));
   if (!_mcIsOwner() && _MC_OWNER_TABS.includes(_mcTabKey)) _mcTabKey = 'profile';
@@ -12177,7 +12238,7 @@ function _mcTabProfile(){
 function _mcTabSchedule(){
   return `<h4 style="margin:0 0 10px;font-size:14px">Тижневий графік</h4>
     <div style="margin-bottom:14px">${_mcSchedule(_mcData.ms.schedule_json)}</div>
-    <p class="set-p" style="font-size:12px">Редагувати зміни по днях — у розділі <b>Персонал → Графіки</b> (помісячна сітка з реальними змінами BeautyPro).</p>`;
+    <p class="set-p" style="font-size:12px">Редагувати зміни по днях — у розділі <b>Персонал → Графіки</b> (помісячна сітка з реальними змінами).</p>`;
 }
 // ── Послуги майстра: керування звʼязками та розцінками прямо з профілю (Босс 18.07) ──
 let _mcSvcItems = [];
@@ -13700,46 +13761,6 @@ async function addToBlacklist() {
 async function removeFromBlacklist(phone) {
   await dikidiApi('/api/blacklist/'+encodeURIComponent(phone), { method:'DELETE' });
   loadBlacklist();
-}
-
-// ═══ SYNC ════════════════════════════════════
-async function loadSync() {
-  const r = await api('/api/sync/status');
-  if (!r.ok) return;
-  const s = r.sync;
-  document.getElementById('syncStats').innerHTML = [
-    ['Всього клієнтів', s.total, 'purple'],
-    ['Звʼязані з BP', s.linked, 'green'],
-    ['Не звʼязані', s.unlinked, 'orange'],
-  ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
-}
-async function runSync() {
-  const log = document.getElementById('syncLog');
-  const btn = event && event.target ? event.target.closest('button') : null;
-  if(btn) btn.disabled = true;
-  // Авто-цикл по партіях, поки є незвʼязані — щоб результат був ФІНАЛЬНИЙ, а не мінявся з кожним кліком.
-  let totalLinked = 0, totalProcessed = 0, left = '?', prevLeft = null;
-  try {
-    for(let batch=1; batch<=20; batch++){
-      log.textContent = `Звʼязую клієнтів з BeautyPro… партія ${batch}\nВже звʼязано: ${totalLinked}`;
-      const r = await api('/api/sync/all-clients', { method:'POST' });
-      if(!r || !r.ok){ log.textContent = '⚠️ ' + ((r&&r.error)||'Не вдалося. Перевірте звʼязок з BeautyPro.'); break; }
-      totalProcessed += (r.processed||0);
-      totalLinked += (r.success!=null ? r.success : (r.linked||0)); // ендпоінт повертає success
-      const st = await api('/api/sync/status').catch(()=>null);
-      left = st && st.sync ? st.sync.unlinked : '?';
-      if((r.processed||0) === 0 || Number(left) === 0) break;       // більше нема кого звʼязувати
-      if(prevLeft !== null && Number(left) >= Number(prevLeft)) break; // прогресу немає — стоп (захист від циклу)
-      prevLeft = Number(left);
-    }
-    log.textContent =
-      `✅ Синхронізація завершена.\n`+
-      `Опрацьовано: ${totalProcessed}\n`+
-      `Звʼязано нових клієнтів: ${totalLinked}\n`+
-      `Залишилось не звʼязаних: ${left}\n\n`+
-      (Number(left)>0 ? 'ℹ️ Решта не має збігу за телефоном у BeautyPro — це нормально.' : '🎉 Усі клієнти звʼязані!');
-  } catch(e){ log.textContent = '⚠️ Помилка: ' + e.message; }
-  finally { if(btn) btn.disabled = false; loadSync(); }
 }
 
 // ═══ SaaS / ПЛАТФОРМА (управління CRM як продуктом) ═══════════════
