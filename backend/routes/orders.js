@@ -301,8 +301,15 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
     // для нового (ещё не оплачен) — только снимаем резерв.
     const stockTaken = ['paid', 'packing'].includes(order.status);
     const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [id]);
+    // SLS-11: если заказ выдал склад магазина — возвращаем товар ТУДА ЖЕ, склад салона не трогаем
+    let backToStore = false;
+    if (stockTaken) {
+      try { backToStore = await require('../lib/store-fulfill').revertToStore(client, id); }
+      catch (_) { backToStore = false; }
+    }
     for (const it of items.rows) {
       if (it.variant_id == null) continue;
+      if (backToStore) continue;
       if (stockTaken) {
         await client.query(
           `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,

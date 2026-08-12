@@ -184,6 +184,36 @@ router.post('/transfer', async (req, res) => {
   } finally { client.release(); }
 });
 
+/* ═══════════ ЭТАП 4: онлайн-канал (витрина) ═══════════
+   Кто выдаёт товар по онлайн-заказу: склад САЛОНА (как исторически) или склад МАГАЗИНА.
+   По умолчанию ВЫКЛЮЧЕНО — рабочий канал продаж не меняется, пока владелец сам не включит
+   (и включить нельзя, пока склад магазина пуст: иначе заказы начнут падать «нет товара»). */
+const ONLINE_KEY = 'store_fulfills_online';
+
+router.get('/online-mode', async (req, res) => {
+  try {
+    const on = await require('../lib/settings').getSetting(ONLINE_KEY, false);
+    const st = await pool.query(
+      `SELECT COUNT(*)::int positions, COALESCE(SUM(qty),0)::numeric units
+         FROM warehouse_stock WHERE warehouse_id='store' AND qty > 0`);
+    res.json({ enabled: on === true || on === 'true', store_positions: st.rows[0].positions, store_units: Number(st.rows[0].units) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/online-mode', async (req, res) => {
+  try {
+    const enable = (req.body || {}).enabled === true;
+    if (enable) {
+      const st = await pool.query(
+        `SELECT COUNT(*)::int n FROM warehouse_stock WHERE warehouse_id='store' AND qty > 0`);
+      if (!st.rows[0].n)
+        return res.status(400).json({ error: 'Склад магазину порожній — увімкнення заблоковано: онлайн-замовлення почали б падати. Спершу проведіть приймання поставки.' });
+    }
+    await require('../lib/settings').setSetting(ONLINE_KEY, enable, req.user && req.user.id);
+    res.json({ ok: true, enabled: enable });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ═══════════ ЭТАП 3: опт-контрагенты, продажи, дашборд ═══════════ */
 
 // ── контрагенты (опт-клиенты) с текущим долгом ──────────

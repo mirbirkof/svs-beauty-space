@@ -86,6 +86,16 @@
       <div class="kpi"><div class="lbl">Борги клієнтів</div><div class="val" id="dDebt">—</div><div class="muted" id="dDebtSub"></div></div>
       <div class="kpi"><div class="lbl">Склад у грошах</div><div class="val" id="dStock">—</div><div class="muted" id="dStockSub"></div></div>
     </div>
+    <div class="card" style="background:var(--primary-light);border-color:var(--primary);margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <b>Онлайн-вітрина: хто видає товар</b>
+          <div class="muted" id="onlineHint" style="margin-top:4px">—</div>
+        </div>
+        <button class="btn" id="onlineBtn" onclick="toggleOnline()">—</button>
+      </div>
+      <div class="err-note" id="onlineErr"></div>
+    </div>
     <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
         <h3 style="font-size:14px;margin:8px 0">Виторг по каналах</h3>
@@ -430,6 +440,26 @@ async function loadDash(){
     ||'<tr><td class="muted">Оптових продажів ще не було</td></tr>';
 }
 
+/* ── режим онлайн-витрины ── */
+let ONLINE_ON=false;
+async function loadOnline(){
+  const d=await api('/api/store/online-mode');
+  if(d.error)return;
+  ONLINE_ON=!!d.enabled;
+  document.getElementById('onlineHint').innerHTML=ONLINE_ON
+    ? 'Зараз замовлення з вітрини виконує <b>склад магазину</b> — виторг іде магазину. Якщо товару в магазині немає, замовлення підстрахує салон.'
+    : `Зараз замовлення з вітрини виконує <b>склад салону</b> (як раніше). На складі магазину ${d.store_positions} позицій.`;
+  const b=document.getElementById('onlineBtn');
+  b.textContent=ONLINE_ON?'Повернути на склад салону':'Перевести онлайн на склад магазину';
+  b.className=ONLINE_ON?'btn btn-ghost':'btn';
+}
+async function toggleOnline(){
+  const err=document.getElementById('onlineErr');err.style.display='none';
+  const d=await api('/api/store/online-mode',{method:'POST',body:JSON.stringify({enabled:!ONLINE_ON})});
+  if(d.ok)loadOnline();
+  else{err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+
 /* ── опт-клиенты ── */
 let CPS=[];
 async function loadCps(){
@@ -528,7 +558,7 @@ async function paySale(id,rest){
 }
 
 document.getElementById('rcDate').value=new Date().toISOString().slice(0,10);
-loadDash();loadStock();loadHistory();loadCps();
+loadDash();loadOnline();loadStock();loadHistory();loadCps();
 </script>
 </body>
 </html>

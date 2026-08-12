@@ -371,7 +371,19 @@ router.patch('/orders/:id/status', async (req, res) => {
     // переход new → paid: списываем со склада и снимаем резерв
     if (prevStatus === 'new' && status === 'paid') {
       const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [orderId]);
+      // SLS-11: если владелец включил режим «онлайн обслуживает магазин» и товар там есть —
+      // выдаёт склад магазина (продажа попадает в его выручку). Иначе всё как раньше — салон.
+      let byStore = false;
+      try { byStore = await require('../lib/store-fulfill').fulfillFromStore(client, orderId, items.rows); }
+      catch (_) { byStore = false; }
       for (const it of items.rows) {
+        if (byStore) {
+          // товар выдал магазин: у салона снимаем только резерв, остаток не трогаем
+          await client.query(
+            `UPDATE product_variants SET reserved_qty = GREATEST(0, COALESCE(reserved_qty,0) - $1) WHERE id = $2`,
+            [it.qty, it.variant_id]);
+          continue;
+        }
         await client.query(
           `UPDATE product_variants SET
              stock_qty = GREATEST(0, COALESCE(stock_qty,0) - $1),
@@ -411,7 +423,13 @@ router.patch('/orders/:id/status', async (req, res) => {
     // переход paid → refunded: возвращаем товар, отзываем бонусы
     if (prevStatus === 'paid' && status === 'refunded') {
       const items = await client.query(`SELECT variant_id, qty FROM order_items WHERE order_id = $1`, [orderId]);
+      // SLS-11: если заказ выдавал склад МАГАЗИНА — товар возвращается туда же,
+      // иначе остатки разошлись бы (магазин недосчитался, салон получил лишнее).
+      let backToStore = false;
+      try { backToStore = await require('../lib/store-fulfill').revertToStore(client, orderId); }
+      catch (_) { backToStore = false; }
       for (const it of items.rows) {
+        if (backToStore) continue;
         await client.query(
           `UPDATE product_variants SET stock_qty = COALESCE(stock_qty,0) + $1 WHERE id = $2`,
           [it.qty, it.variant_id]
@@ -554,7 +572,7 @@ router.get('/clients', async (req, res) => {
     const r = await pool.query(
       `SELECT c.id, c.phone, c.name, c.email, c.loyalty_points,
               c.created_at, c.last_visit_at, c.first_visit_at,
-              -- Витрачено/візити — еталонні цифри з BeautyPro/букона (синхронізовані по телефону)
+              -- Витрачено/візити — еталонні цифри з стара CRM/букона (синхронізовані по телефону)
               -- + живі візити після вигрузки. Не рахуємо з appointments (там стара склейка по імені).
               COALESCE(c.total_spent, 0) AS total_spent,
               COALESCE(c.total_visits, 0) AS visits_count,
@@ -583,7 +601,7 @@ router.get('/clients/:id', async (req, res) => {
       `SELECT id, total, status, created_at FROM orders WHERE client_id = $1 ORDER BY id DESC`,
       [id]
     );
-    // Візити салону (записи BeautyPro/CRM)
+    // Візити салону (записи стара CRM/CRM)
     const appts = await pool.query(
       // Аудит 25.07: картка рахувала планову ціну (a.price) замість фактично сплаченої —
       // по базі це заниження на 384 502 ₴. Беремо реальну суму візиту.
@@ -597,7 +615,7 @@ router.get('/clients/:id', async (req, res) => {
         LIMIT 200`,
       [id]
     );
-    // Покупки товарів у салоні (BeautyPro /sales type=Product)
+    // Покупки товарів у салоні (стара CRM /sales type=Product)
     let productSales = [];
     try {
       const ps = await pool.query(
@@ -1041,12 +1059,12 @@ router.post('/masters',
     "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
   async (req, res) => {
   try {
-    const { name, phone, specialty, bio, avatar, beautypro_id, commission_pct } = req.body || {};
+    const { name, phone, specialty, bio, avatar, legacy_ref, commission_pct } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
     const r = await getPool().query(
-      `INSERT INTO masters (name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active)
+      `INSERT INTO masters (name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
-      [name, phone || null, specialty || null, bio || null, avatar || null, beautypro_id || null, commission_pct || null]
+      [name, phone || null, specialty || null, bio || null, avatar || null, legacy_ref || null, commission_pct || null]
     );
     res.status(201).json({ ok: true, master: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -1054,14 +1072,14 @@ router.post('/masters',
 
 router.patch('/masters/:id', async (req, res) => {
   try {
-    const { name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active } = req.body || {};
+    const { name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active } = req.body || {};
     const r = await getPool().query(
       `UPDATE masters SET
          name=COALESCE($2,name), phone=COALESCE($3,phone), specialty=COALESCE($4,specialty),
-         bio=COALESCE($5,bio), avatar=COALESCE($6,avatar), beautypro_id=COALESCE($7,beautypro_id),
+         bio=COALESCE($5,bio), avatar=COALESCE($6,avatar), legacy_ref=COALESCE($7,legacy_ref),
          commission_pct=COALESCE($8,commission_pct), active=COALESCE($9,active)
        WHERE id=$1 RETURNING *`,
-      [parseInt(req.params.id), name, phone, specialty, bio, avatar, beautypro_id, commission_pct, active]
+      [parseInt(req.params.id), name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, master: r.rows[0] });
@@ -1088,12 +1106,12 @@ router.get('/services', async (req, res) => {
 
 router.post('/services', async (req, res) => {
   try {
-    const { name, category, duration_min, price, beautypro_id, description } = req.body || {};
+    const { name, category, duration_min, price, legacy_ref, description } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
     const r = await getPool().query(
-      `INSERT INTO services (name, category, duration_min, price, beautypro_id, description, active)
+      `INSERT INTO services (name, category, duration_min, price, legacy_ref, description, active)
        VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING *`,
-      [name, category || null, duration_min || null, price || null, beautypro_id || null, description || null]
+      [name, category || null, duration_min || null, price || null, legacy_ref || null, description || null]
     );
     res.status(201).json({ ok: true, service: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -1101,14 +1119,14 @@ router.post('/services', async (req, res) => {
 
 router.patch('/services/:id', async (req, res) => {
   try {
-    const { name, category, duration_min, price, beautypro_id, description, active } = req.body || {};
+    const { name, category, duration_min, price, legacy_ref, description, active } = req.body || {};
     const r = await getPool().query(
       `UPDATE services SET
          name=COALESCE($2,name), category=COALESCE($3,category), duration_min=COALESCE($4,duration_min),
-         price=COALESCE($5,price), beautypro_id=COALESCE($6,beautypro_id), description=COALESCE($7,description),
+         price=COALESCE($5,price), legacy_ref=COALESCE($6,legacy_ref), description=COALESCE($7,description),
          active=COALESCE($8,active)
        WHERE id=$1 RETURNING *`,
-      [parseInt(req.params.id), name, category, duration_min, price, beautypro_id, description, active]
+      [parseInt(req.params.id), name, category, duration_min, price, legacy_ref, description, active]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, service: r.rows[0] });
