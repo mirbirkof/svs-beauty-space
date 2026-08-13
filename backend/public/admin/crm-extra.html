@@ -894,7 +894,12 @@ function _mcRenderShell(){
         <div style="font-size:24px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
-          ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
+          ${(()=>{ // 13.08: бейдж показує РОЛЬ (вибір власника), а не здогадку з галочки послуг
+            const roleLbl={owner:'Власник',admin:'Адміністратор'}[ms.staff_role];
+            const parts=[]; if(roleLbl) parts.push(roleLbl);
+            if(ms.provides_services===false) parts.push('без послуг');
+            return parts.length?`<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">${parts.join(' · ')}</span>`:'';
+          })()}
           ${bpBadge}
           <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
         </div>
@@ -932,9 +937,18 @@ function _mcTabProfile(){
     </div>
     <div style="margin-bottom:12px"><label style="${lbl}">Відомості про співробітника</label>
       <textarea id="mcBio" class="inp" rows="2" style="resize:vertical">${ms.bio||''}</textarea></div>
+    <!-- 13.08 (Босс): роль НЕ виводиться з галочки послуг. Роль — явний вибір власника,
+         галочка лише про журнал/онлайн-запис. Комбінації дозволені: адміністратор,
+         який надає послуги; майстер тимчасово без послуг — роль не змінюється. -->
+    <div style="margin-bottom:10px"><label style="${lbl}">Роль у системі</label>
+      <select id="mcRole" class="inp">
+        <option value="master" ${(ms.staff_role||'master')==='master'?'selected':''}>Майстер</option>
+        <option value="admin" ${ms.staff_role==='admin'?'selected':''}>Адміністратор</option>
+        <option value="owner" ${ms.staff_role==='owner'?'selected':''}>Власник</option>
+      </select></div>
     <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">
       <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
-      <span>Надає послуги <span style="color:#888">— показується в журналі та онлайн-записі. Вимкнено = адміністратор.</span></span></label>
+      <span>Надає послуги <span style="color:#888">— показується в журналі та онлайн-записі. На роль не впливає.</span></span></label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #eee;padding-top:14px">
       <button class="btn sm" onclick="saveMasterCard()">Зберегти профіль</button>
       <button class="btn sm" style="background:${ms.active?'#fee2e2':'#dcfce7'};color:${ms.active?'#dc2626':'#16a34a'}" onclick="toggleMasterActive(${ms.id},${!ms.active})">${ms.active?'Звільнити':'Відновити'}</button>
@@ -1203,7 +1217,9 @@ async function saveMasterCard(){
     phone:document.getElementById('mcPhone').value.trim(),
     email:document.getElementById('mcEmail').value.trim(),
     bio:document.getElementById('mcBio').value.trim(),
-    provides_services:provides, staff_role:provides?'master':'admin'
+    // 13.08 (Босс): раніше роль ПЕРЕЗАПИСУВАЛАСЬ галочкою (зняв послуги → став «адмін»).
+    // Тепер роль — тільки те, що обрав власник у полі «Роль у системі».
+    provides_services:provides, staff_role:(document.getElementById('mcRole')||{}).value||(_mcData.ms&&_mcData.ms.staff_role)||'master'
   };
   try{
     const r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)});
