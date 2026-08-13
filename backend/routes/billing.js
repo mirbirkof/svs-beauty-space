@@ -389,10 +389,20 @@ router.post('/webhooks/:gateway', async (req, res) => {
     const st = billing.gatewayStatus();
     if (!(gw in st)) return res.status(404).json({ error: 'unknown-gateway' });
     if (!st[gw]) return res.status(503).json({ error: 'gateway-not-configured' });
-    // фактическая обработка событий шлюза подключается вместе с ключами; пока ack.
-    console.log('[billing] webhook', gw, JSON.stringify(req.body || {}).slice(0, 200));
-    res.json({ received: true });
-  } catch (e) { fail(res, e); }
+    // Аудит 13.08: раніше тут був ЛИШЕ ack ({received:true}) — шлюз вважав подію
+    // доставленою і не повторював її, тож оплати/провали/повернення губились назавжди.
+    // Тепер: підпис → ідемпотентність → застосування до рахунку/підписки → чесний код.
+    const out = await billing.handleGatewayWebhook(gw, {
+      body: req.body,
+      rawBody: req.rawBody,           // виставляє express.json({verify}) у shop-api.js
+      headers: req.headers,
+    });
+    res.status(out.httpStatus).json(out.body);
+  } catch (e) {
+    // Технічний збій → 500, щоб шлюз повторив подію (а не «загубив» оплату).
+    console.error('[billing:webhook] необроблений збій', req.params.gateway, e.message);
+    res.status(500).json({ error: 'processing-failed' });
+  }
 });
 
 module.exports = router;

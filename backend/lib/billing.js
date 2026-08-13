@@ -5,6 +5,7 @@
    Платёжный шлюз pluggable: 'manual' (офлайн-оплата) работает сразу; stripe/liqpay/
    monobank активируются ключами (без ключа charge() кидает gateway-not-configured).
    Таблицы без RLS (как saas_plans) — tenant-facing фильтрует по tenant_id явно. */
+const crypto = require('crypto');
 const { getPool } = require('../db-pg');
 
 // Сбросить кэш статуса салона после смены tenants.status (оплата/блокировка),
@@ -997,6 +998,228 @@ async function billingMetrics() {
   };
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ОБРОБКА ВЕБХУКІВ ПЛАТІЖНИХ ШЛЮЗІВ (аудит 13.08 — раніше був лише ack)
+
+   Було: /api/billing/webhooks/:gateway логував тіло і відповідав 200 {received:true}.
+   Шлюз вважав подію доставленою і НІКОЛИ не повторював її. Наслідок: успішна оплата,
+   провал, повернення чи chargeback губились — підписка не активувалась (салон платив
+   і лишався заблокованим) або не блокувалась (несплата проходила непоміченою).
+
+   Стало: підпис → ідемпотентність (billing_webhook_events) → нормалізація події →
+   застосування до рахунку/підписки → чесний код відповіді.
+   ВАЖЛИВО: 200 віддаємо ТІЛЬКИ коли подія справді оброблена або це дубль.
+   Помилка обробки = 500, щоб шлюз повторив (саме для цього ретраї й існують).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// Нормалізація події конкретного шлюзу до єдиного вигляду:
+//   { eventId, type: 'paid'|'failed'|'refunded'|'other', gatewayPaymentId, amount, raw }
+function _normalizeGatewayEvent(gw, body) {
+  const b = body || {};
+  if (gw === 'monobank') {
+    const st = String(b.status || '');
+    const type = st === 'success' ? 'paid'
+      : ['failure', 'expired', 'reversed'].includes(st) ? (st === 'reversed' ? 'refunded' : 'failed')
+      : 'other';
+    return {
+      eventId: `${b.invoiceId || 'no-invoice'}:${st}:${b.modifiedDate || b.createdDate || ''}`,
+      type, gatewayPaymentId: b.invoiceId || null,
+      amount: b.amount != null ? Number(b.amount) / 100 : null, raw: b,
+    };
+  }
+  if (gw === 'liqpay') {
+    // LiqPay шле data(base64 JSON) + signature
+    let d = {};
+    try { d = JSON.parse(Buffer.from(String(b.data || ''), 'base64').toString('utf8')); } catch (_) {}
+    const st = String(d.status || '');
+    const type = ['success', 'sandbox', 'subscribed'].includes(st) ? 'paid'
+      : ['failure', 'error', 'expired'].includes(st) ? 'failed'
+      : ['reversed', 'refund'].includes(st) ? 'refunded' : 'other';
+    return {
+      eventId: `${d.order_id || 'no-order'}:${d.payment_id || ''}:${st}`,
+      type, gatewayPaymentId: d.payment_id ? String(d.payment_id) : (d.order_id || null),
+      amount: d.amount != null ? Number(d.amount) : null, raw: d,
+    };
+  }
+  if (gw === 'stripe') {
+    const t = String(b.type || '');
+    const obj = (b.data && b.data.object) || {};
+    const type = ['payment_intent.succeeded', 'invoice.paid', 'checkout.session.completed'].includes(t) ? 'paid'
+      : ['payment_intent.payment_failed', 'invoice.payment_failed'].includes(t) ? 'failed'
+      : ['charge.refunded', 'charge.dispute.created'].includes(t) ? 'refunded' : 'other';
+    return {
+      eventId: b.id || `${t}:${obj.id || ''}`,
+      type, gatewayPaymentId: obj.id || null,
+      amount: obj.amount_received != null ? Number(obj.amount_received) / 100
+        : (obj.amount_total != null ? Number(obj.amount_total) / 100 : null),
+      raw: b,
+    };
+  }
+  return { eventId: null, type: 'other', gatewayPaymentId: null, amount: null, raw: b };
+}
+
+// Перевірка підпису. null = шлюз не вміє підпису / ключ не заданий (тоді подія
+// приймається, але позначається signature_ok=null і це видно в журналі).
+async function _verifyGatewaySignature(gw, { rawBody, headers, body }) {
+  try {
+    if (gw === 'monobank') {
+      const xSign = headers['x-sign'] || headers['X-Sign'];
+      if (!xSign || !rawBody) return false;
+      return await require('./mono').verifyWebhook(rawBody, xSign);
+    }
+    if (gw === 'liqpay') {
+      const key = process.env.LIQPAY_PRIVATE_KEY;
+      if (!key) return null;
+      const data = String((body || {}).data || '');
+      const expected = crypto.createHash('sha1').update(key + data + key).digest('base64');
+      const got = String((body || {}).signature || '');
+      return expected.length === got.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(got));
+    }
+    if (gw === 'stripe') {
+      const secret = process.env.STRIPE_WEBHOOK_SECRET;
+      const header = headers['stripe-signature'];
+      if (!secret || !header || !rawBody) return null;
+      const parts = Object.fromEntries(String(header).split(',').map(x => x.split('=')));
+      const signed = `${parts.t}.${rawBody.toString('utf8')}`;
+      const expected = crypto.createHmac('sha256', secret).update(signed).digest('hex');
+      const got = String(parts.v1 || '');
+      return expected.length === got.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(got));
+    }
+  } catch (e) {
+    console.error('[billing:webhook] помилка перевірки підпису', gw, e.message);
+    return false;
+  }
+  return null;
+}
+
+// Застосування нормалізованої події до рахунку/підписки.
+async function _applyGatewayEvent(gw, ev) {
+  const pool = getPool();
+
+  // Mono має власний, повніший шлях (збереження картки, receipt, dunning) — не дублюємо.
+  if (gw === 'monobank' && ev.raw && ev.raw.invoiceId) {
+    return await payInvoiceViaMono(ev.raw.invoiceId, ev.raw);
+  }
+
+  // Пошук платежу за ідентифікатором шлюзу
+  let pay = null;
+  if (ev.gatewayPaymentId) {
+    pay = (await pool.query(
+      `SELECT * FROM payments_saas WHERE gateway=$1 AND gateway_payment_id=$2 ORDER BY id DESC LIMIT 1`,
+      [gw, String(ev.gatewayPaymentId)])).rows[0] || null;
+  }
+
+  if (ev.type === 'paid') {
+    if (pay) {
+      if (pay.status === 'succeeded') return { ok: true, status: 'paid', dedup: true, paymentId: pay.id, invoiceId: pay.invoice_id };
+      await pool.query(`UPDATE payments_saas SET status='succeeded', gateway_response=$2, updated_at=NOW() WHERE id=$1`,
+        [pay.id, JSON.stringify(ev.raw)]);
+      // повторно проводимо рахунок штатним шляхом (він же вмикає ліцензію, знімає suspend,
+      // закриває dunning і нараховує партнерську винагороду)
+      await recordPayment(pay.invoice_id, {
+        amount: ev.amount != null ? ev.amount : Number(pay.amount), gateway: gw,
+        status: 'succeeded', gatewayPaymentId: String(ev.gatewayPaymentId || ''), raw: ev.raw,
+      });
+      return { ok: true, status: 'paid', paymentId: pay.id, invoiceId: pay.invoice_id };
+    }
+    // платежу немає — пробуємо зіставити рахунок за номером у метаданих
+    const invRef = ev.raw && (ev.raw.order_id || (ev.raw.metadata && ev.raw.metadata.invoice_id));
+    const inv = invRef ? (await pool.query(
+      `SELECT * FROM invoices_saas WHERE id::text=$1 OR invoice_number=$1 LIMIT 1`, [String(invRef)])).rows[0] : null;
+    if (!inv) return { ok: false, reason: 'invoice-not-matched' };
+    await recordPayment(inv.id, {
+      amount: ev.amount != null ? ev.amount : Number(inv.total), gateway: gw,
+      status: 'succeeded', gatewayPaymentId: String(ev.gatewayPaymentId || ''), raw: ev.raw,
+    });
+    return { ok: true, status: 'paid', invoiceId: inv.id };
+  }
+
+  if (ev.type === 'failed') {
+    if (!pay) return { ok: false, reason: 'payment-not-matched' };
+    await pool.query(
+      `UPDATE payments_saas SET status='failed', failure_reason=$2, gateway_response=$3, updated_at=NOW() WHERE id=$1`,
+      [pay.id, String((ev.raw && (ev.raw.err_description || ev.raw.status)) || 'gateway-failure'), JSON.stringify(ev.raw)]);
+    // рахунок лишається несплаченим → dunning відпрацює за розкладом
+    return { ok: true, status: 'failed', paymentId: pay.id, invoiceId: pay.invoice_id };
+  }
+
+  if (ev.type === 'refunded') {
+    if (!pay) return { ok: false, reason: 'payment-not-matched' };
+    if (pay.status === 'refunded') return { ok: true, status: 'refunded', dedup: true, paymentId: pay.id };
+    const amt = ev.amount != null ? ev.amount : Number(pay.amount);
+    await pool.query(
+      `UPDATE payments_saas SET refunded_amount=LEAST($2, amount), status=CASE WHEN $2 >= amount THEN 'refunded' ELSE 'partially_refunded' END,
+              gateway_response=$3, updated_at=NOW() WHERE id=$1`,
+      [pay.id, amt, JSON.stringify(ev.raw)]);
+    // Повернення/chargeback = гроші пішли назад. Рахунок більше не оплачений.
+    await pool.query(`UPDATE invoices_saas SET status='open', paid_at=NULL, updated_at=NOW() WHERE id=$1`, [pay.invoice_id]).catch(() => {});
+    try {
+      await notifyOwner(pay.tenant_id,
+        `⚠️ <b>Повернення платежу</b>\nСума ${amt} грн повернена платіжним шлюзом (${gw}).\nРахунок знову вважається несплаченим.`,
+        'Повернення платежу — SVS CRM');
+    } catch (e) { console.error('[billing:refund-notify]', e.message); }
+    return { ok: true, status: 'refunded', paymentId: pay.id, invoiceId: pay.invoice_id };
+  }
+
+  return { ok: true, status: 'ignored', reason: 'event-type-not-actionable' };
+}
+
+/**
+ * Головна точка входу вебхука шлюзу.
+ * @returns {{httpStatus:number, body:object}} — що саме віддати шлюзу.
+ */
+async function handleGatewayWebhook(gw, { body, rawBody, headers = {} } = {}) {
+  const pool = getPool();
+  const sigOk = await _verifyGatewaySignature(gw, { rawBody, headers, body });
+  if (sigOk === false) {
+    console.error('[billing:webhook] НЕВІРНИЙ ПІДПИС', gw);
+    return { httpStatus: 401, body: { error: 'bad-signature' } };
+  }
+
+  const ev = _normalizeGatewayEvent(gw, body);
+  if (!ev.eventId) {
+    console.error('[billing:webhook] не вдалося розпізнати подію', gw);
+    return { httpStatus: 400, body: { error: 'unrecognized-event' } };
+  }
+
+  // Ідемпотентність: та сама подія обробляється рівно один раз.
+  const ins = await pool.query(
+    `INSERT INTO billing_webhook_events (gateway, event_id, event_type, signature_ok, payload)
+     VALUES ($1,$2,$3,$4,$5) ON CONFLICT (gateway, event_id) DO NOTHING RETURNING id`,
+    [gw, ev.eventId, ev.type, sigOk, JSON.stringify(ev.raw || {})]);
+  if (!ins.rows.length) {
+    return { httpStatus: 200, body: { received: true, duplicate: true } };
+  }
+  const rowId = ins.rows[0].id;
+
+  try {
+    const out = await _applyGatewayEvent(gw, ev);
+    await pool.query(
+      `UPDATE billing_webhook_events
+          SET status=$2, invoice_id=$3, payment_id=$4, error=$5, processed_at=NOW()
+        WHERE id=$1`,
+      [rowId, out.ok ? (out.status === 'ignored' ? 'ignored' : 'processed') : 'failed',
+       out.invoiceId || null, out.paymentId || null, out.ok ? null : (out.reason || 'not-applied')]);
+
+    if (!out.ok) {
+      // Подію не змогли зіставити — це НЕ привід ховати проблему: лишаємо 202,
+      // шлюз не ретраїть безкінечно, а запис у журналі видно для розбору.
+      console.error('[billing:webhook] подію не застосовано', gw, ev.eventId, out.reason);
+      return { httpStatus: 202, body: { received: true, applied: false, reason: out.reason } };
+    }
+    console.log('[billing:webhook]', gw, ev.type, '→', out.status, 'invoice', out.invoiceId || '-');
+    return { httpStatus: 200, body: { received: true, applied: true, status: out.status } };
+  } catch (e) {
+    // Технічний збій обробки: чесна 500, щоб шлюз ПОВТОРИВ подію. Запис лишається
+    // 'received', тож повтор пройде дедуп... тому знімаємо ключ, дозволяючи ретрай.
+    console.error('[billing:webhook] ЗБІЙ ОБРОБКИ', gw, ev.eventId, e.message);
+    await pool.query(`UPDATE billing_webhook_events SET status='failed', error=$2 WHERE id=$1`, [rowId, e.message]).catch(() => {});
+    await pool.query(`DELETE FROM billing_webhook_events WHERE id=$1 AND status='failed'`, [rowId]).catch(() => {});
+    return { httpStatus: 500, body: { error: 'processing-failed' } };
+  }
+}
+
 module.exports = {
   // gateways
   gatewayStatus,
@@ -1009,6 +1232,7 @@ module.exports = {
   // payments
   recordPayment, listPayments, refundPayment,
   createSubscriptionPayLink, payInvoiceViaMono,
+  handleGatewayWebhook,
   // add-on modules (SAS-11)
   createAddonInvoice, applyAddonInvoicePaid, runAddonExpiry, cancelAddon,
   // methods
