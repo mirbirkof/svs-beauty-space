@@ -21,9 +21,18 @@
 
   function api(path, opts) {
     opts = opts || {};
+    // Аудит 13.08: віджет ходив БЕЗ X-Tenant-Slug → запит падав у салон за замовчуванням,
+    // де токена іншого салону нема, і кожен екран орендаря отримував 401 на /api/notes.
+    // У салоні Босса це не було видно (він і є салон за замовчуванням).
+    var headers = {
+      'X-Admin-Token': localStorage.getItem('svs_admin_token') || TOKEN,
+      'Content-Type': 'application/json',
+    };
+    var slug = localStorage.getItem('svs_tenant_slug');
+    if (slug) headers['X-Tenant-Slug'] = slug;
     return fetch(API + '/api/notes' + path, {
       method: opts.method || 'GET',
-      headers: { 'X-Admin-Token': localStorage.getItem('svs_admin_token') || TOKEN, 'Content-Type': 'application/json' },
+      headers: headers,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     }).then(function (r) { return r.json().catch(function () { return {}; }); });
   }

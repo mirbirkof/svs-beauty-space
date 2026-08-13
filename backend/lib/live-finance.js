@@ -59,7 +59,14 @@ async function liveFinance(pool, from, to) {
   const toDay = kyivDayFmt.format(new Date(ts(to) - 1));
   const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
-              COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
+              -- Аудит 13.08 (те саме, що в routes/pnl.js): відкидати ВСІ приходи по
+              -- замовленнях не можна — сусідній запит ordR бере лише status='paid',
+              -- тож гроші за замовлення, яке потім повернули, не рахувались у виручці
+              -- взагалі, а сума повернення все одно йшла у витрати. Прибуток занижений
+              -- рівно на суму повернень (серпень 2026: 8 112 ₴). Відкидаємо лише те,
+              -- що ordR уже порахував.
+              COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND NOT (ref_type='order'
+                       AND EXISTS (SELECT 1 FROM orders o WHERE o.id=cash_operations.ref_id AND o.status='paid'))),0)::numeric prod,
               COUNT(DISTINCT CASE WHEN category IN ('sale_service','sale_product')
                     THEN COALESCE(ref_type || ':' || ref_id::text, 'op:' || id::text) END)::int cnt
          FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [from, to]),

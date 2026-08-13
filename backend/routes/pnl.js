@@ -127,11 +127,19 @@ async function aggregate(start, end, branchId) {
   const ordRev = await safeRows(
     `SELECT COALESCE(SUM(total),0)::numeric s FROM orders
       WHERE status = 'paid' AND created_at >= $1 AND created_at < $2`, [start, end]);
+  // Аудит 13.08: тут відкидались УСІ касові приходи, привʼязані до замовлення —
+  // щоб не задвоїти з ordRev. Але ordRev рахує лише status='paid', тож прихід за
+  // замовленням, яке потім повернули (status='refunded'), не потрапляв у виручку
+  // ЖОДНОГО разу, а рядок «Повернення» його все одно віднімав. Подвійний штраф:
+  // серпень 2026 — 7 замовлень на 8 112 ₴, прибуток занижений рівно на цю суму
+  // (показувало 9 800 ₴ замість 17 912 ₴). Тепер відкидаємо тільки те, що ordRev
+  // уже порахував (замовлення в статусі 'paid').
   const prodCash = await safeRows(
     `SELECT COALESCE(SUM(co.amount),0)::numeric s
        FROM cash_operations co ${cb.join}
       WHERE co.type='in' AND co.category='sale_product'
-        AND co.ref_type IS DISTINCT FROM 'order'
+        AND NOT (co.ref_type = 'order' AND EXISTS (
+          SELECT 1 FROM orders o WHERE o.id = co.ref_id AND o.status = 'paid'))
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}`, p);
   // Сертифікати: gift_certificate_transactions issue (продаж/випуск).
   // НЕ виручка, а аванс (зобовʼязання салону): виручка визнається при погашенні,
