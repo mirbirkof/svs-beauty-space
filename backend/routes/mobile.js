@@ -585,7 +585,7 @@ router.get('/clients/:id', mobileAuth, needPerm('mobile.clients.read'), async (r
         [id]
       );
       photos = ph.rows;
-    } catch (_) { /* файлы ещё не проиндексированы */ }
+    } catch (e) { console.error('[mobile] файли не прочитались:', e.message); }
 
     // Абонементы
     let subscriptions = [];
@@ -600,7 +600,7 @@ router.get('/clients/:id', mobileAuth, needPerm('mobile.clients.read'), async (r
         [id]
       );
       subscriptions = subs.rows;
-    } catch (_) { /* subscriptions ещё не создана */ }
+    } catch (e) { console.error('[mobile] АБОНЕМЕНТИ клієнта не віддано (можлива подвійна оплата візиту):', e.message); }
 
     return res.json({
       ok: true,

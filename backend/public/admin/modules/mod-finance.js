@@ -656,7 +656,10 @@
           if (items.length > 3) html += '<span style="margin-left:8px;color:#888">+' + (items.length - 3) + ' ще</span>';
           html += '</div>';
           alertsBar.innerHTML = html;
-        } catch (_) { alertsBar.innerHTML = ''; }
+        } catch (e) {
+          // аудит 13.08 (в2): раніше збій СТИРАВ бюджетні алерти — виглядало як «всё чисто»
+          alertsBar.innerHTML = '<div style="color:#c0392b;font-size:12px;padding:4px 8px">⚠️ Бюджетні алерти не завантажились (збій)</div>';
+        }
       }
 
       // ── завантаження списку бюджетів ──────────────────────────

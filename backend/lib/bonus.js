@@ -180,7 +180,7 @@ async function previewRedeem(opts = {}) {
         WHERE client_id=$1 AND remaining > 0 AND (available_at IS NULL OR available_at <= now())`, [clientId])).rows[0].a);
     if (b < amount) amount = round2(b);
     return amount > 0 ? amount : 0;
-  }).catch(() => 0);
+  }).catch((e) => { console.error('[bonus:estimate] збій оцінки списання (каса покаже 0 бонусів):', e.message); return 0; });
 }
 
 // opts: { clientId, amount (бонусів), checkAmount?, branchId?, sourceType?, sourceId?, description? }

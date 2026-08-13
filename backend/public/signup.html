@@ -78,6 +78,7 @@
 
         <div id="plan_block">
           <label>Тариф</label>
+          <div id="plans_note" style="font-size:12px;color:#b45309"></div>
           <div class="plans" id="plans_list">
             <div class="plan active" data-plan="professional"><b>Professional</b><small>популярний</small></div>
           </div>
@@ -193,7 +194,11 @@
       const r = await fetch(API + '/api/v2/public/plans?currency=UAH');
       const d = await r.json();
       const rows = (d && d.rows) || [];
-      if (!rows.length) { bindPlanClicks(); return; }
+      if (!rows.length) {
+        // аудит 13.08 (в2): статичний план-заглушка без цін — скажемо про це чесно
+        try { const l=document.getElementById('plans_note'); if(l) l.textContent='⚠️ Актуальні тарифи не завантажились — показано типовий план. Ціну уточнюйте після реєстрації.'; } catch(_) {}
+        bindPlanClicks(); return;
+      }
       const list = document.getElementById('plans_list');
       list.innerHTML = rows.map(p => {
         const pr = p.prices || {};

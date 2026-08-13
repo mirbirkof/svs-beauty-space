@@ -1336,7 +1336,12 @@ router.patch('/appointments/:id', async (req, res) => {
         const { reverseWriteOffForAppointment } = require('../lib/consumables');
         const rev = await reverseWriteOffForAppointment(Number(req.params.id));
         if (rev && rev.reversed) stock = rev;
-      } catch (e) { /* best-effort: не блокуємо зміну статусу */ }
+      } catch (e) {
+        // Аудит 13.08 (в2): раніше БЕЗ жодного сліду — статус змінювався, а матеріали
+        // лишалися списаними. Статус не блокуємо, але збій тепер видно.
+        console.error('[schedule:status] матеріали НЕ повернуто при відкаті статусу', req.params.id, e.message);
+        stock = { reversed: false, error: e.message };
+      }
       if (status === 'confirmed' || status === 'noshow') {
         // в журнал событий + вебхуки. noshow → база для авто-тега/переслота (подписчик — отдельно)
         await emitAppt('appointment.' + status, req.params.id, r.rows[0] && r.rows[0].master_id);
@@ -1956,7 +1961,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
           prepaidApplied = Math.min(round2(pb.rows[0].prepaid_amount), remaining);
           remaining = round2(remaining - prepaidApplied);
         }
-      } catch (e) { console.error('[pay/prepaid]', e.message); }
+      } catch (e) {
+        // Аудит 13.08 (в2): збій пошуку передоплати означав «передоплати нема» → клієнт,
+        // що вже заплатив онлайн, платив ПОВНУ суму вдруге. Тепер чесна відмова.
+        console.error('[pay/prepaid] збій пошуку передоплати', id, e.message);
+        return await failPay(503, { error: 'prepaid-check-failed',
+          message: 'Не вдалося перевірити передоплату клієнта. Оплату не проведено — спробуйте ще раз.' });
+      }
     }
 
     const finalCash = Math.max(0, round2(remaining));
@@ -2133,8 +2144,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
         const acc = await bonusLib.accrue({ clientId: appt.client_id, checkAmount: finalCash, autoRule: 'payment',
           sourceType: 'appointment', sourceId: id, description: `Візит #${id}` });
         accrued = acc ? Number(acc.amount || 0) : 0;
-        if (accrued > 0) await pool.query(`UPDATE appointments SET pay_bonus_accrued=$2 WHERE id=$1`, [id, accrued]).catch(() => {});
-      } catch (_) {}
+        if (accrued > 0) await pool.query(`UPDATE appointments SET pay_bonus_accrued=$2 WHERE id=$1`, [id, accrued])
+          .catch((e) => console.error('[pay/bonus-mark]', id, e.message));
+      } catch (e) {
+        // Аудит 13.08 (в2): клієнт не отримував бонуси за оплачений візит — без сліду.
+        console.error('[pay/bonus-accrue] бонуси НЕ нараховано', id, e.message);
+        accrued = -1; // маркер збою для відповіді
+      }
     }
     await emitAppointmentCompleted(id, appt.master_id);
 
@@ -2142,7 +2158,10 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // з першоджерела, не інкремент (аудит 25.07: поле роками тільки зменшувалось). Fire-and-forget.
     if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
-      discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount }, bonus_accrued: accrued });
+      discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount },
+      bonus_accrued: Math.max(0, accrued),
+      ...(accrued === -1 ? { bonus_warning: 'Бонуси за візит НЕ нараховано (технічний збій) — нарахуйте вручну.' } : {}),
+      ...(stock && stock.written === false ? { stock_warning: 'Матеріали візиту НЕ списано зі складу — спишіть вручну.' } : {}) });
   } catch (e) {
     // оплата зірвалась — знімаємо атомарний захват, інакше запис назавжди «оплачений»
     if (res.locals._payClaim) await getPool().query(

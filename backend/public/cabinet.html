@@ -374,7 +374,8 @@ window.openPay = async (orderId, sum, num) => {
   $('payModal').classList.remove('hidden');
 
   // Check readiness
-  const r = await fetch('/api/shop/readiness').then(r => r.json()).catch(() => ({ components: { mono_acquiring: 'awaiting' } }));
+  const r = await fetch('/api/shop/readiness').then(r => r.json()).catch(() => ({ _failed: true, components: { mono_acquiring: 'awaiting' } })); // аудит 13.08 (в2): збій ≠ «еквайринг очікує»
+  if (r._failed) { try { const aw = $('payAwaiting'); if (aw) aw.textContent = '⚠️ Не вдалося перевірити стан оплати (збій зв’язку). Оновіть сторінку і спробуйте ще раз.'; } catch (_) {} }
   if (r.components && r.components.mono_acquiring === 'ready') {
     $('payButton').classList.remove('hidden');
     $('payAwaiting').classList.add('hidden');

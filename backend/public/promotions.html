@@ -68,8 +68,12 @@ async function load() {
   const params = new URLSearchParams();
   if (currentCat) params.append('category', currentCat);
   params.append('sort', document.getElementById('sort').value);
-  const r = await fetch(`${API}/api/promotions?${params}`).then(r => r.json()).catch(() => ({items:[]}));
+  const r = await fetch(`${API}/api/promotions?${params}`).then(r => r.json()).catch(() => ({items:[], _failed:true}));
   const list = document.getElementById('list');
+  if (r._failed) { // аудит 13.08 (в2): технічний збій не можна продавати клієнту як «акцій немає»
+    list.innerHTML = '<p class="text-slate-500 col-span-2 py-12 text-center">Не вдалося завантажити акції — оновіть сторінку.</p>';
+    return;
+  }
   if (!r.items?.length) {
     list.innerHTML = '<p class="text-slate-500 col-span-2 py-12 text-center">Акцій зараз немає — завітайте пізніше</p>';
     return;

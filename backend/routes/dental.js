@@ -384,7 +384,7 @@ router.get('/form043/:client_id', requireFeature('dental.chart'), async (req, re
     try {
       med = (await pool.query(
         `SELECT allergies, chronic_conditions, current_medications FROM medical_cards WHERE client_id=$1`, [cid])).rows[0] || null;
-    } catch (_) {}
+    } catch (e) { console.error('[dental:043] медкарта не прочиталась — форма друкується БЕЗ алергій/протипоказань:', e.message); }
     const plans = (await pool.query(
       `SELECT p.id, p.title, p.diagnosis, p.status, p.total_estimate,
               COALESCE(json_agg(json_build_object('position', st.position, 'title', st.title,

@@ -24,6 +24,7 @@ async function getBotForTenant(tenantId) {
   const hit = cache.get(tenantId);
   if (hit && Date.now() - hit.at < CACHE_TTL) return hit.bot;
   let bot = null;
+  let dbFailed = false;
   try {
     const r = await getPool().query(
       `SELECT s.bot_token, s.bot_username, s.webhook_secret, s.status, t.name AS salon_name
@@ -38,7 +39,15 @@ async function getBotForTenant(tenantId) {
         source: 'db',
       };
     }
-  } catch (e) { console.error('[tenant-bots] load failed:', e.message); }
+  } catch (e) {
+    // Аудит 13.08 (в2): раніше збій читання кешував bot:null на 60с — на хвилину салон
+    // «залишався без бота», і нагадування цього тіку губились безповоротно.
+    // Тепер: тримаємо останній ВІДОМИЙ бот, а помилку не кешуємо.
+    console.error('[tenant-bots] load failed:', e.message);
+    const prev = cache.get(tenantId);
+    if (prev && prev.bot) return prev.bot;
+    dbFailed = true;
+  }
   if (!bot && tenantId === DEFAULT_TENANT_ID && process.env.TELEGRAM_BOT_TOKEN) {
     bot = {
       token: process.env.TELEGRAM_BOT_TOKEN,
@@ -48,7 +57,7 @@ async function getBotForTenant(tenantId) {
       source: 'env',
     };
   }
-  cache.set(tenantId, { bot, at: Date.now() });
+  if (!dbFailed) cache.set(tenantId, { bot, at: Date.now() }); // збій БД не кешуємо
   return bot;
 }
 

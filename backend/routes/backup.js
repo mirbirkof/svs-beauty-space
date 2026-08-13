@@ -134,7 +134,13 @@ router.get('/restore/verify', READ, async (req, res) => {
         .filter(f => f.endsWith('.json.gz'))
         .map(f => ({ f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
         .sort((a, b) => b.mtime - a.mtime);
-    } catch (_) {}
+    } catch (e) {
+      // Аудит 13.08 (в2): раніше «каталог не читається» виглядало як «снапшотів немає» —
+      // реальна поломка інфраструктури бекапів маскувалась під штатний стан.
+      console.error('[backup] каталог бекапів НЕ читається:', e.message);
+      return res.status(500).json({ ok: false, error: 'backup-dir-unreadable',
+        message: 'Каталог бекапів недоступний: ' + e.message });
+    }
     if (!files.length) {
       return res.json({ ok: false, reason: 'no-local-snapshot',
         hint: 'Запусти POST /api/backup/run, затем повтори проверку.' });

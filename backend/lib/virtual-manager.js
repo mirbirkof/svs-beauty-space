@@ -123,7 +123,7 @@ async function _monthPlanTotal(pool, tenantId = null) {
       `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
          FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true
         WHERE mp.year=$1 AND mp.month=$2 AND ($3::uuid IS NULL OR mp.tenant_id = $3)`, [year, month, tenantId])).rows;
-    const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map());
+    const grid = await shiftDaysByMaster(pool, ym).catch((e) => { console.error('[vm] сітка змін не прочиталась (план=0):', e.message); return new Map(); });
     let total = 0;
     for (const p of plans) {
       total += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total);
@@ -145,7 +145,7 @@ async function _ownerRecipients(pool, tenantId) {
         -- НЕ text LIKE '%*%': "crm.*" адміна теж містить зірочку → фінзвіт витік би адмінам.
         AND (r.code = 'owner' OR r.name ILIKE '%власн%' OR r.name ILIKE '%owner%'
              OR r.permissions::jsonb ? '*')`,
-    [tenantId]).catch(() => ({ rows: [] }))).rows;
+    [tenantId]).catch((e) => { console.error('[vm] запит впав:', e.message); return { rows: [] }; })).rows;
   return rows.map(r => String(r.telegram_id)).filter(Boolean);
 }
 
@@ -154,7 +154,7 @@ async function ownerDailyReportAll(pool = getPool()) {
   let sent = 0;
   const tenants = (await runAs(null, () => pool.query(
     `SELECT id FROM tenants WHERE COALESCE(status,'active') NOT IN ('suspended','cancelled')`))
-    .then(r => r.rows).catch(() => [])) || [];
+    .then(r => r.rows).catch((e) => { console.error('[vm] запит впав:', e.message); return []; })) || [];
   for (const t of tenants) {
     try { sent += await ownerDailyReport(pool, t.id); }
     catch (e) { console.error('[vm] owner-report tenant', t.id, e.message); }
@@ -204,7 +204,7 @@ async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
   const today = kyivDate();
   if ((await getSetting('vm_admin_dayplan_sent', null)) === today) return 0;
 
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[vm] запит впав:', e.message); return []; });
 
   // Денна ціль = план місяця / днів у місяці
   const mPlan = await _monthPlanTotal(pool);
@@ -267,7 +267,7 @@ async function weeklyMonthlyReminders(pool = getPool(), tenantId = DEFAULT_TENAN
   // день тижня (0=Нд..6=Сб) і число місяця — з київської дати
   const dow = new Date(today + 'T12:00:00Z').getUTCDay();
   const dom = Number(today.slice(8, 10));
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[vm] запит впав:', e.message); return []; });
   let sent = 0;
 
   // Понеділок — закупка

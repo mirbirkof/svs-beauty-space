@@ -25,8 +25,14 @@ const { getPool } = require('../db-pg');
 // запроса (getTenantId), fallback — реальный платформенный DEFAULT_TENANT_ID.
 const DEFAULT_TENANT = '00000000-0000-0000-0000-000000000001';
 function currentTenant() {
-  try { return require('./tenant').getTenantId() || DEFAULT_TENANT; }
-  catch (_) { return DEFAULT_TENANT; }
+  try {
+    const tid = require('./tenant').getTenantId();
+    if (tid) return tid;
+    // Аудит 13.08 (в2): подія без контексту тенанта пишеться в журнал салону Босса —
+    // якщо це подія орендаря, журнал забруднюється. Тепер такі випадки видно.
+    console.warn('[event-bus] подія без tenant-контексту → пишу в DEFAULT_TENANT');
+    return DEFAULT_TENANT;
+  } catch (e) { console.warn('[event-bus] tenant-контекст недоступний:', e.message); return DEFAULT_TENANT; }
 }
 
 const emitter = new EventEmitter();

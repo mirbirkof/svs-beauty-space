@@ -664,7 +664,7 @@ router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (
         WHERE ${where}
         GROUP BY oi.product_name, b.name ORDER BY revenue DESC LIMIT 500`,
       params
-    ).catch(() => ({ rows: [] }));
+    ).catch((e) => { console.error('[reports] запит впав (у звіті нулі):', e.message); return { rows: [] }; });
 
     const total = byBrand.rows.reduce((a,r)=>a+Number(r.revenue),0);
 
@@ -680,7 +680,7 @@ router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (
         WHERE sps.sale_date BETWEEN $1 AND $2
         GROUP BY sps.product_name, ss.category ORDER BY revenue DESC LIMIT 500`,
       [from, to]
-    ).catch(() => ({ rows: [] }));
+    ).catch((e) => { console.error('[reports] запит впав (у звіті нулі):', e.message); return { rows: [] }; });
     const salonByCategory = await pool.query(
       `SELECT COALESCE(ss.category,'(без категорії)') AS category,
               SUM(sps.qty)::numeric AS qty,
@@ -690,7 +690,7 @@ router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (
         WHERE sps.sale_date BETWEEN $1 AND $2
         GROUP BY ss.category ORDER BY revenue DESC`,
       [from, to]
-    ).catch(() => ({ rows: [] }));
+    ).catch((e) => { console.error('[reports] запит впав (у звіті нулі):', e.message); return { rows: [] }; });
     const salonByMaster = await pool.query(
       `SELECT COALESCE(m.name, sps.master_name, '(без майстра)') AS master,
               SUM(sps.qty)::numeric AS qty,
@@ -700,7 +700,7 @@ router.get('/product-sales', requirePerm('reports.read'), cacheReport(), async (
         WHERE sps.sale_date BETWEEN $1 AND $2
         GROUP BY COALESCE(m.name, sps.master_name, '(без майстра)') ORDER BY revenue DESC`,
       [from, to]
-    ).catch(() => ({ rows: [] }));
+    ).catch((e) => { console.error('[reports] запит впав (у звіті нулі):', e.message); return { rows: [] }; });
     const salonTotal = salonByCategory.rows.reduce((a,r)=>a+Number(r.revenue),0);
 
     res.json({
@@ -1042,7 +1042,7 @@ router.get('/overview', requirePerm(), cacheReport(), async (req, res) => {
            FROM appointments
           WHERE starts_at BETWEEN $1 AND $2 AND starts_at <= NOW()
             AND status NOT IN ('cancelled','noshow')`,
-        [periodFrom, periodTo]).catch(() => ({ rows: [{ n: 0 }] }));
+        [periodFrom, periodTo]).catch((e) => { console.error('[reports] лічильник впав (буде 0):', e.message); return { rows: [{ n: 0 }] }; });
       const visitsN = Number(visitsCnt.rows[0]?.n || 0);
       out.visits_month = visitsN;
       out.avg_check_month = visitsN > 0 ? Math.round(out.revenue_month.total / visitsN) : 0;

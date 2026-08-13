@@ -18,7 +18,7 @@ async function createAdminTask({ tenant_id, title, description, priority = 'medi
           AND status NOT IN ('cancelled')
           AND created_at > NOW() - ($3 || ' days')::interval LIMIT 1`,
       [tag, client_id, String(cooldownDays)]
-    ).catch(() => ({ rowCount: 0 }));
+    ).catch((e) => { console.error('[automations] перевірка дубля впала (можливий дубль задачі):', e.message); return { rowCount: 0 }; });
     if (dup.rowCount) return null;
     const r = await pool.query(
       `INSERT INTO tasks (tenant_id, title, description, priority, status, client_id, appointment_id, tags, creator_name, due_date)

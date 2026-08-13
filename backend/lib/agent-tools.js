@@ -30,7 +30,7 @@ const TOOLS = {
            FROM ai_kb_chunks c JOIN ai_kb_documents d ON d.id=c.document_id
            CROSS JOIN LATERAL (SELECT COALESCE(MAX(word_similarity(tok,c.content)),0) score FROM unnest($2::text[]) tok) ws
           WHERE c.tsv @@ to_tsquery('simple',$1) OR ws.score > 0.3
-          ORDER BY score DESC LIMIT 5`, [orQuery, tokens]).catch(() => []);
+          ORDER BY score DESC LIMIT 5`, [orQuery, tokens]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { results: rows.map(r => ({ title: r.title, source: r.source_type, text: r.content.slice(0, 500) })) };
     },
   },
@@ -46,7 +46,7 @@ const TOOLS = {
         `SELECT name, category, duration_min, price FROM services
           WHERE COALESCE(active,true)=true AND deleted_at IS NULL
           ${f ? `AND (lower(name) LIKE $1 OR lower(COALESCE(category,'')) LIKE $1)` : ''}
-          ORDER BY category NULLS LAST, name LIMIT ${f ? '40' : '120'}`, f ? [f] : []).catch(() => []);
+          ORDER BY category NULLS LAST, name LIMIT ${f ? '40' : '120'}`, f ? [f] : []).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { services: rows.map(s => ({ name: s.name, category: s.category, minutes: s.duration_min, price: Number(s.price) || null })) };
     },
   },
@@ -58,8 +58,8 @@ const TOOLS = {
     is_destructive: false,
     async impl(args) {
       let rows = [];
-      if (args.phone) rows = await q(`SELECT id, name, phone, email, total_spent, last_visit_at, notes FROM clients WHERE phone ILIKE $1 LIMIT 5`, [`%${args.phone}%`]).catch(() => []);
-      if (!rows.length && args.name) rows = await q(`SELECT id, name, phone, email, total_spent, last_visit_at, notes FROM clients WHERE name ILIKE $1 LIMIT 5`, [`%${args.name}%`]).catch(() => []);
+      if (args.phone) rows = await q(`SELECT id, name, phone, email, total_spent, last_visit_at, notes FROM clients WHERE phone ILIKE $1 LIMIT 5`, [`%${args.phone}%`]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
+      if (!rows.length && args.name) rows = await q(`SELECT id, name, phone, email, total_spent, last_visit_at, notes FROM clients WHERE name ILIKE $1 LIMIT 5`, [`%${args.name}%`]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { clients: rows.map(c => ({ id: c.id, name: c.name, phone: c.phone, total_spent: Number(c.total_spent) || 0, last_visit_at: c.last_visit_at, notes: c.notes })) };
     },
   },
@@ -77,7 +77,7 @@ const TOOLS = {
            FROM appointments a
            LEFT JOIN services s ON s.id=a.service_id
            LEFT JOIN masters m ON m.id=a.master_id
-          WHERE a.client_id=$1 ORDER BY a.starts_at DESC LIMIT 15`, [id]).catch(() => []);
+          WHERE a.client_id=$1 ORDER BY a.starts_at DESC LIMIT 15`, [id]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { visits: rows.map(v => ({ date: v.starts_at, service: v.service, master: v.master, status: v.status, price: Number(v.price) || null })) };
     },
   },
@@ -119,7 +119,7 @@ const TOOLS = {
            FROM cash_operations co
            JOIN appointments a ON co.ref_type='appointment' AND co.ref_id=a.id AND co.tenant_id=a.tenant_id
            JOIN services s ON s.id=a.service_id
-          WHERE ${w.join(' AND ')} GROUP BY s.name ORDER BY revenue DESC LIMIT ${lim}`, p).catch(() => []);
+          WHERE ${w.join(' AND ')} GROUP BY s.name ORDER BY revenue DESC LIMIT ${lim}`, p).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { top: rows.map(r => ({ service: r.name, count: r.cnt, revenue: Math.round(r.revenue) })) };
     },
   },
@@ -151,7 +151,7 @@ const TOOLS = {
       if (!id || !args.note) return { error: 'client_id і note обовʼязкові' };
       const r = await q(
         `UPDATE clients SET notes = COALESCE(notes,'') || $2 WHERE id=$1 RETURNING id`,
-        [id, `\n[AI ${new Date().toISOString().slice(0, 10)}] ${args.note}`]).catch(() => []);
+        [id, `\n[AI ${new Date().toISOString().slice(0, 10)}] ${args.note}`]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return r.length ? { ok: true, client_id: id } : { error: 'клієнта не знайдено' };
     },
   },
@@ -199,7 +199,7 @@ const TOOLS = {
         `SELECT category, method, COALESCE(SUM(amount),0)::numeric v, COUNT(*)::int n
            FROM cash_operations WHERE type='in' AND category IN ('sale_service','sale_product')
             AND (created_at AT TIME ZONE 'Europe/Kiev')::date = (NOW() AT TIME ZONE 'Europe/Kiev')::date - ${off}
-          GROUP BY category, method`).catch(() => []);
+          GROUP BY category, method`).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       let svc = 0, prod = 0, cash = 0, card = 0, checks = 0;
       for (const r of rows) { const v = Number(r.v); if (r.category === 'sale_service') svc += v; else prod += v; if (r.method === 'cash') cash += v; else card += v; checks += r.n; }
       return { day: args.day || 'today', total: Math.round(svc + prod), services: Math.round(svc), products: Math.round(prod), cash: Math.round(cash), card: Math.round(card), checks };
@@ -216,9 +216,9 @@ const TOOLS = {
       const revenue = Number(rev.v);
       const ym = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }).slice(0, 7);
       const [y, mo] = ym.split('-').map(Number);
-      const plans = await q(`SELECT mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts, mp.master_id FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true WHERE mp.year=$1 AND mp.month=$2`, [y, mo]).catch(() => []);
+      const plans = await q(`SELECT mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts, mp.master_id FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true WHERE mp.year=$1 AND mp.month=$2`, [y, mo]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       let plan = 0;
-      try { const { shiftDaysByMaster } = require('./schedule-month'); const grid = await shiftDaysByMaster(pool, ym).catch(() => new Map()); for (const p of plans) plan += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total); } catch (_) {}
+      try { const { shiftDaysByMaster } = require('./schedule-month'); const grid = await shiftDaysByMaster(pool, ym).catch((e) => { console.error('[agent-tools] запит впав:', e.message); return new Map(); }); for (const p of plans) plan += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total); } catch (_) {}
       return { revenue: Math.round(revenue), plan: Math.round(plan), pct: plan > 0 ? Math.round(revenue / plan * 100) : null };
     },
   },
@@ -257,7 +257,7 @@ const TOOLS = {
           WHERE b.freq >= 2 AND (
             (li.iv IS NOT NULL AND b.last < NOW() - make_interval(days => li.iv) AND b.last > NOW() - make_interval(days => li.iv + 105))
             OR (li.iv IS NULL AND b.last < NOW()-INTERVAL '75 days' AND b.last > NOW()-INTERVAL '180 days'))
-          ORDER BY b.last DESC LIMIT ${lim}`).catch(() => []);
+          ORDER BY b.last DESC LIMIT ${lim}`).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { count: rows.length, clients: rows.map(r => ({ name: r.name, phone: r.phone })) };
     },
   },
@@ -269,7 +269,7 @@ const TOOLS = {
     is_destructive: false,
     async impl(args) {
       const f = args.query ? `%${String(args.query).toLowerCase()}%` : null;
-      const rows = await q(`SELECT id, name FROM masters WHERE COALESCE(active,true)=true ${f ? 'AND lower(name) LIKE $1' : ''} ORDER BY name LIMIT 60`, f ? [f] : []).catch(() => []);
+      const rows = await q(`SELECT id, name FROM masters WHERE COALESCE(active,true)=true ${f ? 'AND lower(name) LIKE $1' : ''} ORDER BY name LIMIT 60`, f ? [f] : []).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { masters: rows.map(m => ({ id: m.id, name: m.name })) };
     },
   },
@@ -295,7 +295,7 @@ const TOOLS = {
            LEFT JOIN services s ON s.id=a.service_id
           WHERE (a.starts_at AT TIME ZONE 'Europe/Kiev')::date = $1::date
             AND a.status NOT IN ('cancelled')${mf}
-          ORDER BY a.starts_at LIMIT 80`, p).catch(() => []);
+          ORDER BY a.starts_at LIMIT 80`, p).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       return { date: day, count: rows.length, appointments: rows };
     },
   },
@@ -347,7 +347,7 @@ const TOOLS = {
     async impl(args) {
       const mid = parseInt(args.master_id, 10), amount = Number(args.amount);
       if (!mid || !(amount > 0)) return { error: 'master_id і amount обовʼязкові' };
-      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch(() => []))[0];
+      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; }))[0];
       if (!m) return { error: 'майстра не знайдено' };
       const r = await q(
         `INSERT INTO payroll_bonuses (master_id, master_name, amount, kind, reason, bonus_date)
@@ -365,7 +365,7 @@ const TOOLS = {
     async impl(args) {
       const mid = parseInt(args.master_id, 10), amount = Number(args.amount);
       if (!mid || !(amount > 0)) return { error: 'master_id і amount обовʼязкові' };
-      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch(() => []))[0];
+      const m = (await q(`SELECT name FROM masters WHERE id=$1`, [mid]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; }))[0];
       if (!m) return { error: 'майстра не знайдено' };
       const r = await q(
         `INSERT INTO payroll_penalties (master_id, master_name, amount, kind, reason, penalty_date)

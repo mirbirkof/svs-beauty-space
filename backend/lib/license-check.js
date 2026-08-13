@@ -24,7 +24,13 @@ async function isLicensed(tenantId, moduleCode) {
           AND (l.expires_at IS NULL OR l.expires_at > NOW() - interval '3 days')
         LIMIT 1`, [tenantId, moduleCode]);
     ok = !!r.rowCount;
-  } catch (e) { console.error('[license-check]', e.message); ok = true; /* fail-open: не валимо запис через збій БД */ }
+  } catch (e) {
+    // Аудит 13.08 (в2): fail-open свідомий (не валимо роботу салону через збій БД),
+    // АЛЕ раніше цей true ще й КЕШУВАВСЯ — безкоштовний доступ жив і після відновлення.
+    // Тепер: віддаємо true разово, у кеш НЕ кладемо, наступний запит перевірить чесно.
+    console.error('[license-check] збій перевірки ліцензії (разовий fail-open, без кешу):', e.message);
+    return true;
+  }
   cache.set(key, { ok, at: Date.now() });
   return ok;
 }

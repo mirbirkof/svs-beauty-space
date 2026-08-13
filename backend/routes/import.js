@@ -96,7 +96,7 @@ router.post('/clients', async (req, res) => {
       const cnt = await pool.query("SELECT COUNT(*)::int AS n FROM clients WHERE deleted_at IS NULL");
       remainingCap = Math.max(0, planLimit - Number(cnt.rows[0].n));
     }
-  } catch (e) { /* fail-open, як і enforcePlanLimit */ }
+  } catch (e) { console.error('[import] ліміт клієнтів НЕ перевірено (fail-open, імпорт без стелі):', e.message); }
 
   for (let r = 1; r < rows.length; r++) {
     const cells = rows[r];

@@ -144,7 +144,8 @@ router.post('/payroll/calculate', async (req, res) => {
         // календарні дні періоду — інакше переплата за вихідні.
         const fromStr = String(period_start).slice(0, 10);
         const toStr = String(period_end).slice(0, 10);
-        let shifts = await shiftDaysForMasterInRange(pool, master_id, fromStr, toStr).catch(() => 0);
+        let shifts = await shiftDaysForMasterInRange(pool, master_id, fromStr, toStr)
+          .catch((e) => { console.error('[payroll] графік змін не прочитався (fallback на факт. дні):', e.message); return 0; });
         if (!shifts) { // нема графіка — fallback на фактично відпрацьовані дні
           const wd = await pool.query(
             `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
@@ -500,6 +501,7 @@ router.post('/payroll/advances', async (req, res) => {
     );
     // авто-расход аванса в кассу. Без відкритої зміни пишемо з shift_id NULL (як часткова/повна
     // виплата ЗП), інакше виданий аванс зникає з обліку каси — гроші видані, руху немає.
+    let cashboxError = null;
     try {
       const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
       await pool.query(
@@ -507,9 +509,15 @@ router.post('/payroll/advances', async (req, res) => {
          VALUES ($1,'out','salary',$2,$3,'advance',$4,$5,$6)`,
         [sh.rows[0] ? sh.rows[0].id : null, amount, method || 'cash', r.rows[0].id, master_id, `Аванс ${master_name || '#' + master_id}`]
       );
-    } catch (e) { console.warn('[advance-cashbox]', e.message); }
+    } catch (e) {
+      // Аудит 13.08 (в2): аванс записаний і буде утриманий із ЗП, а видатку з каси НЕМАЄ —
+      // каса завищена. Раніше це був тихий warn. Тепер помітно і в лозі, і у відповіді.
+      console.error('[advance-cashbox] АВАНС БЕЗ КАСИ', r.rows[0].id, amount, e.message);
+      cashboxError = e.message;
+    }
     logAction({ user: req.user, action: 'advance.created', entity: 'payroll_advances', entity_id: r.rows[0].id, ip: req.ip, meta: { master_id, amount } });
-    res.json({ ok: true, id: r.rows[0].id });
+    res.json({ ok: true, id: r.rows[0].id,
+      ...(cashboxError ? { cashbox_written: false, warning: 'Аванс збережено, але видаток у касу НЕ проведено (' + cashboxError + '). Проведіть у касі вручну.' } : {}) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -703,7 +711,7 @@ router.get('/payroll/my', async (req, res) => {
           const monthEnd = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).toISOString().slice(0, 10);
           const todayStr = new Date().toISOString().slice(0, 10);
           const toStr = (ym === kyivYm && todayStr < monthEnd) ? todayStr : monthEnd;
-          let shifts = await shiftDaysForMasterInRange(pool, mid, fromStr, toStr).catch(() => 0);
+          let shifts = await shiftDaysForMasterInRange(pool, mid, fromStr, toStr).catch((e) => { console.error('[payroll] зміни не прочитались (фікс = 0):', e.message); return 0; });
           if (!shifts) {
             const wd = await pool.query(
               `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d

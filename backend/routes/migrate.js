@@ -114,7 +114,7 @@ async function importClients(pool, colMap, dataRows, user, ip) {
       const cur = (await pool.query(`SELECT COUNT(*)::int n FROM clients WHERE deleted_at IS NULL`)).rows[0]?.n || 0;
       clientCap = Math.max(0, planLimit - cur);
     }
-  } catch (_) { /* fail-open */ }
+  } catch (e) { console.error('[plan-limit] ліміт клієнтів НЕ перевірено (fail-open, імпорт без стелі):', e.message); }
   for (let r = 0; r < dataRows.length; r++) {
     const cells = dataRows[r]; const rec = {};
     colMap.forEach((f, i) => { if (f) rec[f] = (cells[i] != null ? String(cells[i]).trim() : ''); });
@@ -264,7 +264,7 @@ async function importVisits(pool, colMap, dataRows, user, ip) {
   try {
     const planLimit = await require('../lib/plan-limits').getPlanLimit('max_clients');
     if (planLimit != null) clientCap = Math.max(0, planLimit - clients.length);
-  } catch (_) { /* fail-open */ }
+  } catch (e) { console.error('[plan-limit] ліміт клієнтів НЕ перевірено (fail-open, імпорт без стелі):', e.message); }
 
   for (let r = 0; r < dataRows.length; r++) {
     const cells = dataRows[r]; const rec = {};

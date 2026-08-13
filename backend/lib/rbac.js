@@ -173,7 +173,7 @@ async function logAction({ user, action, entity, entity_id, ip, meta }) {
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [user?.id || null, user?.display_name || 'anon', action, entity || null, entity_id || null, ip || null, meta ? JSON.stringify(meta) : null]
     );
-  } catch (e) { /* не валим основной запрос */ }
+  } catch (e) { console.error('[rbac:logAction] аудит-слід НЕ записано:', e.message); }
   // INF-01: публикуем доменное событие в шину (best-effort, never throws).
   // Ленивый require, чтобы избежать циклов и не падать, если шина недоступна.
   try {

@@ -7,12 +7,15 @@ const TZ = 'Europe/Kiev';
 function money(n) { const v = Math.round(Number(n) || 0); return v.toLocaleString('uk-UA').replace(/ /g, ' ') + ' грн'; }
 function pctBar(p) { return p >= 100 ? '✅' : p >= 80 ? '🟢' : p >= 50 ? '🟡' : '🔴'; }
 
-// одиночний рядок або {} при помилці
+// Аудит 13.08 (в2): раніше збій мовчки давав {}/[] → ранковий звіт власнику виходив
+// з НУЛЯМИ замість виручки і виглядав як «поганий день», а не аварія. Тепер збій видно.
 async function one(pool, sql, params) {
-  try { return (await pool.query(sql, params)).rows[0] || {}; } catch (_) { return {}; }
+  try { return (await pool.query(sql, params)).rows[0] || {}; }
+  catch (e) { console.error('[owner-report] запит впав (у звіті буде 0):', e.message); return {}; }
 }
 async function many(pool, sql, params) {
-  try { return (await pool.query(sql, params)).rows || []; } catch (_) { return []; }
+  try { return (await pool.query(sql, params)).rows || []; }
+  catch (e) { console.error('[owner-report] запит впав (у звіті буде порожньо):', e.message); return []; }
 }
 
 // Головний збирач. date = 'YYYY-MM-DD' (київський день), за замовч. — сьогодні.

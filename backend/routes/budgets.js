@@ -422,7 +422,7 @@ router.get('/:id/plan-fact', async (req, res) => {
 async function logTransition(budgetId, fromStatus, toStatus, user, comment) {
   await pool.query(
     'INSERT INTO budget_approval_log (budget_id, from_status, to_status, user_id, comment) VALUES ($1,$2,$3,$4,$5)',
-    [budgetId, fromStatus, toStatus, user || null, comment || null]).catch(function() {});
+    [budgetId, fromStatus, toStatus, user || null, comment || null]).catch(function(e) { console.error('[budgets] історію погодження НЕ записано:', e.message); });
 }
 
 // POST /:id/submit — draft → pending_approval
@@ -434,7 +434,7 @@ router.post('/:id/submit', async (req, res) => {
     if (bg.status !== 'draft') return res.status(409).json({ error: 'budget must be in draft to submit' });
     await pool.query("UPDATE budgets SET status='pending_approval', updated_at=NOW() WHERE id=$1", [id]);
     await logTransition(id, 'draft', 'pending_approval', req.user && req.user.display_name, req.body && req.body.comment);
-    logAction({ user: req.user, action: 'budget.submit', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    logAction({ user: req.user, action: 'budget.submit', entity: 'budget', entity_id: id, ip: req.ip }).catch(function(e) { console.error('[budgets] історію погодження НЕ записано:', e.message); });
     res.json({ ok: true, status: 'pending_approval' });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
@@ -451,7 +451,7 @@ router.post('/:id/approve', async (req, res) => {
       "UPDATE budgets SET status='active', approved_by=$1, approved_at=NOW(), updated_at=NOW() WHERE id=$2",
       [approver, id]);
     await logTransition(id, 'pending_approval', 'active', approver, req.body && req.body.comment);
-    logAction({ user: req.user, action: 'budget.approve', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    logAction({ user: req.user, action: 'budget.approve', entity: 'budget', entity_id: id, ip: req.ip }).catch(function(e) { console.error('[budgets] історію погодження НЕ записано:', e.message); });
     res.json({ ok: true, status: 'active' });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
@@ -465,7 +465,7 @@ router.post('/:id/reject', async (req, res) => {
     if (bg.status !== 'pending_approval') return res.status(409).json({ error: 'budget must be pending_approval' });
     await pool.query("UPDATE budgets SET status='draft', updated_at=NOW() WHERE id=$1", [id]);
     await logTransition(id, 'pending_approval', 'draft', req.user && req.user.display_name, req.body && req.body.comment);
-    logAction({ user: req.user, action: 'budget.reject', entity: 'budget', entity_id: id, ip: req.ip }).catch(function() {});
+    logAction({ user: req.user, action: 'budget.reject', entity: 'budget', entity_id: id, ip: req.ip }).catch(function(e) { console.error('[budgets] історію погодження НЕ записано:', e.message); });
     res.json({ ok: true, status: 'draft' });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });

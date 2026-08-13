@@ -96,6 +96,7 @@ router.post('/', authClient({ optional: true }), async (req, res) => {
       }
       const unit = Number(row.price);
       total += unit * qty;
+      if (row.wholesale == null) console.warn('[orders] variant', row.id, 'без закупівельної ціни — собівартість замовлення буде занижена');
       wholesaleTotal += Number(row.wholesale || 0) * qty;
       lines.push({
         variant_id: row.id,
@@ -363,6 +364,7 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
           [order.client_id, -pts, String(id)]
         );
       }
+      let refundCashError = null;
       // возврат денег: компенсирующий расход в открытую смену (если приход шёл в кассу)
       try {
         const sh = await client.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
@@ -373,12 +375,18 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
             [sh.rows[0].id, order.total, id, `Скасування оплаченого замовлення #${id}`]
           );
         }
-      } catch (e) { console.warn('[orders:cancel:refund]', e.message); }
+      } catch (e) {
+        // Аудит 13.08 (в2): замовлення позначається refunded, а видаток з каси не проведено —
+        // каса завищена на суму замовлення. Тепер це помітно (лог + поле у відповіді).
+        console.error('[orders:cancel:refund] ВИДАТОК НЕ ПРОВЕДЕНО', id, e.message);
+        refundCashError = e.message;
+      }
     }
     const finalStatus = stockTaken ? 'refunded' : 'cancelled';
     await client.query(`UPDATE orders SET status = $2, updated_at = NOW() WHERE id = $1`, [id, finalStatus]);
     await client.query('COMMIT');
-    res.json({ ok: true, status: finalStatus });
+    res.json({ ok: true, status: finalStatus,
+      ...(refundCashError ? { refund_cash_written: false, warning: 'Повернення проведено, але видаток у касу НЕ записано — проведіть вручну.' } : {}) });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[orders:cancel]', e);

@@ -283,7 +283,7 @@ const _t2m = (t) => { if (!t) return null; const [h, m] = String(t).split(':'); 
 const _m2t = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
 
 async function computeFreeGaps() {
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[manager] запит зайнятості впав (вікна будуть завищені):', e.message); return []; });
   const { date: today, nowMin } = _kyivNow();
   // майстри на зміні сьогодні (надають послуги). Джерело правди — master_schedule_days.
   const work = await q(
@@ -363,7 +363,7 @@ router.get('/daily-briefing', requirePerm('reports.read'), async (req, res) => {
 
 router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
   try {
-    const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+    const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[manager] запит зайнятості впав (вікна будуть завищені):', e.message); return []; });
     const kyiv = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' });
     const ym = kyiv().slice(0, 7);
     const [year, month] = ym.split('-').map(Number);

@@ -58,8 +58,10 @@ function enforcePlanLimit(limitKey, countSql) {
       }
       return next();
     } catch (e) {
-      console.error('[plan-limits]', limitKey, e.message);
-      return next(); // fail-open: помилка перевірки не повинна класти створення
+      // Аудит 13.08 (в2): fail-open свідомий (збій перевірки не блокує роботу салону),
+      // але тепер він ГОЛОСНИЙ — щоб обхід лімітів тарифу не залишався непоміченим.
+      console.error('[plan-limits] ЛІМІТ НЕ ПЕРЕВІРЕНО (fail-open):', limitKey, e.message);
+      return next();
     }
   };
 }

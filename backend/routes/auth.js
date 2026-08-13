@@ -828,14 +828,19 @@ router.post('/send-email-verification', authRequired, async (req, res) => {
 
     let channelReady = false;
     try { channelReady = require('../lib/channels/email-resend').isConfigured(); } catch (_) {}
+    let queued = false;
     try {
       const hub = require('../lib/notification-hub');
-      await hub.enqueue({ recipient: u.email, channel: 'email', category: 'transactional',
+      const out = await hub.enqueue({ recipient: u.email, channel: 'email', category: 'transactional',
         priority: 'high', subject: 'Підтвердження пошти — SVS CRM', body: html, source: 'email-verify' });
+      queued = !(out && out.skipped);
       if (channelReady) hub.processQueue(5).catch(() => {});
-    } catch (_) {}
+    } catch (e) { console.error('[auth:verify-email] лист НЕ поставлено в чергу:', e.message); }
 
-    res.json({ ok: true, queued: true, channel_ready: channelReady, email: u.email });
+    // Аудит 13.08 (в2): раніше queued:true писалось безумовно — користувач чекав листа,
+    // якого не буде. Тепер відповідь чесна.
+    res.json({ ok: queued, queued, channel_ready: channelReady, email: u.email,
+      ...(queued ? {} : { message: 'Лист не вдалося поставити в чергу — спробуйте ще раз.' }) });
   } catch (e) {
     res.status(500).json({ ok: false, error: 'verify-send-failed', ...(process.env.NODE_ENV !== 'production' && { detail: e.message }) });
   }

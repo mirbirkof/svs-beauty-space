@@ -210,11 +210,19 @@ router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res)
       const poi = byId[it.po_item_id];
       if (!poi) continue;
       // стеля: не можна прийняти більше, ніж лишилось по позиції (захист від повторів)
+      // Аудит 13.08 (в2): parseFloat('abc'||0)=NaN проходив усі перевірки (NaN<=0 = false)
+      // і отруював total_cost та quantity_received. Тепер нечислове = чесна відмова.
+      const num = (v, label) => {
+        if (v == null || v === '') return 0;
+        const n = parseFloat(v);
+        if (Number.isNaN(n) || n < 0) { const e = new Error(`${label}: очікується число ≥ 0, отримано «${v}»`); e.user = true; throw e; }
+        return n;
+      };
       const remaining = Math.max(parseFloat(poi.quantity_ordered) - parseFloat(poi.quantity_received || 0), 0);
-      const q = Math.min(parseFloat(it.quantity_received || 0), remaining);
-      if (q <= 0 && !(parseFloat(it.quantity_defective || 0) > 0)) continue;
+      const q = Math.min(num(it.quantity_received, 'кількість прийнятого'), remaining);
+      if (q <= 0 && !(num(it.quantity_defective, 'брак') > 0)) continue;
       recvTotal += q * parseFloat(poi.unit_price);
-      recItems.push({ poi, q, def: parseFloat(it.quantity_defective || 0), wrong: parseFloat(it.quantity_wrong || 0), notes: it.notes });
+      recItems.push({ poi, q, def: num(it.quantity_defective, 'брак'), wrong: num(it.quantity_wrong, 'пересорт'), notes: it.notes });
     }
     const sr = await client.query(
       `INSERT INTO stock_receipts(supplier_id, invoice_no, total_cost, notes)
@@ -303,7 +311,12 @@ router.post('/orders/:id/receive', requirePerm('stock.manage'), async (req, res)
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'purchase.receive', entity: 'purchase_order', entity_id: +poId, ip: req.ip, meta: { stockReceiptId, status: newStatus } });
     res.json({ ok: true, receipt_id: prId, stock_receipt_id: stockReceiptId, status: newStatus, has_discrepancy: hasDisc, unassigned_count: unassigned.length, unassigned: unassigned.slice(0, 10) });
-  } catch (e) { await client.query('ROLLBACK'); console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    if (e && e.user) return res.status(400).json({ error: e.message }); // аудит 13.08 (в2): зрозуміла відмова замість 500
+    res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  }
   finally { client.release(); }
 });
 
@@ -459,6 +472,7 @@ async function runAutoPurchase() {
       const poId = po.rows[0].id;
       for (const r of rows) {
         const qty = Math.max((Number(r.max_stock) || Number(r.min_stock) * 2 || 0) - Number(r.stock), 1);
+        console.warn('[autopurchase] позиція', r.name, '— замовлення створюється З НУЛЬОВОЮ ціною (unit_price=0), заповніть ціни постачальника');
         await client.query(
           `INSERT INTO purchase_order_items(purchase_order_id, product_id, product_name, quantity_ordered, unit_price, total_price)
            VALUES ($1,$2,$3,$4,0,0)`, [poId, r.product_id, r.name, qty]);

@@ -11,7 +11,9 @@ const { maskPhone, shouldMaskPhones } = require('../lib/settings');
 const router = express.Router();
 const pool = getPool();
 const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows);
-const safe = (promise, fallback) => promise.catch(() => fallback);
+// Аудит 13.08 (в2): збій джерела картки виглядав як «0 бонусів / 0 візитів» — адміністратор
+// давав/не давав знижку по пустоті. Збій тепер видно в лозі.
+const safe = (promise, fallback) => promise.catch((e) => { console.error('[crm-card] джерело впало:', e.message); return fallback; });
 const err = (res, e) => { console.error('[crm-card]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'internal' : e.message }); };
 
 router.use((req, res, next) => {

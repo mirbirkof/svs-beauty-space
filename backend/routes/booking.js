@@ -70,12 +70,15 @@ function genToken() {
 async function resolveBookingIds(pool, serviceRef, masterRef) {
   const digits = (s) => String(s || '').replace(/^svc-|^mst-/, '');
   const svcRef = digits(serviceRef), mstRef = digits(masterRef);
+  // Аудит 13.08 (в2): раніше збій БД маскувався під «не знайдено» — тінь у розкладі
+  // не створювалась, майстер запису не бачив, а клієнт отримував «підтверджено». Тепер видно.
   const svc = await pool.query(
     `SELECT id, price, COALESCE(duration_min, 60) AS dur FROM services
-      WHERE legacy_ref::text = $1 OR id::text = $1 LIMIT 1`, [svcRef]).catch(() => ({ rows: [] }));
+      WHERE legacy_ref::text = $1 OR id::text = $1 LIMIT 1`, [svcRef])
+    .catch((e) => { console.error('[booking:resolve] services впав:', e.message); return { rows: [] }; });
   const mst = await pool.query(
     `SELECT id FROM masters WHERE legacy_ref::text = $1 OR id::text = $1 LIMIT 1`, [mstRef])
-    .catch(() => ({ rows: [] }));
+    .catch((e) => { console.error('[booking:resolve] masters впав:', e.message); return { rows: [] }; });
   return {
     serviceId: svc.rows[0]?.id || null,
     masterId: mst.rows[0]?.id || null,
@@ -221,7 +224,14 @@ router.post('/init', validateBody({
       if (req.tenant_id !== DEFAULT_TENANT_ID && (!tbot || tbot.source !== 'db')) {
         return res.status(409).json({ error: 'Підключіть Telegram-бота салону: CRM → «ТГ-бот запису». Після цього клієнти зможуть підтверджувати онлайн-запис.' });
       }
-    } catch (_e) { /* fallback на бота платформи */ }
+    } catch (e) {
+      // Аудит 13.08 (в2): раніше збій перевірки мовчки віддавав deep_link на бота ПЛАТФОРМИ —
+      // запис орендаря пішов би в салон Босса. Тепер для НЕ-платформи це чесна відмова.
+      console.error('[booking:deep-link] перевірка бота салону впала:', e.message);
+      if (req.tenant_id !== DEFAULT_TENANT_ID) {
+        return res.status(503).json({ error: 'Тимчасовий збій перевірки бота салону. Спробуйте за хвилину.' });
+      }
+    }
     res.json({
       ok: true,
       token,
@@ -638,10 +648,12 @@ router.post('/telegram', async (req, res) => {
   }
   try {
     await processUpdate(req.body, tg, { name: 'SVS Beauty Space' });
-  } catch (e) {
-    console.error('[booking/telegram]', e.message);
-  } finally {
     if (!res.headersSent) res.json({ ok: true });
+  } catch (e) {
+    // Аудит 13.08 (в2): раніше finally відповідав 200 ЗАВЖДИ — Telegram вважав апдейт
+    // доставленим і не повторював, підтвердження запису губилось. Тепер збій → 500 → ретрай TG.
+    console.error('[booking/telegram] збій обробки, віддаю 500 щоб Telegram повторив:', e.message);
+    if (!res.headersSent) res.status(500).json({ ok: false });
   }
 });
 

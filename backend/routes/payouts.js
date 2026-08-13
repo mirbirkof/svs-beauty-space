@@ -241,7 +241,7 @@ async function liveEstimate(masterId, from, to) {
         // отримував авто-нарахування без фіксованої частини. Платимо за РОБОЧІ зміни з графіка
         // (fallback — фактичні робочі дні), як у payroll-stock/«Підтвердженні».
         const fromStr = String(from).slice(0, 10), toStr = String(to).slice(0, 10);
-        let shifts = await shiftDaysForMasterInRange(getPool(), masterId, fromStr, toStr).catch(() => 0);
+        let shifts = await shiftDaysForMasterInRange(getPool(), masterId, fromStr, toStr).catch((e) => { console.error('[payouts] зміни не прочитались (фікс-частина = 0):', e.message); return 0; });
         if (!shifts) {
           const wd = await q(
             `SELECT COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kiev')::date)::int AS d
@@ -323,7 +323,7 @@ router.get('/sheet', async (req, res) => {
       for (let i = 0; i < pending.length; i += BATCH) {
         const slice = pending.slice(i, i + BATCH);
         const ests = await Promise.all(slice.map(m =>
-          liveEstimate(m.id, from, to).then(est => ({ m, est })).catch(() => null)));
+          liveEstimate(m.id, from, to).then(est => ({ m, est })).catch((e) => { console.error('[payouts] розрахунок майстра впав (випав зі зведення):', e.message); return null; })));
         for (const item of ests) {
           if (!item) continue;
           const { m, est } = item;

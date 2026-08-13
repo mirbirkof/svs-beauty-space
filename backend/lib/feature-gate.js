@@ -55,7 +55,7 @@ async function featureAllowed(key) {
     if (!badStatus && ov && keyVariants(key).some((k) => ov[k] === true)) {
       return { ok: true, reason: 'addon-override' };
     }
-  } catch (_) {}
+  } catch (e) { console.error('[feature-gate] overrides не розібрались (куплений аддон може бути закритий):', e.message); }
   // фіча вимкнена в плані — можливо куплена окремим модулем
   const lic = await pool.query(
     `SELECT 1 FROM licenses l JOIN module_catalog mc ON mc.id = l.module_id

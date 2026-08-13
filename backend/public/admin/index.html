@@ -6865,9 +6865,14 @@ async function loadDashboard() {
   // Салонний дашборд: каса дня/місяця, записи, клієнти, топ-майстри
   let o = {};
   const _rq = (_dashRange.from && _dashRange.to) ? `?from=${_dashRange.from}&to=${_dashRange.to}` : '';
-  try { o = await api('/api/reports/overview'+_rq); } catch { o = {}; }
-  // Реальні витрати за обраний період (матеріали + нарахований % майстрам) — для прибутку і панелі
-  let le = null; try { le = await api('/api/reports/live-expenses'+_rq); } catch {}
+  // Аудит 13.08 (в2): раніше збій цих запитів малював дашборд із НУЛЯМИ («Записів 0»,
+  // прибуток = вся виручка) без жодного слова. Тепер збій видно банером.
+  let _dashErr = null;
+  try { o = await api('/api/reports/overview'+_rq); } catch (e) { o = {}; _dashErr = 'огляд'; }
+  let le = null; try { le = await api('/api/reports/live-expenses'+_rq); } catch (e) { _dashErr = (_dashErr ? _dashErr + ' + ' : '') + 'витрати'; }
+  if (_dashErr) {
+    try { toast('⚠️ Дашборд неповний: не завантажились дані (' + _dashErr + '). Цифри нижче НЕ актуальні — оновіть сторінку.'); } catch (_) {}
+  }
 
   // ── Кабінет майстра: власна статистика ──
   if (o && o.is_master) {
@@ -7092,9 +7097,10 @@ async function loadQuality(){
   body.innerHTML = '<div class="empty"><span class="material-icons-round">verified</span>Рахую якість...</div>';
   try {
     const [ov, ar] = await Promise.all([
-      api('/api/quality/overview').catch(()=>null),
+      api('/api/quality/overview').catch(()=>({_failed:true})),
       api('/api/quality/at-risk?limit=20').catch(()=>null),
     ]);
+    if (ov && ov._failed){ body.innerHTML = '<div class="empty" style="padding:20px;color:#c0392b;font-weight:600">⚠️ Дані якості не завантажились (збій) — це не «замало даних». Оновіть сторінку.</div>'; return; } // аудит 13.08 (в2)
     if (!ov || !ov.masters || !ov.masters.length){ body.innerHTML = '<div class="empty" style="padding:20px">Замало даних для оцінки якості (потрібно ≥10 виконаних записів на майстра).</div>'; return; }
     const info = document.getElementById('qualInfo');
     const sg = QUAL_GRADE[ov.salon_grade] || QUAL_GRADE.average;
@@ -8657,7 +8663,8 @@ async function loadSubs(){
 }
 let _subPlans=[];
 async function _loadSubPlans(activeOnly){
-  try{ const r=await api('/api/subscriptions/plans'+(activeOnly?'?active=true':'')); _subPlans=r.items||[]; }catch{ _subPlans=[]; }
+  try{ const r=await api('/api/subscriptions/plans'+(activeOnly?'?active=true':'')); _subPlans=r.items||[]; }
+  catch(e){ _subPlans=[]; try{ toast('⚠️ Тарифи абонементів не завантажились (збій) — це не «тарифів немає».'); }catch(_){} }
   return _subPlans;
 }
 async function subSellModal(){
@@ -9716,7 +9723,8 @@ async function renderJournalWeek(container, dateStr) {
 let _roomsCache = null;
 async function getRooms() {
   if (_roomsCache) return _roomsCache;
-  try { const r = await api('/api/rooms'); _roomsCache = r.items || []; } catch { _roomsCache = []; }
+  try { const r = await api('/api/rooms'); _roomsCache = r.items || []; }
+  catch (e) { _roomsCache = []; try { toast('⚠️ Кабінети не завантажились (збій) — запис без кабінету може дати подвійне бронювання.'); } catch (_) {} }
   return _roomsCache;
 }
 function apptClientFlags(a){
@@ -13518,7 +13526,11 @@ async function loadPayrollMasters() {
   try {
     const r = await dikidiApi('/api/schedule/masters');
     _pyMasters = (r.items || []).map(m => ({ id: String(m.id), name: m.name || ('#' + m.id) }));
-  } catch { _pyMasters = []; }
+  } catch (e) {
+    // Аудит 13.08 (в2): пустий селект майстрів = «нарахування нікому» — тепер видно, що це збій
+    _pyMasters = [];
+    try { toast('⚠️ Список майстрів не завантажився (збій) — нарахування тимчасово недоступні.'); } catch (_) {}
+  }
   const opts = '<option value="">— майстер —</option>' + _pyMasters.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
   ['pyCalcMaster', 'pyBonMaster', 'pyPenMaster', 'pyAdvMaster'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = opts; });
 }
@@ -14213,7 +14225,10 @@ function loadSaaS(){ saasTab(_saasTab || 'analytics'); }
 async function loadSaasAnalytics(){
   const box = document.getElementById('saasMetrics');
   box.innerHTML = '<div style="opacity:.6;padding:8px">Завантаження...</div>';
-  let a; try { a = await api('/api/saas/analytics'); } catch { a = null; }
+  // Аудит 13.08 (в2): раніше збій запиту показувався як «підписок ще немає» —
+  // власник платформи бачив нульовий MRR при робочому білінгу. Тепер збій = збій.
+  let a, aErr = false; try { a = await api('/api/saas/analytics'); } catch { a = null; aErr = true; }
+  if (aErr){ box.innerHTML='<div style="color:#c0392b;padding:8px;font-weight:600">⚠️ Дані не завантажились (технічний збій) — це НЕ «підписок немає». Оновіть сторінку.</div>'; document.getElementById('saasFunnel').innerHTML=''; return; }
   if (!a || a.error){ box.innerHTML='<div style="opacity:.6;padding:8px">Поки що немає даних — підписок ще немає.</div>'; document.getElementById('saasFunnel').innerHTML=''; return; }
   const m = a.metrics || a;
   const churn = (a.churn && a.churn.monthly_churn_rate!=null) ? a.churn.monthly_churn_rate : (a.churn && a.churn.rate!=null ? a.churn.rate : (m.churn!=null ? m.churn : 0));
@@ -14299,14 +14314,16 @@ async function loadSaasAnalytics(){
 // Розгортання деталей по кліку на картку (#56: квадратики мають бути клікабельні).
 async function saasDrill(kind){
   if (kind==='paying'){
-    let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
+    let r, rErr=false; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; rErr=true; }
+    if(rErr){ showModal('Платні підписки (джерело MRR)', '<div style="color:#c0392b;padding:8px;font-weight:600">⚠️ Дані не завантажились (технічний збій) — це НЕ «даних немає». Закрийте вікно і спробуйте ще раз.</div>'); return; } // аудит 13.08 (в2): збій ≠ «підписок немає»
     const rows=((r&&r.rows)||[]).filter(s=>['active','past_due'].includes(s.status));
     const body = rows.length
       ? `<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>`<tr style="cursor:pointer" onclick="document.getElementById('genModal')?.remove();_unlockScroll();saasOpenTenant('${s.tenant_id}')"><td style="font-weight:600">${escapeHtml(s.tenant_name||String(s.tenant_id||''))}</td><td>${escapeHtml(s.plan_code||'—')}</td><td>${s.billing_cycle==='yearly'?'річний':'місячний'}</td><td>${saasSubStatus(s.status)}</td><td>${s.current_period_end?String(s.current_period_end).slice(0,10):'—'}</td></tr>`).join('')}</tbody></table>`
       : '<div style="opacity:.7;padding:8px">Платних підписок ще немає. MRR/ARR з\'являться після першої реальної оплати клієнта.</div>';
     showModal('Платні підписки (джерело MRR)', body);
   } else if (kind==='collected'){
-    let r; try{ r=await api('/api/billing/admin/payments?limit=100'); }catch{ r=null; }
+    let r, rErr=false; try{ r=await api('/api/billing/admin/payments?limit=100'); }catch{ r=null; rErr=true; }
+    if(rErr){ showModal('Отримані платежі', '<div style="color:#c0392b;padding:8px;font-weight:600">⚠️ Дані не завантажились (технічний збій) — це НЕ «даних немає». Закрийте вікно і спробуйте ще раз.</div>'); return; } // аудит 13.08 (в2)
     const rows=(r&&r.rows)||[];
     const body = rows.length
       ? `<table class="tbl"><thead><tr><th>Дата</th><th>Салон</th><th>Сума</th><th>Шлюз</th><th>Статус</th></tr></thead><tbody>${rows.map(p=>`<tr><td>${p.created_at?String(p.created_at).slice(0,10):'—'}</td><td>${escapeHtml(p.tenant_name||String(p.tenant_id||''))}</td><td>${saasMoney(p.amount)}</td><td>${escapeHtml(p.gateway||'—')}</td><td>${escapeHtml(p.status||'—')}</td></tr>`).join('')}</tbody></table>`
@@ -14352,7 +14369,8 @@ async function loadSaasTenants(){
   const box=document.getElementById('saasTenantsList');
   const q=(document.getElementById('saasTenantSearch')||{}).value||'';
   box.innerHTML='<div style="opacity:.6;padding:8px">Завантаження...</div>';
-  let r; try{ r=await api('/api/tenant-mgmt/tenants?limit=100'+(q.trim()?'&search='+encodeURIComponent(q.trim()):'')); }catch{ r=null; }
+  let r, rErr=false; try{ r=await api('/api/tenant-mgmt/tenants?limit=100'+(q.trim()?'&search='+encodeURIComponent(q.trim()):'')); }catch{ r=null; rErr=true; }
+  if(rErr){ box.innerHTML='<div style="color:#c0392b;padding:8px;font-weight:600">⚠️ Дані не завантажились (технічний збій) — це НЕ «даних немає». Оновіть сторінку.</div>'; return; } // аудит 13.08 (в2): збій ≠ «орендарів немає»
   const rows=(r&&r.rows)||[];
   if(!rows.length){ box.innerHTML='<div style="opacity:.6;padding:8px">Орендарів не знайдено. Поки що CRM використовує лише ваш салон.</div>'; return; }
   box.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Статус</th><th>Health</th><th></th></tr></thead><tbody>${rows.map(t=>`
@@ -14689,7 +14707,8 @@ async function loadSaasBilling(){
   mbox.innerHTML = (m&&!m.error)
     ? [saasKpi('MRR',saasMoney(m.mrr),'green'),saasKpi('ARR',saasMoney(m.arr),'purple'),saasKpi('Churn',(Math.round(Number(m.churn||0)*10)/10)+'%','orange')].join('')
     : '';
-  let r; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; }
+  let r, rErr=false; try{ r=await api('/api/billing/admin/subscriptions?limit=100'); }catch{ r=null; rErr=true; }
+  if(rErr){ lbox.innerHTML='<div style="color:#c0392b;padding:8px;font-weight:600">⚠️ Дані не завантажились (технічний збій) — це НЕ «даних немає». Оновіть сторінку.</div>'; return; } // аудит 13.08 (в2): борги підписників мають бути видні
   const rows=(r&&r.rows)||[];
   if(!rows.length){ lbox.innerHTML='<div style="opacity:.6;padding:8px">Активних підписок немає.</div>'; return; }
   lbox.innerHTML=`<table class="tbl"><thead><tr><th>Салон</th><th>Тариф</th><th>Цикл</th><th>Статус</th><th>Заборгованість</th><th>Період до</th></tr></thead><tbody>${rows.map(s=>{

@@ -751,18 +751,22 @@ router.post('/clients/:id/erase', async (req, res) => {
        WHERE id = $1 RETURNING id`, [id]);
     if (!r.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
     // чисті ПД — фізичне видалення (в т.ч. медичні: алергії, формули, згоди, журнал доступу)
+    // Аудит 13.08 (в2): раніше кожен DELETE мовчки ковтав помилку — «анонімізовано»
+    // рапортувалось навіть коли ПД лишились у таблицях. Тепер провали збираються і видно.
+    const gdprFailed = [];
     for (const t of ['client_notes', 'client_preferences', 'medical_cards',
                      'allergy_tests', 'coloring_formulas', 'procedure_consents', 'medical_access_log']) {
-      await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id]).catch(() => {});
+      await client.query(`DELETE FROM ${t} WHERE client_id = $1`, [id])
+        .catch((e) => { console.error('[gdpr]', t, 'НЕ очищено:', e.message); gdprFailed.push(t); });
     }
     // Транскрипты и AI-анализ звонков клиента (аудит-контроль GDPR): содержат речь/ПД,
     // связаны через recording_id → calls.client_id. Чистим физически.
     await client.query(
-      `DELETE FROM ai_call_transcripts WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch(() => {});
+      `DELETE FROM ai_call_transcripts WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     await client.query(
-      `DELETE FROM ai_call_analysis WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch(() => {});
-    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL, client_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE calls SET caller_number=NULL, called_number=NULL WHERE client_id=$1`, [id]).catch(() => {});
+      `DELETE FROM ai_call_analysis WHERE recording_id IN (SELECT recording_id FROM calls WHERE client_id=$1 AND recording_id IS NOT NULL)`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL, client_id=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE calls SET caller_number=NULL, called_number=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     // Портфоліо клієнта (аудит v6): фото before/after — ПД. Рядки видаляємо в транзакції,
     // самі файли з S3 — best-effort у фоні (посилання на них гинуть разом із рядками).
     try {
@@ -797,31 +801,35 @@ router.post('/clients/:id/erase', async (req, res) => {
     // саме цього клієнта — інакше ПІБ/телефон відновлюються з payload за незмінним id.
     await client.query(
       `UPDATE domain_events SET payload = '{"redacted":"gdpr-erase"}'::jsonb
-        WHERE entity_type = 'client' AND entity_id = $1::text`, [String(id)]).catch(() => {});
+        WHERE entity_type = 'client' AND entity_id = $1::text`, [String(id)]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     await client.query(
       `UPDATE audit_log SET meta = '{"redacted":"gdpr-erase"}'::jsonb
-        WHERE entity = 'client' AND entity_id = $1`, [id]).catch(() => {});
+        WHERE entity = 'client' AND entity_id = $1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     // Major #6/#7 (верифікація): решта таблиць з телефоном клієнта — знеособлюємо PII
     // (записи лишаємо як історію/фінанси, але телефон/ім'я/telegram стираємо).
-    await client.query(`UPDATE online_bookings  SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE waitlist          SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE callback_requests SET phone=NULL, name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE meta_leads        SET phone=NULL, client_name='Видалений', email=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE review_request_log SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE reviews           SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE favorites         SET client_phone=NULL WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE online_bookings  SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE waitlist          SET client_phone=NULL, client_name='Видалений', telegram_id=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE callback_requests SET phone=NULL, name='Видалений' WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE meta_leads        SET phone=NULL, client_name='Видалений', email=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE review_request_log SET client_phone=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE ai_call_recordings SET client_phone=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE reviews           SET client_phone=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE favorites         SET client_phone=NULL WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     // Раунд2: ще дві PII-колонки — ім'я клієнта в записах і підпис у фото-згодах.
-    await client.query(`UPDATE appointments      SET client_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
-    await client.query(`UPDATE photo_consents    SET signed_by_name='Видалений' WHERE client_id=$1`, [id]).catch(() => {});
+    await client.query(`UPDATE appointments      SET client_name='Видалений' WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+    await client.query(`UPDATE photo_consents    SET signed_by_name='Видалений' WHERE client_id=$1`, [id]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     // Раунд3: phone-keyed таблиці (без client_id) — чистимо за старим телефоном.
     if (_oldPhone) {
-      await client.query(`UPDATE birthday_bonuses SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch(() => {});
-      await client.query(`UPDATE client_loyalty   SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch(() => {});
+      await client.query(`UPDATE birthday_bonuses SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
+      await client.query(`UPDATE client_loyalty   SET client_phone=NULL WHERE client_phone=$1`, [_oldPhone]).catch((e) => { console.error('[gdpr] крок НЕ виконано:', e.message); gdprFailed.push(e.message.slice(0, 60)); });
     }
     await client.query('COMMIT');
     logAction({ user: req.user, action: 'client.gdpr_erase', entity: 'client', entity_id: id, ip: req.ip, meta: { legal: 'GDPR Art.17' } });
-    res.json({ ok: true, erased: id, note: 'ПД знеособлено, фінансова історія збережена обезличеною' });
+    res.json({ ok: gdprFailed.length === 0, erased: id,
+      note: gdprFailed.length
+        ? `УВАГА: анонімізація НЕПОВНА — ${gdprFailed.length} кроків не виконано (${gdprFailed.slice(0,3).join('; ')}). Повторіть операцію.`
+        : 'ПД знеособлено, фінансова історія збережена обезличеною',
+      ...(gdprFailed.length ? { failed_steps: gdprFailed } : {}) });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[admin:client:erase]', e); res.status(500).json({ error: 'internal' });

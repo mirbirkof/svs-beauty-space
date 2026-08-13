@@ -96,7 +96,7 @@ function record(entry) {
       fs.writeFileSync(LOG_FILE, lines.slice(Math.floor(lines.length / 2)).join('\n'));
     }
     fs.appendFileSync(LOG_FILE, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n');
-  } catch { /* учёт молчит при любой проблеме с диском */ }
+  } catch (e) { console.error('[llm-meter] облік розходу НЕ записано:', e && e.message); }
 }
 
 /** Сводка за N часов: сколько вызовов, токенов и отказов по каждому провайдеру. */

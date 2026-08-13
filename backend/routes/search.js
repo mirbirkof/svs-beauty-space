@@ -475,11 +475,11 @@ router.post('/indexes/:id/reindex', async (req, res) => {
     const countSql = COUNT_SQL[idx.index_name];
     let docs = 0, sizeMb = 0;
     if (countSql) {
-      try { docs = Number((await one(countSql))?.c || 0); } catch (_) {}
+      try { docs = Number((await one(countSql))?.c || 0); } catch (e) { console.error('[search] лічильник впав (покаже 0):', e.message); }
       try {
         const sz = await one(`SELECT pg_total_relation_size($1::regclass) b`, [idx.index_name]);
         sizeMb = sz ? +(Number(sz.b) / 1048576).toFixed(2) : 0;
-      } catch (_) {}
+      } catch (e) { console.error('[search] лічильник впав (покаже 0):', e.message); }
     }
     await q(`UPDATE search_indexes SET documents_count=$2, index_size_mb=$3, last_indexed_at=NOW(), status='active', updated_at=NOW()
              WHERE id=$1`, [idx.id, docs, sizeMb]);
@@ -494,7 +494,7 @@ router.get('/indexes/:id/stats', async (req, res) => {
     if (!idx) return res.status(404).json({ error: 'not_found' });
     let live = idx.documents_count;
     const countSql = COUNT_SQL[idx.index_name];
-    if (countSql) { try { live = Number((await one(countSql))?.c || 0); } catch (_) {} }
+    if (countSql) { try { live = Number((await one(countSql))?.c || 0); } catch (e) { console.error('[search] лічильник впав (покаже 0):', e.message); } }
     res.json({ data: {
       index_name: idx.index_name, status: idx.status,
       documents_count: idx.documents_count, live_documents_count: live,

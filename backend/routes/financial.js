@@ -67,7 +67,7 @@ function prevBounds(fromD, toD) {
 
 // ── Консолідований знімок за період ──────────────────────
 async function snapshot(from, to) {
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[financial] запит впав (у фінцентрі нулі):', e.message); return []; });
   // ЄДИНЕ джерело правди по грошах (lib/live-finance) — щоб Фінцентр і Дашборд показували ОДНІ цифри.
   const [fin, appts, newCli] = await Promise.all([
     liveFinance(pool, from, to),
@@ -159,7 +159,7 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
     const toD = (req.query.to && dRe.test(req.query.to)) ? req.query.to : today;
     const from = `${fromD} 00:00:00 Europe/Kyiv`;
     const to = `${toD} 23:59:59 Europe/Kyiv`;
-    const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+    const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[financial] запит впав (у фінцентрі нулі):', e.message); return []; });
 
     const fin = await liveFinance(pool, from, to);
     const [revByMaster, commByMaster, cashOps, clientsM] = await Promise.all([
@@ -442,7 +442,7 @@ async function tenantDigestsTick() {
     `SELECT tbs.tenant_id, tbs.bot_token, tbs.owner_chat_id
        FROM tenant_bot_settings tbs JOIN tenants t ON t.id = tbs.tenant_id
       WHERE tbs.status='connected' AND tbs.owner_chat_id IS NOT NULL AND t.status='active'
-        AND tbs.tenant_id <> $1`, [DEFAULT_TENANT_ID]).then(r => r.rows).catch(() => []);
+        AND tbs.tenant_id <> $1`, [DEFAULT_TENANT_ID]).then(r => r.rows).catch((e) => { console.error('[financial] запит впав (у фінцентрі нулі):', e.message); return []; });
   for (const b of bots) {
     try {
       await runAs(b.tenant_id, async () => {

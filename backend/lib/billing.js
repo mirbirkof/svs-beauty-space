@@ -490,7 +490,7 @@ async function notifyOwner(tenantId, text, subject = 'SVS CRM') {
       const { tgCall } = require('./tenant-bots');
       await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
       return { sent: true, channel: 'telegram' };
-    } catch (e) { /* падаємо на email нижче */ }
+    } catch (e) { console.error('[billing:notify] Telegram не доставив (пробую email):', e.message); }
   }
   try {
     const emailCh = require('./channels/email-resend');
@@ -551,7 +551,7 @@ async function notifyOwnerPayLink(tenantId, invoiceId) {
       const { tgCall } = require('./tenant-bots');
       await tgCall(bs.bot_token, 'sendMessage', { chat_id: bs.owner_chat_id, text, parse_mode: 'HTML' });
       return { sent: true, channel: 'telegram', payUrl: !!payUrl };
-    } catch (e) { /* падаем на email ниже */ }
+    } catch (e) { console.error('[billing:notify-pay] Telegram не доставив (пробую email):', e.message); }
   }
   // 2) Email fallback (аудит v6: салон без подключённого Telegram-бота не получал
   //    НИ ОДНОГО платёжного напоминания и улетал в suspend без предупреждения)
@@ -897,7 +897,7 @@ async function processDunning(limit = 100) {
     } else {
       // manual/Mono: авто-charge немає — реально надсилаємо власнику pay-link у Telegram
       // (раніше notification_sent=TRUE виставлявся без жодної відправки — клієнт не платив).
-      const notif = await notifyOwnerPayLink(d.tenant_id, d.invoice_id).catch(() => ({ sent: false }));
+      const notif = await notifyOwnerPayLink(d.tenant_id, d.invoice_id).catch((e) => { console.error('[billing:dunning] сповіщення про оплату НЕ пішло (салон ризикує suspend):', e.message); return { sent: false }; });
       await pool.query(`UPDATE dunning_attempts SET status='attempted', attempted_at=NOW(), notification_sent=$3, notification_type='telegram', gateway_response=$2 WHERE id=$1`,
         [d.id, result.raw ? JSON.stringify(result.raw) : null, !!notif.sent]);
       // последняя попытка провалена → suspend

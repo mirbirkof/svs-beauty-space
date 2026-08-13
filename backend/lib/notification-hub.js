@@ -304,7 +304,12 @@ async function smsMonthlyAllow(pool, tenantId) {
     const used = Number(c.rows[0] && c.rows[0].n) || 0;
     if (used >= limit) return { ok: false, used, limit };
     return { ok: true };
-  } catch (e) { return { ok: true }; }
+  } catch (e) {
+    // Аудит 13.08 (в2): fail-open свідомий, але тепер видно — інакше салон на тарифі
+    // з лімітом 0 міг слати платні SMS без обліку весь час збою.
+    console.error('[notification-hub] SMS-ліміт НЕ перевірено (fail-open):', e.message);
+    return { ok: true };
+  }
 }
 
 // Переход на следующий канал в цепочке (fallback)

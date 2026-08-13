@@ -13,7 +13,7 @@ async function isOnlineMode() {
   try {
     const v = await require('./settings').getSetting(ONLINE_KEY, false);
     return v === true || v === 'true';
-  } catch (_) { return false; }
+  } catch (e) { console.error('[store-fulfill] не вдалося перевірити режим магазину (вважаю вимкненим):', e.message); return false; }
 }
 
 /** Пытается выдать заказ со склада магазина. true — выдал (салон не трогать), false — пусть выдаёт салон. */

@@ -199,7 +199,7 @@ async function scanInsights() {
         'Поділитись посиланням на онлайн-запис', 0, 'welcome_new');
       return insights;
     }
-  } catch (_) { /* якщо перевірка впала — не блокуємо звичайні інсайти */ }
+  } catch (e) { console.error('[ai-analytics] перевірку прав НЕ виконано (fail-open):', e.message); }
 
   // 1) Динаміка виручки (останні 30 vs попередні 30)
   const rev = await dailySeries('revenue', 60);
