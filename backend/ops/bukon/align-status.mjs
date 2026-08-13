@@ -20,7 +20,7 @@ for (const r of rows) {
 }
 // наши визиты в период Букона по ключу день|master (все статусы кроме уже cancelled фантомов)
 const appt = (await c.query(`SELECT id, master_id, (starts_at AT TIME ZONE 'Europe/Kyiv')::date::text dd, starts_at, status, COALESCE(real_amount,price,0)::float p
-  FROM appointments a WHERE (starts_at AT TIME ZONE 'Europe/Kyiv')::date BETWEEN '2025-12-01' AND '${MAXBUK}' AND COALESCE(bp_state,'')<>'phantom_dup'`)).rows;
+  FROM appointments a WHERE (starts_at AT TIME ZONE 'Europe/Kyiv')::date BETWEEN '2025-12-01' AND '${MAXBUK}' AND COALESCE(legacy_state,'')<>'phantom_dup'`)).rows;
 const ourByDM = new Map();
 appt.forEach(a=>{ const k=a.dd+'|'+a.master_id; if(!ourByDM.has(k))ourByDM.set(k,[]); ourByDM.get(k).push(a); });
 
@@ -45,7 +45,7 @@ if (APPLY) {
   await c.query(`DROP TABLE IF EXISTS appt_status_backup_20260720`);
   await c.query(`CREATE TABLE appt_status_backup_20260720 AS SELECT id,status,real_amount,price FROM appointments WHERE (starts_at AT TIME ZONE 'Europe/Kyiv')::date <= '${MAXBUK}'`);
   for (const s of setDone) await c.query(`UPDATE appointments SET status='done', real_amount=$1 WHERE id=$2`, [s.price, s.id]);
-  if (setCancel.length) await c.query(`UPDATE appointments SET status='cancelled', bp_state='not_in_bukon' WHERE id = ANY($1)`, [setCancel]);
+  if (setCancel.length) await c.query(`UPDATE appointments SET status='cancelled', legacy_state='not_in_bukon' WHERE id = ANY($1)`, [setCancel]);
   for (const cr of create) await c.query(`INSERT INTO appointments (master_id, starts_at, status, real_amount, price, source, tenant_id, client_name)
      VALUES ($1, ($2||' Europe/Kyiv')::timestamptz, 'done', $3, $3, 'bukon_import', $4, $5)`, [cr.mid, cr.iso+':00', cr.price, tn, cr.client.slice(0,40)]);
   // пересобрать кассу услуг из done-визитов

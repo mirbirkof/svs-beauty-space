@@ -12,7 +12,16 @@ module.exports = {
       return { scenarios: ['workflow-write:gated'], coverage: [['workflow', 'write-cycle', 'skip']],
         bugs: [{ severity: 'low', module: 'workflow', role: 'administrator', title: 'Полный workflow с записью не выполнен (нет QA-ветки)', needsManual: true, manualReason: 'QA_DB_URL не задан' }] };
     }
-    if (regression) return { scenarios: [], bugs: [], coverage: [] };
+    // 13.08: пустой результат на регресс-прогоне заставлял оркестратор закрывать
+    // needs-manual этого модуля как «исправленные». Возвращаем ту же отметку, что и выше:
+    // сквозной цикл с записью на регрессе не выполняется — и это должно быть видно.
+    if (regression) {
+      return { scenarios: ['workflow-write:regression-skip'],
+        coverage: [['workflow', 'write-cycle', false]],
+        bugs: [{ severity: 'low', module: 'workflow', role: 'administrator',
+          title: 'Полный workflow с записью не выполнен (нет QA-ветки)',
+          needsManual: true, manualReason: 'Деструктивный цикл не гоняется на регресс-прогоне' }] };
+    }
 
     const tag = 'QATEST_' + Date.now();
     let clientId = null, apptId = null;

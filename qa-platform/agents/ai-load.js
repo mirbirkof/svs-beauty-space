@@ -15,18 +15,35 @@ module.exports = {
 
     // Baseline производительности (read-only, прод) — всегда
     scenarios.push('load:hot-query-timing');
+    // 13.08: раньше сбой запроса глотался, а замер времени шёл дальше — упавший за 50мс
+    // запрос давал «производительность ок». Сбой = не проверено, замер только на успехе.
     const t0 = Date.now();
-    await q(`SELECT master_id, COUNT(*) FROM appointments WHERE starts_at >= NOW()-INTERVAL '30 days' GROUP BY master_id`).catch(() => {});
+    let queryOk = true, queryErr = null;
+    await q(`SELECT master_id, COUNT(*) FROM appointments WHERE starts_at >= NOW()-INTERVAL '30 days' GROUP BY master_id`)
+      .catch((e) => { queryOk = false; queryErr = e.message; });
     const baseMs = Date.now() - t0;
-    if (baseMs > 2000) bugs.push({ severity: 'medium', module: 'load', role: 'load',
-      title: 'Деградация: агрегат записей за месяц медленный', scenario: 'GROUP BY appointments 30д',
-      expected: '<2000мс', actual: `${baseMs}мс`, stillBroken: true, evidence: { baseMs } });
-    coverage.push(['load', 'hot-query-under-2s', baseMs <= 2000]);
+    if (!queryOk) {
+      coverage.push(['load', 'hot-query-under-2s:не-проверено', false]);
+      bugs.push({ severity: 'low', module: 'load', role: 'load',
+        title: 'Замер производительности НЕ выполнен — горячий запрос упал',
+        scenario: 'GROUP BY appointments 30д', expected: 'запрос выполняется',
+        actual: queryErr, needsManual: true, manualReason: 'Раньше падение выглядело как «быстро и ок»' });
+    } else {
+      if (baseMs > 2000) bugs.push({ severity: 'medium', module: 'load', role: 'load',
+        title: 'Деградация: агрегат записей за месяц медленный', scenario: 'GROUP BY appointments 30д',
+        expected: '<2000мс', actual: `${baseMs}мс`, stillBroken: true, evidence: { baseMs } });
+      coverage.push(['load', 'hot-query-under-2s', baseMs <= 2000]);
+    }
 
     if (regression || !cfg.allowDestructive) {
-      if (!cfg.allowDestructive) bugs.push({ severity: 'low', module: 'load', role: 'load',
+      // 13.08: раньше при regression+QA-ветке блок пропадал БЕЗ следа — отчёт выглядел так,
+      // будто нагрузочных сценариев не существует. Теперь пропуск виден всегда.
+      bugs.push({ severity: 'low', module: 'load', role: 'load',
         title: 'Нагрузочная генерация не выполнена (нет QA-ветки)', needsManual: true,
-        manualReason: `Нужен QA_DB_URL. Baseline снят: ${baseMs}мс.` });
+        manualReason: cfg.allowDestructive
+          ? 'Регресс-прогон: деструктивная нагрузка не гоняется'
+          : `Нужен QA_DB_URL. Baseline снят: ${queryOk ? baseMs + 'мс' : 'не снят — запрос упал'}.` });
+      coverage.push(['load', 'load-generation:пропущено', false]);
       return { scenarios, bugs, coverage };
     }
 
@@ -86,6 +103,14 @@ module.exports = {
             title: 'Деградация JOIN-выборки под нагрузкой', scenario: 'GROUP BY appointments под нагрузкой',
             expected: '<3000мс', actual: `${joinMs}мс`, stillBroken: true, evidence: { joinMs } });
           coverage.push(['load', 'heavy-join-under-load', joinMs <= 3000]);
+        } else {
+          // 13.08: раньше пустые masters/services в QA-ветке молча пропускали вставку
+          // 10000 записей и тяжёлый JOIN — в отчёте это выглядело как «метрика appt=0»,
+          // а не как невыполненная проверка.
+          coverage.push(['load', 'bulk-appointments-throughput:пропущено', false]);
+          bugs.push({ severity: 'low', module: 'load', role: 'load',
+            title: 'Нагрузочная вставка записей НЕ выполнена: в QA-ветке нет мастеров/услуг',
+            needsManual: true, manualReason: 'Пересоздать QA-ветку с данными (masters/services пусты)' });
         }
       } catch (ea) {
         bugs.push({ severity: 'high', module: 'load', role: 'load', title: 'Вставка записей под нагрузкой упала',

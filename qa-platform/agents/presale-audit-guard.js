@@ -3,7 +3,10 @@
    Каждое правило — безопасный SELECT, который ДОЛЖЕН вернуть 0. Иначе фикс откатился/регрессия.
    Read-only, безопасно. Ловит: утечки изоляции тенантов, двойное бронирование, дыры в деньгах. */
 const { q } = require('../lib/crm');
+const { counted, skipped } = require('../lib/check');
 
+// Поле optional у правил СНЯТО с роли «глушилки» (13.08): оно больше не превращает сбой в тишину.
+// Инвариант, который не удалось выполнить, всегда попадает в отчёт как «не проверено» + находка.
 const RULES = [
   // ── Изоляция тенантов (regression миграций 226/227/229) ──
   { module: 'tenant-isolation', role: 'admin', severity: 'high',
@@ -107,7 +110,7 @@ const RULES = [
   { module: 'booking', role: 'admin', severity: 'medium', optional: true,
     title: 'Онлайн-запись confirmed без записи в журнале appointments (потерянный визит)',
     sql: `SELECT COUNT(*)::int n FROM online_bookings b
-            WHERE b.status='confirmed' AND b.bp_appointment_id IS NULL
+            WHERE b.status='confirmed' AND b.appointment_id IS NULL
               AND b.date_from > NOW()-INTERVAL '30 days' AND b.date_from < NOW()+INTERVAL '30 days'
               AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.starts_at=b.date_from
                               AND a.master_id::text=b.master_id AND a.status <> 'cancelled')` },
@@ -162,14 +165,19 @@ module.exports = {
     const bugs = [], scenarios = [], coverage = [];
     for (const r of RULES) {
       scenarios.push(`audit-guard:${r.module}:${r.title}`);
-      let n;
-      try { n = (await q(r.sql))[0].n; }
-      catch (e) {
-        if (r.optional) { coverage.push([r.module, r.title, 'skip']); continue; }
-        bugs.push({ severity: 'low', module: r.module, role: r.role, title: `Проверку нельзя выполнить: ${r.title}`,
-          needsManual: true, manualReason: 'SQL: ' + e.message, scenario: r.title });
+      const res = await counted(q(r.sql));
+      if (!res.ok) {
+        // ПРИЧИНА (13.08). 28 из 30 инвариантов были помечены optional:true, и любой сбой SQL
+        // молча пропускался: в покрытии оставалась строка 'skip', а в персистентном coverage.json —
+        // прежнее ok:true. «Страж предпродажного аудита» рапортовал зелёным, не проверив ни денег
+        // (двойные оплаты, сертификаты в минус, двойной расход ЗП), ни изоляции тенантов —
+        // именно то, ради чего он написан. Отсутствующая таблица давала отчёт чище рабочей БД.
+        // Теперь сбой = «не проверено» под ТЕМ ЖЕ ключом + находка для ручного разбора.
+        coverage.push([r.module, r.title, false]);
+        skipped(coverage, bugs, r.module, r.title, 'SQL не выполнился: ' + res.err, { role: r.role });
         continue;
       }
+      const n = res.n;
       if (n > 0) {
         bugs.push({ severity: r.severity, module: r.module, role: r.role, title: r.title,
           scenario: 'Регрессия предпродажного аудита (инвариант ДОЛЖЕН давать 0)',

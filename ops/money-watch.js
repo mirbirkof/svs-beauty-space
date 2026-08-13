@@ -26,7 +26,7 @@ const { Client } = require('pg');
 const { execSync } = require('child_process');
 
 const KYIV = "AT TIME ZONE 'Europe/Kiev'";
-const ART = "COALESCE(a.bp_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')";
+const ART = "COALESCE(a.legacy_state,'') NOT IN ('bp_deleted','not_in_bukon','phantom_dup')";
 
 function money(v) { return Math.round(Number(v || 0)).toLocaleString('uk-UA') + ' ₴'; }
 
@@ -47,7 +47,16 @@ function notify(text) {
 (async () => {
   const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
   await c.connect();
-  const q = (sql, p = []) => c.query(sql, p).then(r => r.rows).catch(e => { console.log('[q]', e.message); return []; });
+  // 13.08: раньше упавший запрос возвращал [] и молча читался как «нарушений нет».
+  // Факт: столбец переименовали (bp_state → legacy_state), 4 денежные проверки падали
+  // каждую ночь, а сторож писал «чисто». Тишина = всё хорошо ТОЛЬКО если проверки
+  // реально отработали. Теперь сбой копится и уходит Боссу отдельной тревогой.
+  const failed = [];
+  const q = (sql, p = []) => c.query(sql, p).then(r => r.rows).catch(e => {
+    console.log('[q]', e.message);
+    failed.push(e.message);
+    return [];
+  });
   const findings = [];   // {level:'red'|'warn', title, detail}
 
   // ── 1. Задвоенная выручка ────────────────────────────────
@@ -85,7 +94,7 @@ function notify(text) {
     SELECT 'на видалених записах' AS kind, COUNT(*)::int n, COALESCE(SUM(o.amount),0)::numeric s
       FROM cash_operations o JOIN appointments a ON a.id=o.ref_id AND o.ref_type='appointment'
      WHERE o.type='in' AND o.created_at >= NOW() - INTERVAL '30 days'
-       AND COALESCE(a.bp_state,'') IN ('bp_deleted','not_in_bukon','phantom_dup')
+       AND COALESCE(a.legacy_state,'') IN ('bp_deleted','not_in_bukon','phantom_dup')
     UNION ALL
     SELECT 'на скасованих візитах', COUNT(*)::int, COALESCE(SUM(o.amount),0)::numeric
       FROM cash_operations o JOIN appointments a ON a.id=o.ref_id AND o.ref_type='appointment'
@@ -105,7 +114,7 @@ function notify(text) {
     SELECT COUNT(*)::int n, COALESCE(SUM(o.amount),0)::numeric s
       FROM cash_operations o JOIN appointments a ON a.id=o.ref_id AND o.ref_type='appointment'
      WHERE o.type='in' AND o.created_at >= NOW() - INTERVAL '30 days'
-       AND COALESCE(a.bp_state,'') IN ('bp_deleted','not_in_bukon','phantom_dup')
+       AND COALESCE(a.legacy_state,'') IN ('bp_deleted','not_in_bukon','phantom_dup')
        AND a.status IN ('done','completed')`);
   const hardGhosts = ghosts.filter(g => g.n > 0 && g.kind !== 'на видалених записах');
   if (hardGhosts.length) {
@@ -214,6 +223,17 @@ function notify(text) {
 
   // ── Отчёт ────────────────────────────────────────────────
   const stamp = new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kiev' });
+  // Упавшая проверка — НЕ «чисто». Молчать в такой ситуации значит врать владельцу.
+  if (failed.length) {
+    const uniq = [...new Set(failed)];
+    console.log(`[money-watch] ${stamp} — ЗБІЙ: ${uniq.length} перевірок не виконались`);
+    await notify(`🔴 <b>Фінансовий сторож не зміг перевірити гроші</b>\n\n`
+      + `Не виконались перевірки (${failed.length}):\n`
+      + uniq.slice(0, 5).map(m => `• <code>${String(m).slice(0, 120)}</code>`).join('\n')
+      + `\n\n<i>Це не «все чисто» — це «не перевірено». Розбираюсь.</i>`);
+    // Найденное за этот прогон всё равно показываем ниже, если оно есть.
+    if (!findings.length) return;
+  }
   if (!findings.length) {
     console.log(`[money-watch] ${stamp} — чисто, повідомлення не надсилаю`);
     return;

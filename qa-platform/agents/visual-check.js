@@ -78,9 +78,13 @@ module.exports = {
                 if (!txt && !hasIcon) { out.emptyBtns++; if (out.where.emptyBtns.length < 3) out.where.emptyBtns.push(addr(b)); }
               });
 
-              // 3) битые картинки
+              // 3) битые картинки. 13.08: скрытые img с пустым src (заглушки типа логотипа
+              // салона, который показывается только когда загружен) — НЕ битые: юзер их
+              // не видит. Флагаем только видимые картинки, которые реально не загрузились.
               document.querySelectorAll('img').forEach((im) => {
-                if (im.complete && im.naturalWidth === 0) { out.brokenImgs++; if (out.where.brokenImgs.length < 3) out.where.brokenImgs.push(addr(im)); }
+                const visible = im.offsetParent !== null && getComputedStyle(im).display !== 'none';
+                const hasSrc = (im.getAttribute('src') || '').trim() !== '';
+                if (visible && hasSrc && im.complete && im.naturalWidth === 0) { out.brokenImgs++; if (out.where.brokenImgs.length < 3) out.where.brokenImgs.push(addr(im)); }
               });
 
               // 4) невидимый / нечитаемый текст (совпадение или почти совпадение с фоном)
@@ -174,13 +178,31 @@ module.exports = {
       // Самологин через panel-login — токен не хранится, значит не протухает.
       const ui = cfg.qaUi || {};
       let uiTok = process.env.QA_UI_TOKEN, uiSlug = ui.slug || process.env.QA_UI_SLUG;
-      if (!uiTok && ui.phone && ui.password && uiSlug) {
-        try {
-          const lr = await fetch(base.replace(/\/$/, '') + '/api/auth/panel-login', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tenant-Slug': uiSlug },
-            body: JSON.stringify({ identifier: ui.phone, password: ui.password }) });
-          const lj = await lr.json(); if (lj && lj.ok && lj.token) uiTok = lj.token;
-        } catch (_) {}
+      let uiAuthErr = null;
+      if (!uiTok && uiSlug) {
+        if (!ui.phone || !ui.password) {
+          uiAuthErr = 'нет учётки QA-фикстуры (QA_UI_PHONE/QA_UI_PASSWORD в backend/.env)';
+        } else {
+          try {
+            const lr = await fetch(base.replace(/\/$/, '') + '/api/auth/panel-login', {
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tenant-Slug': uiSlug },
+              body: JSON.stringify({ identifier: ui.phone, password: ui.password }) });
+            const lj = await lr.json().catch(() => null);
+            if (lj && lj.ok && lj.token) uiTok = lj.token;
+            else uiAuthErr = `panel-login HTTP ${lr.status}: ${(lj && (lj.error || lj.message)) || 'нет токена в ответе'}`;
+          } catch (e) { uiAuthErr = `panel-login недоступен: ${e.message}`; }
+        }
+      }
+      // Вход не удался = ДЫРА В ПОКРЫТИИ, а не тишина. Раньше ошибка глоталась пустым catch
+      // и весь блок проверки кабинета молча пропускался — отчёт был «зелёный» без единой
+      // проверенной внутренней страницы (13.08: QA-фикстура удалена из БД, никто не заметил).
+      if (!uiTok && !regression) {
+        coverage.push(['ux', 'auth-internal:not-run', false]);
+        bugs.push({ severity: 'high', module: 'ux', role: 'ux',
+          title: 'Внутренние страницы кабинета НЕ проверены: тестер не смог войти',
+          detail: uiAuthErr || 'нет QA_UI_TOKEN и не задан slug QA-фикстуры',
+          needsManual: true, manualReason: 'Восстановить QA-фикстуру или задать QA_UI_TOKEN — иначе весь кабинет вне покрытия' });
+        console.error(`[visual-check] авторизованная проверка кабинета НЕ выполнена: ${uiAuthErr || 'нет токена'}`);
       }
       if (uiTok && uiSlug && !regression) {
         const actx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'uk-UA' });

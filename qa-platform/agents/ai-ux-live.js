@@ -84,12 +84,24 @@ module.exports = {
           if (!regression && btnCount > 0) {
             scenarios.push(`ux-live:click ${key}`);
             const before = jsErrors.length;
-            try { await page.locator('button:visible, .btn:visible').first().click({ timeout: 3000 }); await page.waitForTimeout(500); } catch (_) {}
-            if (jsErrors.length > before) {
-              bugs.push({ severity: 'medium', module: 'ux', role: 'ux', title: `Клик по кнопке на ${key} вызывает JS-ошибку`,
-                scenario: `клик первой кнопки на ${pagePath}`, expected: 'без ошибок', actual: jsErrors.slice(before).join(' | ') });
+            // 13.08: раньше несработавший клик (кнопка перекрыта/невидима/таймаут)
+            // глотался пустым catch — и «клик безопасен» ставилось именно сломанной кнопке.
+            let clicked = true, clickErr = null;
+            try { await page.locator('button:visible, .btn:visible').first().click({ timeout: 3000 }); await page.waitForTimeout(500); }
+            catch (e) { clicked = false; clickErr = String(e.message).slice(0, 120); }
+            if (!clicked) {
+              coverage.push(['ux', `click-safe:${key}:не-проверено`, false]);
+              bugs.push({ severity: 'medium', module: 'ux', role: 'ux',
+                title: `Кнопка на ${key} не кликается (перекрыта или невидима)`,
+                scenario: `клик первой кнопки на ${pagePath}`, expected: 'кнопка кликабельна',
+                actual: clickErr, stillBroken: true });
+            } else {
+              if (jsErrors.length > before) {
+                bugs.push({ severity: 'medium', module: 'ux', role: 'ux', title: `Клик по кнопке на ${key} вызывает JS-ошибку`,
+                  scenario: `клик первой кнопки на ${pagePath}`, expected: 'без ошибок', actual: jsErrors.slice(before).join(' | ') });
+              }
+              coverage.push(['ux', `click-safe:${key}`, jsErrors.length === before]);
             }
-            coverage.push(['ux', `click-safe:${key}`, jsErrors.length === before]);
           }
 
           // артефакт-скриншот (ТЗ: скриншоты)
@@ -98,7 +110,15 @@ module.exports = {
           bugs.push({ severity: 'medium', module: 'ux', role: 'ux', title: `Ошибка при живой проверке ${key}`,
             scenario: `открытие ${pagePath}`, expected: 'страница работает', actual: String(e.message).slice(0, 180) });
         } finally { await page.close().catch(() => {}); }
-        if (regression) break; // в регрессии проверяем только первую страницу
+        if (regression) {
+          // 13.08: обрыв цикла был молчаливым — остальные 4 страницы просто исчезали
+          // из отчёта, их старые «ок» жили в coverage.json вечно. Теперь пропуск виден.
+          for (const pp of PAGES) {
+            const k2 = pp.split('/').pop().replace('.html', '');
+            if (k2 !== key) coverage.push(['ux', `page-loads:${k2}:пропущено`, false]);
+          }
+          break; // в регрессии проверяем только первую страницу
+        }
       }
       await context.close(); // финализирует HAR
       coverage.push(['ux', 'har-recorded', fs.existsSync(harPath)]);

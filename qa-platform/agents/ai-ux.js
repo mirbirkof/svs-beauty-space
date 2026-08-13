@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const cfg = require('../config');
+const { skipped } = require('../lib/check');
 
 const ADMIN_DIR = path.join(__dirname, '../../backend/public/admin');
 const ADMIN = path.join(ADMIN_DIR, 'index.html');
@@ -56,8 +57,21 @@ async function liveHttpAudit(base, out) {
   const origin = base.replace(/\/+$/, '');
 
   // список html-файлов берём С ДИСКА, проверяем по HTTP против staging
-  let files = [];
-  try { files = fs.readdirSync(ADMIN_DIR).filter((f) => f.endsWith('.html')); } catch (_) { files = []; }
+  // ПРИЧИНА (13.08): здесь был catch(_) { files = []; } — сбой чтения каталога админки
+  // (переехал путь, нет прав, отвалился том) превращался в «страниц ноль». Цикл ниже
+  // не выполнялся ни разу, багов не было, и отчёт выглядел так, будто админка проверена и цела.
+  let files;
+  try { files = fs.readdirSync(ADMIN_DIR).filter((f) => f.endsWith('.html')); }
+  catch (e) {
+    skipped(coverage, bugs, 'ux', 'live-http', `не удалось прочитать каталог админки (${ADMIN_DIR}): ${e.message}`,
+      { role: 'ux', severity: 'medium' });
+    return;
+  }
+  if (!files.length) {
+    skipped(coverage, bugs, 'ux', 'live-http', `в каталоге админки (${ADMIN_DIR}) нет ни одной .html-страницы — проверять было нечего`,
+      { role: 'ux', severity: 'medium' });
+    return;
+  }
 
   const checkedRefs = new Map(); // url -> status (кэш, чтобы не дёргать общие ассеты 28 раз)
   async function refStatus(pathname) {
@@ -128,7 +142,15 @@ async function liveHttpAudit(base, out) {
 
   coverage.push(['ux', 'live-pages-200', pageTotal > 0 && pagesOk === pageTotal]);
   coverage.push(['ux', 'live-content-type-ok', pagesOk > 0 && ctOk === pagesOk]);
-  coverage.push(['ux', 'no-broken-links', [...checkedRefs.values()].every((s) => s === 200)]);
+  // ПРИЧИНА (13.08): .every() на ПУСТОМ наборе возвращает true. Если ни одна страница не
+  // открылась (или в HTML не нашлось ни одной локальной ссылки), проверять было нечего —
+  // а отчёт писал «битых ссылок нет». Полное отсутствие проверки выглядело как её успех.
+  if (checkedRefs.size === 0) {
+    skipped(coverage, bugs, 'ux', 'no-broken-links',
+      'ни одна ссылка не проверена: страницы не отдали HTML либо локальных ссылок в них не нашлось', { role: 'ux' });
+  } else {
+    coverage.push(['ux', 'no-broken-links', [...checkedRefs.values()].every((s) => s === 200)]);
+  }
 }
 
 module.exports = {
@@ -136,8 +158,13 @@ module.exports = {
   async run({ regression } = {}) {
     const bugs = [], scenarios = [], coverage = [];
     let html = '';
-    try { html = fs.readFileSync(ADMIN, 'utf8'); } catch (_) {
-      return { scenarios: ['ux:admin-missing'], bugs: [{ severity: 'low', module: 'ux', role: 'ux', title: 'admin/index.html не найден', needsManual: true, manualReason: 'нет доступа к файлу админки' }], coverage: [] };
+    try { html = fs.readFileSync(ADMIN, 'utf8'); } catch (e) {
+      // Не читается сам файл админки — ни одна проверка ниже не выполнялась. Возвращаем это
+      // как непокрытие, а не как пустое покрытие: пустота в отчёте неотличима от «всё чисто».
+      const bugs = [], coverage = [];
+      skipped(coverage, bugs, 'ux', 'admin-static-scan', `admin/index.html не прочитан (${ADMIN}): ${e.message}`,
+        { role: 'ux', severity: 'medium' });
+      return { scenarios: ['ux:admin-missing'], bugs, coverage };
     }
 
     // 1) Все <script> синтаксически валидны (ловит JS-ошибки, ломающие интерфейс)
@@ -153,7 +180,10 @@ module.exports = {
     // 2) Nav-пункты go('X') без соответствующей страницы page-X (мёртвая кнопка меню)
     scenarios.push('ux:dead-nav');
     const pages = new Set([...html.matchAll(/id="page-([a-z0-9_-]+)"/gi)].map((x) => x[1]));
-    const navs = [...html.matchAll(/go\('([a-z0-9_-]+)'\)/gi)].map((x) => x[1]);
+    // 13.08: упоминание go('X') в КОММЕНТАРИИ кода считалось живой кнопкой — «employees»
+    // висел мёртвым, хотя существовал только в пояснении к старому фиксу. Срезаем //-строки.
+    const htmlNoComments = html.split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
+    const navs = [...htmlNoComments.matchAll(/go\('([a-z0-9_-]+)'\)/gi)].map((x) => x[1]);
     const dead = [...new Set(navs)].filter((n) => !pages.has(n) && n !== 'embed');
     if (dead.length) bugs.push({ severity: 'high', module: 'ux', role: 'ux',
       title: `Пункты меню без страницы (мёртвые кнопки): ${dead.join(', ')}`, scenario: "go('X') без page-X",
@@ -170,12 +200,17 @@ module.exports = {
         liveDone = true;
       } else {
         scenarios.push('ux:live-http-skip');
-        bugs.push({ severity: 'low', module: 'ux', role: 'ux',
-          title: 'Staging /health недоступен — HTTP-проверки страниц не выполнены',
-          scenario: `GET ${base}/health`, expected: 'HTTP 200',
-          actual: health.ok ? `HTTP ${health.status}` : (health.error || 'нет ответа'),
-          needsManual: true, manualReason: 'staging задан, но /health не отвечает 200' });
+        skipped(coverage, bugs, 'ux', 'live-http',
+          `staging задан, но ${base}/health не отвечает 200 (${health.ok ? 'HTTP ' + health.status : (health.error || 'нет ответа')}) — страницы админки по HTTP не проверялись`,
+          { role: 'ux' });
       }
+    } else {
+      // ПРИЧИНА (13.08): весь HTTP-аудит стоял за `if (cfg.stagingApi)` без else. Без staging
+      // он просто не выполнялся — БЕЗ единого следа в отчёте. Со стороны это неотличимо от
+      // «страницы проверены, всё в порядке». Непроверенное должно быть видно.
+      scenarios.push('ux:live-http-skip');
+      skipped(coverage, bugs, 'ux', 'live-http',
+        'QA_STAGING_API не задан — HTTP-проверки страниц админки (статусы, content-type, битые ссылки) не выполнялись', { role: 'ux' });
     }
 
     // 4) Live-UI (клики, формы, drag&drop, адаптив, HAR) — честно требует браузера (Playwright).

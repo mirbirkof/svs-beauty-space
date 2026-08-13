@@ -140,8 +140,16 @@ function requirePerm(perm) {
       try { require('./shift-guard').observe(req, user); } catch (_) {}
       next();
     } catch (e) {
-      console.error('[rbac]', e);
-      res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'internal' : e.message });
+      // Аудит 13.08: тут віддавалося e.message, коли NODE_ENV != production —
+      // неавторизований запит із сміттєвим токеном отримував 500 і ТЕКСТ ПОМИЛКИ БД
+      // («column u.permissions_override does not exist»), тобто карту схеми назовні.
+      // Перевірка авторизації не може «впасти в 500»: збій = сервіс авторизації
+      // недоступний (503), і жодних внутрішніх деталей у відповіді.
+      console.error('[rbac] auth failed', e && e.message);
+      res.status(503).json({
+        error: 'auth-unavailable',
+        message: 'Тимчасово не можу перевірити доступ. Спробуйте за хвилину.',
+      });
     }
   };
 }

@@ -70,7 +70,12 @@ router.post('/adjust', async (req, res) => {
 router.post('/reconcile', async (req, res) => {
   try {
     const dryRun = String(req.query.dry || req.body?.dry || '') === '1';
-    res.json(await require('../lib/bonus-reconcile').reconcileBonusAccruals({ dryRun }));
+    const rec = require('../lib/bonus-reconcile');
+    const accruals = await rec.reconcileBonusAccruals({ dryRun });
+    // Аудит 13.08: разом зі звіркою нарахувань лікуємо і лічильники «нараховано/списано
+    // за весь час» — вони інкрементуються окремо і дрейфують від журналу (клієнт #365).
+    const counters = await rec.reconcileBonusCounters({ dryRun });
+    res.json({ ...accruals, counters });
   } catch (e) { fail(res, e); }
 });
 

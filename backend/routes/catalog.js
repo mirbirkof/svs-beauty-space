@@ -18,6 +18,28 @@ router.use((req, res, next) => {
   next();
 });
 
+// Індекс каталогу. Аудит 13.08: GET /api/catalog віддавав 404 (роутер мав лише
+// під-маршрути), і кожна перевірка контракту бачила «каталог недоступний».
+// Вітрина ходить у /api/catalog/legacy/all — його не чіпаємо; тут лише індекс
+// із живими лічильниками, щоб корінь відповідав правду про стан каталогу.
+router.get('/', async (req, res) => {
+  try {
+    const r = await pg.query(
+      `SELECT (SELECT COUNT(*)::int FROM products WHERE active IS NOT FALSE)   AS products,
+              (SELECT COUNT(*)::int FROM brands)                              AS brands,
+              (SELECT COUNT(*)::int FROM categories)                          AS categories`);
+    res.json({
+      ok: true,
+      counts: r.rows[0],
+      endpoints: ['/api/catalog/health', '/api/catalog/brands', '/api/catalog/categories',
+                  '/api/catalog/products', '/api/catalog/products/:id', '/api/catalog/legacy/all'],
+    });
+  } catch (e) {
+    console.error('[catalog] index', e.message);
+    res.status(503).json({ ok: false, error: 'catalog-unavailable' });
+  }
+});
+
 router.get('/health', async (req, res) => {
   try {
     const r = await pg.query('SELECT NOW() AS now, COUNT(*)::int AS products FROM products');

@@ -175,12 +175,25 @@ async function reverseWriteOffForAppointment(apptId) {
  */
 async function resyncWriteOff(apptId) {
   const client = await pool.connect();
-  let written = false;
+  let written = false, status = null;
   try {
-    const a = await client.query(`SELECT stock_written_off FROM appointments WHERE id=$1`, [apptId]);
+    const a = await client.query(`SELECT stock_written_off, status FROM appointments WHERE id=$1`, [apptId]);
     written = !!(a.rows[0] && a.rows[0].stock_written_off);
+    status = a.rows[0] ? a.rows[0].status : null;
   } finally { client.release(); }
-  if (!written) return { resynced: false };
+  if (!written) {
+    // Аудит 13.08: візит уже «Виконано», але stock_written_off=FALSE — це трапляється,
+    // коли матеріали додали ПІСЛЯ переведення в done: writeOff тоді не знайшов жодного
+    // рядка, нічого не списав і флаг лишився FALSE (див. рядок 66). Далі кожне
+    // додавання матеріалу впиралося в цей ранній return → матеріали такого візиту
+    // НЕ списувалися ніколи (знайдено візит #5455: 8 позицій, 183 од. у повітрі).
+    // Списуємо тут; повторного списання не буде — writeOff сам захищений флагом.
+    if (status === 'done') {
+      const r = await writeOffForAppointment(apptId);
+      return { resynced: true, ...r };
+    }
+    return { resynced: false };
+  }
   await reverseWriteOffForAppointment(apptId);
   const r = await writeOffForAppointment(apptId);
   return { resynced: true, ...r };

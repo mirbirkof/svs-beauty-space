@@ -11,6 +11,7 @@
    5. Ничего не блокируется искусственно (смены #103, прошлые дни — настройка #95)
    6. Механики доводятся до конца: интервалы возврата (#102), нормы расходников (#105) */
 const { q } = require('../lib/crm');
+const { counted, skipped } = require('../lib/check');
 
 // threshold: сколько нарушений считается известной нормой (baseline). Баг — только рост сверх.
 const RULES = [
@@ -52,9 +53,14 @@ const RULES = [
     threshold: 0, optional: true },
   { module: 'finance', role: 'accountant', severity: 'medium',
     title: 'Отчёты не должны терять операции без смены (следствие #103)',
-    // если появился новый JOIN cash_shifts без LEFT — операции с shift_id=NULL исчезнут из сумм.
-    // Датчик: доля безсменных операций за 30 дней (просто наличие — норма, правило сторожит регресс отчётов кодом, не данными)
-    sql: `SELECT 0::int n`, threshold: 0 },
+    // ПРИЧИНА (13.08). Здесь стоял `SELECT 0::int n` — константа, которая не читает ни одной
+    // таблицы. Правило годами светилось зелёным, не проверив НИЧЕГО: отчёт утверждал, что
+    // деньги без смены не теряются, хотя такой проверки не существовало.
+    // Реальным SQL это не ловится: регресс живёт в КОДЕ отчёта (JOIN cash_shifts без LEFT
+    // выкидывает операции с shift_id=NULL из сумм), а не в данных — в БД оба варианта выглядят
+    // одинаково. Пока нет сверки «сумма отчёта vs сумма кассы», правило честно помечается
+    // нереализованным: лучше видимый долг, чем фальшивое зелёное.
+    unimplemented: 'Датчик не написан: регресс в коде отчёта (JOIN без LEFT), данными не детектируется. Нужна сверка суммы отчёта с суммой cash_operations, включая shift_id IS NULL.' },
 ];
 
 // Настройки-механики, которые Босс просил, но данные ещё не заполнены им.
@@ -72,14 +78,23 @@ module.exports = {
     const bugs = [], scenarios = [], coverage = [];
     for (const r of RULES) {
       scenarios.push(`owner:${r.module}:${r.title}`);
-      let n;
-      try { n = (await q(r.sql))[0].n; }
-      catch (e) {
-        if (r.optional) { coverage.push([r.module, r.title, 'skip']); continue; }
-        bugs.push({ severity: 'low', module: r.module, role: r.role, title: `Проверку нельзя выполнить: ${r.title}`,
-          needsManual: true, manualReason: 'SQL ошибка: ' + e.message, scenario: r.title });
+      if (r.unimplemented) {
+        // Правило признано ненаписанным — показываем это в отчёте, а не красим в зелёный.
+        skipped(coverage, bugs, r.module, r.title, r.unimplemented, { role: r.role });
         continue;
       }
+      const res = await counted(q(r.sql));
+      if (!res.ok) {
+        // ПРИЧИНА (13.08). Для optional-правил сбой SQL писал в покрытие СТРОКУ 'skip' и не
+        // создавал ни одной находки. Потребители покрытия (панель, product-owner, отчёт) строку
+        // не отличают от пройденной проверки: непроверенное правило выглядело выполненным, и
+        // сломанная/недоступная таблица давала более чистый отчёт, чем работающая система.
+        // Теперь любой сбой — явное «не проверено» (false) ПОД ТЕМ ЖЕ ключом + видимая находка.
+        coverage.push([r.module, r.title, false]);
+        skipped(coverage, bugs, r.module, r.title, 'SQL ошибка: ' + res.err, { role: r.role });
+        continue;
+      }
+      const n = res.n;
       const limit = r.threshold || 0;
       if (n > limit) {
         bugs.push({ severity: r.severity, module: r.module, role: r.role, title: r.title,
@@ -92,7 +107,15 @@ module.exports = {
     // напоминания о незаполненных механиках — needsManual, не дефекты
     for (const p of PENDING_SETUP) {
       scenarios.push(`owner:setup:${p.title}`);
-      let n; try { n = (await q(p.sql))[0].n; } catch (_) { coverage.push([p.module, p.title, 'skip']); continue; }
+      // Та же болезнь, что и в RULES: сбой запроса писал 'skip' и молчал — напоминание владельцу
+      // просто исчезало, а покрытие выглядело заполненным. Теперь сбой = «не проверено» + находка.
+      const res = await counted(q(p.sql));
+      if (!res.ok) {
+        coverage.push([p.module, p.title, false]);
+        skipped(coverage, bugs, p.module, p.title, 'SQL ошибка: ' + res.err, { role: 'product' });
+        continue;
+      }
+      const n = res.n;
       if (n <= p.wantMoreThan) {
         bugs.push({ severity: 'low', module: p.module, role: 'product', title: p.title,
           needsManual: true, manualReason: 'Механика готова, данные должен заполнить владелец в админке', scenario: p.title });

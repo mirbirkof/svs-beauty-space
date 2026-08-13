@@ -53,16 +53,23 @@ module.exports = {
     // 3) Утечка внутренних ошибок: /booking/services не должен отдавать тело BeautyPro-ошибки
     scenarios.push('booking:no-upstream-leak');
     if (cfg.stagingApi) {
-      let leak = false;
+      let leak = false, checked = false;
       try {
         const r = await fetch(`${cfg.stagingApi}/api/booking/services`, { signal: AbortSignal.timeout(10000) });
         const body = await r.text();
         leak = /BeautyPro \d|application id|apiary/i.test(body); // сырая ошибка апстрима наружу
-      } catch (_) {}
+        checked = true;
+      } catch (e) {
+        // Раньше ошибка глоталась и coverage писал «утечки нет» — ложный зелёный:
+        // проверка не выполнялась вообще. Теперь недоступность = непроверено, а не «ок».
+        bugs.push({ severity: 'low', module: 'booking', role: 'security',
+          title: 'Проверка утечки ошибок апстрима НЕ выполнена (endpoint недоступен)',
+          detail: e.message, needsManual: true, manualReason: 'staging /api/booking/services не отвечает' });
+      }
       if (leak) bugs.push({ severity: 'medium', module: 'booking', role: 'security',
         title: 'Внутренняя ошибка BeautyPro утекает клиенту', scenario: 'GET /api/booking/services',
         expected: 'аккуратный 503 без деталей', actual: 'тело ошибки апстрима в ответе', stillBroken: true });
-      coverage.push(['booking', 'no-error-leak', !leak]);
+      if (checked) coverage.push(['booking', 'no-error-leak', !leak]);
     }
 
     return { scenarios, bugs, coverage };

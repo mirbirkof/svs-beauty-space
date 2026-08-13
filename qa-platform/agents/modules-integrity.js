@@ -2,21 +2,26 @@
    Реальные проверки целостности данных (read-only, прод). Каждая проверка → markCoverage,
    чтобы Product Owner видел модуль покрытым. Аномалия данных → баг. Безопасно (только SELECT). */
 const { q } = require('../lib/crm');
+const { counted, record } = require('../lib/check');
 
 // Одна проверка: выполняет SQL, при аномалии (count>0) — баг; помечает покрытие в любом случае.
 async function check(bugs, coverage, { module, key, sql, severity = 'medium', title, expected }) {
-  try {
-    const rows = await q(sql);
-    const n = Number((rows[0] && (rows[0].n ?? rows[0].count)) || 0);
-    if (n > 0) bugs.push({ severity, module, role: module, title, scenario: key,
-      expected: expected || 'нарушений нет', actual: `${n} нарушений`, stillBroken: true, sql });
-    coverage.push([module, key, n === 0]);
-    return true;
-  } catch (e) {
-    // таблица/колонка отсутствует — помечаем проверку структуры как выполненную (не падаем)
-    coverage.push([module, key + ':schema', false]);
+  const res = await counted(q(sql));
+  if (!res.ok) {
+    // ПРИЧИНА (13.08). Раньше сбой SQL здесь проглатывался, а отметка писалась под ДРУГИМ
+    // ключом (key + ':schema'). Исходный ключ в data/coverage.json оставался с прошлым ok:true —
+    // и агент рапортовал «5 сценариев, 0 багов» даже когда БД была полностью недоступна:
+    // чем хуже состояние системы, тем зеленее отчёт. Теперь сбой перезаписывает ТОТ ЖЕ ключ
+    // как непройденный и обязательно порождает находку — молчания больше нет.
+    coverage.push([module, key, false]);
+    record(coverage, bugs, module, key, res, { role: module, scenario: key });
     return false;
   }
+  const n = res.n;
+  if (n > 0) bugs.push({ severity, module, role: module, title, scenario: key,
+    expected: expected || 'нарушений нет', actual: `${n} нарушений`, stillBroken: true, sql });
+  coverage.push([module, key, n === 0]);
+  return true;
 }
 
 module.exports = {

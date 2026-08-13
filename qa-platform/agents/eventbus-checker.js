@@ -2,6 +2,10 @@
    По ТЗ: событие создано → доставлено → подписчики сработали → без ошибок.
    Проверяем журнал domain_events: непойманные/упавшие обработчики. Read-only. */
 const { q } = require('../lib/crm');
+// ПРИЧИНА: раньше сбой запроса подменялся пустым списком / нулём — упавшая шина событий
+// выглядела в отчёте как «ошибок нет, зависших нет». Теперь несостоявшаяся проверка
+// помечается «не проверено» и требует ручного разбора.
+const { counted, attempt, record } = require('../lib/check');
 
 module.exports = {
   name: 'eventbus-checker', role: 'system',
@@ -12,22 +16,23 @@ module.exports = {
 
     // События с упавшими обработчиками за сутки
     scenarios.push('eventbus:failed-handlers');
-    const failed = await q(`SELECT event_type, COUNT(*)::int n FROM domain_events WHERE status='failed' AND created_at >= NOW()-INTERVAL '24 hours' GROUP BY 1 ORDER BY 2 DESC LIMIT 20`).catch(() => []);
-    if (failed.length) {
+    // Здесь результат — список строк, а не счётчик: успехом считаем пустой список,
+    // но только если запрос реально отработал (пустота из-за сбоя больше не «ок»).
+    const failedRes = await attempt(() => q(`SELECT event_type, COUNT(*)::int n FROM domain_events WHERE status='failed' AND created_at >= NOW()-INTERVAL '24 hours' GROUP BY 1 ORDER BY 2 DESC LIMIT 20`));
+    const failed = failedRes.value || [];
+    if (record(coverage, bugs, 'eventbus', 'no-failed-handlers', failedRes, { role: 'system', passed: failed.length === 0 }) && failed.length) {
       bugs.push({ severity: 'high', module: 'eventbus', role: 'system', title: 'События с упавшими обработчиками за 24ч',
         scenario: 'domain_events.status=failed', expected: '0 failed', actual: `${failed.reduce((a, r) => a + r.n, 0)} событий упало`,
         sql: "SELECT ... WHERE status='failed'", stillBroken: true, evidence: failed });
     }
-    coverage.push(['eventbus', 'no-failed-handlers', failed.length === 0]);
 
     // Зависшие необработанные события (created, но не handled) старше 10 минут
     scenarios.push('eventbus:stuck-pending');
-    const stuck = await q(`SELECT COUNT(*)::int n FROM domain_events WHERE status NOT IN ('handled','failed') AND created_at < NOW()-INTERVAL '10 minutes' AND created_at >= NOW()-INTERVAL '24 hours'`).catch(() => [{ n: 0 }]);
-    if (stuck[0].n > 0) {
+    const stuck = await counted(q(`SELECT COUNT(*)::int n FROM domain_events WHERE status NOT IN ('handled','failed') AND created_at < NOW()-INTERVAL '10 minutes' AND created_at >= NOW()-INTERVAL '24 hours'`));
+    if (record(coverage, bugs, 'eventbus', 'no-stuck-events', stuck, { role: 'system' }) && stuck.n > 0) {
       bugs.push({ severity: 'medium', module: 'eventbus', role: 'system', title: 'Зависшие необработанные события',
-        scenario: 'domain_events не обработаны >10 мин', expected: '0', actual: `${stuck[0].n} зависших`, evidence: { count: stuck[0].n } });
+        scenario: 'domain_events не обработаны >10 мин', expected: '0', actual: `${stuck.n} зависших`, evidence: { count: stuck.n } });
     }
-    coverage.push(['eventbus', 'no-stuck-events', stuck[0].n === 0]);
 
     return { scenarios, bugs, coverage };
   },

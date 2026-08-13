@@ -37,11 +37,31 @@ async function runCycle(cycleNo) {
   for (const agent of agents) {
     let res;
     try { res = await agent.run({ cycle: cycleNo }); }
-    catch (e) { console.error(`[qa] агент ${agent.name} упал: ${e.message}`); summary.byAgent[agent.name] = { error: e.message }; continue; }
+    catch (e) {
+      // Раньше падение агента только писалось в лог, а цикл отчитывался как успешный.
+      // Факт 13.08: 858 падений на 3934 цикла у четырёх агентов — в отчёте этого не было
+      // видно вообще. Теперь падение = находка в общем реестре + счётчик в сводке цикла.
+      console.error(`[qa] агент ${agent.name} упал: ${e.message}`);
+      summary.byAgent[agent.name] = { error: e.message };
+      summary.crashed = (summary.crashed || 0) + 1;
+      (summary.crashedAgents = summary.crashedAgents || []).push(agent.name);
+      reg.reportBug({ severity: 'high', module: 'qa-self', role: 'system',
+        title: `Тестер «${agent.name}» упал и ничего не проверил`,
+        scenario: `agent.run() цикл ${cycleNo}`, expected: 'агент отрабатывает и отдаёт результат',
+        actual: e.message, needsManual: true,
+        manualReason: 'Пока агент падает, его зона НЕ проверяется — отчёт по ней недостоверен' });
+      continue;
+    }
     const { scenarios = [], bugs = [], coverage = [] } = res || {};
     summary.scenarios += scenarios.length;
     for (const s of scenarios) reg.recordScenario(`${agent.name}:${s}`, 'run');
-    for (const c of coverage) { reg.markCoverage(c[0], c[1], c[2]); summary.coverageItems++; }
+    // Считаем ОТДЕЛЬНО выполненные и невыполненные проверки: раньше «Покрытие: 206 проверок»
+    // включало провалившиеся и пропущенные, то есть цифра росла от поломок.
+    for (const c of coverage) {
+      reg.markCoverage(c[0], c[1], c[2]);
+      summary.coverageItems++;
+      if (c[2] !== true) summary.coverageNotOk = (summary.coverageNotOk || 0) + 1;
+    }
     let nw = 0, rb = 0;
     for (const b of bugs) { const existed = reg.allBugs().some((x) => x.signature === reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`)); const saved = reg.reportBug(b); if (existed) { rb++; } else { nw++; if (saved && !saved.needsManual) freshBugs.push(saved); } }
     summary.newBugs += nw; summary.reBugs += rb;
@@ -95,29 +115,64 @@ async function runCycle(cycleNo) {
 async function regressionVerify(agents) {
   // Перепроверяем и «ручные»: если детектор 3 цикла подряд их не находит — закрываем с доказательством.
   // Иначе устаревшие ручные (например «staging недоступен» за минуты простоя) висят вечно.
+  // 13.08 КОРНЕВОЙ ФИКС. Раньше здесь было две дыры, из-за которых баги закрывались
+  // как «исправленные», хотя детектор их ни разу не перепроверил:
+  //  1) агент упал на регресс-прогоне → catch(_){continue} → его баги попадали в «не найдено»
+  //     → 3 таких цикла → закрытие с «доказательством». Факт: 22% циклов агенты падали.
+  //  2) needs-manual баги («проверка не автоматизирована», «staging недоступен») агенты
+  //     по дизайну НЕ переиздают на регрессе → они закрывались автоматически, то есть
+  //     «мы это не проверяли» превращалось в «проверено и починено».
+  // Теперь: баг может быть закрыт ТОЛЬКО если агент, который его нашёл, реально отработал.
   const open = [...reg.openBugs(), ...reg.manualBugs()];
   if (!open.length) return 0;
-  // Собираем все обнаруженные сейчас сигнатуры
   const stillBroken = new Set();
+  const crashedAgents = new Set();   // кто не отработал — их баги не трогаем вообще
+  const ranModules = new Set();      // какие модули реально проверены в этом прогоне
   for (const agent of agents) {
-    let res; try { res = await agent.run({ regression: true }); } catch (_) { continue; }
-    for (const b of (res?.bugs || [])) stillBroken.add(reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`));
+    let res;
+    try { res = await agent.run({ regression: true }); }
+    catch (e) { crashedAgents.add(agent.name); console.error(`[qa/regression] ${agent.name} упал: ${e.message} — его баги НЕ закрываем`); continue; }
+    const bugs = (res && res.bugs) || [];
+    const cov = (res && res.coverage) || [];
+    // Модуль считается перепроверенным, только если агент что-то реально измерил.
+    if (bugs.length || cov.length) {
+      for (const b of bugs) ranModules.add(b.module);
+      for (const c of cov) ranModules.add(c[0]);
+    } else {
+      crashedAgents.add(agent.name); // отработал вхолостую — доказательством не считается
+    }
+    for (const b of bugs) stillBroken.add(reg.sig(`${b.module}|${b.role || 'system'}|${b.title}`));
   }
   // ТЗ: не закрывать баг без множественного доказательства. Закрываем ТОЛЬКО после
   // серии из STREAK чистых прогонов подряд (по умолчанию 3; можно поднять до 10 через env).
   const STREAK = Number(process.env.QA_REGRESSION_STREAK || 3);
-  let closed = 0;
+  let closed = 0, notVerified = 0;
   for (const bug of open) {
+    // needs-manual НИКОГДА не закрывается автоматом: это отметка «мы это НЕ проверяли».
+    // Её снимает только человек/инженер, доказав фактом.
+    if (bug.needsManual) { notVerified++; continue; }
+    // Модуль бага не проверялся в этом прогоне (агент упал или вернул пусто) — не засчитываем.
+    if (!ranModules.has(bug.module)) { notVerified++; continue; }
     if (!stillBroken.has(bug.signature)) {
       const s = reg.recordRegressionPass(bug.signature);
-      if (s >= STREAK) {
-        reg.closeBug(bug.signature, { passed: true, method: `regression-recheck ×${s}`, streak: s, at: new Date().toISOString() });
+      // ДВА НЕЗАВИСИМЫХ доказательства (требование Босса 13.08: перепроверять разными
+      // способами, не одним детектором): (1) серия чистых регресс-прогонов STREAK подряд;
+      // (2) ПОЛНЫЕ циклы — другой режим, другой путь кода — тоже не видели баг минимум 6ч
+      // (lastSeen обновляется при каждом переиздании бага полным циклом). Если полный цикл
+      // видел баг недавно, а регресс «не видит» — верить регрессу нельзя.
+      const lastSeenMs = bug.lastSeen ? Date.now() - new Date(bug.lastSeen).getTime() : Infinity;
+      const fullCycleQuiet = lastSeenMs > 6 * 3600 * 1000;
+      if (s >= STREAK && fullCycleQuiet) {
+        reg.closeBug(bug.signature, { passed: true, method: `regression-recheck ×${s} + full-cycle quiet ${Math.round(lastSeenMs / 3600000)}h`, streak: s, at: new Date().toISOString() });
         closed++;
+      } else if (s >= STREAK) {
+        console.log(`[qa/regression] ${bug.signature.slice(0, 12)}: регресс чист ×${s}, но полный цикл видел баг ${Math.round(lastSeenMs / 60000)}мин назад — НЕ закрываю`);
       }
     } else {
       reg.recordRegressionFail(bug.signature); // снова воспроизвёлся — серия обнулена
     }
   }
+  if (notVerified) console.error(`[qa/regression] НЕ перепроверено багов: ${notVerified} (упавшие агенты: ${[...crashedAgents].join(', ') || 'нет'})`);
   return closed;
 }
 
