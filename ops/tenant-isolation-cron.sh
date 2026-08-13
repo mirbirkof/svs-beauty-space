@@ -5,8 +5,11 @@
 set -uo pipefail
 cd /home/client/workspace/svs-beauty-space || exit 2
 
-OUT=$(/usr/bin/node ops/tenant-isolation-check.js 2>&1 | grep -v 'dotenv@')
-CODE=$?
+# Аудит 13.08: раніше було `node ... | grep -v dotenv` і CODE=$? брав код GREP'а, а не node.
+# grep майже завжди повертає 0 → сторож НІКОЛИ не піднімав тривогу, тобто був сліпий.
+# Тепер беремо код саме node (PIPESTATUS), фільтрація логу на це не впливає.
+OUT=$(/usr/bin/node ops/tenant-isolation-check.js 2>&1); CODE=$?
+OUT=$(echo "$OUT" | grep -v 'dotenv@')
 
 echo "[$(date '+%F %T')] exit=$CODE"
 echo "$OUT"

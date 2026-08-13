@@ -231,3 +231,14 @@
 {"ts":"2026-08-12T19:48:29.347Z","provider":"gemini-2.5-flash","ok":false,"ms":246,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
 {"ts":"2026-08-12T19:48:31.279Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1935,"tokensIn":740,"tokensOut":543}
 {"ts":"2026-08-12T19:48:33.468Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":4121,"tokensIn":4491,"tokensOut":785}
+{"ts":"2026-08-13T00:00:16.745Z","provider":"gemini-2.5-flash","ok":false,"ms":77,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-13T00:00:17.203Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":456,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-13T00:00:17.204Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-13T00:00:17.327Z","provider":"gemini-2.5-flash","ok":false,"ms":1011,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-13T00:00:18.356Z","provider":"groq","ok":true,"ms":1151,"tokensIn":773,"tokensOut":304}
+{"ts":"2026-08-13T00:00:20.317Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":2990,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-13T00:00:20.318Z","provider":"openrouter","ok":false,"ms":0,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-13T00:00:20.339Z","provider":"groq","ok":false,"ms":21,"error":"Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01kn4b2qshe7drdrjf3pf3qskg` service tier `on","resting":"quota"}
+{"ts":"2026-08-13T00:37:14.048Z","provider":"gemini-2.5-flash","ok":false,"ms":181,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-13T00:37:16.542Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2337,"tokensIn":745,"tokensOut":638}
+{"ts":"2026-08-13T00:37:17.561Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3512,"tokensIn":4491,"tokensOut":751}

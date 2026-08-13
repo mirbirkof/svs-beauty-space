@@ -102,7 +102,13 @@ async function roomBusy({ roomId, startsAt, endsAt, excludeId = null, needCapaci
   // отдельным соединением (не q!) — чтобы сбой проверки никогда не трогал транзакцию.
   if (_hasRoomBlocks === null) {
     try { _hasRoomBlocks = !!(await getPool().query(`SELECT to_regclass('room_blocks') r`)).rows[0].r; }
-    catch (_) { _hasRoomBlocks = false; }
+    catch (e) {
+      // Аудит 13.08: раніше разова помилка НАЗАВЖДИ (до рестарту) вимикала перевірку
+      // блокувань кабінету → подвійне бронювання дорогого ресурсу. Тепер прапорець
+      // лишається невизначеним і перевіриться наступного разу.
+      console.error('[booking-guard] перевірка room_blocks не вдалась, повторю пізніше:', e.message);
+      _hasRoomBlocks = null;
+    }
   }
   if (_hasRoomBlocks) {
     const blk = await q.query(

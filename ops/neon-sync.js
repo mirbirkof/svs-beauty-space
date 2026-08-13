@@ -31,10 +31,11 @@ const { Client } = require('pg');
 const { ENSURE_SQL: ENSURE_RLS_SQL } = require('../backend/lib/ensure-rls');
 
 // ---- load env without extra deps ----
+// Аудит 13.08: раніше сюди підмішувалось оточення ІНШИХ проєктів на цій же машині
+// (own-engine/.env, workspace/.env). Звідти міг прийти чужий DATABASE_URL / NEON_BACKUP_URL —
+// і синк залив би дані салону в чужу базу. Тепер читаємо ТІЛЬКИ власний backend/.env.
 for (const p of [
   path.join(__dirname, '../backend/.env'),
-  path.join(process.env.HOME, 'workspace/own-engine/.env'),
-  path.join(process.env.HOME, 'workspace/.env'),
 ]) {
   try {
     for (const line of fs.readFileSync(p, 'utf8').split('\n')) {

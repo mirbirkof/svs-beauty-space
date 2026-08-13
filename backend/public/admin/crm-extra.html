@@ -1372,11 +1372,15 @@ function openUserCard(id){
 async function _ucLoad(u){
   const box = document.getElementById('ucAccBody'); if(!box) return;
   try {
+    // Аудит 13.08: раніше збій довідників давав ПОРОЖНІЙ список прав — редактор
+    // малювався без жодної галочки, і кнопка «Зберегти» ОБНУЛЯЛА всі права співробітника,
+    // виглядаючи як «у нього їх і не було». Тепер збій — це помилка, а не порожній список.
     const [rl, gl] = await Promise.all([
-      api('/api/users/roles/list').catch(()=>({items:[]})),
-      api('/api/users/grantable-perms').catch(()=>({items:[]}))
+      api('/api/users/roles/list'),
+      api('/api/users/grantable-perms')
     ]);
     _ucRoles = rl.items || []; _ucGrant = gl.items || [];
+    if (!_ucGrant.length) { box.innerHTML = '<div class="empty">Довідник прав порожній — збереження заблоковано, щоб випадково не зняти права.</div>'; return; }
   } catch(e){ box.innerHTML = '<div class="empty">Права недоступні: '+(e.message||e)+'</div>'; return; }
   _ucRenderPerms(u, u.role);
 }
@@ -1435,6 +1439,15 @@ async function _ucSave(uid){
   const role_code=(document.getElementById('ucRole')||{}).value||undefined;
   // ПОВНИЙ набір відмічених прав → зберігаємо як персональний (permissions_override)
   const permissions_override=[...document.querySelectorAll('#ucAccBody input[data-ucperm]:checked')].map(i=>i.getAttribute('data-ucperm'));
+  // Аудит 13.08: захист від «тихого обнулення» — якщо довідник прав не завантажився,
+  // жодна галочка не намальована, і збереження зняло б усі права. Вимагаємо підтвердження.
+  if (!Array.isArray(_ucGrant) || !_ucGrant.length) {
+    msg.style.color='#dc2626'; msg.textContent='Довідник прав не завантажено — збереження скасовано. Оновіть сторінку.';
+    return;
+  }
+  if (!permissions_override.length && !confirm('Жодне право не відмічено. Зберегти порожній набір (співробітник втратить індивідуальні права)?')) {
+    msg.textContent=''; return;
+  }
   msg.style.color='#888'; msg.textContent='Збереження…';
   try{
     const r=await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify({role_code, permissions_override})});

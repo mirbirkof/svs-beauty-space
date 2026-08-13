@@ -439,7 +439,14 @@ router.post('/templates/generate', requireFeature('fitness.classes'), async (req
 });
 
 /* ── Чек-ин на входе (QR / вручную) ───────────────────────────────────────── */
-const qrSecret = () => process.env.QR_SECRET || process.env.SESSION_SECRET || 'svs-fitness-qr';
+// Аудит 13.08: раніше тут був дефолт 'svs-fitness-qr' — секрет лежав у публічному репо,
+// тож будь-хто міг підписати QR для чужого client_id і пройти чек-ін. Тепер без
+// налаштованого ключа підпис не видається взагалі (fail-closed).
+const qrSecret = () => {
+  const k = process.env.QR_SECRET || process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (!k) { const e = new Error('qr-secret-not-configured'); e.user = true; throw e; }
+  return k;
+};
 const qrSign = (cid) => crypto.createHmac('sha256', qrSecret()).update(`fit:${cid}`).digest('hex').slice(0, 24);
 
 router.get('/checkin/qr/:client_id', requireFeature('fitness.checkin'), async (req, res) => {

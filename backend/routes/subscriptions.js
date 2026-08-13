@@ -465,7 +465,12 @@ router.post('/:id/payments', async (req, res) => {
     const attempt = (sub.failed_payments || 0) + 1;
     let cashOpId = null;
     if (status === 'paid' && amount > 0) {
-      cashOpId = await recordCashIn({ category: 'sale_subscription', amount, method: b.payment_method || 'card', ref_type: 'subscription', ref_id: sub.id, description: `Платіж по абонементу ${sub.subscription_number}`, ext_ref: `sub:pay:${sub.id}:${Date.now()}` }).catch(() => null);
+      // Аудит 13.08: (1) помилка запису в касу більше не мовчить; (2) ext_ref БЕЗ Date.now() —
+      // раніше ключ був унікальний щоразу, тож захист від дубля не працював і повторний
+      // POST давав другий прихід у касу. Тепер ключ стабільний по періоду платежу.
+      const _perKey = String(b.period_start || new Date().toISOString().slice(0, 10));
+      cashOpId = await recordCashIn({ category: 'sale_subscription', amount, method: b.payment_method || 'card', ref_type: 'subscription', ref_id: sub.id, description: `Платіж по абонементу ${sub.subscription_number}`, ext_ref: `sub:pay:${sub.id}:${_perKey}` })
+        .catch((e) => { console.error('[subscriptions:pay] КАСА НЕ ЗАПИСАНА', sub.id, amount, e.message); return null; });
     }
     const ins = await pool.query(
       `INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,attempt,next_retry_at,notes)
@@ -550,7 +555,8 @@ router.post('/:id/renew', async (req, res) => {
     const next = ins.rows[0];
     await pool.query(`INSERT INTO subscription_users (subscription_id,client_id,is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`, [next.id, sub.client_id]);
     let cashOpId = null;
-    if (price > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: price, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Продовження абонемента ${number} (${plan.name})`, ext_ref: `sub:renew:${next.id}` }).catch(() => null);
+    if (price > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: price, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Продовження абонемента ${number} (${plan.name})`, ext_ref: `sub:renew:${next.id}` })
+      .catch((e) => { console.error('[subscriptions:renew] КАСА НЕ ЗАПИСАНА', next.id, price, e.message); return null; });
     await pool.query(`INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,notes) VALUES ($1,$2,$3,$4,'paid',$5,$6,'renew')`, [next.id, price, start, expires, b.method || 'cash', cashOpId]).catch(() => {});
     logAction({ user: req.user, action: 'subscription.renew', entity: 'subscription', entity_id: next.id, ip: req.ip, meta: { from: sub.id, carry } }).catch(() => {});
     res.json({ ok: true, subscription: next, carried_over: carry });
@@ -591,7 +597,8 @@ router.post('/:id/upgrade', async (req, res) => {
     // Старий абонемент закриваємо, фіксуємо звʼязок.
     await pool.query(`UPDATE subscriptions SET status='cancelled', cancelled_at=NOW(), cancel_reason='upgrade', upgraded_to_id=$1, updated_at=NOW() WHERE id=$2`, [next.id, sub.id]);
     let cashOpId = null;
-    if (diff > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: diff, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Апгрейд абонемента ${number} (${np.name}), доплата`, ext_ref: `sub:upgrade:${next.id}` }).catch(() => null);
+    if (diff > 0) cashOpId = await recordCashIn({ category: 'sale_subscription', amount: diff, method: b.method || 'cash', ref_type: 'subscription', ref_id: next.id, description: `Апгрейд абонемента ${number} (${np.name}), доплата`, ext_ref: `sub:upgrade:${next.id}` })
+      .catch((e) => { console.error('[subscriptions:upgrade] КАСА НЕ ЗАПИСАНА', next.id, diff, e.message); return null; });
     await pool.query(`INSERT INTO subscription_payments (subscription_id,amount,period_start,period_end,status,payment_method,cashbox_op_id,notes) VALUES ($1,$2,$3,$4,'paid',$5,$6,'upgrade')`, [next.id, diff, start, expires, b.method || 'cash', cashOpId]).catch(() => {});
     logAction({ user: req.user, action: 'subscription.upgrade', entity: 'subscription', entity_id: next.id, ip: req.ip, meta: { from: sub.id, new_plan: np.id, diff } }).catch(() => {});
     res.json({ ok: true, subscription: next, surcharge: diff });

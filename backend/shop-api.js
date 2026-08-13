@@ -80,22 +80,35 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// Аудит 13.08: раніше в білому списку стояли МАСКИ спільних хостингів і тунелів
+// (*.github.io, *.vercel.app, *.lhr.life, *.pinggy.link, *.serveousercontent.com, *.ts.net)
+// разом із credentials:true. Це означало: БУДЬ-ЯКИЙ чужий сайт на цих доменах (а *.ts.net —
+// це тисячі чужих tailnet'ів) міг слати запити з кукою в прод-CRM. Тепер пускаємо лише
+// конкретні свої джерела + ЖИВУ публічну адресу CRM (читається з файлу тунелю, тож
+// ротація адреси нічого не ламає).
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:8080',
+  'http://127.0.0.1:8080',
+  'https://mirbirkof.github.io',   // вітрина на GitHub Pages
+  'https://svsbeautyworld.com',
+  'https://www.svsbeautyworld.com',
+]);
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-    /\.github\.io$/,
-    /\.vercel\.app$/,
-    /\.lhr\.life$/,
-    /\.pinggy\.link$/,
-    // 01.08: Render убран из белого списка — сервисы погашены, прод только дроплет.
-    /\.serveousercontent\.com$/,
-    // 12.08: постоянный публичный адрес CRM (Tailscale Funnel). serveo закрыл анонимные
-    // туннели («capacity is currently full») → его домен мёртв, витрина и кабинет ходят сюда.
-    /\.ts\.net$/,
-    'https://svsbeautyworld.com',
-    'https://www.svsbeautyworld.com',
-  ],
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);              // curl / мобільні застосунки / same-origin
+    if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+    try {
+      // жива публічна адреса CRM (Tailscale Funnel / запасний тунель)
+      const base = require('./lib/public-url').getPublicBase();
+      if (base && origin === String(base).replace(/\/+$/, '')) return cb(null, true);
+    } catch (_) { /* файл адреси недоступний — не розширюємо доступ */ }
+    if (process.env.EXTRA_CORS_ORIGINS) {            // запасний рубильник без правки коду
+      const extra = process.env.EXTRA_CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
+      if (extra.includes(origin)) return cb(null, true);
+    }
+    console.warn('[cors] відхилено origin:', origin);
+    return cb(null, false);
+  },
   credentials: true,
 }));
 

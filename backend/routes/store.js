@@ -13,7 +13,11 @@
         накладная internal_transfers с суммой и маржой. Защита от списания в минус.
 */
 const express = require('express');
-const { getPool } = require('../db-pg');
+// Аудит 13.08: роутер магазину ходив у БД БЕЗ applyTenant — тобто в обхід RLS
+// (прод-конект має BYPASSRLS). Списання зі складу магазину й записи продажів могли
+// потрапити не в той салон. Тепер кожна транзакція магазину зажимається до свого тенанта,
+// як це вже зроблено в orders.js / purchasing.js / stock-import.js.
+const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
@@ -58,7 +62,7 @@ router.post('/receipts', async (req, res) => {
   const { createStoreReceipt } = require('../lib/store-receipt');
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const out = await createStoreReceipt(client, {
       ...(req.body || {}),
       created_by: (req.user && (req.user.name || req.user.login)) || null,
@@ -97,7 +101,7 @@ router.post('/transfer', async (req, res) => {
   }
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const tr = (await client.query(
       `INSERT INTO internal_transfers (notes, created_by) VALUES ($1,$2) RETURNING id`,
       [notes || null, (req.user && (req.user.name || req.user.login)) || null])).rows[0];
@@ -111,7 +115,14 @@ router.post('/transfer', async (req, res) => {
         [it.variant_id])).rows[0];
       if (!st) throw Object.assign(new Error(`Товару немає на складі магазину (variant ${it.variant_id})`), { user: true });
       if (Number(st.qty) < qty) throw Object.assign(new Error(`Недостатньо на складі магазину: є ${st.qty}, потрібно ${qty}`), { user: true });
-      const price = Number(st.wholesale != null ? st.wholesale : st.price) || 0; // ОПТ (решение Босса)
+      // Аудит 13.08: раніше `|| 0` мовчки проводив передачу по НУЛЬОВІЙ ціні (варіант без
+      // ціни / нечислове значення) — товар зі складу зникав, грошей нема. Тепер відмова
+      // з поясненням: ціну треба заповнити, а не «продати задарма».
+      const priceRaw = st.wholesale != null ? st.wholesale : st.price;
+      const price = Number(priceRaw);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw Object.assign(new Error(`У товару (variant ${it.variant_id}) не задана оптова ціна — передача неможлива. Заповніть ціну в картці товару.`), { user: true });
+      }
       const cost = Number(st.avg_cost) || 0;
       totalAmount += qty * price; totalCost += qty * cost;
       await client.query(
@@ -251,7 +262,7 @@ router.post('/sales', async (req, res) => {
   }
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     let cp = null, dueDate = null;
     if (counterparty_id) {
       cp = (await client.query(`SELECT * FROM store_counterparties WHERE id=$1`, [counterparty_id])).rows[0];
@@ -274,7 +285,18 @@ router.post('/sales', async (req, res) => {
       if (Number(st.qty) < qty) throw Object.assign(new Error(`Недостатньо на складі: є ${st.qty}, потрібно ${qty}`), { user: true });
       // цена: опт → wholesale, розница → price. Ручную цену разрешаем (акции), но не отрицательную.
       const base = sale_type === 'wholesale' ? (st.wholesale != null ? st.wholesale : st.price) : st.price;
-      const price = it.unit_price != null && Number(it.unit_price) >= 0 ? Number(it.unit_price) : Number(base) || 0;
+      // Аудит 13.08: ручна ціна (акція) дозволена, зокрема 0 — це свідомий вибір продавця.
+      // А ось МОВЧАЗНИЙ нуль через незаповнену ціну в картці — ні: товар списувався
+      // зі складу, а виручка = 0. Тепер такий випадок відхиляємо з поясненням.
+      let price;
+      if (it.unit_price != null && Number.isFinite(Number(it.unit_price)) && Number(it.unit_price) >= 0) {
+        price = Number(it.unit_price);
+      } else {
+        price = Number(base);
+        if (!Number.isFinite(price) || price <= 0) {
+          throw Object.assign(new Error(`У товару (variant ${it.variant_id}) не задана ціна — продаж неможливий. Заповніть ціну або вкажіть її вручну в документі.`), { user: true });
+        }
+      }
       const c = Number(st.avg_cost) || 0;
       total += qty * price; cost += qty * c;
       await client.query(
@@ -325,7 +347,7 @@ router.post('/sales/:id/pay', async (req, res) => {
   if (!(amount > 0)) return res.status(400).json({ error: 'amount має бути > 0' });
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); await applyTenant(client);
     const s = (await client.query(`SELECT total_amount, paid_amount FROM store_sales WHERE id=$1 FOR UPDATE`,
       [req.params.id])).rows[0];
     if (!s) throw Object.assign(new Error('Продаж не знайдено'), { user: true });

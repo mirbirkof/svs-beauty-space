@@ -4,6 +4,13 @@
  * Соло-режим (solo_master_mode) — отдельный сигнал: одиночке прячем командные разделы.
  */
 const express = require('express');
+// Аудит 13.08: кеш останнього вдалого набору прав по тенанту (для деградації без fail-open).
+const _lastGood = new Map();
+function _tenantKey(req) {
+  try { return require('../lib/tenant').getTenantId() || req.headers['x-tenant-slug'] || 'default'; }
+  catch (_) { return req.headers['x-tenant-slug'] || 'default'; }
+}
+
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { getTenantId, isPlatformTenant } = require('../lib/tenant');
@@ -59,7 +66,7 @@ router.get('/my/entitlements', async (req, res) => {
       }
     } catch (e) { console.error('[entitlements/features]', e.message); }
 
-    res.json({
+    const payload = {
       ok: true,
       plan: planSlug,
       tier_rank: platform ? 3 : tierRank,
@@ -67,11 +74,20 @@ router.get('/my/entitlements', async (req, res) => {
       is_platform: !!platform,
       business_type: businessType,
       features,
-    });
+    };
+    // Аудит 13.08: запам'ятовуємо ОСТАННІЙ ВДАЛИЙ результат по тенанту, щоб при збої
+    // віддати саме його, а не «всім професійний тариф» (обхід монетизації).
+    try { _lastGood.set(String(_tenantKey(req)), { at: Date.now(), payload }); } catch (_) {}
+    res.json(payload);
   } catch (e) {
-    console.error('[entitlements]', e.message);
-    // fail-open: при ошибке отдаём «всё доступно», чтобы не заблокировать рабочий салон
-    res.json({ ok: true, plan: 'professional', tier_rank: 3, is_solo: false, business_type: 'beauty', features: {}, degraded: true });
+    console.error('[entitlements] ЗБІЙ визначення тарифу', e.message);
+    // Аудит 13.08: раніше тут був fail-open «plan: professional, tier_rank: 3» — будь-який
+    // збій відкривав платні розділи всім тенантам. Тепер: віддаємо ОСТАННІЙ ВІДОМИЙ тариф
+    // цього ж салону (робочий салон не блокуємо), а якщо його ще не було — чесний 503,
+    // щоб інтерфейс показав помилку, а не подарував Enterprise.
+    const cached = _lastGood.get(String(_tenantKey(req)));
+    if (cached) return res.json({ ...cached.payload, degraded: true });
+    res.status(503).json({ ok: false, error: 'entitlements-unavailable', degraded: true });
   }
 });
 

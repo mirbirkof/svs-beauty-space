@@ -140,7 +140,9 @@ async function dialViaProvider(provider, { from, to, callbackUrl }) {
     // });
     // const data = await resp.json();
     // return { ok: data.status === 'success', external_call_id: data.generalCallID };
-    return { ok: true, reason: 'binotel_api_call_queued', note: 'connect_api_key_in_settings' };
+    // Аудит 13.08: реалізації виклику ще немає (код закоментовано), а функція повертала
+    // ok:true — заявка позначалась обробленою, дзвінок НЕ відбувався. Тепер чесно: не готово.
+    return { ok: false, reason: 'binotel_not_implemented', note: 'Інтеграція Binotel ще не підключена — наберіть клієнта вручну.' };
   }
 
   // Twilio click-to-call
@@ -149,11 +151,11 @@ async function dialViaProvider(provider, { from, to, callbackUrl }) {
     // const client = require('twilio')(cfg.account_sid, cfg.auth_token);
     // const call = await client.calls.create({ to, from: cfg.from_number, url: callbackUrl });
     // return { ok: true, external_call_id: call.sid };
-    return { ok: true, reason: 'twilio_api_call_queued', note: 'connect_account_sid_in_settings' };
+    return { ok: false, reason: 'twilio_not_implemented', note: 'Інтеграція Twilio ще не підключена — наберіть клієнта вручну.' };
   }
 
   // Ringostat / Lirax — API-спецификации подключаются через Интеграции
-  return { ok: true, reason: `${type}_call_queued`, note: 'connect_provider_in_settings' };
+  return { ok: false, reason: `${type}_not_implemented`, note: 'Провайдер телефонії ще не підключений — наберіть клієнта вручну.' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1111,6 +1113,18 @@ router.post('/callback/:id/dial', requirePerm('calls.callback.write'), async (re
       });
     }
 
+    // Аудит 13.08: заявку позначали 'in_progress' ДО спроби дзвінка, і навіть коли дзвінок
+    // не відбувся, відповідь була ok:true — клієнт «оброблений», але йому ніхто не подзвонив.
+    // Тепер: дзвінок не пішов → повертаємо заявку в чергу і чесно кажемо про це.
+    if (!dialResult || dialResult.ok !== true) {
+      await q(`UPDATE callback_requests SET status='pending', updated_at=NOW() WHERE id=$1`, [cb.id])
+        .catch((e) => console.error('[callback:rollback]', e.message));
+      console.error('[callback:dial] дзвінок НЕ виконано', cb.id, dialResult && dialResult.reason);
+      return res.json({
+        ok: false, call_id: callRows[0].id, dial_result: dialResult,
+        message: (dialResult && dialResult.note) || 'Дзвінок не виконано — заявка повернена в чергу.',
+      });
+    }
     logAction({ user: req.user, action: 'callback.dial', entity: 'callback_requests', entity_id: cb.id, ip: req.ip });
     res.json({ ok: true, call_id: callRows[0].id, dial_result: dialResult });
   } catch (e) {

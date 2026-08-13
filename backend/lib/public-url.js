@@ -46,9 +46,29 @@ function getPublicBase(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL.replace(/\/$/, '');
   if (req && typeof req.get === 'function') {
     const host = req.get('host');
-    if (host) return `${req.protocol}://${host}`;
+    // Аудит 13.08: Host приходить ВІД КЛІЄНТА і його можна підмінити. Раніше з нього
+    // будувалися посилання відновлення пароля, верифікації та redirect оплати — тобто
+    // атакуючий міг увести їх на свій домен (host-header injection). Тепер довіряємо
+    // Host лише якщо він схожий на НАШУ інфраструктуру, інакше краще null (виклик
+    // сам вирішить: пропустити відправку, ніж надіслати посилання на чужий сайт).
+    if (host && TRUSTED_HOST_RE.test(String(host))) return `${req.protocol}://${host}`;
+    if (host) console.warn('[public-url] недовірений Host у запиті, ігнорую:', host);
   }
   return null;
 }
+
+// Свої хости: локальний прод, наш tailscale-фаннел, власні домени салону.
+// Можна розширити через TRUSTED_HOSTS (кома-роздільно) без правки коду.
+const TRUSTED_HOST_RE = (() => {
+  const extra = (process.env.TRUSTED_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean)
+    .map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const base = [
+    '127\\.0\\.0\\.1(:\\d+)?', 'localhost(:\\d+)?',
+    'zvetlacrm\\.[a-z0-9-]+\\.ts\\.net',
+    '(www\\.)?svsbeautyworld\\.com',
+    '(www\\.)?svsbeauty\\.com\\.ua',
+  ].concat(extra);
+  return new RegExp('^(' + base.join('|') + ')$', 'i');
+})();
 
 module.exports = { getPublicBase };

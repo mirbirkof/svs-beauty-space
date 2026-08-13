@@ -15,7 +15,16 @@ const CAT_LABELS = {
 };
 
 async function liveFinance(pool, from, to) {
-  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch(() => []);
+  // Аудит 13.08: раніше будь-який збій SQL мовчки ставав порожнім набором → «витрати 0»,
+  // «виручка 0», і власник бачив завищений прибуток як норму. Тепер збій: (1) видно в логах,
+  // (2) позначається у відповіді прапорцем incomplete — споживач може показати попередження
+  // замість того, щоб видавати неповні дані за правду. Поведінка при УСПІХУ не змінилась.
+  const failed = [];
+  const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => {
+    failed.push(e.message);
+    console.error('[live-finance] query failed:', e.message);
+    return [];
+  });
   // Межі періоду приходять у ЧОТИРЬОХ форматах (аудит 26.07):
   //   "YYYY-MM-DD HH:MM:SS Europe/Kyiv" (Фінцентр, дайджест) — Postgres розуміє, Date.parse НІ
   //     → раніше NaN заражав оклади → expTotal → «Прибуток: NaN ₴» у Telegram-зведенні;
@@ -208,6 +217,9 @@ async function liveFinance(pool, from, to) {
     avg_check: visitsCount > 0 ? Math.round(revTotal / visitsCount)
              : (txCount > 0 ? Math.round(revTotal / txCount) : 0),
     commission_appts: Number(comm[0]?.appts || 0),
+    // true = частина запитів впала, цифри НЕПОВНІ (аудит 13.08). Відсутність поля = все ок.
+    incomplete: failed.length > 0 || undefined,
+    incomplete_reasons: failed.length ? failed.slice(0, 3) : undefined,
   };
 }
 

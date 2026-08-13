@@ -56,7 +56,10 @@ router.post('/webhook', async (req, res) => {
         `SELECT * FROM viber_bot_config WHERE is_active = TRUE`
       );
       cfg = cfgs.rows.find(c => c.auth_token && viberSigMatch(req.rawBody, sig, c.auth_token)) || null;
-    } else if (process.env.NODE_ENV !== 'production') {
+    } else if (process.env.VIBER_ALLOW_TOKEN_FALLBACK === '1' && process.env.NODE_ENV !== 'production') {
+      // Аудит 13.08: раніше обхід підпису вмикався САМИМ ФАКТОМ незаданого NODE_ENV —
+      // а на нашому дроплеті він якраз не заданий, тобто «дев-режим» був живий на проді.
+      // Тепер потрібен ЯВНИЙ прапорець VIBER_ALLOW_TOKEN_FALLBACK=1 (тільки для ручних тестів).
       // Major #17: токен-fallback ТІЛЬКИ поза продакшеном (ручний тест з адмінки).
       // У проді приймаємо лише HMAC-підпис реального Viber — інакше витік auth_token
       // дозволяв би підробити вебхук-події в обхід підпису.

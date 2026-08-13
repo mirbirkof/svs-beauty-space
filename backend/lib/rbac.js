@@ -28,7 +28,15 @@ async function ownerUserExists() {
       `SELECT 1 FROM users u JOIN roles r ON r.id=u.role_id
         WHERE u.is_active = true AND r.level >= 900 LIMIT 1`);
     _ownerExistsCache = { at: now, val: r.rowCount > 0 };
-  } catch { _ownerExistsCache = { at: now, val: false }; }
+  } catch (e) {
+    // Аудит 13.08: раніше збій БД кешував val:false на 30с → система «не бачила» власника,
+    // і легасі ADMIN_TOKEN у bootstrap-режимі знову ставав owner з правами '*'. Тепер
+    // помилка НЕ пом'якшує безпеку: тримаємо попереднє відоме значення, а якщо його нема —
+    // вважаємо, що власник Є (fail-closed), і мастер-токен відхиляється.
+    console.error('[rbac] ownerUserExists check failed (fail-closed)', e.message);
+    const prev = _ownerExistsCache.val;
+    _ownerExistsCache = { at: now, val: prev === null ? true : prev };
+  }
   return _ownerExistsCache.val;
 }
 
@@ -116,7 +124,15 @@ function requirePerm(perm) {
       req.user = user;
       // Аудит #2: зажать branch-параметры к филиалу привязанного юзера.
       // No-op для owner / одно-салонных (branch_id=null) — поведение не меняется.
-      try { require('./branch-scope').enforceBranch(req); } catch (_) {}
+      // Аудит 13.08: раніше помилка зажиму мовчки проковтувалась → співробітник філії A
+      // міг читати/писати філію B (IDOR). Тепер збій ЗАХИСТУ = відмова, а не пропуск.
+      try {
+        require('./branch-scope').enforceBranch(req);
+      } catch (e) {
+        console.error('[rbac] enforceBranch failed (fail-closed)', e.message);
+        return res.status(503).json({ error: 'branch-scope-unavailable',
+          message: 'Тимчасово не можу перевірити доступ до філії. Спробуйте за хвилину.' });
+      }
       // Контроль смены (11.08): фиксируем, с какого аккаунта идёт работа и ЕГО ЛИ сейчас
       // смена по графику. Не блокируем — подмены и переработки в салоне норма, но владелец
       // видит факт и получает алерт при работе вне графика.

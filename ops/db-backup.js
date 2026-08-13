@@ -30,6 +30,22 @@ function log(msg) {
   try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (_) {}
 }
 
+
+// Аудит 13.08: раніше провал бекапу лишався РЯДКОМ У /tmp-лозі, який ніхто не читає —
+// бекапи могли падати місяцями непоміченими. Тепер про провал одразу знає Бос.
+function notifyBoss(text) {
+  try {
+    const body = JSON.stringify({ text });
+    const req = require('http').request({
+      host: '127.0.0.1', port: 3005, path: '/notify', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body),
+                 'x-restart-token': 'x', 'x-notify-token': process.env.RESTART_TOKEN || 'jarvis-restart-2026' },
+      timeout: 8000,
+    });
+    req.on('error', () => {}); req.write(body); req.end();
+  } catch (_) {}
+}
+
 (async () => {
   const url = process.env.DATABASE_URL;
   if (!url) { log('FATAL: DATABASE_URL не задан'); process.exit(1); }
@@ -71,5 +87,7 @@ function log(msg) {
 
   const size = fs.readdirSync(outDir).reduce((s, f) => s + fs.statSync(path.join(outDir, f)).size, 0);
   log(`backup done: ${ok} таблиц OK, ${fail} FAIL, ${rowsTotal} строк, ${(size / 1048576).toFixed(1)} MB`);
-  process.exit(fail > 0 ? 2 : 0);
-})().catch(e => { log(`FATAL: ${e.message}`); process.exit(1); });
+  if (fail > 0) notifyBoss(`🔴 <b>Бекап бази CRM: ${fail} таблиць НЕ збереглися</b>\nЗбережено ${ok}, розмір ${(size / 1048576).toFixed(1)} MB. Перевір /tmp/db-backup.log`);
+  if (size < 1048576) notifyBoss(`🔴 <b>Бекап бази CRM підозріло малий</b>: ${(size / 1048576).toFixed(2)} MB (звично ~6-7 MB). Схоже, збереглася не вся база.`);
+  setTimeout(() => process.exit(fail > 0 ? 2 : 0), fail > 0 || size < 1048576 ? 1500 : 0);
+})().catch(e => { log(`FATAL: ${e.message}`); notifyBoss(`🔴 <b>Бекап бази CRM ВПАВ</b>: ${e.message}`); setTimeout(() => process.exit(1), 1500); });

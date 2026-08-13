@@ -30,9 +30,30 @@ async function getSetting(key, def = null) {
     const value = r.rows[0] ? r.rows[0].value : def;
     cache.set(ck(key), { value, exp: Date.now() + CACHE_TTL_MS });
     return value;
-  } catch {
-    return def; // якщо таблиці ще нема (міграція не пройшла) — повертаємо дефолт
+  } catch (e) {
+    // Аудит 13.08: раніше тут було мовчазне `return def`. Збій БД на секунду —
+    // і налаштування салону підмінялося дефолтом (напр. paydesk_require_pin: true→false,
+    // тобто каса відкривалася без PIN). Тепер: 1) збій видно в логах,
+    // 2) тримаємо ОСТАННЄ ВІДОМЕ значення (навіть протухле) замість стрибка в дефолт.
+    console.error('[settings] read failed', key, e.message);
+    if (hit) return hit.value;
+    return def; // справді немає що віддати (таблиці ще нема / перший запит)
   }
+}
+
+// Строгий варіант для критичних до безпеки ключів: помилка БД НЕ маскується дефолтом,
+// а прокидається вгору — виклик сам вирішує (зазвичай: не відкривати доступ, віддати 503).
+async function getSettingStrict(key, def = null) {
+  const hit = cache.get(ck(key));
+  if (hit && hit.exp > Date.now()) return hit.value;
+  const tid = _getTenantId() || PLATFORM_TENANT_ID;
+  const r = await getPool().query(
+    `SELECT value FROM app_settings
+      WHERE key = $1 AND tenant_id IN ($2::uuid, $3::uuid)
+      ORDER BY (tenant_id = $2::uuid) DESC LIMIT 1`, [key, tid, PLATFORM_TENANT_ID]);
+  const value = r.rows[0] ? r.rows[0].value : def;
+  cache.set(ck(key), { value, exp: Date.now() + CACHE_TTL_MS });
+  return value;
 }
 
 async function setSetting(key, value, userId = null) {
@@ -92,4 +113,4 @@ async function shouldMaskPhones(user) {
   return true;
 }
 
-module.exports = { getSetting, setSetting, getAllSettings, maskPhone, shouldMaskPhones };
+module.exports = { getSetting, getSettingStrict, setSetting, getAllSettings, maskPhone, shouldMaskPhones };

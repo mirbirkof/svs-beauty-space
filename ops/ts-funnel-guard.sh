@@ -23,6 +23,15 @@ TS="$TS_DIR/tailscale --socket=$SOCK"
 PORT=3011
 LOG=/tmp/ts-funnel-guard.log
 say(){ echo "[$(date '+%F %T')] $*" >> "$LOG"; }
+# Аудит 13.08: постійна публічна адреса CRM — критична. Раніше «узел не поднялся»
+# писалось ЛИШЕ в /tmp-лог, який ніхто не читає, і потрібна ручна дія залишалась
+# непоміченою. Тепер про такі випадки Бос дізнається одразу (не частіше разу на годину).
+notify(){ curl -s -m 10 -X POST http://127.0.0.1:3005/notify -H "x-restart-token: x" -H "x-notify-token: ${RESTART_TOKEN:-jarvis-restart-2026}" --data "$1" >/dev/null 2>&1; }
+notify_throttled(){
+  local mark=/tmp/ts-funnel-alert.stamp last now
+  last=$(stat -c %Y "$mark" 2>/dev/null || echo 0); now=$(date +%s)
+  if [ $((now - last)) -gt 3600 ]; then touch "$mark"; notify "$1"; fi
+}
 
 # 1. Процесс
 if ! pgrep -f "tailscaled --tun=userspace-networking --statedir=$TS_DIR/state" >/dev/null; then
@@ -44,7 +53,10 @@ if [ "$ST" != "Running" ]; then
   $TS up >/dev/null 2>&1
   sleep 6
   ST=$(state)
-  [ "$ST" != "Running" ] && say "узел не поднялся (${ST:-нет ответа}) — нужен повторный вход в Tailscale"
+  if [ "$ST" != "Running" ]; then
+    say "узел не поднялся (${ST:-нет ответа}) — нужен повторный вход в Tailscale"
+    notify_throttled "🔴 Постійна адреса CRM під загрозою: вузол Tailscale не піднімається (${ST:-нет ответа}). Потрібен повторний вхід — скажи, і я проведу."
+  fi
 fi
 
 # 3. Публикация наружу

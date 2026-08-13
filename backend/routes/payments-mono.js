@@ -23,6 +23,20 @@ const emitPaymentCompleted = (invoiceId, amount, kind) =>
 
 const FINAL = ['success', 'failure', 'reversed', 'expired'];
 
+// Аудит 13.08: гроші клієнта списані, а запис у касу не пройшов — раніше це осідало
+// одним рядком у логах і не помічалось (виручка занижена, звірка неможлива).
+// Тепер такий випадок ГОЛОСНИЙ: помітний лог + миттєве повідомлення власнику в Telegram.
+function alertCashMiss(kind, invoiceId, amount, err) {
+  const msg = `‼️ <b>ГРОШІ ОТРИМАНО, АЛЕ НЕ ПОТРАПИЛИ В КАСУ</b>\nТип: ${kind}\nСума: ${Math.round(Number(amount) || 0)} грн\nІнвойс: <code>${invoiceId}</code>\nПричина: ${err}\n\nПотрібно провести вручну.`;
+  console.error(`[mono:CASH-MISS] kind=${kind} invoice=${invoiceId} amount=${amount} err=${err}`);
+  try {
+    if (process.env.ADMIN_TG_CHAT) {
+      const { tgSend } = require('./telegram-notify');
+      tgSend(process.env.ADMIN_TG_CHAT, msg).catch(e => console.error('[mono:cash-miss-alert]', e.message));
+    }
+  } catch (e) { console.error('[mono:cash-miss-alert]', e.message); }
+}
+
 // телефон владельца личного кабинета (clients.phone по client_id); fallback — что записано в брони
 async function cabinetPhone(pool, clientId, fallback) {
   if (!clientId) return fallback || '';
@@ -142,7 +156,7 @@ async function applyInvoiceStatus(data) {
           await recordCashIn({ category: 'sale_service', amount: paid, method: 'mono',
             ref_type: 'online_booking', ref_id: b.id, description: b.service_name || 'Послуга (онлайн)',
             ext_ref: `mono:visit:${invoiceId}` });
-        } catch (e) { console.error('[mono:visit:cash]', e.message); }
+        } catch (e) { alertCashMiss('оплата візиту', invoiceId, paid, e.message); }
         emitPaymentCompleted(invoiceId, paid, 'visit');
       }
       // телефон в уведомлении = телефон владельца кабинета (clients.phone), не телефон из карточки BP
@@ -175,7 +189,7 @@ async function applyInvoiceStatus(data) {
         await recordCashIn({ category: 'prepayment', amount: paid, method: 'mono',
           ref_type: 'online_booking', ref_id: b.id, description: `Передоплата: ${b.service_name || 'запис'}`,
           ext_ref: `mono:prepay:${invoiceId}` });
-      } catch (e) { console.error('[mono:prepay:cash]', e.message); }
+      } catch (e) { alertCashMiss('передоплата', invoiceId, paid, e.message); }
       emitPaymentCompleted(invoiceId, paid, 'prepayment');
       b.client_phone = await cabinetPhone(pool, b.client_id, b.client_phone);
       const when = b.date_from ? new Date(b.date_from).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';

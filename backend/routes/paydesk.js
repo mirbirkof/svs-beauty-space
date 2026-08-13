@@ -90,7 +90,16 @@ router.post('/login', pinLimiter, async (req, res) => {
     // 'paydesk_require_pin' (дефолт false). У салоні Босса вимкнено → екран відкритий, як і був.
     // Салон-орендар, якому потрібна безпека каси, вмикає перемикач → PIN стає обовʼязковим.
     // Раніше «відкрито поки PIN не задано» було глобально → нові тенанти мали касу без пароля.
-    const requirePin = await require('../lib/settings').getSetting('paydesk_require_pin', false);
+    // Аудит 13.08: читаємо СТРОГО. Раніше збій БД повертав дефолт false — і каса салону,
+    // де PIN увімкнено, відкривалася без коду. Тепер помилка БД → 503, а не тихий вхід.
+    let requirePin;
+    try {
+      requirePin = await require('../lib/settings').getSettingStrict('paydesk_require_pin', false);
+    } catch (e) {
+      console.error('[paydesk:login] settings unavailable', e.message);
+      return res.status(503).json({ error: 'settings-unavailable',
+        message: 'Тимчасово не можу перевірити налаштування каси. Спробуйте за хвилину.' });
+    }
     const hash = await getPinHash();
     if (!requirePin) {
       // Режим Босса: без PIN. Але якщо власник ВСЕ Ж задав PIN — поважаємо його й вимагаємо код.
@@ -111,6 +120,7 @@ router.get('/today', async (req, res) => {
   try {
     const sess = checkSession(req);
     if (!sess) return res.status(401).json({ error: 'pin-required' });
+    const _degraded = []; // список джерел, що не відповіли (аудит 13.08)
     const from = kyivDayStartUnix();
     const mono = require('../lib/mono');
     const items = [];
@@ -124,7 +134,14 @@ router.get('/today', async (req, res) => {
         const st = await mono.merchantStatement(from);
         mlist = (st && st.list) || [];
         _cache.set(ck, { at: Date.now(), data: mlist });
-      } catch (e) { mlist = (hit && hit.data) || []; }
+      } catch (e) {
+        // Аудит 13.08: раніше збій банку мовчки давав порожній список — каса показувала
+        // «сьогодні надходжень не було». Тепер: беремо протухлий кеш, але позначаємо
+        // дані як неповні (stale) і пишемо причину в лог.
+        console.error('[paydesk:merchant] Mono недоступний:', e.message);
+        mlist = (hit && hit.data) || [];
+        _degraded.push('еквайринг: ' + e.message);
+      }
     }
     for (const p of mlist) {
       if (p.status !== 'success') continue;
@@ -146,7 +163,11 @@ router.get('/today', async (req, res) => {
         try {
           plist = (await mono.personalStatement(from)) || [];
           _cache.set('p', { at: Date.now(), data: plist });
-        } catch (e) { plist = (hp && hp.data) || []; }
+        } catch (e) {
+          console.error('[paydesk:personal] Mono недоступний:', e.message);
+          plist = (hp && hp.data) || [];
+          _degraded.push('особистий рахунок: ' + e.message);
+        }
       }
       for (const t of plist) {
         if (Number(t.amount) <= 0) continue; // тільки ПРИХОДИ
@@ -171,6 +192,12 @@ router.get('/today', async (req, res) => {
       count: todayOnly.length,
       personal_connected: !!process.env.MONO_PERSONAL_TOKEN,
       items: todayOnly.slice(0, 200),
+      // Аудит 13.08: якщо банк не відповів — кажемо про це прямо, щоб «0 грн» не читалось
+      // як факт «сьогодні оплат не було».
+      degraded: _degraded.length ? true : undefined,
+      degraded_note: _degraded.length
+        ? 'Дані неповні: ' + _degraded.join('; ') + '. Показано останні відомі значення.'
+        : undefined,
     });
   } catch (e) { console.error('[paydesk:today]', e.message); res.status(500).json({ error: 'load-failed' }); }
 });

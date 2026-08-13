@@ -22,8 +22,10 @@ const cfg = {
   // через panel-login (токен не хранится — не протухает). Удалить только когда СРМ 100%.
   qaUi: {
     slug: process.env.QA_UI_SLUG || 'qa-visual-test',
-    phone: process.env.QA_UI_PHONE || '+380991310672',
-    password: process.env.QA_UI_PASSWORD || 'qatest123456',
+    // Аудит 13.08: логін і пароль тест-салону НА ПРОДІ лежали дефолтами в коді (публічне
+    // репо) — це прямий вхід у бойову CRM. Тепер лише з оточення (backend/.env, у .gitignore).
+    phone: process.env.QA_UI_PHONE || '',
+    password: process.env.QA_UI_PASSWORD || '',
   },
 
   // Режим: 'safe' (только read-only + сверки) | 'full' (есть изолированная QA-ветка)

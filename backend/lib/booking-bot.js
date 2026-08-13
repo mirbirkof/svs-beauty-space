@@ -368,9 +368,20 @@ async function showSlots(ctx, uid, target, session) {
   const masterIds = selectedMasterIds(session);
   if (!masterIds.length) return restart(ctx, uid, target, 'Немає доступних майстрів для цієї послуги.');
 
+  // Аудит 13.08: раніше збій движка слотів давав slots=[] і клієнт бачив «вільних годин немає» —
+  // технічна аварія виглядала як «салон зайнятий», записи тихо втрачались. Тепер клієнту чесно
+  // кажемо про тимчасовий збій і пропонуємо повторити, а не відправляємо його до конкурентів.
   let slots = [];
-  try { slots = await slotEngine.freeSlotsForDate(ctx.pool, { date, masterIds, durationMin: dur || 60 }); }
-  catch (e) { console.error('[bookbot/slots]', e.message); }
+  try {
+    slots = await slotEngine.freeSlotsForDate(ctx.pool, { date, masterIds, durationMin: dur || 60 });
+  } catch (e) {
+    console.error('[bookbot/slots] ТЕХНІЧНИЙ ЗБІЙ (не показуємо як «немає годин»)', e.message);
+    const kbErr = [[{ text: '↻ Спробувати ще раз', callback_data: 'bk:back:date' }],
+                   [{ text: '✖ Скасувати', callback_data: 'bk:cancel' }]];
+    await saveSession(ctx.pool, uid, target.chat_id, 'date', session.data);
+    return respond(ctx.tg, target,
+      '⚠️ Тимчасовий технічний збій — не вдалося отримати вільні години. Спробуйте ще раз за хвилину або зателефонуйте нам.', kbErr);
+  }
   slots = slots.slice(0, MAX_SLOT_BTN);
 
   if (!slots.length) {

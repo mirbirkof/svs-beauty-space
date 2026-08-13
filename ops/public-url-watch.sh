@@ -71,7 +71,20 @@ PICK=""
 for CAND in "$TS_URL" "$(cat /tmp/serveo-current-url.txt 2>/dev/null)" "$(cat /tmp/lhr-crm-url.txt 2>/dev/null)"; do
   if alive "$CAND"; then PICK="$CAND"; break; fi
 done
-[ -z "$PICK" ] && exit 1
+# Аудит 13.08: раніше тут був мовчазний `exit 1` — CRM недоступна ЗЗОВНІ ЦІЛКОМ
+# (жоден канал не живий), а Бос про це не дізнавався. Тепер попереджаємо, але не
+# частіше разу на годину, щоб не спамити кожні 3 хвилини.
+if [ -z "$PICK" ]; then
+  DOWNMARK=/tmp/public-url-all-down.stamp
+  LAST=$(stat -c %Y "$DOWNMARK" 2>/dev/null || echo 0)
+  NOWS=$(date +%s)
+  if [ $((NOWS - LAST)) -gt 3600 ]; then
+    touch "$DOWNMARK"
+    notify "🔴 CRM недоступна ЗЗОВНІ: жоден публічний канал не відповідає (tailscale/serveo/lhr). Всередині сервера працює, але клієнти й бот запису зайти не можуть."
+  fi
+  exit 1
+fi
+rm -f /tmp/public-url-all-down.stamp
 
 CUR=$(cat "$STATE" 2>/dev/null || true)
 
@@ -88,9 +101,17 @@ WANT="$PICK/api/booking/telegram"
 if [ -n "$TOKEN" ]; then
   HAVE=$(curl -s -m 15 "https://api.telegram.org/bot$TOKEN/getWebhookInfo" 2>/dev/null | grep -oE '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
   if [ "$HAVE" != "$WANT" ]; then
-    curl -s -m 15 "https://api.telegram.org/bot$TOKEN/setWebhook" \
-      -d "url=$WANT" -d "secret_token=$SECRET" >/dev/null 2>&1
-    echo "[$(date '+%F %H:%M')] вебхук переставлен: $HAVE -> $WANT"
+    # Аудит 13.08: раніше відповідь Telegram не перевірялась і в лог писалось
+    # «вебхук переставлен» НЕЗАЛЕЖНО від результату. Якщо API відмовляв (битий secret,
+    # невалідний URL) — бот запису лишався мертвим, а лог казав, що все добре.
+    RESP=$(curl -s -m 15 "https://api.telegram.org/bot$TOKEN/setWebhook" \
+      -d "url=$WANT" -d "secret_token=$SECRET" 2>/dev/null)
+    if echo "$RESP" | grep -q '"ok":true'; then
+      echo "[$(date '+%F %H:%M')] вебхук переставлено: $HAVE -> $WANT"
+    else
+      echo "[$(date '+%F %H:%M')] ПОМИЛКА setWebhook: $RESP"
+      notify "🔴 Бот запису: не вдалося переставити вебхук на $WANT. Відповідь Telegram: $(echo "$RESP" | head -c 300)"
+    fi
   fi
 fi
 

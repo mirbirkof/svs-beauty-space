@@ -40,14 +40,24 @@ async function getSettings(pool) {
   const tid = String(getTenantId() || 'default');
   const hit = _setCache.get(tid);
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
-  let row = {};
-  try { row = (await pool.query(`SELECT * FROM booking_settings LIMIT 1`)).rows[0] || {}; } catch (_) {}
+  // Аудит 13.08: раніше збій читання booking_settings мовчки давав ДЕФОЛТИ (lead 30хв,
+  // крок 15, горизонт 90 днів) І КЕШУВАВ їх на 5 хвилин. Салон із правилом «не раніше ніж
+  // за 2 години» на цей час починав пускати записи «через 30 хвилин». Тепер: помилку видно,
+  // тримаємо ОСТАННІ ВІДОМІ налаштування, а свіжі дефолти НЕ кешуємо (перепитаємо наступного разу).
+  let row = null;
+  try {
+    row = (await pool.query(`SELECT * FROM booking_settings LIMIT 1`)).rows[0] || {};
+  } catch (e) {
+    console.error('[slot-engine] booking_settings read failed:', e.message);
+    if (hit) return hit.data; // краще протухлі СВОЇ правила, ніж чужі дефолти
+  }
+  const src = row || {};
   const data = {
-    leadMin: Number(row.min_lead_minutes) > 0 ? Number(row.min_lead_minutes) : 30,
-    stepMin: Number(row.slot_step_minutes) > 0 ? Number(row.slot_step_minutes) : 15,
-    horizonDays: Number(row.max_horizon_days) > 0 ? Number(row.max_horizon_days) : 90,
+    leadMin: Number(src.min_lead_minutes) > 0 ? Number(src.min_lead_minutes) : 30,
+    stepMin: Number(src.slot_step_minutes) > 0 ? Number(src.slot_step_minutes) : 15,
+    horizonDays: Number(src.max_horizon_days) > 0 ? Number(src.max_horizon_days) : 90,
   };
-  _setCache.set(tid, { data, at: Date.now() });
+  if (row !== null) _setCache.set(tid, { data, at: Date.now() });
   return data;
 }
 

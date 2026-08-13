@@ -305,8 +305,15 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
     // SLS-11: если заказ выдал склад магазина — возвращаем товар ТУДА ЖЕ, склад салона не трогаем
     let backToStore = false;
     if (stockTaken) {
-      try { backToStore = await require('../lib/store-fulfill').revertToStore(client, id); }
-      catch (_) { backToStore = false; }
+      // Аудит 13.08: раніше збій повернення на склад МАГАЗИНУ мовчки перемикав повернення
+      // на склад САЛОНУ — два склади змішувались (товар з'являвся там, звідки не йшов).
+      // Тепер збій зупиняє операцію: краще чесна помилка, ніж тихе розходження залишків.
+      try {
+        backToStore = await require('../lib/store-fulfill').revertToStore(client, id);
+      } catch (e) {
+        console.error('[orders:revert-to-store] ЗБІЙ повернення на склад магазину', id, e.message);
+        throw Object.assign(new Error('Не вдалося повернути товар на склад магазину. Операцію скасовано, щоб не змішати склади. Спробуйте ще раз.'), { user: true });
+      }
     }
     for (const it of items.rows) {
       if (it.variant_id == null) continue;
@@ -375,6 +382,9 @@ router.post('/:id/cancel', authClient({ optional: true }), async (req, res) => {
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[orders:cancel]', e);
+    // Аудит 13.08: зрозумілі користувачу відмови (e.user) віддаємо текстом і 409,
+    // щоб адміністратор бачив ПРИЧИНУ, а не «internal».
+    if (e && e.user) return res.status(409).json({ error: 'cannot-cancel', message: e.message });
     res.status(500).json({ error: 'internal' });
   } finally {
     client.release();

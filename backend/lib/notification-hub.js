@@ -226,6 +226,9 @@ async function enqueue(opts = {}) {
     if (!r.rowCount) return { skipped: true, reason: 'duplicate' };
     return { id: Number(r.rows[0].id), status: 'queued' };
   } catch (e) {
+    // Аудит 13.08: раніше помилка INSERT поверталась мовчки — нагадування/лист клієнту
+    // просто зникали, а виклики трактували це як «оброблено». Тепер збій ВИДНО в логах.
+    console.error('[notification-hub] enqueue failed:', e.message, '| category=', category, 'client=', opts.clientId || '-');
     return { skipped: true, reason: 'enqueue-error', error: e.message };
   }
 }

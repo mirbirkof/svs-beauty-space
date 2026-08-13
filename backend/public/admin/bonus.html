@@ -172,10 +172,24 @@ async function loadSettings(){
     document.getElementById('s_rate').value=s.exchange_rate;
     document.getElementById('s_expiry').value=s.expiry_days;
     document.getElementById('s_vip').value=String(!!s.vip_no_expiry);
-  }catch(e){}
+    _bonusSettingsLoaded = true;
+  }catch(e){
+    // Аудит 13.08: раніше збій завантаження мовчав — поля лишались порожніми, і наступне
+    // «Зберегти» записувало нулі в ГРОШОВУ механіку (курс обміну, % оплати бонусами).
+    _bonusSettingsLoaded = false;
+    const m=document.getElementById('setMsg');
+    if(m){ m.style.color='#B23B2E'; m.textContent='Не вдалося завантажити налаштування — збереження заблоковано. Оновіть сторінку.'; }
+    console.error('[bonus] loadSettings', e);
+  }
 }
+let _bonusSettingsLoaded = false; // аудит 13.08: не зберігати те, що не завантажилось
 async function saveSettings(){
   const m=document.getElementById('setMsg'); m.textContent='Збереження…';
+  if(!_bonusSettingsLoaded){
+    m.style.color='#B23B2E';
+    m.textContent='Налаштування не були завантажені — збереження скасовано, щоб не записати нулі.';
+    return;
+  }
   try{
     await adminFetch('/api/bonus/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       enabled:document.getElementById('s_enabled').value==='true',

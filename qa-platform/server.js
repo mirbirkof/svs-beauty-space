@@ -10,7 +10,10 @@ const cfg = require('./config');
 const reg = require('./lib/registry');
 
 const PORT = Number(process.env.QA_PANEL_PORT || 3020);
-const TOKEN = process.env.QA_PANEL_TOKEN || 'svsqa';
+// Аудит 13.08: дефолт 'svsqa' лежав у репо, а панель уміє правити й деплоїти код.
+// Немає токена в оточенні → панель не піднімається взагалі (fail-closed).
+const TOKEN = process.env.QA_PANEL_TOKEN || '';
+if (!TOKEN) { console.error('[qa-panel] QA_PANEL_TOKEN не заданий — панель вимкнена'); process.exit(1); }
 const dataFile = (n) => path.join(cfg.dataDir, n);
 const readJSON = (n, d) => { try { return JSON.parse(fs.readFileSync(dataFile(n), 'utf8')); } catch (_) { return d; } };
 const send = (res, code, body, type = 'application/json') => {

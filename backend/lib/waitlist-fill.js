@@ -50,6 +50,11 @@ async function tryFillFromWaitlist(opts = {}) {
     const bot = await getBotForTenant(tenantId).catch(() => null);
     const when = fmtSlot(startsAt);
     const mName = opts.masterName || cand.master_name || 'майстер';
+    // Аудит 13.08: раніше слот позначався 'offered' ДО відправки, а якщо бот не знайшовся
+    // або повідомлення не пішло — клієнт нічого не отримував, але повторно йому вже НЕ
+    // пропонували (фільтр status IN waiting/pending). Слот «з'їдався» чергою вхолосту.
+    // Тепер: не змогли повідомити → повертаємо позначку назад і чесно кажемо, що не заповнили.
+    let offerSent = false;
     // предложение клиенту с кнопками
     if (bot && bot.token) {
       await tgCall(bot.token, 'sendMessage', {
@@ -59,7 +64,19 @@ async function tryFillFromWaitlist(opts = {}) {
           { text: '✅ Так, записати', callback_data: `wl:confirm:${cand.id}` },
           { text: '✖ Ні', callback_data: `wl:decline:${cand.id}` },
         ]] },
-      }).catch((e) => console.error('[waitlist-fill:offer]', e.message));
+      }).then(() => { offerSent = true; })
+        .catch((e) => console.error('[waitlist-fill:offer] НЕ надіслано', e.message));
+    } else {
+      console.error('[waitlist-fill] бот салону недоступний — пропозицію не надіслано, tenant=' + tenantId);
+    }
+
+    if (!offerSent) {
+      // Відкат позначки: клієнт лишається в черзі й отримає наступний шанс.
+      await pool.query(
+        `UPDATE waitlist SET status='waiting', offered_slot=NULL, offered_ends=NULL,
+                offered_master_id=NULL, offered_master_name=NULL, offered_at=NULL, updated_at=NOW()
+          WHERE id=$1`, [cand.id]).catch((e) => console.error('[waitlist-fill:rollback]', e.message));
+      return { filled: false, reason: 'offer-not-delivered', waitlist_id: cand.id };
     }
     // алерт администратору салона (owner_chat_id из настроек бота салона)
     if (bot && bot.token) {

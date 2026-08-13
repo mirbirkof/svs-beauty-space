@@ -76,7 +76,7 @@ router.get('/pnl', requirePerm('reports.finance'), cacheReport(), async (req, re
         WHERE sm.reason LIKE 'order:%' AND sm.delta < 0
           AND sm.created_at BETWEEN $1 AND $2`,
       [from, to]
-    ).catch(() => ({ rows: [{ cogs: 0 }] }));
+    ).catch((e) => { console.error('[reports] COGS запит впав — собівартість НЕ врахована:', e.message); return { rows: [{ cogs: 0, _failed: true }] }; });
 
     // Расходы по категориям из cash
     const exp = await pool.query(
@@ -1169,7 +1169,13 @@ router.get('/duplicates', requirePerm('reports.finance'), async (req, res) => {
        UNION ALL
        SELECT sd.* FROM same_day sd
         WHERE NOT EXISTS (SELECT 1 FROM exact e WHERE e.ids && sd.ids)
-       ORDER BY day DESC`, [days]).then(r => r.rows).catch(() => []);
+       ORDER BY day DESC`, [days]).then(r => r.rows).catch((e) => {
+      // Аудит 13.08: детектор задвоєних оплат при збої повертав ПОРОЖНЬО, тобто рапортував
+      // «подвійних оплат немає». Це найгірший вид фоллбеку — фальшива гарантія чистоти.
+      // Тепер збій прокидається нагору й користувач бачить помилку, а не «все чисто».
+      console.error('[reports:duplicate-revenue] запит впав', e.message);
+      throw e;
+    });
 
     const items = rows.map(r => ({
       kind: r.kind, day: r.day, client: r.client, master_id: r.master_id,

@@ -1,6 +1,6 @@
 {
-  "active_url": "https://zvetlacrm.serveousercontent.com",
-  "active": "backup",
-  "updated_at": "2026-07-30T07:24:15.831Z",
-  "note": "прод = дроплет :3011 через serveo; Render погашен 01.08 (suspend, оба сервиса)"
+  "active_url": "ЧИТАТИ tunnel/current-url.txt",
+  "active": "droplet",
+  "updated_at": "2026-08-13",
+  "note": "УВАГА: цей файл більше НЕ джерело правди. Єдина актуальна публічна адреса CRM лежить у tunnel/current-url.txt (пише ops/public-url-watch.sh). Тут раніше стояла мертва serveo-адреса, і той, хто читав цей файл, ішов на труп. Render відв'язаний і заборонений."
 }

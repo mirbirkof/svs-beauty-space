@@ -114,10 +114,25 @@
     }
   }
 
+  // Аудит 13.08: раніше при збої відправки клієнту показували «💛 Дякуємо за відгук»,
+  // а сам відгук (часто негативний — заради нього сторінка й зроблена) губився назавжди,
+  // і салон про нього не дізнавався. Тепер кажемо правду й даємо повторити.
+  function failSend(){
+    show('done');
+    var em = document.getElementById('doneEmoji');
+    var th = document.getElementById('doneThanks');
+    var sub = document.getElementById('doneSub');
+    var gbtn = document.getElementById('googleBtn');
+    if (gbtn) gbtn.classList.add('hidden');
+    if (em) em.textContent = '⚠️';
+    if (th) th.textContent = 'Не вдалося надіслати';
+    if (sub) sub.textContent = 'Перевірте зв’язок і спробуйте ще раз — ваш відгук важливий, ми його НЕ отримали.';
+  }
+
   function choose(v){
     chosen = v; paint(v); document.getElementById('hint').textContent = HINTS[v];
     if (v >= 4){
-      send().then(finish).catch(function(){ finish({}); });
+      send().then(finish).catch(function(){ failSend(); });
     } else {
       show('step2');
     }
@@ -125,7 +140,9 @@
 
   document.getElementById('sendNeg').addEventListener('click', function(){
     var btn = this; btn.disabled = true; btn.textContent = 'Надсилаємо…';
-    send({ text: document.getElementById('comment').value.trim() }).then(finish).catch(function(){ finish({}); });
+    send({ text: document.getElementById('comment').value.trim() })
+      .then(finish)
+      .catch(function(){ btn.disabled = false; btn.textContent = 'Надіслати ще раз'; failSend(); });
   });
 })();
 </script>

@@ -47,12 +47,24 @@ async function autoReviewRequests(pool = getPool(), tenantId = DEFAULT_TENANT_ID
   for (const a of rows) {
     try {
       const c = (await pool.query(`SELECT name FROM clients WHERE id=$1`, [a.client_id])).rows[0] || {};
-      const link = `${getPublicBase()}/p/feedback.html?c=${a.client_id}&a=${a.id}`;
+      // Аудит 13.08: без публічної адреси getPublicBase() дає null → клієнту йшло
+      // посилання виду "null/p/feedback.html". Краще пропустити тік, ніж слати биті лінки.
+      const base = getPublicBase();
+      if (!base) { console.error('[vm] review-request: немає публічної адреси, пропускаю тік'); break; }
+      const link = `${base}/p/feedback.html?c=${a.client_id}&a=${a.id}`;
       const body = `Дякуємо за візит${c.name ? ', ' + c.name : ''}! 💛\nБудь ласка, оцініть нас — це займе 10 секунд:\n${link}`;
       const out = await hub.enqueue({ clientId: a.client_id, body, category: 'transactional', priority: 'low', dedupKey: `review_req:${a.id}`, source: 'review-request-auto' });
-      // лог завжди (навіть skip) — щоб не довбати клієнта повторно щотіку
-      await pool.query(`INSERT INTO review_request_log (client_id, appointment_id, channel) VALUES ($1,$2,$3)`,
-        [a.client_id, a.id, out.channel || 'telegram']);
+      // Аудит 13.08: раніше лог писався ЗАВЖДИ, навіть коли черга відхилила повідомлення
+      // через помилку (enqueue-error). Через дедуп по цьому логу клієнт більше НІКОЛИ не
+      // отримував запит відгуку. Тепер: технічний збій → не логуємо, спробуємо наступного тіку.
+      // Свідомий skip (немає каналу/ліміт) — логуємо, як і раніше, щоб не довбати клієнта.
+      const technicalFail = out.skipped && /error|fail/i.test(String(out.reason || ''));
+      if (technicalFail) {
+        console.error('[vm] review-request НЕ поставлено в чергу', a.id, out.reason);
+      } else {
+        await pool.query(`INSERT INTO review_request_log (client_id, appointment_id, channel) VALUES ($1,$2,$3)`,
+          [a.client_id, a.id, out.channel || 'telegram']);
+      }
       if (!out.skipped) sent++;
     } catch (e) { console.error('[vm] review-request', a.id, e.message); }
   }

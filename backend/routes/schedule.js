@@ -1801,7 +1801,12 @@ router.post('/appointments/:id/unpay', async (req, res) => {
     try {
       const { reverseWriteOffForAppointment } = require('../lib/consumables');
       stock = await reverseWriteOffForAppointment(id);
-    } catch (_) {}
+    } catch (e) {
+      // Аудит 13.08: раніше мовчки — гроші з каси знімались, а матеріали на склад НЕ
+      // поверталися, і ніхто про це не дізнавався. Тепер збій видно в логах і у відповіді.
+      console.error('[schedule:unpay] матеріали НЕ повернуто на склад', id, e.message);
+      stock = { reverted: false, error: e.message };
+    }
     res.json({ ok: true, cancelled: removed.rows.map(r => ({ id: r.id, amount: Number(r.amount), method: r.method })), reverted_cert: appt.pay_cert_amount || 0, reverted_bonus: appt.pay_bonus_redeemed || 0, stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
@@ -1839,7 +1844,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
          FROM appointment_materials am
          JOIN product_variants pv ON pv.id = am.variant_id
          LEFT JOIN products p ON p.id = pv.product_id
-        WHERE am.appointment_id = $1`, [id]).catch(() => ({ rows: [{ total: 0 }] }));
+        WHERE am.appointment_id = $1`, [id])
+      .catch((e) => {
+        // Аудит 13.08: раніше збій підрахунку матеріалів мовчки давав 0 — клієнт недоплачував,
+        // а якщо й ціна послуги була 0, візит закривався як «безкоштовний» (comped) без каси.
+        // Тепер помилка не маскується нулем: піднімаємо її й віддаємо чесну відмову.
+        console.error('[schedule:pay] підрахунок матеріалів впав', id, e.message);
+        throw Object.assign(new Error('Не вдалося порахувати матеріали візиту. Оплату не проведено — спробуйте ще раз.'), { user: true, status: 503 });
+      });
     const matTotal = Number(mat.rows[0].total) || 0;
     const base = (Number(appt.price) || 0) + matTotal;   // повна вартість візиту до знижок
     if (base < 0) return res.status(400).json({ error: 'no-price', message: 'Некоректна ціна послуги' });

@@ -9665,7 +9665,14 @@ async function renderJournalWeek(container, dateStr) {
   const mon = new Date(base); mon.setDate(base.getDate() - ((base.getDay()+6)%7));
   const days = Array.from({length:7}, (_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d; });
   // тягнемо 7 днів паралельно
-  const results = await Promise.all(days.map(d => api('/api/schedule/journal?date=' + _ymd(d)).catch(()=>({appointments:[]}))));
+  // Аудит 13.08: раніше впалий день тижня виглядав ПОРОЖНІМ (вільним) — адміністратор
+  // міг записати клієнта поверх наявного запису. Тепер помічаємо збій і кажемо про нього.
+  const _jFailed = [];
+  const results = await Promise.all(days.map(d => api('/api/schedule/journal?date=' + _ymd(d))
+    .catch((e) => { _jFailed.push(_ymd(d)); return { appointments: [], _failed: true }; })));
+  if (_jFailed.length) {
+    try { toast('⚠️ Не завантажились дні: ' + _jFailed.join(', ') + '. Вони показані порожніми — це збій, а не вільний час.'); } catch (_) {}
+  }
   // щоб openAppt() знаходив запис у тижневому режимі
   journalData = { appointments: results.flatMap(r=>r.appointments||[]), masters: results.find(r=>r&&r.masters)?.masters || [] };
   let minM = JOURNAL_OPEN, maxM = JOURNAL_CLOSE;
@@ -11284,8 +11291,18 @@ async function submitClientRating(id){
 async function loadClientMedical(id){
   const box = document.getElementById('ccMedical'); if(!box) return;
   try {
-    const w = await api('/api/medical/cards/warnings/'+id).catch(()=>null);
+    // Аудит 13.08: раніше збій запиту (.catch(()=>null)) малювався як «картки немає» —
+    // майстер бачив «даних нема» замість «перевірка не вдалась» і йшов на хімічну процедуру
+    // без відома про алергії. Тепер помилка показується ЯВНО, червоним, і це не «немає картки».
+    let w, wErr = null;
+    try { w = await api('/api/medical/cards/warnings/'+id); }
+    catch (e) { wErr = e; w = null; }
     let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:14px">⚕️ Медична карта</b>';
+    if(wErr){
+      html += '<span style="font-size:12px;color:#c0392b">⚠️ не вдалося перевірити</span></div>'
+        + '<div style="font-size:12px;color:#c0392b;font-weight:600">Дані медкартки НЕ завантажились (технічний збій). Не вважайте це відсутністю протипоказань — оновіть сторінку або перевірте вручну.</div>';
+      box.innerHTML = html; return;
+    }
     if(!w || !w.has_card){
       html += '<span style="font-size:12px;color:#c0392b">картки немає</span></div>'
         + '<div style="font-size:12px;color:var(--text-secondary)">Для хімічних процедур (фарбування) бажано завести медкарту: алергії, протипоказання, тест.</div>';
@@ -11305,7 +11322,10 @@ async function loadClientMedical(id){
       html += '<div style="font-size:12px;color:#27ae60">✓ Протипоказань і алергій не зазначено</div>';
     }
     // история формул окрашивания
-    const fh = await api('/api/medical/formulas/history/'+id).catch(()=>null);
+    // Аудит 13.08: збій ≠ «формул немає» (майстер підбирав би склад наосліп)
+    let fh = null, fhErr = null;
+    try { fh = await api('/api/medical/formulas/history/'+id); } catch (e) { fhErr = e; }
+    if (fhErr) html += '<div style="margin-top:8px;font-size:12px;color:#c0392b;font-weight:600">⚠️ Історія формул не завантажилась (збій) — не вважайте, що її немає.</div>';
     html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🎨 Формули фарбування${fh&&fh.items?' ('+fh.items.length+')':''}</b>`
       + `<button class="btn btn-sm" style="margin-left:auto" onclick="openFormula(${id})">➕ Нова формула</button></div>`;
     if(fh && fh.items && fh.items.length){
@@ -11323,7 +11343,10 @@ async function loadClientMedical(id){
       html += '</tbody></table>';
     }
     // алергопроби
-    const at = await api('/api/medical/allergy-tests?client_id='+id+'&limit=6').catch(()=>null);
+    let at = null, atErr = null;
+    try { at = await api('/api/medical/allergy-tests?client_id='+id+'&limit=6'); }
+    catch (e) { atErr = e; }
+    if (atErr) html += '<div style="margin-top:8px;font-size:12px;color:#c0392b;font-weight:600">⚠️ Алергопроби не завантажились (збій) — це НЕ означає, що проб не було.</div>';
     html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🧪 Алергопроби${at&&at.items?' ('+at.total+')':''}</b>`
       + `<button class="btn btn-sm" style="margin-left:auto" onclick="openAllergy(${id})">➕ Зробити пробу</button></div>`;
     if(at && at.items && at.items.length){
@@ -11344,7 +11367,10 @@ async function loadClientMedical(id){
       html += '</tbody></table>';
     }
     // інформовані згоди на процедуру
-    const cs = await api('/api/medical/consents?client_id='+id+'&limit=6').catch(()=>null);
+    // Аудит 13.08: «згод немає» через збій = процедура без інформованої згоди. Показуємо збій.
+    let cs = null, csErr = null;
+    try { cs = await api('/api/medical/consents?client_id='+id+'&limit=6'); } catch (e) { csErr = e; }
+    if (csErr) html += '<div style="margin-top:8px;font-size:12px;color:#c0392b;font-weight:600">⚠️ Згоди не завантажились (збій) — перевірте вручну перед процедурою.</div>';
     html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">📝 Згоди на процедуру${cs&&cs.items?' ('+cs.total+')':''}</b>`
       + `<button class="btn btn-sm" style="margin-left:auto" onclick="openConsent(${id})">➕ Оформити згоду</button></div>`;
     if(cs && cs.items && cs.items.length){

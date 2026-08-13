@@ -77,7 +77,15 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
   // 12.08 (запит Босса): накладну можна вантажити не тільки на склад САЛОНУ, а й на склад
   // МАГАЗИНУ (дистрибуція). Розбір документа спільний — різниця лише куди лягає прихід.
   const { kind, filename, items, doc_date, force, warehouse, supplier_name, delivery_cost } = req.body || {};
-  const toStore = String(warehouse || 'salon') === 'store';
+  // Аудит 13.08: раніше будь-яке невідоме значення (опечатка 'stre', 'Store', загублене поле)
+  // мовчки означало САЛОН — накладна лягала не на той склад, і розходження спливало лише
+  // на інвентаризації. Тепер приймаємо ТІЛЬКИ явні значення, решта — помилка з поясненням.
+  const whRaw = warehouse == null || warehouse === '' ? 'salon' : String(warehouse).trim().toLowerCase();
+  if (!['salon', 'store'].includes(whRaw)) {
+    return res.status(400).json({ error: 'bad-warehouse',
+      message: `Невідомий склад «${warehouse}». Допустимо: salon (склад салону) або store (склад магазину).` });
+  }
+  const toStore = whRaw === 'store';
   if (!['invoice', 'pricelist'].includes(kind)) return res.status(400).json({ error: 'bad-kind' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'no-items' });
   if (items.length > 500) return res.status(400).json({ error: 'too-many-items' });
