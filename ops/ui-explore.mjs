@@ -7,9 +7,18 @@
  * Токенов НЕ тратит — чистый Playwright. */
 import pkg from '/home/client/workspace/node_modules/playwright/index.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { loginIntoPage } from './qa-login.mjs';
 const { chromium } = pkg;
 const BASE = process.env.SMOKE_BASE || 'https://zvetlacrm.serveousercontent.com';
 const TOKEN = process.env.ADMIN_TOKEN;
+// 15.08 (факт-проверка Босса): ADMIN_TOKEN в localStorage браузер не принимает как вход
+// сотрудника — checkToken() бьёт по /api/users/me, получает 401/403, чистит localStorage
+// и остаётся на экране логина. Реальный вход — только если заданы staff-креды (см.
+// ops/qa-login.mjs). Без них — старое поведение (нужно для прод-крона ui-smoke-cron.sh,
+// у которого пока нет рабочего служебного сотрудника на проде — заводить его ОТДЕЛЬНОЕ
+// решение с минимальными правами, не в рамках этого фикса).
+const QA_PHONE = process.env.QA_FUZZ_PHONE || process.env.QA_UI_PHONE;
+const QA_PASSWORD = process.env.QA_FUZZ_PASSWORD || process.env.QA_UI_PASSWORD;
 const COV_FILE = '/tmp/ui-explore-coverage.json';
 const PICKS = Number(process.env.EXPLORE_PICKS || 8);   // комбинаций за прогон
 
@@ -67,8 +76,14 @@ const jsErrors = [];
 p.on('pageerror', e => jsErrors.push(e.message.slice(0, 150)));
 const bad = [];
 try {
-  await p.goto(BASE + '/admin/', { waitUntil: 'domcontentloaded' });
-  await p.evaluate(t => localStorage.setItem('svs_admin_token', t), TOKEN);
+  if (QA_PHONE && QA_PASSWORD) {
+    const { user } = await loginIntoPage(p, BASE, QA_PHONE, QA_PASSWORD);
+    console.log(`[+] реальный вход выполнен: ${user.display_name || user.id} (role_id=${user.role_id})`);
+  } else {
+    console.log('[!] нет staff-кредов — откат на legacy ADMIN_TOKEN (интерфейс может остаться на экране логина)');
+    await p.goto(BASE + '/admin/', { waitUntil: 'domcontentloaded' });
+    await p.evaluate(t => localStorage.setItem('svs_admin_token', t), TOKEN);
+  }
   await p.goto(BASE + '/admin/', { waitUntil: 'networkidle' });
   await p.waitForTimeout(2500);
 
