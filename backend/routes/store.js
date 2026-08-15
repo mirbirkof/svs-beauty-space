@@ -416,13 +416,24 @@ router.get('/dashboard', async (req, res) => {
     const sum = (rows, f) => rows.reduce((s, r) => s + Number(r[f] || 0), 0);
     const wholesale = rev.rows.filter(r => r.sale_type === 'wholesale');
     const retail = rev.rows.filter(r => r.sale_type === 'retail');
+    // 15.08 (правило Боса «салон і магазин НЕ змішувати»): замовлення вітрини (orders)
+    // раніше падали у касу САЛОНУ — у серпні це дало +8 112 ₴ чужих грошей у салоні.
+    // Тепер салон їх не бачить, тож рахуємо їх ТУТ, у своєму дашборді, окремим рядком.
+    // 15.08 (правило Боса «салон і магазин НЕ змішувати»): замовлення вітрини (orders)
+    // раніше падали у касу САЛОНУ — у серпні це дало +8 112 ₴ чужих грошей у салоні.
+    // Тепер салон їх не бачить, тож рахуємо їх ТУТ, у своєму дашборді.
+    const ordersRow = await pool.query(
+      `SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int n
+         FROM orders WHERE status = 'paid' AND created_at >= NOW() - ($1 || ' days')::interval`,
+      [String(days)]).catch(() => ({ rows: [{ s: 0, n: 0 }] }));
+    const ordersRev = Number(ordersRow.rows[0]?.s || 0);
     const online = rev.rows.filter(r => r.channel === 'online');
     res.json({
       days,
       revenue: {
         wholesale: sum(wholesale, 'revenue'),
         retail: sum(retail, 'revenue'),
-        online: sum(online, 'revenue'),
+        online: sum(online, 'revenue') + ordersRev,
         internal: Number(internal.rows[0].revenue),
         total: sum(rev.rows, 'revenue') + Number(internal.rows[0].revenue)
       },

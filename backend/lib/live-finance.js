@@ -59,15 +59,16 @@ async function liveFinance(pool, from, to) {
   const toDay = kyivDayFmt.format(new Date(ts(to) - 1));
   const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
-              -- Аудит 13.08 (те саме, що в routes/pnl.js): відкидати ВСІ приходи по
-              -- замовленнях не можна — сусідній запит ordR бере лише status='paid',
-              -- тож гроші за замовлення, яке потім повернули, не рахувались у виручці
-              -- взагалі, а сума повернення все одно йшла у витрати. Прибуток занижений
-              -- рівно на суму повернень (серпень 2026: 8 112 ₴). Відкидаємо лише те,
-              -- що ordR уже порахував.
-              COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND NOT (ref_type='order'
-                       AND EXISTS (SELECT 1 FROM orders o WHERE o.id=cash_operations.ref_id AND o.status='paid'))),0)::numeric prod,
+              -- 15.08 (правило Боса): САЛОН і МАГАЗИН — різні бізнеси, метрики НЕ змішуються.
+              -- Раніше сюди падали приходи по замовленнях магазину (ref_type='order'):
+              -- у серпні це дало +8 112 ₴ у касі салону (7 тестових замовлень 11.08,
+              -- усі повернені того ж дня). Каса салону = послуги + товар, проданий
+              -- НА ВІЗИТІ або через касу салону. Замовлення магазину рахує свій дашборд
+              -- (/api/store/dashboard) — тут вони не враховуються ЖОДНОГО разу.
+              COALESCE(SUM(amount) FILTER (WHERE category='sale_product'
+                       AND ref_type IS DISTINCT FROM 'order'),0)::numeric prod,
               COUNT(DISTINCT CASE WHEN category IN ('sale_service','sale_product')
+                    AND ref_type IS DISTINCT FROM 'order'
                     THEN COALESCE(ref_type || ':' || ref_id::text, 'op:' || id::text) END)::int cnt
          FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COALESCE(SUM(total),0)::numeric s, COUNT(*)::int c FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [from, to]),
@@ -178,7 +179,9 @@ async function liveFinance(pool, from, to) {
   ]);
 
   const revServices = Number(revC[0]?.svc || 0);
-  const revProducts = Number(revC[0]?.prod || 0) + Number(ordR[0]?.s || 0);
+  // Замовлення магазину (ordR) свідомо НЕ додаються у виручку салону — окремий бізнес,
+  // окремий дашборд. Змішування давало Босу невірну касу (15.08).
+  const revProducts = Number(revC[0]?.prod || 0);
   const revTotal = revServices + revProducts;
 
   const commissionPct = Number(comm[0]?.comm || 0);
@@ -209,7 +212,8 @@ async function liveFinance(pool, from, to) {
     ...otherCats,
   ].filter(x => x.sum > 0).sort((a, b) => b.sum - a.sum);
 
-  const txCount = Number(revC[0]?.cnt || 0) + Number(ordR[0]?.c || 0);
+  // Кількість транзакцій — теж лише салон: замовлення магазину рахує його дашборд.
+  const txCount = Number(revC[0]?.cnt || 0);
   // Аудит 25.07: середній чек тут рахувався як виручка / кількість КАСОВИХ ОПЕРАЦІЙ, а на
   // дашборді — як виручка / візити. Один показник мав два різні значення (1189 vs 1655).
   // Єдине правило для всієї CRM: чек = виручка / реальні візити (клієнт + день).
