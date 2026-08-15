@@ -65,6 +65,7 @@
   <div class="tab active" data-pane="dash" onclick="showPane('dash')">Дашборд</div>
   <div class="tab" data-pane="stock" onclick="showPane('stock')">Залишки</div>
   <div class="tab" data-pane="receipt" onclick="showPane('receipt')">Приймання поставки</div>
+  <div class="tab" data-pane="inv" onclick="showPane('inv')">Інвентаризація</div>
   <div class="tab" data-pane="sale" onclick="showPane('sale')">Продаж (опт / роздріб)</div>
   <div class="tab" data-pane="transfer" onclick="showPane('transfer')">Продаж салону</div>
   <div class="tab" data-pane="clients" onclick="showPane('clients')">Клієнти (опт)</div>
@@ -253,6 +254,31 @@
   </div>
 </div>
 
+<!-- ІНВЕНТАРИЗАЦІЯ -->
+<div class="pane" id="pane-inv">
+  <div class="card" id="invStart" style="display:none">
+    <h3>Інвентаризація складу магазину</h3>
+    <div class="muted" style="margin-bottom:12px">Порахуйте фактичну кількість товару на складі магазину і звірте з обліком. Поки акт відкритий — приймання і продажі продовжують працювати як завжди, вони НЕ губляться.</div>
+    <button class="btn" onclick="startInv()">Розпочати інвентаризацію</button>
+    <div class="err-note" id="invErr"></div>
+  </div>
+  <div class="card" id="invActive" style="display:none">
+    <h3>Підрахунок — акт №<span id="invActId"></span></h3>
+    <div class="muted" style="margin-bottom:10px">Вкажіть фактичну кількість у полі «Факт». Зберігається автоматично. Розбіжність підсвічена: <span style="color:var(--danger,#E5484D);font-weight:700">нестача</span> / <span style="color:#0E9F6E;font-weight:700">лишок</span>.</div>
+    <table><thead><tr><th>Товар</th><th>Обʼєм</th><th class="r">Обліковий залишок</th><th class="r">Факт</th><th class="r">Розбіжність</th></tr></thead>
+    <tbody id="invBody"><tr><td colspan="5" class="muted">Завантаження…</td></tr></tbody></table>
+    <div class="total-line">
+      <button class="btn btn-ghost" onclick="cancelInv()">Скасувати</button>
+      <button class="btn" onclick="closeInv()">Закрити акт</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Історія інвентаризацій</h3>
+    <table><thead><tr><th>№</th><th>Коли</th><th>Статус</th><th class="r">Порахо­вано</th><th class="r">Розбіж­ностей</th><th class="r">Нестача, грн</th><th class="r">Лишок, грн</th><th>Провів</th></tr></thead>
+    <tbody id="invHistBody"><tr><td colspan="8" class="muted">—</td></tr></tbody></table>
+  </div>
+</div>
+
 <!-- ПРОДАЖ САЛОНУ -->
 <div class="pane" id="pane-transfer">
   <div class="card">
@@ -303,6 +329,7 @@ function showPane(id){
   if(id==='stock')loadStock(); if(id==='history')loadHistory();
   if(id==='dash')loadDash(); if(id==='clients')loadCps();
   if(id==='sale'){loadCps();loadStock()}
+  if(id==='inv')loadInv();
 }
 
 /* ── остатки ── */
@@ -410,6 +437,90 @@ async function applyReceipt(){
   if(d.ok){ok.textContent=`Поставку №${d.receipt_id} проведено: товари ${fmt(d.goods_total)} грн + доставка ${fmt(d.delivery_cost)} грн. Собівартість оновлено.`;ok.style.display='block';
     rcItems.length=0;renderRc();loadStock();}
   else{err.textContent=d.error||'Помилка';err.style.display='block'}
+}
+
+/* ── інвентаризація складу магазина ──
+   Окрема від салонної (та живе в routes/inventory.js, product_variants.stock_qty — сюди не лізе).
+   Механіка закриття: розходження рахується проти ЖИВОГО залишку на момент закриття, тому
+   приймання/продажі, що трапились поки акт відкритий, НЕ стираються. */
+let INV_ACT=null, invSaveTimers={};
+async function loadInv(){
+  const d=await api('/api/store/inventory/acts');
+  const acts=d.items||[];
+  renderInvHistory(acts);
+  const open=acts.find(a=>a.status==='open');
+  if(open){ INV_ACT=open.id; document.getElementById('invActId').textContent=INV_ACT; await loadInvAct(); document.getElementById('invStart').style.display='none'; document.getElementById('invActive').style.display='block'; }
+  else { INV_ACT=null; document.getElementById('invStart').style.display='block'; document.getElementById('invActive').style.display='none'; }
+}
+async function startInv(){
+  const err=document.getElementById('invErr'); err.style.display='none';
+  const d=await api('/api/store/inventory/acts',{method:'POST',body:JSON.stringify({})});
+  if(d.ok){ loadInv(); }
+  else { err.textContent=d.error||'Помилка'; err.style.display='block'; }
+}
+function invDiffStyle(diff){
+  if(diff==null||diff===0)return '';
+  return diff<0?'color:var(--danger,#E5484D);font-weight:700':'color:#0E9F6E;font-weight:700';
+}
+async function loadInvAct(){
+  const d=await api('/api/store/inventory/acts/'+INV_ACT);
+  if(d.error)return;
+  const items=d.items||[];
+  const b=document.getElementById('invBody');
+  b.innerHTML=items.length?items.map(x=>{
+    const counted=x.counted_qty!=null?Number(x.counted_qty):'';
+    const diff=x.counted_qty!=null?(Number(x.counted_qty)-Number(x.current_qty)):null;
+    return `<tr data-vid="${x.variant_id}">
+      <td>${esc(x.product_name)}</td><td>${esc(x.volume)}</td>
+      <td class="r">${Number(x.current_qty)}</td>
+      <td class="r"><input style="width:90px;text-align:right" type="number" step="0.001" min="0" value="${counted}" placeholder="—" oninput="invOnInput(${x.variant_id},this)"></td>
+      <td class="r" data-diff style="${invDiffStyle(diff)}">${diff==null?'—':(diff>0?'+':'')+diff}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="5" class="muted">Склад магазину порожній — спершу проведіть приймання</td></tr>';
+}
+function invOnInput(variantId, el){
+  clearTimeout(invSaveTimers[variantId]);
+  invSaveTimers[variantId]=setTimeout(()=>invSaveLine(variantId, el), 400);
+}
+async function invSaveLine(variantId, el){
+  const v=el.value; if(v==='')return;
+  if(!(Number(v)>=0)){return}
+  const d=await api('/api/store/inventory/acts/'+INV_ACT+'/line',{method:'PUT',body:JSON.stringify({variant_id:variantId,counted_qty:Number(v)})});
+  const diffTd=el.closest('tr').querySelector('[data-diff]');
+  if(d.ok){
+    diffTd.textContent=(d.diff>0?'+':'')+d.diff;
+    diffTd.setAttribute('style',invDiffStyle(d.diff));
+  } else { diffTd.textContent='помилка'; diffTd.setAttribute('style','color:var(--danger,#E5484D)'); }
+}
+async function closeInv(){
+  if(!INV_ACT)return;
+  if(!confirm('Закрити акт інвентаризації? Розходження буде застосовано до складу магазину.'))return;
+  const d=await api('/api/store/inventory/acts/'+INV_ACT+'/close',{method:'POST'});
+  if(d.ok){
+    const disc=d.discrepancies||[];
+    const lines=disc.map(x=>`${x.product_name} ${x.volume||''}: ${x.was}→${x.actual} (${x.delta>0?'+':''}${x.delta}, ${x.value>0?'+':''}${fmt(x.value)} грн)`).join('\n');
+    alert(`Акт закрито. Розходжень: ${disc.length}.\n`+(lines||'Без розходжень.'));
+    loadInv(); loadStock();
+  } else { alert(d.error||'Помилка'); }
+}
+async function cancelInv(){
+  if(!INV_ACT)return;
+  if(!confirm('Скасувати акт без застосування?'))return;
+  const d=await api('/api/store/inventory/acts/'+INV_ACT+'/cancel',{method:'POST'});
+  if(d.ok){ loadInv(); } else { alert(d.error||'Помилка'); }
+}
+function renderInvHistory(acts){
+  const b=document.getElementById('invHistBody');
+  const STAT={open:'Відкрито',closed:'Закрито',cancelled:'Скасовано'};
+  b.innerHTML=acts.length?acts.map(a=>`<tr>
+      <td>${a.id}</td><td>${esc(String(a.created_at).slice(0,16).replace('T',' '))}</td>
+      <td>${STAT[a.status]||a.status}</td>
+      <td class="r">${a.counted_positions}</td>
+      <td class="r">${a.discrepancies||0}</td>
+      <td class="r" style="${Number(a.shortage_value)>0?'color:var(--danger,#E5484D)':''}">${Number(a.shortage_value)>0?'-'+fmt(a.shortage_value):'—'}</td>
+      <td class="r" style="${Number(a.excess_value)>0?'color:#0E9F6E':''}">${Number(a.excess_value)>0?'+'+fmt(a.excess_value):'—'}</td>
+      <td>${esc(a.created_by||'—')}</td>
+    </tr>`).join(''):'<tr><td colspan="8" class="muted">Інвентаризацій ще не було</td></tr>';
 }
 
 /* ── продажа салону ── */

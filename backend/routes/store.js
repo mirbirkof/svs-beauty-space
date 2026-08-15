@@ -452,4 +452,208 @@ router.get('/dashboard', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ═══════════ ЭТАП 5: інвентаризація складу МАГАЗИНА ═══════════
+   Окремо від салонної інвентаризації (routes/inventory.js, inventory_audits,
+   product_variants.stock_qty) — тут працюємо ТІЛЬКИ з warehouse_stock (warehouse_id='store').
+   Урок сьогоднішнього бага салону: при закритті різниця рахується проти ПОТОЧНОГО залишку
+   на момент закриття, а НЕ проти знімку на старті акта — інакше приймання/продажі, що
+   сталися поки акт відкритий, стираються. */
+
+// ── список актів (останні 20) зі зведенням по закритих ──
+router.get('/inventory/acts', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT a.id, a.status, a.note, a.created_by, a.created_at, a.closed_at,
+             (SELECT COUNT(*) FROM store_inventory_lines l WHERE l.act_id=a.id AND l.counted_qty IS NOT NULL)::int AS counted_positions,
+             (SELECT COUNT(*) FROM store_inventory_lines l WHERE l.act_id=a.id)::int AS total_positions,
+             COALESCE(m.discrepancies, 0)::int AS discrepancies,
+             COALESCE(m.shortage, 0)::numeric AS shortage_value,
+             COALESCE(m.excess, 0)::numeric AS excess_value
+        FROM store_inventory_acts a
+        LEFT JOIN (
+          SELECT sm.ref_id::int AS act_id,
+                 COUNT(*)::int AS discrepancies,
+                 SUM(CASE WHEN sm.delta < 0 THEN -sm.delta * COALESCE(ws.avg_cost,0) ELSE 0 END) AS shortage,
+                 SUM(CASE WHEN sm.delta > 0 THEN  sm.delta * COALESCE(ws.avg_cost,0) ELSE 0 END) AS excess
+            FROM stock_movements sm
+            LEFT JOIN warehouse_stock ws ON ws.variant_id = sm.variant_id AND ws.warehouse_id = 'store'
+           WHERE sm.reason = 'store:inventory_close'
+           GROUP BY sm.ref_id
+        ) m ON m.act_id = a.id
+       ORDER BY a.created_at DESC LIMIT 20`);
+    res.json({ items: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── створити акт; відмова якщо вже є відкритий ───────────
+router.post('/inventory/acts', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const openAct = (await client.query(`SELECT id FROM store_inventory_acts WHERE status='open' LIMIT 1`)).rows[0];
+    if (openAct) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Вже є відкритий акт інвентаризації', act_id: openAct.id });
+    }
+    const note = (req.body || {}).note || null;
+    const r = await client.query(
+      `INSERT INTO store_inventory_acts (note, created_by) VALUES ($1,$2) RETURNING id, status, note, created_at`,
+      [note, (req.user && (req.user.name || req.user.login)) || null]);
+    await client.query('COMMIT');
+    res.json({ ok: true, act: r.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    // паралельне створення двома вкладками: частковий унікальний індекс відбʼє друге -> теж 409
+    if (e.code === '23505') return res.status(409).json({ error: 'Вже є відкритий акт інвентаризації' });
+    res.status(e.user ? 400 : 500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
+// ── акт + рядки + ПОТОЧНІ залишки складу магазина (екран підрахунку) ──
+router.get('/inventory/acts/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const a = (await pool.query(`SELECT * FROM store_inventory_acts WHERE id=$1`, [id])).rows[0];
+    if (!a) return res.status(404).json({ error: 'not-found' });
+    const items = await pool.query(`
+      SELECT v.id AS variant_id, p.name AS product_name, v.volume, v.sku,
+             ws.qty AS current_qty, ws.avg_cost,
+             l.expected_qty, l.counted_qty, l.counted_by, l.counted_at
+        FROM warehouse_stock ws
+        JOIN product_variants v ON v.id = ws.variant_id
+        JOIN products p ON p.id = v.product_id
+        LEFT JOIN store_inventory_lines l ON l.act_id = $1 AND l.variant_id = ws.variant_id
+       WHERE ws.warehouse_id = 'store'
+       ORDER BY p.name, v.volume`, [id]);
+    res.json({ act: a, items: items.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── upsert факту по одній позиції ────────────────────────
+router.put('/inventory/acts/:id/line', async (req, res) => {
+  const id = Number(req.params.id);
+  const { variant_id, counted_qty } = req.body || {};
+  if (!variant_id) return res.status(400).json({ error: 'variant_id обовʼязковий' });
+  if (counted_qty == null || !Number.isFinite(Number(counted_qty)) || Number(counted_qty) < 0)
+    return res.status(400).json({ error: 'counted_qty має бути числом >= 0' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const act = (await client.query(`SELECT status FROM store_inventory_acts WHERE id=$1 FOR UPDATE`, [id])).rows[0];
+    if (!act) throw Object.assign(new Error('Акт не знайдено'), { user: true });
+    if (act.status !== 'open') throw Object.assign(new Error('Акт не відкритий — редагування заблоковано'), { user: true });
+    const st = (await client.query(
+      `SELECT qty FROM warehouse_stock WHERE variant_id=$1 AND warehouse_id='store'`, [variant_id])).rows[0];
+    const currentQty = st ? Number(st.qty) : 0;
+    // expected_qty фіксується ЛИШЕ при першому введенні по цій позиції — довідково,
+    // на подальші UPDATE (upsert) НЕ перезаписується, навіть якщо залишок склада змінився.
+    const existing = (await client.query(
+      `SELECT expected_qty FROM store_inventory_lines WHERE act_id=$1 AND variant_id=$2`, [id, variant_id])).rows[0];
+    const expected = existing ? Number(existing.expected_qty) : currentQty;
+    const by = (req.user && (req.user.name || req.user.login)) || null;
+    await client.query(`
+      INSERT INTO store_inventory_lines (act_id, variant_id, expected_qty, counted_qty, counted_by, counted_at)
+      VALUES ($1,$2,$3,$4,$5,NOW())
+      ON CONFLICT (act_id, variant_id) DO UPDATE
+        SET counted_qty = EXCLUDED.counted_qty, counted_by = EXCLUDED.counted_by, counted_at = NOW()`,
+      [id, variant_id, expected, Number(counted_qty), by]);
+    await client.query('COMMIT');
+    res.json({ ok: true, expected_qty: expected, counted_qty: Number(counted_qty), diff: Number(counted_qty) - expected });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.user ? 400 : 500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
+// ── закриття акта: різниця рахується проти ПОТОЧНОГО qty, а не знімку на старті ──
+router.post('/inventory/acts/:id/close', async (req, res) => {
+  const id = Number(req.params.id);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const act = (await client.query(`SELECT status FROM store_inventory_acts WHERE id=$1 FOR UPDATE`, [id])).rows[0];
+    if (!act) throw Object.assign(new Error('Акт не знайдено'), { user: true });
+    if (act.status !== 'open') throw Object.assign(new Error('Акт вже не відкритий'), { user: true });
+    const lines = (await client.query(
+      `SELECT variant_id, expected_qty, counted_qty FROM store_inventory_lines WHERE act_id=$1 AND counted_qty IS NOT NULL`, [id])).rows;
+    if (!lines.length) throw Object.assign(new Error('Немає жодної порахованої позиції — нема що закривати'), { user: true });
+
+    const discrepancies = [];
+    for (const line of lines) {
+      const vinfo = (await client.query(
+        `SELECT v.wholesale, v.volume, p.name AS product_name
+           FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, [line.variant_id])).rows[0];
+      // FOR UPDATE: захист від гонки з паралельним прийманням/продажем саме в момент закриття
+      const st = (await client.query(
+        `SELECT qty, avg_cost FROM warehouse_stock WHERE variant_id=$1 AND warehouse_id='store' FOR UPDATE`,
+        [line.variant_id])).rows[0];
+      const currentQty = st ? Number(st.qty) : 0;
+      const counted = Number(line.counted_qty);
+      const expected = line.expected_qty != null ? Number(line.expected_qty) : currentQty;
+      // РОЗХОДЖЕННЯ, ЗНАЙДЕНЕ ПІДРАХУНКОМ, ізольовано від будь-яких інших рухів:
+      // counted vs expected (залишок на МОМЕНТ ВВОДУ рядка). Якщо просто SET qty=counted_qty
+      // (абсолютна перезаписка) — це ТОЧНО той баг салону, який заборонено повторювати: якщо
+      // під час відкритого акту прийшла приймання (+N), а рядок порахували РАНІШЕ за приймання,
+      // абсолютний SET стер би щойно прийняте. Тому знахідку інвентаризації (correction)
+      // НАКЛАДАЄМО ЗВЕРХУ на ПОТОЧНИЙ (на момент закриття) залишок — так само, як зафіксовано
+      // виправлення бага салону в routes/inventory.js (diff_qty додається до current, не SET).
+      const correction = counted - expected;
+      if (correction === 0) continue; // підрахунок співпав з очікуваним на момент внесення — виправляти нічого
+
+      const newQty = Math.max(0, currentQty + correction); // CHECK(qty>=0) на warehouse_stock
+      let avgCost;
+      if (st) {
+        avgCost = Number(st.avg_cost) || 0; // avg_cost НЕ міняємо, лише qty
+        await client.query(
+          `UPDATE warehouse_stock SET qty=$2, updated_at=NOW() WHERE variant_id=$1 AND warehouse_id='store'`,
+          [line.variant_id, newQty]);
+      } else {
+        avgCost = vinfo ? (Number(vinfo.wholesale) || 0) : 0;
+        await client.query(
+          `INSERT INTO warehouse_stock (variant_id, warehouse_id, qty, avg_cost) VALUES ($1,'store',$2,$3)`,
+          [line.variant_id, newQty, avgCost]);
+      }
+      const appliedDelta = newQty - currentQty; // фактично застосована зміна (могла бути обрізана GREATEST(0,...))
+      await client.query(
+        `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes, warehouse_id)
+         VALUES ($1,$2,'store:inventory_close',$3,'Інвентаризація складу магазину','store')`,
+        [line.variant_id, appliedDelta, id]);
+
+      discrepancies.push({
+        variant_id: line.variant_id,
+        product_name: vinfo ? vinfo.product_name : null,
+        volume: vinfo ? vinfo.volume : null,
+        was: currentQty,       // живий залишок на момент закриття, не застарілий знімок
+        actual: counted,
+        delta: correction,     // розходження, знайдене підрахунком
+        value: Math.round(correction * avgCost * 100) / 100
+      });
+    }
+
+    await client.query(`UPDATE store_inventory_acts SET status='closed', closed_at=NOW() WHERE id=$1`, [id]);
+    await client.query('COMMIT');
+    res.json({ ok: true, positions_counted: lines.length, discrepancies });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.user ? 400 : 500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
+// ── скасування без застосування ──────────────────────────
+router.post('/inventory/acts/:id/cancel', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const r = await client.query(
+      `UPDATE store_inventory_acts SET status='cancelled' WHERE id=$1 AND status='open' RETURNING id`,
+      [Number(req.params.id)]);
+    if (!r.rows[0]) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Акт не знайдено або вже не відкритий' }); }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(e.user ? 400 : 500).json({ error: e.message });
+  } finally { client.release(); }
+});
+
 module.exports = router;
