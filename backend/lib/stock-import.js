@@ -50,7 +50,14 @@ function rowToItem(cells) {
   let qty = null, price = null;
   const candidates = nums.filter(x => x.n > 0);
   if (candidates.length === 1) qty = candidates[0].n;
-  else if (candidates.length >= 2) {
+  else if (candidates.length === 3) {
+    // «кількість · ціна · сума» — третє число (з округленням) = добуток перших двох,
+    // інакше за ціну помилково береться сума (аудит 15.08)
+    const [a, b, c] = candidates.map(x => x.n);
+    const tol = Math.max(0.01, Math.abs(c) * 0.002);
+    if (Math.abs(a * b - c) <= tol) { qty = a; price = b; }
+  }
+  if (qty == null && candidates.length >= 2) {
     // кількість — ціле «мале»; ціна — з копійками або найбільша
     const withFrac = candidates.filter(x => x.n % 1 !== 0);
     const ints = candidates.filter(x => x.n % 1 === 0);
@@ -74,9 +81,23 @@ function parseText(text) {
     else if (line.includes(';')) cells = line.split(';');
     else if (/\s{2,}/.test(line)) cells = line.split(/\s{2,}/);
     else {
-      // «Назва 3 450.00» — числа в кінці рядка
+      // «Назва 3 450.00» / «Назва 2 1 234,00» — числа в кінці рядка.
+      // Перше число рядка (кількість) ніколи не мерджиться; наступні числа
+      // склеюються як розряди тисяч (групи по 3 цифри), поки число «не закрите»
+      // комою/крапкою — інакше «1 234,00» ламається на 1 і 234 (аудит 15.08).
       const m = line.match(/^(.*?)((?:\s+\d+(?:[.,]\d+)?)+)\s*$/);
-      cells = m ? [m[1], ...m[2].trim().split(/\s+/)] : [line];
+      if (m) {
+        const rawNums = m[2].trim().split(/\s+/);
+        const merged = [rawNums[0]];
+        for (let i = 1; i < rawNums.length; i++) {
+          const g = rawNums[i];
+          const prev = merged[merged.length - 1];
+          const prevOpen = merged.length > 1 && !/[.,]/.test(prev);
+          if (prevOpen && /^\d{3}(?:[.,]\d+)?$/.test(g)) merged[merged.length - 1] = prev + ' ' + g;
+          else merged.push(g);
+        }
+        cells = [m[1], ...merged];
+      } else cells = [line];
     }
     cells = cells.map(c => c.trim()).filter(c => c !== '');
     if (!cells.length) continue;
