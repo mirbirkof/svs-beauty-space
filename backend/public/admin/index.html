@@ -1947,6 +1947,9 @@ select.input { background:var(--card); }
           <div class="card">
             <div class="card-header" style="gap:10px;flex-wrap:wrap"><h3>Залишки на складі <button type="button" class="info-i" data-t="<b>Залишки.</b> Всі товари з поточним залишком. Клік «+» — прихід, «−» — списання: форма справа заповниться сама." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <input id="stListSearch" class="input" placeholder="Пошук: назва або артикул…" style="flex:1;min-width:180px" oninput="clearTimeout(window._stT);window._stT=setTimeout(loadStockList,300)">
+              <!-- 15.08 (Бос): завести товар, якого ще нема в базі, можна було ТІЛЬКИ накладною —
+                   кнопка «Додати товар» жила лише в каталозі магазину. Тепер вона є і на складі. -->
+              <button type="button" class="btn btn-primary" onclick="newProductModal()" title="Завести товар вручну, без накладної"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Новий товар</button>
             </div>
             <div class="card-body" style="padding:0;max-height:520px;overflow:auto">
               <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th style="text-align:right">Залишок</th><th style="text-align:right">Ціна</th><th></th></tr></thead>

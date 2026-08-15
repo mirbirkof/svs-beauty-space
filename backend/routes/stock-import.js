@@ -157,6 +157,18 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
         if (!vinfo.rows[0]) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'варіант зник' }); continue; }
         const unitMl = Number(vinfo.rows[0].unit_ml) || 0;
         const isGram = vinfo.rows[0].price_per_gram != null;
+        // БАГ (14.08, підтверджений): якщо товар грамовий, а unit_ml НЕ проставлений у картці —
+        // раніше asUnits тихо ставав false і накладна проходила qty «як є» (2 флакони по 1000мл
+        // → +2 мл замість +2000). Це гроші й залишки, мовчазний хибний перерахунок неприпустимий.
+        // Тепер: unit:'ml' — явний прапор «накладна вже в мл/г», інакше без unit_ml — жорстка
+        // відмова саме по цьому рядку (інші рядки накладної проводяться як завжди).
+        // Фолбек на текстове поле volume свідомо НЕ робимо: у фарб там часто лежить ТОН
+        // («7.11»), а не обʼєм — parseVol узяв би номер тону за мл (див. material-norms.js).
+        if (isGram && unitMl <= 1 && it.unit !== 'ml') {
+          result.skipped++;
+          result.lines.push({ name, status: 'skip', why: 'не вказано об’єм упаковки (unit_ml) — заповніть об’єм у картці товару або позначте кількість як мл', variant_id: variantId });
+          continue;
+        }
         const asUnits = it.unit === 'ml' ? false : (isGram && unitMl > 1); // накладна в штуках за замовч.; unit:'ml' — явно в мл
         const delta = asUnits ? qty * unitMl : qty;
         await client.query(
