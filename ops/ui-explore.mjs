@@ -77,8 +77,18 @@ p.on('pageerror', e => jsErrors.push(e.message.slice(0, 150)));
 const bad = [];
 try {
   if (QA_PHONE && QA_PASSWORD) {
-    const { user } = await loginIntoPage(p, BASE, QA_PHONE, QA_PASSWORD);
-    console.log(`[+] реальный вход выполнен: ${user.display_name || user.id} (role_id=${user.role_id})`);
+    // 15.08: креды QA_FUZZ_* — от ПЕСОЧНИЦЫ (3037). На проде (3011) такого сотрудника
+    // нет: логин падал, сторож умирал с exit 1 и слал Боссу ложную «другорядну проблему»
+    // каждый час (3 алерта подряд 16:37-18:37). Неудачный вход = НЕ поломка CRM:
+    // откатываемся на API-режим со старым токеном и проверяем то, что доступно.
+    try {
+      const { user } = await loginIntoPage(p, BASE, QA_PHONE, QA_PASSWORD);
+      console.log(`[+] реальный вход выполнен: ${user.display_name || user.id} (role_id=${user.role_id})`);
+    } catch (e) {
+      console.log(`[!] staff-вход не удался (${String(e.message).slice(0, 60)}) — API-режим с ADMIN_TOKEN`);
+      await p.goto(BASE + '/admin/', { waitUntil: 'domcontentloaded' });
+      await p.evaluate(t => localStorage.setItem('svs_admin_token', t), TOKEN);
+    }
   } else {
     console.log('[!] нет staff-кредов — откат на legacy ADMIN_TOKEN (интерфейс может остаться на экране логина)');
     await p.goto(BASE + '/admin/', { waitUntil: 'domcontentloaded' });
