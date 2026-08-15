@@ -133,7 +133,15 @@ router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res
 
     let totalDiff = 0;
     for (const row of diffs.rows) {
-      await client.query(`UPDATE product_variants SET stock_qty=$1 WHERE id=$2`, [row.actual_qty, row.variant_id]);
+      // КРИТИЧНО: expected_qty — снапшот остатка на МОМЕНТ СТАРТА акта. Если пока акт был
+      // открыт, случились другие движения (приход/списание/продажа), они уже изменили
+      // текущий stock_qty независимо от акта. Раньше здесь ставили stock_qty=actual_qty
+      // (абсолютное значение из подсчёта) — это стирало все движения, случившиеся после
+      // старта акта, откатывая остаток к моменту снапшота. Правильно — прибавить К ТЕКУЩЕМУ
+      // остатку именно найденное расхождение (diff_qty = actual - expected), тогда чужие
+      // движения, которые уже применились к stock_qty, сохраняются, а поправка от акта
+      // накладывается поверх них.
+      await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) + $1) WHERE id=$2`, [row.diff_qty, row.variant_id]);
       // лог движения: delta = diff_qty (actual - expected), reason фиксирует акт инвентаризации
       await client.query(
         `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
