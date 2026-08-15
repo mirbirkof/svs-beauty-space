@@ -63,7 +63,10 @@
   // ── стили ────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
-    '#svsNotesFab{position:fixed;right:22px;bottom:22px;z-index:99998;width:58px;height:58px;border-radius:50%;',
+    // 15.08 (Бос: «натискаю — не натискається»): кнопка ШІ-помічника стоїть у тому ж куті
+    // з вищим z-index і перехоплювала натискання — клік фізично не доходив до нотаток.
+    // Розводимо їх: нотатки лівіше (right:96px) і вище за пріоритетом.
+    '#svsNotesFab{position:fixed;right:96px;bottom:22px;z-index:100001;width:58px;height:58px;border-radius:50%;',
     'background:linear-gradient(135deg,#7c5cff,#5b8def);color:#fff;border:none;cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.32);',
     'display:flex;align-items:center;justify-content:center;transition:transform .15s ease,box-shadow .15s ease}',
     '#svsNotesFab:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 10px 28px rgba(0,0,0,.4)}',
@@ -75,7 +78,9 @@
     '#svsNotesPanel{position:fixed;right:22px;bottom:92px;z-index:99999;width:380px;max-width:calc(100vw - 32px);',
     'max-height:74vh;background:#1b1d24;color:#e9eaf0;border:1px solid #2c2f3a;border-radius:16px;overflow:hidden;',
     'box-shadow:0 18px 50px rgba(0,0,0,.5);display:none;flex-direction:column;font-family:Inter,system-ui,sans-serif}',
-    '#svsNotesPanel.open{display:flex}',
+    // 15.08: клас .open ставився, але панель лишалася display:none — правило самої
+    // адмінки перебивало віджет. Через це «натискаю — нічого». Фіксуємо пріоритет.
+    '#svsNotesPanel.open{display:flex !important}',
     '.svsN-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #2c2f3a}',
     '.svsN-head b{font-size:15px}',
     '.svsN-x{background:none;border:none;color:#9aa0b4;font-size:22px;cursor:pointer;line-height:1}',
@@ -110,7 +115,7 @@
     '.svsN-link.del:hover{color:#ff6b6b}',
     '.svsN-empty{text-align:center;color:#7b8094;font-size:13px;padding:26px 10px}',
     '@media(min-width:769px){',
-    '#svsNotesFab{right:28px;bottom:28px;width:90px;height:90px;box-shadow:0 10px 30px rgba(0,0,0,.4)}',
+    '#svsNotesFab{right:28px;bottom:132px;width:90px;height:90px;box-shadow:0 10px 30px rgba(0,0,0,.4)}',
     '#svsNotesFab svg{width:42px;height:42px}',
     '#svsNotesBadge{min-width:30px;height:30px;border-radius:15px;font:700 15px/30px Inter,system-ui,sans-serif;top:-6px;right:-6px;box-shadow:0 0 0 3px #fff}',
     '#svsNotesPanel{bottom:128px}',
