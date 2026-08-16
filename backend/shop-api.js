@@ -522,13 +522,14 @@ try {
 // акаунт, який справді працював у CRM цієї зміни (журнал shift_login_audit).
 try {
   const shiftControl = require('./lib/shift-control');
+  const { forEachTenant: forEachTenantShift } = require('./lib/tenant');
   if (process.env.DATABASE_URL) {
     let running = false;
     const tick = async () => {
       if (running) return;
       running = true;
       try {
-        const r = await forEachTenant(() => shiftControl.tick());
+        const r = await forEachTenantShift(() => shiftControl.tick());
         if (r && (r.fail || 0) > 0) console.warn(`[shift-autopilot] помилок по салонах: ${r.fail}`);
       } catch (e) { console.error('[shift-autopilot] tick:', e.message); }
       finally { running = false; }
