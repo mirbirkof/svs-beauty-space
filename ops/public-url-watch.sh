@@ -104,14 +104,33 @@ if [ -n "$TOKEN" ]; then
     # Аудит 13.08: раніше відповідь Telegram не перевірялась і в лог писалось
     # «вебхук переставлен» НЕЗАЛЕЖНО від результату. Якщо API відмовляв (битий secret,
     # невалідний URL) — бот запису лишався мертвим, а лог казав, що все добре.
-    RESP=$(curl -s -m 15 "https://api.telegram.org/bot$TOKEN/setWebhook" \
-      -d "url=$WANT" -d "secret_token=$SECRET" 2>/dev/null)
+    #
+    # Аудит 15.08: інший перекіс — тривога летіла Боссу з ПЕРШОЇ невдачі. api.telegram.org
+    # інколи віддає разовий 502/504 (їхня сторона), наступний цикл крона ставить вебхук
+    # сам. Босс отримував червоне повідомлення про проблему, якої вже немає. Тепер:
+    # 3 спроби всередині циклу, і тривога тільки якщо не вийшло 3 цикли поспіль (~10 хв).
+    WHFAIL=/tmp/webhook-set-fail-count
+    RESP=""
+    for wtry in 1 2 3; do
+      RESP=$(curl -s -m 15 "https://api.telegram.org/bot$TOKEN/setWebhook" \
+        -d "url=$WANT" -d "secret_token=$SECRET" 2>/dev/null)
+      echo "$RESP" | grep -q '"ok":true' && break
+      [ "$wtry" -lt 3 ] && sleep 5
+    done
     if echo "$RESP" | grep -q '"ok":true'; then
+      rm -f "$WHFAIL"
       echo "[$(date '+%F %H:%M')] вебхук переставлено: $HAVE -> $WANT"
     else
-      echo "[$(date '+%F %H:%M')] ПОМИЛКА setWebhook: $RESP"
-      notify "🔴 Бот запису: не вдалося переставити вебхук на $WANT. Відповідь Telegram: $(echo "$RESP" | head -c 300)"
+      wn=$(( $(cat "$WHFAIL" 2>/dev/null || echo 0) + 1 ))
+      echo "$wn" > "$WHFAIL"
+      echo "[$(date '+%F %H:%M')] ПОМИЛКА setWebhook (цикл $wn): $RESP"
+      if [ "$wn" -ge 3 ]; then
+        notify "🔴 Бот запису: вебхук не вдається переставити вже 10 хвилин ($WANT). Відповідь Telegram: $(echo "$RESP" | head -c 300)"
+        echo 0 > "$WHFAIL"
+      fi
     fi
+  else
+    rm -f /tmp/webhook-set-fail-count
   fi
 fi
 

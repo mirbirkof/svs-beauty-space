@@ -9885,6 +9885,10 @@ async function openAppt(id, masterId) {
             <span style="font-size:12px;width:56px">Сертиф.</span>
             <input id="payCertCode" placeholder="GC-XXXX-XXXX" class="input" style="flex:1;padding:5px;text-transform:uppercase" oninput="payRecalc(${a.id})">
           </div>
+          <label id="paySubRow" style="display:none;align-items:center;gap:6px;font-size:12px;cursor:pointer;background:#ecfdf5;border:1px solid #10b981;border-radius:8px;padding:6px 8px">
+            <input type="checkbox" id="paySubUse" onchange="payRecalc(${a.id})">
+            <span id="paySubLabel">Списати візит з абонемента</span>
+          </label>
           <label id="payBonusRow" style="display:none;align-items:center;gap:6px;font-size:12px;cursor:pointer">
             <input type="checkbox" id="payBonusUse" onchange="payRecalc(${a.id})">
             <span id="payBonusLabel">Списати бонуси</span>
@@ -10150,6 +10154,17 @@ async function loadPayOptions(id) {
       row.style.display = 'flex';
       document.getElementById('payBonusLabel').textContent = `Списати бонуси (є ${_payOpts.bonus_balance}, макс ${_payOpts.bonus.max_pay_percent}% чека)`;
     }
+    // Абонемент: бекенд сам знайшов придатний (18.08). Показуємо і вмикаємо за замовчуванням —
+    // кассир, що забув про абонемент клієнта, тепер має його зняти свідомо, а не згадати.
+    _payOpts.sub = o.subscription || null;
+    const subRow = document.getElementById('paySubRow');
+    if (subRow && _payOpts.sub) {
+      subRow.style.display = 'flex';
+      const s = _payOpts.sub;
+      const left = s.plan_type === 'visits' ? ` · залишиться ${Math.max(0, s.visits_remaining - 1)} із ${s.visits_remaining}` : ' · безліміт по строку';
+      document.getElementById('paySubLabel').textContent = `Абонемент «${s.plan_name}»${left}` + (s.already_used ? ' (візит уже списано)' : '');
+      document.getElementById('paySubUse').checked = true;
+    }
   } catch (_) {}
   payRecalc(id);
 }
@@ -10159,8 +10174,15 @@ function payRecalc(id) {
   const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
   const r2 = n => Math.round(n * 100) / 100;
   let remaining = base, disc = 0;
-  if (dType === 'percent' && dVal > 0) disc = r2(base * Math.min(dVal, 100) / 100);
-  else if (dType === 'fixed' && dVal > 0) disc = Math.min(r2(dVal), base);
+  // 0) абонемент покриває ПОСЛУГУ (матеріали — за гроші), йде до знижок — як на бекенді
+  let subMoney = 0;
+  if (document.getElementById('paySubUse')?.checked && _payOpts.sub) {
+    const svc = Number(document.getElementById('apptPayBtn')?.dataset.service) || 0;
+    subMoney = Math.min(r2(svc), remaining);
+    remaining = r2(remaining - subMoney);
+  }
+  if (dType === 'percent' && dVal > 0) disc = r2(remaining * Math.min(dVal, 100) / 100);
+  else if (dType === 'fixed' && dVal > 0) disc = Math.min(r2(dVal), remaining);
   remaining = r2(remaining - disc);
   // бонуси (превʼю з лімітом %)
   let bonusMoney = 0;
@@ -10172,7 +10194,7 @@ function payRecalc(id) {
   const cert = (document.getElementById('payCertCode')?.value || '').trim();
   const note = document.getElementById('payCalcNote');
   const finalApprox = r2(remaining - bonusMoney);
-  if (note) note.innerHTML = `Повна: <b>${_money(base)}</b>${disc>0?` · знижка −${_money(disc)}`:''}${cert?` · сертифікат (при оплаті)`:''}${bonusMoney>0?` · бонуси −${_money(bonusMoney)}`:''}<br>До сплати${cert?' (мінус сертифікат)':''}: <b style="color:#10b981">${_money(finalApprox)}</b>`;
+  if (note) note.innerHTML = `Повна: <b>${_money(base)}</b>${subMoney>0?` · абонемент −${_money(subMoney)}`:''}${disc>0?` · знижка −${_money(disc)}`:''}${cert?` · сертифікат (при оплаті)`:''}${bonusMoney>0?` · бонуси −${_money(bonusMoney)}`:''}<br>До сплати${cert?' (мінус сертифікат)':''}: <b style="color:#10b981">${_money(finalApprox)}</b>`;
   const btn = document.getElementById('apptPayBtn');
   if (btn) btn.textContent = `💳 Провести оплату · ${_money(finalApprox)}`;
   // змішана оплата: тримаємо актуальну «до сплати» і перебиваємо картку залишком
@@ -10233,6 +10255,7 @@ async function payAppt(id) {
     }
     body.mixed_cash = mc; body.mixed_card = mk;
   }
+  if (document.getElementById('paySubUse')?.checked && _payOpts.sub) body.subscription_id = _payOpts.sub.id;
   const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
   if (dVal > 0) { body.discount_type = document.getElementById('payDiscType')?.value || 'percent'; body.discount_value = dVal; }
   const cert = (document.getElementById('payCertCode')?.value || '').trim();

@@ -1679,6 +1679,51 @@ router.post('/appointments', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── Абонемент, яким можна закрити ПОСЛУГУ візиту (18.08) ──
+// Власний або сімейний, активний, не прострочений, послуга/тип підходять, є баланс.
+// Плани 'minutes' свідомо НЕ беремо: скільки хвилин списувати за візит — рішення людини,
+// авто-списання рахувало б навмання; для них лишається ручний шлях на сторінці абонементів.
+async function findUsableSubscription(pool, appointmentId) {
+  const a = await pool.query(
+    `SELECT client_id, service_id FROM appointments WHERE id=$1`, [appointmentId]);
+  const appt = a.rows[0];
+  if (!appt || !appt.client_id) return null;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
+  const r = await pool.query(
+    `SELECT DISTINCT s.*, p.name AS plan_name, p.type AS plan_type, p.service_ids, p.category_ids
+       FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
+       LEFT JOIN subscription_users su ON su.subscription_id=s.id AND su.removed_at IS NULL
+      WHERE (s.client_id=$1 OR su.client_id=$1) AND s.status IN ('active','trial')
+      ORDER BY s.expires_at ASC`, [appt.client_id]);
+  for (const sub of r.rows) {
+    if (String(sub.expires_at).slice(0, 10) < today) continue;
+    if (sub.plan_type === 'minutes') continue;
+    if (appt.service_id && Array.isArray(sub.service_ids) && sub.service_ids.length
+        && !sub.service_ids.includes(appt.service_id)) continue;
+    if (sub.plan_type === 'visits' && Number(sub.visits_remaining) <= 0) continue;
+    // цей візит уже списаний з цього абонемента? (ідемпотентність /pay після збою)
+    const used = await pool.query(
+      `SELECT id FROM subscription_usage WHERE subscription_id=$1 AND appointment_id=$2 LIMIT 1`,
+      [sub.id, appointmentId]);
+    return { sub, alreadyUsed: !!used.rows[0] };
+  }
+  return null;
+}
+
+// Повернути списаний візит абонемента (відкат оплати/збою): +1 візит, воскресіння
+// статусу, якщо його з'їло списання, і чистка usage-рядка (він же — ключ ідемпотентності).
+async function rollbackSubUse(pool, subscriptionId, appointmentId) {
+  const u = await pool.query(
+    `DELETE FROM subscription_usage WHERE subscription_id=$1 AND appointment_id=$2
+      RETURNING quantity`, [subscriptionId, appointmentId]);
+  if (!u.rows[0]) return false; // нічого не списувалось — нічого не повертаємо
+  if (Number(u.rows[0].quantity) > 0) await pool.query(
+    `UPDATE subscriptions SET visits_remaining = visits_remaining + $2,
+            status = CASE WHEN status='expired' AND expires_at >= NOW() THEN 'active' ELSE status END,
+            updated_at = NOW() WHERE id=$1`, [subscriptionId, Number(u.rows[0].quantity)]);
+  return true;
+}
+
 // ── GET /api/schedule/appointments/:id/pay-options — дані для екрана оплати ──
 // Баланс бонусів клієнта + налаштування списання (макс %, курс, мінімум).
 router.get('/appointments/:id/pay-options', async (req, res) => {
@@ -1691,7 +1736,19 @@ router.get('/appointments/:id/pay-options', async (req, res) => {
     let balance = 0, settings = {};
     try { if (a.rows[0].client_id) balance = Number((await bonusLib.getBalance(a.rows[0].client_id)).balance) || 0; } catch (_) {}
     try { const s = await bonusLib.getSettings(); settings = { enabled: s.enabled !== false, max_pay_percent: Number(s.max_pay_percent) || 30, min_redeem: Number(s.min_redeem_amount) || 0, rate: Number(s.exchange_rate) || 1 }; } catch (_) {}
-    res.json({ ok: true, client_id: a.rows[0].client_id, bonus_balance: balance, bonus: settings });
+    // Абонемент клієнта, що покриває послугу цього візиту (18.08, Босс: «кассир забудет»).
+    // Раніше перевірка існувала лише в /api/subscriptions/check і в екран оплати не потрапляла —
+    // клієнт з абонементом міг заплатити вдруге. Тепер каса бачить абонемент сама.
+    let subscription = null;
+    try {
+      const found = await findUsableSubscription(pool, id);
+      if (found) subscription = {
+        id: found.sub.id, number: found.sub.subscription_number, plan_name: found.sub.plan_name,
+        plan_type: found.sub.plan_type, visits_remaining: Number(found.sub.visits_remaining) || 0,
+        expires_at: found.sub.expires_at, already_used: found.alreadyUsed,
+      };
+    } catch (e) { console.error('[pay-options] перевірка абонемента впала', id, e.message); }
+    res.json({ ok: true, client_id: a.rows[0].client_id, bonus_balance: balance, bonus: settings, subscription });
   } catch (e) { res.status(500).json({ error: 'internal' }); }
 });
 
@@ -1801,6 +1858,14 @@ router.post('/appointments/:id/unpay', async (req, res) => {
           [appt.client_id, id]).catch(() => {});
       }
     }
+    // абонемент: якщо візит було списано з абонемента (у т.ч. вручну зі сторінки
+    // абонементів) — повертаємо візит. Без цього «скасувати оплату» спалює візит клієнта (18.08).
+    let subReverted = false;
+    try {
+      const su = await pool.query(
+        `SELECT DISTINCT subscription_id FROM subscription_usage WHERE appointment_id=$1`, [id]);
+      for (const row of su.rows) subReverted = (await rollbackSubUse(pool, row.subscription_id, id)) || subReverted;
+    } catch (e) { console.error('[schedule:unpay] візит абонемента НЕ повернуто', id, e.message); }
     // повертаємо матеріали на склад (best-effort, ідемпотентно)
     let stock = null;
     try {
@@ -1895,9 +1960,15 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const certCode = String(req.body?.certificate_code || '').trim().toUpperCase();
     const bonusReq = Number(req.body?.bonus_amount) || 0;
     let bonusMoney = 0, bonusRedeemed = 0;
+    // абонемент: стан для відкату при провалі оплати нижче
+    let subUsedNow = false, subRow = null, subApplied = 0;
     // helper: будь-який провал валідації ПІСЛЯ захвату pay_settled_at має зняти захват
-    // (інакше запис навічно «оплачений» — регрес v8) і повернути вже списані бонуси.
+    // (інакше запис навічно «оплачений» — регрес v8) і повернути вже списані бонуси/візит абонемента.
     const failPay = async (status, body) => {
+      if (subUsedNow && subRow) {
+        await rollbackSubUse(pool, subRow.id, id).catch(() => {});
+        subUsedNow = false;
+      }
       if (bonusRedeemed > 0 && appt.client_id) {
         await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id,
           amount: bonusRedeemed, description: `Повернення бонусів: скасована оплата візиту #${id}`,
@@ -1913,10 +1984,50 @@ router.post('/appointments/:id/pay', async (req, res) => {
     };
 
     let remaining = base;
-    // 1) ручна знижка
+
+    // 0) АБОНЕМЕНТ (18.08): покриває ПОСЛУГУ, матеріали — за гроші. Йде ДО знижок,
+    // щоб знижка/бонуси рахувались від решти чека, а не від уже покритої послуги.
+    const reqSubId = Number(req.body?.subscription_id) || 0;
+    if (reqSubId) {
+      const found = await findUsableSubscription(pool, id).catch((e) => {
+        console.error('[pay/subscription] перевірка впала', id, e.message); return undefined;
+      });
+      // undefined = збій перевірки: чесна відмова, не «мовчки за гроші» (урок аудиту 13.08)
+      if (found === undefined)
+        return await failPay(503, { error: 'sub-check-failed', message: 'Не вдалося перевірити абонемент. Оплату не проведено — спробуйте ще раз.' });
+      if (!found || found.sub.id !== reqSubId)
+        return await failPay(409, { error: 'sub-not-usable', message: 'Абонемент недоступний для цього візиту (вичерпаний, прострочений або не покриває послугу). Оновіть екран оплати.' });
+      subRow = found.sub;
+      if (!found.alreadyUsed) {
+        if (subRow.plan_type === 'visits') {
+          // атомарне списання — та сама умова, що в /subscriptions/:id/use (гонка двох кас)
+          const upd = await pool.query(
+            `UPDATE subscriptions
+                SET visits_remaining = visits_remaining - 1,
+                    status = CASE WHEN visits_remaining - 1 <= 0 THEN 'expired' ELSE status END,
+                    updated_at = NOW()
+              WHERE id=$1 AND visits_remaining >= 1 AND status IN ('active','trial')
+              RETURNING visits_remaining`, [subRow.id]);
+          if (!upd.rows[0])
+            return await failPay(409, { error: 'sub-race', message: 'Абонемент щойно списано з іншої каси. Оновіть екран оплати.' });
+          subRow._balanceAfter = Number(upd.rows[0].visits_remaining);
+        } else { subRow._balanceAfter = 0; } // 'time' (безліміт по строку) — без балансу
+        await pool.query(
+          `INSERT INTO subscription_usage (subscription_id,client_id,appointment_id,type,quantity,balance_after,performed_by,notes)
+           VALUES ($1,$2,$3,'visit',$4,$5,$6,$7)`,
+          [subRow.id, appt.client_id, id, subRow.plan_type === 'visits' ? 1 : 0, subRow._balanceAfter,
+           req.user?.display_name || null, `Оплата візиту #${id} абонементом (каса)`]);
+        subUsedNow = true;
+      }
+      subApplied = Math.min(round2(Number(appt.price) || 0), remaining);
+      remaining = round2(remaining - subApplied);
+    }
+
+    // 1) ручна знижка — від решти чека ПІСЛЯ абонемента (не від base: інакше знижка
+    // «їсть» уже покриту абонементом послугу і чек іде в мінус)
     let discountMoney = 0;
-    if (dType === 'percent' && dVal > 0) discountMoney = round2(base * Math.min(dVal, 100) / 100);
-    else if (dType === 'fixed' && dVal > 0) discountMoney = Math.min(round2(dVal), base);
+    if (dType === 'percent' && dVal > 0) discountMoney = round2(remaining * Math.min(dVal, 100) / 100);
+    else if (dType === 'fixed' && dVal > 0) discountMoney = Math.min(round2(dVal), remaining);
     remaining = round2(remaining - discountMoney);
 
     // 2) сертифікат (валідуємо зараз, списуємо в транзакції)
@@ -2043,7 +2154,10 @@ router.post('/appointments/:id/pay', async (req, res) => {
         // Чек ділиться в касі: послуга → sale_service, платні матеріали/товари → sale_product
         // (інакше «товари» у фінзведенні завжди 0, а база % майстра завищена на матеріали).
         // Знижка/сертифікат/бонуси розподіляються пропорційно часткам чека.
-        const productCash = matTotal > 0 ? Math.min(finalCash, round2(matTotal * finalCash / base)) : 0;
+        // база пропорції БЕЗ частини послуги, покритої абонементом: інакше матеріали
+        // недоотримують свою частку і фінзведення знову показує «товари ≈ 0» (18.08)
+        const propBase = Math.max(0.01, round2(base - subApplied));
+        const productCash = matTotal > 0 ? Math.min(finalCash, round2(matTotal * finalCash / propBase)) : 0;
         let svcLeft = round2(finalCash - productCash);
         let prodLeft = productCash;
         for (const [pMethod, pSum] of payParts) {
@@ -2119,6 +2233,8 @@ router.post('/appointments/:id/pay', async (req, res) => {
       await client.query('ROLLBACK').catch(() => {});
       // повертаємо вже списані бонуси (redeem був до транзакції)
       if (bonusRedeemed > 0) await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: bonusRedeemed, description: `Відкат: помилка оплати візиту #${id}`, taskTitle: `Повернути бонуси вручну: ${bonusRedeemed} б. (збій оплати)` });
+      // і візит абонемента (списання було до транзакції — без цього візит згорає при збої каси)
+      if (subUsedNow && subRow) await rollbackSubUse(pool, subRow.id, id).catch(() => {});
       throw e;
     } finally {
       client.release();
@@ -2126,6 +2242,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     if (raceLost) {
       // проиграли гонку: оплату уже провёл параллельный запрос — повертаємо бонуси, відповідаємо як dup
       if (bonusRedeemed > 0) await safeBonusRollback({ clientId: appt.client_id, tenantId: appt.tenant_id, apptId: id, amount: bonusRedeemed, description: `Відкат гонки оплати візиту #${id}`, taskTitle: `Повернути бонуси вручну: ${bonusRedeemed} б. (подвійна оплата)` });
+      if (subUsedNow && subRow) await rollbackSubUse(pool, subRow.id, id).catch(() => {});
       const race = await pool.query(`SELECT id FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
       await emitAppointmentCompleted(id, appt.master_id);
       return res.json({ ok: true, already_paid: true, operation_id: race.rows[0]?.id || null });
@@ -2158,6 +2275,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // з першоджерела, не інкремент (аудит 25.07: поле роками тільки зменшувалось). Fire-and-forget.
     if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
+      ...(subRow ? { subscription_used: { id: subRow.id, applied: subApplied, visits_remaining: subRow._balanceAfter ?? Number(subRow.visits_remaining) } } : {}),
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount },
       bonus_accrued: Math.max(0, accrued),
       ...(accrued === -1 ? { bonus_warning: 'Бонуси за візит НЕ нараховано (технічний збій) — нарахуйте вручну.' } : {}),
@@ -2265,3 +2383,5 @@ router.delete('/appointments/:id', async (req, res) => {
 });
 
 module.exports = router;
+// для інтеграційного тесту абонемент-у-касі (18.08): логіка тестується бойова, не копія
+module.exports._test = { findUsableSubscription, rollbackSubUse };
