@@ -88,6 +88,16 @@ function parseText(text) {
       const m = line.match(/^(.*?)((?:\s+\d+(?:[.,]\d+)?)+)\s*$/);
       if (m) {
         const rawNums = m[2].trim().split(/\s+/);
+        // ТОН ФАРБИ В НАЗВІ (знайдено 18.08): «Фарба Eterna 7.1 3 450.00» — хвіст чисел
+        // з'їдає тон 7.1, і рядок розбирається як qty=3450, price=7.1. Тон — дробове
+        // «мале» число (7.1, 10.21) одразу після назви. Повертаємо його в назву, ПОКИ
+        // після нього лишається щонайменше два числа (кількість + ціна) — інакше не
+        // чіпаємо, щоб не зламати дробову кількість («Маска 2.5 450»).
+        let nameTail = '';
+        while (rawNums.length >= 3 && /^\d{1,2}[.,]\d{1,2}$/.test(rawNums[0])) {
+          nameTail += ' ' + rawNums.shift();
+        }
+        if (nameTail) m[1] = (m[1] + nameTail).trim();
         const merged = [rawNums[0]];
         for (let i = 1; i < rawNums.length; i++) {
           const g = rawNums[i];
