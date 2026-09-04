@@ -3,7 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
-const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
+const { shiftDaysByMaster, shiftStatsByMasterInRange, buildMonthGrid } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
@@ -869,6 +869,43 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
 
     res.json({ year, month, period: { from, to }, items });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// GET /api/reports/day-plan?date=YYYY-MM-DD — ПЛАН НА ДЕНЬ (заметка #146, Босс 04.09).
+// Скільки салон МАЄ заробити саме цього дня = сума планів на зміну тих майстрів,
+// які за графіком працюють у цю дату. Джерела ті самі, що й «План місяця»
+// (master_monthly_plans.plan_per_shift) і сітка графіків (buildMonthGrid) —
+// тому цифри ніколи не розійдуться з розділом «План».
+router.get('/day-plan', requirePerm('reports.read'), async (req, res) => {
+  try {
+    const _dRe = /^\d{4}-\d{2}-\d{2}$/;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const date = (req.query.date && _dRe.test(req.query.date)) ? req.query.date : today;
+    const ym = date.slice(0, 7);
+    const [Y, M] = ym.split('-').map(Number);
+
+    const grid = await buildMonthGrid(pool, ym).catch(() => ({ items: [] }));
+    const plans = await pool.query(
+      `SELECT master_id, plan_per_shift FROM master_monthly_plans WHERE year=$1 AND month=$2`, [Y, M]
+    ).catch(() => ({ rows: [] }));
+    const planMap = new Map(plans.rows.map(p => [p.master_id, Number(p.plan_per_shift) || 0]));
+
+    const masters = [];
+    for (const it of (grid.items || [])) {
+      const d = (it.days || []).find(x => x.date === date);
+      if (!d || d.off) continue;                       // не працює цього дня — у план не входить
+      const per = planMap.get(it.id) || 0;
+      masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0 });
+    }
+    const planTotal = masters.reduce((s, m) => s + m.plan_per_shift, 0);
+    res.json({
+      date,
+      plan_total: Math.round(planTotal),
+      masters_working: masters.length,
+      masters_without_plan: masters.filter(m => !m.has_plan).length,
+      masters,
+    });
+  } catch (e) { console.error('[day-plan]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
 // POST /api/reports/monthly-plan  — задать/обновить план мастера

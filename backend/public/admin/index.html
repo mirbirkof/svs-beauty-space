@@ -559,6 +559,14 @@ select.input { background:var(--card); }
 .jcash-row .val { margin-left:auto; font-weight:700; }
 .jcash-row.tot { border-top:1px solid var(--border); padding-top:8px; font-size:14px; }
 .jcash-lock { font-size:12px; color:var(--text-secondary); text-align:center; padding:8px 4px; }
+/* План дня (заметка #146): смуга виконання з градієнтом червоний→зелений */
+.jplan { margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+.jplan-head { display:flex; align-items:baseline; gap:6px; font-size:12px; color:var(--text-secondary); }
+.jplan-head b { font-size:13px; color:var(--text); }
+.jplan-bar { position:relative; height:12px; border-radius:7px; background:var(--border); overflow:hidden; margin:7px 0 6px; }
+.jplan-fill { position:absolute; inset:0 auto 0 0; border-radius:7px; transition:width .5s ease, background .5s ease; }
+.jplan-note { font-size:12px; font-weight:600; }
+.jplan-hint { font-size:11px; color:var(--text-secondary); margin-top:3px; }
 @media(max-width:1100px){
   .journal-layout { flex-direction:column; }
   .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
@@ -8118,6 +8126,42 @@ async function loadCashGauge(forDate) {
       <div class="jcash-row"><span class="dot" style="background:#10b981"></span><span class="lbl">Готівка</span><span class="val">${_money(cash)}</span></div>
       <div class="jcash-row"><span class="dot" style="background:#6366f1"></span><span class="lbl">Безготівка</span><span class="val">${_money(cashless)}</span></div>
       <div class="jcash-row tot"><span class="lbl" style="font-weight:600;color:var(--text)">Загальна каса</span><span class="val">${_money(total)}</span></div>
+    </div>
+    <div id="jPlanDay"></div>`;
+  loadDayPlan(date, total);
+}
+
+// ── План дня під касою (заметка #146, Босс 04.09) ──────────────────
+// «Скільки салон має заробити сьогодні» = сума планів на зміну майстрів, які
+// СЬОГОДНІ за графіком працюють. Колір смуги йде градієнтом червоний→жовтий→
+// зелений рівно за відсотком виконання, щоб стан дня читався за пів секунди.
+function _planColor(pct){
+  // 0% = червоний (0°), 100% = зелений (128°). Перевиконання лишається зеленим.
+  const h = Math.round(Math.max(0, Math.min(1, pct/100)) * 128);
+  return `hsl(${h} 78% 44%)`;
+}
+async function loadDayPlan(date, fact){
+  const box = document.getElementById('jPlanDay');
+  if (!box) return;
+  let d;
+  try { d = await api('/api/reports/day-plan?date=' + date); } catch { box.innerHTML=''; return; }
+  if (!d || d.error) { box.innerHTML=''; return; }
+  const plan = Number(d.plan_total||0), f = Number(fact||0);
+  if (!d.masters_working) { box.innerHTML = '<div class="jplan"><div class="jplan-hint">Цього дня за графіком ніхто не працює — плану немає.</div></div>'; return; }
+  if (plan <= 0) {
+    box.innerHTML = `<div class="jplan"><div class="jplan-hint">План на день не порахований: у ${d.masters_without_plan} з ${d.masters_working} майстрів цього дня не задано план на зміну.
+      <a href="#" onclick="go('plan');return false" style="color:var(--primary,#7c5cff);font-weight:600">Задати план</a></div></div>`;
+    return;
+  }
+  const pct = Math.round(f / plan * 100);
+  const left = Math.max(0, plan - f);
+  const col = _planColor(pct);
+  box.innerHTML = `
+    <div class="jplan">
+      <div class="jplan-head"><span>План дня</span><b style="margin-left:auto">${_money(plan)}</b></div>
+      <div class="jplan-bar"><div class="jplan-fill" style="width:${Math.min(100,Math.max(2,pct))}%;background:linear-gradient(90deg, hsl(0 78% 48%), ${col})"></div></div>
+      <div class="jplan-note" style="color:${col}">${pct}% виконано${left>0?` · не вистачає ${_money(left)}`:' · план виконано 🎯'}</div>
+      <div class="jplan-hint">Працює майстрів: ${d.masters_working}${d.masters_without_plan?` · у ${d.masters_without_plan} не задано план на зміну`:''}</div>
     </div>`;
 }
 
