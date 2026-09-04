@@ -206,12 +206,26 @@ async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
 
   const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[vm] запит впав:', e.message); return []; });
 
-  // Денна ціль = план місяця / днів у місяці
+  // Денна ціль — З ОДНОГО ДЖЕРЕЛА з екраном каси (нотатка #146, 04.09):
+  // сума планів на зміну майстрів, які СЬОГОДНІ працюють за графіком. Рівномірний
+  // поділ «план місяця ÷ дні» брехав: у день з пʼятьма майстрами ціль виходила така
+  // сама, як у день з одним. Якщо планів на зміну не задано — падаємо на старий
+  // поділ, щоб звіт не залишився зовсім без цілі.
+  let dailyTarget = 0, planMasters = 0;
+  try {
+    const { dayPlan } = require('./day-plan');
+    const dp = await dayPlan(pool, today);
+    dailyTarget = Number(dp.plan_total) || 0;
+    planMasters = dp.masters_working || 0;
+  } catch (e) { console.error('[vm] day-plan:', e.message); }
   const mPlan = await _monthPlanTotal(pool);
-  const d = new Date();
-  const parts = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d)) parts[x.type] = x.value;
-  const daysInMonth = new Date(+parts.year, +parts.month, 0).getDate();
-  const dailyTarget = mPlan > 0 ? Math.round(mPlan / daysInMonth) : 0;
+  if (dailyTarget <= 0) {
+    const d = new Date();
+    const parts = {}; for (const x of new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d)) parts[x.type] = x.value;
+    const daysInMonth = new Date(+parts.year, +parts.month, 0).getDate();
+    dailyTarget = mPlan > 0 ? Math.round(mPlan / daysInMonth) : 0;
+    planMasters = 0;
+  }
 
   // Сьогодні вже записано (очікувана виручка)
   const tRow = (await q(
@@ -237,7 +251,9 @@ async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
     ? calls.map(c => `   • ${c.name || 'клієнт'} — ${c.phone}`).join('\n')
     : '   • немає кандидатів — усі активні 👍';
   const planLine = dailyTarget > 0
-    ? `🎯 <b>Ціль на сьогодні:</b> ${_money(dailyTarget)}\n📌 Вже записано: ${_money(booked)} (${tRow.n} зап.)` +
+    ? `🎯 <b>Ціль на сьогодні:</b> ${_money(dailyTarget)}` +
+      (planMasters ? ` <i>(працює майстрів: ${planMasters})</i>` : '') +
+      `\n📌 Вже записано: ${_money(booked)} (${tRow.n} зап.)` +
       (gap > 0 ? `\n⚠️ <b>Дозаписати ще на ${_money(gap)}</b>` : `\n✅ Денну ціль уже виконано!`)
     : `📌 Сьогодні записано: ${_money(booked)} (${tRow.n} зап.)`;
 
