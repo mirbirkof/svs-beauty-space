@@ -567,6 +567,13 @@ select.input { background:var(--card); }
 .jplan-fill { position:absolute; inset:0 auto 0 0; border-radius:7px; transition:width .5s ease, background .5s ease; }
 .jplan-note { font-size:12px; font-weight:600; }
 .jplan-hint { font-size:11px; color:var(--text-secondary); margin-top:3px; }
+/* Окремий зріз адміна під смугою плану (Босс 04.09): виконав сам товаром чи перекрила каса */
+.jplan-adm { margin-top:8px; padding-top:6px; border-top:1px dashed var(--border); font-size:11px; color:var(--text-secondary); }
+.jplan-adm-head { display:flex; align-items:baseline; gap:6px; }
+.jplan-adm-head b { color:var(--text); font-size:12px; }
+.jplan-adm-bar { position:relative; height:6px; border-radius:4px; background:var(--border); overflow:hidden; margin:4px 0 3px; }
+.jplan-adm-fill { position:absolute; inset:0 auto 0 0; border-radius:4px; transition:width .5s ease; }
+.jplan-adm-status { font-weight:600; }
 /* Передзапис (заметка #148): гроші, які вже обіцяні, але в касу ще не зайшли.
    Свідомо «примарний» вигляд — сірий, напівпрозорий, у смужку: щоб з першого погляду
    не сплутати з реальною касою, але й не загубити. */
@@ -8207,7 +8214,29 @@ async function loadDayPlan(date, fact, pre, preCnt){
       <div class="jplan-note" style="color:${col}">${pct}% виконано${left>0?` · не вистачає ${_money(left)}`:' · план виконано 🎯'}</div>
       ${p>0?`<div class="jplan-pre">Передзапис: ще ${pctPre}% плану (${_money(p)}, ${pCnt} ${_zapWord(pCnt)}) → разом ${together}%${together>=100?' — з передзаписом план закритий':''}</div>`:''}
       <div class="jplan-hint">Працює майстрів: ${d.masters_working}${d.masters_without_plan?` · у ${d.masters_without_plan} не задано план на зміну`:''}</div>
+      ${_planAdminRow(d, pct)}
     </div>`;
+}
+// ── Зріз адміна (Босс 04.09): загальна смуга рахує ВСІХ разом (адмін може «перекрити»
+// свою тисячу іншими послугами — так і має бути, щоб не ускладнювати). А тут між іншим
+// видно ПРАВДУ: адмін виконав свою задачу сам (продав товар без візиту на суму плану),
+// чи його план просто перекрила загальна каса, чи не виконано взагалі.
+function _planAdminRow(d, totalPct){
+  const ap = Number(d.admin_plan||0);
+  if (!d.admins_working || ap <= 0) return '';
+  const af = Number(d.admin_fact||0);
+  const apct = Math.round(af / ap * 100);
+  let status, col;
+  if (af >= ap)            { status = 'виконав сам — товаром ✓';                       col = 'hsl(128 70% 40%)'; }
+  else if (totalPct >= 100){ status = `перекрито загальною касою · товаром ${apct}%`;  col = 'hsl(40 85% 45%)'; }
+  else                     { status = `не вистачає ${_money(ap - af)}`;                 col = 'hsl(0 70% 50%)'; }
+  const who = (d.admin_names||[]).join(', ');
+  return `
+      <div class="jplan-adm">
+        <div class="jplan-adm-head"><span title="Товар, проданий без візиту (через касу/POS)">Адмін${who?` · ${who}`:''} · товар</span><b style="margin-left:auto;white-space:nowrap">${_money(af)} / ${_money(ap)}</b></div>
+        <div class="jplan-adm-bar"><div class="jplan-adm-fill" style="width:${Math.min(100,Math.max(af>0?2:0,apct))}%;background:${col}"></div></div>
+        <div class="jplan-adm-status" style="color:${col}">${status}${d.admin_ops?` · ${d.admin_ops} ${d.admin_ops===1?'продаж':'продажів'}`:''}</div>
+      </div>`;
 }
 
 // ═══ PIPELINE / ВОРОНКА ВІЗИТІВ (CRM-08) ══════

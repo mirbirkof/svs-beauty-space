@@ -32,19 +32,53 @@ async function dayPlan(pool, date) {
   ).catch(() => ({ rows: [] }));
   const planMap = new Map(plans.rows.map(p => [p.master_id, Number(p.plan_per_shift) || 0]));
 
+  // Хто адміністратор (уточнення Боса 04.09, друге): план адміна — мінімум продажу
+  // ТОВАРУ, і його треба бачити ОКРЕМО від майстрів: виконав сам товаром чи його
+  // тисячу «перекрила» загальна каса. Загальний план дня при цьому лишається спільним.
+  const roles = await pool.query(
+    `SELECT id, (staff_role IN ('admin','owner') OR COALESCE(provides_services,true)=false) AS is_admin
+       FROM masters WHERE active=true`
+  ).catch(() => ({ rows: [] }));
+  const adminIds = new Set(roles.rows.filter(r => r.is_admin).map(r => r.id));
+
   const masters = [];
   for (const it of (grid.items || [])) {
     const d = (it.days || []).find(x => x.date === ymd);
     if (!d || d.off) continue;                     // не працює цього дня — у план не входить
     const per = planMap.get(it.id) || 0;
-    masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0 });
+    masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0, is_admin: adminIds.has(it.id) });
   }
+  const admins = masters.filter(m => m.is_admin);
+  const adminPlan = Math.round(admins.reduce((s, m) => s + m.plan_per_shift, 0));
+
+  // Факт адміна = товар, проданий БЕЗ візиту (POS/каса), за цей день. Товар на візиті
+  // належить майстру, замовлення магазину (ref_type='order') — інший бізнес. Межі дня —
+  // той самий предикат, що й «Каса за день» (/api/cashbox/today), щоб цифри збігались.
+  let adminFact = 0, adminOps = 0;
+  if (admins.length) {
+    const af = await pool.query(
+      `SELECT COALESCE(SUM(amount),0)::float AS s, COUNT(*)::int AS n
+         FROM cash_operations
+        WHERE type='in' AND category='sale_product'
+          AND ref_type IS DISTINCT FROM 'appointment' AND ref_type IS DISTINCT FROM 'order'
+          AND created_at >= $1::date AND created_at < ($1::date + INTERVAL '1 day')`, [ymd]
+    ).catch(() => ({ rows: [{ s: 0, n: 0 }] }));
+    adminFact = Math.round(Number(af.rows[0]?.s || 0));
+    adminOps = Number(af.rows[0]?.n || 0);
+  }
+
   return {
     date: ymd,
     plan_total: Math.round(masters.reduce((s, m) => s + m.plan_per_shift, 0)),
     masters_working: masters.length,
     masters_without_plan: masters.filter(m => !m.has_plan).length,
     masters,
+    // Окремий зріз адміна (загальний план вище його вже включає)
+    admins_working: admins.length,
+    admin_plan: adminPlan,
+    admin_fact: adminFact,          // товар без візиту за день
+    admin_ops: adminOps,
+    admin_names: admins.map(a => a.name),
   };
 }
 

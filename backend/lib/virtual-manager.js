@@ -211,12 +211,15 @@ async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
   // поділ «план місяця ÷ дні» брехав: у день з пʼятьма майстрами ціль виходила така
   // сама, як у день з одним. Якщо планів на зміну не задано — падаємо на старий
   // поділ, щоб звіт не залишився зовсім без цілі.
-  let dailyTarget = 0, planMasters = 0;
+  let dailyTarget = 0, planMasters = 0, adminPlanLine = '';
   try {
     const { dayPlan } = require('./day-plan');
     const dp = await dayPlan(pool, today);
     dailyTarget = Number(dp.plan_total) || 0;
     planMasters = dp.masters_working || 0;
+    adminPlanLine = (dp.admin_plan > 0)
+      ? `\n🛍 з них адмін${dp.admin_names && dp.admin_names.length ? ' (' + dp.admin_names.join(', ') + ')' : ''}: ${_money(dp.admin_plan)} — мінімум продажу товару`
+      : '';
   } catch (e) { console.error('[vm] day-plan:', e.message); }
   const mPlan = await _monthPlanTotal(pool);
   if (dailyTarget <= 0) {
@@ -252,7 +255,7 @@ async function adminDayPlan(pool = getPool(), tenantId = DEFAULT_TENANT_ID) {
     : '   • немає кандидатів — усі активні 👍';
   const planLine = dailyTarget > 0
     ? `🎯 <b>Ціль на сьогодні:</b> ${_money(dailyTarget)}` +
-      (planMasters ? ` <i>(працює майстрів: ${planMasters})</i>` : '') +
+      (planMasters ? ` <i>(працює майстрів: ${planMasters})</i>` : '') + adminPlanLine +
       `\n📌 Вже записано: ${_money(booked)} (${tRow.n} зап.)` +
       (gap > 0 ? `\n⚠️ <b>Дозаписати ще на ${_money(gap)}</b>` : `\n✅ Денну ціль уже виконано!`)
     : `📌 Сьогодні записано: ${_money(booked)} (${tRow.n} зап.)`;
