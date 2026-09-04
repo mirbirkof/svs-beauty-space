@@ -196,6 +196,19 @@ router.get('/today', async (req, res) => {
     // оплачено = прапор закриття / пряма каса / зафіксований у касі продаж послуги того ж
     // клієнта+майстра+дня; 0₴ і повернення не рахуються; оплачений дубль-слот виключено.
     // Інакше жовтий блок звірки розходився з панеллю «Забули провести».
+    // ЄДИНИЙ предикат «запис є, але оплата НЕ проведена» (нотатка #148, Босс 04.09).
+    // Був копіпастою двічі в одному запиті (лічильник + сума) — тепер один рядок на всіх,
+    // бо тепер у нього ТРИ споживачі: «забули провести» (минуле), передзапис (увесь день)
+    // і смуга плану дня. Розійтись фізично не можуть.
+    const NOT_SETTLED = `NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
+                            AND COALESCE(a.real_amount,a.price,0) > 0
+                            AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
+                                            WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
+                                              AND (b.client_id=a.client_id
+                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,'')))))`;
+    // «Забули провести» = не проведено І час візиту ВЖЕ минув (гроші мали б бути в касі).
+    // «Передзапис» = те саме, але за ВЕСЬ день, разом з майбутніми годинами: це ще не
+    // недостача, а обіцяні гроші дня. Перше — підмножина другого.
     const ap = await pool.query(
       `WITH day_appts AS (
          SELECT a.* FROM appointments a
@@ -209,20 +222,10 @@ router.get('/today', async (req, res) => {
            FROM day_appts a)
        SELECT
          COALESCE(SUM(a.discount_amount),0)::float AS discounts,
-         COUNT(*) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
-                            AND COALESCE(a.real_amount,a.price,0) > 0
-                            AND a.starts_at <= NOW()
-                            AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
-                                            WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
-                                              AND (b.client_id=a.client_id
-                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,''))))))::int AS unsettled_cnt,
-         COALESCE(SUM(a.price) FILTER (WHERE NOT pf.paid AND a.status NOT IN ('cancelled','noshow','no_show','refunded')
-                            AND COALESCE(a.real_amount,a.price,0) > 0
-                            AND a.starts_at <= NOW()
-                            AND NOT EXISTS(SELECT 1 FROM day_appts b JOIN paid_flag pb ON pb.id=b.id
-                                            WHERE b.id<>a.id AND b.starts_at=a.starts_at AND pb.paid
-                                              AND (b.client_id=a.client_id
-                                                   OR lower(btrim(COALESCE(b.client_name,'')))=lower(btrim(COALESCE(a.client_name,'')))))))::float AS unsettled_sum,
+         COUNT(*) FILTER (WHERE ${NOT_SETTLED} AND a.starts_at <= NOW())::int AS unsettled_cnt,
+         COALESCE(SUM(a.price) FILTER (WHERE ${NOT_SETTLED} AND a.starts_at <= NOW()),0)::float AS unsettled_sum,
+         COUNT(*) FILTER (WHERE ${NOT_SETTLED})::int AS prebooked_cnt,
+         COALESCE(SUM(a.price) FILTER (WHERE ${NOT_SETTLED}),0)::float AS prebooked_sum,
          COUNT(*) FILTER (WHERE a.status IN ('cancelled','noshow','no_show'))::int AS cancelled_cnt
        FROM day_appts a JOIN paid_flag pf ON pf.id = a.id`,
       [reqDate]
@@ -236,6 +239,11 @@ router.get('/today', async (req, res) => {
       total_out: row.total_out,
       net: row.total_in - row.total_out,
       ops_in: row.ops_in,
+      // Передзапис дня: записи, які вже стоять у журналі, але оплата ще не проведена.
+      // Показується «примарно-сірим» поруч з касою і планом (нотатка #148) — щоб було
+      // видно не тільки зібране, а й обіцяне на сьогодні.
+      prebooked_cnt: a.prebooked_cnt,
+      prebooked_sum: a.prebooked_sum,
       reconcile: {
         service: b.service, service_cash: b.service_cash, service_card: b.service_card,
         product: b.product, product_cash: b.product_cash, product_card: b.product_card,
@@ -243,6 +251,7 @@ router.get('/today', async (req, res) => {
         expected_cash: row.cash,      // скільки готівки має бути в ящику
         discounts: a.discounts,
         unsettled_cnt: a.unsettled_cnt, unsettled_sum: a.unsettled_sum,
+        prebooked_cnt: a.prebooked_cnt, prebooked_sum: a.prebooked_sum,
         cancelled_cnt: a.cancelled_cnt,
       },
     });

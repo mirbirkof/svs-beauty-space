@@ -567,6 +567,15 @@ select.input { background:var(--card); }
 .jplan-fill { position:absolute; inset:0 auto 0 0; border-radius:7px; transition:width .5s ease, background .5s ease; }
 .jplan-note { font-size:12px; font-weight:600; }
 .jplan-hint { font-size:11px; color:var(--text-secondary); margin-top:3px; }
+/* Передзапис (заметка #148): гроші, які вже обіцяні, але в касу ще не зайшли.
+   Свідомо «примарний» вигляд — сірий, напівпрозорий, у смужку: щоб з першого погляду
+   не сплутати з реальною касою, але й не загубити. */
+.jcash-row.ghost { color:var(--text-secondary); opacity:.75; font-style:italic; }
+.jcash-row.ghost .val { font-weight:600; }
+.jplan-ghost { position:absolute; top:0; bottom:0; border-radius:7px; opacity:.85;
+  background:repeating-linear-gradient(135deg, rgba(148,163,184,.60) 0 5px, rgba(148,163,184,.20) 5px 10px);
+  transition:width .5s ease, left .5s ease; }
+.jplan-pre { font-size:11px; color:var(--text-secondary); font-style:italic; margin-top:3px; }
 @media(max-width:1100px){
   .journal-layout { flex-direction:column; }
   .journal-side { flex:1 1 auto; width:100%; position:static; flex-direction:row; flex-wrap:wrap; }
@@ -8103,13 +8112,22 @@ async function loadCashGauge(forDate) {
   catch { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">Каса недоступна</div>`; return; }
   if (d.error) { box.innerHTML = `<div class="jcash-title">Каса за день</div><div class="jcash-lock">${d.message||'Недоступно'}</div>`; return; }
   const cash=Number(d.cash||0), cashless=Number(d.cashless||0), total=Number(d.total||0);
-  // SVG-бублик: дві дуги (готівка/безготівка)
+  // Передзапис (заметка #148): записи дня, які стоять у журналі, але оплата НЕ проведена.
+  // Рахує бекенд тією самою формулою, що й «Забули провести», — окремої тут немає.
+  const pre=Number(d.prebooked_sum||0), preCnt=Number(d.prebooked_cnt||0);
+  // SVG-бублик: три дуги (готівка / безготівка / передзапис).
+  // База кола = каса + передзапис = ПОТЕНЦІАЛ дня. Тому видно не лише скільки зібрано,
+  // а й яку частку дня ще належить зібрати. Число в центрі лишається реальною касою.
   const R=52, C=2*Math.PI*R, sw=14;
-  const fCash = total>0 ? cash/total : 0;
-  const fCashless = total>0 ? cashless/total : 0;
+  const base = total + pre;
+  const fCash = base>0 ? cash/base : 0;
+  const fCashless = base>0 ? cashless/base : 0;
+  const fPre = base>0 ? pre/base : 0;
   const dashCash = `${(fCash*C).toFixed(1)} ${C.toFixed(1)}`;
   const dashCashless = `${(fCashless*C).toFixed(1)} ${C.toFixed(1)}`;
+  const dashPre = `${(fPre*C).toFixed(1)} ${C.toFixed(1)}`;
   const offCashless = -(fCash*C);
+  const offPre = -((fCash+fCashless)*C);
   box.innerHTML = `
     <div class="jcash-title">Каса за день</div>
     <div class="jcash-sub">${new Date(d.date+'T00:00:00').toLocaleDateString('uk-UA',{day:'numeric',month:'long'})} · ${d.ops_in||0} надходжень</div>
@@ -8119,28 +8137,40 @@ async function loadCashGauge(forDate) {
               stroke-dasharray="${dashCash}" stroke-dashoffset="0" transform="rotate(-90 66 66)" stroke-linecap="round"/>
       <circle cx="66" cy="66" r="${R}" fill="none" stroke="#6366f1" stroke-width="${sw}"
               stroke-dasharray="${dashCashless}" stroke-dashoffset="${offCashless}" transform="rotate(-90 66 66)" stroke-linecap="round"/>
-      <text x="66" y="62" text-anchor="middle" font-size="11" fill="var(--text-secondary)">разом</text>
-      <text x="66" y="80" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">${_money(total)}</text>
+      ${pre>0?`<circle cx="66" cy="66" r="${R}" fill="none" stroke="#94a3b8" stroke-width="${sw}" opacity="0.45"
+              stroke-dasharray="${dashPre}" stroke-dashoffset="${offPre}" transform="rotate(-90 66 66)"/>`:''}
+      <text x="66" y="${pre>0?58:62}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">разом</text>
+      <text x="66" y="${pre>0?76:80}" text-anchor="middle" font-size="16" font-weight="700" fill="var(--text)">${_money(total)}</text>
+      ${pre>0?`<text x="66" y="92" text-anchor="middle" font-size="10" font-style="italic" fill="var(--text-secondary)" opacity="0.8">+${_money(pre)} чекаємо</text>`:''}
     </svg>
     <div class="jcash-rows">
       <div class="jcash-row"><span class="dot" style="background:#10b981"></span><span class="lbl">Готівка</span><span class="val">${_money(cash)}</span></div>
       <div class="jcash-row"><span class="dot" style="background:#6366f1"></span><span class="lbl">Безготівка</span><span class="val">${_money(cashless)}</span></div>
       <div class="jcash-row tot"><span class="lbl" style="font-weight:600;color:var(--text)">Загальна каса</span><span class="val">${_money(total)}</span></div>
+      ${pre>0?`<div class="jcash-row ghost"><span class="dot" style="background:#94a3b8;opacity:.55"></span><span class="lbl">Передзапис · ${preCnt} ${_zapWord(preCnt)}</span><span class="val">${_money(pre)}</span></div>`:''}
     </div>
     <div id="jPlanDay"></div>`;
-  loadDayPlan(date, total);
+  loadDayPlan(date, total, pre, preCnt);
 }
 
 // ── План дня під касою (заметка #146, Босс 04.09) ──────────────────
 // «Скільки салон має заробити сьогодні» = сума планів на зміну майстрів, які
 // СЬОГОДНІ за графіком працюють. Колір смуги йде градієнтом червоний→жовтий→
 // зелений рівно за відсотком виконання, щоб стан дня читався за пів секунди.
+// «запис / записи / записів» — щоб підпис передзапису читався по-людськи.
+function _zapWord(n){
+  const a=Math.abs(n)%100, b=a%10;
+  if(a>10&&a<20) return 'записів';
+  if(b===1) return 'запис';
+  if(b>=2&&b<=4) return 'записи';
+  return 'записів';
+}
 function _planColor(pct){
   // 0% = червоний (0°), 100% = зелений (128°). Перевиконання лишається зеленим.
   const h = Math.round(Math.max(0, Math.min(1, pct/100)) * 128);
   return `hsl(${h} 78% 44%)`;
 }
-async function loadDayPlan(date, fact){
+async function loadDayPlan(date, fact, pre, preCnt){
   const box = document.getElementById('jPlanDay');
   if (!box) return;
   let d;
@@ -8156,11 +8186,26 @@ async function loadDayPlan(date, fact){
   const pct = Math.round(f / plan * 100);
   const left = Math.max(0, plan - f);
   const col = _planColor(pct);
+  // ── Передзапис у смузі плану (заметка #148, Босс 04.09) ──────────
+  // ПРИЧИНА. Смуга показувала лише проведені гроші, тому вранці й на майбутні дні
+  // вона завжди була червона на 0% — навіть коли день уже забитий записами. Виглядало
+  // як провал там, де насправді все заброньовано. Тепер одразу за фактом іде «примарний»
+  // сірий шматок — записи, які вже є, але оплата ще не проведена, і окремо сказано,
+  // скільки відсотків плану вже закрито передзаписом.
+  const p = Number(pre||0), pCnt = Number(preCnt||0);
+  const pctPre = plan>0 ? Math.round(p / plan * 100) : 0;
+  const ghostLeft = Math.min(100, Math.max(0, pct));
+  const ghostW = Math.max(0, Math.min(100 - ghostLeft, pctPre));
+  const together = pct + pctPre;
   box.innerHTML = `
     <div class="jplan">
       <div class="jplan-head"><span>План дня</span><b style="margin-left:auto">${_money(plan)}</b></div>
-      <div class="jplan-bar"><div class="jplan-fill" style="width:${Math.min(100,Math.max(2,pct))}%;background:linear-gradient(90deg, hsl(0 78% 48%), ${col})"></div></div>
+      <div class="jplan-bar">
+        ${ghostW>0?`<div class="jplan-ghost" style="left:${ghostLeft}%;width:${ghostW}%"></div>`:''}
+        <div class="jplan-fill" style="width:${Math.min(100,Math.max(2,pct))}%;background:linear-gradient(90deg, hsl(0 78% 48%), ${col})"></div>
+      </div>
       <div class="jplan-note" style="color:${col}">${pct}% виконано${left>0?` · не вистачає ${_money(left)}`:' · план виконано 🎯'}</div>
+      ${p>0?`<div class="jplan-pre">Передзапис: ще ${pctPre}% плану (${_money(p)}, ${pCnt} ${_zapWord(pCnt)}) → разом ${together}%${together>=100?' — з передзаписом план закритий':''}</div>`:''}
       <div class="jplan-hint">Працює майстрів: ${d.masters_working}${d.masters_without_plan?` · у ${d.masters_without_plan} не задано план на зміну`:''}</div>
     </div>`;
 }
