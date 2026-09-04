@@ -14201,6 +14201,18 @@ function renderMySub(){
         </div>
       </div></div>`;
   }
+  // ── Анти-lock-in (Phase D): дані належать салону. Повний експорт + самозакриття ──
+  // ВАЖЛИВО: оголошуємо ДО гілки isSolo — блок потрібен обом гілкам (соло і салон).
+  // Раніше const жив усередині if(isSolo) → у салону падав ReferenceError і сторінка
+  // підписки показувала «Не вдалося завантажити підписку».
+  const dangerBlock = `<div style="margin-top:26px;border:1px solid #f1c8c8;border-radius:14px;padding:18px 20px;background:#fffafa">
+    <div style="font-weight:700;color:#b4413e;margin-bottom:6px">Ваші дані — ваші</div>
+    <div style="font-size:13px;color:#8a6d6d;margin-bottom:12px">Повний експорт усіх даних закладу одним файлом — безкоштовно, будь-коли. Закриття акаунта — самостійно, без дзвінків і листів.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="mysubExportFull()"><span class="material-icons-round" style="font-size:15px">download</span> Експорт усіх даних</button>
+      <button class="btn btn-sm" style="background:#fff;border:1px solid #e2a7a7;color:#b4413e" onclick="mysubCloseAccount()">Закрити акаунт назавжди</button>
+    </div></div>`;
+
   // СОЛО-МАЙСТЕР: не прайс-сітка в лице, а тепло — твій тариф + шлях + гідне «вирости до салону».
   // Подвійний захист: is_solo з entitlements АБО plan_code=solo/solo_pro з підписки.
   // Якщо entitlements ще не завантажились — все одно покажемо правильний вид.
@@ -14267,14 +14279,6 @@ function renderMySub(){
         <button class="btn btn-sm" style="background:#5b5fc7;color:#fff;border:0;font-weight:600" onclick="if(confirm('Дізнатись про тариф Салон? Ми допоможемо все перенести й налаштувати.')){toast('Заявку прийнято — звʼяжемось');}">Дізнатись про Салон →</button>
       </div>`;
 
-  // ── Анти-lock-in (Phase D): дані належать салону. Повний експорт + самозакриття ──
-  const dangerBlock = `<div style="margin-top:26px;border:1px solid #f1c8c8;border-radius:14px;padding:18px 20px;background:#fffafa">
-    <div style="font-weight:700;color:#b4413e;margin-bottom:6px">Ваші дані — ваші</div>
-    <div style="font-size:13px;color:#8a6d6d;margin-bottom:12px">Повний експорт усіх даних закладу одним файлом — безкоштовно, будь-коли. Закриття акаунта — самостійно, без дзвінків і листів.</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-outline btn-sm" onclick="mysubExportFull()"><span class="material-icons-round" style="font-size:15px">download</span> Експорт усіх даних</button>
-      <button class="btn btn-sm" style="background:#fff;border:1px solid #e2a7a7;color:#b4413e" onclick="mysubCloseAccount()">Закрити акаунт назавжди</button>
-    </div></div>`;
     box.innerHTML = cur + freeCard + proCard + maxCard + growCard + addonsBlock + refBlock + invBlock + dangerBlock;
     return;
   }
