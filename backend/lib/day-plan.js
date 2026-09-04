@@ -24,13 +24,9 @@ async function dayPlan(pool, date) {
   const [Y, M] = ym.split('-').map(Number);
 
   const grid = await buildMonthGrid(pool, ym).catch(() => ({ items: [] }));
-  // Сітка графіка містить і адміністраторів (staff_role='admin') — вони плану обороту
-  // не несуть. Беремо тільки майстрів, які надають послуги, інакше «без плану» світився б
-  // адмін і ціль дня виглядала б недорахованою.
-  const svc = await pool.query(
-    `SELECT id FROM masters WHERE active=true AND COALESCE(provides_services,true)=true`
-  ).catch(() => ({ rows: [] }));
-  const svcIds = new Set(svc.rows.map(r => r.id));
+  // Адміністратори з сітки графіка ВХОДЯТЬ у план (уточнення Боса 04.09): у адміна
+  // теж є план на зміну — мінімум продажу товару (напр. 1000 ₴). Тому беремо всіх,
+  // у кого цього дня є зміна, без поділу на майстрів/адмінів.
   const plans = await pool.query(
     `SELECT master_id, plan_per_shift FROM master_monthly_plans WHERE year=$1 AND month=$2`, [Y, M]
   ).catch(() => ({ rows: [] }));
@@ -40,7 +36,6 @@ async function dayPlan(pool, date) {
   for (const it of (grid.items || [])) {
     const d = (it.days || []).find(x => x.date === ymd);
     if (!d || d.off) continue;                     // не працює цього дня — у план не входить
-    if (svcIds.size && !svcIds.has(it.id)) continue; // адміністратор — плану обороту не несе
     const per = planMap.get(it.id) || 0;
     masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0 });
   }
