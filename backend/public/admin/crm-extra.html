@@ -48,6 +48,13 @@ table tr:hover{background:#FAFBFC}
 .btn{background:var(--p);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
 .btn:hover{background:var(--primary-hover)}
 .btn.sm{padding:5px 10px;font-size:12px}
+/* Реєстр команди (нотатка #157): нічого не вилітає за правий край */
+.tm-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tm-table{table-layout:auto}
+.tm-table th,.tm-table td{padding:8px 9px;vertical-align:middle}
+.tm-table td:first-child,.tm-table th:first-child{min-width:150px}
+.tm-acts{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.tm-acts .btn.sm{padding:4px 8px;font-size:11.5px;white-space:nowrap}
 .btn.danger{background:var(--dng)}
 .btn.ghost{background:transparent;color:var(--p);border:1px solid var(--p)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
@@ -275,13 +282,18 @@ main { padding:24px 0; }
       <button class="btn ghost sm tm-f" data-f="access" onclick="tmFilter('access')">З доступом у CRM</button>
       <button class="btn ghost sm tm-f" data-f="fired" onclick="tmFilter('fired')">Звільнені</button>
     </div>
-    <table>
-      <thead><tr>
-        <th>Людина</th><th>Роль / спеціальність</th><th>Доступ до CRM</th>
-        <th>У графіку</th><th>Статус</th><th>Дії</th>
-      </tr></thead>
-      <tbody id="tm-list"><tr><td colspan="6" class="empty">Завантаження…</td></tr></tbody>
-    </table>
+    <!-- нотатка #157: колонка «Дії» трималась в один рядок (white-space:nowrap) і на
+         вужчому вікні виштовхувала таблицю за правий край картки — кнопки просто
+         обрізались. Тепер кнопки переносяться, а контейнер має горизонтальний запас. -->
+    <div class="tm-wrap">
+      <table class="tm-table">
+        <thead><tr>
+          <th>Людина</th><th>Роль / спеціальність</th><th>Доступ до CRM</th>
+          <th>У графіку</th><th>Статус</th><th>Дії</th>
+        </tr></thead>
+        <tbody id="tm-list"><tr><td colspan="6" class="empty">Завантаження…</td></tr></tbody>
+      </table>
+    </div>
   </div>
   <div class="card" id="access-section" style="display:none"><h2>Керування доступом до CRM</h2><table><tbody id="u-list"></tbody></table></div>
 </section>
@@ -1016,13 +1028,14 @@ function tmRender(){
     } else if (r.kind==='master' && !r.fired) {
       acts.push(`<button class="btn sm ghost" title="Створити логін для входу в CRM" onclick="tmNewOpen(${r.id})">Дати доступ</button>`);
     }
+    // без nowrap: на вужчому екрані імʼя і кнопки переносяться, а не вилітають вправо (#157)
     return `<tr${r.fired?' style="opacity:.6"':''}>
-      <td style="white-space:nowrap">${nameCell}</td>
+      <td>${nameCell}</td>
       <td>${r.specialty||r.role||'<span style="color:#bbb">—</span>'}</td>
       <td>${access}</td>
       <td>${sched}</td>
       <td><span class="pill ${r.fired?'gray':'ok'}">${r.fired?'звільнений':'працює'}</span></td>
-      <td style="white-space:nowrap">${acts.join(' ')}</td>
+      <td><div class="tm-acts">${acts.join('')}</div></td>
     </tr>`;
   }).join('') || '<tr><td colspan="6" class="empty">Нікого не знайдено</td></tr>';
 }

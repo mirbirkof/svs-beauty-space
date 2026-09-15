@@ -106,7 +106,8 @@ router.get('/staff', async (req, res) => {
          LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM master_schedule_days
                      WHERE work_date >= CURRENT_DATE AND start_time IS NOT NULL
                      GROUP BY master_id) d ON d.master_id = m.id
-        WHERE m.active = true AND COALESCE(m.status,'active') <> 'fired'
+        WHERE m.merged_into IS NULL
+          AND m.active = true AND COALESCE(m.status,'active') <> 'fired'
         ORDER BY (m.staff_role = 'admin') ASC, m.name`
     );
     const all = r.rows;
@@ -201,7 +202,8 @@ router.get('/masters', async (req, res) => {
          FROM masters m
          LEFT JOIN users u ON u.master_id = m.id AND u.is_active
          LEFT JOIN roles rr ON rr.id = u.role_id
-        WHERE ${all ? 'TRUE' : 'COALESCE(m.provides_services, true) = true AND m.active = true'}
+        WHERE m.merged_into IS NULL
+          AND ${all ? 'TRUE' : 'COALESCE(m.provides_services, true) = true AND m.active = true'}
         ORDER BY m.active DESC, m.name`
     );
     // Типовий тижневий графік: агрегуємо реальні зміни з стара CRM (master_schedule_days)

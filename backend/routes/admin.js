@@ -1116,7 +1116,7 @@ router.delete('/categories/:id', async (req, res) => {
 // --- MASTERS ---
 router.get('/masters', async (req, res) => {
   try {
-    const r = await getPool().query('SELECT * FROM masters ORDER BY name');
+    const r = await getPool().query('SELECT * FROM masters WHERE merged_into IS NULL ORDER BY name');
     res.json({ ok: true, items: r.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

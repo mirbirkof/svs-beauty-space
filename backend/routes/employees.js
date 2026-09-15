@@ -18,7 +18,7 @@ const err = (res, e) => { console.error('[employees]', e); res.status(500).json(
 // ── ПУБЛІЧНИЙ каталог майстрів (до auth-мідлвару) ──
 router.get('/public', async (req, res) => {
   try {
-    const params = [], wh = [`m.active = true`, `m.public_profile = true`, `COALESCE(m.status,'active') <> 'fired'`];
+    const params = [], wh = [`m.merged_into IS NULL`, `m.active = true`, `m.public_profile = true`, `COALESCE(m.status,'active') <> 'fired'`];
     if (req.query.specialization_id) {
       params.push(+req.query.specialization_id);
       wh.push(`EXISTS (SELECT 1 FROM employee_specializations es WHERE es.employee_id=m.id AND es.specialization_id=$${params.length})`);
@@ -91,7 +91,8 @@ router.post('/specializations', async (req, res) => {
 // ── РЕЄСТР співробітників ──
 router.get('/', async (req, res) => {
   try {
-    const params = [], wh = [];
+    // обʼєднані картки-двійники (merged_into) — не окремі люди, у реєстрі їх немає (нотатка #157)
+    const params = [], wh = ['m.merged_into IS NULL'];
     if (req.query.status) { params.push(req.query.status); wh.push(`COALESCE(m.status,'active')=$${params.length}`); }
     if (req.query.position_id) { params.push(+req.query.position_id); wh.push(`m.position_id=$${params.length}`); }
     if (req.query.branch_id) { params.push(+req.query.branch_id); wh.push(`m.branch_id=$${params.length}`); }

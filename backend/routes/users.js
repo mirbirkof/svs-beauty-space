@@ -218,21 +218,49 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
 
     // якщо роль майстер і просять — створюємо запис у masters і лінкуємо
     if (!master_id && (create_master || role.rows[0].code === 'master')) {
-      // ліміт плану max_employees — цей шлях обходив enforcePlanLimit (аудит 06.07)
-      const max = await require('../lib/plan-limits').getPlanLimit('max_employees').catch(() => null);
-      if (max != null) {
-        const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true`);
-        if (cnt.rows[0].n >= max) {
-          await client.query('ROLLBACK');
-          return res.status(403).json({ error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
-        }
-      }
-      const m = await client.query(
-        `INSERT INTO masters (name, phone, specialty, commission_pct, active)
-         VALUES ($1,$2,$3,$4,true) RETURNING id`,
-        [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40]
+      // ЖОДНИХ ДВІЙНИКІВ (нотатка #157): якщо картка цієї людини вже є в салоні —
+      // привʼязуємо логін до неї, а не заводимо другу. Саме так 19.07 у команді
+      // зʼявилися «дві Аліни»: логін пішов на нову порожню картку, а історія
+      // (графік, зміни, записи) лишилась на старій.
+      const nameKey = String(display_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const phoneKey = phone ? String(phone).replace(/\D/g, '').slice(-9) : null;
+      const exist = await client.query(
+        `SELECT id FROM masters
+          WHERE merged_into IS NULL
+            AND ( lower(regexp_replace(COALESCE(name,''), '\\s+', ' ', 'g')) = $1
+                  OR ($2::text IS NOT NULL AND right(regexp_replace(COALESCE(phone,''), '\\D', '', 'g'), 9) = $2) )
+          ORDER BY (COALESCE(active,true) = true) DESC, id
+          LIMIT 1`,
+        [nameKey, phoneKey]
       );
-      master_id = m.rows[0].id;
+      if (exist.rowCount) {
+        master_id = exist.rows[0].id;
+        // не займаємо ще одне місце тарифу і не плодимо картку — лише доповнюємо порожні поля
+        await client.query(
+          `UPDATE masters SET phone = COALESCE(NULLIF(phone,''), $2),
+                              specialty = COALESCE(NULLIF(specialty,''), $3),
+                              updated_at = NOW()
+            WHERE id = $1`,
+          [master_id, phone || null, specialty || null]
+        );
+      } else {
+        // ліміт плану max_employees рахуємо ЛИШЕ коли реально заводимо нову людину
+        // (прив'язка логіна до наявної картки місця в тарифі не займає) — аудит 06.07
+        const max = await require('../lib/plan-limits').getPlanLimit('max_employees').catch(() => null);
+        if (max != null) {
+          const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true AND merged_into IS NULL`);
+          if (cnt.rows[0].n >= max) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
+          }
+        }
+        const m = await client.query(
+          `INSERT INTO masters (name, phone, specialty, commission_pct, active)
+           VALUES ($1,$2,$3,$4,true) RETURNING id`,
+          [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40]
+        );
+        master_id = m.rows[0].id;
+      }
     }
 
     const r = await client.query(
