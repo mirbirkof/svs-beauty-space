@@ -9,6 +9,7 @@
      DELETE /api/admin/products/:id          — отключить (soft delete)
      POST   /api/admin/products/:id/variants — добавить вариант
      PATCH  /api/admin/variants/:id          — изменить цену/остаток
+     DELETE /api/admin/variants/:id          — убрать позицию со склада (soft delete)
      POST   /api/admin/variants/:id/stock    — приход товара (склад)
 
    Заказы:
@@ -234,6 +235,51 @@ router.patch('/variants/:id', async (req, res) => {
     if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, variant: r.rows[0] });
   } catch (e) { console.error('[admin:patch-variant]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// Видалення позиції зі складу (нотатка #152, Бос: «щоб зі складу можна було видалити товар»).
+// Раніше позицію, заведену помилково або знятий з обігу товар, прибрати було нічим — лишався
+// тільки мінусовий рух, а рядок висів у списку вічно.
+// Фізично НІЧОГО не стираємо: позиція деактивується (active=false) і зникає зі складу/каталогу,
+// вся історія рухів, продажів і накладних лишається на місці.
+// Якщо на позиції ще був залишок — пишемо рух списання на цей залишок, щоб сума складу і журнал
+// рухів не розійшлися (джерело цифри одне — stock_movements).
+router.delete('/variants/:id', async (req, res) => {
+  if (!canManageStock(req)) return res.status(403).json(STOCK_MANAGE_403);
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const cur = await client.query(
+      `SELECT pv.id, pv.product_id, pv.volume, COALESCE(pv.stock_qty,0)::numeric AS stock_qty,
+              p.name AS product_name
+         FROM product_variants pv JOIN products p ON p.id = pv.product_id
+        WHERE pv.id = $1`, [req.params.id]);
+    if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    const v = cur.rows[0];
+    const qty = Number(v.stock_qty) || 0;
+    const who = (req.user && (req.user.display_name || req.user.name)) || '';
+    if (qty > 0) {
+      await client.query(
+        `INSERT INTO stock_movements (variant_id, delta, reason, notes) VALUES ($1,$2,'writeoff',$3)`,
+        [v.id, -qty, 'видалення позиції зі складу' + (who ? ' · ' + who : '')]);
+    }
+    await client.query(`UPDATE product_variants SET stock_qty = 0, active = false WHERE id = $1`, [v.id]);
+    // якщо в товару не лишилось жодного активного фасування — ховаємо і сам товар,
+    // щоб порожня картка не висіла в каталозі магазину
+    const left = await client.query(
+      `SELECT COUNT(*)::int AS n FROM product_variants WHERE product_id = $1 AND active IS NOT FALSE`,
+      [v.product_id]);
+    const productHidden = left.rows[0].n === 0;
+    if (productHidden) await client.query(`UPDATE products SET active = false, updated_at = NOW() WHERE id = $1`, [v.product_id]);
+    await client.query('COMMIT');
+    logAction({ user: req.user, action: 'stock.variant.delete', entity: 'variant', entity_id: v.id,
+                meta: { product_id: v.product_id, name: v.product_name, volume: v.volume, written_off: qty, product_hidden: productHidden } });
+    res.json({ ok: true, removed: v.id, written_off: qty, product_hidden: productHidden,
+               name: (v.product_name || '') + (v.volume ? ' ' + v.volume : '') });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error('[admin:del-variant]', e); res.status(500).json({ error: 'internal' });
+  } finally { client.release(); }
 });
 
 // приход товара (склад)

@@ -1969,7 +1969,7 @@ select.input { background:var(--card); }
       <div class="page" id="page-stock">
         <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
           <div class="card">
-            <div class="card-header" style="gap:10px;flex-wrap:wrap"><h3>Залишки на складі <button type="button" class="info-i" data-t="<b>Залишки.</b> Всі товари з поточним залишком. Клік «+» — прихід, «−» — списання: форма справа заповниться сама." onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <div class="card-header" style="gap:10px;flex-wrap:wrap"><h3>Залишки на складі <button type="button" class="info-i" data-t="<b>Залишки.</b> Всі товари з поточним залишком. Клік «+» — прихід, «−» — списання: форма справа заповниться сама. Кошик — прибрати позицію зі складу (історія рухів зберігається)." onclick="showInfo(event,this.dataset.t)">i</button></h3>
               <input id="stListSearch" class="input" placeholder="Пошук: назва або артикул…" style="flex:1;min-width:180px" oninput="clearTimeout(window._stT);window._stT=setTimeout(loadStockList,300)">
               <!-- 15.08 (Бос): завести товар, якого ще нема в базі, можна було ТІЛЬКИ накладною —
                    кнопка «Додати товар» жила лише в каталозі магазину. Тепер вона є і на складі. -->
@@ -4509,7 +4509,7 @@ const PAGE_HELP = {
   purchasing: '<b>Закупівлі.</b> Замовлення товарів у постачальників. Формуєш заявку → після отримання оприбутковуєш товар на склад (він поповнює залишки).',
   orders: '<b>Замовлення інтернет-магазину.</b> Список онлайн-замовлень товарів. Клік по замовленню → бачиш склад, статус, контакти. Обробляєш і міняєш статус (нове → відправлено → виконано).',
   products: '<b>Товари.</b> Каталог усього, що є в салоні: фарби, косметика, витратники. Тут задаєш ціну, бренд і <b>ціну продажу за грам</b> (колонка ₴/грам) — саме вона додає вартість у чек клієнта.',
-  stock: '<b>Склад — залишки.</b> Скільки чого є фізично. Кнопка «+» біля товару — прихід (завезли), «−» — списання. Масово завести залишки — кнопка «📄 Накладна — прихід» (завантаж накладну або встав текст).',
+  stock: '<b>Склад — залишки.</b> Скільки чого є фізично. Кнопка «+» біля товару — прихід (завезли), «−» — списання, кошик — прибрати позицію зі складу. Масово завести залишки — кнопка «📄 Накладна — прихід» (завантаж накладну або встав текст).',
   reviews: '<b>Відгуки.</b> Відгуки клієнтів про салон. Бачиш оцінки й коментарі, можеш відповісти. Низькі оцінки — сигнал розібратись.',
   promos: '<b>Акції / Промокоди.</b> Знижкові кампанії. Кнопка «+» — новий промокод (розмір знижки + термін). Клієнт вводить код → отримує знижку.',
   payroll: '<b>Зарплата.</b> Рахунок оплати майстрам: відсоток з послуг, ставка за зміни, бонуси. Обираєш період → система рахує, скільки кому виплатити.',
@@ -13165,8 +13165,26 @@ async function loadStockList() {
       <td style="white-space:nowrap">
         <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>
         <button class="btn btn-sm btn-outline" title="Списання" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',-1)">−</button>
+        <button class="btn btn-sm btn-outline" title="Видалити позицію зі складу" style="color:var(--danger,#ef4444)" onclick="stDelete(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',${Number(v.stock_qty)||0})"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">delete_outline</span></button>
       </td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Нічого не знайдено</td></tr>';
   } catch (_) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+}
+// Видалення позиції зі складу (нотатка #152). Історія рухів і продажів лишається —
+// позиція просто зникає зі списку складу й каталогу. Залишок, якщо був, списується рухом,
+// щоб цифри складу та журналу руху не розійшлися.
+async function stDelete(id, name, qty) {
+  if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
+  const q = Number(qty) || 0;
+  const warn = q > 0
+    ? '\n\nУВАГА: на позиції ще є залишок ' + q + ' — його буде списано (в історії руху зʼявиться списання).'
+    : '';
+  if (!confirm('Видалити зі складу «' + name + '»?' + warn + '\n\nІсторія приходів, продажів і списань збережеться.')) return;
+  const r = await api('/api/admin/variants/' + id, { method: 'DELETE' });
+  if (r.ok) {
+    toast('Позицію «' + (r.name || name) + '» видалено зі складу' + (r.written_off > 0 ? ', списано залишок ' + r.written_off : ''));
+    loadStockList(); loadStockMoves();
+    try { if (typeof loadProducts === 'function' && document.getElementById('page-products')?.classList.contains('active')) loadProducts(); } catch (_) {}
+  } else toast(r.message || r.error || 'Не вдалося видалити', 'error');
 }
 function stPick(id, name, sign) {
   document.getElementById('stockVariantId').value = id;
