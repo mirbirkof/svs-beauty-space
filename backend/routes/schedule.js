@@ -9,6 +9,8 @@ const { buildMonthGrid, listScheduleStaff, kyivToday } = require('../lib/schedul
 // Єдина операція «працює / не працює» (нотатка #154): усі кнопки звільнення мають
 // робити однакове — прибрати з команди, зі складу графіка і зняти майбутні зміни.
 const { setWorkingState } = require('../lib/employment');
+// Точки відкату графіка (нотатка #156): масова генерація більше не стирає графік назавжди.
+const scheduleUndo = require('../lib/schedule-undo');
 const { findOverlap, wouldExceedParallel } = require('../lib/booking-guard');
 const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
@@ -605,6 +607,18 @@ router.post('/apply-pattern-batch', async (req, res) => {
       }
       mastersDone++;
     }
+    // Нотатка #156: ПЕРЕД перезаписом зберігаємо «як було» по зачеплених клітинках,
+    // щоб власник міг відкотити генерацію одним кліком, а не чекати розробника з дампом.
+    let undoId = null;
+    try {
+      undoId = await scheduleUndo.snapshot(pool, {
+        kind: 'generate',
+        label: `Генерація ${work_days}/${off_days} · ${months_ahead} міс. · ${mastersDone} ${mastersDone === 1 ? 'людина' : 'людей'} · з ${fromYm}`,
+        author: (req.user && (req.user.display_name || req.user.name)) || null,
+        keys: bMid.map((mid, i) => [mid, bDate[i]]),
+      });
+    } catch (e) { console.error('[schedule/undo-snapshot]', e.message); }
+
     const CHUNK = 5000;
     for (let i = 0; i < bMid.length; i += CHUNK) {
       await pool.query(
@@ -618,6 +632,7 @@ router.post('/apply-pattern-batch', async (req, res) => {
     res.json({
       ok: true, masters: mastersDone, months: months_ahead, work_days: totalWork, off_days: totalOff,
       skipped_past: skippedPast, skipped_staff: skippedStaff.length, duplicates_ignored: duplicates.length,
+      undo_id: undoId,
     });
   } catch (e) { console.error('[schedule/batch]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
@@ -648,6 +663,24 @@ router.post('/apply-pattern', async (req, res) => {
     const daysInMonth = new Date(Date.UTC(Y, M, 0)).getUTCDate();
     const todayStr = kyivToday();
     let workCount = 0, offCount = 0, skipped = 0, skippedPast = 0;
+
+    // Нотатка #156: точка відкату перед тим, як схема перепише місяць.
+    try {
+      const touched = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const iso = new Date(Date.UTC(Y, M - 1, d)).toISOString().slice(0, 10);
+        if (iso < todayStr) continue;
+        let ix = Math.round((new Date(iso + 'T00:00:00Z') - anchorD) / dayMs) % cycle; if (ix < 0) ix += cycle;
+        if (ix < work_days || overwrite_offs !== false) touched.push([Number(master_id), iso]);
+      }
+      await scheduleUndo.snapshot(pool, {
+        kind: 'pattern',
+        label: `Схема ${work_days}/${off_days} на ${ym}`,
+        author: (req.user && (req.user.display_name || req.user.name)) || null,
+        keys: touched,
+      });
+    } catch (e) { console.error('[schedule/undo-snapshot]', e.message); }
+
     for (let d = 1; d <= daysInMonth; d++) {
       const cur = new Date(Date.UTC(Y, M - 1, d));
       const iso = cur.toISOString().slice(0, 10);
@@ -676,6 +709,29 @@ router.post('/apply-pattern', async (req, res) => {
     }
     res.json({ ok: true, work_days: workCount, off_days: offCount, skipped, skipped_past: skippedPast, days_total: daysInMonth });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// ── Відкат масових змін графіка (нотатка #156) ──────────────────────────────
+// GET  /api/schedule/undo-points → останні точки відкату (що і коли перезаписало графік)
+// POST /api/schedule/undo {id?}  → повернути графік у стан ДО тієї операції
+router.get('/undo-points', async (req, res) => {
+  try {
+    res.json({ ok: true, points: await scheduleUndo.list(getPool(), 5) });
+  } catch (e) {
+    console.error('[schedule/undo-points]', e.message);
+    res.json({ ok: true, points: [] }); // відсутність точок не має ламати екран графіка
+  }
+});
+
+router.post('/undo', async (req, res) => {
+  try {
+    const out = await scheduleUndo.undo(getPool(), req.body && req.body.id ? Number(req.body.id) : null);
+    if (!out.ok) return res.status(404).json(out);
+    res.json(out);
+  } catch (e) {
+    console.error('[schedule/undo]', e);
+    res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message });
+  }
 });
 
 // ── DELETE /api/schedule/day?master_id=&date= — прибрати ручний запис, повернути до шаблону ──
@@ -717,6 +773,21 @@ router.post('/copy-week', async (req, res) => {
     if (!src.rowCount) return res.json({ ok: true, copied: 0, note: 'У тижні-джерелі немає ручних записів' });
     const dayMs = 86400000;
     let copied = 0;
+    // Нотатка #156: точка відкату перед перезаписом цільового тижня.
+    try {
+      const touched = src.rows.map((row) => {
+        const off = Math.round((new Date(row.work_date + 'T00:00:00Z') - srcMon) / dayMs);
+        const t = new Date(dstMon); t.setUTCDate(t.getUTCDate() + off);
+        return [row.master_id, fmt(t)];
+      });
+      await scheduleUndo.snapshot(pool, {
+        kind: 'copy-week',
+        label: `Копіювання тижня ${fmt(srcMon)} → ${fmt(dstMon)}`,
+        author: (req.user && (req.user.display_name || req.user.name)) || null,
+        keys: touched,
+      });
+    } catch (e) { console.error('[schedule/undo-snapshot]', e.message); }
+
     for (const row of src.rows) {
       const offset = Math.round((new Date(row.work_date + 'T00:00:00Z') - srcMon) / dayMs);
       const target = new Date(dstMon); target.setUTCDate(target.getUTCDate() + offset);

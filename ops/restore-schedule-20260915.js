@@ -6,6 +6,10 @@
  * Безопасность: перед изменением делается полный снимок текущей таблицы
  * в master_schedule_days_bak_20260915 (откат отката возможен).
  *
+ * ВАЖЛИВО (15.09, друга ітерація): перший прогін вставляв рядки БЕЗ tenant_id —
+ * 77 днів графіка іншого салону перескочили на головний (RLS ховала їх від власника).
+ * Тепер tenant_id переноситься з бекапу як є.
+ *
  * Запуск: DOTENV_CONFIG_PATH=backend/.env node -r dotenv/config ops/restore-schedule-20260915.js [--apply]
  * Без --apply — только показывает diff.
  */
@@ -63,12 +67,12 @@ const BAK_TABLE = 'master_schedule_days_bak_20260915';
       const chunk = rows.slice(i, i + CH);
       const vals = [];
       const ph = chunk.map((r, j) => {
-        const o = j * 7;
-        vals.push(r.id, r.master_id, String(r.work_date).slice(0, 10), r.start_time, r.end_time, r.source, r.synced_at);
-        return `($${o + 1},$${o + 2},$${o + 3},$${o + 4}::time,$${o + 5}::time,$${o + 6},$${o + 7})`;
+        const o = j * 8;
+        vals.push(r.id, r.master_id, String(r.work_date).slice(0, 10), r.start_time, r.end_time, r.source, r.synced_at, r.tenant_id || null);
+        return `($${o + 1},$${o + 2},$${o + 3},$${o + 4}::time,$${o + 5}::time,$${o + 6},$${o + 7},COALESCE($${o + 8}::uuid, current_tenant_id()))`;
       }).join(',');
       await c.query(
-        `INSERT INTO master_schedule_days (id, master_id, work_date, start_time, end_time, source, synced_at) VALUES ${ph}`,
+        `INSERT INTO master_schedule_days (id, master_id, work_date, start_time, end_time, source, synced_at, tenant_id) VALUES ${ph}`,
         vals,
       );
     }

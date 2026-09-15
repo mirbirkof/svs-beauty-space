@@ -5912,6 +5912,7 @@ async function renderScheduleOverview(grid) {
        <button class="btn btn-sm" onclick="schStaffOpen()" style="margin-left:8px" title="Хто бере участь у графіку: додати або прибрати співробітника"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">group</span> Персонал графіка</button>
        <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одному майстру"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
        <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — генератор графіків"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
+       <span id="schUndoBox"></span>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
        <button class="btn btn-sm" onclick="schToggleFs()" style="margin-left:auto" title="Розгорнути на весь екран"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen</span> На весь екран</button>
        <button class="btn btn-sm schfs-close" onclick="schToggleFs()" title="Згорнути"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">fullscreen_exit</span> Згорнути</button>
@@ -5919,6 +5920,32 @@ async function renderScheduleOverview(grid) {
      <div class="schmon"><div class="schmon-grid" style="grid-template-columns:${colW}">${head}${rows}</div></div>
      <p class="set-p" style="margin-top:10px">Натисніть на клітинку, щоб змінити зміну дня, або на <b>число дати</b> вгорі — щоб виділити весь стовпець (видно хто працює, а в кого вихідний). <span class="smc-shift man" style="padding:1px 5px">сині</span> — ручне редагування (не перезаписується автоматично). Минулі дні показують <b>факт</b> (виставлена зміна або реально прийняті клієнти) і не змінюються від генерації графіка на майбутнє. <span style="color:#d9534f">●</span> вихідні · <span style="color:var(--primary)">●</span> сьогодні.</p>
      </div>`;
+  schUndoRefresh(); // нотатка #156: показати кнопку відкату, якщо графік нещодавно перезаписали
+}
+
+// ── Відкат масової зміни графіка (нотатка #156) ─────────────────────────────
+// Генерація на місяці вперед раніше стирала рукописний графік назавжди — повертали
+// його руками з нічної копії. Тепер система запамʼятовує «як було» і показує кнопку.
+async function schUndoRefresh(){
+  const box = document.getElementById('schUndoBox');
+  if (!box) return;
+  try {
+    const r = await api('/api/schedule/undo-points');
+    const p = ((r && r.points) || []).find(x => !x.undone_at);
+    if (!p) { box.innerHTML = ''; return; }
+    const when = new Date(p.created_at).toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    const what = p.label || 'масова зміна графіка';
+    box.innerHTML = `<button class="btn btn-sm" id="schUndoBtn" style="margin-left:8px;color:#d9534f;border-color:#f0b9b9" title="${escapeHtml(what)} · ${when} · зачеплено днів: ${p.cells}. Поверне графік у стан ДО цієї операції." onclick="schUndoLast(${p.id})"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">undo</span> Скасувати останню генерацію</button>`;
+  } catch (_) { box.innerHTML = ''; }
+}
+
+async function schUndoLast(id){
+  if (!confirm('Повернути графік у стан ДО останньої масової зміни?\n\nДні, яких вона торкнулась, повернуться як були. Правки, зроблені після неї в тих самих днях, зникнуть.')) return;
+  try {
+    const r = await api('/api/schedule/undo', { method:'POST', body: JSON.stringify({ id }) });
+    if (r && r.ok) { toast(`Графік повернуто як було (днів: ${r.restored})`); renderScheduleOverview(_schActiveGrid()); }
+    else toast((r && r.error) === 'no-undo-point' ? 'Немає що скасовувати' : ((r && r.error) || 'Помилка'), 'error');
+  } catch (e) { toast('Помилка відкату', 'error'); }
 }
 // SAL-04 — копіювання тижня графіка на інший тиждень
 function _mondayOf(d){ const x=new Date(d); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); return x.toISOString().slice(0,10); }

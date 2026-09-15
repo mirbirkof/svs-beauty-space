@@ -345,3 +345,411 @@
 {"ts":"2026-08-18T18:00:23.551Z","provider":"gemini-2.5-flash","ok":false,"ms":372,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
 {"ts":"2026-08-18T18:00:26.504Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2952,"tokensIn":4487,"tokensOut":771}
 {"ts":"2026-08-18T18:00:26.619Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2983,"tokensIn":735,"tokensOut":704}
+{"ts":"2026-08-18T23:37:19.361Z","provider":"gemini-2.5-flash","ok":false,"ms":91,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-18T23:37:21.474Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2112,"tokensIn":729,"tokensOut":531}
+{"ts":"2026-08-18T23:37:23.649Z","provider":"gemini-2.5-flash","ok":true,"ms":4835,"tokensIn":4487,"tokensOut":919}
+{"ts":"2026-08-19T00:00:21.369Z","provider":"gemini-2.5-flash","ok":false,"ms":226,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-19T00:00:23.110Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1738,"tokensIn":729,"tokensOut":460}
+{"ts":"2026-08-19T06:37:16.943Z","provider":"gemini-2.5-flash","ok":false,"ms":92,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-19T06:37:18.376Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1430,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-19T06:37:18.387Z","provider":"openrouter","ok":false,"ms":11,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-19T06:37:18.479Z","provider":"groq","ok":false,"ms":92,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-19T06:37:20.544Z","provider":"gemini-2.5-flash","ok":true,"ms":4052,"tokensIn":4487,"tokensOut":811}
+{"ts":"2026-08-19T12:00:18.767Z","provider":"gemini-2.5-flash","ok":false,"ms":389,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-19T12:00:21.562Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2795,"tokensIn":748,"tokensOut":631}
+{"ts":"2026-08-19T17:37:19.059Z","provider":"gemini-2.5-flash","ok":false,"ms":264,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-19T17:37:21.743Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2532,"tokensIn":737,"tokensOut":522}
+{"ts":"2026-08-19T17:37:22.637Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3575,"tokensIn":4487,"tokensOut":816}
+{"ts":"2026-08-19T18:00:22.214Z","provider":"gemini-2.5-flash","ok":true,"ms":3247,"tokensIn":737,"tokensOut":596}
+{"ts":"2026-08-20T00:00:23.106Z","provider":"gemini-2.5-flash","ok":false,"ms":1709,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-20T00:00:26.699Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3580,"tokensIn":4487,"tokensOut":778}
+{"ts":"2026-08-20T08:37:23.197Z","provider":"gemini-2.5-flash","ok":true,"ms":3022,"tokensIn":748,"tokensOut":596}
+{"ts":"2026-08-20T08:37:24.448Z","provider":"gemini-2.5-flash","ok":true,"ms":4631,"tokensIn":4519,"tokensOut":981}
+{"ts":"2026-08-21T00:00:25.594Z","provider":"gemini-2.5-flash","ok":false,"ms":1801,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-21T00:00:28.100Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2498,"tokensIn":4488,"tokensOut":736}
+{"ts":"2026-08-21T12:37:21.970Z","provider":"gemini-2.5-flash","ok":false,"ms":105,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-21T12:37:24.408Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2200,"tokensIn":747,"tokensOut":626}
+{"ts":"2026-08-21T12:37:25.590Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3618,"tokensIn":4522,"tokensOut":745}
+{"ts":"2026-08-21T18:00:17.252Z","provider":"gemini-2.5-flash","ok":false,"ms":71,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-21T18:00:18.079Z","provider":"gemini-2.5-flash","ok":false,"ms":1186,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-21T18:00:18.557Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1303,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-21T18:00:18.558Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-21T18:00:18.604Z","provider":"groq","ok":false,"ms":45,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-21T18:00:19.500Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1421,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-21T18:00:19.501Z","provider":"openrouter","ok":false,"ms":0,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-21T18:00:19.520Z","provider":"groq","ok":false,"ms":19,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-22T03:37:20.993Z","provider":"gemini-2.5-flash","ok":false,"ms":70,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-22T03:37:22.656Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1662,"tokensIn":725,"tokensOut":507}
+{"ts":"2026-08-22T03:37:24.552Z","provider":"gemini-2.5-flash","ok":true,"ms":3979,"tokensIn":4489,"tokensOut":855}
+{"ts":"2026-08-22T06:00:18.650Z","provider":"gemini-2.5-flash","ok":false,"ms":68,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-22T06:00:18.901Z","provider":"gemini-2.5-flash","ok":false,"ms":613,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-22T06:00:20.209Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1558,"tokensIn":731,"tokensOut":512}
+{"ts":"2026-08-22T06:00:21.980Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3078,"tokensIn":4489,"tokensOut":878}
+{"ts":"2026-08-22T10:37:19.233Z","provider":"gemini-2.5-flash","ok":true,"ms":2220,"tokensIn":732,"tokensOut":489}
+{"ts":"2026-08-22T10:37:21.024Z","provider":"gemini-2.5-flash","ok":true,"ms":4287,"tokensIn":4522,"tokensOut":872}
+{"ts":"2026-08-23T12:00:19.474Z","provider":"gemini-2.5-flash","ok":false,"ms":1651,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-23T12:00:21.945Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2469,"tokensIn":4523,"tokensOut":798}
+{"ts":"2026-08-23T12:00:23.579Z","provider":"gemini-2.5-flash","ok":true,"ms":5334,"tokensIn":745,"tokensOut":565}
+{"ts":"2026-08-23T18:00:18.656Z","provider":"gemini-2.5-flash","ok":false,"ms":83,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-23T18:00:20.670Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2013,"tokensIn":734,"tokensOut":622}
+{"ts":"2026-08-23T18:00:23.577Z","provider":"gemini-2.5-flash","ok":true,"ms":5309,"tokensIn":4491,"tokensOut":958}
+{"ts":"2026-08-23T18:37:17.233Z","provider":"gemini-2.5-flash","ok":false,"ms":188,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-23T18:37:19.014Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1781,"tokensIn":734,"tokensOut":621}
+{"ts":"2026-08-24T00:00:24.189Z","provider":"gemini-2.5-flash","ok":false,"ms":66,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-24T00:00:25.603Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1412,"tokensIn":725,"tokensOut":500}
+{"ts":"2026-08-24T00:00:28.598Z","provider":"gemini-2.5-flash","ok":true,"ms":4872,"tokensIn":4491,"tokensOut":902}
+{"ts":"2026-08-24T06:00:19.805Z","provider":"gemini-2.5-flash","ok":false,"ms":62,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-24T06:00:21.284Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1477,"tokensIn":731,"tokensOut":422}
+{"ts":"2026-08-24T06:00:49.492Z","provider":"gemini-2.5-flash","ok":false,"ms":30028,"error":"LLM timeout","resting":"quota"}
+{"ts":"2026-08-24T06:00:51.870Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2378,"tokensIn":4491,"tokensOut":680}
+{"ts":"2026-08-24T06:37:18.148Z","provider":"gemini-2.5-flash","ok":false,"ms":182,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-24T06:37:19.985Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1836,"tokensIn":731,"tokensOut":636}
+{"ts":"2026-08-25T00:00:21.849Z","provider":"gemini-2.5-flash","ok":false,"ms":752,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-25T00:00:24.290Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2439,"tokensIn":4491,"tokensOut":729}
+{"ts":"2026-08-25T00:00:51.426Z","provider":"gemini-2.5-flash","ok":false,"ms":30014,"error":"LLM timeout","resting":"server"}
+{"ts":"2026-08-25T00:00:53.144Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1718,"tokensIn":725,"tokensOut":505}
+{"ts":"2026-08-25T00:37:18.972Z","provider":"gemini-2.5-flash","ok":true,"ms":3009,"tokensIn":725,"tokensOut":588}
+{"ts":"2026-08-25T06:00:19.574Z","provider":"gemini-2.5-flash","ok":false,"ms":695,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-25T06:00:21.567Z","provider":"gemini-2.5-flash","ok":false,"ms":2257,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-25T06:00:22.439Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2860,"tokensIn":4491,"tokensOut":781}
+{"ts":"2026-08-25T06:00:23.262Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1694,"tokensIn":731,"tokensOut":520}
+{"ts":"2026-08-25T06:37:17.230Z","provider":"gemini-2.5-flash","ok":false,"ms":186,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-25T06:37:18.749Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1518,"tokensIn":731,"tokensOut":464}
+{"ts":"2026-08-25T17:37:21.393Z","provider":"gemini-2.5-flash","ok":true,"ms":2626,"tokensIn":737,"tokensOut":512}
+{"ts":"2026-08-25T17:37:23.339Z","provider":"gemini-2.5-flash","ok":true,"ms":4885,"tokensIn":4492,"tokensOut":855}
+{"ts":"2026-08-26T00:00:28.576Z","provider":"gemini-2.5-flash","ok":false,"ms":5706,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-26T00:00:31.129Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2552,"tokensIn":4492,"tokensOut":646}
+{"ts":"2026-08-26T00:00:37.979Z","provider":"gemini-2.5-flash","ok":false,"ms":14699,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-26T00:00:39.527Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1548,"tokensIn":729,"tokensOut":466}
+{"ts":"2026-08-26T12:00:20.451Z","provider":"gemini-2.5-flash","ok":false,"ms":305,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-26T12:00:21.241Z","provider":"gemini-2.5-flash","ok":false,"ms":1580,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-26T12:00:22.706Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2254,"tokensIn":733,"tokensOut":678}
+{"ts":"2026-08-26T12:00:24.383Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3141,"tokensIn":4520,"tokensOut":809}
+{"ts":"2026-08-26T18:00:25.024Z","provider":"gemini-2.5-flash","ok":false,"ms":2434,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-26T18:00:25.813Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":784,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-26T18:00:25.814Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-26T18:00:25.876Z","provider":"groq","ok":false,"ms":62,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-27T06:00:21.996Z","provider":"gemini-2.5-flash","ok":false,"ms":88,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-27T06:00:23.765Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1764,"tokensIn":749,"tokensOut":560}
+{"ts":"2026-08-27T06:00:36.347Z","provider":"gemini-2.5-flash","ok":false,"ms":14785,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-27T06:00:37.302Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":955,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-27T06:00:37.304Z","provider":"openrouter","ok":false,"ms":2,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-27T06:00:37.346Z","provider":"groq","ok":false,"ms":40,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-27T10:37:18.707Z","provider":"gemini-2.5-flash","ok":false,"ms":215,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-27T10:37:20.753Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1951,"tokensIn":748,"tokensOut":610}
+{"ts":"2026-08-27T10:37:22.135Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3426,"tokensIn":4525,"tokensOut":877}
+{"ts":"2026-08-27T12:00:21.491Z","provider":"gemini-2.5-flash","ok":false,"ms":1688,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-27T12:00:21.566Z","provider":"gemini-2.5-flash","ok":false,"ms":1291,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-27T12:00:23.512Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1946,"tokensIn":748,"tokensOut":636}
+{"ts":"2026-08-27T12:00:24.246Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2754,"tokensIn":4524,"tokensOut":786}
+{"ts":"2026-08-27T18:00:24.758Z","provider":"gemini-2.5-flash","ok":false,"ms":98,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-27T18:00:26.884Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2109,"tokensIn":743,"tokensOut":612}
+{"ts":"2026-08-27T18:00:29.319Z","provider":"gemini-2.5-flash","ok":true,"ms":5176,"tokensIn":4490,"tokensOut":911}
+{"ts":"2026-08-27T18:37:18.245Z","provider":"gemini-2.5-flash","ok":false,"ms":194,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-27T18:37:18.297Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":50,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-27T18:37:18.304Z","provider":"openrouter","ok":false,"ms":6,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-27T18:37:18.363Z","provider":"groq","ok":false,"ms":58,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-28T06:00:24.888Z","provider":"gemini-2.5-flash","ok":false,"ms":90,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-28T06:00:24.959Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":64,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-28T06:00:24.961Z","provider":"openrouter","ok":false,"ms":2,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-28T06:00:25.029Z","provider":"groq","ok":false,"ms":68,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-28T06:00:37.609Z","provider":"gemini-2.5-flash","ok":false,"ms":13474,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-28T06:00:37.610Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-28T06:00:37.670Z","provider":"groq","ok":false,"ms":57,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-28T16:37:18.607Z","provider":"gemini-2.5-flash","ok":false,"ms":136,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-28T16:37:21.170Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2560,"tokensIn":748,"tokensOut":696}
+{"ts":"2026-08-28T16:37:22.270Z","provider":"gemini-2.5-flash","ok":true,"ms":4224,"tokensIn":4491,"tokensOut":811}
+{"ts":"2026-08-28T22:37:21.355Z","provider":"gemini-2.5-flash","ok":false,"ms":75,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-28T22:37:22.966Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1609,"tokensIn":729,"tokensOut":494}
+{"ts":"2026-08-28T22:37:26.025Z","provider":"gemini-2.5-flash","ok":true,"ms":5022,"tokensIn":4491,"tokensOut":822}
+{"ts":"2026-08-29T07:24:14.921Z","provider":"gemini-2.5-flash","ok":true,"ms":2675,"tokensIn":728,"tokensOut":523}
+{"ts":"2026-08-29T07:24:15.902Z","provider":"gemini-2.5-flash","ok":true,"ms":3801,"tokensIn":4490,"tokensOut":780}
+{"ts":"2026-08-29T12:00:27.927Z","provider":"gemini-2.5-flash","ok":true,"ms":3371,"tokensIn":748,"tokensOut":609}
+{"ts":"2026-08-29T12:00:29.153Z","provider":"gemini-2.5-flash","ok":true,"ms":5155,"tokensIn":4526,"tokensOut":929}
+{"ts":"2026-08-29T21:37:19.589Z","provider":"gemini-2.5-flash","ok":false,"ms":420,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-29T21:37:21.490Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1792,"tokensIn":729,"tokensOut":538}
+{"ts":"2026-08-29T21:37:22.428Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2838,"tokensIn":4493,"tokensOut":797}
+{"ts":"2026-08-30T02:37:21.361Z","provider":"gemini-2.5-flash","ok":false,"ms":276,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-30T02:37:22.878Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1516,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-30T02:37:22.880Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-30T02:37:22.930Z","provider":"groq","ok":false,"ms":50,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-30T02:37:23.410Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1861,"tokensIn":729,"tokensOut":507}
+{"ts":"2026-08-30T18:00:23.928Z","provider":"gemini-2.5-flash","ok":false,"ms":80,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-30T18:00:25.677Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1746,"tokensIn":742,"tokensOut":543}
+{"ts":"2026-08-30T18:00:28.531Z","provider":"gemini-2.5-flash","ok":true,"ms":5027,"tokensIn":4491,"tokensOut":838}
+{"ts":"2026-08-31T02:37:21.383Z","provider":"gemini-2.5-flash","ok":false,"ms":216,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-31T02:37:23.617Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1697,"tokensIn":725,"tokensOut":466}
+{"ts":"2026-08-31T02:37:24.187Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2801,"tokensIn":4491,"tokensOut":788}
+{"ts":"2026-08-31T06:00:26.910Z","provider":"gemini-2.5-flash","ok":false,"ms":123,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-31T06:00:29.199Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2279,"tokensIn":725,"tokensOut":529}
+{"ts":"2026-08-31T06:00:55.873Z","provider":"gemini-2.5-flash","ok":false,"ms":30049,"error":"LLM timeout","resting":"quota"}
+{"ts":"2026-08-31T06:00:56.694Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":821,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-31T06:00:56.703Z","provider":"openrouter","ok":false,"ms":8,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-08-31T06:00:56.762Z","provider":"groq","ok":false,"ms":59,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-08-31T12:00:24.945Z","provider":"gemini-2.5-flash","ok":false,"ms":744,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-08-31T12:00:25.235Z","provider":"gemini-2.5-flash","ok":false,"ms":157,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-31T12:00:27.125Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1890,"tokensIn":731,"tokensOut":611}
+{"ts":"2026-08-31T12:00:27.922Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2976,"tokensIn":4491,"tokensOut":813}
+{"ts":"2026-08-31T12:37:25.525Z","provider":"gemini-2.5-flash","ok":false,"ms":179,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-31T12:37:26.952Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1425,"tokensIn":731,"tokensOut":417}
+{"ts":"2026-08-31T18:00:21.926Z","provider":"gemini-2.5-flash","ok":false,"ms":84,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-08-31T18:00:23.788Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1861,"tokensIn":741,"tokensOut":503}
+{"ts":"2026-08-31T18:00:26.811Z","provider":"gemini-2.5-flash","ok":true,"ms":5253,"tokensIn":4488,"tokensOut":959}
+{"ts":"2026-09-01T00:00:15.063Z","provider":"gemini-2.5-flash","ok":false,"ms":1077,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-01T00:00:15.262Z","provider":"gemini-2.5-flash","ok":false,"ms":757,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-01T00:00:17.032Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1769,"tokensIn":729,"tokensOut":534}
+{"ts":"2026-09-01T00:00:18.157Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3076,"tokensIn":4478,"tokensOut":838}
+{"ts":"2026-09-01T00:37:19.341Z","provider":"gemini-2.5-flash","ok":true,"ms":2808,"tokensIn":729,"tokensOut":569}
+{"ts":"2026-09-01T05:37:15.694Z","provider":"gemini-2.5-flash","ok":true,"ms":2150,"tokensIn":728,"tokensOut":447}
+{"ts":"2026-09-01T05:37:18.177Z","provider":"gemini-2.5-flash","ok":true,"ms":5079,"tokensIn":4478,"tokensOut":804}
+{"ts":"2026-09-01T06:00:27.913Z","provider":"gemini-2.5-flash","ok":false,"ms":14716,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-01T06:00:29.717Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1803,"tokensIn":728,"tokensOut":524}
+{"ts":"2026-09-01T12:00:14.974Z","provider":"gemini-2.5-flash","ok":false,"ms":1247,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-01T12:00:17.540Z","provider":"gemini-2.5-flash","ok":true,"ms":3175,"tokensIn":747,"tokensOut":624}
+{"ts":"2026-09-01T12:00:17.778Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2802,"tokensIn":4514,"tokensOut":798}
+{"ts":"2026-09-01T12:37:12.791Z","provider":"gemini-2.5-flash","ok":false,"ms":211,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-01T12:37:14.785Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1993,"tokensIn":747,"tokensOut":585}
+{"ts":"2026-09-01T18:00:14.200Z","provider":"gemini-2.5-flash","ok":false,"ms":466,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-01T18:00:16.340Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1983,"tokensIn":742,"tokensOut":657}
+{"ts":"2026-09-01T18:00:17.917Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3714,"tokensIn":4484,"tokensOut":890}
+{"ts":"2026-09-01T21:37:22.430Z","provider":"gemini-2.5-flash","ok":false,"ms":71,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-01T21:37:24.287Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1856,"tokensIn":725,"tokensOut":518}
+{"ts":"2026-09-01T21:37:25.892Z","provider":"gemini-2.5-flash","ok":true,"ms":3838,"tokensIn":4484,"tokensOut":745}
+{"ts":"2026-09-02T00:00:18.241Z","provider":"gemini-2.5-flash","ok":false,"ms":1484,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T00:00:21.767Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3526,"tokensIn":4484,"tokensOut":862}
+{"ts":"2026-09-02T00:00:26.501Z","provider":"gemini-2.5-flash","ok":false,"ms":9296,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T00:00:28.515Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2014,"tokensIn":725,"tokensOut":554}
+{"ts":"2026-09-02T02:37:16.179Z","provider":"gemini-2.5-flash","ok":false,"ms":169,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-02T02:37:17.805Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1626,"tokensIn":725,"tokensOut":519}
+{"ts":"2026-09-02T02:37:21.919Z","provider":"gemini-2.5-flash","ok":true,"ms":6313,"tokensIn":4484,"tokensOut":836}
+{"ts":"2026-09-02T03:57:01.220Z","provider":"gemini-2.5-flash","ok":false,"ms":167,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-02T03:57:02.346Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1121,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T03:57:02.347Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-02T03:57:02.406Z","provider":"groq","ok":false,"ms":58,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-02T03:57:03.401Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":995,"tokensIn":9617,"tokensOut":122}
+{"ts":"2026-09-02T04:01:38.214Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1519,"tokensIn":725,"tokensOut":480}
+{"ts":"2026-09-02T04:01:40.038Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3183,"tokensIn":4484,"tokensOut":878}
+{"ts":"2026-09-02T06:00:19.793Z","provider":"gemini-2.5-flash","ok":false,"ms":1208,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T06:00:22.966Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3172,"tokensIn":4484,"tokensOut":818}
+{"ts":"2026-09-02T06:00:24.487Z","provider":"gemini-2.5-flash","ok":false,"ms":5098,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T06:00:26.360Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1873,"tokensIn":725,"tokensOut":434}
+{"ts":"2026-09-02T09:37:18.166Z","provider":"gemini-2.5-flash","ok":true,"ms":3003,"tokensIn":745,"tokensOut":623}
+{"ts":"2026-09-02T09:37:18.930Z","provider":"gemini-2.5-flash","ok":true,"ms":4381,"tokensIn":4516,"tokensOut":882}
+{"ts":"2026-09-02T12:00:19.990Z","provider":"gemini-2.5-flash","ok":false,"ms":240,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-02T12:00:22.497Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2206,"tokensIn":746,"tokensOut":631}
+{"ts":"2026-09-02T12:00:23.303Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3309,"tokensIn":4517,"tokensOut":836}
+{"ts":"2026-09-02T16:37:15.259Z","provider":"gemini-2.5-flash","ok":true,"ms":2542,"tokensIn":742,"tokensOut":550}
+{"ts":"2026-09-02T16:37:16.974Z","provider":"gemini-2.5-flash","ok":true,"ms":4627,"tokensIn":4484,"tokensOut":865}
+{"ts":"2026-09-02T18:00:18.625Z","provider":"gemini-2.5-flash","ok":true,"ms":3065,"tokensIn":742,"tokensOut":576}
+{"ts":"2026-09-02T18:00:20.223Z","provider":"gemini-2.5-flash","ok":true,"ms":5346,"tokensIn":4484,"tokensOut":942}
+{"ts":"2026-09-02T21:37:17.292Z","provider":"gemini-2.5-flash","ok":false,"ms":93,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-02T21:37:19.654Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":2362,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-02T21:37:19.656Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-02T21:37:19.698Z","provider":"groq","ok":false,"ms":42,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-02T21:37:21.072Z","provider":"gemini-2.5-flash","ok":true,"ms":4238,"tokensIn":4484,"tokensOut":849}
+{"ts":"2026-09-03T00:00:20.028Z","provider":"gemini-2.5-flash","ok":false,"ms":73,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-03T00:00:21.673Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1644,"tokensIn":725,"tokensOut":531}
+{"ts":"2026-09-03T00:00:49.536Z","provider":"gemini-2.5-flash","ok":false,"ms":30032,"error":"LLM timeout","resting":"quota"}
+{"ts":"2026-09-03T00:00:52.715Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3178,"tokensIn":4484,"tokensOut":840}
+{"ts":"2026-09-03T06:00:13.524Z","provider":"gemini-2.5-flash","ok":false,"ms":509,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-03T06:00:13.976Z","provider":"gemini-2.5-flash","ok":false,"ms":660,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-03T06:00:15.769Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1792,"tokensIn":725,"tokensOut":494}
+{"ts":"2026-09-03T06:00:16.638Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3111,"tokensIn":4487,"tokensOut":842}
+{"ts":"2026-09-03T10:37:14.376Z","provider":"gemini-2.5-flash","ok":true,"ms":2907,"tokensIn":745,"tokensOut":640}
+{"ts":"2026-09-03T10:37:15.649Z","provider":"gemini-2.5-flash","ok":true,"ms":4576,"tokensIn":4520,"tokensOut":876}
+{"ts":"2026-09-03T12:00:15.410Z","provider":"gemini-2.5-flash","ok":false,"ms":1093,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-03T12:00:16.687Z","provider":"gemini-2.5-flash","ok":false,"ms":1947,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-03T12:00:18.279Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2868,"tokensIn":4520,"tokensOut":769}
+{"ts":"2026-09-03T12:00:18.459Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1772,"tokensIn":745,"tokensOut":563}
+{"ts":"2026-09-03T16:37:20.986Z","provider":"gemini-2.5-flash","ok":true,"ms":2807,"tokensIn":740,"tokensOut":574}
+{"ts":"2026-09-03T16:37:22.934Z","provider":"gemini-2.5-flash","ok":true,"ms":5142,"tokensIn":4487,"tokensOut":982}
+{"ts":"2026-09-03T18:00:14.778Z","provider":"gemini-2.5-flash","ok":false,"ms":88,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-03T18:00:17.415Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2635,"tokensIn":740,"tokensOut":686}
+{"ts":"2026-09-03T18:00:19.356Z","provider":"gemini-2.5-flash","ok":true,"ms":5073,"tokensIn":4487,"tokensOut":876}
+{"ts":"2026-09-03T23:37:18.081Z","provider":"gemini-2.5-flash","ok":false,"ms":79,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-03T23:37:19.455Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1373,"tokensIn":725,"tokensOut":469}
+{"ts":"2026-09-03T23:37:22.112Z","provider":"gemini-2.5-flash","ok":true,"ms":4921,"tokensIn":4487,"tokensOut":943}
+{"ts":"2026-09-04T06:00:15.198Z","provider":"gemini-2.5-flash","ok":false,"ms":314,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T06:00:16.779Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1396,"tokensIn":725,"tokensOut":408}
+{"ts":"2026-09-04T06:00:18.325Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3124,"tokensIn":4487,"tokensOut":810}
+{"ts":"2026-09-04T06:37:21.504Z","provider":"gemini-2.5-flash","ok":true,"ms":2960,"tokensIn":725,"tokensOut":579}
+{"ts":"2026-09-04T12:00:16.303Z","provider":"gemini-2.5-flash","ok":false,"ms":206,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T12:00:20.465Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":4160,"tokensIn":4518,"tokensOut":921}
+{"ts":"2026-09-04T12:37:21.642Z","provider":"gemini-2.5-flash","ok":true,"ms":2792,"tokensIn":745,"tokensOut":562}
+{"ts":"2026-09-04T14:51:29.322Z","provider":"gemini-2.5-flash","ok":false,"ms":93,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T14:51:33.568Z","provider":"gemini-2.5-flash","ok":true,"ms":4437,"tokensIn":4517,"tokensOut":834}
+{"ts":"2026-09-04T14:51:35.701Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":6379,"tokensIn":745,"tokensOut":598}
+{"ts":"2026-09-04T14:52:26.584Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1597,"tokensIn":10223,"tokensOut":235}
+{"ts":"2026-09-04T14:52:28.015Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1430,"tokensIn":10251,"tokensOut":209}
+{"ts":"2026-09-04T14:52:33.092Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":851,"tokensIn":9827,"tokensOut":65}
+{"ts":"2026-09-04T14:52:34.807Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":785,"tokensIn":9919,"tokensOut":33}
+{"ts":"2026-09-04T14:52:49.006Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1218,"tokensIn":9864,"tokensOut":106}
+{"ts":"2026-09-04T15:14:52.533Z","provider":"gemini-2.5-flash","ok":false,"ms":210,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T15:14:54.868Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2335,"tokensIn":740,"tokensOut":564}
+{"ts":"2026-09-04T15:33:33.565Z","provider":"gemini-2.5-flash","ok":false,"ms":219,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T15:33:33.745Z","provider":"gemini-2.5-flash","ok":false,"ms":216,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T15:33:36.122Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2376,"tokensIn":740,"tokensOut":621}
+{"ts":"2026-09-04T15:33:37.520Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3955,"tokensIn":4518,"tokensOut":797}
+{"ts":"2026-09-04T18:00:16.339Z","provider":"gemini-2.5-flash","ok":false,"ms":590,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-04T18:00:18.611Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2240,"tokensIn":734,"tokensOut":617}
+{"ts":"2026-09-04T18:00:20.427Z","provider":"gemini-2.5-flash","ok":true,"ms":4868,"tokensIn":4486,"tokensOut":898}
+{"ts":"2026-09-04T18:37:16.062Z","provider":"gemini-2.5-flash","ok":false,"ms":188,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-04T18:37:16.523Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":460,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-04T18:37:16.525Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-04T18:37:16.580Z","provider":"groq","ok":false,"ms":55,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-05T00:00:22.167Z","provider":"gemini-2.5-flash","ok":false,"ms":796,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-05T00:00:23.862Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1695,"tokensIn":725,"tokensOut":528}
+{"ts":"2026-09-05T00:00:26.369Z","provider":"gemini-2.5-flash","ok":true,"ms":5199,"tokensIn":4486,"tokensOut":861}
+{"ts":"2026-09-05T01:37:12.341Z","provider":"gemini-2.5-flash","ok":false,"ms":67,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-05T01:37:13.804Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1463,"tokensIn":725,"tokensOut":516}
+{"ts":"2026-09-05T01:37:16.892Z","provider":"gemini-2.5-flash","ok":true,"ms":4809,"tokensIn":4486,"tokensOut":991}
+{"ts":"2026-09-05T06:00:15.558Z","provider":"gemini-2.5-flash","ok":false,"ms":68,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-05T06:00:17.207Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1647,"tokensIn":731,"tokensOut":485}
+{"ts":"2026-09-05T06:00:19.957Z","provider":"gemini-2.5-flash","ok":true,"ms":4959,"tokensIn":4486,"tokensOut":818}
+{"ts":"2026-09-05T07:37:20.698Z","provider":"gemini-2.5-flash","ok":true,"ms":2438,"tokensIn":731,"tokensOut":494}
+{"ts":"2026-09-05T07:37:22.144Z","provider":"gemini-2.5-flash","ok":true,"ms":4067,"tokensIn":4520,"tokensOut":826}
+{"ts":"2026-09-05T16:25:17.547Z","provider":"gemini-2.5-flash","ok":true,"ms":2674,"tokensIn":728,"tokensOut":466}
+{"ts":"2026-09-05T16:25:18.847Z","provider":"gemini-2.5-flash","ok":true,"ms":4968,"tokensIn":4519,"tokensOut":941}
+{"ts":"2026-09-06T01:37:18.326Z","provider":"gemini-2.5-flash","ok":true,"ms":2384,"tokensIn":720,"tokensOut":520}
+{"ts":"2026-09-06T01:37:19.878Z","provider":"gemini-2.5-flash","ok":true,"ms":4123,"tokensIn":4486,"tokensOut":861}
+{"ts":"2026-09-06T06:00:18.607Z","provider":"gemini-2.5-flash","ok":false,"ms":472,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-06T06:00:20.372Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1764,"tokensIn":734,"tokensOut":562}
+{"ts":"2026-09-06T06:00:22.156Z","provider":"gemini-2.5-flash","ok":true,"ms":4448,"tokensIn":4486,"tokensOut":824}
+{"ts":"2026-09-06T06:37:23.007Z","provider":"gemini-2.5-flash","ok":false,"ms":242,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-06T06:37:24.503Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1488,"tokensIn":734,"tokensOut":442}
+{"ts":"2026-09-06T10:31:11.349Z","provider":"gemini-2.5-flash","ok":false,"ms":208,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-06T10:31:12.498Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":838,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-06T10:31:12.499Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-06T10:31:12.554Z","provider":"groq","ok":false,"ms":54,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-06T10:31:14.759Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":3406,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-06T10:31:14.759Z","provider":"openrouter","ok":false,"ms":0,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-06T10:31:14.782Z","provider":"groq","ok":false,"ms":23,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-06T12:00:16.650Z","provider":"gemini-2.5-flash","ok":false,"ms":85,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-06T12:00:16.653Z","provider":"gemini-2.5-flash","ok":false,"ms":247,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-06T12:00:18.347Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1696,"tokensIn":733,"tokensOut":516}
+{"ts":"2026-09-06T12:00:19.542Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2889,"tokensIn":4521,"tokensOut":812}
+{"ts":"2026-09-06T12:37:15.710Z","provider":"gemini-2.5-flash","ok":true,"ms":2358,"tokensIn":733,"tokensOut":528}
+{"ts":"2026-09-06T17:37:29.489Z","provider":"gemini-2.5-flash","ok":true,"ms":2681,"tokensIn":722,"tokensOut":590}
+{"ts":"2026-09-06T17:37:31.368Z","provider":"gemini-2.5-flash","ok":true,"ms":4766,"tokensIn":4488,"tokensOut":954}
+{"ts":"2026-09-07T00:37:16.662Z","provider":"gemini-2.5-flash","ok":true,"ms":2085,"tokensIn":720,"tokensOut":456}
+{"ts":"2026-09-07T00:37:18.585Z","provider":"gemini-2.5-flash","ok":true,"ms":4157,"tokensIn":4488,"tokensOut":856}
+{"ts":"2026-09-07T05:37:20.682Z","provider":"gemini-2.5-flash","ok":true,"ms":2532,"tokensIn":726,"tokensOut":523}
+{"ts":"2026-09-07T05:37:22.351Z","provider":"gemini-2.5-flash","ok":true,"ms":4392,"tokensIn":4486,"tokensOut":818}
+{"ts":"2026-09-07T19:37:25.821Z","provider":"gemini-2.5-flash","ok":false,"ms":155,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-07T19:37:26.065Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":242,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-07T19:37:26.071Z","provider":"openrouter","ok":false,"ms":6,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-07T19:37:26.160Z","provider":"groq","ok":false,"ms":89,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-07T19:37:29.853Z","provider":"gemini-2.5-flash","ok":true,"ms":4319,"tokensIn":4487,"tokensOut":823}
+{"ts":"2026-09-08T01:37:20.894Z","provider":"gemini-2.5-flash","ok":true,"ms":2229,"tokensIn":725,"tokensOut":482}
+{"ts":"2026-09-08T01:37:22.845Z","provider":"gemini-2.5-flash","ok":true,"ms":4315,"tokensIn":4487,"tokensOut":825}
+{"ts":"2026-09-08T06:00:17.238Z","provider":"gemini-2.5-flash","ok":false,"ms":190,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T06:00:17.495Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":255,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T06:00:17.503Z","provider":"openrouter","ok":false,"ms":6,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-08T06:00:17.552Z","provider":"groq","ok":false,"ms":49,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-08T06:00:26.792Z","provider":"gemini-2.5-flash","ok":false,"ms":9937,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-08T06:00:26.795Z","provider":"openrouter","ok":false,"ms":3,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-08T06:00:26.839Z","provider":"groq","ok":false,"ms":44,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-08T08:37:20.651Z","provider":"gemini-2.5-flash","ok":false,"ms":946,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-08T08:37:20.934Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":281,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T08:37:20.936Z","provider":"openrouter","ok":false,"ms":0,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-08T08:37:21.007Z","provider":"groq","ok":false,"ms":68,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-08T08:37:22.702Z","provider":"gemini-2.5-flash","ok":true,"ms":2736,"tokensIn":731,"tokensOut":554}
+{"ts":"2026-09-08T12:00:25.839Z","provider":"gemini-2.5-flash","ok":true,"ms":6355,"tokensIn":4485,"tokensOut":913}
+{"ts":"2026-09-08T13:37:24.886Z","provider":"gemini-2.5-flash","ok":true,"ms":2941,"tokensIn":746,"tokensOut":573}
+{"ts":"2026-09-08T13:37:26.795Z","provider":"gemini-2.5-flash","ok":true,"ms":5034,"tokensIn":4487,"tokensOut":890}
+{"ts":"2026-09-08T19:37:21.618Z","provider":"gemini-2.5-flash","ok":false,"ms":268,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T19:37:21.682Z","provider":"gemini-2.5-flash","ok":false,"ms":166,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T19:37:21.869Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":185,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-08T19:37:21.870Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-08T19:37:21.918Z","provider":"groq","ok":false,"ms":48,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-08T19:37:24.831Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3210,"tokensIn":4487,"tokensOut":722}
+{"ts":"2026-09-09T01:37:14.550Z","provider":"gemini-2.5-flash","ok":false,"ms":157,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-09T01:37:16.189Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1638,"tokensIn":725,"tokensOut":523}
+{"ts":"2026-09-09T01:37:18.335Z","provider":"gemini-2.5-flash","ok":true,"ms":4130,"tokensIn":4487,"tokensOut":830}
+{"ts":"2026-09-09T12:37:17.518Z","provider":"gemini-2.5-flash","ok":true,"ms":2702,"tokensIn":731,"tokensOut":555}
+{"ts":"2026-09-09T12:37:18.926Z","provider":"gemini-2.5-flash","ok":true,"ms":4283,"tokensIn":4519,"tokensOut":868}
+{"ts":"2026-09-09T18:37:14.203Z","provider":"gemini-2.5-flash","ok":true,"ms":2374,"tokensIn":720,"tokensOut":484}
+{"ts":"2026-09-09T18:37:16.356Z","provider":"gemini-2.5-flash","ok":true,"ms":4686,"tokensIn":4486,"tokensOut":881}
+{"ts":"2026-09-10T02:37:20.694Z","provider":"gemini-2.5-flash","ok":false,"ms":277,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-10T02:37:20.732Z","provider":"gemini-2.5-flash","ok":false,"ms":151,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-10T02:37:22.656Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1923,"tokensIn":720,"tokensOut":522}
+{"ts":"2026-09-10T02:37:23.481Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2786,"tokensIn":4486,"tokensOut":731}
+{"ts":"2026-09-10T08:37:19.109Z","provider":"gemini-2.5-flash","ok":true,"ms":2484,"tokensIn":731,"tokensOut":528}
+{"ts":"2026-09-10T08:37:21.189Z","provider":"gemini-2.5-flash","ok":true,"ms":4712,"tokensIn":4519,"tokensOut":882}
+{"ts":"2026-09-10T20:37:15.819Z","provider":"gemini-2.5-flash","ok":true,"ms":3694,"tokensIn":734,"tokensOut":729}
+{"ts":"2026-09-10T20:37:16.502Z","provider":"gemini-2.5-flash","ok":true,"ms":4539,"tokensIn":4486,"tokensOut":876}
+{"ts":"2026-09-11T00:00:24.023Z","provider":"gemini-2.5-flash","ok":false,"ms":183,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-11T00:00:24.849Z","provider":"gemini-2.5-flash","ok":false,"ms":1156,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-11T00:00:25.347Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1324,"tokensIn":725,"tokensOut":406}
+{"ts":"2026-09-11T00:00:27.281Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2431,"tokensIn":4486,"tokensOut":724}
+{"ts":"2026-09-11T01:37:22.027Z","provider":"gemini-2.5-flash","ok":true,"ms":2359,"tokensIn":725,"tokensOut":463}
+{"ts":"2026-09-11T01:37:24.573Z","provider":"gemini-2.5-flash","ok":true,"ms":5087,"tokensIn":4486,"tokensOut":931}
+{"ts":"2026-09-11T08:37:18.700Z","provider":"gemini-2.5-flash","ok":true,"ms":2740,"tokensIn":745,"tokensOut":562}
+{"ts":"2026-09-11T08:37:19.633Z","provider":"gemini-2.5-flash","ok":true,"ms":3910,"tokensIn":4517,"tokensOut":758}
+{"ts":"2026-09-11T12:00:20.226Z","provider":"gemini-2.5-flash","ok":false,"ms":2813,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-11T12:00:23.663Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3434,"tokensIn":4518,"tokensOut":811}
+{"ts":"2026-09-11T12:00:26.386Z","provider":"gemini-2.5-flash","ok":false,"ms":8642,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-11T12:00:28.798Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2411,"tokensIn":742,"tokensOut":664}
+{"ts":"2026-09-11T14:37:15.472Z","provider":"gemini-2.5-flash","ok":true,"ms":3274,"tokensIn":747,"tokensOut":657}
+{"ts":"2026-09-11T14:37:16.678Z","provider":"gemini-2.5-flash","ok":true,"ms":4608,"tokensIn":4518,"tokensOut":882}
+{"ts":"2026-09-11T21:37:14.414Z","provider":"gemini-2.5-flash","ok":false,"ms":255,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-11T21:37:14.552Z","provider":"gemini-2.5-flash","ok":false,"ms":253,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-11T21:37:16.240Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1688,"tokensIn":725,"tokensOut":457}
+{"ts":"2026-09-11T21:37:17.409Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2994,"tokensIn":4486,"tokensOut":809}
+{"ts":"2026-09-12T06:00:17.733Z","provider":"gemini-2.5-flash","ok":false,"ms":178,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-12T06:00:19.574Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1837,"tokensIn":731,"tokensOut":507}
+{"ts":"2026-09-12T06:00:22.697Z","provider":"gemini-2.5-flash","ok":true,"ms":5688,"tokensIn":4486,"tokensOut":944}
+{"ts":"2026-09-12T07:37:26.753Z","provider":"gemini-2.5-flash","ok":true,"ms":2506,"tokensIn":731,"tokensOut":523}
+{"ts":"2026-09-12T07:37:28.449Z","provider":"gemini-2.5-flash","ok":true,"ms":4365,"tokensIn":4486,"tokensOut":858}
+{"ts":"2026-09-12T12:00:18.035Z","provider":"gemini-2.5-flash","ok":false,"ms":1673,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-12T12:00:18.223Z","provider":"gemini-2.5-flash","ok":false,"ms":1601,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-12T12:00:20.009Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1785,"tokensIn":733,"tokensOut":463}
+{"ts":"2026-09-12T12:00:23.010Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":4968,"tokensIn":4519,"tokensOut":768}
+{"ts":"2026-09-12T20:37:16.609Z","provider":"gemini-2.5-flash","ok":true,"ms":2828,"tokensIn":722,"tokensOut":537}
+{"ts":"2026-09-12T20:37:18.174Z","provider":"gemini-2.5-flash","ok":true,"ms":4593,"tokensIn":4488,"tokensOut":887}
+{"ts":"2026-09-13T01:37:14.012Z","provider":"gemini-2.5-flash","ok":false,"ms":118,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-13T01:37:15.852Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1839,"tokensIn":720,"tokensOut":469}
+{"ts":"2026-09-13T01:37:17.814Z","provider":"gemini-2.5-flash","ok":true,"ms":4285,"tokensIn":4488,"tokensOut":829}
+{"ts":"2026-09-13T06:00:18.476Z","provider":"gemini-2.5-flash","ok":false,"ms":359,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-13T06:00:19.181Z","provider":"gemini-2.5-flash","ok":false,"ms":1230,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-13T06:00:20.210Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1733,"tokensIn":726,"tokensOut":408}
+{"ts":"2026-09-13T06:00:22.305Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3124,"tokensIn":4486,"tokensOut":837}
+{"ts":"2026-09-13T07:37:16.899Z","provider":"gemini-2.5-flash","ok":true,"ms":3037,"tokensIn":731,"tokensOut":516}
+{"ts":"2026-09-13T07:37:18.377Z","provider":"gemini-2.5-flash","ok":true,"ms":4676,"tokensIn":4521,"tokensOut":790}
+{"ts":"2026-09-13T15:37:24.788Z","provider":"gemini-2.5-flash","ok":true,"ms":2490,"tokensIn":733,"tokensOut":532}
+{"ts":"2026-09-13T15:37:26.204Z","provider":"gemini-2.5-flash","ok":true,"ms":4238,"tokensIn":4522,"tokensOut":805}
+{"ts":"2026-09-13T18:00:18.919Z","provider":"gemini-2.5-flash","ok":false,"ms":1003,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-13T18:00:21.963Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3041,"tokensIn":4488,"tokensOut":760}
+{"ts":"2026-09-13T18:00:48.272Z","provider":"gemini-2.5-flash","ok":false,"ms":30066,"error":"LLM timeout","resting":"server"}
+{"ts":"2026-09-13T18:00:50.205Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1932,"tokensIn":722,"tokensOut":431}
+{"ts":"2026-09-14T02:37:12.889Z","provider":"gemini-2.5-flash","ok":false,"ms":234,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-14T02:37:13.461Z","provider":"gemini-2.5-flash","ok":false,"ms":946,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T02:37:14.997Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2104,"tokensIn":734,"tokensOut":520}
+{"ts":"2026-09-14T02:37:16.407Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2946,"tokensIn":4488,"tokensOut":799}
+{"ts":"2026-09-14T06:00:37.221Z","provider":"gemini-2.5-flash","ok":false,"ms":17412,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T06:00:40.668Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3445,"tokensIn":4488,"tokensOut":777}
+{"ts":"2026-09-14T06:00:41.896Z","provider":"gemini-2.5-flash","ok":false,"ms":21795,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T06:00:43.916Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2019,"tokensIn":740,"tokensOut":549}
+{"ts":"2026-09-14T10:37:17.808Z","provider":"gemini-2.5-flash","ok":true,"ms":3031,"tokensIn":740,"tokensOut":627}
+{"ts":"2026-09-14T10:37:19.043Z","provider":"gemini-2.5-flash","ok":true,"ms":4610,"tokensIn":4487,"tokensOut":873}
+{"ts":"2026-09-14T12:00:16.749Z","provider":"gemini-2.5-flash","ok":false,"ms":396,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T12:00:17.239Z","provider":"gemini-2.5-flash","ok":false,"ms":707,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T12:00:19.188Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1948,"tokensIn":740,"tokensOut":539}
+{"ts":"2026-09-14T12:00:19.952Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3203,"tokensIn":4487,"tokensOut":851}
+{"ts":"2026-09-14T18:00:16.407Z","provider":"gemini-2.5-flash","ok":false,"ms":453,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T18:00:17.944Z","provider":"gemini-2.5-flash-lite","ok":false,"ms":1531,"error":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}
+{"ts":"2026-09-14T18:00:17.946Z","provider":"openrouter","ok":false,"ms":1,"error":"no OPENROUTER_API_KEY"}
+{"ts":"2026-09-14T18:00:18.055Z","provider":"groq","ok":false,"ms":109,"error":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}
+{"ts":"2026-09-14T18:00:21.896Z","provider":"gemini-2.5-flash","ok":true,"ms":6134,"tokensIn":4454,"tokensOut":969}
+{"ts":"2026-09-14T20:37:26.737Z","provider":"gemini-2.5-flash","ok":true,"ms":2956,"tokensIn":734,"tokensOut":610}
+{"ts":"2026-09-14T20:37:28.278Z","provider":"gemini-2.5-flash","ok":true,"ms":4637,"tokensIn":4454,"tokensOut":828}
+{"ts":"2026-09-15T02:37:25.943Z","provider":"gemini-2.5-flash","ok":false,"ms":335,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-15T02:37:26.256Z","provider":"gemini-2.5-flash","ok":false,"ms":327,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-15T02:37:27.848Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":1592,"tokensIn":739,"tokensOut":467}
+{"ts":"2026-09-15T02:37:29.152Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3208,"tokensIn":4454,"tokensOut":817}
+{"ts":"2026-09-15T06:37:20.965Z","provider":"gemini-2.5-flash","ok":true,"ms":3083,"tokensIn":745,"tokensOut":670}
+{"ts":"2026-09-15T06:37:22.771Z","provider":"gemini-2.5-flash","ok":true,"ms":5037,"tokensIn":4454,"tokensOut":906}
+{"ts":"2026-09-15T12:00:19.924Z","provider":"gemini-2.5-flash","ok":false,"ms":392,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-15T12:00:23.151Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":3217,"tokensIn":4390,"tokensOut":760}
+{"ts":"2026-09-15T12:37:18.418Z","provider":"gemini-2.5-flash","ok":false,"ms":338,"error":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to","resting":"quota"}
+{"ts":"2026-09-15T12:37:20.601Z","provider":"gemini-2.5-flash-lite","ok":true,"ms":2183,"tokensIn":745,"tokensOut":648}
