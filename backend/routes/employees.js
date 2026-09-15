@@ -7,6 +7,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
+const { findStaffTwin, twinConflict } = require('../lib/staff-role');
 const { normalizePhoneDb } = require('../lib/phone'); // канон 380... (міграція 200)
 const { setWorkingState } = require('../lib/employment'); // єдина операція звільнення (нотатка #154)
 
@@ -178,6 +179,17 @@ router.post('/', validateBody(employeeSchema(true)),
   try {
     const b = req.body || {};
     if (!b.name || !b.phone) return res.status(400).json({ error: 'name, phone required' });
+    // ── Заслін від другої картки тій самій людині (нотатка #161) ───────────────
+    // Власник: «одна аліна продубльована і зайва, незрозуміло звідки матеріалізувалась
+    // друга». Двійники прибрані міграціями 301/304, але сам ШЛЯХ їх появи лишався
+    // відкритим: завести ще одну картку з тим самим імʼям можна було мовчки, і людина
+    // роздвоювалась у графіку, плані дня й касі. Тепер система спиняє і показує, чия
+    // саме картка вже є. Справжніх тезок це не блокує: свідоме рішення підтверджується
+    // прапорцем allow_namesake — але вже НЕ мовчки.
+    if (b.allow_namesake !== true) {
+      const twin = await findStaffTwin({ query: (sql, pr) => q(sql, pr).then(rows => ({ rows })) }, b.name);
+      if (twin) return res.status(409).json(twinConflict(twin));
+    }
     const r = await q(
       `INSERT INTO masters (name, phone, email, specialty, avatar, birth_date, gender, hire_date,
                             position_id, department_id, manager_id, branch_id, mastery_level, status,

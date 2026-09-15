@@ -30,6 +30,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
 const { setWorkingState } = require('../lib/employment'); // єдина операція «працює / не працює» (нотатка #154)
+const { findStaffTwin, twinConflict } = require('../lib/staff-role');
 const { notifyOrderStatus } = require('./telegram-notify');
 const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
@@ -1130,8 +1131,14 @@ router.post('/masters',
     "SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true"),
   async (req, res) => {
   try {
-    const { name, phone, specialty, bio, avatar, legacy_ref, commission_pct } = req.body || {};
+    const { name, phone, specialty, bio, avatar, legacy_ref, commission_pct, allow_namesake } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name required' });
+    // Заслін від другої картки тій самій людині (нотатка #161) — та сама перевірка,
+    // що й при заведенні співробітника в кадрах. Свідомий тезка — allow_namesake.
+    if (allow_namesake !== true) {
+      const twin = await findStaffTwin(getPool(), name);
+      if (twin) return res.status(409).json(twinConflict(twin));
+    }
     const r = await getPool().query(
       `INSERT INTO masters (name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,

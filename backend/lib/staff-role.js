@@ -51,3 +51,42 @@ function isAdminSql(alias = 'm') {
 function adminLastSql(alias = 'm') { return `(${isAdminSql(alias)})::int ASC`; }
 
 module.exports = { ROLES, ROLE_LABEL, staffRole, isAdminStaff, roleLabel, roleSql, isAdminSql, adminLastSql };
+
+/* ── «Чи є вже картка цієї людини?» — один заслін на всю CRM (нотатка #161) ──
+   Власник: «одна аліна продубльована і зайва, незрозуміло звідки матеріалізувалась
+   друга». Двійник зʼявлявся тому, що завести ЩЕ ОДНУ картку з тим самим імʼям можна
+   було мовчки — і людина роздвоювалась у графіку, плані дня та касі (усі вони рахують
+   людей по картках). Прибрати двійників мало: треба закрити сам шлях їх появи.
+   Тут — ЄДИНА перевірка для всіх місць, де створюється співробітник. Обʼєднані
+   картки (merged_into) за людину не рахуються: це вже погашені порожнівки. */
+const twinNameKey = (n) => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Знаходить живу картку з таким самим імʼям. pool — pg Pool/Client. */
+async function findStaffTwin(pool, name) {
+  const key = twinNameKey(name);
+  if (!key) return null;
+  const r = await pool.query(
+    `SELECT id, name, specialty, COALESCE(active,true) AS active FROM masters
+      WHERE merged_into IS NULL
+        AND lower(regexp_replace(COALESCE(name,''), '\\s+', ' ', 'g')) = $1
+      ORDER BY (COALESCE(active,true) = true) DESC, id
+      LIMIT 1`, [key]
+  ).catch(() => ({ rows: [] }));
+  return r.rows[0] || null;
+}
+
+/** Людське пояснення відмови — однакове в усіх розділах. */
+function twinConflict(row) {
+  return {
+    error: 'duplicate-name',
+    existing_id: row.id,
+    message: `«${row.name}» вже є в команді${row.specialty ? ' (' + row.specialty + ')' : ''}`
+           + `${row.active === false ? ' — картка неактивна, її можна повернути' : ''}.`
+           + ' Друга картка тій самій людині роздвоїть її в графіку, плані дня й касі.'
+           + ' Якщо це справді інша людина з таким самим імʼям — підтвердьте створення.',
+  };
+}
+
+module.exports.twinNameKey = twinNameKey;
+module.exports.findStaffTwin = findStaffTwin;
+module.exports.twinConflict = twinConflict;
