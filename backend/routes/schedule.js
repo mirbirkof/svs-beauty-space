@@ -6,6 +6,9 @@ const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone, shouldMaskPhones } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
 const { buildMonthGrid, listScheduleStaff, kyivToday } = require('../lib/schedule-month');
+// Єдина операція «працює / не працює» (нотатка #154): усі кнопки звільнення мають
+// робити однакове — прибрати з команди, зі складу графіка і зняти майбутні зміни.
+const { setWorkingState } = require('../lib/employment');
 const { findOverlap, wouldExceedParallel } = require('../lib/booking-guard');
 const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
@@ -113,7 +116,8 @@ router.get('/staff', async (req, res) => {
 });
 
 // POST /api/schedule/staff  { master_id, include: true|false }
-// Прибирання з графіка НІЧОГО не видаляє: зміни, візити й історія лишаються.
+// Прибирання з графіка НІЧОГО не видаляє: майбутні зміни лише ховаються (stash_*)
+// і повертаються самі, щойно людину додали назад. Візити й історія не чіпаються.
 // Разом з відповіддю повертаємо, що саме лишиться «висіти» (майбутні зміни та записи),
 // щоб адмін бачив наслідки, а не виявляв їх потім у журналі.
 router.post('/staff', async (req, res) => {
@@ -143,11 +147,24 @@ router.post('/staff', async (req, res) => {
     // і далі віддавала б її години — цифри й запис розійшлися б.
     // Нічого не видаляємо: день лишається рядком-вихідним (start_time NULL) — рівно так
     // графік позначає вихідний. Минуле не чіпаємо: це факт, за ним рахується ЗП.
-    let clearedShifts = 0, leftovers = null;
-    if (!include) {
+    let clearedShifts = 0, restoredShifts = 0, leftovers = null;
+    if (include) {
+      // Повернули людину в графік — повертаємо і зняті майбутні зміни, тими самими
+      // годинами (міграція 299). Саме це «щоб усе підтягувалось»: власнику не треба
+      // виставляти місяць графіка наново після випадкового кліку.
+      const back = await pool.query(
+        `UPDATE master_schedule_days
+            SET start_time = stash_start_time, end_time = stash_end_time,
+                stash_start_time = NULL, stash_end_time = NULL, synced_at = NOW()
+          WHERE master_id = $1 AND work_date >= $2::date
+            AND start_time IS NULL AND stash_start_time IS NOT NULL`,
+        [id, kyivToday()]);
+      restoredShifts = back.rowCount || 0;
+    } else {
       const upd = await pool.query(
         `UPDATE master_schedule_days
-            SET start_time = NULL, end_time = NULL, source = 'manual', synced_at = NOW()
+            SET stash_start_time = start_time, stash_end_time = end_time,
+                start_time = NULL, end_time = NULL, source = 'manual', synced_at = NOW()
           WHERE master_id = $1 AND work_date >= $2::date AND start_time IS NOT NULL`,
         [id, kyivToday()]);
       clearedShifts = upd.rowCount || 0;
@@ -159,7 +176,8 @@ router.post('/staff', async (req, res) => {
                     AND COALESCE(status,'') NOT IN ('cancelled','noshow'))::int AS appts`, [id]);
       leftovers = { shifts_cleared: clearedShifts, appts: l.rows[0].appts };
     }
-    res.json({ ok: true, master_id: id, name: m.name, in_schedule: include, cleared_shifts: clearedShifts, leftovers });
+    res.json({ ok: true, master_id: id, name: m.name, in_schedule: include,
+      cleared_shifts: clearedShifts, restored_shifts: restoredShifts, leftovers });
   } catch (e) { console.error('[schedule:staff-set]', e); res.status(500).json({ error: 'internal' }); }
 });
 
@@ -257,17 +275,19 @@ router.get('/masters', async (req, res) => {
 // ── PATCH /api/schedule/masters/:id — сменить статус (работает/уволен) ──
 // Body: { active: true|false }. Уволенный мастер исчезает из журнала, графика,
 // онлайн-записи и всех выпадающих списков, но остаётся для статистики (отчёты тянут всех).
+// Нотатка #154: раніше тут стояло голе active=false — людина лишалась у складі
+// графіка, а її майбутні зміни далі висіли в master_schedule_days (онлайн-запис
+// віддавала години звільненого). Тепер це одна спільна операція — lib/employment.js.
 router.patch('/masters/:id', async (req, res) => {
   try {
     const pool = getPool();
     const { active } = req.body || {};
     if (typeof active !== 'boolean') return res.status(400).json({ error: 'active boolean required' });
-    const r = await pool.query(
-      'UPDATE masters SET active = $1 WHERE id = $2 RETURNING id, name, active',
-      [active, req.params.id]
-    );
-    if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
-    res.json({ ok: true, master: r.rows[0] });
+    const r = await setWorkingState(pool, req.params.id, active, { fired: !active });
+    if (!r) return res.status(404).json({ error: 'master not found' });
+    res.json({ ok: true, master: { id: r.id, name: r.name, active: r.active },
+               cleared_shifts: r.shifts_cleared, restored_shifts: r.shifts_restored,
+               leftovers: r.leftovers });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
