@@ -959,6 +959,11 @@ async function loadMasters(){
 // «десь є людина, якої не видно в команді», рівно та плутанина, на яку скаржився Бос.
 let TM_FILTER='all';
 function tmFilter(f){ TM_FILTER=f; document.querySelectorAll('.tm-f').forEach(b=>b.classList.toggle('active', b.dataset.f===f)); tmRender(); }
+// #160: одне правило ролі на всю CRM — те саме, що на бекенді (lib/staff-role.js).
+// Роль читається ТІЛЬКИ з картки людини; «надає послуги» на групу не впливає.
+function _tmRole(m){ const v=String((m&&m.staff_role)||'').trim().toLowerCase();
+  return (v==='admin'||v==='owner'||v==='master') ? v : 'master'; }
+function _tmIsAdm(m){ const r=_tmRole(m); return r==='admin'||r==='owner'; }
 function tmRows(){
   const byMaster = new Map();
   (USERS_CACHE||[]).forEach(u=>{ if(u.master_id) byMaster.set(Number(u.master_id), u); });
@@ -972,10 +977,10 @@ function tmRows(){
       // #158: група в реєстрі визначається ТІЛЬКИ явною роллю людини.
       // Раніше сюди домішувалось «не надає послуг» — і будь-який майстер, якому тимчасово
       // зняли послуги, потрапляв у «Адміністрацію» поруч зі справжніми адміністраторами.
-      staffRole: (m.staff_role==='admin'||m.staff_role==='owner') ? m.staff_role : 'master',
+      staffRole: _tmRole(m),
       provides: m.provides_services!==false,
-      role: u ? (u.role_name||u.role) : (m.staff_role==='admin' ? 'адміністратор' : (m.staff_role==='owner' ? 'власник' : 'майстер')),
-      isAdmin: m.staff_role==='admin' || m.staff_role==='owner',
+      role: u ? (u.role_name||u.role) : ({admin:'адміністратор',owner:'власник'}[_tmRole(m)] || 'майстер'),
+      isAdmin: _tmIsAdm(m),
     };
   });
   // користувачі без картки майстра

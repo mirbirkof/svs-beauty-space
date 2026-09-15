@@ -1,3 +1,4 @@
+const { staffRole, isAdminStaff, adminLastSql } = require('./staff-role');
 /* schedule-month.js — єдине джерело правди для місячної сітки графіків.
    Використовується і у GET /api/schedule/month (візуальна сітка), і у
    GET /api/reports/monthly-plan (кількість змін для плану обороту), і у
@@ -53,7 +54,7 @@ async function listScheduleStaff(pool) {
       WHERE m.in_schedule = true
         AND m.active = true
         AND COALESCE(m.status, 'active') <> 'fired'
-      ORDER BY (m.staff_role = 'admin') ASC, m.name`
+      ORDER BY ${adminLastSql('m')}, m.name`
   )).rows;
 
   return { staff: rows, duplicates: [] };
@@ -168,7 +169,10 @@ async function buildMonthGrid(pool, ym) {
       if (wk) return { date: dt, start: wk.start, end: wk.end, off: false, source: wk.source };
       return { date: dt, off: true, source: 'pattern' };
     });
-    return { id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar, days };
+    // #160: роль віддаємо на фронт явно. Раніше екран графіка вгадував адміністрацію
+    // за ТЕКСТОМ спеціальності — і будь-який майстер із словом «адмін» у посаді
+    // потрапляв не в свою групу, а справжній адміністратор без такого слова — губився.
+    return { id: m.id, name: m.name, specialty: m.specialty, avatar: m.avatar, staff_role: staffRole(m), is_admin: isAdminStaff(m), days };
   });
 
   return { ym, daysInMonth, dates, items };

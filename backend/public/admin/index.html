@@ -5858,7 +5858,11 @@ async function renderScheduleOverview(grid) {
   if (!data || !data.items) { grid.innerHTML = '<p class="set-p">'+((data&&data.error)||'Помилка')+'</p>'; return; }
   _schMonthData = data;
   // фільтр за професією + адміністратори завжди суцільним блоком внизу (прохання Босса 04.07)
-  const _isAdm = m => /адмі?ністратор|admin/i.test(m.specialty||'');
+  // #160: група людини = ЇЇ РОЛЬ у картці, а не слово в назві посади. Раніше тут стояла
+  // перевірка тексту спеціальності — тому перукар із «адмін» у посаді падав у блок
+  // адміністрації, а адміністратор без цього слова опинявся серед майстрів. Роль тепер
+  // приходить з бекенда готовою (один і той самий вираз для всієї CRM).
+  const _isAdm = m => (m.is_admin === true) || ['admin','owner'].includes(String(m.staff_role||'').toLowerCase());
   const specs = [...new Set(data.items.map(m=>(m.specialty||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'uk'));
   let items = data.items.slice();
   if (window._schSpecFilter) items = items.filter(m=>(m.specialty||'').trim()===window._schSpecFilter);
@@ -5969,7 +5973,8 @@ async function schStaffOpen(){
 function _schStaffRow(m, inSched){
   const av = m.avatar ? `<img src="${m.avatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover">`
                       : `<span class="schb-av" style="background:${_schAvColor(m.name)};width:26px;height:26px;font-size:12px">${(m.name||'?').trim()[0].toUpperCase()}</span>`;
-  const sub = [m.specialty, m.staff_role==='admin' ? 'адміністратор' : null,
+  const _ROLE_SUB = { admin:'адміністратор', owner:'власник' };
+  const sub = [m.specialty, _ROLE_SUB[String(m.staff_role||'').toLowerCase()] || null,
                inSched && m.shift_cnt ? `${m.shift_cnt} ${_plural(m.shift_cnt,'зміна','зміни','змін')} попереду` : null].filter(Boolean).join(' · ');
   return `<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border,#eee)">
       ${av}

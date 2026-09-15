@@ -15,6 +15,9 @@
  */
 'use strict';
 const { buildMonthGrid } = require('./schedule-month');
+// #160: «хто адміністрація» — один вираз на всю систему (lib/staff-role.js),
+// щоб журнал, каса, графік і реєстр команди не рахували це кожен по-своєму.
+const { isAdminSql } = require('./staff-role');
 
 async function dayPlan(pool, date) {
   const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
@@ -36,7 +39,7 @@ async function dayPlan(pool, date) {
   // ТОВАРУ, і його треба бачити ОКРЕМО від майстрів: виконав сам товаром чи його
   // тисячу «перекрила» загальна каса. Загальний план дня при цьому лишається спільним.
   const roles = await pool.query(
-    `SELECT id, (staff_role IN ('admin','owner') OR COALESCE(provides_services,true)=false) AS is_admin
+    `SELECT id, ${isAdminSql('masters')} AS is_admin
        FROM masters WHERE active=true`
   ).catch(() => ({ rows: [] }));
   const adminIds = new Set(roles.rows.filter(r => r.is_admin).map(r => r.id));

@@ -17,6 +17,7 @@ const { requirePerm } = require('../lib/rbac');
 const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
 const { payrollEligibleExpr } = require('../lib/settlement');
+const { isAdminStaff } = require('../lib/staff-role');
 const router = express.Router();
 const pool = getPool();
 
@@ -54,7 +55,9 @@ async function seedZonesIfEmpty() {
     `SELECT id, specialty, staff_role FROM masters WHERE COALESCE(active,true)=true`);
   const byZone = new Map(); // zoneName → [masterId]
   for (const m of masters.rows) {
-    if (String(m.staff_role || '').toLowerCase() === 'admin') continue;
+    // #160: адміністрація = адмін АБО власник, за єдиним правилом. Раніше власник
+    // прослизав у зали як майстер, бо перевірявся лише рядок 'admin'.
+    if (isAdminStaff(m)) continue;
     const zn = specialtyToZone(m.specialty);
     if (!zn) continue;
     if (!byZone.has(zn)) byZone.set(zn, []);

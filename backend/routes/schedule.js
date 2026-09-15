@@ -18,6 +18,7 @@ const { emit: emitEvent } = require('../lib/event-bus');
 // Та сама формула використовується у звірці каси (routes/cashbox.js), тому копіпасти
 // тут бути НЕ повинно: розходження цифр між панелями = баг, який ловили вже двічі.
 const settlement = require('../lib/settlement');
+const { adminLastSql } = require('../lib/staff-role');
 const router = express.Router();
 
 // АУДИТ 26.07: откаты бонусов после сбоя оплаты стояли с .catch(() => {}) — деньги
@@ -108,7 +109,7 @@ router.get('/staff', async (req, res) => {
                      GROUP BY master_id) d ON d.master_id = m.id
         WHERE m.merged_into IS NULL
           AND m.active = true AND COALESCE(m.status,'active') <> 'fired'
-        ORDER BY (m.staff_role = 'admin') ASC, m.name`
+        ORDER BY ${adminLastSql('m')}, m.name`
     );
     const all = r.rows;
     res.json({
