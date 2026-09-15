@@ -68,6 +68,11 @@ textarea.inp{resize:vertical}
 .status{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:12px}
 .status.ok{background:#E0F8EB;color:#0F8E48}
 .status.err{background:#FCE7E8;color:#A8252C}
+.inv-tbl thead th{position:sticky;top:0;z-index:2}
+.inv-tbl tr.inv-counted td{background:#F6FBF8}
+.inv-tbl tr.inv-diff td{background:#FFF8EC}
+.inv-tbl mark{background:#FFE9A8;padding:0 1px;border-radius:3px}
+#inv-toolbar .btn.sm.ghost.active{background:var(--p);color:#fff}
 /* Єдиний каркас: уся навігація — в лівому меню (admin-shell, дзеркало index.html).
    Власний верхній header і горизонтальні вкладки приховані — вони дублювали
    сайдбар та кнопку «Вийти». Перемикання розділів працює через ліве меню (#hash). */
@@ -193,13 +198,13 @@ main { padding:24px 0; }
   <div class="card">
     <h2>Новий акт</h2>
     <div class="row">
-      <select id="inv-scope">
+      <select id="inv-scope" onchange="invScopeChanged()">
         <option value="full">Повна інвентаризація</option>
         <option value="category">По категорії</option>
         <option value="brand">По бренду</option>
       </select>
-      <input id="inv-filter-id" type="number" placeholder="ID категорії/бренду (опц.)" style="width:200px">
-      <input id="inv-notes" placeholder="Коментар">
+      <select id="inv-filter-sel" style="min-width:260px;display:none"><option value="">— оберіть —</option></select>
+      <input id="inv-notes" placeholder="Коментар" style="flex:1;min-width:180px">
       <button class="btn" onclick="createAudit()">Створити акт</button>
     </div>
   </div>
@@ -209,8 +214,16 @@ main { padding:24px 0; }
   </div>
   <div class="card" id="inv-detail-card" style="display:none">
     <h2>Деталі акту <span id="inv-detail-no"></span></h2>
-    <div style="max-height:500px;overflow:auto">
-      <table><thead><tr><th>Товар</th><th>SKU</th><th>Облік</th><th>Факт</th><th>Δ</th><th>Причина</th><th></th></tr></thead><tbody id="inv-items"></tbody></table>
+    <div class="row" id="inv-toolbar" style="margin-bottom:10px">
+      <input id="inv-search" placeholder="Пошук товару за назвою або SKU…" style="flex:1;min-width:280px" oninput="invSearchChanged()" autocomplete="off">
+      <button class="btn sm ghost active" data-invf="all" onclick="invSetMode('all')">Усі</button>
+      <button class="btn sm ghost" data-invf="todo" onclick="invSetMode('todo')">Не підраховані</button>
+      <button class="btn sm ghost" data-invf="done" onclick="invSetMode('done')">Підраховані</button>
+      <button class="btn sm ghost" data-invf="diff" onclick="invSetMode('diff')">З розбіжністю</button>
+    </div>
+    <div id="inv-count" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+    <div style="max-height:560px;overflow:auto">
+      <table class="inv-tbl"><thead><tr><th>Товар</th><th>SKU</th><th>Облік</th><th>Факт</th><th>Δ</th><th>Причина</th><th></th></tr></thead><tbody id="inv-items"></tbody></table>
     </div>
     <div class="row" style="margin-top:14px">
       <button class="btn" onclick="completeAudit()">Закрити акт + застосувати корективи</button>
@@ -684,6 +697,103 @@ async function loadReports(){
 }
 
 // ─────── INVENTORY ───────
+// Нотатка #151: акт містить 1100+ позицій, вести його без пошуку неможливо.
+// Тримаємо позиції в пам'яті, малюємо через фільтр (пошук + режим), а факт зберігаємо
+// ТОЧКОВО — без перемальовування всієї таблиці, щоб не злітали пошук, фокус і прокрутка.
+let INV_ITEMS = [], INV_MODE = 'all', INV_Q = '', INV_LIMIT = 300, INV_SCOPES = null, _invTimer = null;
+
+function invNorm(v){ return (v==null?'':String(v)).toLowerCase().trim(); }
+function invEsc(v){ return (v==null?'':String(v)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function invNum(v){ const n=Number(v); return Number.isFinite(n) ? String(+n.toFixed(3)) : (v==null?'':String(v)); }
+function invWords(){ return invNorm(INV_Q).split(/\s+/).filter(Boolean); }
+function invDiff(it){ return it.actual_qty==null ? null : (Number(it.actual_qty) - Number(it.expected_qty)); }
+
+// підсвічування знайденого тексту (екранування зберігається)
+function invHi(text, words){
+  const raw = text==null ? '' : String(text);
+  if(!words.length || !raw) return invEsc(raw);
+  const low = raw.toLowerCase(); const hits = [];
+  for(const w of words){ let i = low.indexOf(w); while(i !== -1){ hits.push([i, i+w.length]); i = low.indexOf(w, i+w.length); } }
+  if(!hits.length) return invEsc(raw);
+  hits.sort((a,b)=>a[0]-b[0]);
+  const merged = [];
+  for(const h of hits){ const last = merged[merged.length-1]; if(last && h[0] <= last[1]) last[1] = Math.max(last[1], h[1]); else merged.push([h[0], h[1]]); }
+  let out = '', pos = 0;
+  for(const [a,b] of merged){ out += invEsc(raw.slice(pos,a)) + '<mark>' + invEsc(raw.slice(a,b)) + '</mark>'; pos = b; }
+  return out + invEsc(raw.slice(pos));
+}
+
+function invMatch(it, words){
+  if(INV_MODE==='todo' && it.actual_qty!=null) return false;
+  if(INV_MODE==='done' && it.actual_qty==null) return false;
+  if(INV_MODE==='diff' && !(it.actual_qty!=null && invDiff(it)!==0)) return false;
+  if(!words.length) return true;
+  const hay = invNorm(it.product_name)+' '+invNorm(it.sku);
+  return words.every(w=>hay.includes(w));
+}
+
+const INV_REASONS = [['','—'],['damage','пошкодж.'],['theft','крадіжка'],['miscount','пересорт'],['expired','прострочка'],['other','інше']];
+function invRowHtml(it, words){
+  const d = invDiff(it);
+  const cls = it.actual_qty==null ? '' : (d!==0 ? 'inv-diff' : 'inv-counted');
+  const opts = INV_REASONS.map(([v,l])=>`<option value="${v}"${(it.reason||'')===v?' selected':''}>${l}</option>`).join('');
+  return `<tr id="inv-row-${it.id}" class="${cls}">
+      <td>${invHi(it.product_name, words)}</td><td>${invHi(it.sku, words)}</td><td>${invNum(it.expected_qty)}</td>
+      <td><input type="number" step="any" min="0" value="${it.actual_qty==null?'':invNum(it.actual_qty)}" data-id="${it.id}" class="inv-actual" style="width:86px" onkeydown="invKey(event,${it.id})"></td>
+      <td class="inv-delta">${d==null?'—':(d>0?'+':'')+invNum(d)}</td>
+      <td><select class="inv-reason" data-id="${it.id}" style="width:130px">${opts}</select></td>
+      <td><button class="btn sm" onclick="saveItem(${it.id})">Зберегти</button></td>
+    </tr>`;
+}
+
+function renderInvItems(){
+  const words = invWords();
+  const vis = INV_ITEMS.filter(it=>invMatch(it, words));
+  const shown = vis.slice(0, INV_LIMIT);
+  const body = document.getElementById('inv-items');
+  body.innerHTML = shown.length
+    ? shown.map(it=>invRowHtml(it, words)).join('') + (vis.length > shown.length
+        ? `<tr><td colspan="7" class="empty">Показано ${shown.length} з ${vis.length}. <a class="lnk" onclick="invShowAll()">Показати всі</a> або уточніть пошук.</td></tr>` : '')
+    : `<tr><td colspan="7" class="empty">${INV_ITEMS.length ? 'Нічого не знайдено — змініть запит або фільтр' : 'Позицій немає'}</td></tr>`;
+  invUpdateCounter(vis.length);
+}
+function invShowAll(){ INV_LIMIT = Infinity; renderInvItems(); }
+
+function invUpdateCounter(found){
+  const el = document.getElementById('inv-count'); if(!el) return;
+  const total = INV_ITEMS.length;
+  const done = INV_ITEMS.filter(it=>it.actual_qty!=null).length;
+  const diffs = INV_ITEMS.filter(it=>it.actual_qty!=null && invDiff(it)!==0).length;
+  if(found==null) found = INV_ITEMS.filter(it=>invMatch(it, invWords())).length;
+  el.innerHTML = `Знайдено <b>${found}</b> з ${total} · підраховано ${done} · залишилось ${total-done} · розбіжностей ${diffs}`;
+}
+
+function invSearchChanged(){
+  clearTimeout(_invTimer);
+  _invTimer = setTimeout(()=>{
+    INV_Q = document.getElementById('inv-search').value || '';
+    INV_LIMIT = 300;
+    renderInvItems();
+  }, 150);
+}
+function invSetMode(m){
+  INV_MODE = m; INV_LIMIT = 300;
+  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('active', b.dataset.invf===m));
+  renderInvItems();
+}
+// Enter у полі кількості = зберегти і перейти до наступного товару
+function invKey(e, id){
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  saveItem(id).then(ok=>{
+    if(!ok) return;
+    const all = Array.from(document.querySelectorAll('.inv-actual'));
+    const i = all.findIndex(x=>+x.dataset.id === id);
+    const next = all[i+1];
+    if(next){ next.focus(); next.select(); }
+  });
+}
+
 async function loadInventory(){
   try{
     const r = await api('/api/inventory/audits');
@@ -691,36 +801,71 @@ async function loadInventory(){
       r.items.map(a=>`<tr><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ghost" onclick="openAudit(${a.id})">Відкр.</button></td></tr>`).join('') :
       '<tr><td colspan="8" class="empty">Актів немає</td></tr>';
   }catch(e){ alert(e.message); }
+  invLoadScopes();
 }
+
+// довідники категорій/брендів для форми нового акту
+async function invLoadScopes(){
+  if(INV_SCOPES) return INV_SCOPES;
+  try{ INV_SCOPES = await api('/api/inventory/scopes'); }catch(e){ INV_SCOPES = {categories:[],brands:[]}; }
+  invScopeChanged();
+  return INV_SCOPES;
+}
+function invScopeChanged(){
+  const scope = document.getElementById('inv-scope').value;
+  const sel = document.getElementById('inv-filter-sel');
+  if(!sel) return;
+  if(scope !== 'category' && scope !== 'brand'){ sel.style.display='none'; sel.innerHTML='<option value="">— оберіть —</option>'; return; }
+  const list = (INV_SCOPES && (scope==='category' ? INV_SCOPES.categories : INV_SCOPES.brands)) || [];
+  sel.style.display = '';
+  sel.innerHTML = `<option value="">${list.length ? (scope==='category'?'— оберіть категорію —':'— оберіть бренд —') : 'завантаження…'}</option>`
+    + list.map(o=>`<option value="${invEsc(o.id)}">${invEsc(o.name)} (${o.items})</option>`).join('');
+  if(!INV_SCOPES) invLoadScopes();
+}
+
 async function createAudit(){
   const scope = document.getElementById('inv-scope').value;
-  const fid = document.getElementById('inv-filter-id').value;
+  const fid = (document.getElementById('inv-filter-sel')||{}).value || '';
   const notes = document.getElementById('inv-notes').value;
   const body = { scope, notes };
-  if(scope==='category' && fid) body.scope_filter = { category_id: +fid };
-  if(scope==='brand' && fid) body.scope_filter = { brand_id: +fid };
+  if(scope==='category'){ if(!fid) return alert('Оберіть категорію'); body.scope_filter = { category_id: fid }; }
+  if(scope==='brand'){ if(!fid) return alert('Оберіть бренд'); body.scope_filter = { brand_id: fid }; }
   try{ const r = await api('/api/inventory/audits',{method:'POST',body:JSON.stringify(body)}); alert('Акт #'+r.audit_id+' створений. Позицій: '+r.items); loadInventory(); openAudit(r.audit_id); }catch(e){ alert(e.message); }
 }
+
 async function openAudit(id){
   CURRENT_AUDIT = id;
   const r = await api('/api/inventory/audits/'+id);
+  INV_ITEMS = r.items || []; INV_MODE = 'all'; INV_Q = ''; INV_LIMIT = 300;
+  const box = document.getElementById('inv-search'); if(box) box.value = '';
+  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('active', b.dataset.invf==='all'));
   document.getElementById('inv-detail-card').style.display='block';
   document.getElementById('inv-detail-no').textContent = '#'+id+' ('+r.audit.status+')';
-  document.getElementById('inv-items').innerHTML = r.items.map(it=>`
-    <tr>
-      <td>${it.product_name||''}</td><td>${it.sku||''}</td><td>${it.expected_qty}</td>
-      <td><input type="number" value="${it.actual_qty??''}" data-id="${it.id}" class="inv-actual" style="width:80px"></td>
-      <td>${it.actual_qty!=null?(it.actual_qty-it.expected_qty):'—'}</td>
-      <td><select class="inv-reason" data-id="${it.id}" style="width:120px"><option value="">—</option><option value="damage">пошкодж.</option><option value="theft">крадіжка</option><option value="miscount">пересорт</option><option value="expired">прострочка</option><option value="other">інше</option></select></td>
-      <td><button class="btn sm" onclick="saveItem(${it.id})">Зберегти</button></td>
-    </tr>`).join('');
+  renderInvItems();
 }
+
 async function saveItem(id){
-  const actual = document.querySelector(`.inv-actual[data-id="${id}"]`).value;
-  const reason = document.querySelector(`.inv-reason[data-id="${id}"]`).value;
-  if(actual==='') return alert('Введіть фактичну кількість');
-  try{ await api('/api/inventory/items/'+id,{method:'PATCH',body:JSON.stringify({actual_qty:+actual, reason})}); openAudit(CURRENT_AUDIT); }catch(e){ alert(e.message); }
+  const inp = document.querySelector(`.inv-actual[data-id="${id}"]`);
+  const sel = document.querySelector(`.inv-reason[data-id="${id}"]`);
+  const actual = inp ? inp.value : '';
+  const reason = sel ? sel.value : '';
+  if(actual==='') { alert('Введіть фактичну кількість'); return false; }
+  try{
+    await api('/api/inventory/items/'+id,{method:'PATCH',body:JSON.stringify({actual_qty:+actual, reason})});
+    const it = INV_ITEMS.find(x=>+x.id === +id);
+    if(it){ it.actual_qty = +actual; it.reason = reason; }
+    const row = document.getElementById('inv-row-'+id);
+    if(row && it){
+      const d = invDiff(it);
+      row.className = d!==0 ? 'inv-diff' : 'inv-counted';
+      const cell = row.querySelector('.inv-delta');
+      if(cell) cell.textContent = d==null ? '—' : (d>0?'+':'')+invNum(d);
+    }
+    invUpdateCounter();
+    return true;
+  }catch(e){ alert(e.message); return false; }
 }
+
 async function completeAudit(){
   if(!confirm('Закрити акт і застосувати корективи до залишків?')) return;
   try{ const r = await api('/api/inventory/audits/'+CURRENT_AUDIT+'/complete',{method:'POST',body:'{}'}); alert('Закрито. Скориговано '+r.adjusted+' позицій. Сума: '+(+r.total_diff).toFixed(2)+' ₴'); loadInventory(); document.getElementById('inv-detail-card').style.display='none'; }catch(e){ alert(e.message); }

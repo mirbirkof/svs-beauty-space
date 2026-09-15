@@ -27,10 +27,10 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
     const params = [];
     if (scopeVal === 'category' && scope_filter?.category_id) {
       params.push(scope_filter.category_id);
-      where = `p.category_id = $${params.length}`;
+      where = `p.category_id = $${params.length}::text`;
     } else if (scopeVal === 'brand' && scope_filter?.brand_id) {
       params.push(scope_filter.brand_id);
-      where = `p.brand_id = $${params.length}`;
+      where = `p.brand_id = $${params.length}::text`;
     } else if (scopeVal === 'spot' && Array.isArray(scope_filter?.variant_ids)) {
       params.push(scope_filter.variant_ids);
       where = `v.id = ANY($${params.length}::int[])`;
@@ -64,6 +64,34 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
     await client.query('ROLLBACK');
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   } finally { client.release(); }
+});
+
+// GET /api/inventory/scopes — довідники для форми нового акту.
+// ПРИЧИНА: category_id/brand_id у БД — ТЕКСТОВІ коди ('coloring', 'raywell'),
+// а форма просила ввести числовий ID → акт «по категорії/бренду» не збирався ніколи.
+// Віддаємо готові списки з кількістю позицій, щоб обирати мишкою, а не вгадувати.
+router.get('/scopes', requirePerm('stock.read'), async (req, res) => {
+  try {
+    const cats = await pool.query(
+      `SELECT c.id::text AS id, c.name, COUNT(v.id)::int AS items
+         FROM categories c
+         JOIN products p ON p.category_id = c.id
+         JOIN product_variants v ON v.product_id = p.id
+        GROUP BY c.id, c.name
+       HAVING COUNT(v.id) > 0
+        ORDER BY c.name`
+    );
+    const brands = await pool.query(
+      `SELECT b.id::text AS id, b.name, COUNT(v.id)::int AS items
+         FROM brands b
+         JOIN products p ON p.brand_id = b.id
+         JOIN product_variants v ON v.product_id = p.id
+        GROUP BY b.id, b.name
+       HAVING COUNT(v.id) > 0
+        ORDER BY b.name`
+    );
+    res.json({ categories: cats.rows, brands: brands.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // GET /api/inventory/audits — список
