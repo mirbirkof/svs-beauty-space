@@ -29,6 +29,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool, applyTenant } = require('../db-pg');
+const { setWorkingState } = require('../lib/employment'); // єдина операція «працює / не працює» (нотатка #154)
 const { notifyOrderStatus } = require('./telegram-notify');
 const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone');
@@ -1161,12 +1162,11 @@ router.patch('/masters/:id', async (req, res) => {
 
 router.delete('/masters/:id', async (req, res) => {
   try {
-    const r = await getPool().query(
-      // in_schedule=false — деактивований одразу виходить зі складу графіка (нотатка #154)
-      'UPDATE masters SET active=false, in_schedule=false WHERE id=$1 RETURNING id', [parseInt(req.params.id)]
-    );
-    if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
-    res.json({ ok: true, deactivated: r.rows[0].id });
+    // Та сама спільна операція, що й кнопка «Звільнити» (нотатка #154): деактивований
+    // одразу виходить зі складу графіка, а його майбутні зміни знімаються.
+    const st = await setWorkingState(getPool(), parseInt(req.params.id), false);
+    if (!st) return res.status(404).json({ error: 'not-found' });
+    res.json({ ok: true, deactivated: st.id, cleared_shifts: st.shifts_cleared });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

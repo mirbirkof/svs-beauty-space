@@ -8,6 +8,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { normalizePhoneDb } = require('../lib/phone'); // канон 380... (міграція 200)
+const { setWorkingState } = require('../lib/employment'); // єдина операція звільнення (нотатка #154)
 
 const router = express.Router();
 const pool = getPool();
@@ -224,12 +225,11 @@ router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res)
 // ── ЗВІЛЬНИТИ (soft) ──
 router.delete('/:id(\\d+)', async (req, res) => {
   try {
-    // in_schedule=false — звільнений МИТТЄВО зникає з графіка роботи (нотатка #154).
-    // Раніше графік вираховував склад сам і міг показувати людину далі.
-    const r = await q(`UPDATE masters SET status='fired', fire_date=CURRENT_DATE, active=false,
-                              in_schedule=false, updated_at=NOW()
-       WHERE id=$1 RETURNING id`, [+req.params.id]);
-    if (!r[0]) return res.status(404).json({ error: 'not found' });
+    // Одна спільна операція звільнення для всіх кнопок системи (нотатка #154):
+    // прибрати з команди + зі складу графіка + зняти МАЙБУТНІ зміни, інакше
+    // онлайн-запис далі віддає години звільненого.
+    const st = await setWorkingState(getPool(), +req.params.id, false, { fired: true });
+    if (!st) return res.status(404).json({ error: 'not found' });
     await q(`INSERT INTO employee_history (employee_id, event_type, details, initiated_by)
              VALUES ($1,'fired',$2,$3)`, [+req.params.id, JSON.stringify({ reason: req.body?.reason || null }), req.user?.display_name || null]).catch(()=>{});
     logAction({ user: req.user, action: 'employee.fire', entity: 'master', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
