@@ -1,11 +1,75 @@
 /* schedule-month.js — єдине джерело правди для місячної сітки графіків.
    Використовується і у GET /api/schedule/month (візуальна сітка), і у
-   GET /api/reports/monthly-plan (кількість змін для плану обороту).
-   Раніше ці два місця рахували зміни по-різному: сітка розгортала тижневий
-   шаблон (18 днів), а план рахував сирі рядки master_schedule_days (11) →
-   розбіжність. Тепер обидва викликають buildMonthGrid → числа завжди збігаються. */
+   GET /api/reports/monthly-plan (кількість змін для плану обороту), і у
+   розрахунку ЗП за фікс/день, і у utilization.
+   Раніше ці місця рахували зміни по-різному → цифри розходились. Тепер усі
+   викликають buildMonthGrid → числа завжди збігаються.
+
+   Нотатка #150 (Власник): «генерація графіків на місяці вперед псує і минулі
+   графіки, додає непрацюючих співробітників і декого дублює». Три корені:
+   1) Тижневий шаблон рахувався по вікну [сьогодні-7 .. сьогодні+35]. Щойно
+      згенеровані МАЙБУТНІ зміни потрапляли у це вікно і ставали «історією»,
+      якою потім домальовувались МИНУЛІ місяці → минуле перемальовувалось під
+      новий графік. Тепер вікно історії — тільки минуле [сьогодні-56 .. сьогодні].
+   2) Минулі дні домальовувались шаблоном/патерном. Минуле не прогнозують:
+      тепер минулий день = факт (явний запис у графіку або реальні візити),
+      без домальовування шаблоном.
+   3) У сітку потрапляли рядки-облікові записи персоналу (створені під логін),
+      які дублюють живого співробітника з тим самим імʼям. Тепер список
+      співробітників графіка — одна функція listScheduleStaff() з дедуплікацією,
+      і генератор графіків пише зміни ТІЛЬКИ цим людям. */
 
 const DAYK = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+// Сьогоднішня дата салону (Київ) у форматі YYYY-MM-DD. Порівнюємо дати рядками.
+function kyivToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
+}
+
+const nameKey = (n) => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/* Єдиний список співробітників, які мають бути у графіку роботи.
+   Беремо активних, хто надає послуги, або адміністраторів (адміни у графіку — прохання
+   Босса 04.07, вони теж виходять на зміни). Далі прибираємо дублі.
+
+   Дубль = рядок з ТИМ САМИМ імʼям, у якого немає жодної ознаки реальної роботи:
+   ні візитів, ні графіка із зовнішнього джерела (стара CRM), ні legacy_ref.
+   Це рівно ті рядки, що зʼявляються при заведенні логіна співробітнику, коли
+   людина вже є у базі. Прибираємо лише коли в групі є «сильний» рядок —
+   двох різних живих майстрів з однаковим імʼям НЕ чіпаємо.
+   Нічого не видаляємо з бази: рядок просто не бере участі у графіку. */
+async function listScheduleStaff(pool) {
+  const rows = (await pool.query(
+    `SELECT m.id, m.name, m.specialty, m.avatar, m.schedule_json, m.legacy_ref, m.staff_role,
+            COALESCE(m.provides_services, true) AS provides_services,
+            COALESCE(a.cnt, 0)::int AS appt_cnt,
+            COALESCE(d.cnt, 0)::int AS ext_cnt
+       FROM masters m
+       LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM appointments
+                   WHERE master_id IS NOT NULL GROUP BY master_id) a ON a.master_id = m.id
+       LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM master_schedule_days
+                   WHERE source IS DISTINCT FROM 'manual' GROUP BY master_id) d ON d.master_id = m.id
+      WHERE m.active = true
+        AND (COALESCE(m.provides_services, true) = true OR m.staff_role = 'admin')
+      ORDER BY (m.staff_role = 'admin') ASC, m.name`
+  )).rows;
+
+  const isWeak = (r) => !r.appt_cnt && !r.ext_cnt && !r.legacy_ref;
+  const groups = new Map();
+  for (const r of rows) {
+    const k = nameKey(r.name);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const dropped = [];
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    if (!g.some((r) => !isWeak(r))) continue; // усі однаково «порожні» — не вгадуємо
+    for (const r of g) if (isWeak(r)) dropped.push(r.id);
+  }
+  const drop = new Set(dropped);
+  return { staff: rows.filter((r) => !drop.has(r.id)), duplicates: dropped };
+}
 
 // Повертає { ym, daysInMonth, dates:[...], items:[{ id,name,specialty,avatar, days:[{date,off,start,end,source}] }] }
 async function buildMonthGrid(pool, ym) {
@@ -14,14 +78,11 @@ async function buildMonthGrid(pool, ym) {
   const daysInMonth = new Date(Y, M, 0).getDate();
   const first = `${ym}-01`;
   const last = `${ym}-${String(daysInMonth).padStart(2, '0')}`;
+  const today = kyivToday();
   const dates = [];
   for (let d = 1; d <= daysInMonth; d++) dates.push(`${ym}-${String(d).padStart(2, '0')}`);
 
-  const mrows = (await pool.query(
-    `SELECT id, name, specialty, avatar, schedule_json FROM masters
-      WHERE active = true AND (COALESCE(provides_services, true) = true OR staff_role = 'admin')
-      ORDER BY (staff_role='admin') ASC, name`
-  )).rows;
+  const { staff: mrows } = await listScheduleStaff(pool);
 
   // Явні per-day записи цього місяця (найвищий пріоритет: ручні + з стара CRM)
   const expl = await pool.query(
@@ -36,12 +97,33 @@ async function buildMonthGrid(pool, ym) {
     explMap.get(row.master_id)[row.d] = { start: row.start, end: row.end, off: row.off, source: row.source };
   }
 
-  // Тижневий шаблон: історична агрегація (найчастіший слот per день тижня) > template > auto(записи)
+  // ФАКТ минулих днів: день, у який майстер реально приймав клієнтів, вважається
+  // робочим навіть якщо явного запису у графіку немає. Години — від першого запису
+  // до кінця останнього. Це факт, а не прогноз, тому минуле ним заповнювати чесно.
+  const factRes = await pool.query(
+    `SELECT master_id,
+            to_char((starts_at AT TIME ZONE 'Europe/Kyiv')::date,'YYYY-MM-DD') AS d,
+            to_char(MIN((starts_at AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS start,
+            to_char(MAX((COALESCE(ends_at, starts_at + interval '1 hour') AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS end
+       FROM appointments
+      WHERE starts_at >= ($1::date - 1) AND starts_at < ($2::date + 2)
+        AND master_id IS NOT NULL AND COALESCE(status,'') NOT IN ('cancelled','noshow')
+      GROUP BY 1, 2`, [first, last]);
+  const factMap = new Map();
+  for (const row of factRes.rows) {
+    if (!factMap.has(row.master_id)) factMap.set(row.master_id, {});
+    factMap.get(row.master_id)[row.d] = { start: row.start, end: row.end };
+  }
+
+  // Тижневий шаблон для СЬОГОДНІ і МАЙБУТНЬОГО: історична агрегація (найчастіший слот
+  // per день тижня) > template > auto(реальні візити).
+  // Вікно історії — ТІЛЬКИ минуле. Раніше було [-7..+35]: свіжозгенеровані майбутні
+  // зміни ставали «історією» і перемальовували минулі місяці (нотатка #150).
   const bp = await pool.query(
     `SELECT master_id, EXTRACT(DOW FROM work_date)::int AS dow,
             to_char(start_time,'HH24:MI') AS start, to_char(end_time,'HH24:MI') AS end
        FROM master_schedule_days
-      WHERE work_date BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 35 AND start_time IS NOT NULL`);
+      WHERE work_date BETWEEN CURRENT_DATE - 56 AND CURRENT_DATE AND start_time IS NOT NULL`);
   const agg = new Map();
   for (const row of bp.rows) {
     if (!agg.has(row.master_id)) agg.set(row.master_id, {});
@@ -53,7 +135,7 @@ async function buildMonthGrid(pool, ym) {
             to_char(MIN((starts_at AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS start,
             to_char(MAX((COALESCE(ends_at, starts_at + interval '1 hour') AT TIME ZONE 'Europe/Kyiv')::time),'HH24:MI') AS end
        FROM appointments
-      WHERE starts_at >= CURRENT_DATE - 56 AND starts_at < CURRENT_DATE + 35
+      WHERE starts_at >= CURRENT_DATE - 56 AND starts_at < CURRENT_DATE + 1
         AND master_id IS NOT NULL AND COALESCE(status,'') NOT IN ('cancelled','noshow')
       GROUP BY master_id, dow HAVING COUNT(DISTINCT (starts_at AT TIME ZONE 'Europe/Kyiv')::date) >= 2`);
   const real = new Map();
@@ -79,12 +161,20 @@ async function buildMonthGrid(pool, ym) {
     const week = weekFor(m);
     const ex = (m.schedule_json && m.schedule_json.exceptions) || {};
     const eMap = explMap.get(m.id) || {};
+    const fMap = factMap.get(m.id) || {};
     const days = dates.map((dt) => {
       if (eMap[dt]) {
         const rr = eMap[dt];
         return rr.off ? { date: dt, off: true, source: rr.source } : { date: dt, start: rr.start, end: rr.end, off: false, source: rr.source };
       }
       if (ex[dt] && ex[dt].off) return { date: dt, off: true, source: 'exception' };
+      // Минулий день без явного запису — тільки факт візитів. Шаблоном не домальовуємо:
+      // інакше зміна графіка на майбутнє заднім числом «переписує» минуле (нотатка #150).
+      if (dt < today) {
+        const f = fMap[dt];
+        return f ? { date: dt, start: f.start, end: f.end, off: false, source: 'fact' }
+                 : { date: dt, off: true, source: 'fact' };
+      }
       const dow = new Date(dt + 'T00:00:00Z').getUTCDay();
       const wk = week[DAYK[dow]];
       if (wk) return { date: dt, start: wk.start, end: wk.end, off: false, source: wk.source };
@@ -161,4 +251,4 @@ async function shiftStatsByMasterInRange(pool, from, to) {
   return out;
 }
 
-module.exports = { buildMonthGrid, shiftDaysByMaster, shiftDaysForMasterInRange, shiftStatsByMasterInRange, DAYK };
+module.exports = { buildMonthGrid, shiftDaysByMaster, shiftDaysForMasterInRange, shiftStatsByMasterInRange, listScheduleStaff, kyivToday, DAYK };

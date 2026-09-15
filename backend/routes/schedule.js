@@ -5,7 +5,7 @@ const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
 const { getSetting, maskPhone, shouldMaskPhones } = require('../lib/settings');
 const hub = require('../lib/notification-hub');
-const { buildMonthGrid } = require('../lib/schedule-month');
+const { buildMonthGrid, listScheduleStaff, kyivToday } = require('../lib/schedule-month');
 const { findOverlap, wouldExceedParallel } = require('../lib/booking-guard');
 const { normalizePhoneDb } = require('../lib/phone');
 const { emit: emitEvent } = require('../lib/event-bus');
@@ -449,12 +449,16 @@ router.post('/apply-pattern-batch', async (req, res) => {
       return res.status(400).json({ error: 'bad-time' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor || '')) return res.status(400).json({ error: 'anchor YYYY-MM-DD required' });
 
-    // список майстрів
+    // Список майстрів — ТІЛЬКИ ті, хто є у графіку роботи (та сама функція, що будує сітку).
+    // Нотатка #150: раніше тут був окремий фільтр, і генератор проставляв зміни рядкам-
+    // обліковкам персоналу (дублі живих людей) → у графіку зʼявлялись «непрацюючі» і дублі.
+    const { staff, duplicates } = await listScheduleStaff(pool);
+    const allowed = new Set(staff.map(r => r.id));
     let ids = master_ids;
-    if (ids === 'all' || !Array.isArray(ids) || !ids.length) {
-      const m = await pool.query(`SELECT id FROM masters WHERE active IS NOT FALSE AND COALESCE(online_booking_enabled,true) IS NOT FALSE`);
-      ids = m.rows.map(r => r.id);
-    } else ids = ids.map(Number).filter(Boolean);
+    if (ids === 'all' || !Array.isArray(ids) || !ids.length) ids = [...allowed];
+    else ids = ids.map(Number).filter(Boolean);
+    const skippedStaff = ids.filter(id => !allowed.has(id));
+    ids = ids.filter(id => allowed.has(id));
     if (!ids.length) return res.status(400).json({ error: 'no-masters' });
 
     // місяці від поточного (або from_ym) на months_ahead уперед
@@ -469,6 +473,10 @@ router.post('/apply-pattern-batch', async (req, res) => {
     // B7 (аудит v8): раніше — 3 вкладені цикли з pool.query на КОЖЕН день
     // (24 майстри × 12 міс × 31 день ≈ 18 600 роундтрипів, пул блокувався на хвилини).
     // Тепер: рахуємо все в памʼяті і пишемо пачками unnest по 5000 рядків.
+    // Минулі дні генератор НЕ чіпає: вони вже відпрацьовані, переписувати їх схемою
+    // = псувати історію (і зарплату за зміни). Нотатка #150.
+    const todayStr = kyivToday();
+    let skippedPast = 0;
     const bMid = [], bDate = [], bStart = [], bEnd = [];
     for (const mid of ids) {
       for (let mo = 0; mo < months_ahead; mo++) {
@@ -478,6 +486,7 @@ router.post('/apply-pattern-batch', async (req, res) => {
         for (let d = 1; d <= daysInMonth; d++) {
           const cur = new Date(Date.UTC(Y, M - 1, d));
           const iso = cur.toISOString().slice(0, 10);
+          if (iso < todayStr) { skippedPast++; continue; }
           let idx = Math.round((cur - anchorD) / dayMs) % cycle; if (idx < 0) idx += cycle;
           const isWork = idx < work_days;
           bMid.push(mid); bDate.push(iso);
@@ -497,7 +506,10 @@ router.post('/apply-pattern-batch', async (req, res) => {
            SET start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, source='manual', synced_at=NOW()`,
         [bMid.slice(i, i + CHUNK), bDate.slice(i, i + CHUNK), bStart.slice(i, i + CHUNK), bEnd.slice(i, i + CHUNK)]);
     }
-    res.json({ ok: true, masters: mastersDone, months: months_ahead, work_days: totalWork, off_days: totalOff });
+    res.json({
+      ok: true, masters: mastersDone, months: months_ahead, work_days: totalWork, off_days: totalOff,
+      skipped_past: skippedPast, skipped_staff: skippedStaff.length, duplicates_ignored: duplicates.length,
+    });
   } catch (e) { console.error('[schedule/batch]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
@@ -525,10 +537,13 @@ router.post('/apply-pattern', async (req, res) => {
     const anchorD = new Date(anchor + 'T00:00:00Z');
     const dayMs = 86400000;
     const daysInMonth = new Date(Date.UTC(Y, M, 0)).getUTCDate();
-    let workCount = 0, offCount = 0, skipped = 0;
+    const todayStr = kyivToday();
+    let workCount = 0, offCount = 0, skipped = 0, skippedPast = 0;
     for (let d = 1; d <= daysInMonth; d++) {
       const cur = new Date(Date.UTC(Y, M - 1, d));
       const iso = cur.toISOString().slice(0, 10);
+      // минулі дні не переписуємо схемою (нотатка #150)
+      if (iso < todayStr) { skippedPast++; continue; }
       let idx = Math.round((cur - anchorD) / dayMs) % cycle;
       if (idx < 0) idx += cycle;
       const isWork = idx < work_days;
@@ -550,7 +565,7 @@ router.post('/apply-pattern', async (req, res) => {
         offCount++;
       } else { skipped++; }
     }
-    res.json({ ok: true, work_days: workCount, off_days: offCount, skipped, days_total: daysInMonth });
+    res.json({ ok: true, work_days: workCount, off_days: offCount, skipped, skipped_past: skippedPast, days_total: daysInMonth });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
