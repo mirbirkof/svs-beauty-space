@@ -136,22 +136,37 @@ router.post('/staff', async (req, res) => {
 
     await pool.query(`UPDATE masters SET in_schedule = $2 WHERE id = $1`, [id, include]);
 
-    let leftovers = null;
+    // Прибрали з графіка → знімаємо МАЙБУТНІ зміни. Це і є «щоб усе взаємоповʼязане
+    // підтягнулось»: сітку графіка будує buildMonthGrid (склад = in_schedule), але
+    // онлайн-запис (вільні слоти), «хто на зміні», план дня і звіт власника читають
+    // master_schedule_days НАПРЯМУ. Без цього людина зникала б із сітки, а онлайн-запис
+    // і далі віддавала б її години — цифри й запис розійшлися б.
+    // Нічого не видаляємо: день лишається рядком-вихідним (start_time NULL) — рівно так
+    // графік позначає вихідний. Минуле не чіпаємо: це факт, за ним рахується ЗП.
+    let clearedShifts = 0, leftovers = null;
     if (!include) {
+      const upd = await pool.query(
+        `UPDATE master_schedule_days
+            SET start_time = NULL, end_time = NULL, source = 'manual', synced_at = NOW()
+          WHERE master_id = $1 AND work_date >= $2::date AND start_time IS NOT NULL`,
+        [id, kyivToday()]);
+      clearedShifts = upd.rowCount || 0;
+      // Майбутні записи НЕ чіпаємо — це зобовʼязання перед клієнтами. Показуємо їх кількість,
+      // щоб адміністратор перевів людей на іншого майстра, а не дізнався про це постфактум.
       const l = await pool.query(
-        `SELECT (SELECT COUNT(*) FROM master_schedule_days
-                  WHERE master_id = $1 AND work_date >= CURRENT_DATE AND start_time IS NOT NULL)::int AS shifts,
-                (SELECT COUNT(*) FROM appointments
+        `SELECT (SELECT COUNT(*) FROM appointments
                   WHERE master_id = $1 AND starts_at >= CURRENT_DATE
                     AND COALESCE(status,'') NOT IN ('cancelled','noshow'))::int AS appts`, [id]);
-      leftovers = l.rows[0];
+      leftovers = { shifts_cleared: clearedShifts, appts: l.rows[0].appts };
     }
-    res.json({ ok: true, master_id: id, name: m.name, in_schedule: include, leftovers });
+    res.json({ ok: true, master_id: id, name: m.name, in_schedule: include, cleared_shifts: clearedShifts, leftovers });
   } catch (e) { console.error('[schedule:staff-set]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // ── GET /api/schedule/masters — мастера с расписанием ──
-// ?all=1 — включить уволенных (для управления карточками). По умолчанию только активные.
+// ?all=1 — ВСЯ команда: разом зі звільненими і з тими, хто не надає послуг (адміністрація).
+//          Використовує єдиний реєстр команди (нотатка #155), де рядок = людина.
+// без all — лише ті, хто працює і надає послуги: це джерело для вибору майстра у записі.
 router.get('/masters', async (req, res) => {
   try {
     const pool = getPool();
@@ -159,12 +174,14 @@ router.get('/masters', async (req, res) => {
     const r = await pool.query(
       `SELECT m.id, m.name, m.specialty, m.avatar, m.schedule_json, m.active, m.legacy_ref,
               COALESCE(m.provides_services, true) AS provides_services, m.staff_role,
+              COALESCE(m.in_schedule, false) AS in_schedule,
+              COALESCE(m.status, 'active') AS status, m.phone,
               u.id AS user_id, rr.code AS login_role, rr.name AS login_role_name,
               (u.id IS NOT NULL) AS has_login
          FROM masters m
          LEFT JOIN users u ON u.master_id = m.id AND u.is_active
          LEFT JOIN roles rr ON rr.id = u.role_id
-        WHERE COALESCE(m.provides_services, true) = true ${all ? '' : 'AND m.active = true'}
+        WHERE ${all ? 'TRUE' : 'COALESCE(m.provides_services, true) = true AND m.active = true'}
         ORDER BY m.active DESC, m.name`
     );
     // Типовий тижневий графік: агрегуємо реальні зміни з стара CRM (master_schedule_days)

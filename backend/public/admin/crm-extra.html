@@ -250,8 +250,50 @@ main { padding:24px 0; }
 
 <!-- ═══════════ ПОЛЬЗОВАТЕЛИ ═══════════ -->
 <section id="tab-users" class="tab">
+  <!-- ЄДИНИЙ РЕЄСТР КОМАНДИ (нотатка #155) ─────────────────────────────────
+       Було: та сама людина жила у ДВОХ таблицях на одному екрані («Майстри салону»
+       і «Керування доступом»), а зверху постійно висіла форма створення на пів-екрана.
+       Щоб зрозуміти, чи є в людини доступ, треба було шукати її в другій таблиці очима.
+       Стало: один рядок = одна людина. Доступ, участь у графіку і статус — колонки,
+       а не окремі списки. Створення — у модалці за кнопкою, а не на весь екран. -->
   <div class="card">
-    <h2>Новий співробітник (майстер / адмін)</h2>
+    <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="material-icons-round">groups</span> Команда
+      <span id="tm-count" style="font-size:13px;color:#888;font-weight:400"></span>
+      <button class="btn" style="margin-left:auto" onclick="tmNewOpen()">+ Додати співробітника</button>
+    </h2>
+    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">
+      Один рядок — одна людина. <b>Доступ до CRM</b> потрібен лише тим, хто заходить у систему;
+      майстер працює у графіку і звітах без логіна. <b>У графіку</b> — чи бере участь у сітці графіка
+      й онлайн-записі. Натисніть на імʼя, щоб відкрити картку.
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+      <input id="tm-search" placeholder="Пошук за імʼям, телефоном, спеціальністю" style="width:270px" oninput="tmRender()">
+      <button class="btn ghost sm tm-f active" data-f="all" onclick="tmFilter('all')">Усі</button>
+      <button class="btn ghost sm tm-f" data-f="masters" onclick="tmFilter('masters')">Майстри</button>
+      <button class="btn ghost sm tm-f" data-f="admins" onclick="tmFilter('admins')">Адміністрація</button>
+      <button class="btn ghost sm tm-f" data-f="access" onclick="tmFilter('access')">З доступом у CRM</button>
+      <button class="btn ghost sm tm-f" data-f="fired" onclick="tmFilter('fired')">Звільнені</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Людина</th><th>Роль / спеціальність</th><th>Доступ до CRM</th>
+        <th>У графіку</th><th>Статус</th><th>Дії</th>
+      </tr></thead>
+      <tbody id="tm-list"><tr><td colspan="6" class="empty">Завантаження…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card" id="access-section" style="display:none"><h2>Керування доступом до CRM</h2><table><tbody id="u-list"></tbody></table></div>
+</section>
+
+<!-- модалка «Додати співробітника» (нотатка #155): форма більше не висить над списком -->
+<div id="tmNewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;align-items:center;justify-content:center" onclick="if(event.target===this)tmNewClose()">
+  <div style="background:#fff;border-radius:14px;max-width:640px;width:95vw;max-height:92vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+    <h2 style="margin-top:0">Новий співробітник</h2>
+    <div class="hint" style="font-size:12px;color:#888;margin-bottom:12px">
+      Майстру логін не обовʼязковий: він працює у графіку і звітах без входу в систему.
+      Логін потрібен лише тим, хто заходить в адмінку.
+    </div>
     <div class="row" style="flex-wrap:wrap;gap:8px">
       <input id="u-name" placeholder="Ім'я *" style="width:180px">
       <input id="u-phone" placeholder="Телефон (логін)" style="width:150px">
@@ -273,25 +315,15 @@ main { padding:24px 0; }
         <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#666;white-space:nowrap">Комісія
           <input id="u-commission" type="number" min="0" max="100" value="40" style="width:56px">%</label>
       </span>
+      <input type="hidden" id="u-master-link" value="">
+    </div>
+    <div class="hint" style="font-size:12px;color:#888;margin-top:8px">Пароль: мінімум 6 будь-яких символів. Логін = телефон або поле «Логін».</div>
+    <div class="row" style="gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" onclick="tmNewClose()">Скасувати</button>
       <button class="btn" onclick="createUser()">Створити</button>
     </div>
-    <div class="hint" style="font-size:12px;color:#888;margin-top:6px">Пароль: мінімум 6 будь-яких символів. Логін = телефон або поле «Логін». Для майстра автоматично створюється картка у графіку.</div>
   </div>
-  <div class="card">
-    <h2>Майстри салону <span id="m-count" style="font-size:13px;color:#888;font-weight:400"></span></h2>
-    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Майстри працюють у графіку та звітах без окремого логіна. Логін потрібен лише тим, хто заходить в адмінку. Натисни на ім'я, щоб переглянути картку.</div>
-    <div class="row" style="gap:6px;margin-bottom:8px">
-      <button class="btn ghost sm" id="m-filter-active" onclick="MASTERS_ALL=false;loadMasters()">Працюючі</button>
-      <button class="btn ghost sm" id="m-filter-all" onclick="MASTERS_ALL=true;loadMasters()">Усі (вкл. звільнених)</button>
-    </div>
-    <table><thead><tr><th>Ім'я</th><th>Спеціальність</th><th>Доступ до CRM</th><th>Статус</th><th>Дії</th></tr></thead><tbody id="m-list"></tbody></table>
-  </div>
-  <div class="card" id="access-section">
-    <h2>Керування доступом до CRM</h2>
-    <div class="hint" style="font-size:12px;color:#888;margin:2px 0 10px">Хто може заходити в систему і з якою роллю (власник, адміни, майстри з логіном). Це не окремий список людей — керування паролями/токенами. У майстра логін не обов'язковий: він працює у графіку і звітах без входу.</div>
-    <table><thead><tr><th>Ім'я</th><th>Роль</th><th>Логін/Тел</th><th>Email</th><th>Пароль</th><th>Активний</th><th>Дії</th></tr></thead><tbody id="u-list"></tbody></table>
-  </div>
-</section>
+</div>
 
 <!-- модалка картки майстра/користувача -->
 <div id="cardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeCard()">
@@ -902,26 +934,122 @@ function toggleMasterFields(){
 let MASTERS_ALL=false, USERS_CACHE=[], MASTERS_CACHE=[];
 async function loadMasters(){
   try{
-    const r = await api('/api/schedule/masters'+(MASTERS_ALL?'?all=1':''));
+    // Реєстр завжди тягне ВСІХ (разом зі звільненими) — фільтр «Звільнені» на екрані,
+    // а не окремим запитом: інакше лічильники в фільтрах брехали б.
+    const r = await api('/api/schedule/masters?all=1');
     MASTERS_CACHE = r.items||[];
-    const act = MASTERS_CACHE.filter(m=>m.active).length;
-    document.getElementById('m-count').textContent = `· ${MASTERS_CACHE.length} ${MASTERS_ALL?'усього':'працюючих'}`;
-    document.getElementById('m-filter-active').classList.toggle('active', !MASTERS_ALL);
-    document.getElementById('m-filter-all').classList.toggle('active', MASTERS_ALL);
-    document.getElementById('m-list').innerHTML = MASTERS_CACHE.map(m=>`
-      <tr>
-        <td><a href="#" class="lnk" onclick="openMasterCard(${m.id});return false">${m.name}</a></td>
-        <td>${m.specialty||'<span style="color:#bbb">—</span>'}</td>
-        <td>${m.has_login?`<span class="pill info" title="Заходить в адмінку">${m.login_role_name||m.login_role||'логін'}</span>`:'<span style="color:#bbb" title="Працює у графіку/звітах без входу в систему">без логіна</span>'}</td>
-        <td><span class="pill ${m.active?'ok':'gray'}">${m.active?'працює':'звільнений'}</span></td>
-        <td style="white-space:nowrap">
-          ${m.active
-            ? `<button class="btn sm ghost" onclick="setMasterActive(${m.id},false)">Звільнити</button>`
-            : `<button class="btn sm" onclick="setMasterActive(${m.id},true)">Повернути</button>`}
-        </td>
-      </tr>`).join('') || '<tr><td colspan="5" class="empty">Майстрів немає</td></tr>';
-  }catch(e){ document.getElementById('m-list').innerHTML='<tr><td colspan="5" class="empty">'+e.message+'</td></tr>'; }
+    tmRender();
+  }catch(e){ const b=document.getElementById('tm-list'); if(b) b.innerHTML='<tr><td colspan="6" class="empty">'+e.message+'</td></tr>'; }
 }
+// ── Єдиний реєстр команди (нотатка #155) ────────────────────────────────────
+// Джерела: masters (люди салону) + users (у кого є вхід у CRM). Звʼязок — users.master_id.
+// Користувач без картки майстра (напр. бухгалтер) теж має бути в реєстрі — інакше
+// «десь є людина, якої не видно в команді», рівно та плутанина, на яку скаржився Бос.
+let TM_FILTER='all';
+function tmFilter(f){ TM_FILTER=f; document.querySelectorAll('.tm-f').forEach(b=>b.classList.toggle('active', b.dataset.f===f)); tmRender(); }
+function tmRows(){
+  const byMaster = new Map();
+  (USERS_CACHE||[]).forEach(u=>{ if(u.master_id) byMaster.set(Number(u.master_id), u); });
+  const rows = (MASTERS_CACHE||[]).map(m=>{
+    const u = byMaster.get(Number(m.id)) || null;
+    const fired = m.active===false || m.status==='fired';
+    return {
+      kind:'master', id:m.id, user:u, name:m.name, specialty:m.specialty,
+      avatar:m.avatar, phone:m.phone, fired,
+      in_schedule: m.in_schedule===true,
+      role: u ? (u.role_name||u.role) : (m.staff_role==='admin' ? 'адміністратор' : (m.provides_services===false?'без послуг':'майстер')),
+      isAdmin: m.staff_role==='admin' || m.staff_role==='owner' || m.provides_services===false,
+    };
+  });
+  // користувачі без картки майстра
+  (USERS_CACHE||[]).forEach(u=>{
+    if (u.master_id) return;
+    rows.push({ kind:'user', id:null, user:u, name:u.display_name, specialty:null, avatar:null,
+                phone:u.phone, fired: u.is_active===false, in_schedule:false,
+                role: u.role_name||u.role, isAdmin:true });
+  });
+  return rows;
+}
+function tmRender(){
+  const body=document.getElementById('tm-list'); if(!body) return;
+  const q=(document.getElementById('tm-search')?.value||'').trim().toLowerCase();
+  let rows=tmRows();
+  const all=rows.slice();
+  if(TM_FILTER==='fired') rows=rows.filter(r=>r.fired);
+  else { rows=rows.filter(r=>!r.fired);
+    if(TM_FILTER==='masters') rows=rows.filter(r=>!r.isAdmin);
+    else if(TM_FILTER==='admins') rows=rows.filter(r=>r.isAdmin);
+    else if(TM_FILTER==='access') rows=rows.filter(r=>r.user);
+  }
+  if(q) rows=rows.filter(r=>[r.name,r.specialty,r.phone,r.role,r.user&&r.user.username].filter(Boolean).join(' ').toLowerCase().includes(q));
+  rows.sort((a,b)=> (a.isAdmin-b.isAdmin) || String(a.name||'').localeCompare(String(b.name||''),'uk'));
+
+  const cnt=document.getElementById('tm-count');
+  if(cnt){ const work=all.filter(r=>!r.fired).length, sched=all.filter(r=>r.in_schedule).length, acc=all.filter(r=>r.user&&!r.fired).length;
+    cnt.textContent=`· ${work} працюючих · ${sched} у графіку · ${acc} з доступом`; }
+
+  body.innerHTML = rows.map(r=>{
+    const av = r.avatar ? `<img src="${r.avatar}" style="width:28px;height:28px;border-radius:9px;object-fit:cover;vertical-align:middle;margin-right:7px">`
+      : `<span style="display:inline-flex;width:28px;height:28px;border-radius:9px;margin-right:7px;vertical-align:middle;background:linear-gradient(135deg,#7c5cff,#b18cff);color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:700">${(r.name||'?').trim()[0].toUpperCase()}</span>`;
+    const nameCell = r.id
+      ? `${av}<a href="#" class="lnk" onclick="openMasterCard(${r.id});return false">${r.name||''}</a>`
+      : `${av}<a href="#" class="lnk" onclick="openUserCard(${r.user.id});return false">${r.name||''}</a>`;
+    const access = r.user
+      ? `<span class="pill info" title="Заходить у CRM">${r.user.role_name||r.user.role||'логін'}</span>`
+        + (r.user.is_active===false?' <span class="pill gray" title="Вхід вимкнено">вимкнено</span>':'')
+      : '<span style="color:#bbb" title="Працює без входу в систему">немає</span>';
+    const sched = r.kind!=='master' ? '<span style="color:#bbb">—</span>'
+      : (r.fired ? '<span style="color:#bbb">—</span>'
+        : `<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px">
+             <input type="checkbox" ${r.in_schedule?'checked':''} onchange="tmSetSchedule(${r.id},this.checked,'${String(r.name||'').replace(/'/g,'&#39;')}')">
+             ${r.in_schedule?'так':'ні'}</label>`);
+    const acts = [];
+    if (r.kind==='master') acts.push(r.fired
+      ? `<button class="btn sm" onclick="setMasterActive(${r.id},true)">Повернути</button>`
+      : `<button class="btn sm ghost" onclick="setMasterActive(${r.id},false)">Звільнити</button>`);
+    if (r.user) {
+      acts.push(`<button class="btn sm" title="Змінити пароль входу" onclick="setPassword(${r.user.id})">Пароль</button>`);
+      acts.push(`<button class="btn sm" title="Одноразове посилання для входу" onclick="issueToken(${r.user.id})">Token</button>`);
+      acts.push(r.user.is_active===false
+        ? `<button class="btn sm" style="background:#dcfce7;color:#16a34a" title="Повернути доступ" onclick="reactivateUser(${r.user.id})">✓ Доступ</button>`
+        : `<button class="btn sm ghost" title="Забрати доступ (людина лишається в команді)" onclick="deactivateUser(${r.user.id})">✕ Доступ</button>`);
+    } else if (r.kind==='master' && !r.fired) {
+      acts.push(`<button class="btn sm ghost" title="Створити логін для входу в CRM" onclick="tmNewOpen(${r.id})">Дати доступ</button>`);
+    }
+    return `<tr${r.fired?' style="opacity:.6"':''}>
+      <td style="white-space:nowrap">${nameCell}</td>
+      <td>${r.specialty||r.role||'<span style="color:#bbb">—</span>'}</td>
+      <td>${access}</td>
+      <td>${sched}</td>
+      <td><span class="pill ${r.fired?'gray':'ok'}">${r.fired?'звільнений':'працює'}</span></td>
+      <td style="white-space:nowrap">${acts.join(' ')}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">Нікого не знайдено</td></tr>';
+}
+// Перемикач участі у графіку прямо з реєстру — та сама точка правди, що й
+// «Персонал графіка» в розділі «Графік роботи» (нотатка #153).
+async function tmSetSchedule(id, include, name){
+  try{
+    const r = await api('/api/schedule/staff',{method:'POST',body:JSON.stringify({master_id:id, include})});
+    if(r&&r.error){ alert(r.message||r.error); }
+    const m=(MASTERS_CACHE||[]).find(x=>Number(x.id)===Number(id)); if(m) m.in_schedule=include;
+    tmRender();
+  }catch(e){ alert(e.message); loadMasters(); }
+}
+// Створення співробітника — у модалці. Поля ті самі (ті самі id), тому createUser()
+// працює без змін; форма більше не займає пів-екрана над списком.
+function tmNewOpen(masterId){
+  const box=document.getElementById('tmNewModal');
+  if(box){ box.style.display='flex';
+    const sel=document.getElementById('u-master-link'); if(sel) sel.value = masterId?String(masterId):'';
+    const nm=document.getElementById('u-name');
+    if(masterId){ const m=(MASTERS_CACHE||[]).find(x=>Number(x.id)===Number(masterId));
+      if(m&&nm){ nm.value=m.name||''; const ph=document.getElementById('u-phone'); if(ph&&m.phone) ph.value=m.phone; } }
+    else if(nm) nm.value='';
+    setTimeout(()=>nm&&nm.focus(),50);
+  }
+}
+function tmNewClose(){ const b=document.getElementById('tmNewModal'); if(b) b.style.display='none'; }
 async function setMasterActive(id, active){
   if(!confirm(active?'Повернути майстра у графік?':'Звільнити майстра? Він зникне з графіку та онлайн-запису, але лишиться у звітах.')) return;
   try{ await api('/api/schedule/masters/'+id,{method:'PATCH',body:JSON.stringify({active})}); loadMasters(); }
@@ -1628,19 +1756,9 @@ async function _ucResetRole(uid){
 async function loadUsers(){
   try{
     const r = await api('/api/users'); USERS_CACHE = r.items||[];
-    document.getElementById('u-list').innerHTML = r.items.map(u=>`
-      <tr><td><a href="#" class="lnk" onclick="openUserCard(${u.id});return false">${u.display_name}</a></td><td><span class="pill info">${u.role_name||u.role}</span></td>
-          <td>${u.username||fmtPhone(u.phone)}</td><td>${u.email||''}</td>
-          <td><span class="pill ${u.has_password?'ok':'gray'}">${u.has_password?'є':'нема'}</span></td>
-          <td><span class="pill ${u.is_active?'ok':'gray'}">${u.is_active?'так':'ні'}</span></td>
-          <td style="white-space:nowrap">
-            <button class="btn sm" onclick="setPassword(${u.id})">Пароль</button>
-            <button class="btn sm" onclick="issueToken(${u.id})">Token</button>
-            ${u.is_active
-              ? `<button class="btn sm ghost" title="Деактивувати (доступ вимкнено, дані лишаються)" onclick="deactivateUser(${u.id})">✕</button>`
-              : `<button class="btn sm" style="background:#dcfce7;color:#16a34a" title="Активувати (повернути доступ)" onclick="reactivateUser(${u.id})">✓ Активувати</button>`}
-            <button class="btn sm danger" title="Видалити назавжди" onclick="deleteUser(${u.id},'${(u.display_name||'').replace(/'/g,'')}')">🗑</button>
-          </td></tr>`).join('') || '<tr><td colspan="7" class="empty">Співробітників немає</td></tr>';
+    // Окремої таблиці «Керування доступом» більше немає — доступ це колонка
+    // і кнопки в рядку людини (нотатка #155). Дані просто оновлюють реєстр.
+    tmRender();
   }catch(e){ alert(e.message); }
 }
 function pwIssues(p){
@@ -1666,11 +1784,15 @@ async function createUser(){
   if(password){ const iss=pwIssues(password); if(iss.length) return alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад надійного: Salon2026'); }
   const body = { display_name, phone, email, role_code, username, password };
   if(role_code==='master'){ body.specialty = specialty; body.commission_pct = commission_pct; }
+  // «Дати доступ» існуючому майстру: привʼязуємо логін до його картки, а не плодимо двійника
+  const linkId = (document.getElementById('u-master-link')||{}).value;
+  if(linkId) body.master_id = Number(linkId);
   try{
     await api('/api/users',{method:'POST',body:JSON.stringify(body)});
     ['u-name','u-phone','u-email','u-username','u-password','u-specialty'].forEach(id=>document.getElementById(id).value='');
-    alert('Користувача створено');
-    loadUsers();
+    const lnk=document.getElementById('u-master-link'); if(lnk) lnk.value='';
+    if(typeof tmNewClose==='function') tmNewClose();
+    await loadUsers(); await loadMasters();
   }catch(e){ alert(pwError(e)); }
 }
 async function setPassword(uid){

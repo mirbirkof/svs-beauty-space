@@ -1038,8 +1038,8 @@ select.input { background:var(--card); }
           <span class="material-icons-round chevron">chevron_right</span>
         </div>
         <div class="sidebar-group-items">
-          <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="cursor:pointer">
-            <span class="material-icons-round">badge</span> Майстри / Співробітники
+          <a class="sidebar-item" data-embed="/admin/crm-extra.html#users" onclick="openEmbed('/admin/crm-extra.html#users','badge Команда')" style="cursor:pointer">
+            <span class="material-icons-round">groups</span> Команда (люди і доступи)
           </a>
           <a class="sidebar-item" data-page="online" onclick="go('online')">
             <span class="material-icons-round">wifi</span> Хто онлайн
@@ -5956,7 +5956,7 @@ function _schStaffRow(m, inSched){
 function schStaffHtml(d){
   const inn = (d.in||[]), av = (d.available||[]);
   return `<div id="schStaffBox">
-    <p class="set-p" style="margin-bottom:10px">Графік будується лише за цим списком. Прибрати з графіка — це <b>не звільнення</b>: людина лишається в команді, її записи та історія зберігаються.</p>
+    <p class="set-p" style="margin-bottom:10px">Графік будується лише за цим списком — і з нього ж онлайн-запис бере вільні години. Прибрати з графіка — це <b>не звільнення</b>: людина лишається в команді, минулі зміни, записи клієнтів, зарплата й історія зберігаються. Знімаються тільки <b>майбутні</b> зміни; коли додасте назад — виставте графік наново («Схема графіка» або «Генерувати на місяці»).</p>
     <div style="display:flex;gap:16px;flex-wrap:wrap">
       <div style="flex:1;min-width:250px">
         <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">У ГРАФІКУ — ${inn.length}</div>
@@ -5971,15 +5971,15 @@ function schStaffHtml(d){
   </div>`;
 }
 async function schStaffSet(id, include, name){
-  if (!include && !confirm('Прибрати «'+name+'» з графіка роботи?\n\nЗміни та записи НЕ видаляються — людина просто не буде у сітці графіка й у вільних слотах онлайн-запису.')) return;
+  if (!include && !confirm('Прибрати «'+name+'» з графіка роботи?\n\nМайбутні зміни буде знято, і людина зникне з вільних слотів онлайн-запису.\nМинулі зміни, записи клієнтів, зарплата та історія лишаються — це НЕ звільнення.')) return;
   const r = await api('/api/schedule/staff', { method:'POST', body: JSON.stringify({ master_id:id, include }) });
   if (!r || r.error) { toast((r&&r.message)||(r&&r.error)||'Не вдалося','error'); return; }
   let extra = '';
-  if (!include && r.leftovers && (r.leftovers.shifts || r.leftovers.appts)) {
+  if (!include && r.leftovers) {
     const parts = [];
-    if (r.leftovers.shifts) parts.push(r.leftovers.shifts+' майбутніх змін');
-    if (r.leftovers.appts) parts.push(r.leftovers.appts+' майбутніх записів');
-    extra = ' · лишилось: '+parts.join(', ');
+    if (r.leftovers.shifts_cleared) parts.push('знято '+r.leftovers.shifts_cleared+' майбутніх змін');
+    if (r.leftovers.appts) parts.push('лишилось '+r.leftovers.appts+' записів клієнтів — переведіть на іншого майстра');
+    if (parts.length) extra = ' · '+parts.join(' · ');
   }
   toast((include?'Додано в графік: ':'Прибрано з графіка: ')+name+extra);
   if (window._schStaffReload) await window._schStaffReload();
@@ -12742,7 +12742,7 @@ function _mcTabAccess(){
   const ms = _mcData.ms;
   return `<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap">
       <h4 style="margin:0;font-size:14px">Доступ і права</h4>
-      <a class="btn btn-sm" style="margin-left:auto;cursor:pointer" onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')">Повний реєстр доступів</a>
+      <a class="btn btn-sm" style="margin-left:auto;cursor:pointer" onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Команда')">Повний реєстр доступів</a>
     </div>
     <div id="mcAccBody"><div class="empty">Завантаження…</div></div>`;
 }
@@ -12760,7 +12760,7 @@ async function _mcAccLoad(){
   if (!_mcAccUser) {
     box.innerHTML = `<div class="empty" style="text-align:left;padding:14px 0">
       У цього співробітника ще немає облікового запису для входу в систему.<br>
-      Створіть логін у розділі <a onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Майстри / Співробітники')" style="color:#7c5cff;cursor:pointer">Доступи до системи</a>, після цього права можна буде видавати тут.</div>`;
+      Створіть логін у розділі <a onclick="closeMasterCard();openEmbed('/admin/crm-extra.html#users','badge Команда')" style="color:#7c5cff;cursor:pointer">Доступи до системи</a>, після цього права можна буде видавати тут.</div>`;
     return;
   }
   _mcAccRender(_mcAccUser.role);
