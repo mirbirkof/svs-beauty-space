@@ -78,6 +78,78 @@ router.use((req, res, next) => {
   return requirePerm(perm)(req, res, next);
 });
 
+// ── Персонал графіка (нотатки #153, #154) ───────────────────────────────────
+// Досі склад графіка вгадувався формулою, тому звільненого не можна було прибрати,
+// а потрібну людину — додати. Тепер це явний список, яким керує власник/адмін.
+//
+// GET  /api/schedule/staff  → { in: [...], available: [...] }
+//   in        — хто зараз у графіку
+//   available — решта працюючих співробітників, кого можна додати
+router.get('/staff', async (req, res) => {
+  try {
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT m.id, m.name, m.specialty, m.avatar, m.staff_role,
+              COALESCE(m.in_schedule, false) AS in_schedule,
+              COALESCE(m.provides_services, true) AS provides_services,
+              COALESCE(a.cnt, 0)::int AS appt_cnt,
+              COALESCE(d.cnt, 0)::int AS shift_cnt
+         FROM masters m
+         LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM appointments
+                     WHERE master_id IS NOT NULL AND starts_at >= CURRENT_DATE
+                     GROUP BY master_id) a ON a.master_id = m.id
+         LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM master_schedule_days
+                     WHERE work_date >= CURRENT_DATE AND start_time IS NOT NULL
+                     GROUP BY master_id) d ON d.master_id = m.id
+        WHERE m.active = true AND COALESCE(m.status,'active') <> 'fired'
+        ORDER BY (m.staff_role = 'admin') ASC, m.name`
+    );
+    const all = r.rows;
+    res.json({
+      in: all.filter((m) => m.in_schedule),
+      available: all.filter((m) => !m.in_schedule),
+    });
+  } catch (e) { console.error('[schedule:staff]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// POST /api/schedule/staff  { master_id, include: true|false }
+// Прибирання з графіка НІЧОГО не видаляє: зміни, візити й історія лишаються.
+// Разом з відповіддю повертаємо, що саме лишиться «висіти» (майбутні зміни та записи),
+// щоб адмін бачив наслідки, а не виявляв їх потім у журналі.
+router.post('/staff', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = Number(req.body?.master_id);
+    const include = req.body?.include !== false;
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad-master' });
+
+    const cur = await pool.query(
+      `SELECT id, name, active, COALESCE(status,'active') AS status FROM masters WHERE id = $1`, [id]);
+    if (!cur.rowCount) return res.status(404).json({ error: 'not-found' });
+    const m = cur.rows[0];
+    if (include && (m.active === false || m.status === 'fired')) {
+      return res.status(409).json({
+        error: 'not-working',
+        message: `«${m.name}» звільнений(а) або деактивований(а) — спочатку поверніть до роботи в розділі «Команда».`,
+      });
+    }
+
+    await pool.query(`UPDATE masters SET in_schedule = $2 WHERE id = $1`, [id, include]);
+
+    let leftovers = null;
+    if (!include) {
+      const l = await pool.query(
+        `SELECT (SELECT COUNT(*) FROM master_schedule_days
+                  WHERE master_id = $1 AND work_date >= CURRENT_DATE AND start_time IS NOT NULL)::int AS shifts,
+                (SELECT COUNT(*) FROM appointments
+                  WHERE master_id = $1 AND starts_at >= CURRENT_DATE
+                    AND COALESCE(status,'') NOT IN ('cancelled','noshow'))::int AS appts`, [id]);
+      leftovers = l.rows[0];
+    }
+    res.json({ ok: true, master_id: id, name: m.name, in_schedule: include, leftovers });
+  } catch (e) { console.error('[schedule:staff-set]', e); res.status(500).json({ error: 'internal' }); }
+});
+
 // ── GET /api/schedule/masters — мастера с расписанием ──
 // ?all=1 — включить уволенных (для управления карточками). По умолчанию только активные.
 router.get('/masters', async (req, res) => {

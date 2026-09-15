@@ -29,14 +29,15 @@ function kyivToday() {
 const nameKey = (n) => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 /* Єдиний список співробітників, які мають бути у графіку роботи.
-   Беремо активних, хто надає послуги, або адміністраторів (адміни у графіку — прохання
-   Босса 04.07, вони теж виходять на зміни). Далі прибираємо дублі.
 
-   Дубль = рядок з ТИМ САМИМ імʼям, у якого немає жодної ознаки реальної роботи:
-   ні візитів, ні графіка із зовнішнього джерела (стара CRM), ні legacy_ref.
-   Це рівно ті рядки, що зʼявляються при заведенні логіна співробітнику, коли
-   людина вже є у базі. Прибираємо лише коли в групі є «сильний» рядок —
-   двох різних живих майстрів з однаковим імʼям НЕ чіпаємо.
+   З міграції 298 склад графіка — ЯВНИЙ (masters.in_schedule), ним керує власник
+   у розділі «Графік роботи» → «Персонал графіка» (нотатка #153). Раніше склад
+   ВГАДУВАВСЯ формулою (активний + надає послуги + дедуплікація за імʼям), через
+   що звільненого не можна було прибрати, а потрібну людину — додати (нотатка #154).
+
+   Звільнення і деактивація прибирають людину з графіка автоматично (роути кадрів),
+   але ми все одно перевіряємо active/status тут: графік не має показувати того,
+   хто вже не працює, навіть якщо десь лишився старий прапорець.
    Нічого не видаляємо з бази: рядок просто не бере участі у графіку. */
 async function listScheduleStaff(pool) {
   const rows = (await pool.query(
@@ -49,26 +50,13 @@ async function listScheduleStaff(pool) {
                    WHERE master_id IS NOT NULL GROUP BY master_id) a ON a.master_id = m.id
        LEFT JOIN (SELECT master_id, COUNT(*) cnt FROM master_schedule_days
                    WHERE source IS DISTINCT FROM 'manual' GROUP BY master_id) d ON d.master_id = m.id
-      WHERE m.active = true
-        AND (COALESCE(m.provides_services, true) = true OR m.staff_role = 'admin')
+      WHERE m.in_schedule = true
+        AND m.active = true
+        AND COALESCE(m.status, 'active') <> 'fired'
       ORDER BY (m.staff_role = 'admin') ASC, m.name`
   )).rows;
 
-  const isWeak = (r) => !r.appt_cnt && !r.ext_cnt && !r.legacy_ref;
-  const groups = new Map();
-  for (const r of rows) {
-    const k = nameKey(r.name);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  const dropped = [];
-  for (const g of groups.values()) {
-    if (g.length < 2) continue;
-    if (!g.some((r) => !isWeak(r))) continue; // усі однаково «порожні» — не вгадуємо
-    for (const r of g) if (isWeak(r)) dropped.push(r.id);
-  }
-  const drop = new Set(dropped);
-  return { staff: rows.filter((r) => !drop.has(r.id)), duplicates: dropped };
+  return { staff: rows, duplicates: [] };
 }
 
 // Повертає { ym, daysInMonth, dates:[...], items:[{ id,name,specialty,avatar, days:[{date,off,start,end,source}] }] }

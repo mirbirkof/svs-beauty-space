@@ -224,7 +224,10 @@ router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res)
 // ── ЗВІЛЬНИТИ (soft) ──
 router.delete('/:id(\\d+)', async (req, res) => {
   try {
-    const r = await q(`UPDATE masters SET status='fired', fire_date=CURRENT_DATE, active=false, updated_at=NOW()
+    // in_schedule=false — звільнений МИТТЄВО зникає з графіка роботи (нотатка #154).
+    // Раніше графік вираховував склад сам і міг показувати людину далі.
+    const r = await q(`UPDATE masters SET status='fired', fire_date=CURRENT_DATE, active=false,
+                              in_schedule=false, updated_at=NOW()
        WHERE id=$1 RETURNING id`, [+req.params.id]);
     if (!r[0]) return res.status(404).json({ error: 'not found' });
     await q(`INSERT INTO employee_history (employee_id, event_type, details, initiated_by)

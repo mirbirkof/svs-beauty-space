@@ -5909,6 +5909,7 @@ async function renderScheduleOverview(grid) {
          <option value="">Усі професії</option>
          ${specs.map(sp=>`<option value="${escapeHtml(sp)}"${window._schSpecFilter===sp?' selected':''}>${escapeHtml(sp)}</option>`).join('')}
        </select>
+       <button class="btn btn-sm" onclick="schStaffOpen()" style="margin-left:8px" title="Хто бере участь у графіку: додати або прибрати співробітника"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">group</span> Персонал графіка</button>
        <button class="btn btn-sm" onclick="schApplyPattern()" style="margin-left:8px" title="Виставити схему 2/2, 3/2, 5/2 на весь місяць одному майстру"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">event_repeat</span> Схема графіка</button>
        <button class="btn btn-sm btn-primary" onclick="schGenBatch()" style="margin-left:8px" title="Згенерувати графік на кілька місяців уперед для всіх майстрів одразу — генератор графіків"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">auto_mode</span> Генерувати на місяці</button>
        <button class="btn btn-sm" onclick="schCopyWeek()" style="margin-left:8px" title="Скопіювати графік одного тижня на інший"><span class="material-icons-round" style="font-size:16px;vertical-align:middle">content_copy</span> Копіювати тиждень</button>
@@ -5921,6 +5922,69 @@ async function renderScheduleOverview(grid) {
 }
 // SAL-04 — копіювання тижня графіка на інший тиждень
 function _mondayOf(d){ const x=new Date(d); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); return x.toISOString().slice(0,10); }
+// ── Персонал графіка (нотатки #153, #154) ──────────────────────────────────
+// Склад графіка більше не вгадується кодом: тут видно, хто в графіку, кого можна
+// додати, і що саме лишиться в людини, якщо її прибрати (майбутні зміни та записи).
+async function schStaffOpen(){
+  if (!userHasPerm('schedule.write')) { toast('Немає права «Графік роботи» — його вмикає власник у Керуванні доступом','error'); return; }
+  let data;
+  try { data = await api('/api/schedule/staff'); }
+  catch { toast('Не вдалося завантажити персонал','error'); return; }
+  showModal('Персонал графіка', schStaffHtml(data));
+  // showModal за замовчуванням вузький (480px) — для двох колонок розширюємо
+  const _mw = document.querySelector('#genModal .modal'); if (_mw) _mw.style.maxWidth = '720px';
+  window._schStaffReload = async () => {
+    const d = await api('/api/schedule/staff');
+    const box = document.getElementById('schStaffBox');
+    if (box) box.outerHTML = schStaffHtml(d);
+  };
+}
+function _schStaffRow(m, inSched){
+  const av = m.avatar ? `<img src="${m.avatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover">`
+                      : `<span class="schb-av" style="background:${_schAvColor(m.name)};width:26px;height:26px;font-size:12px">${(m.name||'?').trim()[0].toUpperCase()}</span>`;
+  const sub = [m.specialty, m.staff_role==='admin' ? 'адміністратор' : null,
+               inSched && m.shift_cnt ? `${m.shift_cnt} змін попереду` : null].filter(Boolean).join(' · ');
+  return `<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border,#eee)">
+      ${av}
+      <span style="flex:1;min-width:0">
+        <span style="display:block;font-size:13.5px">${escapeHtml(m.name||'')}</span>
+        ${sub?`<span style="display:block;font-size:11.5px;color:var(--text-secondary)">${escapeHtml(sub)}</span>`:''}
+      </span>
+      <button class="btn btn-sm ${inSched?'':'btn-primary'}" onclick="schStaffSet(${m.id},${inSched?'false':'true'},'${escapeHtml(m.name||'').replace(/'/g,'&#39;')}')">${inSched?'Прибрати':'Додати'}</button>
+    </div>`;
+}
+function schStaffHtml(d){
+  const inn = (d.in||[]), av = (d.available||[]);
+  return `<div id="schStaffBox">
+    <p class="set-p" style="margin-bottom:10px">Графік будується лише за цим списком. Прибрати з графіка — це <b>не звільнення</b>: людина лишається в команді, її записи та історія зберігаються.</p>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:250px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">У ГРАФІКУ — ${inn.length}</div>
+        ${inn.length?inn.map(m=>_schStaffRow(m,true)).join(''):'<i class="set-p">Порожньо — графік буде пустий</i>'}
+      </div>
+      <div style="flex:1;min-width:250px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">МОЖНА ДОДАТИ — ${av.length}</div>
+        ${av.length?av.map(m=>_schStaffRow(m,false)).join(''):'<i class="set-p">Усі працюючі вже в графіку</i>'}
+      </div>
+    </div>
+    <p class="set-p" style="margin-top:10px;font-size:11.5px">Звільнені сюди не потрапляють взагалі — звільнення одразу прибирає людину з графіка.</p>
+  </div>`;
+}
+async function schStaffSet(id, include, name){
+  if (!include && !confirm('Прибрати «'+name+'» з графіка роботи?\n\nЗміни та записи НЕ видаляються — людина просто не буде у сітці графіка й у вільних слотах онлайн-запису.')) return;
+  const r = await api('/api/schedule/staff', { method:'POST', body: JSON.stringify({ master_id:id, include }) });
+  if (!r || r.error) { toast((r&&r.message)||(r&&r.error)||'Не вдалося','error'); return; }
+  let extra = '';
+  if (!include && r.leftovers && (r.leftovers.shifts || r.leftovers.appts)) {
+    const parts = [];
+    if (r.leftovers.shifts) parts.push(r.leftovers.shifts+' майбутніх змін');
+    if (r.leftovers.appts) parts.push(r.leftovers.appts+' майбутніх записів');
+    extra = ' · лишилось: '+parts.join(', ');
+  }
+  toast((include?'Додано в графік: ':'Прибрано з графіка: ')+name+extra);
+  if (window._schStaffReload) await window._schStaffReload();
+  renderScheduleOverview(_schActiveGrid());
+}
 function schCopyWeek(){
   const today=new Date();
   const src=_mondayOf(today);

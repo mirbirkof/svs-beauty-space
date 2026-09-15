@@ -1147,7 +1147,10 @@ router.patch('/masters/:id', async (req, res) => {
       `UPDATE masters SET
          name=COALESCE($2,name), phone=COALESCE($3,phone), specialty=COALESCE($4,specialty),
          bio=COALESCE($5,bio), avatar=COALESCE($6,avatar), legacy_ref=COALESCE($7,legacy_ref),
-         commission_pct=COALESCE($8,commission_pct), active=COALESCE($9,active)
+         commission_pct=COALESCE($8,commission_pct), active=COALESCE($9,active),
+         -- звільнення/деактивація через картку співробітника теж виводить з графіка,
+         -- повернення до роботи склад графіка НЕ змінює (додати назад — свідома дія)
+         in_schedule=CASE WHEN $9::boolean IS FALSE THEN false ELSE in_schedule END
        WHERE id=$1 RETURNING *`,
       [parseInt(req.params.id), name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active]
     );
@@ -1159,7 +1162,8 @@ router.patch('/masters/:id', async (req, res) => {
 router.delete('/masters/:id', async (req, res) => {
   try {
     const r = await getPool().query(
-      'UPDATE masters SET active=false WHERE id=$1 RETURNING id', [parseInt(req.params.id)]
+      // in_schedule=false — деактивований одразу виходить зі складу графіка (нотатка #154)
+      'UPDATE masters SET active=false, in_schedule=false WHERE id=$1 RETURNING id', [parseInt(req.params.id)]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
     res.json({ ok: true, deactivated: r.rows[0].id });
