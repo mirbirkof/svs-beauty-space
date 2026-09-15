@@ -12485,7 +12485,8 @@ function _mcRenderShell(){
         <div style="font-size:24px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
-          ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">Адміністратор · без послуг</span>':''}
+          ${ms.staff_role==='owner'?'<span style="font-size:11px;font-weight:700;background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:6px">Власник</span>':(ms.staff_role==='admin'?'<span style="font-size:11px;font-weight:700;background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:6px">Адміністратор</span>':'')}
+          ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px" title="Не показується в журналі та онлайн-записі">Без послуг</span>':''}
           ${bpBadge}
           <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
         </div>
@@ -12534,9 +12535,20 @@ function _mcTabProfile(){
     </div>
     <div style="margin-bottom:12px"><label class="set-l">Відомості про співробітника</label>
       <textarea id="mcBio" class="input" rows="2">${ms.bio||''}</textarea></div>
+    <!-- нотатка #158: роль більше НЕ виводиться з галочки послуг. Раніше «зняв послуги»
+         автоматично робило людину адміністратором — через це перукарі й майстри манікюру
+         опинялись у фільтрі «Адміністрація». Роль — явний вибір власника, галочка лише
+         про журнал/онлайн-запис. Так само, як у картці в розділі «Команда». -->
+    <div style="margin-bottom:12px;max-width:340px"><label class="set-l">Роль у системі</label>
+      <select id="mcRole" class="input">
+        <option value="master" ${(ms.staff_role||'master')==='master'?'selected':''}>Майстер</option>
+        <option value="admin" ${ms.staff_role==='admin'?'selected':''}>Адміністратор</option>
+        <option value="owner" ${ms.staff_role==='owner'?'selected':''}>Власник</option>
+      </select>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Визначає, у якій групі людина показується в розділі «Команда».</div></div>
     <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">
       <input type="checkbox" id="mcProvides" ${ms.provides_services!==false?'checked':''} style="width:16px;height:16px;margin-top:1px">
-      <span>Надає послуги <span style="color:var(--text-secondary)">— показується в журналі та онлайн-записі. Вимкнено = адміністратор.</span></span></label>
+      <span>Надає послуги <span style="color:var(--text-secondary)">— показується в журналі та онлайн-записі. На роль не впливає.</span></span></label>
     <div style="margin-bottom:14px;max-width:340px"><label class="set-l">Паралельних клієнтів одночасно</label>
       <input id="mcMaxParallel" type="number" min="1" step="1" class="input" value="${ms.max_parallel!=null?ms.max_parallel:1}" placeholder="1">
       <div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Скільки записів можна ставити на майстра на один час. 1 — звичайний режим. 2+ — овербукінг (напр. поки схоплюється фарба, майстер бере наступного).</div></div>
@@ -12889,7 +12901,9 @@ async function saveMasterCard(){
     email: document.getElementById('mcEmail').value.trim(),
     bio: document.getElementById('mcBio').value.trim(),
     provides_services: provides,
-    staff_role: provides ? 'master' : 'admin',
+    // #158: роль беремо з явного поля, а не з галочки послуг (інакше майстер без послуг
+    // мовчки ставав «адміністратором» і зникав з фільтра «Майстри»).
+    staff_role: (document.getElementById('mcRole')||{}).value || (_mcData.ms && _mcData.ms.staff_role) || 'master',
     max_parallel: Math.max(1, parseInt(document.getElementById('mcMaxParallel').value, 10) || 1),
   };
   try {

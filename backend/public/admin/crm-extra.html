@@ -969,18 +969,37 @@ function tmRows(){
       kind:'master', id:m.id, user:u, name:m.name, specialty:m.specialty,
       avatar:m.avatar, phone:m.phone, fired,
       in_schedule: m.in_schedule===true,
-      role: u ? (u.role_name||u.role) : (m.staff_role==='admin' ? 'адміністратор' : (m.provides_services===false?'без послуг':'майстер')),
-      isAdmin: m.staff_role==='admin' || m.staff_role==='owner' || m.provides_services===false,
+      // #158: група в реєстрі визначається ТІЛЬКИ явною роллю людини.
+      // Раніше сюди домішувалось «не надає послуг» — і будь-який майстер, якому тимчасово
+      // зняли послуги, потрапляв у «Адміністрацію» поруч зі справжніми адміністраторами.
+      staffRole: (m.staff_role==='admin'||m.staff_role==='owner') ? m.staff_role : 'master',
+      provides: m.provides_services!==false,
+      role: u ? (u.role_name||u.role) : (m.staff_role==='admin' ? 'адміністратор' : (m.staff_role==='owner' ? 'власник' : 'майстер')),
+      isAdmin: m.staff_role==='admin' || m.staff_role==='owner',
     };
   });
   // користувачі без картки майстра
   (USERS_CACHE||[]).forEach(u=>{
     if (u.master_id) return;
     rows.push({ kind:'user', id:null, user:u, name:u.display_name, specialty:null, avatar:null,
-                phone:u.phone, fired: u.is_active===false, in_schedule:false,
+                phone:u.phone, fired: u.is_active===false, in_schedule:false, staffRole:'admin', provides:false,
                 role: u.role_name||u.role, isAdmin:true });
   });
   return rows;
+}
+// #158: у колонці видно САМЕ ту роль, за якою людина потрапляє у фільтр —
+// щоб «Адміністрація» і напис у рядку ніколи не суперечили один одному.
+const TM_ROLE_LBL = { master:'Майстер', admin:'Адміністратор', owner:'Власник' };
+function tmRoleCell(r){
+  const lbl = r.kind==='master' ? (TM_ROLE_LBL[r.staffRole]||'Майстер') : (r.role||'Адміністрація');
+  let spec = r.kind==='master' ? (r.specialty||'') : '';
+  // не дублюємо підпис, якщо посада збігається з роллю («Адміністратор / Адміністратор»)
+  if (spec.trim().toLowerCase() === lbl.toLowerCase()) spec = '';
+  const warn = (r.kind==='master' && r.staffRole==='master' && !r.provides && !r.fired)
+    ? '<div style="font-size:11.5px;color:#b45309;margin-top:2px" title="Не показується в журналі та онлайн-записі">не надає послуг</div>' : '';
+  return '<div style="font-weight:600;font-size:13px">'+lbl+'</div>'
+       + (spec?'<div style="font-size:12px;color:#888">'+spec+'</div>':'')
+       + warn;
 }
 function tmRender(){
   const body=document.getElementById('tm-list'); if(!body) return;
@@ -1031,7 +1050,7 @@ function tmRender(){
     // без nowrap: на вужчому екрані імʼя і кнопки переносяться, а не вилітають вправо (#157)
     return `<tr${r.fired?' style="opacity:.6"':''}>
       <td>${nameCell}</td>
-      <td>${r.specialty||r.role||'<span style="color:#bbb">—</span>'}</td>
+      <td>${tmRoleCell(r)}</td>
       <td>${access}</td>
       <td>${sched}</td>
       <td><span class="pill ${r.fired?'gray':'ok'}">${r.fired?'звільнений':'працює'}</span></td>
