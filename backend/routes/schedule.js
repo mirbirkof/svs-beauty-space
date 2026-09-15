@@ -291,7 +291,7 @@ router.patch('/masters/:id', async (req, res) => {
     if (!r) return res.status(404).json({ error: 'master not found' });
     res.json({ ok: true, master: { id: r.id, name: r.name, active: r.active },
                cleared_shifts: r.shifts_cleared, restored_shifts: r.shifts_restored,
-               leftovers: r.leftovers });
+               leftovers: r.leftovers, access: r.access });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

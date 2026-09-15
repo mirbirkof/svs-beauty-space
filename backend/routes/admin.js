@@ -1166,7 +1166,7 @@ router.delete('/masters/:id', async (req, res) => {
     // одразу виходить зі складу графіка, а його майбутні зміни знімаються.
     const st = await setWorkingState(getPool(), parseInt(req.params.id), false);
     if (!st) return res.status(404).json({ error: 'not-found' });
-    res.json({ ok: true, deactivated: st.id, cleared_shifts: st.shifts_cleared });
+    res.json({ ok: true, deactivated: st.id, cleared_shifts: st.shifts_cleared, access: st.access });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

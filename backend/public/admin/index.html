@@ -6191,12 +6191,33 @@ async function schRevertDay(mid, date){
   toast('Повернуто до базового графіка');
   renderScheduleOverview(_schActiveGrid());
 }
+// Нотатка #159: звільнення тепер відбирає і пропуск у CRM. Людина має БАЧИТИ
+// це на екрані — інакше знову покладеться на памʼять і забуде закрити вхід.
+function _accessMsg(access, makeActive) {
+  if (!access) return '';
+  if (makeActive) return access.accounts_opened ? `Вхід у CRM відновлено (${access.accounts_opened}). Потрібен новий вхід за кодом або паролем.` : '';
+  const parts = [];
+  if (access.accounts_closed) {
+    parts.push(`Доступ до CRM закрито (${access.accounts_closed})`);
+    if (access.sessions_killed) parts.push(`активних сеансів обірвано: ${access.sessions_killed}`);
+  } else if ((access.owner_skipped || []).length) {
+    return `⚠️ Це власник (${access.owner_skipped.join(', ')}) — вхід НЕ закрито, щоб не лишити салон без доступу.`;
+  } else {
+    return 'Окремого входу в CRM у цієї людини не було — закривати нічого.';
+  }
+  return parts.join(', ') + '.';
+}
+
 async function schToggleActive(id, makeActive) {
   const m = (_schMastersCache||[]).find(x => String(x.id) === String(id)); if (!m) return;
-  if (!confirm(makeActive ? `Повернути «${m.name}» до роботи? Майстер знову зʼявиться в журналі й онлайн-записі.` : `Звільнити «${m.name}»? Він зникне з журналу, графіка й онлайн-запису, але залишиться у статистиці.`)) return;
+  if (!confirm(makeActive ? `Повернути «${m.name}» до роботи? Майстер знову зʼявиться в журналі й онлайн-записі, а вхід у CRM буде відновлено.` : `Звільнити «${m.name}»? Він зникне з журналу, графіка й онлайн-запису і ОДРАЗУ втратить доступ до CRM (каса, клієнти, зарплати). Статистика збережеться.`)) return;
   try {
     const r = await api('/api/schedule/masters/'+id, { method:'PATCH', body: JSON.stringify({ active: makeActive }) });
-    if (r.ok) { m.active = makeActive; await loadSchMasters(); document.getElementById('schMaster').value = id; loadSchedule(); }
+    if (r.ok) {
+      m.active = makeActive; await loadSchMasters(); document.getElementById('schMaster').value = id; loadSchedule();
+      const msg = _accessMsg(r.access, makeActive);
+      if (msg) { try { toast(msg, 'success'); } catch(_) { alert(msg); } }
+    }
     else alert(r.error || 'Помилка');
   } catch (e) { alert('Помилка мережі'); }
 }
@@ -6212,7 +6233,7 @@ function loadSchedule() {
       <span style="color:var(--text-secondary);font-size:13px">${m&&m.specialty?m.specialty:''}</span>
       <button class="btn btn-sm ${isActive?'':'btn-primary'}" style="margin-left:auto;${isActive?'background:#ef4444;color:#fff':''}" onclick="schToggleActive('${id}', ${isActive?'false':'true'})">${isActive?'Звільнити':'Повернути до роботи'}</button>
     </div>`;
-  if (!isActive) { grid.innerHTML = statusBar + '<p class="set-p">Майстер звільнений — графік прихований. Поверніть до роботи, щоб редагувати.</p>'; return; }
+  if (!isActive) { grid.innerHTML = statusBar + '<p class="set-p">Майстер звільнений — графік прихований, доступ до CRM закрито. Поверніть до роботи, щоб редагувати.</p>'; return; }
   grid.innerHTML = statusBar + `<div class="sch-week">${_SCH_DAYS.map(([k,lbl])=>{
     const d = sched[k]; const on = !!d;
     return `<div class="sch-row" data-day="${k}">
@@ -13008,10 +13029,12 @@ async function saveMasterNotify(){
   } catch(e){ toast('Помилка','error'); }
 }
 async function toggleMasterActive(id, makeActive){
-  if(!confirm(makeActive?'Відновити майстра? Він знову зʼявиться у графіку, записах та плані.':'Звільнити майстра? Він зникне з графіка, журналу, плану місяця та онлайн-запису (статистика збережеться).')) return;
+  if(!confirm(makeActive?'Відновити майстра? Він знову зʼявиться у графіку, записах та плані, а вхід у CRM буде відновлено.':'Звільнити майстра? Він зникне з графіка, журналу, плану місяця та онлайн-запису і ОДРАЗУ втратить доступ до CRM (каса, клієнти, зарплати). Статистика збережеться.')) return;
   try {
     const r = await api('/api/schedule/masters/'+id, { method:'PATCH', body: JSON.stringify({ active: makeActive }) });
     if (!r || !r.ok) { alert('Помилка: '+((r&&r.error)||'невідома')); return; }
+    const _am = _accessMsg(r.access, makeActive);
+    if (_am) { try { toast(_am, 'success'); } catch(_) { alert(_am); } }
     closeMasterCard();
     if (typeof loadMonthlyPlan==='function' && currentPage==='plan') planTab(_curPlanTab||'month');
     _planInited = false; // перевантажити списки майстрів

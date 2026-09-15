@@ -234,7 +234,9 @@ router.delete('/:id(\\d+)', async (req, res) => {
     await q(`INSERT INTO employee_history (employee_id, event_type, details, initiated_by)
              VALUES ($1,'fired',$2,$3)`, [+req.params.id, JSON.stringify({ reason: req.body?.reason || null }), req.user?.display_name || null]).catch(()=>{});
     logAction({ user: req.user, action: 'employee.fire', entity: 'master', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
-    res.json({ ok: true });
+    // Нотатка #159: разом зі звільненням закривається вхід у CRM — віддаємо це
+    // на екран, щоб адміністратор БАЧИВ, що пропуск відібрано, а не вірив на слово.
+    res.json({ ok: true, access: st.access, leftovers: st.leftovers });
   } catch (e) { err(res, e); }
 });
 
