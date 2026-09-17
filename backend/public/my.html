@@ -32,9 +32,14 @@
 <!-- LOGIN -->
 <section id="login" class="bg-white rounded-2xl shadow-sm p-6">
   <h1 class="text-2xl font-bold mb-1">Личный кабинет</h1>
-  <p class="text-sm text-slate-500 mb-5">Введите телефон чтобы посмотреть свои отзывы, избранное и историю</p>
+  <p class="text-sm text-slate-500 mb-5">Введите телефон — пришлём код подтверждения, и вы увидите свои визиты, избранное и отзывы</p>
   <input id="phone" type="tel" placeholder="+380XXXXXXXXX" class="w-full border rounded-xl px-4 py-3 text-lg">
-  <button onclick="enter()" class="w-full bg-slate-900 text-white rounded-xl py-3 mt-4 font-semibold">Войти</button>
+  <button id="btn-code" onclick="requestCode()" class="w-full bg-slate-900 text-white rounded-xl py-3 mt-4 font-semibold">Получить код</button>
+  <div id="code-box" class="hidden mt-4">
+    <input id="code" type="text" inputmode="numeric" maxlength="6" placeholder="Код из сообщения" class="w-full border rounded-xl px-4 py-3 text-lg tracking-widest text-center">
+    <button onclick="enter()" class="w-full bg-slate-900 text-white rounded-xl py-3 mt-3 font-semibold">Войти</button>
+  </div>
+  <p id="login-msg" class="text-sm mt-3 text-slate-500"></p>
 </section>
 
 <!-- PROFILE -->
@@ -95,17 +100,29 @@
 </main>
 
 <script>
+// 17.09: страница оживлена. Раньше вход был «введи любой телефон» — сервер такие запросы
+// отклонял (401), и все три вкладки показывали пустоту. Теперь вход как в кабинете:
+// телефон → код в Telegram → токен сессии; личные данные отдаются только своему владельцу.
 const API_SHOP = location.origin;
 const API_DIK  = location.origin;
+const TOKEN_KEY = 'svs_session_token';
+let token = localStorage.getItem(TOKEN_KEY) || '';
 let myPhone = localStorage.getItem('myPhone') || '';
 let myRating = 5;
+const H = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) });
+async function api(url, opts = {}) {
+  const r = await fetch(API_SHOP + url, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
+  if (r.status === 401) { logout(); return { ok: false, error: 'unauthorized' }; }
+  return r.json().catch(() => ({ ok: false, error: 'bad-json' }));
+}
+const msg = (t, err) => { const el = document.getElementById('login-msg'); if (el) { el.textContent = t; el.className = 'text-sm mt-3 ' + (err ? 'text-red-600' : 'text-slate-500'); } };
 
 function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
-if (myPhone) showProfile();
+if (token && myPhone) showProfile();
 
 function normPhone(p) {
   const d = String(p||'').replace(/\D/g,'');
@@ -114,16 +131,45 @@ function normPhone(p) {
   return p;
 }
 
-function enter() {
+async function requestCode() {
   const p = normPhone(document.getElementById('phone').value);
-  if (!p || p.length < 10) { alert('Введите телефон'); return; }
-  myPhone = p;
-  localStorage.setItem('myPhone', p);
-  showProfile();
+  if (!p || p.replace(/\D/g,'').length < 10) { msg('Введите телефон в формате +380XXXXXXXXX', true); return; }
+  msg('Отправляю код…');
+  const r = await api('/api/cabinet/request-code', { method: 'POST', body: JSON.stringify({ phone: p }) });
+  if (r.ok) {
+    myPhone = p;
+    document.getElementById('code-box').classList.remove('hidden');
+    document.getElementById('btn-code').textContent = 'Отправить код ещё раз';
+    msg(r.hint ? r.hint : 'Код отправлен в Telegram — введите его ниже');
+  } else if (r.error === 'too-many-requests') {
+    msg('Слишком часто. Подождите минуту и попробуйте снова', true);
+  } else if (r.error === 'no-telegram') {
+    msg('К этому номеру не привязан Telegram. Напишите боту записи — и код будет приходить', true);
+  } else {
+    msg('Не удалось отправить код: ' + (r.error || 'ошибка'), true);
+  }
+}
+
+async function enter() {
+  const code = (document.getElementById('code').value || '').trim();
+  if (!code) { msg('Введите код из сообщения', true); return; }
+  const r = await api('/api/cabinet/verify', { method: 'POST', body: JSON.stringify({ phone: myPhone, code }) });
+  if (r.ok && r.token) {
+    token = r.token;
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem('myPhone', myPhone);
+    msg('');
+    showProfile();
+  } else {
+    msg(r.error === 'bad-code' ? 'Неверный код' + (r.attempts_left != null ? ` (осталось попыток: ${r.attempts_left})` : '') : 'Не удалось войти: ' + (r.error || 'ошибка'), true);
+  }
 }
 
 function logout() {
+  try { api('/api/cabinet/logout', { method: 'POST' }); } catch (e) {}
+  localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem('myPhone');
+  token = ''; myPhone = '';
   location.reload();
 }
 
@@ -150,36 +196,41 @@ document.querySelectorAll('#rev-stars span').forEach(s => s.onclick = () => {
   document.querySelectorAll('#rev-stars span').forEach(x => x.textContent = parseInt(x.dataset.r) <= myRating ? '★' : '☆');
 });
 
-// === HISTORY ===
+// === HISTORY === (визиты кабинета: будущие + прошедшие)
 async function loadHistory() {
+  const box = document.getElementById('hist-list');
   try {
-    const r = await fetch(`${API_SHOP}/api/booking/history?phone=${encodeURIComponent(myPhone)}`).then(r => r.json());
-    const all = [...(r.bookings||[]), ...(r.waitlist||[]), ...(r.orders||[])];
-    if (!all.length) { document.getElementById('hist-list').innerHTML = '<p class="text-slate-500">История пуста</p>'; return; }
-    document.getElementById('hist-list').innerHTML = all.map(x => `
+    const r = await api('/api/cabinet/visits?limit=100');
+    if (!r.ok) { box.innerHTML = '<p class="text-slate-500">Не удалось загрузить историю</p>'; return; }
+    const all = [...(r.upcoming || []), ...(r.past || [])];
+    if (!all.length) { box.innerHTML = '<p class="text-slate-500">Визитов пока нет</p>'; return; }
+    box.innerHTML = all.map(x => {
+      const when = x.starts_at ? new Date(x.starts_at).toLocaleString('ru-UA', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }) : '';
+      const sum = x.price != null ? Math.round(Number(x.price)).toLocaleString('ru-UA') + '₴' : '';
+      return `
       <div class="border-b py-3">
-        <div class="flex justify-between">
+        <div class="flex justify-between gap-3">
           <div>
-            <p class="font-medium">${escapeHtml(x.service_name || x.title) || 'Заказ #'+escapeHtml(String(x.id))}</p>
-            <p class="text-xs text-slate-500">${escapeHtml(x.date_from || x.created_at || '')}</p>
+            <p class="font-medium">${escapeHtml(x.service_name || x.service || 'Визит')}</p>
+            <p class="text-xs text-slate-500">${escapeHtml(when)}${x.master_name ? ' · ' + escapeHtml(x.master_name) : ''}</p>
           </div>
-          <span class="text-sm">${x.total ? escapeHtml(String(x.total))+'₴' : escapeHtml(x.status||'')}</span>
+          <span class="text-sm whitespace-nowrap">${escapeHtml(sum)}</span>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
-    document.getElementById('hist-list').innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки: '+escapeHtml(e.message)+'</p>';
+    box.innerHTML = '<p class="text-red-500 text-sm">Ошибка загрузки: ' + escapeHtml(e.message) + '</p>';
   }
 }
 
-// === FAVORITES ===
+// === FAVORITES === (по токену: свой список, телефон в запросе не нужен)
 async function loadFavs() {
+  const box = document.getElementById('fav-list');
   const kind = document.getElementById('fav-kind').value;
-  const params = new URLSearchParams({phone: myPhone});
-  if (kind) params.append('kind', kind);
-  const r = await fetch(`${API_DIK}/api/favorites?${params}`).then(r => r.json());
-  if (!r.items?.length) { document.getElementById('fav-list').innerHTML = '<p class="text-slate-500">Избранного нет</p>'; return; }
-  document.getElementById('fav-list').innerHTML = r.items.map(f => `
+  const r = await api('/api/favorites' + (kind ? '?kind=' + encodeURIComponent(kind) : ''));
+  if (!r || r.error) { box.innerHTML = '<p class="text-slate-500">Не удалось загрузить избранное</p>'; return; }
+  if (!r.items?.length) { box.innerHTML = '<p class="text-slate-500">Избранного нет</p>'; return; }
+  box.innerHTML = r.items.map(f => `
     <div class="flex justify-between items-center border-b py-3">
       <div>
         <p class="font-medium">${escapeHtml(f.target_name || f.target_id)}</p>
@@ -191,16 +242,13 @@ async function loadFavs() {
 }
 
 async function rmFav(kind, target_id) {
-  await fetch(`${API_DIK}/api/favorites`, {
-    method:'DELETE', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({client_phone: myPhone, kind, target_id})
-  });
+  await api('/api/favorites', { method: 'DELETE', body: JSON.stringify({ kind, target_id }) });
   loadFavs();
 }
 
 // === REVIEWS ===
 async function loadReviews() {
-  const r = await fetch(`${API_DIK}/api/reviews?limit=200`).then(r => r.json());
+  const r = await api('/api/reviews?limit=200');
   const mine = (r.items||[]).filter(x => {
     // отзыв виден если телефон совпадает (но в API client_phone не возвращается из соображений приватности)
     // показываем все опубликованные с display_name содержащим окончание телефона
@@ -237,14 +285,15 @@ async function submitReview() {
     is_anonymous: document.getElementById('rev-anon').checked
   };
   if (!body.text) { alert('Напишите отзыв'); return; }
-  const r = await fetch(`${API_DIK}/api/reviews`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const r = await api('/api/reviews', { method: 'POST', body: JSON.stringify(body) });
   if (r.ok) {
     document.getElementById('rev-text').value = '';
     document.getElementById('rev-master').value = '';
     document.getElementById('rev-anon').checked = false;
     document.getElementById('new-review').classList.add('hidden');
+    alert('Спасибо! Отзыв отправлен — появится на сайте после проверки администратором.');
     loadReviews();
-  } else alert('Ошибка отправки');
+  } else alert('Не удалось отправить отзыв: ' + (r.error || 'ошибка'));
 }
 </script>
 </body>

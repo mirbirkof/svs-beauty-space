@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/visits?limit=100",
+  "status": 200,
+  "body": {
+    "ok": "boolean",
+    "past": [
+      "empty"
+    ],
+    "total": "number",
+    "upcoming": [
+      "empty"
+    ]
+  }
+}

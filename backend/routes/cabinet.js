@@ -248,4 +248,46 @@ router.post('/visits/:id(\\d+)/reschedule', authClient(), async (req, res) => {
   } catch (e) { console.error('[cabinet:reschedule]', e.message); res.status(500).json({ error: 'internal' }); }
 });
 
+// ── справочник уровней программы (17.09: страница /p/loyalty.html оживлена) ──
+// Раньше страница звала админскую /api/loyalty/tiers (право loyalty.read) — клиент
+// получал 401 и видел пустоту. Здесь то же содержимое, но под входом клиента:
+// уровни — публичные правила программы, персональных данных в них нет.
+router.get('/loyalty/tiers', authClient(), async (req, res) => {
+  try {
+    const r = await getPool().query(
+      `SELECT name, min_spent, bonus_percent, perks, color FROM loyalty_tiers ORDER BY min_spent ASC`);
+    res.json({ ok: true, items: r.rows });
+  } catch (e) {
+    console.error('[cabinet:loyalty-tiers]', e.message);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+// ── свои приглашения (реферальная программа) ──
+// Админская /api/loyalty/referrals/:phone принимает ЛЮБОЙ телефон — клиенту такое
+// отдавать нельзя. Здесь телефон берётся из токена: клиент видит только свои.
+router.get('/loyalty/referrals', authClient(), async (req, res) => {
+  try {
+    const phone = String(req.client.phone || '').replace(/\D/g, '');
+    if (!phone) return res.json({ ok: true, items: [], invited_count: 0, bonuses_earned: 0 });
+    const r = await getPool().query(
+      `SELECT invited_phone, bonus_amount, bonus_credited, invited_first_purchase_at, created_at
+         FROM referrals WHERE right(regexp_replace(referrer_phone, '\\D', '', 'g'), 10) = right($1, 10)
+        ORDER BY created_at DESC`, [phone]);
+    const earned = r.rows.reduce((s, x) => s + (x.bonus_credited ? Number(x.bonus_amount) || 0 : 0), 0);
+    // телефон приглашённого маскируем: клиенту хватает факта, полный номер — лишние ПД
+    const items = r.rows.map((x) => ({
+      invited_phone_masked: String(x.invited_phone || '').replace(/^(\+?\d{3})\d+(\d{2})$/, '$1***$2'),
+      bonus_amount: Number(x.bonus_amount) || 0,
+      bonus_credited: !!x.bonus_credited,
+      first_purchase_at: x.invited_first_purchase_at,
+      created_at: x.created_at,
+    }));
+    res.json({ ok: true, items, invited_count: items.length, bonuses_earned: Math.round(earned * 100) / 100 });
+  } catch (e) {
+    console.error('[cabinet:loyalty-referrals]', e.message);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 module.exports = router;

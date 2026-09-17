@@ -94,6 +94,15 @@ before(async () => {
            VALUES ($1,$2,'accrual',200,200,200,'qa-test',$3, now())`, [TENANT, F.client, MARK]);
   F.appt = await newAppointment(1000);
 
+  // абонемент: план на 2 визита, покрывающий нашу услугу
+  F.plan = (await q(
+    `INSERT INTO subscription_plans (name, type, visits_included, duration_days, price, service_ids, active, tenant_id)
+     VALUES ($1,'visits',2,90,2000,ARRAY[$2]::int[],true,$3) RETURNING id`, [MARK, F.service, TENANT]))[0].id;
+  F.sub = (await q(
+    `INSERT INTO subscriptions (plan_id, client_id, subscription_number, status, visits_remaining, started_at, expires_at, tenant_id, notes)
+     VALUES ($1,$2,$3,'active',2, CURRENT_DATE, CURRENT_DATE + 90, $4, $5) RETURNING id`,
+    [F.plan, F.client, 'QA-SUB-' + Date.now(), TENANT, MARK]))[0].id;
+
   // ── сервер на песочнице (общий помощник _qa-server.js) ──
   S = await startQaServer({ port: PORT });
   F.balance0 = await balance();
@@ -108,6 +117,10 @@ after(async () => {
     [`DELETE FROM gift_certificate_transactions WHERE gc_id=$1`, [F.cert]],
     [`DELETE FROM bonus_transactions WHERE client_id=$1`, [F.client]],
     [`DELETE FROM bonus_balances WHERE client_id=$1`, [F.client]],
+    [`DELETE FROM subscription_usage WHERE appointment_id = ANY($1::int[])`, [ids]],
+    [`DELETE FROM online_bookings WHERE note = $1`, [MARK]],
+    [`DELETE FROM subscriptions WHERE id=$1`, [F.sub]],
+    [`DELETE FROM subscription_plans WHERE id=$1`, [F.plan]],
     [`DELETE FROM appointment_services WHERE appointment_id = ANY($1::int[])`, [ids]],
     [`DELETE FROM appointments WHERE id = ANY($1::int[])`, [ids]],
     [`DELETE FROM gift_certificates WHERE id=$1`, [F.cert]],
@@ -261,4 +274,82 @@ test('касса: бесплатный визит (0 грн) закрывает�
   const r = await api('POST', `/api/schedule/appointments/${id}/pay`, { method: 'cash' });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.comped, true);
   assert.strictEqual((await appt(id)).status, 'done'); assert.strictEqual((await cashOps(id)).length, 0);
+});
+
+// ─────────────── АБОНЕМЕНТ (18.08: «кассир забудет» — экран сам предлагает) ───────────────
+test('касса: экран оплаты сам предлагает подходящий абонемент клиента', async (t) => {
+  if (skipIf(t)) return;
+  const id = await newAppointment(1000, 16);
+  const r = await api('GET', `/api/schedule/appointments/${id}/pay-options`);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const found = JSON.stringify(r.body).includes(String(F.sub));
+  assert.ok(found, 'абонемент предложен на экране оплаты: ' + JSON.stringify(r.body).slice(0, 300));
+  F.apptSub = id;
+});
+
+test('касса: оплата абонементом — услуга покрыта, визит списан, кассы нет', async (t) => {
+  if (skipIf(t)) return;
+  const id = F.apptSub;
+  const r = await api('POST', `/api/schedule/appointments/${id}/pay`, { method: 'cash', subscription_id: F.sub });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.final, 0, 'услуга полностью покрыта абонементом, доплаты нет');
+  assert.strictEqual(r.body.subscription_used?.id, F.sub);
+  assert.strictEqual(r.body.subscription_used?.applied, 1000);
+  assert.strictEqual((await cashOps(id)).length, 0, 'денег в кассу не поступало');
+  const sub = (await q(`SELECT visits_remaining FROM subscriptions WHERE id=$1`, [F.sub]))[0];
+  assert.strictEqual(Number(sub.visits_remaining), 1, 'списан ровно один визит из двух');
+  const use = await q(`SELECT id FROM subscription_usage WHERE subscription_id=$1 AND appointment_id=$2`, [F.sub, id]);
+  assert.strictEqual(use.length, 1, 'списание записано в историю абонемента');
+});
+
+test('касса: повторная оплата абонементом НЕ списывает второй визит', async (t) => {
+  if (skipIf(t)) return;
+  const r = await api('POST', `/api/schedule/appointments/${F.apptSub}/pay`, { method: 'cash', subscription_id: F.sub });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(Number((await q(`SELECT visits_remaining FROM subscriptions WHERE id=$1`, [F.sub]))[0].visits_remaining), 1);
+});
+
+test('касса: отмена оплаты возвращает визит абонемента (18.08 — иначе он сгорал)', async (t) => {
+  if (skipIf(t)) return;
+  const r = await api('POST', `/api/schedule/appointments/${F.apptSub}/unpay`);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(Number((await q(`SELECT visits_remaining FROM subscriptions WHERE id=$1`, [F.sub]))[0].visits_remaining), 2,
+    'визит вернулся на абонемент');
+  assert.strictEqual((await q(`SELECT id FROM subscription_usage WHERE subscription_id=$1 AND appointment_id=$2`, [F.sub, F.apptSub])).length, 0);
+});
+
+// ─────────── ПРЕДОПЛАТА ОНЛАЙН (Mono) — проверяем ТОЛЬКО наш зачёт, шлюз не трогаем ───────────
+// Осторожно по требованию Босса: никаких обращений к API Mono, MONO_TOKEN у тестового
+// сервера пуст. Предоплата кладётся прямо в бронь — так же, как её кладёт вебхук после
+// успешной оплаты. Проверяем ровно то, что горело в аудите: деньги не считаются дважды.
+test('касса: онлайн-предоплата вычитается из чека и помечается использованной', async (t) => {
+  if (skipIf(t)) return;
+  const id = await newAppointment(1000, 17);
+  const starts = (await q(`SELECT starts_at FROM appointments WHERE id=$1`, [id]))[0].starts_at;
+  F.booking = (await q(
+    `INSERT INTO online_bookings (client_id, client_phone, service_id, service_name, date_from, date_to,
+                                  channel, status, prepaid_amount, prepaid_at, tenant_id, note)
+     VALUES ($1,'380990000117',$2,$3, $4::timestamptz - interval '30 min', $4::timestamptz + interval '30 min',
+             'web','confirmed', 400, NOW(), $5, $6) RETURNING id`,
+    [F.client, String(F.service), MARK, starts, TENANT, MARK]))[0].id;
+
+  const r = await api('POST', `/api/schedule/appointments/${id}/pay`, { method: 'card' });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.final, 600, 'в кассу идут только 600 — предоплаченные 400 не берём второй раз');
+  const ops = await cashOps(id);
+  assert.strictEqual(ops.length, 1); assert.strictEqual(ops[0].amount, 600);
+  const b = (await q(`SELECT prepaid_consumed_at FROM online_bookings WHERE id=$1`, [F.booking]))[0];
+  assert.ok(b.prepaid_consumed_at, 'предоплата помечена использованной');
+  F.apptPrepaid = id;
+});
+
+test('касса: отмена оплаты снимает отметку с предоплаты (иначе повторная оплата берёт полную сумму)', async (t) => {
+  if (skipIf(t)) return;
+  const r = await api('POST', `/api/schedule/appointments/${F.apptPrepaid}/unpay`);
+  assert.strictEqual(r.status, 200);
+  const b = (await q(`SELECT prepaid_consumed_at FROM online_bookings WHERE id=$1`, [F.booking]))[0];
+  assert.strictEqual(b.prepaid_consumed_at, null, 'отметка снята — предоплата снова в силе');
+  const again = await api('POST', `/api/schedule/appointments/${F.apptPrepaid}/pay`, { method: 'card' });
+  assert.strictEqual(again.body.final, 600, 'повторная оплата снова учитывает предоплату, а не берёт 1000');
+  await api('POST', `/api/schedule/appointments/${F.apptPrepaid}/unpay`);
 });

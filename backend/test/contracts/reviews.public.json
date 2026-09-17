@@ -1,0 +1,22 @@
+{
+  "method": "GET",
+  "url": "/api/reviews?limit=200",
+  "status": 200,
+  "body": {
+    "count": "number",
+    "items": [
+      {
+        "created_at": "string",
+        "display_name": "string",
+        "id": "number",
+        "is_anonymous": "boolean",
+        "master_id": "string",
+        "master_name": "string",
+        "rating": "number",
+        "service_id": null,
+        "service_name": "string",
+        "text": "string"
+      }
+    ]
+  }
+}

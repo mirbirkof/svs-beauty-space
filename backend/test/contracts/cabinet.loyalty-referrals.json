@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/loyalty/referrals",
+  "status": 200,
+  "body": {
+    "bonuses_earned": "number",
+    "invited_count": "number",
+    "items": [
+      "empty"
+    ],
+    "ok": "boolean"
+  }
+}

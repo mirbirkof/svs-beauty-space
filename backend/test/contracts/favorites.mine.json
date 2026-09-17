@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "url": "/api/favorites",
+  "status": 200,
+  "body": {
+    "count": "number",
+    "items": [
+      "empty"
+    ]
+  }
+}

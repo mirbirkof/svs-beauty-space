@@ -4,7 +4,11 @@
 //   book.html    — онлайн-запись клиента:  /api/booking/{catalog,services,masters,slots,status/:token}
 //   cabinet.html — кабинет клиента:        /api/cabinet/{request-code,verify,me,visits,orders,loyalty,logout}
 //                                          + /api/shop/readiness
-//   (loyalty/promotions/my.html зовут ручки, которых в сервере НЕТ — мёртвые страницы, не контракт)
+//   loyalty.html — лояльность клиента: /api/cabinet/loyalty{,/tiers,/referrals}, PATCH /api/cabinet/me
+//   my.html      — визиты/избранное/отзывы: /api/cabinet/visits, /api/favorites, /api/reviews
+//   promotions.html — витрина акций: /api/promotions (публично)
+//   (17.09: loyalty/my звали АДМИНСКИЕ ручки /api/loyalty/* и /api/favorites?phone= — клиент получал
+//    401 и пустой экран. Переведены на вход по коду; ручки ниже — то, на чём они держатся.)
 // Бот записи @Svs_beautybot ходит в библиотеки напрямую, не по HTTP — его контракт покрывает БД/щит.
 //
 // КАК: снимок ФОРМЫ ответа (ключи + типы, рекурсивно) лежит в test/contracts/<name>.json.
@@ -181,6 +185,60 @@ test('контракт cabinet.html: заказы', async (t) => { if (skipIf(t)
 test('контракт cabinet.html: лояльность', async (t) => { if (skipIf(t)) return;
   await contract('cabinet.loyalty', 'GET', '/api/cabinet/loyalty', { auth: cabToken });
 });
+
+// ── страницы /p/loyalty.html, /p/my.html, /p/promotions.html (оживлены 17.09) ──
+// Раньше loyalty/my звали админские ручки и показывали пустоту. Теперь они ходят
+// клиентскими путями — эти контракты держат ровно то, от чего страницы зависят.
+test('контракт loyalty.html: своя лояльность (баланс, уровень, прогресс)', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('cabinet.loyalty-page', 'GET', '/api/cabinet/loyalty', { auth: cabToken });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  for (const k of ['balance', 'total_spent', 'tier']) assert.ok(k in r.body, `страница ждёт поле ${k}`);
+});
+test('контракт loyalty.html: справочник уровней программы', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('cabinet.loyalty-tiers', 'GET', '/api/cabinet/loyalty/tiers', { auth: cabToken });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.ok(Array.isArray(r.body.items) && r.body.items.length > 0, 'уровни не пустые');
+  for (const k of ['name', 'min_spent', 'bonus_percent', 'color']) assert.ok(k in r.body.items[0], `уровень содержит ${k}`);
+});
+test('контракт loyalty.html: свои приглашения (чужие телефоны не отдаются)', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('cabinet.loyalty-referrals', 'GET', '/api/cabinet/loyalty/referrals', { auth: cabToken });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.ok(Array.isArray(r.body.items), 'items — массив');
+  assert.ok(typeof r.body.invited_count === 'number' && typeof r.body.bonuses_earned === 'number');
+  for (const x of r.body.items) assert.ok(!('invited_phone' in x), 'полный телефон приглашённого наружу не уходит');
+});
+test('контракт loyalty.html: уровни и приглашения закрыты без входа', async (t) => { if (skipIf(t)) return;
+  for (const u of ['/api/cabinet/loyalty/tiers', '/api/cabinet/loyalty/referrals']) {
+    const r = await call('GET', u);
+    assert.strictEqual(r.status, 401, `${u} без токена должен быть 401, а не ${r.status}`);
+  }
+});
+test('контракт my.html: свои визиты', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('cabinet.visits-page', 'GET', '/api/cabinet/visits?limit=100', { auth: cabToken });
+  assert.strictEqual(r.status, 200);
+  assert.ok(Array.isArray(r.body.upcoming) && Array.isArray(r.body.past), 'страница ждёт upcoming и past');
+});
+test('контракт my.html: избранное по токену (без телефона в запросе)', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('favorites.mine', 'GET', '/api/favorites', { auth: cabToken });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.ok(Array.isArray(r.body.items), 'items — массив');
+});
+test('контракт my.html: избранное без входа и без телефона — отказ, а не чужие данные', async (t) => { if (skipIf(t)) return;
+  const r = await call('GET', '/api/favorites');
+  assert.ok(r.status === 400 || r.status === 401, 'ожидали отказ, получили ' + r.status);
+});
+test('контракт my.html: публичные отзывы', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('reviews.public', 'GET', '/api/reviews?limit=200');
+  assert.strictEqual(r.status, 200);
+  assert.ok(Array.isArray(r.body.items), 'items — массив');
+});
+test('контракт promotions.html: список акций (публичный)', async (t) => { if (skipIf(t)) return;
+  const { r } = await contract('promotions.public', 'GET', '/api/promotions');
+  assert.strictEqual(r.status, 200);
+  assert.ok(Array.isArray(r.body.items), 'items — массив');
+});
+
+// выход — ПОСЛЕДНИМ: он гасит сессию, после него любой запрос с этим токеном = 401
 test('контракт cabinet.html: выход', async (t) => { if (skipIf(t)) return;
   await contract('cabinet.logout', 'POST', '/api/cabinet/logout', { auth: cabToken });
 });

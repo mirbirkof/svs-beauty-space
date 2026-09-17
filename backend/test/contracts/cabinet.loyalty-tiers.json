@@ -1,0 +1,17 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/loyalty/tiers",
+  "status": 200,
+  "body": {
+    "items": [
+      {
+        "bonus_percent": "string",
+        "color": "string",
+        "min_spent": "string",
+        "name": "string",
+        "perks": "string"
+      }
+    ],
+    "ok": "boolean"
+  }
+}

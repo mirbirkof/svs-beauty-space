@@ -1,0 +1,25 @@
+{
+  "method": "GET",
+  "url": "/api/promotions",
+  "status": 200,
+  "body": {
+    "count": "number",
+    "items": [
+      {
+        "banner_url": null,
+        "category": "string",
+        "created_at": "string",
+        "description": "string",
+        "discount_pct": "number",
+        "discount_uah": null,
+        "ends_at": null,
+        "id": "number",
+        "is_active": "boolean",
+        "service_category": null,
+        "starts_at": "string",
+        "tenant_id": "string",
+        "title": "string"
+      }
+    ]
+  }
+}

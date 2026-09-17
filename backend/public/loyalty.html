@@ -28,8 +28,13 @@
     <h2 class="text-lg font-bold mb-3">Ваш телефон</h2>
     <div class="flex gap-2">
       <input id="phone" placeholder="+380XXXXXXXXX" class="border rounded-lg px-4 py-3 text-base flex-1" maxlength="13">
-      <button onclick="loadProfile()" class="bg-rose-600 text-white px-6 py-3 rounded-lg font-medium">Войти</button>
+      <button id="btn-code" onclick="requestCode()" class="bg-rose-600 text-white px-6 py-3 rounded-lg font-medium whitespace-nowrap">Получить код</button>
     </div>
+    <div id="code-box" class="hidden flex gap-2 mt-3">
+      <input id="code" inputmode="numeric" maxlength="6" placeholder="Код из сообщения" class="border rounded-lg px-4 py-3 text-base flex-1 tracking-widest text-center">
+      <button onclick="doLogin()" class="bg-rose-600 text-white px-6 py-3 rounded-lg font-medium">Войти</button>
+    </div>
+    <p id="login-msg" class="text-sm mt-3 text-gray-500"></p>
   </section>
 
   <!-- Профиль -->
@@ -112,79 +117,124 @@
 </main>
 
 <script>
-const API = (function() {
-  try { return localStorage.getItem('DIKIDI_API') || location.origin; }
-  catch(e) { return location.origin; }
-})();
+// 17.09: страница оживлена. Раньше она звала АДМИНСКИЕ ручки /api/loyalty/* — сервер
+// требовал права сотрудника, клиент получал 401 и пустой экран. Плюс «введи телефон —
+// покажу траты» отдавало бы чужие данные любому. Теперь вход по коду, как в кабинете,
+// и данные берутся из клиентских ручек /api/cabinet/*: каждый видит только своё.
+const API = location.origin;
+const TOKEN_KEY = 'svs_session_token';
+let token = localStorage.getItem(TOKEN_KEY) || '';
+let CURRENT_PHONE = localStorage.getItem('SVS_PHONE') || '';
 
-let CURRENT_PHONE = null;
-
+const H = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) });
+async function api(url, opts = {}) {
+  const r = await fetch(API + url, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
+  if (r.status === 401) { doLogout(); return { ok: false, error: 'unauthorized' }; }
+  return r.json().catch(() => ({ ok: false, error: 'bad-json' }));
+}
+const el = (id) => document.getElementById(id);
+const msg = (t, err) => { const m = el('login-msg'); if (m) { m.textContent = t; m.className = 'text-sm mt-3 ' + (err ? 'text-red-600' : 'text-gray-500'); } };
 function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
+function normPhone(p) {
+  const d = String(p || '').replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('380')) return '+' + d;
+  if (d.length === 10 && d.startsWith('0')) return '+38' + d;
+  return p;
+}
 
-// автозагрузка если уже логинились раньше
 window.addEventListener('DOMContentLoaded', () => {
-  try {
-    const saved = localStorage.getItem('SVS_PHONE');
-    if (saved) {
-      document.getElementById('phone').value = saved;
-      loadProfile();
-    }
-  } catch (e) {}
+  if (CURRENT_PHONE) el('phone').value = CURRENT_PHONE;
+  if (token) loadProfile();
 });
 
-async function loadProfile() {
-  const phone = document.getElementById('phone').value.trim();
-  if (!phone || phone.length < 10) { alert('Введите телефон в формате +380XXXXXXXXX'); return; }
-  CURRENT_PHONE = phone;
-  try { localStorage.setItem('SVS_PHONE', phone); } catch (e) {}
-
-  // загрузить профиль + уровни параллельно
-  const [pRes, tRes] = await Promise.all([
-    fetch(`${API}/api/loyalty/profile/${encodeURIComponent(phone)}`).then(r => r.json()),
-    fetch(`${API}/api/loyalty/tiers`).then(r => r.json())
-  ]);
-  if (!pRes.ok) { alert('Ошибка: ' + (pRes.error || 'unknown')); return; }
-
-  // скрыть логин, показать профиль
-  document.getElementById('login-card').classList.add('hidden');
-  document.getElementById('profile-card').classList.remove('hidden');
-  document.getElementById('tiers-card').classList.remove('hidden');
-  document.getElementById('ref-card').classList.remove('hidden');
-  document.getElementById('bday-card').classList.remove('hidden');
-
-  // профиль
-  const t = pRes.current_tier;
-  document.getElementById('tier-name').textContent = t.name;
-  document.getElementById('tier-badge').style.borderColor = t.color;
-  document.getElementById('tier-badge').style.color = t.color;
-  document.getElementById('total-spent').textContent = Math.round(pRes.total_spent).toLocaleString('ru-UA') + ' ₴';
-  document.getElementById('bonus-pct').textContent = parseFloat(t.bonus_percent) + '%';
-  document.getElementById('perks').textContent = t.perks || '';
-
-  // прогресс
-  if (pRes.next_tier) {
-    document.getElementById('next-block').classList.remove('hidden');
-    document.getElementById('top-block').classList.add('hidden');
-    document.getElementById('next-name').textContent = pRes.next_tier.name;
-    document.getElementById('to-next').textContent = Math.round(pRes.to_next).toLocaleString('ru-UA') + ' ₴';
-    const pct = Math.min(100, Math.round(pRes.total_spent / parseFloat(pRes.next_tier.min_spent) * 100));
-    setTimeout(() => { document.getElementById('progress-bar').style.width = pct + '%'; }, 100);
+async function requestCode() {
+  const p = normPhone(el('phone').value.trim());
+  if (!p || p.replace(/\D/g, '').length < 10) { msg('Введите телефон в формате +380XXXXXXXXX', true); return; }
+  msg('Отправляю код…');
+  const r = await api('/api/cabinet/request-code', { method: 'POST', body: JSON.stringify({ phone: p }) });
+  if (r.ok) {
+    CURRENT_PHONE = p;
+    try { localStorage.setItem('SVS_PHONE', p); } catch (e) {}
+    el('code-box').classList.remove('hidden');
+    el('btn-code').textContent = 'Выслать снова';
+    msg(r.hint ? r.hint : 'Код отправлен в Telegram — введите его ниже');
+  } else if (r.error === 'too-many-requests') {
+    msg('Слишком часто. Подождите минуту', true);
+  } else if (r.error === 'no-telegram') {
+    msg('К этому номеру не привязан Telegram. Напишите боту записи — и код будет приходить', true);
   } else {
-    document.getElementById('next-block').classList.add('hidden');
-    document.getElementById('top-block').classList.remove('hidden');
+    msg('Не удалось отправить код: ' + (r.error || 'ошибка'), true);
+  }
+}
+
+async function doLogin() {
+  const code = (el('code').value || '').trim();
+  if (!code) { msg('Введите код', true); return; }
+  const r = await api('/api/cabinet/verify', { method: 'POST', body: JSON.stringify({ phone: CURRENT_PHONE, code }) });
+  if (r.ok && r.token) {
+    token = r.token;
+    localStorage.setItem(TOKEN_KEY, token);
+    msg('');
+    loadProfile();
+  } else {
+    msg(r.error === 'bad-code' ? 'Неверный код' + (r.attempts_left != null ? ` (осталось попыток: ${r.attempts_left})` : '') : 'Не удалось войти: ' + (r.error || 'ошибка'), true);
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem(TOKEN_KEY);
+  token = '';
+  location.reload();
+}
+
+async function loadProfile() {
+  const [me, tiers, refs] = await Promise.all([
+    api('/api/cabinet/loyalty'),
+    api('/api/cabinet/loyalty/tiers'),
+    api('/api/cabinet/loyalty/referrals'),
+  ]);
+  if (!me.ok) { msg('Не удалось загрузить данные: ' + (me.error || 'ошибка'), true); return; }
+
+  el('login-card').classList.add('hidden');
+  ['profile-card', 'tiers-card', 'ref-card', 'bday-card'].forEach((id) => el(id) && el(id).classList.remove('hidden'));
+
+  // текущий уровень: имя, цвет и привилегии берём из справочника — в /loyalty их нет
+  const list = (tiers.items || []);
+  const t = me.tier || { name: 'Bronze', bonus_percent: 3 };
+  const full = list.find((x) => x.name === t.name) || {};
+  const color = full.color || '#cd7f32';
+  el('tier-name').textContent = t.name;
+  el('tier-badge').style.borderColor = color;
+  el('tier-badge').style.color = color;
+  el('total-spent').textContent = Math.round(me.total_spent || 0).toLocaleString('ru-UA') + ' ₴';
+  el('bonus-pct').textContent = parseFloat(t.bonus_percent || 0) + '%';
+  el('perks').textContent = full.perks || '';
+
+  // прогресс до следующего уровня
+  if (me.next_tier) {
+    el('next-block').classList.remove('hidden');
+    el('top-block').classList.add('hidden');
+    el('next-name').textContent = me.next_tier.name;
+    el('to-next').textContent = Math.round(me.to_next || 0).toLocaleString('ru-UA') + ' ₴';
+    const need = parseFloat(me.next_tier.min_spent) || 1;
+    const pct = Math.min(100, Math.round((me.total_spent || 0) / need * 100));
+    setTimeout(() => { el('progress-bar').style.width = pct + '%'; }, 100);
+  } else {
+    el('next-block').classList.add('hidden');
+    el('top-block').classList.remove('hidden');
   }
 
-  // все уровни
-  document.getElementById('tiers-list').innerHTML = tRes.items.map(x => {
+  // все уровни программы
+  el('tiers-list').innerHTML = list.map((x) => {
     const isMe = x.name === t.name;
-    return `<div class="tier-card flex items-center gap-3 p-3 rounded-lg ${isMe?'bg-amber-50 border-2 border-amber-300':'bg-gray-50'}">
-      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold" style="border-color:${escapeHtml(x.color)};color:${escapeHtml(x.color)}">${escapeHtml(x.name[0])}</div>
+    return `<div class="tier-card flex items-center gap-3 p-3 rounded-lg ${isMe ? 'bg-amber-50 border-2 border-amber-300' : 'bg-gray-50'}">
+      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold" style="border-color:${escapeHtml(x.color)};color:${escapeHtml(x.color)}">${escapeHtml(String(x.name || '?')[0])}</div>
       <div class="flex-1">
-        <p class="font-medium text-sm">${escapeHtml(x.name)} ${isMe?'<span class="text-xs text-amber-600">— вы здесь</span>':''}</p>
-        <p class="text-xs text-gray-500">${escapeHtml(x.perks||'')}</p>
+        <p class="font-medium text-sm">${escapeHtml(x.name)} ${isMe ? '<span class="text-xs text-amber-600">— вы здесь</span>' : ''}</p>
+        <p class="text-xs text-gray-500">${escapeHtml(x.perks || '')}</p>
       </div>
       <div class="text-right text-xs">
         <p class="font-bold">${parseFloat(x.bonus_percent)}%</p>
@@ -193,27 +243,24 @@ async function loadProfile() {
     </div>`;
   }).join('');
 
-  // рефералка
-  document.getElementById('ref-link').value = `https://t.me/Svs_beautybot?start=ref_${encodeURIComponent(phone)}`;
-  document.getElementById('ref-count').textContent = pRes.referrals.invited_count;
-  document.getElementById('ref-earned').textContent = pRes.referrals.bonuses_earned + ' ₴';
+  // приглашения
+  el('ref-link').value = `https://t.me/Svs_beautybot?start=ref_${encodeURIComponent(String(CURRENT_PHONE || me.phone || '').replace(/\D/g, ''))}`;
+  el('ref-count').textContent = refs.ok ? refs.invited_count : 0;
+  el('ref-earned').textContent = (refs.ok ? refs.bonuses_earned : 0) + ' ₴';
 }
 
 function copyRef() {
-  const inp = document.getElementById('ref-link');
+  const inp = el('ref-link');
   inp.select();
   document.execCommand('copy');
   alert('Скопировано!');
 }
 
 async function saveBday() {
-  const bday = document.getElementById('bday').value;
+  const bday = el('bday').value;
   if (!bday) { alert('Выберите дату'); return; }
-  const r = await fetch(`${API}/api/loyalty/birthday`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({client_phone: CURRENT_PHONE, birthday: bday})
-  }).then(r => r.json());
-  document.getElementById('bday-msg').textContent = r.ok ? 'Сохранено. Подарок придёт в день рождения' : 'Ошибка: ' + (r.error || 'unknown');
+  const r = await api('/api/cabinet/me', { method: 'PATCH', body: JSON.stringify({ birthday: bday }) });
+  el('bday-msg').textContent = r.ok ? 'Сохранено. Подарок придёт в день рождения' : 'Не удалось сохранить: ' + (r.error || 'ошибка');
 }
 </script>
 </body>
