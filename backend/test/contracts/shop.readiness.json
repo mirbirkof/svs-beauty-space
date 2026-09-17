@@ -1,0 +1,31 @@
+{
+  "method": "GET",
+  "url": "/api/shop/readiness",
+  "status": 200,
+  "body": {
+    "code_status": {
+      "admin_panel": "string",
+      "cabinet_auth": "string",
+      "catalog": "string",
+      "csv_export": "string",
+      "loyalty_3pct": "string",
+      "mono_pay": "string",
+      "notifications": "string",
+      "nova_poshta": "string",
+      "orders": "string",
+      "promos": "string",
+      "stock_management": "string"
+    },
+    "components": {
+      "admin_token": "string",
+      "database": "string",
+      "integration_encryption": "string",
+      "jwt_secret": "string",
+      "mono_acquiring": "string",
+      "nova_poshta": "string",
+      "sms_provider": "string",
+      "telegram_bot": "string"
+    },
+    "ok": "boolean"
+  }
+}

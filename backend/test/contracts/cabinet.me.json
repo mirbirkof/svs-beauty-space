@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/me",
+  "status": 200,
+  "body": {
+    "client": {
+      "email": null,
+      "id": "number",
+      "loyalty_points": "number",
+      "name": null,
+      "phone": "string",
+      "total_spent": "string"
+    },
+    "ok": "boolean"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/me",
+  "status": 401,
+  "body": {
+    "error": "string"
+  }
+}

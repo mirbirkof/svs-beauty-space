@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/orders",
+  "status": 200,
+  "body": {
+    "ok": "boolean",
+    "orders": [
+      "empty"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "method": "POST",
+  "url": "/api/cabinet/request-code",
+  "status": 200,
+  "body": {
+    "hint": "string",
+    "mode": "string",
+    "ok": "boolean"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "url": "/api/booking/status/no-such-token-qa",
+  "status": 404,
+  "body": {
+    "error": "string"
+  }
+}

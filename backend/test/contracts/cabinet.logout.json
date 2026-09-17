@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "url": "/api/cabinet/logout",
+  "status": 200,
+  "body": {
+    "ok": "boolean"
+  }
+}

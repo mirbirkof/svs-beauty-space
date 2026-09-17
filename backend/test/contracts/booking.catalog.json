@@ -1,0 +1,34 @@
+{
+  "method": "GET",
+  "url": "/api/booking/catalog",
+  "status": 200,
+  "body": {
+    "masters": [
+      {
+        "avatar": null,
+        "id": "string",
+        "name": "string",
+        "online_rank": "number",
+        "services": [
+          "string"
+        ],
+        "specialty": "string"
+      }
+    ],
+    "services": [
+      {
+        "category": "string",
+        "color": null,
+        "duration": "number",
+        "id": "string",
+        "name": "string",
+        "name_ua": "string",
+        "photo_urls": [
+          "empty"
+        ],
+        "price": "number"
+      }
+    ],
+    "source": "string"
+  }
+}

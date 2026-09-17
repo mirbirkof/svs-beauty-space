@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "url": "/api/booking/slots?service_id=2&date=2026-09-18",
+  "status": 200,
+  "body": [
+    {
+      "employees": [
+        "string"
+      ],
+      "from": "string",
+      "time": "string"
+    }
+  ]
+}

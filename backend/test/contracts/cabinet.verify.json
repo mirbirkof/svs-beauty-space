@@ -1,0 +1,17 @@
+{
+  "method": "POST",
+  "url": "/api/cabinet/verify",
+  "status": 200,
+  "body": {
+    "client": {
+      "email": null,
+      "id": "number",
+      "loyalty_points": "number",
+      "name": null,
+      "phone": "string"
+    },
+    "expires_at": "string",
+    "ok": "boolean",
+    "token": "string"
+  }
+}

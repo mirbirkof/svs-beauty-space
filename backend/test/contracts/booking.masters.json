@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "url": "/api/booking/masters",
+  "status": 200,
+  "body": [
+    {
+      "id": "string",
+      "name": "string",
+      "services": [
+        "string"
+      ],
+      "specialty": "string"
+    }
+  ]
+}

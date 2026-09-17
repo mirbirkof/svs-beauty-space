@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "url": "/api/booking/services",
+  "status": 200,
+  "body": [
+    {
+      "category": "string",
+      "duration": "number",
+      "id": "string",
+      "name": "string",
+      "price": "number"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "method": "GET",
+  "url": "/api/cabinet/loyalty",
+  "status": 200,
+  "body": {
+    "balance": "number",
+    "next_tier": {
+      "bonus_percent": "string",
+      "min_spent": "string",
+      "name": "string"
+    },
+    "ok": "boolean",
+    "phone": "string",
+    "tier": {
+      "bonus_percent": "string",
+      "min_spent": "string",
+      "name": "string"
+    },
+    "to_next": "number",
+    "total_spent": "number"
+  }
+}
