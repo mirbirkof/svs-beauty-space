@@ -16,27 +16,24 @@
 require('dotenv').config();
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { spawn } = require('node:child_process');
-const path = require('node:path');
-const crypto = require('node:crypto');
+const { startQaServer } = require('./_qa-server');
 const { Client } = require('pg');
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const PORT = Number(process.env.PAY_TEST_PORT || 3037);
 const BASE = `http://127.0.0.1:${PORT}`;
 const QA_URL = process.env.QA_DB_URL;
-const TOKEN = 'qa-pay-' + crypto.randomBytes(12).toString('hex');
 const MARK = 'QA-PAY-TEST';
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const kyivToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date());
 
-let db, srv, srvLog = '';
+let db, S;
 const F = { ids: { appts: [] } }; // фикстуры
 
 const api = async (method, url, body) => {
   const res = await fetch(BASE + url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': TOKEN },
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': S.token },
     body: body ? JSON.stringify(body) : undefined,
   });
   let json = null;
@@ -59,16 +56,6 @@ const findById = (node, id) => { // ищем объект визита в люб
   for (const k of Object.keys(node)) { const f = findById(node[k], id); if (f) return f; }
   return null;
 };
-
-async function waitHealth(ms) {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    try { const r = await fetch(BASE + '/health'); if (r.ok) return true; } catch (_) {}
-    if (srv.exitCode !== null) throw new Error('сервер упал на старте:\n' + srvLog.slice(-1500));
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error('сервер не поднялся за ' + ms + 'мс:\n' + srvLog.slice(-1500));
-}
 
 async function newAppointment(price, hour = 12) {
   const row = (await q(
@@ -107,25 +94,13 @@ before(async () => {
            VALUES ($1,$2,'accrual',200,200,200,'qa-test',$3, now())`, [TENANT, F.client, MARK]);
   F.appt = await newAppointment(1000);
 
-  // ── сервер на песочнице ──
-  const env = {
-    ...process.env,
-    DATABASE_URL: QA_URL, DATABASE_URL_APP: QA_URL,
-    PORT: String(PORT), SHOP_API_PORT: String(PORT),
-    QA_STAGING: '1', CRM_REUSEPORT: '', CRM_DEFER_JOBS: '1', CRM_PROBE_PORT: '',
-    ADMIN_TOKEN: TOKEN, ADMIN_TOKEN_BOOTSTRAP_ONLY: '',
-    TELEGRAM_BOT_TOKEN: '', TELEGRAM_NOTIFY_TOKEN: '', MONO_TOKEN: '', SENTRY_DSN: '',
-    NODE_ENV: 'development',
-  };
-  srv = spawn(process.execPath, ['shop-api.js'], { cwd: path.join(__dirname, '..'), env, stdio: ['ignore', 'pipe', 'pipe'] });
-  srv.stdout.on('data', (d) => { srvLog += d; if (srvLog.length > 200000) srvLog = srvLog.slice(-100000); });
-  srv.stderr.on('data', (d) => { srvLog += d; if (srvLog.length > 200000) srvLog = srvLog.slice(-100000); });
-  await waitHealth(120000);
+  // ── сервер на песочнице (общий помощник _qa-server.js) ──
+  S = await startQaServer({ port: PORT });
   F.balance0 = await balance();
 }, { timeout: 150000 });
 
 after(async () => {
-  if (srv && srv.exitCode === null) { try { srv.kill('SIGTERM'); } catch (_) {} }
+  if (S) S.stop();
   if (!db) return;
   const ids = F.ids.appts;
   const steps = [
