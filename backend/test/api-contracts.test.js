@@ -117,6 +117,7 @@ after(async () => {
   if (S) S.stop();
   if (!db) return;
   for (const [sql, p] of [
+    [`DELETE FROM reviews WHERE id=$1`, [F.review]],
     [`DELETE FROM sms_codes WHERE phone LIKE '%' || $1`, [PHONE.replace(/\D/g, '').slice(-9)]],
     [`DELETE FROM master_schedule_days WHERE master_id=$1 AND source='qa-test'`, [F.master]],
     [`DELETE FROM master_services WHERE master_id=$1 AND source='qa-test'`, [F.master]],
@@ -231,6 +232,20 @@ test('контракт my.html: публичные отзывы', async (t) => {
   const { r } = await contract('reviews.public', 'GET', '/api/reviews?limit=200');
   assert.strictEqual(r.status, 200);
   assert.ok(Array.isArray(r.body.items), 'items — массив');
+});
+test('отзывы: аноним без входа НЕ может оставить отзыв (17.09, закрыта подмена номера)', async (t) => { if (skipIf(t)) return;
+  const r = await call('POST', '/api/reviews', { body: { client_phone: '+380991112233', rating: 5, text: 'QA-аноним' } });
+  assert.strictEqual(r.status, 401, 'без входа ожидали 401, получили ' + r.status + ': ' + JSON.stringify(r.body));
+});
+test('отзывы: клиент оставляет отзыв — телефон берётся из сессии, чужой из тела игнорируется', async (t) => { if (skipIf(t)) return;
+  const alien = '+380995556677';
+  const r = await call('POST', '/api/reviews', { auth: cabToken, body: { client_phone: alien, rating: 5, text: 'QA-CONTRACT-TEST отзыв', master_name: 'QA' } });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const row = (await db.query(`SELECT client_phone FROM reviews WHERE id=$1`, [r.body.id])).rows[0];
+  const digits = (x) => String(x || '').replace(/\D/g, '');
+  assert.strictEqual(digits(row.client_phone), digits(PHONE), 'записан телефон владельца сессии, а не из тела');
+  assert.notStrictEqual(digits(row.client_phone), digits(alien), 'чужой телефон из тела не принят');
+  F.review = r.body.id;
 });
 test('контракт promotions.html: список акций (публичный)', async (t) => { if (skipIf(t)) return;
   const { r } = await contract('promotions.public', 'GET', '/api/promotions');

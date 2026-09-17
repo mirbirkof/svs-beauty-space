@@ -216,8 +216,14 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
 
     await client.query('BEGIN'); await applyTenant(client);
 
-    // якщо роль майстер і просять — створюємо запис у masters і лінкуємо
-    if (!master_id && (create_master || role.rows[0].code === 'master')) {
+    // 16.09 (власник: «додав співробітника — він не зʼявився в персоналі графіка,
+    // і кнопки звільнити теж немає»). БУЛО: картка в masters заводилась ЛИШЕ для ролі
+    // 'master'. Заведена адміном «Даша» лишалась без картки — а саме картка робить
+    // людину видимою в «Персоналі графіка», в «Команді» та дає кнопку «Звільнити».
+    // СТАЛО: картку отримує будь-яка РОБОЧА роль салону. 'readonly' — це лише доступ
+    // до перегляду (бухгалтер, аудитор), він не співробітник зміни і місце тарифу не займає.
+    const WORKING_ROLES = new Set(['master', 'admin', 'manager', 'reception', 'owner']);
+    if (!master_id && (create_master || WORKING_ROLES.has(role.rows[0].code))) {
       // ЖОДНИХ ДВІЙНИКІВ (нотатка #157): якщо картка цієї людини вже є в салоні —
       // привʼязуємо логін до неї, а не заводимо другу. Саме так 19.07 у команді
       // зʼявилися «дві Аліни»: логін пішов на нову порожню картку, а історія
@@ -254,10 +260,14 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
             return res.status(403).json({ error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
           }
         }
+        // provides_services: майстер надає послуги, решта ролей — ні (вони не в записі
+        // клієнта), але у складі графіка присутні всі — in_schedule має DEFAULT true (міграція 305).
+        const providesServices = role.rows[0].code === 'master';
         const m = await client.query(
-          `INSERT INTO masters (name, phone, specialty, commission_pct, active)
-           VALUES ($1,$2,$3,$4,true) RETURNING id`,
-          [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40]
+          `INSERT INTO masters (name, phone, specialty, commission_pct, active, provides_services, staff_role)
+           VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id`,
+          [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40,
+           providesServices, role.rows[0].code]
         );
         master_id = m.rows[0].id;
       }

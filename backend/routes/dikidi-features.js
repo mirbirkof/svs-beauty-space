@@ -21,7 +21,15 @@ function normPhone(p) {
 // 1) отзыв попадает в 'pending' — публикует персонал через PATCH (модерация в админке)
 // 2) rate limit: max 3 отзыва за 10 мин с одного IP
 const reviewRate = new Map(); // ip -> { count, windowStart }
-router.post('/reviews', async (req, res) => {
+// 17.09 (нашло security-ревью перед выкаткой): раньше ручка была полностью публичной и брала
+// client_phone ИЗ ТЕЛА — любой мог оставить отзыв от чужого номера. Теперь телефон берётся из
+// сессии клиента (вход по коду). Сотруднику с правом reviews.write по-прежнему можно завести
+// отзыв за клиента (телефон в теле). Аноним без входа — 401.
+// Проверено 17.09: admin/dikidi.html отзывы не создаёт, только читает и модерирует (PATCH).
+router.post('/reviews', authClient({ optional: true }), (req, res, next) => {
+  if (cabClient(req)) return next();
+  return requirePerm('reviews.write')(req, res, next);
+}, async (req, res) => {
   try {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
     const now = Date.now();
@@ -38,7 +46,10 @@ router.post('/reviews', async (req, res) => {
             rating, text, is_anonymous } = req.body || {};
     if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'rating 1-5 required' });
     if (text && String(text).length > 2000) return res.status(400).json({ error: 'text too long (max 2000)' });
-    const phone = normPhone(client_phone);
+    // телефон: у клиента — из его сессии (подмена чужого номера невозможна),
+    // у сотрудника с правом — из тела (заводит отзыв за клиента)
+    const me = cabClient(req);
+    const phone = me ? normPhone(me.phone) : normPhone(client_phone);
     const r = await pool.query(
       `INSERT INTO reviews (client_phone, master_id, master_name, service_id, service_name,
                             rating, text, is_anonymous, status)
