@@ -63,6 +63,25 @@ if { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && [ "${SKIP_SHIELD:-0}
   fi
 fi
 
+# ── SECURITY-РЕВЬЮ ПЕРЕД ВЫКАТКОЙ (17.09) — общий инструмент ops/sec-review.sh ──
+# Тесты отвечают «работает ли». Это отвечает «можно ли сломать»: сильная модель читает дифф кода
+# с прошлой выкатки и ищет только дыры (деньги, доступ, ПД, инъекции, секреты). BLOCK → выкатка
+# отменена, прод не тронут, Боссу уведомление. Без вердикта (лимит) → предупреждение, выкатка идёт
+# (нельзя блокировать хотфикс из-за лимита). Обход: SKIP_SECREVIEW=1. Метка прошлой выкатки: .last-deploy-rev.
+REV_FILE=/home/client/workspace/svs-beauty-space/.last-deploy-rev
+if { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && [ "${SKIP_SECREVIEW:-0}" != "1" ]; then
+  say "$MODE: security-ревью диффа с прошлой выкатки…"
+  SEC_OUT=$(bash /home/client/workspace/ops/sec-review.sh /home/client/workspace/svs-beauty-space "$(cat "$REV_FILE" 2>/dev/null)" backend 2>&1); SEC_RC=$?
+  printf '%s\n' "$SEC_OUT" | tail -8 | tee -a "$LOG"
+  if [ "$SEC_RC" -eq 3 ]; then
+    say "$MODE ОТМЕНЁН: security-ревью нашло дыру, прод не тронут"
+    notify "🛑 <b>Выкатка CRM остановлена security-ревью</b>: $(printf '%s' "$SEC_OUT" | grep '^ВЕРДИКТ: BLOCK' | sed 's/^ВЕРДИКТ: BLOCK:[[:space:]]*//' | head -c 600). Прод на старом коде."
+    exit 3
+  elif [ "$SEC_RC" -eq 2 ]; then
+    notify "⚠️ CRM: security-ревью перед выкаткой не дало вердикта (лимит/сбой) — выкатка прошла БЕЗ него."
+  fi
+fi
+
 # ── КРОН-ПУТЬ: жив → только снять «немых» дублей и выйти ──
 if [ "$MODE" != "restart" ] && [ "$MODE" != "force" ]; then
   if health; then
@@ -87,7 +106,7 @@ hard_start() {
   # CRM_REUSEPORT=1 ОБЯЗАТЕЛЕН (29.07): выкатка рядом возможна только если флаг у ВСЕХ сокетов порта.
   PORT=$PORT CRM_REUSEPORT=1 setsid nohup node shop-api.js >> "$LOG" 2>&1 9>&- &
   sleep 25
-  if health; then say "started ok (hard)"; return 0; fi
+  if health; then say "started ok (hard)"; { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && git -C /home/client/workspace/svs-beauty-space rev-parse HEAD > "$REV_FILE" 2>/dev/null; return 0; fi
   say "START FAILED"; return 1
 }
 
@@ -146,6 +165,7 @@ zero_downtime() {
   sleep 3
   if health; then
     say "restart: ГОТОВО без простоя. pid $NEW. health: $(curl -s -m 5 http://127.0.0.1:$PORT/health | head -c 120)"
+    git -C /home/client/workspace/svs-beauty-space rev-parse HEAD > "$REV_FILE" 2>/dev/null   # метка для следующего security-ревью
     return 0
   fi
   say "restart: ТРЕВОГА — :$PORT не отвечает после переключения → аварийный жёсткий старт"

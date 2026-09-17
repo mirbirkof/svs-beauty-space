@@ -16,3 +16,4 @@ backend/uploads/
 .env.bak-*
 ops/.truth-watch-profile/
 qa1*.mjs
+.last-deploy-rev
