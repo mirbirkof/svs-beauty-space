@@ -26,6 +26,24 @@ else
   flock -n 9 || lock_held_by_server || exit 0
 fi
 
+# ── ВОРОТА ДЕПЛОЯ (17.09, Босс: «тесты кассы и графика как ворота деплоя») ──
+# Ручной restart/force = выкатка нового кода. Перед тем как гасить прод — регресс-щит
+# (деньги/касса на живом QA-сервере/права/изоляция). Красный щит = код сломан = прод НЕ трогаем.
+# Крон-путь (подъём мёртвого прода) ворота НЕ проходит: мёртвый прод надо поднимать, а не тестировать.
+# Аварийный обход: SKIP_SHIELD=1 bash local-prod.sh restart (только когда щит сломан сам, а не код).
+if { [ "$1" = "restart" ] || [ "$1" = "force" ]; } && [ "${SKIP_SHIELD:-0}" != "1" ]; then
+  SHIELD=/home/client/workspace/ops/crm-regression.sh
+  if [ -x "$SHIELD" ] || [ -f "$SHIELD" ]; then
+    echo "[$(date '+%F %H:%M')] restart: регресс-щит перед выкаткой…" | tee -a "$LOG"
+    if ! bash "$SHIELD" 2>&1 | tee -a "$LOG"; then
+      echo "[$(date '+%F %H:%M')] restart ОТМЕНЁН: щит красный, прод не тронут (обход: SKIP_SHIELD=1)" | tee -a "$LOG"
+      curl -s -m 10 -X POST http://127.0.0.1:3005/notify -H "x-notify-token: jarvis-restart-2026" \
+        -H "Content-Type: text/plain" --data-binary "❌ <b>Выкатка CRM остановлена воротами</b>: регресс-щит красный, прод работает на старом коде. Лог: /tmp/crm-regression.log" >/dev/null 2>&1
+      exit 2
+    fi
+  fi
+fi
+
 # force-restart: `local-prod.sh restart` — перезапуск навіть якщо живий (застосувати нові зміни коду)
 if [ "$1" != "restart" ] && [ "$1" != "force" ]; then
   if curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then

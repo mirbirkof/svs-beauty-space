@@ -2146,9 +2146,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // унікальний індекс не рятує → подвійне списання сертифіката (аудит v8, блокер).
     const claim = await pool.query(
       `UPDATE appointments SET pay_settled_at = NOW()
-        WHERE id=$1 AND pay_settled_at IS NULL RETURNING pay_settled_at`, [id]);
+        WHERE id=$1 AND pay_settled_at IS NULL RETURNING pay_settled_at::text AS claim_ts`, [id]);
     if (!claim.rows[0]) return res.json({ ok: true, already_paid: true, operation_id: null });
-    res.locals._payClaim = claim.rows[0].pay_settled_at;
+    // ::text — повна точність (мікросекунди). Раніше pg віддавав Date з мілісекундами, і
+    // WHERE pay_settled_at=$2 НІКОЛИ не збігався → після відмови (невірна сума mixed,
+    // чужий сертифікат…) запис лишався «оплаченим» назавжди, наступний /pay казав
+    // already_paid без грошей у касі. Спіймано воротами деплою 17.09 (test/pay-cycle).
+    res.locals._payClaim = claim.rows[0].claim_ts;
 
     // ── ЗНИЖКИ: ручна знижка → сертифікат → бонуси. Каса отримує РЕШТУ (реальні гроші). ──
     const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -2174,7 +2178,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
         bonusRedeemed = 0;
       }
       if (res.locals._payClaim) {
-        await pool.query(`UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2`,
+        await pool.query(`UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2::timestamptz`,
           [id, res.locals._payClaim]).catch(() => {});
         res.locals._payClaim = null;
       }
@@ -2481,7 +2485,7 @@ router.post('/appointments/:id/pay', async (req, res) => {
   } catch (e) {
     // оплата зірвалась — знімаємо атомарний захват, інакше запис назавжди «оплачений»
     if (res.locals._payClaim) await getPool().query(
-      `UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2`,
+      `UPDATE appointments SET pay_settled_at=NULL WHERE id=$1 AND pay_settled_at=$2::timestamptz`,
       [Number(req.params.id), res.locals._payClaim]).catch(() => {});
     if (e && e.code === 'CERT_RACE')
       return res.status(409).json({ error: 'cert-race', message: 'Сертифікат уже використано або на ньому недостатньо коштів. Оновіть сторінку й перевірте баланс.' });
