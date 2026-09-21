@@ -18,8 +18,19 @@
    Один і той самий вираз використовують і SQL-запити, і JS, і фронт.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const ROLES = ['master', 'admin', 'owner'];
-const ROLE_LABEL = { master: 'Майстер', admin: 'Адміністратор', owner: 'Власник' };
+/* Словник ролей картки співробітника. Це РІВНО ті ролі, які routes/users.js
+   кладе в masters.staff_role (WORKING_ROLES), і рівно ті, що пропускає тригер
+   masters_normalize_staff_role (міграція 306). Три списки мусять збігатися:
+   розійдуться — роль знову почне мовчки перетворюватись на «майстра» (борг 17.09,
+   коли тригер 303 знав лише три ролі й схлопував 'manager'/'reception'). */
+const ROLES = ['master', 'admin', 'owner', 'manager', 'reception'];
+const ROLE_LABEL = { master: 'Майстер', admin: 'Адміністратор', owner: 'Власник',
+                     manager: 'Менеджер', reception: 'Рецепшен' };
+
+/* «Адміністрація» = всі, хто НЕ стоїть за кріслом: власник, адміністратор,
+   менеджер, рецепція. Вони не надають послуг, їх не видно в журналі та онлайн-записі
+   як виконавців — але у складі графіка вони є, і в реєстрі мають зватись своїм іменем. */
+const ADMIN_ROLES = ['admin', 'owner', 'manager', 'reception'];
 
 /** Роль людини з рядка masters. Невідоме/порожнє = майстер (безпечний типовий стан). */
 function staffRole(row) {
@@ -27,10 +38,9 @@ function staffRole(row) {
   return ROLES.includes(v) ? v : 'master';
 }
 
-/** Адміністрація = адміністратор або власник. Послуги тут ні до чого. */
+/** Адміністрація = будь-яка неробоча-за-кріслом роль. Послуги тут ні до чого. */
 function isAdminStaff(row) {
-  const r = staffRole(row);
-  return r === 'admin' || r === 'owner';
+  return ADMIN_ROLES.includes(staffRole(row));
 }
 
 function roleLabel(row) { return ROLE_LABEL[staffRole(row)]; }
@@ -38,19 +48,19 @@ function roleLabel(row) { return ROLE_LABEL[staffRole(row)]; }
 /** Нормалізована роль у SQL — той самий сенс, що й staffRole() у JS. */
 function roleSql(alias = 'm') {
   const c = `${alias}.staff_role`;
-  return `(CASE WHEN lower(btrim(COALESCE(${c},''))) IN ('master','admin','owner')
+  return `(CASE WHEN lower(btrim(COALESCE(${c},''))) IN (${ROLES.map(r => `'${r}'`).join(',')})
                 THEN lower(btrim(${c})) ELSE 'master' END)`;
 }
 
 /** Ознака «адміністрація» у SQL. Використовувати замість саморобних формул. */
 function isAdminSql(alias = 'm') {
-  return `(${roleSql(alias)} IN ('admin','owner'))`;
+  return `(${roleSql(alias)} IN (${ADMIN_ROLES.map(r => `'${r}'`).join(',')}))`;
 }
 
 /** Сортування: адміністрація завжди суцільним блоком унизу (прохання Боса 04.07). */
 function adminLastSql(alias = 'm') { return `(${isAdminSql(alias)})::int ASC`; }
 
-module.exports = { ROLES, ROLE_LABEL, staffRole, isAdminStaff, roleLabel, roleSql, isAdminSql, adminLastSql };
+module.exports = { ROLES, ROLE_LABEL, ADMIN_ROLES, staffRole, isAdminStaff, roleLabel, roleSql, isAdminSql, adminLastSql };
 
 /* ── «Чи є вже картка цієї людини?» — один заслін на всю CRM (нотатка #161) ──
    Власник: «одна аліна продубльована і зайва, незрозуміло звідки матеріалізувалась

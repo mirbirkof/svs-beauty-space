@@ -961,9 +961,13 @@ let TM_FILTER='all';
 function tmFilter(f){ TM_FILTER=f; document.querySelectorAll('.tm-f').forEach(b=>b.classList.toggle('active', b.dataset.f===f)); tmRender(); }
 // #160: одне правило ролі на всю CRM — те саме, що на бекенді (lib/staff-role.js).
 // Роль читається ТІЛЬКИ з картки людини; «надає послуги» на групу не впливає.
+// Борг 17.09: список знав лише три ролі, тож менеджер і рецепція падали в 'master'
+// і показувались майстрами. Список тримати РІВНО як у backend/lib/staff-role.js.
+const _TM_ROLES=['master','admin','owner','manager','reception'];
+const _TM_ADMIN_ROLES=['admin','owner','manager','reception'];
 function _tmRole(m){ const v=String((m&&m.staff_role)||'').trim().toLowerCase();
-  return (v==='admin'||v==='owner'||v==='master') ? v : 'master'; }
-function _tmIsAdm(m){ const r=_tmRole(m); return r==='admin'||r==='owner'; }
+  return _TM_ROLES.includes(v) ? v : 'master'; }
+function _tmIsAdm(m){ return _TM_ADMIN_ROLES.includes(_tmRole(m)); }
 function tmRows(){
   const byMaster = new Map();
   (USERS_CACHE||[]).forEach(u=>{ if(u.master_id) byMaster.set(Number(u.master_id), u); });
@@ -1205,7 +1209,7 @@ function _mcRenderShell(){
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
           ${(()=>{ // 13.08: бейдж показує РОЛЬ (вибір власника), а не здогадку з галочки послуг
-            const roleLbl={owner:'Власник',admin:'Адміністратор'}[ms.staff_role];
+            const roleLbl={owner:'Власник',admin:'Адміністратор',manager:'Менеджер',reception:'Рецепшен'}[String(ms.staff_role||'').toLowerCase()];
             const parts=[]; if(roleLbl) parts.push(roleLbl);
             if(ms.provides_services===false) parts.push('без послуг');
             return parts.length?`<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px">${parts.join(' · ')}</span>`:'';
@@ -1254,6 +1258,8 @@ function _mcTabProfile(){
       <select id="mcRole" class="inp">
         <option value="master" ${(ms.staff_role||'master')==='master'?'selected':''}>Майстер</option>
         <option value="admin" ${ms.staff_role==='admin'?'selected':''}>Адміністратор</option>
+        <option value="manager" ${ms.staff_role==='manager'?'selected':''}>Менеджер</option>
+        <option value="reception" ${ms.staff_role==='reception'?'selected':''}>Рецепшен</option>
         <option value="owner" ${ms.staff_role==='owner'?'selected':''}>Власник</option>
       </select></div>
     <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;font-size:13px;cursor:pointer;user-select:none">

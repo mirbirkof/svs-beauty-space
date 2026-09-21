@@ -5862,7 +5862,7 @@ async function renderScheduleOverview(grid) {
   // перевірка тексту спеціальності — тому перукар із «адмін» у посаді падав у блок
   // адміністрації, а адміністратор без цього слова опинявся серед майстрів. Роль тепер
   // приходить з бекенда готовою (один і той самий вираз для всієї CRM).
-  const _isAdm = m => (m.is_admin === true) || ['admin','owner'].includes(String(m.staff_role||'').toLowerCase());
+  const _isAdm = m => (m.is_admin === true) || ['admin','owner','manager','reception'].includes(String(m.staff_role||'').toLowerCase());
   const specs = [...new Set(data.items.map(m=>(m.specialty||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'uk'));
   let items = data.items.slice();
   if (window._schSpecFilter) items = items.filter(m=>(m.specialty||'').trim()===window._schSpecFilter);
@@ -5973,7 +5973,7 @@ async function schStaffOpen(){
 function _schStaffRow(m, inSched){
   const av = m.avatar ? `<img src="${m.avatar}" style="width:26px;height:26px;border-radius:50%;object-fit:cover">`
                       : `<span class="schb-av" style="background:${_schAvColor(m.name)};width:26px;height:26px;font-size:12px">${(m.name||'?').trim()[0].toUpperCase()}</span>`;
-  const _ROLE_SUB = { admin:'адміністратор', owner:'власник' };
+  const _ROLE_SUB = { admin:'адміністратор', owner:'власник', manager:'менеджер', reception:'рецепшен' };
   const sub = [m.specialty, _ROLE_SUB[String(m.staff_role||'').toLowerCase()] || null,
                inSched && m.shift_cnt ? `${m.shift_cnt} ${_plural(m.shift_cnt,'зміна','зміни','змін')} попереду` : null].filter(Boolean).join(' · ');
   return `<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border,#eee)">
@@ -12511,7 +12511,12 @@ function _mcRenderShell(){
         <div style="font-size:24px;font-weight:700;line-height:1.2">${fullName||'—'}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px">
           <span style="font-size:13px;font-weight:600;background:rgba(124,92,255,.10);color:#7c5cff;padding:2px 9px;border-radius:7px">${ms.specialty||'Без спеціальності'}</span>
-          ${ms.staff_role==='owner'?'<span style="font-size:11px;font-weight:700;background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:6px">Власник</span>':(ms.staff_role==='admin'?'<span style="font-size:11px;font-weight:700;background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:6px">Адміністратор</span>':'')}
+          ${(()=>{ /* борг 17.09: бейдж знав лише власника й адміністратора, тож менеджер і рецепція виглядали майстрами */
+            const L={owner:'Власник',admin:'Адміністратор',manager:'Менеджер',reception:'Рецепшен'}[String(ms.staff_role||'').toLowerCase()];
+            if(!L) return '';
+            const c = ms.staff_role==='owner' ? 'background:#ede9fe;color:#6d28d9' : 'background:#e0e7ff;color:#4338ca';
+            return `<span style="font-size:11px;font-weight:700;${c};padding:2px 8px;border-radius:6px">${L}</span>`;
+          })()}
           ${ms.provides_services===false?'<span style="font-size:11px;font-weight:700;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:6px" title="Не показується в журналі та онлайн-записі">Без послуг</span>':''}
           ${bpBadge}
           <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
@@ -12569,6 +12574,8 @@ function _mcTabProfile(){
       <select id="mcRole" class="input">
         <option value="master" ${(ms.staff_role||'master')==='master'?'selected':''}>Майстер</option>
         <option value="admin" ${ms.staff_role==='admin'?'selected':''}>Адміністратор</option>
+        <option value="manager" ${ms.staff_role==='manager'?'selected':''}>Менеджер</option>
+        <option value="reception" ${ms.staff_role==='reception'?'selected':''}>Рецепшен</option>
         <option value="owner" ${ms.staff_role==='owner'?'selected':''}>Власник</option>
       </select>
       <div style="font-size:12px;color:var(--text-secondary);margin-top:3px">Визначає, у якій групі людина показується в розділі «Команда».</div></div>
