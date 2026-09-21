@@ -69,7 +69,19 @@ fi
 # отменена, прод не тронут, Боссу уведомление. Без вердикта (лимит) → предупреждение, выкатка идёт
 # (нельзя блокировать хотфикс из-за лимита). Обход: SKIP_SECREVIEW=1. Метка прошлой выкатки: .last-deploy-rev.
 REV_FILE=/home/client/workspace/svs-beauty-space/.last-deploy-rev
+REPO_DIR=/home/client/workspace/svs-beauty-space
 if { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && [ "${SKIP_SECREVIEW:-0}" != "1" ]; then
+  # 17.09: метка выкатки — это коммит. Если код лежит незакоммиченным, следующая выкатка будет
+  # сравнивать «от метки», и промежуточный шаг потеряется в истории. Поэтому фиксируем ДО ревью:
+  # ревью всё равно смотрит рабочее дерево, а история остаётся полной и откатываемой.
+  DIRTY_CODE=$(git -C "$REPO_DIR" status --porcelain -- backend ':(exclude)backend/data' 2>/dev/null | head -20)
+  if [ -n "$DIRTY_CODE" ]; then
+    say "$MODE: фиксирую незакоммиченные правки перед выкаткой ($(printf '%s\n' "$DIRTY_CODE" | wc -l) файлов)"
+    git -C "$REPO_DIR" add -- backend ':(exclude)backend/data' 2>/dev/null
+    git -C "$REPO_DIR" commit -q -m "[jarvis] авто-фиксация перед выкаткой $(date '+%F %H:%M')" 2>/dev/null \
+      && say "$MODE: зафиксировано $(git -C "$REPO_DIR" rev-parse --short HEAD)" \
+      || say "$MODE: фиксировать нечего"
+  fi
   say "$MODE: security-ревью диффа с прошлой выкатки…"
   SEC_OUT=$(bash /home/client/workspace/ops/sec-review.sh /home/client/workspace/svs-beauty-space "$(cat "$REV_FILE" 2>/dev/null)" backend 2>&1); SEC_RC=$?
   printf '%s\n' "$SEC_OUT" | tail -8 | tee -a "$LOG"
@@ -106,8 +118,19 @@ hard_start() {
   # CRM_REUSEPORT=1 ОБЯЗАТЕЛЕН (29.07): выкатка рядом возможна только если флаг у ВСЕХ сокетов порта.
   PORT=$PORT CRM_REUSEPORT=1 setsid nohup node shop-api.js >> "$LOG" 2>&1 9>&- &
   sleep 25
-  if health; then say "started ok (hard)"; { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && git -C /home/client/workspace/svs-beauty-space rev-parse HEAD > "$REV_FILE" 2>/dev/null; return 0; fi
-  say "START FAILED"; return 1
+  if health; then say "started ok (hard)"; rm -f /tmp/crm-start-fails; { [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; } && git -C /home/client/workspace/svs-beauty-space rev-parse HEAD > "$REV_FILE" 2>/dev/null; return 0; fi
+  # 17.09: сторож (крон */5) молча крутил бы неудачный старт бесконечно. Считаем провалы подряд:
+  # 3-й провал = Боссу сообщение (не чаще раза в час), чтобы он узнал от меня, а не от пустого сайта.
+  FAILS=$(( $(cat /tmp/crm-start-fails 2>/dev/null || echo 0) + 1 )); echo "$FAILS" > /tmp/crm-start-fails
+  say "START FAILED (подряд: $FAILS)"
+  if [ "$FAILS" -ge 3 ]; then
+    STAMP=/tmp/crm-start-fail-notify
+    if [ ! -f "$STAMP" ] || [ $(( $(date +%s) - $(stat -c %Y "$STAMP" 2>/dev/null || echo 0) )) -gt 3600 ]; then
+      touch "$STAMP"
+      notify "🛑 <b>CRM не поднимается</b> — $FAILS неудачных старта подряд, сайт и касса недоступны. Последние строки лога: <code>$(tail -3 "$LOG" | tr -d '<>' | head -c 400)</code>"
+    fi
+  fi
+  return 1
 }
 
 # ── БЕСШОВНЫЙ ПУТЬ (restart): новый рядом → доказал здоровье → старый мягко гаснет ──
