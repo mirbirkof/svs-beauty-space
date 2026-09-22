@@ -16,9 +16,13 @@ notify(){ curl -s -m 10 -X POST http://127.0.0.1:3005/notify \
     -H "Content-Type: application/json" -H "x-notify-token: jarvis-restart-2026" \
     -d "{\"text\":\"$1\"}" >/dev/null 2>&1 || echo "$OUT" | tail -20 >> /tmp/ui-smoke-cron-fails.log; }
 if [ "$CODE" != "0" ]; then
+  # 22.09: полный вывод упавшего прогона — всегда в файл (раньше терялся, диагностика была невозможна)
+  { echo "=== [$(date '+%F %H:%M')] mode=$MODE code=$CODE"; echo "$OUT"; } > /tmp/ui-smoke-last-fail.log
   FAILS=$(echo "$OUT" | grep -E "FAIL|ПРОБЛЕМЫ|\[-\]" | head -5 | tr '\n' ' ')
   # Критичні вузли — те, від яких напряму залежать гроші/запис: каса, оплата, журнал, послуги.
-  CRIT=$(echo "$OUT" | grep -oE "cash-today|cashbox|pay[a-z_-]*|schedule|appointment[s]?|unsettled|journal|master-links" | sort -u | tr '\n' ' ')
+  # 22.09: шукаємо ТІЛЬКИ в рядках з фейлами (раніше — по всьому виводу, і назва сторінки «payroll»
+  # з успішного рядка робила з упалої картки послуги «критичний вузол каса/оплата»).
+  CRIT=$(echo "$FAILS" | grep -oE "cash-today|cashbox|pay[a-z_-]*|schedule|appointment[s]?|unsettled|journal|master-links" | sort -u | tr '\n' ' ')
   # Живий прод? health <> критичний фейл: якщо health лежить — прод завис/впав.
   PROD_DOWN=0; curl -sf -m 5 http://127.0.0.1:3011/health >/dev/null 2>&1 || PROD_DOWN=1
   if [ "$PROD_DOWN" = "1" ]; then

@@ -41,9 +41,14 @@ const ACTIONS = [
   { key: 'svc-modal',    run: async (p) => p.evaluate(async () => { // карточка услуги открывается и закрывается
       const r = await api('/api/services?limit=1'); const s=(r.items||[])[0];
       if (!s) return 'fail';
-      svcEdit(s.id); await new Promise(r2=>setTimeout(r2,1200));
-      const ok = !!document.getElementById('svcf_price');
+      svcEdit(s.id);
+      // 22.09: было фиксированное 1200мс — под нагрузкой сервера карточка рендерилась дольше и
+      // сторож слал ложный «критичный» алерт. Теперь опрос до 6с, отчёт с временем появления.
+      let ok = false, t0 = Date.now();
+      while (Date.now() - t0 < 6000) { if (document.getElementById('svcf_price')) { ok = true; break; } await new Promise(r2=>setTimeout(r2,200)); }
+      const dt = Date.now() - t0;
       document.getElementById('svcModal')?.remove();
+      if (ok && dt > 1200) console.log('[svc-modal] карточка появилась за ' + dt + 'мс (медленно)');
       return ok ? 'ok' : 'fail'; }) },
   { key: 'client-search',run: async (p) => p.evaluate(async () => {
       const r = await api('/api/admin/clients?limit=3&search=а');
@@ -67,7 +72,9 @@ function weight(k) {
   if (!c) return 1e9;                       // новое — наивысший приоритет
   return (Date.now() - c.last) + (c.fails || 0) * 3600e3;
 }
-const picked = allKeys.map(k => ({ k, w: weight(k) * (0.5 + Math.random()) }))
+// EXPLORE_ONLY=act:svc-modal,page:payroll — принудительный прогон конкретных комбинаций (диагностика после алерта)
+const only = (process.env.EXPLORE_ONLY || '').split(',').map(s => s.trim()).filter(k => allKeys.includes(k));
+const picked = only.length ? only : allKeys.map(k => ({ k, w: weight(k) * (0.5 + Math.random()) }))
   .sort((a, b) => b.w - a.w).slice(0, PICKS).map(x => x.k);
 
 const b = await chromium.launch({ args: ['--no-sandbox'] });
