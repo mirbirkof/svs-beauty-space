@@ -546,7 +546,7 @@ async function loadCashbox(){
         <td>${sel}</td>
       </tr>`; }).join('') || '<tr><td colspan="7" class="empty">Операцій ще немає</td></tr>';
     // 25.09: Z-звіти минулих змін — лише власнику (cashbox.history). У адміна раніше КОЖНЕ відкриття
-    // «Каси магазину» падало alert «Каса: forbidden». Тепер — тиха підказка в таблиці.
+    // «Каси салону» падало alert «Каса: forbidden». Тепер — тиха підказка в таблиці.
     let z;
     try { z = await api('/api/cashbox/z-reports'); }
     catch(ze){ if (ze.message==='forbidden') { document.getElementById('cb-zlist').innerHTML='<tr><td colspan="6" class="empty">Z-звіти минулих змін доступні власнику</td></tr>'; return; } throw ze; }

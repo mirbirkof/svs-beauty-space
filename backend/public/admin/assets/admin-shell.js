@@ -54,7 +54,7 @@
     { icon: 'flag', label: 'План місяця', href: '/admin/index.html#plan' },
     { group: 'Продажі', icon: 'sell', items: [
       { icon: 'shopping_bag', label: 'Замовлення', href: '/admin/index.html#orders' },
-      { icon: 'point_of_sale', label: 'Каса магазину', href: '/admin/crm-extra.html#cashbox' },
+      { icon: 'point_of_sale', label: 'Каса салону', href: '/admin/crm-extra.html#cashbox' },
       // Аудит 26.07: тут був захардкожений vercel-домен, який ВЖЕ віддає 404 (перевірено) —
       // пункт меню вів у нікуди. Відносний шлях працює на будь-якому домені/тунелі.
       { icon: 'language', label: 'Вітрина (сайт)', href: '/p/book.html' },
