@@ -11,7 +11,8 @@ router.get('/_variants', requirePerm(), async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     const vals = [];
-    let where = 'pv.active=TRUE';
+    // видалений товар (products.active=false) у продажу/розхідниках не показуємо — як і на складі (admin.js /stock)
+    let where = 'pv.active=TRUE AND p.active IS NOT FALSE';
     // Пошук по СЛОВАХ у будь-якому порядку: «кондиціонер журавл» раніше не знаходив
     // «кондиціонер NA Golovy з ензимами журавлини» (шукався цілий рядок). Кожне слово — AND.
     // Товари в наявності — першими: фронт показує верх списку, а по «кондиціонер» 53 збіги
