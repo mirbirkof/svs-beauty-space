@@ -2936,7 +2936,7 @@ select.input { background:var(--card); }
                   <input id="consVarSearch" class="input" placeholder="Пошук товару…" style="flex:1" oninput="searchVars()">
                   <input id="consQty" class="input" type="number" step="0.001" min="0" value="1" style="width:90px" title="Кількість на 1 виконання">
                 </div>
-                <div id="consVarResults" style="display:grid;gap:6px;margin-top:6px"></div>
+                <div id="consVarResults" style="display:grid;gap:6px;margin-top:6px;max-height:360px;overflow-y:auto"></div>
                 <p id="consMsg" class="set-msg" style="margin-top:10px"></p>
               </div></div>
             </div>
@@ -4013,7 +4013,7 @@ function posOpen(){
     + '<div class="modal-header"><h3><span class="material-icons-round" style="vertical-align:-4px">shopping_cart_checkout</span> Оформити продаж товару</h3><button class="modal-close" onclick="posClose()">✕</button></div>'
     + '<div class="modal-body" style="max-height:72vh;overflow:auto">'
     + '<input id="posQ" class="input" placeholder="Пошук товару: назва або артикул…" style="width:100%" oninput="posSearch()" autocomplete="off">'
-    + '<div id="posRes" style="margin-top:6px"></div>'
+    + '<div id="posRes" style="margin-top:6px;max-height:340px;overflow-y:auto"></div>'
     + '<table style="width:100%;margin-top:12px;border-collapse:collapse"><thead><tr>'
     + '<th style="text-align:left;padding:4px 6px">Товар</th><th style="padding:4px 6px">К-сть</th><th style="padding:4px 6px">Ціна, ₴</th><th style="text-align:right;padding:4px 6px">Сума</th><th></th></tr></thead>'
     + '<tbody id="posCart"><tr><td colspan="5" style="color:#888;padding:10px 6px">Кошик порожній — знайдіть товар і додайте</td></tr></tbody></table>'
@@ -4049,7 +4049,7 @@ function posSearch(){
     if (q.length < 2) { box.innerHTML = ''; return; }
     try {
       const d = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
-      const items = (d.items || []).slice(0, 12);
+      const items = (d.items || []).slice(0, 50);
       box.innerHTML = items.map(v => {
         const nm = ((v.product_name || 'Товар') + (v.volume && v.volume !== 'стандарт' ? ' · ' + v.volume : '')).replace(/</g, '&lt;');
         return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px"'
@@ -10351,7 +10351,7 @@ function apptMatSearchRun(id) {
       const items = (d && d.items) || [];
       window._apptMatVars = {};
       items.forEach(v => { window._apptMatVars[v.id] = { volume: v.volume || '', name: v.product_name || '' }; });
-      rbox.innerHTML = items.slice(0, 20).map(v => `
+      rbox.innerHTML = items.slice(0, 50).map(v => `
         <div onclick="apptMatPick(${id},${v.id})" style="display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px" onmouseover="this.style.background='var(--bg-secondary,#f8fafc)'" onmouseout="this.style.background=''">
           <span>${escapeHtml(v.product_name||'Товар')}${v.volume?` <span style="color:var(--text-secondary);font-size:11px">${escapeHtml(v.volume)}</span>`:''}</span>
           <span style="white-space:nowrap">${v.price!=null?`<b>${_money(v.price)}</b> · `:''}<span style="color:var(--text-secondary)">склад: ${v.stock_qty!=null?v.stock_qty:'—'}</span></span>

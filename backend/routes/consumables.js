@@ -12,13 +12,22 @@ router.get('/_variants', requirePerm(), async (req, res) => {
     const q = (req.query.q || '').trim();
     const vals = [];
     let where = 'pv.active=TRUE';
-    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
+    // Пошук по СЛОВАХ у будь-якому порядку: «кондиціонер журавл» раніше не знаходив
+    // «кондиціонер NA Golovy з ензимами журавлини» (шукався цілий рядок). Кожне слово — AND.
+    // Товари в наявності — першими: фронт показує верх списку, а по «кондиціонер» 53 збіги
+    // (жалоба адміна 25.09: товар після приходу «не видно в продажі» — був 17-м при показі 12).
+    const words = q.split(/\s+/).filter(Boolean).slice(0, 6);
+    for (const w of words) {
+      vals.push('%' + w.replace(/[\\%_]/g, m => '\\' + m) + '%');
+      const n = vals.length;
+      where += ` AND (COALESCE(p.name,'') || ' ' || COALESCE(pv.volume,'') || ' ' || COALESCE(pv.sku,'')) ILIKE $${n}`;
+    }
     const r = await pool.query(
       `SELECT pv.id, p.name AS product_name, pv.volume, pv.sku, pv.stock_qty, pv.price
          FROM product_variants pv
          LEFT JOIN products p ON p.id = pv.product_id
         WHERE ${where}
-        ORDER BY p.name LIMIT 200`,
+        ORDER BY (COALESCE(pv.stock_qty,0) > 0) DESC, p.name, pv.id LIMIT 200`,
       vals
     );
     res.json({ items: r.rows });

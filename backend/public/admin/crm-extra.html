@@ -163,7 +163,7 @@ main { padding:24px 0; }
         <input id="op-prod-qty" type="number" min="1" step="1" value="1" title="Кількість" style="width:80px" oninput="opProdQtyChanged()">
       </div>
       <div id="op-prod-picked" style="margin-top:6px;font-size:13px;color:#666"></div>
-      <div id="op-prod-res" style="margin-top:6px"></div>
+      <div id="op-prod-res" style="margin-top:6px;max-height:340px;overflow-y:auto"></div>
     </div>
   </div>
   <div class="card">
@@ -576,7 +576,7 @@ function opProdSearch(){
     if (q.length < 2) { box.innerHTML=''; return; }
     try {
       const d = await api('/api/consumables/_variants?q=' + encodeURIComponent(q));
-      const items = (d.items||[]).slice(0,15);
+      const items = (d.items||[]).slice(0,50);
       box.innerHTML = items.map(v => {
         const nm = (v.product_name||'Товар') + (v.volume ? ' ' + v.volume : '');
         return `<div onclick='opProdPick(${JSON.stringify(nm)},${v.price!=null?Number(v.price):null},${v.id})'
