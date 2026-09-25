@@ -10137,7 +10137,9 @@ async function openAppt(id, masterId) {
             })()}</div>
           </div>
         </div>
-        <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})">↩ Скасувати оплату</button>` : `
+        <button class="btn btn-outline" style="width:100%;margin-top:8px" onclick="apptPayMethodOpen(${a.id})" title="Помилково провели карткою замість готівки (чи навпаки) — виправити спосіб, суму й знижки не чіпає">💳 Змінити спосіб оплати</button>
+        <div id="apptPayFix" style="display:none;margin-top:8px"></div>
+        <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})" title="Анулювати оплату повністю: гроші з каси, бонуси, сертифікат і матеріали повертаються; потім можна провести заново">↩ Скасувати оплату</button>` : `
         <div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--bg-secondary,#f8fafc)">
           <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">💸 Знижки та лояльність</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
@@ -10546,6 +10548,46 @@ async function payAppt(id) {
 function _payRelease() {
   window._payBusy = false;
   try { document.querySelectorAll('[data-pay-btn]').forEach(b => b.disabled = false); } catch {}
+}
+
+// Змінити спосіб оплати (Босс 25.09): картка ↔ готівка ↔ переказ без анулювання візиту.
+// Змішана оплата (частина карткою, частина готівкою) — кожна частина окремо.
+const _PM_LBL = { cash: 'Готівка', card: 'Картка', transfer: 'Переказ', mono: 'Mono' };
+const _PM_CAT = { sale_service: 'Послуга', sale_product: 'Матеріали / товари' };
+async function apptPayMethodOpen(id) {
+  const box = document.getElementById('apptPayFix'); if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block'; box.innerHTML = '<div style="font-size:13px;color:var(--text-secondary)">Завантажую платежі…</div>';
+  let r; try { r = await api('/api/cashbox/appointment/' + id + '/payments'); } catch (e) { r = { error: e.message }; }
+  if (!r || r.error) { box.innerHTML = '<div style="color:#dc2626;font-size:13px">' + ((r && (r.message || r.error)) || 'Помилка') + '</div>'; return; }
+  const items = r.items || [];
+  if (!items.length) { box.innerHTML = '<div style="font-size:13px;color:var(--text-secondary)">Платежів у касі по цьому запису не знайдено.</div>'; return; }
+  const opt = (m) => ['cash', 'card', 'transfer'].map(k => '<option value="' + k + '"' + (k === m ? ' selected' : '') + '>' + _PM_LBL[k] + '</option>').join('');
+  box.innerHTML = '<div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg-secondary,#f8fafc)">'
+    + '<div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">💳 Спосіб оплати' + (items.length > 1 ? ' (оплата з кількох частин — кожну можна змінити окремо)' : '') + '</div>'
+    + items.map(o => '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px">'
+      + '<span style="flex:1">' + (_PM_CAT[o.category] || o.category) + ' · <b>' + _money(o.amount) + '</b></span>'
+      + (o.editable ? '<select class="input" data-pm-op="' + o.id + '" data-pm-was="' + o.method + '" style="max-width:140px">' + opt(o.method) + '</select>'
+                    : '<span style="color:#b45309;font-size:12px;max-width:260px" title="' + String(o.block_message || '').replace(/"/g, '&quot;') + '">' + (_PM_LBL[o.method] || o.method) + ' · 🔒 ' + (o.block_message || '') + '</span>')
+      + '</div>').join('')
+    + (items.some(o => o.editable) ? '<button class="btn" id="apptPayFixSave" style="width:100%;margin-top:4px" onclick="apptPayMethodSave(' + id + ')">Зберегти спосіб оплати</button>' : '')
+    + '<div id="apptPayFixMsg" style="font-size:12px;margin-top:6px"></div></div>';
+}
+async function apptPayMethodSave(id) {
+  const btn = document.getElementById('apptPayFixSave'); const msg = document.getElementById('apptPayFixMsg');
+  const sels = [...document.querySelectorAll('#apptPayFix select[data-pm-op]')].filter(s => s.value !== s.dataset.pmWas);
+  if (!sels.length) { msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Нічого не змінено'; return; }
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Зберігаю…'; }
+  try {
+    // групуємо за новим способом — один запит на спосіб
+    const by = {}; sels.forEach(s => { (by[s.value] = by[s.value] || []).push(Number(s.dataset.pmOp)); });
+    for (const m of Object.keys(by)) {
+      const r = await api('/api/cashbox/operations/method', { method: 'POST', body: JSON.stringify({ ids: by[m], method: m }) });
+      if (!r || !r.ok) throw new Error((r && (r.message || r.error)) || 'Помилка');
+    }
+    msg.style.color = '#10b981'; msg.textContent = 'Спосіб оплати змінено ✓ Каса й звіти вже враховують';
+    setTimeout(async () => { try { if (typeof loadCashGauge === 'function') loadCashGauge(); await loadJournal(); openAppt(id); } catch (_) {} }, 700);
+  } catch (e) { msg.style.color = '#dc2626'; msg.textContent = e.message; if (btn) { btn.disabled = false; btn.textContent = 'Зберегти спосіб оплати'; } }
 }
 
 // Скасувати оплату (заметка #114): прибирає прихід із каси, повертає статус «підтверджено» + матеріали на склад

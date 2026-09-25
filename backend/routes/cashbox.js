@@ -654,6 +654,108 @@ router.get('/operations', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
+// ── Зміна СПОСОБУ оплати проведеного платежу (Босс 25.09: «адмін помилково провів карткою,
+// а треба готівкою — щоб можна було виправити»). Сума, знижки, бонуси, сертифікат, склад —
+// НЕ чіпаються: спосіб оплати живе лише в cash_operations.method, з нього ж рахуються плашка
+// «Оплачено · Картка» візиту, «Очікувано в касі» зміни і звіти. Тому правка методу = повна правка.
+// Дозволено: прихід за послугу/товар по візиту (ref_type='appointment') або POS-продаж ('pos-…'),
+// лише в ВІДКРИТІЙ зміні (закрита = Z-звіт уже зафіксовано). Mono/онлайн/передоплата — ні (реальна транзакція).
+const PAY_METHODS = { cash: 'Готівка', card: 'Картка', transfer: 'Переказ' };
+function methodEditBlock(o) {
+  if (o.type !== 'in' || !['sale_service', 'sale_product'].includes(o.category)) return 'not-a-sale';
+  const isPos = String(o.ext_ref || '').startsWith('pos-');
+  if (!(isPos || (o.ext_ref == null && o.ref_type === 'appointment'))) return 'system-operation';
+  if (o.method === 'mono') return 'system-operation';
+  // те саме правило «ще не закритого дня», що й в unpay візиту (routes/schedule.js):
+  // відкрита зміна АБО безмінна операція пізніше за останнє закриття зміни
+  if (o.shift_id != null ? o.shift_status !== 'open' : !o.after_last_close) return 'shift-closed';
+  return null;
+}
+const METHOD_BLOCK_MSG = {
+  'not-a-sale': 'Змінити спосіб можна лише для оплати послуги або продажу товару.',
+  'system-operation': 'Онлайн-оплату (Mono/передоплата) змінити не можна — це реальна транзакція.',
+  'shift-closed': 'Зміну вже закрито (Z-звіт зафіксовано) — спосіб оплати змінити не можна. Зверніться до власника.',
+};
+
+// GET /api/cashbox/appointment/:id/payments — платежі візиту для вікна «Змінити спосіб оплати»
+router.get('/appointment/:id/payments', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
+    const r = await pool.query(
+      `SELECT o.id, o.type, o.category, o.amount, o.method, o.ext_ref, o.ref_type, o.shift_id, o.created_at,
+              s.status AS shift_status, (o.created_at >= COALESCE((SELECT MAX(closed_at) FROM cash_shifts WHERE status='closed'), '-infinity'::timestamptz)) AS after_last_close
+         FROM cash_operations o LEFT JOIN cash_shifts s ON s.id = o.shift_id
+        WHERE o.type='in' AND o.ref_type='appointment' AND o.ref_id=$1 ORDER BY o.id`, [id]);
+    res.json({ items: r.rows.map(o => { const b = methodEditBlock(o);
+      return { id: o.id, category: o.category, amount: Number(o.amount), method: o.method, created_at: o.created_at,
+               editable: !b, block: b, block_message: b ? METHOD_BLOCK_MSG[b] : null }; }) });
+  } catch (e) { console.error('[cashbox:appt-payments]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// POST /api/cashbox/operations/method  { ids:[…], method:'cash'|'card'|'transfer' }
+// Кілька id — для POS-чеку з кількох товарів (один чек = одна оплата). Все або нічого.
+router.post('/operations/method', async (req, res) => {
+  const b = req.body || {};
+  const method = String(b.method || '');
+  if (!PAY_METHODS[method]) return res.status(400).json({ error: 'bad-method', message: 'Спосіб: готівка, картка або переказ' });
+  const ids = [...new Set((Array.isArray(b.ids) ? b.ids : [b.id]).map(Number))].filter(n => Number.isInteger(n) && n > 0);
+  if (!ids.length || ids.length > 50) return res.status(400).json({ error: 'ids-required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const r = await client.query(
+      `SELECT o.*, s.status AS shift_status,
+              (o.created_at >= COALESCE((SELECT MAX(closed_at) FROM cash_shifts WHERE status='closed'), '-infinity'::timestamptz)) AS after_last_close
+         FROM cash_operations o
+         LEFT JOIN cash_shifts s ON s.id = o.shift_id WHERE o.id = ANY($1::int[]) ORDER BY o.id FOR UPDATE OF o`, [ids]);
+    if (r.rows.length !== ids.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    for (const o of r.rows) {
+      const blk = methodEditBlock(o);
+      if (blk) { await client.query('ROLLBACK'); return res.status(400).json({ error: blk, message: METHOD_BLOCK_MSG[blk], id: o.id }); }
+    }
+    const who = req.user?.display_name || req.user?.name || 'адмін';
+    const changed = [];
+    for (const o of r.rows) {
+      if (o.method === method) continue;
+      const note = ` [спосіб: ${PAY_METHODS[o.method] || o.method} → ${PAY_METHODS[method]}, ${who}]`;
+      // Змішана оплата візиту (400 готівка + 600 картка): у візиту вже є частина тим самим способом.
+      // Унікальний індекс ux_cash_ops_appt_payment (візит+спосіб+категорія) не дає двох рядків →
+      // ЗЛИВАЄМО: сума переходить у наявну частину, цей рядок прибираємо. Разом — та сама сума.
+      if (o.ref_type === 'appointment' && o.ext_ref == null) {
+        const tw = await client.query(
+          `SELECT o.*, s.status AS shift_status,
+                  (o.created_at >= COALESCE((SELECT MAX(closed_at) FROM cash_shifts WHERE status='closed'), '-infinity'::timestamptz)) AS after_last_close
+             FROM cash_operations o LEFT JOIN cash_shifts s ON s.id = o.shift_id
+            WHERE o.type='in' AND o.ref_type='appointment' AND o.ref_id=$1 AND o.category=$2 AND o.method=$3 AND o.id<>$4
+            FOR UPDATE OF o`, [o.ref_id, o.category, method, o.id]);
+        if (tw.rows[0]) {
+          const t = tw.rows[0];
+          if (methodEditBlock(t)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'shift-closed', message: METHOD_BLOCK_MSG['shift-closed'], id: t.id }); }
+          await client.query(`UPDATE cash_operations SET amount = amount + $2, description = COALESCE(description,'') || $3 WHERE id=$1`,
+            [t.id, o.amount, ` [+${Number(o.amount)} ₴ з частини «${PAY_METHODS[o.method] || o.method}» → ${PAY_METHODS[method]}, ${who}]`]);
+          await client.query(`DELETE FROM cash_operations WHERE id=$1`, [o.id]);
+          changed.push({ id: o.id, from: o.method, to: method, amount: Number(o.amount), ref_id: o.ref_id, merged_into: t.id });
+          continue;
+        }
+      }
+      await client.query(`UPDATE cash_operations SET method=$2, description = COALESCE(description,'') || $3 WHERE id=$1`,
+        [o.id, method, note]);
+      changed.push({ id: o.id, from: o.method, to: method, amount: Number(o.amount), ref_id: o.ref_id, ext_ref: o.ext_ref });
+    }
+    await client.query('COMMIT');
+    if (changed.length) {
+      try { const { logAction } = require('../lib/rbac');
+        await logAction({ user: req.user, action: 'cashbox.method_change', entity: 'cash_operation', entity_id: String(changed[0].id), ip: req.ip, meta: { changed } });
+      } catch (_) {}
+    }
+    res.json({ ok: true, changed: changed.length, method });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[cashbox:method]', e); res.status(500).json({ error: 'internal' });
+  } finally { client.release(); }
+});
+
 // PATCH /api/cashbox/operations/:id — редактировать операцию (категория, сумма, метод,
 // мастер, описание). Разрешено для операций в ОТКРЫТОЙ смене или ручных (shift_id NULL).
 // Это закрывает требование «редактировать абсолютно всё»: записанную продажу/расход

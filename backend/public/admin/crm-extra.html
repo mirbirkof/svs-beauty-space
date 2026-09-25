@@ -168,7 +168,7 @@ main { padding:24px 0; }
   </div>
   <div class="card">
     <h2>Операції зміни</h2>
-    <table><thead><tr><th>Час</th><th>Тип</th><th>Категорія</th><th>Спосіб</th><th>Сума</th><th>Коментар</th></tr></thead><tbody id="cb-ops"></tbody></table>
+    <table><thead><tr><th>Час</th><th>Тип</th><th>Категорія</th><th>Спосіб</th><th>Сума</th><th>Коментар</th><th title="Помилково провели карткою замість готівки (чи навпаки) — змінити спосіб оплати">Змінити спосіб</th></tr></thead><tbody id="cb-ops"></tbody></table>
   </div>
   <div class="card">
     <h2>Z-звіти</h2>
@@ -523,15 +523,33 @@ async function loadCashbox(){
         <div class="metric"><div class="label">Очікувано в касі</div><div class="value">${(+c.expected_cash).toFixed(2)} ₴</div></div>
       </div>`;
     const ops = await api('/api/cashbox/operations?shift_id='+CURRENT_SHIFT);
-    document.getElementById('cb-ops').innerHTML = ops.items.map(o=>`
+    // 25.09: зміна способу оплати продажу (картка ↔ готівка ↔ переказ). POS-чек з кількох
+    // товарів = кілька рядків з одним 'pos-<чек>' → міняємо весь чек разом.
+    const PM = {cash:'Готівка',card:'Картка',transfer:'Переказ',mono:'Mono',other:'Інше'};
+    const posBatch = o => String(o.ext_ref||'').startsWith('pos-') ? String(o.ext_ref).split(':')[0] : null;
+    const canPm = o => o.type==='in' && (o.category==='sale_service'||o.category==='sale_product') && o.method!=='mono'
+      && (posBatch(o) || (o.ext_ref==null && o.ref_type==='appointment'));
+    window._cbPmIds = {};
+    ops.items.forEach(o => { if (!canPm(o)) return; const k = posBatch(o) || ('op'+o.id); (window._cbPmIds[k] = window._cbPmIds[k] || []).push(o.id); });
+    document.getElementById('cb-ops').innerHTML = ops.items.map(o=>{
+      const k = posBatch(o) || ('op'+o.id);
+      const n = (window._cbPmIds[k]||[]).length;
+      const sel = canPm(o) ? `<select onchange="cbSetMethod('${k}',this)" data-was="${o.method}" title="${n>1?'Чек з '+n+' товарів — спосіб зміниться для всього чеку':'Змінити спосіб оплати'}" style="padding:3px 6px;font-size:12px">`
+        + ['cash','card','transfer'].map(m=>`<option value="${m}"${m===o.method?' selected':''}>${PM[m]}</option>`).join('') + '</select>' : '';
+      return `
       <tr>
         <td>${new Date(o.created_at).toLocaleTimeString('uk')}</td>
         <td><span class="pill ${o.type==='in'?'ok':'dng'}">${o.type==='in'?'+':'−'}</span></td>
-        <td>${o.category}</td><td>${o.method}</td>
+        <td>${o.category}</td><td>${PM[o.method]||o.method}</td>
         <td><b>${(+o.amount).toFixed(2)} ₴</b></td>
         <td>${o.description||''}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="empty">Операцій ще немає</td></tr>';
-    const z = await api('/api/cashbox/z-reports');
+        <td>${sel}</td>
+      </tr>`; }).join('') || '<tr><td colspan="7" class="empty">Операцій ще немає</td></tr>';
+    // 25.09: Z-звіти минулих змін — лише власнику (cashbox.history). У адміна раніше КОЖНЕ відкриття
+    // «Каси магазину» падало alert «Каса: forbidden». Тепер — тиха підказка в таблиці.
+    let z;
+    try { z = await api('/api/cashbox/z-reports'); }
+    catch(ze){ if (ze.message==='forbidden') { document.getElementById('cb-zlist').innerHTML='<tr><td colspan="6" class="empty">Z-звіти минулих змін доступні власнику</td></tr>'; return; } throw ze; }
     document.getElementById('cb-zlist').innerHTML = z.items.map(r=>`
       <tr>
         <td>#${r.report_no}</td>
@@ -566,6 +584,20 @@ function opProdQtyChanged(){
   if (!_opPickedVariant || _opPickedVariant.price == null) return;
   const q = Math.max(1, parseInt(document.getElementById('op-prod-qty').value, 10) || 1);
   document.getElementById('op-amount').value = +(Number(_opPickedVariant.price) * q).toFixed(2);
+}
+async function cbSetMethod(key, el){
+  const ids = (window._cbPmIds||{})[key] || []; const to = el.value, was = el.dataset.was;
+  if (!ids.length || to===was) return;
+  const lbl = {cash:'Готівка',card:'Картка',transfer:'Переказ'};
+  if (!confirm('Змінити спосіб оплати: '+(lbl[was]||was)+' → '+lbl[to]+(ids.length>1?' (весь чек, '+ids.length+' поз.)':'')+'? Сума не зміниться.')) { el.value = was; return; }
+  el.disabled = true;
+  try {
+    const r = await api('/api/cashbox/operations/method',{method:'POST',body:JSON.stringify({ids, method:to})});
+    if (!r || !r.ok) throw new Error((r && (r.message||r.error)) || 'Помилка');
+    loadCashbox();
+  } catch(e){
+    const M = {'shift-closed':'зміну вже закрито (Z-звіт зафіксовано) — зверніться до власника','system-operation':'це онлайн-оплата (Mono/передоплата), її змінити не можна','not-a-sale':'це не оплата послуги чи товару','forbidden':'немає прав на касу'};
+    alert('Не вдалося змінити спосіб оплати: '+(M[e.message]||e.message)); el.value = was; el.disabled = false; }
 }
 let _opProdT;
 function opProdSearch(){
