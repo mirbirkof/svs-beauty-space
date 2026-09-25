@@ -15,6 +15,27 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
     const scopeVal = scope || 'full';
 
     await client.query('BEGIN'); await applyTenant(client);
+
+    // 25.09 (жалоба админа: «акт створений, але не відкривається» → жала «Створити» снова):
+    // в проде 6 одинаковых актов за 9 минут, раньше — пары с разницей 3 с (двойной клик,
+    // пока акт на 1100+ позиций собирался несколько секунд). Защита от дубля: тот же объём
+    // (scope + фильтр + филиал), ещё в работе и создан < 2 мин назад → отдаём его, а не плодим.
+    // Замок на транзакцию — чтобы два параллельных запроса двойного клика не проскочили оба.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('inventory_audits:create'))`);
+    const dup = await client.query(
+      `SELECT id, total_items FROM inventory_audits
+        WHERE status = 'in_progress' AND scope = $1
+          AND scope_filter IS NOT DISTINCT FROM $2::jsonb
+          AND branch_id IS NOT DISTINCT FROM $3::int
+          AND started_at > NOW() - INTERVAL '2 minutes'
+        ORDER BY id DESC LIMIT 1`,
+      [scopeVal, scope_filter ? JSON.stringify(scope_filter) : null, branch_id || null]
+    );
+    if (dup.rows[0]) {
+      await client.query('COMMIT');
+      return res.json({ ok: true, audit_id: dup.rows[0].id, items: dup.rows[0].total_items, reused: true });
+    }
+
     const a = await client.query(
       `INSERT INTO inventory_audits (branch_id, status, started_by, scope, scope_filter, notes)
        VALUES ($1,'in_progress',$2,$3,$4,$5) RETURNING id`,
@@ -36,30 +57,29 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
       where = `v.id = ANY($${params.length}::int[])`;
     }
 
-    const items = await client.query(
-      `SELECT v.id AS variant_id, p.name AS product_name, v.sku, COALESCE(v.stock_qty,0) AS expected_qty,
+    // Наполнение ОДНИМ запросом (раньше — 1100+ отдельных INSERT по сети к Neon, несколько секунд
+    // без индикации на экране; из-за этой паузы админ и жал «Створити» повторно).
+    const auditParam = params.length + 1;
+    const filled = await client.query(
+      `INSERT INTO inventory_audit_items (audit_id, variant_id, product_name, sku, expected_qty, cost_per_unit)
+       SELECT $${auditParam}, v.id, p.name, v.sku, COALESCE(v.stock_qty,0),
               -- Major #14: у ГРАМОВИХ товарів (price_per_gram) склад у мл, wholesale за пляшку → ÷unit_ml.
               -- Роздрібні банки: склад у ШТУКАХ (18.07), wholesale вже за одиницю — не ділимо.
               CASE WHEN p.price_per_gram IS NOT NULL
                    THEN COALESCE(v.wholesale,0) / NULLIF(GREATEST(v.unit_ml,1),0)
-                   ELSE COALESCE(v.wholesale,0) END AS cost
+                   ELSE COALESCE(v.wholesale,0) END
          FROM product_variants v
          JOIN products p ON p.id = v.product_id
-        WHERE ${where}`,
-      params
+        WHERE ${where}
+        ORDER BY v.id`,
+      [...params, auditId]
     );
+    const itemsCount = filled.rowCount;
 
-    for (const it of items.rows) {
-      await client.query(
-        `INSERT INTO inventory_audit_items (audit_id, variant_id, product_name, sku, expected_qty, cost_per_unit)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [auditId, it.variant_id, it.product_name, it.sku, it.expected_qty, it.cost]
-      );
-    }
-    await client.query(`UPDATE inventory_audits SET total_items=$1 WHERE id=$2`, [items.rows.length, auditId]);
+    await client.query(`UPDATE inventory_audits SET total_items=$1 WHERE id=$2`, [itemsCount, auditId]);
     await client.query('COMMIT');
-    await logAction({ user: req.user, action: 'inventory.start', entity: 'audit', entity_id: auditId, meta: { scope: scopeVal, items: items.rows.length } });
-    res.json({ ok: true, audit_id: auditId, items: items.rows.length });
+    await logAction({ user: req.user, action: 'inventory.start', entity: 'audit', entity_id: auditId, meta: { scope: scopeVal, items: itemsCount } });
+    res.json({ ok: true, audit_id: auditId, items: itemsCount });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });

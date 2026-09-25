@@ -217,12 +217,27 @@ router.post('/products/:id/variants', async (req, res) => {
 });
 
 router.patch('/variants/:id', async (req, res) => {
+  // 25.09 (жалоба админа «змінюю ціну і кількість → Збережено, але нічого не змінюється»):
+  // количество раньше перезаписывалось в stock_qty НАПРЯМУЮ — без записи в журнал движения,
+  // и склад расходился со своей же историей. Теперь новая цифра остатка = корректировка:
+  // delta = новое − текущее пишется в stock_movements (reason 'adjustment') в той же транзакции.
+  // Себестоимость/P&L 'adjustment' не считают (как и 'inventory_audit') — учёт не искажается.
+  const { volume, price, wholesale, sku, stock_qty, active, unit_ml } = req.body || {};
+  if ((price !== undefined || wholesale !== undefined || stock_qty !== undefined || unit_ml !== undefined) && !canManageStock(req))
+    return res.status(403).json(STOCK_MANAGE_403);
+  const num = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+  for (const [k, v] of [['price', price], ['wholesale', wholesale], ['stock_qty', stock_qty], ['unit_ml', unit_ml]]) {
+    const n = num(v);
+    if (n !== null && (!Number.isFinite(n) || n < 0)) return res.status(400).json({ error: 'bad-number', field: k, message: 'Невірне число: ' + k });
+  }
+  const client = await getPool().connect();
   try {
-    const { volume, price, wholesale, sku, stock_qty, active, unit_ml } = req.body || {};
-    if ((price !== undefined || wholesale !== undefined || stock_qty !== undefined || unit_ml !== undefined) && !canManageStock(req))
-      return res.status(403).json(STOCK_MANAGE_403);
-    const pool = getPool();
-    const r = await pool.query(
+    await client.query('BEGIN'); await applyTenant(client);
+    const cur = await client.query(`SELECT COALESCE(stock_qty,0)::numeric AS stock_qty FROM product_variants WHERE id = $1 FOR UPDATE`, [req.params.id]);
+    if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    const newQty = num(stock_qty);
+    const delta = newQty === null ? 0 : Math.round((newQty - Number(cur.rows[0].stock_qty)) * 1000) / 1000;
+    const r = await client.query(
       `UPDATE product_variants SET
          volume = COALESCE($2, volume),
          price = COALESCE($3, price),
@@ -232,11 +247,24 @@ router.patch('/variants/:id', async (req, res) => {
          active = COALESCE($7, active),
          unit_ml = COALESCE($8, unit_ml)
        WHERE id = $1 RETURNING *`,
-      [req.params.id, volume, price, wholesale, sku, stock_qty, active, unit_ml]
+      [req.params.id, volume, num(price), num(wholesale), sku, newQty, active, num(unit_ml)]
     );
-    if (r.rowCount === 0) return res.status(404).json({ error: 'not-found' });
-    res.json({ ok: true, variant: r.rows[0] });
-  } catch (e) { console.error('[admin:patch-variant]', e); res.status(500).json({ error: 'internal' }); }
+    if (delta !== 0) {
+      const who = (req.user && (req.user.display_name || req.user.name)) || '';
+      await client.query(
+        `INSERT INTO stock_movements (variant_id, delta, reason, notes) VALUES ($1,$2,'adjustment',$3)`,
+        [req.params.id, delta, 'корекція залишку в картці товару' + (who ? ' · ' + who : '')]);
+    }
+    await client.query('COMMIT');
+    if (delta !== 0 || price !== undefined) {
+      logAction({ user: req.user, action: 'stock.variant.update', entity: 'variant', entity_id: Number(req.params.id),
+                  meta: { price: num(price), stock_qty: newQty, stock_delta: delta } });
+    }
+    res.json({ ok: true, variant: r.rows[0], stock_delta: delta });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error('[admin:patch-variant]', e); res.status(500).json({ error: 'internal' });
+  } finally { client.release(); }
 });
 
 // Видалення позиції зі складу (нотатка #152, Бос: «щоб зі складу можна було видалити товар»).

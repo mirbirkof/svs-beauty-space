@@ -13142,14 +13142,14 @@ function renderProducts() {
     || '<tr><td colspan="8"><div class="empty">Нічого не знайдено</div></td></tr>';
 }
 // ── Профіль товару: картка + варіанти, редагування під правом «Склад і ціни» ──
-let _prod = null;
-async function openProduct(id) {
+let _prod = null, _prodVariants = [];
+async function openProduct(id, flash) {
   if (!id) return;
   const m = document.getElementById('prodModal'), box = document.getElementById('prodDetail');
   m.style.display = 'flex'; box.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">Завантаження…</div>';
   const r = await api('/api/admin/products/' + encodeURIComponent(id));
   if (!r.ok || !r.product) { box.innerHTML = '<div class="empty">' + (r.message || r.error || 'Не вдалося завантажити') + '</div>'; return; }
-  _prod = r.product;
+  _prod = r.product; _prodVariants = r.variants || [];
   const can = userHasPerm('stock.manage');
   const dis = can ? '' : 'disabled style="opacity:.75"';
   const p = r.product;
@@ -13166,7 +13166,6 @@ async function openProduct(id) {
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_active" ${p.active !== false ? 'checked' : ''} ${dis}> Активний</label>
       <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" id="pm_feat" ${p.featured ? 'checked' : ''} ${dis}> У добірці магазину</label>
     </div>
-    ${can ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;justify-content:flex-end"><span id="pm_msg" style="font-size:12px;color:var(--text-secondary)"></span><button class="btn btn-primary" onclick="saveProdCard()">Зберегти товар</button></div>' : ''}
     <h4 style="margin:16px 0 6px">Варіанти — обʼєм, ціни, залишок</h4>
     <div style="overflow-x:auto"><table style="width:100%;font-size:13px"><thead><tr><th>Обʼєм</th><th>Ціна</th><th title="Закупівельна ціна за упаковку">Опт</th><th>Артикул</th><th>Залишок</th><th title="Вага/обʼєм упаковки в грамах (для фарби 100 мл ≈ 90 г). Звʼязує собівартість/г із закупівельною ціною.">Вага, г ⓘ</th><th>Акт.</th>${can ? '<th></th>' : ''}</tr></thead>
     <tbody>${(r.variants || []).map(v => `<tr>
@@ -13179,7 +13178,10 @@ async function openProduct(id) {
       <td style="text-align:center"><input type="checkbox" id="v${v.id}_active" ${v.active !== false ? 'checked' : ''} ${dis}></td>
       ${can ? `<td><button class="btn btn-sm btn-outline" title="Зберегти варіант" onclick="saveProdVariant(${v.id})">💾</button></td>` : ''}
     </tr>`).join('') || `<tr><td colspan="8" style="color:var(--text-secondary);padding:10px">Варіантів немає</td></tr>`}</tbody></table></div>
-    <div id="pm_vmsg" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>`;
+    <div id="pm_vmsg" style="font-size:12px;color:var(--text-secondary);margin-top:6px"></div>
+    ${can ? '<div style="margin-top:12px;display:flex;align-items:center;gap:10px;justify-content:flex-end;border-top:1px solid var(--border,#eee);padding-top:12px"><span id="pm_msg" style="font-size:12.5px;color:var(--text-secondary)"></span><button class="btn btn-primary" id="pm_save" onclick="saveProdCard()">Зберегти зміни</button></div>' : ''}`;
+  // 25.09: після збереження показуємо підсумок ВЖЕ по перечитаних із сервера даних
+  if (flash) { const m2 = document.getElementById('pm_msg'); if (m2) { m2.style.color = flash.ok ? '#10b981' : '#ef4444'; m2.textContent = flash.text; } }
 }
 function closeProd() {
   document.getElementById('prodModal').style.display = 'none';
@@ -13187,22 +13189,65 @@ function closeProd() {
   try { if (document.getElementById('productsBody') && document.getElementById('productSearch')) loadProducts(); } catch (_) {}
   try { loadStockList(); } catch (_) {}
 }
-async function saveProdCard() {
-  const msg = document.getElementById('pm_msg'); msg.textContent = 'Збереження…';
-  const gv = i => document.getElementById(i).value;
-  const body = {
-    photo: gv('pm_photo').trim() || null,
-    description: gv('pm_desc').trim() || null,
-    active: document.getElementById('pm_active').checked,
-    featured: document.getElementById('pm_feat').checked,
+// 25.09 (жалоба адміна: «змінюю ціну та кількість → Зберегти → пише Збережено, але нічого не змінюється»).
+// ПРИЧИНА: у картці було ДВІ різні кнопки. Велика «Зберегти товар» зберігала лише шапку (назва, ₴/г,
+// опис…) і чесно писала «Збережено ✓», а ціна та залишок живуть у рядку варіанта і зберігались
+// ТІЛЬКИ маленькою іконкою 💾 у кінці рядка. Тепер одна кнопка зберігає все змінене: картку +
+// кожен варіант, де щось відрізняється від завантаженого; потім перечитує товар із сервера,
+// і «Збережено» пишеться лише якщо сервер прийняв усе.
+function _pmVariantBody(vid) {
+  const g = s => document.getElementById('v' + vid + '_' + s);
+  const bad = ['price', 'wholesale', 'stock', 'unitml'].filter(k => g(k) && g(k).validity && g(k).validity.badInput);
+  if (bad.length) return { _bad: bad };
+  const num = el => { const t = String(el.value || '').trim(); return t === '' ? null : Number(t.replace(',', '.')); };
+  return {
+    volume: g('volume').value.trim() || null, price: num(g('price')), wholesale: num(g('wholesale')),
+    sku: g('sku').value.trim() || null, stock_qty: num(g('stock')), unit_ml: num(g('unitml')),
+    active: g('active').checked,
   };
-  const name = gv('pm_name').trim(); if (name) body.name = name;
-  const ppg = gv('pm_ppg').trim(); body.price_per_gram = ppg === '' ? 0 : Number(ppg.replace(',', '.'));
-  const cpg = gv('pm_cpg').trim(); body.cost_per_gram = cpg === '' ? 0 : Number(cpg.replace(',', '.'));
-  const r = await api('/api/admin/products/' + encodeURIComponent(_prod.id), { method: 'PATCH', body: JSON.stringify(body) });
-  msg.style.color = r.ok ? '#10b981' : '#ef4444';
-  msg.textContent = r.ok ? 'Збережено ✓' : (r.message || r.error || 'Помилка');
-  if (r.ok) setTimeout(() => msg.textContent = '', 2500);
+}
+function _pmVariantChanged(v, b) {
+  const n = x => (x === null || x === undefined || x === '' ? null : Number(x));
+  const t = x => (x === null || x === undefined ? '' : String(x));
+  return n(v.price) !== b.price || n(v.wholesale) !== b.wholesale || n(v.stock_qty ?? 0) !== b.stock_qty
+    || n(v.unit_ml) !== b.unit_ml || t(v.volume) !== t(b.volume) || t(v.sku) !== t(b.sku || '')
+    || (v.active !== false) !== b.active;
+}
+async function saveProdCard() {
+  const msg = document.getElementById('pm_msg'); msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Збереження…';
+  const btn = document.getElementById('pm_save'); if (btn) btn.disabled = true;
+  const errs = [];
+  try {
+    const gv = i => document.getElementById(i).value;
+    const body = {
+      photo: gv('pm_photo').trim() || null,
+      description: gv('pm_desc').trim() || null,
+      active: document.getElementById('pm_active').checked,
+      featured: document.getElementById('pm_feat').checked,
+    };
+    const name = gv('pm_name').trim(); if (name) body.name = name;
+    const ppg = gv('pm_ppg').trim(); body.price_per_gram = ppg === '' ? 0 : Number(ppg.replace(',', '.'));
+    const cpg = gv('pm_cpg').trim(); body.cost_per_gram = cpg === '' ? 0 : Number(cpg.replace(',', '.'));
+    // варіанти: спершу перевіряємо введення, щоб не зберегти половину
+    const vs = [];
+    for (const v of _prodVariants) {
+      const b = _pmVariantBody(v.id);
+      if (b._bad) { msg.style.color = '#ef4444'; msg.textContent = 'Невірне число в рядку «' + (v.volume || v.id) + '» — виправте і збережіть ще раз'; return; }
+      if (_pmVariantChanged(v, b)) vs.push([v, b]);
+    }
+    const r = await api('/api/admin/products/' + encodeURIComponent(_prod.id), { method: 'PATCH', body: JSON.stringify(body) });
+    if (!r.ok) errs.push('картка: ' + (r.message || r.error || 'помилка'));
+    let saved = 0;
+    for (const [v, b] of vs) {
+      const rv = await api('/api/admin/variants/' + v.id, { method: 'PATCH', body: JSON.stringify(b) });
+      if (rv.ok) saved++; else errs.push((v.volume || ('#' + v.id)) + ': ' + (rv.message || rv.error || 'помилка'));
+    }
+    const text = errs.length ? 'Не збережено — ' + errs.join('; ')
+      : 'Збережено ✓' + (saved ? ' (ціни/залишки: ' + saved + ' варіант' + (saved === 1 ? '' : 'и') + ')' : '');
+    // перечитуємо товар із сервера — на екрані те, що реально в базі, а не те, що введено
+    await openProduct(_prod.id, { ok: !errs.length, text });
+    try { if (document.getElementById('page-products')?.classList.contains('active')) loadProducts(); } catch (_) {}
+  } finally { const b2 = document.getElementById('pm_save'); if (b2) b2.disabled = false; }
 }
 // Звʼязка собівартості за грам ↔ закупівельна ціна за упаковку (Опт).
 // Через вагу упаковки (колонка «мл(г)/уп» = unit_ml, грамів у пляшці/тюбику).
@@ -13260,9 +13305,9 @@ async function saveProdVariant(vid) {
   };
   const m = document.getElementById('pm_vmsg'); m.textContent = 'Збереження…';
   const r = await api('/api/admin/variants/' + vid, { method: 'PATCH', body: JSON.stringify(body) });
-  m.style.color = r.ok ? '#10b981' : '#ef4444';
-  m.textContent = r.ok ? 'Варіант збережено ✓' : (r.message || r.error || 'Помилка');
-  if (r.ok) setTimeout(() => m.textContent = '', 2500);
+  if (!r.ok) { m.style.color = '#ef4444'; m.textContent = r.message || r.error || 'Помилка'; return; }
+  await openProduct(_prod.id, { ok: true, text: 'Варіант збережено ✓' });
+  try { if (document.getElementById('page-products')?.classList.contains('active')) loadProducts(); } catch (_) {}
 }
 
 // ціна продажу за грам: клік по колонці ₴/грам (0 або порожньо = вимкнути продаж за грам)
