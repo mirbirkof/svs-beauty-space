@@ -18,11 +18,73 @@ const xlsxLite = require('./xlsx-lite');
 function norm(s) {
   return String(s || '').toLowerCase()
     .replace(/['’ʼ`"«»]/g, '')
+    // 26.09: тон «6,04» / «6/04» = «6.04» (раніше кома/скіс розривали тон і товар не знаходився
+    // або, гірше, «6/04» знаходив ІНШИЙ тон «extremo 04» зі 100% збігом)
+    .replace(/(\d)\s*[,/]\s*(\d)/g, '$1.$2')
     .replace(/[^а-яёіїєґa-z0-9.,% ]/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
 function tokens(s) {
   return norm(s).split(' ').filter(t => t.length >= 2 && !/^(та|і|для|з|із|на|the|and)$/.test(t));
+}
+
+// ── 26.09 (Босс: «почисти склади від повторюваних позицій»): ЄДИНЕ ВПІЗНАВАННЯ «ТОГО САМОГО» ТОВАРУ ──
+// Дублі народжувались, бо «Extremo 6.04 60г», «EXTREMO 6,04 60 г», «Фарба Extremo 6.04» і картка
+// «extremo 6.04 · за грам» для системи були різними рядками → «створити новий» → друга картка,
+// частина приходів/списань ішла на неї, склад розповзався. Канонічна форма назви:
+//   регістр/лапки/зайві пробіли — геть; «6,04» «6/04» → «6.04»;
+//   фасування («60 г», «250мл», «1 л») виноситься окремо як розмір (60g / 250ml / 1000ml);
+//   службові слова одиниць («г», «мл», «за грам», «стандарт», «шт») і загальні слова
+//   («фарба», «краска», «для волосся», «тон») не впливають; порядок слів не важливий.
+const UNIT_WORDS = new Set(['г', 'гр', 'g', 'мл', 'ml', 'л', 'l', 'кг', 'kg', 'шт', 'pcs', 'за', 'грам', 'грамм', 'gram', 'стандарт', 'уп', 'упак']);
+const GENERIC_WORDS = new Set(['фарба', 'краска', 'фарбник', 'барвник', 'крем-фарба', 'для', 'волосся', 'волос', 'тон', 'hair', 'color', 'colour']);
+const SIZE_RE = /(\d+(?:\.\d+)?)\s*(мл|ml|л|l|кг|kg|гр|г|g)(?![a-zа-яёіїєґ])/g;
+function sizeCanon(numStr, unit) {
+  let n = Number(numStr);
+  let u = /^(мл|ml)$/.test(unit) ? 'ml' : /^(л|l)$/.test(unit) ? 'l' : /^(кг|kg)$/.test(unit) ? 'kg' : 'g';
+  if (u === 'l') { n *= 1000; u = 'ml'; }
+  if (u === 'kg') { n *= 1000; u = 'g'; }
+  return Math.round(n * 1000) / 1000 + u;
+}
+// { key: 'extremo 6.04', size: '60g' | null, nums: ['6.04'] }
+function productSig(name, volume) {
+  const sizes = [];
+  // тон «7.46 г» — не фасування: для грамів беремо тільки ціле число («60 г»), мл/л — будь-яке
+  const cut = (txt) => norm(txt).replace(SIZE_RE, (m, n, u) => {
+    if (/^(гр|г|g)$/.test(u) && !/^\d+$/.test(n)) return m;
+    sizes.push(sizeCanon(n, u)); return ' ';
+  });
+  // назву і обʼєм варіанта розбираємо ОКРЕМО: «extremo 6.04» + «г» не повинно дати «6.04 г»
+  let s = cut(name) + ' ' + (/^\s*\d/.test(String(volume || '')) ? cut(volume) : norm(volume));
+  const words = s.split(' ').filter(w => w && !UNIT_WORDS.has(w) && !GENERIC_WORDS.has(w) && !/^(та|і|з|із|на|the|and)$/.test(w));
+  const uniq = [...new Set(words)].sort();
+  return { key: uniq.join(' '), size: sizes.length ? sizes[0] : null, nums: uniq.filter(w => /\d/.test(w)) };
+}
+// Чи це той самий товар: однакова канонічна назва, бренд не суперечить, фасування не суперечить.
+function sameProduct(rowName, cand) {
+  const a = productSig(rowName);
+  const b = productSig(cand.product_name, cand.volume);
+  if (!a.key || a.key !== b.key) return false;
+  const rb = detectBrand(rowName);
+  if (rb && cand.brand_id && cand.brand_id !== 'inshe' && rb !== cand.brand_id) return false;
+  if (a.size && b.size && a.size !== b.size) return false;
+  return true;
+}
+// Пошук існуючого активного товару «той самий» (для createItem / створення в адмінці).
+// → { variant_id, product_id, label } | { ambiguous: [...] } | null
+async function findSameProduct(db, name, { brandId = null } = {}) {
+  const r = await db.query(
+    `SELECT pv.id AS variant_id, pv.volume, pv.stock_qty::float AS stock_qty, p.id AS product_id,
+            p.name AS product_name, p.brand_id
+       FROM products p JOIN product_variants pv ON pv.product_id = p.id AND pv.active IS NOT FALSE
+      WHERE p.active IS NOT FALSE`);
+  const hits = r.rows.filter(c => sameProduct(name, c) &&
+    !(brandId && c.brand_id && c.brand_id !== 'inshe' && brandId !== 'inshe' && brandId !== c.brand_id));
+  if (!hits.length) return null;
+  const label = (c) => `${c.product_name}${c.volume && c.volume !== 'стандарт' ? ' · ' + c.volume : ''}`;
+  const products = [...new Set(hits.map(h => h.product_id))];
+  if (hits.length === 1) return { variant_id: hits[0].variant_id, product_id: hits[0].product_id, label: label(hits[0]) };
+  return { ambiguous: hits.slice(0, 5).map(h => ({ variant_id: h.variant_id, product_id: h.product_id, label: label(h), stock_qty: h.stock_qty })), products };
 }
 
 // ── парсинг числа («1 234,50» → 1234.5) ──
@@ -164,44 +226,71 @@ function extractDocDate(text, filename) {
 }
 
 // ── матчинг рядка до складу ──
-// Повертає до 3 кандидатів [{variant_id, label, stock_qty, score}]
+// Повертає до 3 кандидатів [{variant_id, label, stock_qty, score}] + ambiguous, якщо перші два рівні.
+// 26.09: тільки АКТИВНІ товари (раніше варіанти видалених товарів теж пропонувались);
+// номер тону/числа в назві мають збігатися ТОЧНО (раніше «6.04» частково збігався з «6.0»,
+// а «6/04» — з «04»); фасування: різні розміри = різні товари, товар без розміру («за грам») — не заважає;
+// загальні слова («фарба», «для волосся») не штрафують кандидата.
 async function matchRows(pool, rows) {
   // весь довідник у памʼять (сотні позицій — дешевше одного запиту на рядок)
   const cat = await pool.query(
     `SELECT pv.id AS variant_id, pv.sku, pv.barcode, pv.volume, pv.stock_qty::float AS stock_qty,
-            pv.price::float AS price, pv.unit_ml::float AS unit_ml, p.name AS product_name
+            pv.price::float AS price, pv.unit_ml::float AS unit_ml, p.name AS product_name, p.brand_id
        FROM product_variants pv JOIN products p ON p.id = pv.product_id
-      WHERE pv.active IS NOT FALSE`);
-  const index = cat.rows.map(v => ({
-    ...v,
-    label: `${v.product_name}${v.volume && v.volume !== 'стандарт' ? ' · ' + v.volume : ''}`,
-    toks: new Set(tokens(v.product_name + ' ' + (v.volume || ''))),
-    normLabel: norm(v.product_name + ' ' + (v.volume || '')),
-  }));
+      WHERE pv.active IS NOT FALSE AND p.active IS NOT FALSE`);
+  const index = cat.rows.map(v => {
+    const sig = productSig(v.product_name, v.volume);
+    return {
+      ...v,
+      label: `${v.product_name}${v.volume && v.volume !== 'стандарт' ? ' · ' + v.volume : ''}`,
+      toks: new Set(sig.key.split(' ').filter(Boolean)),
+      size: sig.size,
+      normLabel: norm(v.product_name + ' ' + (v.volume || '')),
+    };
+  });
 
   return rows.map(row => {
     const rowNorm = norm(row.name);
-    const rowToks = tokens(row.name);
+    const rs = productSig(row.name);
+    const rowToks = rs.key.split(' ').filter(t => t.length >= 2 || /\d/.test(t));
+    const rowGeneric = tokens(row.name).filter(t => GENERIC_WORDS.has(t));
     // 1) точний sku/штрихкод
-    const exact = index.find(v => (v.sku && rowNorm.includes(norm(v.sku))) || (v.barcode && rowNorm.includes(norm(v.barcode))));
+    const exact = index.find(v => (v.sku && norm(v.sku).length >= 3 && rowNorm.includes(norm(v.sku))) ||
+                                  (v.barcode && norm(v.barcode).length >= 3 && rowNorm.includes(norm(v.barcode))));
     let scored;
     if (exact) scored = [{ v: exact, score: 1 }];
     else {
       scored = index.map(v => {
-        let hit = 0;
+        // різне фасування = інший товар
+        if (rs.size && v.size && rs.size !== v.size) return { v, score: 0 };
+        let hit = 0, denom = 0;
         for (const t of rowToks) {
-          if (v.toks.has(t)) { hit++; continue; }
-          // частковий збіг токена (фарба/фарбник, тон 8.1 ↔ 8.1)
-          for (const vt of v.toks) if (vt.startsWith(t) || t.startsWith(vt)) { hit += 0.7; break; }
+          const isNum = /\d/.test(t);
+          const isCode = /^\d{5,}$/.test(t); // артикул/штрихкод у назві — не обовʼязковий
+          if (v.toks.has(t)) { hit++; denom++; continue; }
+          if (isCode) continue;
+          if (isNum) return { v, score: 0 }; // тон/номер має збігатися точно
+          denom++;
+          // частковий збіг слова (фарба/фарбник, socolor/socolorbeauty) — тільки для слів без цифр
+          for (const vt of v.toks) if (!/\d/.test(vt) && t.length >= 3 && vt.length >= 3 && (vt.startsWith(t) || t.startsWith(vt))) { hit += 0.7; break; }
         }
-        const score = rowToks.length ? hit / rowToks.length : 0;
+        // загальні слова рядка («фарба») рахуються лише як бонус, якщо є в кандидата
+        for (const g of rowGeneric) if (v.normLabel.split(' ').includes(g)) { hit++; denom++; }
+        let score = denom ? hit / denom : 0;
+        if (score < 1 && sameProduct(row.name, v)) score = 1;
         return { v, score };
       }).filter(x => x.score >= 0.55)
-        .sort((a, b) => b.score - a.score || (a.v.normLabel.length - b.v.normLabel.length))
+        .sort((a, b) => b.score - a.score ||
+          ((b.v.stock_qty > 0 ? 1 : 0) - (a.v.stock_qty > 0 ? 1 : 0)) ||
+          (a.v.normLabel.length - b.v.normLabel.length))
         .slice(0, 3);
     }
+    // два різні товари з однаковою найкращою оцінкою → не вгадуємо, просимо обрати
+    const ambiguous = !exact && scored.length >= 2 && scored[0].score >= 0.8 &&
+      Math.abs(scored[0].score - scored[1].score) < 1e-9;
     return {
       name: row.name, qty: row.qty, price: row.price,
+      ambiguous: ambiguous || undefined,
       matches: scored.map(x => ({
         variant_id: x.v.variant_id, label: x.v.label,
         stock_qty: x.v.stock_qty, price: x.v.price,
@@ -246,4 +335,5 @@ function detectCategory(name) {
   return null;
 }
 
-module.exports = { parseUpload, parseText, matchRows, slugify, detectBrand, detectCategory, norm, extractDocDate };
+module.exports = { parseUpload, parseText, matchRows, slugify, detectBrand, detectCategory, norm, extractDocDate,
+  productSig, sameProduct, findSameProduct };

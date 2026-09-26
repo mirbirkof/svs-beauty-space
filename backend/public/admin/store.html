@@ -383,11 +383,15 @@ async function rcCreateProduct(){
   const btn=document.getElementById('rcNpBtn'); btn.disabled=true;
   try{
     const id=(name+'-'+volume).toLowerCase().replace(/['’ʼ`"«»]/g,'').replace(/[^a-z0-9а-яёіїєґ]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||('item-'+Date.now());
+    // 26.09: такий товар уже є → не плодимо другу картку (так з'явились дублі на складі)
     const p=await api('/api/admin/products',{method:'POST',body:JSON.stringify({id,name})});
+    if(p.error==='duplicate-product'){ throw new Error((p.message||'Такий товар уже є')+' Знайдіть його в пошуку вище.'); }
+    if(p.error&&!p.product) throw new Error(p.message||p.error);
     const pid=(p.product&&p.product.id)||id;
-    const v=await api('/api/admin/products/'+encodeURIComponent(pid)+'/variants',{method:'POST',
+    let v=await api('/api/admin/products/'+encodeURIComponent(pid)+'/variants',{method:'POST',
       body:JSON.stringify({volume,price,wholesale:wholesale||undefined,sku:sku||undefined,stock_qty:0})});
-    if(!v.variant||!v.variant.id) throw new Error(v.error||'варіант не створився');
+    if(v.error==='duplicate-variant'&&v.variant) v={variant:v.variant}; // таке фасування вже є — беремо його
+    if(!v.variant||!v.variant.id) throw new Error(v.message||v.error||'варіант не створився');
     rcItems.push({variant_id:v.variant.id,name:name+' '+volume,qty:1,unit_cost:wholesale||''});
     renderRc();
     ['rcNpName','rcNpVolume','rcNpSku','rcNpPrice','rcNpWholesale'].forEach(i=>document.getElementById(i).value='');
@@ -763,7 +767,7 @@ async function parseInvoice(){
     }
     const d=await r.json();
     if(!r.ok){ err.textContent=d.message||d.error||'не вдалося прочитати документ'; return; }
-    INVOICE_ROWS=(d.rows||d.items||[]).map(x=>({...x, variant_id:(x.matches&&x.matches[0]&&x.matches[0].variant_id)||x.variant_id||null}));
+    INVOICE_ROWS=(d.rows||d.items||[]).map(x=>({...x, variant_id:x.ambiguous?null:((x.matches&&x.matches[0]&&x.matches[0].variant_id)||x.variant_id||null)}));
     if(d.doc_date && !document.getElementById('upDate').value) document.getElementById('upDate').value=d.doc_date;
     if(d.supplier && !document.getElementById('upSupplier').value) document.getElementById('upSupplier').value=d.supplier;
     renderInvoice();
@@ -776,8 +780,10 @@ function renderInvoice(){
   document.getElementById('upCount').textContent=INVOICE_ROWS.length;
   body.innerHTML=INVOICE_ROWS.map((x,i)=>{
     const opts=(x.matches||[]).map(m=>`<option value="${m.variant_id}"${m.variant_id===x.variant_id?' selected':''}>${esc(m.label||m.name)}</option>`).join('');
-    const sel=opts?`<select onchange="INVOICE_ROWS[${i}].variant_id=Number(this.value)">${opts}</select>`
-                  :`<span class="muted">нема збігу — буде створено новий</span>`;
+    // 26.09: кілька однаково схожих товарів — не вгадуємо, людина обирає (інакше прихід ляже не туди)
+    const pick=x.ambiguous?`<option value=""${x.variant_id?'':' selected'}>— неоднозначно, оберіть товар —</option>`:'';
+    const sel=opts?`<select onchange="INVOICE_ROWS[${i}].variant_id=Number(this.value)||null">${pick}${opts}</select>${x.ambiguous&&!x.variant_id?'<div style="font-size:11px;color:#d97706">неоднозначно, оберіть товар</div>':''}`
+                  :`<span class="muted">нема збігу — буде створено новий (якщо такий товар уже є, прихід ляже на нього)</span>`;
     return `<tr><td>${esc(x.name||'')}</td><td>${sel}</td><td class="r">${x.qty||''}</td><td class="r">${x.price||''}</td></tr>`;
   }).join('');
 }
@@ -788,13 +794,16 @@ async function applyInvoice(){
   if(!date){ err.textContent='Вкажіть дату накладної'; return; }
   const btn=document.getElementById('upApply'); btn.disabled=true; btn.textContent='Проводжу…';
   try{
+    const unresolved=INVOICE_ROWS.filter(x=>x.ambiguous&&!x.variant_id);
+    if(unresolved.length){ err.textContent='Неоднозначно, оберіть товар у рядках: '+unresolved.map(x=>'«'+x.name+'»').join(', '); return; }
     const items=INVOICE_ROWS.map(x=>({name:x.name,qty:x.qty,price:x.price,variant_id:x.variant_id,create:!x.variant_id}));
     const d=await api('/api/stock-import/apply',{method:'POST',body:JSON.stringify({
       kind:'invoice', warehouse:'store', doc_date:date, filename:(document.getElementById('upFile').files[0]||{}).name||null,
       supplier_name:document.getElementById('upSupplier').value||null,
       delivery_cost:Number(document.getElementById('upDelivery').value)||0, items})});
     if(d.error){ err.textContent=d.message||d.error; return; }
-    okEl.textContent=`Проведено: ${d.received} позицій${d.created?`, створено нових: ${d.created}`:''}${d.skipped?`, пропущено: ${d.skipped}`:''}`;
+    const notes=(d.lines||[]).filter(l=>l.status==='ambiguous'||l.status==='info'||(l.status==='skip'&&l.why)).map(l=>`${l.name}: ${l.why}`);
+    okEl.textContent=`Проведено: ${d.received} позицій${d.created?`, створено нових: ${d.created}`:''}${d.matched_existing?`, знайдено існуючих: ${d.matched_existing}`:''}${d.skipped?`, пропущено: ${d.skipped}`:''}`+(notes.length?' · '+notes.join(' · '):'');
     INVOICE_ROWS=[]; renderInvoice();
     document.getElementById('upFile').value=''; document.getElementById('upText').value='';
     loadStock(); loadDash(); loadHistory();

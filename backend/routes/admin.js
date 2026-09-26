@@ -102,6 +102,20 @@ router.post('/products', async (req, res) => {
     if (!id || !name) return res.status(400).json({ error: 'id-name-required' });
     const brandId = brand_id || null;
     const pool = getPool();
+    // 26.09 (Босс: «почисти склади від повторюваних позицій»): дублі «eterna 55.65», «extremo 6.04»,
+    // «кондиціонер na golovy», «окисник 0%» народжені ЦІЄЮ формою — вона генерує унікальний id
+    // (назва + хвіст часу) і ніколи не перевіряла, чи такий товар уже є. Друга картка → майстри
+    // обирали то одну, то іншу → приходи на одній, списання на іншій, склад розповзався.
+    // Тепер: такий самий активний товар (канонічна назва + бренд, lib/stock-import) → 409 з
+    // існуючим; створити окремий можна лише свідомо (force:true — форма питає двічі).
+    if (!req.body.force) {
+      const same = await require('../lib/stock-import').findSameProduct(pool, name, { brandId });
+      if (same) {
+        const list = same.ambiguous || [same];
+        return res.status(409).json({ error: 'duplicate-product', existing: list.map(x => ({ product_id: x.product_id, variant_id: x.variant_id, label: x.label })),
+          message: `Такий товар уже є: ${list.map(x => `«${x.label}»`).join(', ')}. Відкрийте його замість створення нового.` });
+      }
+    }
     const r = await pool.query(
       `INSERT INTO products (id, name, brand_id, category_id, photo, description, featured, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
@@ -204,15 +218,40 @@ router.post('/products/:id/variants', async (req, res) => {
     // ціна продажу > 0 → беремо її; інакше (порожньо/0) → закупівельна; якщо і її нема → 0.
     const priceNum = Number(price), whNum = Number(wholesale);
     const priceVal = priceNum > 0 ? priceNum : (whNum > 0 ? whNum : 0);
-    const pool = getPool();
-    const r = await pool.query(
-      `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active, branch_id)
-       VALUES ($1,$2,$3,$4,$5,$6,true,
-               COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
-       RETURNING *`,
-      [req.params.id, volume, priceVal, wholesale || priceVal, sku, stock_qty, branch_id || null]
-    );
-    res.status(201).json({ ok: true, variant: r.rows[0] });
+    const qty0 = Number(stock_qty) || 0;
+    if (qty0 < 0) return res.status(400).json({ error: 'bad-stock-qty' });
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      await applyTenant(client);
+      // 26.09: «Реконструктор Кактус 250мл» мав ДВА однакові варіанти (приймання магазину
+      // створило варіант вдруге, коли товар з таким id уже був). Той самий обʼєм у товару = 409 з існуючим.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('variant:' || $1))`, [req.params.id]);
+      const dup = await client.query(
+        `SELECT * FROM product_variants WHERE product_id = $1 AND active IS NOT FALSE
+            AND lower(trim(volume)) = lower(trim($2)) ORDER BY id LIMIT 1`, [req.params.id, String(volume)]);
+      if (dup.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'duplicate-variant', variant: dup.rows[0],
+          message: `У товару вже є фасування «${dup.rows[0].volume}» — змініть його замість створення другого.` });
+      }
+      const r = await client.query(
+        `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active, branch_id)
+         VALUES ($1,$2,$3,$4,$5,$6,true,
+                 COALESCE($7, (SELECT id FROM branches WHERE is_default = true LIMIT 1)))
+         RETURNING *`,
+        [req.params.id, volume, priceVal, wholesale || priceVal, sku, qty0, branch_id || null]
+      );
+      // Початковий залишок — теж рух складу (як PATCH варіанта з 25.09), інакше залишок без історії
+      if (qty0 > 0) {
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, product_id, delta, reason, notes) VALUES ($1,$2,$3,'adjustment',$4)`,
+          [r.rows[0].id, req.params.id, qty0, 'Початковий залишок при створенні товару']);
+      }
+      await client.query('COMMIT');
+      res.status(201).json({ ok: true, variant: r.rows[0] });
+    } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+    finally { client.release(); }
   } catch (e) { console.error('[admin:add-variant]', e); res.status(500).json({ error: 'internal', ...(process.env.NODE_ENV !== "production" && { detail: e.message }) }); }
 });
 

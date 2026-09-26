@@ -92,15 +92,33 @@ let appRoleProbe = null;
 // Один раз проверяем: существует ли роль app_tenant и можем ли мы в неё переключиться.
 // Если нет (локалка/dev без роли) — изоляция остаётся на уровне GUC+RLS как раньше,
 // без падений запросов из-за `SET LOCAL ROLE`.
+// 26.09: РАЗОВЫЙ сбой пробы (холодная БД, сеть, одновременный старт нескольких инстансов) раньше
+// навсегда переводил процесс в fail-closed: все тенантные запросы → 500 до перезапуска. Пойман
+// регресс-щитом (случайные тесты «tenant isolation unavailable» при параллельном старте серверов).
+// Теперь: 3 попытки с паузой; если всё равно ошибка — fail-closed СОХРАНЯЕТСЯ, но пробу можно
+// повторить при следующем запросе не чаще раза в 10 с. Семантика защиты та же: пока роль не
+// подтверждена, запросы тенанта отклоняются.
+let appRoleProbeFailedAt = 0;
 function startAppRoleProbe() {
   if (appRoleProbe) return appRoleProbe;
   appRoleProbe = (async () => {
     try {
-      const r = await rawPoolQuery(
-        `SELECT pg_has_role(current_user, $1, 'USAGE') AS ok,
-                (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass`,
-        [APP_DB_ROLE]
-      );
+      let r, lastErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          r = await rawPoolQuery(
+            `SELECT pg_has_role(current_user, $1, 'USAGE') AS ok,
+                    (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypass`,
+            [APP_DB_ROLE]
+          );
+          break;
+        } catch (e) {
+          lastErr = e;
+          if (attempt < 3) await new Promise(res => setTimeout(res, 1500 * attempt));
+        }
+      }
+      if (!r) throw lastErr;
+      appRoleProbeFailedAt = 0;
       appRoleAvailable = !!(r.rows[0] && r.rows[0].ok);
       connUserBypassesRls = !!(r.rows[0] && r.rows[0].bypass);
       const mode = appRoleAvailable ? 'ON (' + APP_DB_ROLE + ')'
@@ -110,7 +128,8 @@ function startAppRoleProbe() {
     } catch (e) {
       appRoleAvailable = false;
       connUserBypassesRls = true; // неизвестно → считаем опасным, fail-closed
-      console.warn('[pg] app-role probe failed → fail-closed for tenant queries:', e.message);
+      appRoleProbeFailedAt = Date.now();
+      console.warn('[pg] app-role probe failed → fail-closed for tenant queries (повтор при следующем запросе через 10с):', e.message);
     }
   })();
   return appRoleProbe;
@@ -125,6 +144,11 @@ function rawPoolQuery(text, params) {
 // и выставить transaction-local app.tenant_id для RLS.
 async function applyTenantOnClient(client, tid) {
   if (appRoleAvailable === null && appRoleProbe) { try { await appRoleProbe; } catch (_) {} }
+  // проба упала из-за ошибки (не «роли нет») → раз в 10 с пробуем снова, прежде чем отказать
+  if (appRoleProbeFailedAt && Date.now() - appRoleProbeFailedAt > 10000) {
+    appRoleProbeFailedAt = 0; appRoleProbe = null; appRoleAvailable = null;
+    try { await startAppRoleProbe(); } catch (_) {}
+  }
   if (appRoleAvailable) {
     await client.query('SET LOCAL ROLE ' + APP_DB_ROLE);
   } else if (connUserBypassesRls && process.env.DB_ALLOW_UNSAFE_ISOLATION !== '1') {

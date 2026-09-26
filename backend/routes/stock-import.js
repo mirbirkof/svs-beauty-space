@@ -5,7 +5,9 @@
                                     → розібрані рядки + топ-3 збіги зі складу для кожного
    POST /api/stock-import/apply   — {kind:'invoice'|'pricelist', filename, items:[...]}
         invoice:   item.variant_id → прихід qty (+stock_movements, reason='invoice')
-                   item.create=true → створити товар+варіант і одразу прихід
+                   item.create=true → створити товар+варіант і одразу прихід; якщо такий товар
+                   уже є (lib/stock-import findSameProduct) — прихід на нього, без нової картки;
+                   кілька кандидатів → рядок status:'ambiguous' «неоднозначно, оберіть товар»
         pricelist: створює товар+варіант (залишок 0), існуючі (variant_id) пропускає
         Все в одній транзакції; документ цілком лягає в stock_import_docs (аудит).
    GET  /api/stock-import/docs    — останні 20 документів
@@ -114,7 +116,7 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
   }
 
   const client = await pool.connect();
-  const result = { received: 0, created: 0, skipped: 0, lines: [] };
+  const result = { received: 0, created: 0, skipped: 0, matched_existing: 0, ambiguous: 0, lines: [] };
   const storeItems = []; // позиції, що лягають на склад МАГАЗИНУ (проводяться однією поставкою)
   try {
     await client.query('BEGIN');
@@ -129,11 +131,15 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
         // тому кількість беремо як є, без перерахунку в мл.
         if (!Number.isFinite(qty) || qty <= 0) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'кількість' }); continue; }
         let variantId = it.variant_id ? Number(it.variant_id) : null;
+        let foundExisting = null;
         if (!variantId && it.create) {
-          variantId = await createItem(client, name, it.price);
-          if (variantId) result.created++;
+          const c = await createItem(client, name, it.price);
+          if (c.ambiguous) { result.skipped++; result.ambiguous++; result.lines.push(ambiguousLine(name, c.ambiguous)); continue; }
+          variantId = c.variantId;
+          if (c.existing) { result.matched_existing++; foundExisting = c.label; } else if (variantId) result.created++;
         }
         if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'нема збігу' }); continue; }
+        if (foundExisting) result.lines.push({ name, status: 'info', why: `такий товар вже є — прихід на «${foundExisting}», нову картку не створено`, variant_id: variantId });
         storeItems.push({ variant_id: variantId, qty, unit_cost: Number(it.price) || 0 });
         result.received++;
         result.lines.push({ name, status: 'ok', qty, variant_id: variantId, warehouse: 'store' });
@@ -142,19 +148,25 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
       if (kind === 'invoice') {
         if (!Number.isFinite(qty) || qty <= 0) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'кількість' }); continue; }
         let variantId = it.variant_id ? Number(it.variant_id) : null;
+        let foundExisting = null;
         if (!variantId && it.create) {
-          variantId = await createItem(client, name, it.price);
+          const c = await createItem(client, name, it.price);
+          if (c.ambiguous) { result.skipped++; result.ambiguous++; result.lines.push(ambiguousLine(name, c.ambiguous)); continue; }
+          variantId = c.variantId;
           if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'створення' }); continue; }
-          result.created++;
+          if (c.existing) { result.matched_existing++; foundExisting = c.label; } else result.created++;
         }
         if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'нема збігу' }); continue; }
         // ГРАМОВИЙ товар (price_per_gram, unit_ml > 1): кількість у накладній — ПЛЯШКИ,
         // а склад ведеться в мл/г → приход = qty × unit_ml. Інакше +5 замість +5000 мл.
         // Роздрібні банки БЕЗ ціни-за-грам: склад у ШТУКАХ (18.07) — qty як є.
         const vinfo = await client.query(
-          `SELECT pv.unit_ml::float AS unit_ml, p.price_per_gram
+          `SELECT pv.unit_ml::float AS unit_ml, p.price_per_gram,
+                  (pv.active IS NOT FALSE AND p.active IS NOT FALSE) AS alive
              FROM product_variants pv JOIN products p ON p.id = pv.product_id WHERE pv.id=$1`, [variantId]);
         if (!vinfo.rows[0]) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'варіант зник' }); continue; }
+        // 26.09: прихід на вимкнену (видалену/склеєну) картку = залишок, якого ніхто не побачить
+        if (!vinfo.rows[0].alive) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'товар вимкнено або склеєно з іншим — розберіть накладну заново й оберіть актуальний товар', variant_id: variantId }); continue; }
         const unitMl = Number(vinfo.rows[0].unit_ml) || 0;
         const isGram = vinfo.rows[0].price_per_gram != null;
         // БАГ (14.08, підтверджений): якщо товар грамовий, а unit_ml НЕ проставлений у картці —
@@ -184,13 +196,16 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
           await client.query(`UPDATE product_variants SET wholesale = $2 WHERE id = $1`, [variantId, wholesale]);
         }
         result.received++;
-        result.lines.push({ name, status: 'ok', qty, delta, converted: asUnits ? `${qty} уп × ${unitMl} мл` : null, variant_id: variantId });
+        result.lines.push({ name, status: 'ok', qty, delta, converted: asUnits ? `${qty} уп × ${unitMl} мл` : null, variant_id: variantId,
+          ...(foundExisting ? { existing: foundExisting, why: `такий товар вже є — прихід на «${foundExisting}», нову картку не створено` } : {}) });
       } else { // pricelist — тільки номенклатура
         if (it.variant_id) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'вже є' }); continue; }
-        const variantId = await createItem(client, name, it.price);
-        if (!variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'створення' }); continue; }
+        const c = await createItem(client, name, it.price);
+        if (c.ambiguous) { result.skipped++; result.ambiguous++; result.lines.push(ambiguousLine(name, c.ambiguous)); continue; }
+        if (c.existing) { result.skipped++; result.matched_existing++; result.lines.push({ name, status: 'skip', why: `вже є: «${c.label}»`, variant_id: c.variantId }); continue; }
+        if (!c.variantId) { result.skipped++; result.lines.push({ name, status: 'skip', why: 'створення' }); continue; }
         result.created++;
-        result.lines.push({ name, status: 'created', variant_id: variantId });
+        result.lines.push({ name, status: 'created', variant_id: c.variantId });
       }
     }
     // Магазин: одна накладна = один документ поставки (з доставкою в собівартості)
@@ -211,7 +226,7 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
       `INSERT INTO stock_import_docs (kind, filename, items, totals, created_by, doc_date)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
       [kind, filename || null, JSON.stringify(result.lines),
-       JSON.stringify({ received: result.received, created: result.created, skipped: result.skipped }),
+       JSON.stringify({ received: result.received, created: result.created, skipped: result.skipped, matched_existing: result.matched_existing, ambiguous: result.ambiguous }),
        (req.user && (req.user.name || req.user.login)) || 'admin', docDate]);
     docId = doc.rows[0].id;
     await client.query('COMMIT');
@@ -223,8 +238,22 @@ router.post('/apply', requirePerm('stock.manage'), async (req, res) => {
   } finally { client.release(); }
 });
 
-// створення товару+варіанта з рядка прайсу/накладної
+function ambiguousLine(name, cands) {
+  return { name, status: 'ambiguous', why: 'неоднозначно, оберіть товар: ' + cands.map(c => `«${c.label}»`).join(' / '),
+    candidates: cands };
+}
+
+// створення товару+варіанта з рядка прайсу/накладної.
+// 26.09: СПЕРШУ шукаємо «той самий» активний товар (канонічна назва + бренд + фасування, див.
+// lib/stock-import productSig). Знайшли один → повертаємо його (existing), НЕ створюємо дубль.
+// Знайшли кілька різних → { ambiguous } — рядок не проводиться, людина обирає товар сама.
+// Замок транзакції: два паралельні імпорти не створять одну й ту саму картку двічі.
+// → { variantId, existing?, label?, ambiguous? }
 async function createItem(client, name, price) {
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('stock-import:create-item'))`);
+  const same = await imp.findSameProduct(client, name);
+  if (same && same.ambiguous) return { ambiguous: same.ambiguous };
+  if (same) return { variantId: same.variant_id, existing: true, label: same.label };
   const brand = imp.detectBrand(name);
   const category = imp.detectCategory(name);
   let base = imp.slugify(name), id = base;
@@ -249,7 +278,7 @@ async function createItem(client, name, price) {
     `INSERT INTO product_variants (product_id, volume, price, wholesale, sku, stock_qty, active)
      VALUES ($1,'стандарт',$2,$3,$4,0,true) RETURNING id`,
     [id, pr, pr || null, `${id}::стандарт`]);
-  return v.rows[0]?.id || null;
+  return { variantId: v.rows[0]?.id || null };
 }
 
 router.get('/docs', requirePerm(), async (req, res) => {

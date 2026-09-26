@@ -17,3 +17,6 @@ backend/uploads/
 ops/.truth-watch-profile/
 qa1*.mjs
 .last-deploy-rev
+
+# 26.09 бэкапы склейки дублей товаров (строки БД) — только на диске, не в git
+ops/_merge_dups_backup_*.json

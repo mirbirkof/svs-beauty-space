@@ -71,6 +71,9 @@ router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
          FROM product_variants v
          JOIN products p ON p.id = v.product_id
         WHERE ${where}
+          -- 26.09: вимкнені/видалені/склеєні картки в акт не потрапляють (раніше кожен акт
+          -- містив їх: зайві рядки + підрахунок на мертву картку давав залишок, якого ніхто не бачить)
+          AND v.active IS NOT FALSE AND p.active IS NOT FALSE
         ORDER BY v.id`,
       [...params, auditId]
     );
