@@ -31,16 +31,19 @@ try {
     const newPrice = svc.price === 333 ? 334 : 333;
     const patched = await p.evaluate(async ([id, np]) => {
       if (window.svcEdit) svcEdit(id);
-      await new Promise(r => setTimeout(r, 1500));
+      // [26.09] было: фиксированные 1.5 с / 2.5 с — при нагрузке сервера 20 (2 ядра) форма не успевала → ложная тревога Боссу.
+      const until = async (f, ms = 10000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await f(); if (v) return v; await new Promise(r => setTimeout(r, 250)); } return null; };
+      await until(() => document.getElementById('svcf_price'));
       const pf = document.getElementById('svcf_price');
       if (!pf) return { err: 'форма не открылась' };
       pf.value = String(np);
       const btn = document.getElementById('svcSaveBtn');
       if (!btn) return { err: 'кнопки Зберегти нет' };
       btn.click();
-      await new Promise(r => setTimeout(r, 2500));
+      const saved = await until(async () => { const ch = await api('/api/services/' + id); const v = Number((ch.service || ch).price); return v === np ? v : null; });
+      if (saved != null) return { saved };
       const check = await api('/api/services/' + id);
-      return { saved: Number((check.service || check).price) };
+      return { saved: Number((check.service || check).price), waited: '10s' };
     }, [svc.id, newPrice]);
     ok('цена услуги сохранилась через форму', patched.saved === newPrice, patched);
     // вернуть исходную
