@@ -368,19 +368,25 @@ router.delete('/variants/:id', async (req, res) => {
 // Залишки на складі: плоский список варіантів з назвами, цінами і залишком
 router.get('/stock/list', async (req, res) => {
   try {
+    const { prepareStockRows, wordsWhere } = require('../lib/stock-sort');
     const q = (req.query.q || '').trim();
     const vals = [];
     let where = `pv.active IS NOT FALSE AND p.active IS NOT FALSE`;
-    if (q) { vals.push('%' + q + '%'); where += ` AND (p.name ILIKE $1 OR pv.sku ILIKE $1 OR pv.volume ILIKE $1 OR (p.name || ' ' || pv.volume) ILIKE $1)`; }
+    // 26.09: пошук по СЛОВАХ у будь-якому порядку (як у продажу), а не цілим рядком
+    if (q) where += wordsWhere(q, vals, `COALESCE(p.name,'') || ' ' || COALESCE(pv.volume,'') || ' ' || COALESCE(pv.sku,'') || ' ' || COALESCE(b.name,'')`);
+    // 26.09: без пошуку віддаємо ВЕСЬ склад (раніше LIMIT 400 за абеткою — ~700 позицій на проді
+    // не було видно зовсім, доки не введеш назву). Порядок — Тип → Бренд → назва по-людськи (lib/stock-sort).
     const r = await getPool().query(
       `SELECT pv.id, pv.product_id, p.name AS product_name, pv.volume, pv.sku,
               COALESCE(pv.stock_qty,0) AS stock_qty, pv.price, pv.wholesale,
-              pv.unit_ml, p.price_per_gram
+              pv.unit_ml, p.price_per_gram, p.brand_id, b.name AS brand_name, p.category_id, p.attrs, p.min_stock
          FROM product_variants pv
          JOIN products p ON p.id = pv.product_id
+         LEFT JOIN brands b ON b.id = p.brand_id
         WHERE ${where}
-        ORDER BY p.name, pv.volume LIMIT 400`, vals);
-    res.json({ items: r.rows, count: r.rows.length });
+        ORDER BY p.name, pv.volume LIMIT ${q ? 400 : 5000}`, vals);
+    const items = prepareStockRows(r.rows);
+    res.json({ items, count: items.length });
   } catch (e) { console.error('[admin:stock-list]', e); res.status(500).json({ error: 'internal' }); }
 });
 

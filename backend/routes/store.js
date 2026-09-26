@@ -30,14 +30,18 @@ router.get('/stock', async (req, res) => {
     const r = await pool.query(`
       SELECT ws.variant_id, ws.qty, ws.reserved_qty, ws.avg_cost,
              v.sku, v.volume, v.price, v.wholesale,
-             p.id AS product_id, p.name AS product_name, p.brand_id
+             p.id AS product_id, p.name AS product_name, p.brand_id, b.name AS brand_name,
+             p.category_id, p.attrs, p.price_per_gram, p.min_stock
         FROM warehouse_stock ws
         JOIN product_variants v ON v.id = ws.variant_id
         JOIN products p ON p.id = v.product_id
+        LEFT JOIN brands b ON b.id = p.brand_id
        WHERE ws.warehouse_id = 'store' AND ws.qty > 0
        ORDER BY p.name, v.volume`);
     const totalValue = r.rows.reduce((s, x) => s + Number(x.qty) * Number(x.avg_cost || 0), 0);
-    res.json({ items: r.rows, total_value: Math.round(totalValue * 100) / 100 });
+    // 26.09: порядок Тип → Бренд → назва по-людськи (той самий, що на складі салону й в інвентаризації)
+    const items = require('../lib/stock-sort').prepareStockRows(r.rows);
+    res.json({ items, total_value: Math.round(totalValue * 100) / 100 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -518,14 +522,16 @@ router.get('/inventory/acts/:id', async (req, res) => {
     const items = await pool.query(`
       SELECT v.id AS variant_id, p.name AS product_name, v.volume, v.sku,
              ws.qty AS current_qty, ws.avg_cost,
-             l.expected_qty, l.counted_qty, l.counted_by, l.counted_at
+             l.expected_qty, l.counted_qty, l.counted_by, l.counted_at,
+             p.brand_id, b.name AS brand_name, p.category_id, p.attrs, p.price_per_gram
         FROM warehouse_stock ws
         JOIN product_variants v ON v.id = ws.variant_id
         JOIN products p ON p.id = v.product_id
+        LEFT JOIN brands b ON b.id = p.brand_id
         LEFT JOIN store_inventory_lines l ON l.act_id = $1 AND l.variant_id = ws.variant_id
        WHERE ws.warehouse_id = 'store'
        ORDER BY p.name, v.volume`, [id]);
-    res.json({ act: a, items: items.rows });
+    res.json({ act: a, items: require('../lib/stock-sort').prepareStockRows(items.rows) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
