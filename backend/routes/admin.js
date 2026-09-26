@@ -272,8 +272,19 @@ router.patch('/variants/:id', async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query('BEGIN'); await applyTenant(client);
-    const cur = await client.query(`SELECT COALESCE(stock_qty,0)::numeric AS stock_qty FROM product_variants WHERE id = $1 FOR UPDATE`, [req.params.id]);
+    const cur = await client.query(`SELECT COALESCE(stock_qty,0)::numeric AS stock_qty, price, wholesale FROM product_variants WHERE id = $1 FOR UPDATE`, [req.params.id]);
     if (cur.rowCount === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    // 26.09 (ціна з акту інвентаризації / складу): ціну не можна ЗМІНИТИ на 0 — це майже завжди
+    // стерте поле, а не «безкоштовно». Незмінений нуль (2 старі позиції) проходить, щоб не блокувати
+    // збереження залишку в таких картках.
+    for (const [k, v] of [['price', price], ['wholesale', wholesale]]) {
+      const n = num(v);
+      if (n === 0 && Number(cur.rows[0][k] || 0) !== 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'bad-number', field: k, message: (k === 'price' ? 'Ціна' : 'Оптова ціна') + ' має бути більше 0' });
+      }
+    }
+    const oldPrice = cur.rows[0].price, oldWholesale = cur.rows[0].wholesale;
     const newQty = num(stock_qty);
     const delta = newQty === null ? 0 : Math.round((newQty - Number(cur.rows[0].stock_qty)) * 1000) / 1000;
     const r = await client.query(
@@ -295,9 +306,11 @@ router.patch('/variants/:id', async (req, res) => {
         [req.params.id, delta, 'корекція залишку в картці товару' + (who ? ' · ' + who : '')]);
     }
     await client.query('COMMIT');
-    if (delta !== 0 || price !== undefined) {
+    if (delta !== 0 || price !== undefined || wholesale !== undefined) {
+      // історія цін: було → стало (окремої таблиці історії роздрібних цін немає — журнал дій її веде)
       logAction({ user: req.user, action: 'stock.variant.update', entity: 'variant', entity_id: Number(req.params.id),
-                  meta: { price: num(price), stock_qty: newQty, stock_delta: delta } });
+                  meta: { price: num(price), price_old: oldPrice, wholesale: num(wholesale), wholesale_old: oldWholesale,
+                          stock_qty: newQty, stock_delta: delta } });
     }
     res.json({ ok: true, variant: r.rows[0], stock_delta: delta });
   } catch (e) {

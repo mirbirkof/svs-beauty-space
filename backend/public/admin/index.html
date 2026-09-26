@@ -13389,13 +13389,28 @@ async function loadStockList() {
       <td><span style="cursor:pointer;color:var(--primary,#6c5ce7);font-weight:600" title="Відкрити профіль товару" onclick="openProduct('${String(v.product_id||'').replace(/'/g,'&#39;')}')">${escapeHtml(v.product_name||'')}</span><div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
       <td>${escapeHtml(v.volume||'')}</td>
       <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${(v.price_per_gram!=null && Number(v.unit_ml)>1)?`${Number(v.stock_qty)} <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">мл/г</span>`:Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
-      <td style="text-align:right">${v.price!=null?_money(v.price):'—'}</td>
+      <td style="text-align:right;white-space:nowrap"><input type="number" step="0.01" min="0.01" class="input st-price" data-vid="${v.id}" value="${v.price!=null?Number(v.price):''}" title="Роздрібна ціна — Enter або 💾 зберігає" style="width:86px;padding:4px 6px;text-align:right" onkeydown="if(event.key==='Enter'){event.preventDefault();stSavePrice(${v.id},this)}"><button class="btn btn-sm btn-outline" title="Зберегти ціну" style="padding:2px 6px" onclick="stSavePrice(${v.id},this.previousElementSibling)">💾</button><div class="st-price-msg" data-vid="${v.id}" style="font-size:10px"></div></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>
         <button class="btn btn-sm btn-outline" title="Списання" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',-1)">−</button>
         <button class="btn btn-sm btn-outline" title="Видалити позицію зі складу" style="color:var(--danger,#ef4444)" onclick="stDelete(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',${Number(v.stock_qty)||0})"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">delete_outline</span></button>
       </td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Нічого не знайдено</td></tr>';
   } catch (_) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+}
+// 26.09 (Босс: «щоб можна було редагувати ціну і зберігати»): ціна прямо в списку складу.
+// Той самий PATCH, що в картці товару (право «Склад і ціни», журнал дій «було → стало»);
+// показуємо те, що повернула база, і пишемо «Збережено».
+async function stSavePrice(id, inp) {
+  const msg = document.querySelector('.st-price-msg[data-vid="' + id + '"]');
+  if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
+  const raw = inp ? String(inp.value).trim().replace(',', '.') : '';
+  const n = Number(raw);
+  if (raw === '' || !Number.isFinite(n) || n <= 0) { if (msg) { msg.style.color = 'var(--danger,#ef4444)'; msg.textContent = 'ціна має бути > 0'; } return; }
+  if (msg) { msg.style.color = ''; msg.textContent = 'збереження…'; }
+  const r = await api('/api/admin/variants/' + id, { method: 'PATCH', body: JSON.stringify({ price: n }) });
+  if (!r.ok) { if (msg) { msg.style.color = 'var(--danger,#ef4444)'; msg.textContent = r.message || r.error || 'помилка'; } return; }
+  if (inp && r.variant) inp.value = Number(r.variant.price);
+  if (msg) { msg.style.color = 'var(--success,#16a34a)'; msg.textContent = 'Збережено'; setTimeout(() => { if (msg.textContent === 'Збережено') msg.textContent = ''; }, 4000); }
 }
 // Видалення позиції зі складу (нотатка #152). Історія рухів і продажів лишається —
 // позиція просто зникає зі списку складу й каталогу. Залишок, якщо був, списується рухом,

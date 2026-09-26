@@ -140,30 +140,89 @@ router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
     const items = await pool.query(
       `SELECT * FROM inventory_audit_items WHERE audit_id=$1 ORDER BY product_name, sku`, [id]
     );
+    // 26.09 (Босс: «щоб можна було редагувати ціну й зберігати»): поточна роздрібна/оптова ціна
+    // варіанта — для поля ціни в акті (зберігається через PATCH /api/admin/variants/:id).
+    const vids = [...new Set(items.rows.map((r) => r.variant_id).filter(Boolean))];
+    if (vids.length) {
+      const pr = await pool.query(`SELECT id, price, wholesale FROM product_variants WHERE id = ANY($1::int[])`, [vids]);
+      const byId = new Map(pr.rows.map((r) => [r.id, r]));
+      for (const r of items.rows) { const v = byId.get(r.variant_id); r.price = v ? v.price : null; r.wholesale = v ? v.wholesale : null; }
+    }
     res.json({ audit: a.rows[0], items: items.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
 // PATCH /api/inventory/items/:id — внести факт по одной позиции
+// 26.09 (Босс: «факт зберігається, але не переноситься в залишки»). ПРИЧИНА (прод, акт №10):
+// акт провели в 14:30, а факт по «BIO HIDRA Крем 10 в 1» внесли в 14:37 — PATCH не смотрел на
+// статус акта, цифра легла в закрытый акт, а в остаток не попала никогда (перенос — только при
+// проведении). Теперь:
+//   • акт в работе      → как раньше: факт в акт, в остаток — при проведении;
+//   • акт ПРОВЕДЁН      → правка сразу применяется к остатку как корректировка: движение
+//                         'inventory_audit' на (новое расхождение − уже применённое по строке,
+//                         applied_qty) — повторное сохранение того же числа ничего не меняет,
+//                         двойного применения нет (строка акта и строка акта-шапки под FOR UPDATE);
+//   • акт СКАСОВАНО     → 409 с понятным текстом, ничего не пишем.
 router.patch('/items/:id', requirePerm('stock.manage'), async (req, res) => {
+  const id = Number(req.params.id);
+  const { actual_qty, reason, notes } = req.body || {};
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
+  if (actual_qty == null || actual_qty === '') return res.status(400).json({ error: 'actual_qty required', message: 'Введіть фактичну кількість' });
+  const actual = Number(actual_qty);
+  if (!Number.isFinite(actual) || actual < 0 || actual > 1e9) {
+    return res.status(400).json({ error: 'actual_qty must be >= 0', message: 'Фактична кількість — число від 0' });
+  }
+  const client = await pool.connect();
   try {
-    const id = Number(req.params.id);
-    const { actual_qty, reason, notes } = req.body || {};
-    if (actual_qty == null) return res.status(400).json({ error: 'actual_qty required' });
-    if (!Number.isFinite(Number(actual_qty)) || Number(actual_qty) < 0) {
-      return res.status(400).json({ error: 'actual_qty must be >= 0' });
+    await client.query('BEGIN'); await applyTenant(client);
+    const it = await client.query(
+      `SELECT i.id, i.audit_id, i.variant_id, i.cost_per_unit, i.expected_qty, i.applied_qty, a.status
+         FROM inventory_audit_items i JOIN inventory_audits a ON a.id = i.audit_id
+        WHERE i.id=$1 FOR UPDATE OF i, a`, [id]);
+    const row = it.rows[0];
+    if (!row) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
+    if (row.status !== 'in_progress' && row.status !== 'completed') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'audit-closed', status: row.status,
+        message: 'Акт скасовано — факт у нього не вноситься. Створіть новий акт.' });
     }
-    const it = await pool.query(`SELECT cost_per_unit, expected_qty FROM inventory_audit_items WHERE id=$1`, [id]);
-    if (!it.rows[0]) return res.status(404).json({ error: 'not-found' });
-    const diffVal = (Number(actual_qty) - Number(it.rows[0].expected_qty)) * Number(it.rows[0].cost_per_unit || 0);
-    await pool.query(
+    const diffQty = Math.round((actual - Number(row.expected_qty)) * 1000) / 1000;
+    const diffVal = diffQty * Number(row.cost_per_unit || 0);
+    let applied = null; let stockDelta = 0;
+    if (row.status === 'completed') {
+      const already = Number(row.applied_qty || 0);
+      stockDelta = Math.round((diffQty - already) * 1000) / 1000;
+      if (stockDelta !== 0) {
+        await client.query(`UPDATE product_variants SET stock_qty = GREATEST(0, COALESCE(stock_qty,0) + $1) WHERE id=$2`, [stockDelta, row.variant_id]);
+        const who = (req.user && (req.user.display_name || req.user.name)) || '';
+        await client.query(
+          `INSERT INTO stock_movements (variant_id, delta, reason, ref_id, notes)
+           VALUES ($1,$2,'inventory_audit',$3,$4)`,
+          [row.variant_id, stockDelta, row.audit_id, 'правка факту в проведеному акті' + (who ? ' · ' + who : '')]);
+        await client.query(
+          `UPDATE inventory_audits SET total_diff = COALESCE(total_diff,0) + $1 WHERE id=$2`,
+          [stockDelta * Number(row.cost_per_unit || 0), row.audit_id]);
+      }
+      applied = diffQty;
+    }
+    await client.query(
       `UPDATE inventory_audit_items
-          SET actual_qty=$1, reason=$2, notes=$3, diff_value=$4, counted_at=NOW(), counted_by=$5
+          SET actual_qty=$1, reason=$2, notes=$3, diff_value=$4, counted_at=NOW(), counted_by=$5,
+              applied_qty = CASE WHEN $7::boolean THEN $8::numeric ELSE applied_qty END
         WHERE id=$6`,
-      [actual_qty, reason || null, notes || null, diffVal, req.user?.id || null, id]
+      [actual, reason || null, notes || null, diffVal, req.user?.id || null, id, row.status === 'completed', applied]
     );
-    res.json({ ok: true, diff_value: diffVal });
-  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+    await client.query('COMMIT');
+    if (stockDelta !== 0) {
+      await logAction({ user: req.user, action: 'inventory.item_after_complete', entity: 'audit', entity_id: row.audit_id,
+        meta: { item: id, variant_id: row.variant_id, actual, stock_delta: stockDelta } });
+    }
+    res.json({ ok: true, diff_value: diffVal, diff_qty: diffQty, audit_status: row.status,
+               applied_to_stock: row.status === 'completed', stock_delta: stockDelta });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
 });
 
 // POST /api/inventory/audits/:id/complete — закрыть акт + применить корректировки
@@ -174,7 +233,9 @@ router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res
     await client.query('BEGIN'); await applyTenant(client);
     const a = await client.query(`SELECT * FROM inventory_audits WHERE id=$1 FOR UPDATE`, [id]);
     if (!a.rows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found' }); }
-    if (a.rows[0].status === 'completed') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'already-completed' }); }
+    if (a.rows[0].status === 'completed') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'already-completed', message: 'Акт уже проведено' }); }
+    // скасований акт провести не можна (раніше проходив — «воскресав» і змінював залишки)
+    if (a.rows[0].status !== 'in_progress') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'not-in-progress', message: 'Акт скасовано — провести його не можна' }); }
 
     // Все посчитанные позиции с расхождением → корректировка остатков + лог
     const diffs = await client.query(
@@ -201,6 +262,14 @@ router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res
       );
       totalDiff += Number(row.diff_value || 0);
     }
+    // 26.09: фиксируем, сколько по каждой строке применено к остатку (applied_qty) — от этого
+    // считается корректировка, если факт поправят уже после проведения (без двойного применения).
+    await client.query(
+      `UPDATE inventory_audit_items SET applied_qty = COALESCE(diff_qty, 0)
+        WHERE audit_id=$1 AND actual_qty IS NOT NULL`, [id]);
+    const cnt = await client.query(
+      `SELECT COUNT(*) FILTER (WHERE actual_qty IS NOT NULL)::int AS counted, COUNT(*)::int AS total
+         FROM inventory_audit_items WHERE audit_id=$1`, [id]);
 
     await client.query(
       `UPDATE inventory_audits
@@ -211,7 +280,8 @@ router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res
 
     await client.query('COMMIT');
     await logAction({ user: req.user, action: 'inventory.complete', entity: 'audit', entity_id: id, meta: { adjusted: diffs.rows.length, total_diff: totalDiff } });
-    res.json({ ok: true, adjusted: diffs.rows.length, total_diff: totalDiff });
+    res.json({ ok: true, adjusted: diffs.rows.length, total_diff: totalDiff,
+               counted: cnt.rows[0].counted, total: cnt.rows[0].total });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
