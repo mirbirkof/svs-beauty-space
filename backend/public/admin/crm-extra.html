@@ -822,7 +822,7 @@ function invRowHtml(it, words){
       <td class="inv-delta">${d==null?'—':(d>0?'+':'')+invNum(d)}</td>
       <td><select class="inv-reason" data-id="${it.id}" style="width:130px">${opts}</select></td>
       <td><button class="btn sm" onclick="saveItem(${it.id})">Зберегти</button></td>
-      <td style="white-space:nowrap"><input type="number" step="0.01" min="0.01" value="${it.price==null?'':invNum(it.price)}" class="inv-price" data-vid="${it.variant_id}" style="width:84px" title="Роздрібна ціна товару" onkeydown="if(event.key==='Enter'){event.preventDefault();invSavePrice(${it.variant_id},this)}"><button class="btn sm ghost" title="Зберегти ціну" onclick="invSavePrice(${it.variant_id},this.previousElementSibling)">💾</button><span class="inv-price-msg" data-vid="${it.variant_id}" style="font-size:11px;margin-left:4px"></span></td>
+      ${invPriceCell(it)}
     </tr>`;
 }
 
@@ -1022,6 +1022,10 @@ async function completeAudit(btn){
 // Ціна прямо з акту (Босс 26.09: «щоб можна було редагувати ціну і зберігати»).
 // Зберігається тим самим PATCH, що й у картці товару (права «Склад і ціни», журнал дій),
 // після збереження — перечитуємо з сервера і показуємо «Збережено».
+// Ячейка ціни — окремою функцією, щоб будь-який рендер рядка акту міг її вставити (<td>…</td>).
+function invPriceCell(it){
+  return `<td style="white-space:nowrap"><input type="number" step="0.01" min="0.01" value="${it.price==null?'':invNum(it.price)}" class="inv-price" data-vid="${it.variant_id}" style="width:84px" title="Роздрібна ціна товару" onkeydown="if(event.key==='Enter'){event.preventDefault();invSavePrice(${it.variant_id},this)}"><button class="btn sm ghost" title="Зберегти ціну" onclick="invSavePrice(${it.variant_id},this.previousElementSibling)">💾</button><span class="inv-price-msg" data-vid="${it.variant_id}" style="font-size:11px;margin-left:4px"></span></td>`;
+}
 async function invSavePrice(vid, inp){
   const msg = document.querySelector(`.inv-price-msg[data-vid="${vid}"]`);
   const raw = inp ? String(inp.value).trim().replace(',','.') : '';
