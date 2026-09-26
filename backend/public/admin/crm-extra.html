@@ -879,7 +879,7 @@ async function loadInventory(){
   try{
     const r = await api('/api/inventory/audits');
     document.getElementById('inv-list').innerHTML = r.items.length ?
-      r.items.map(a=>`<tr data-id="${a.id}"${String(a.id)===String(CURRENT_AUDIT)?' class="inv-open"':''}><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ${a.status==='in_progress'?'':'ghost'}" onclick="openAudit(${a.id})">${a.status==='in_progress'?'Відкрити / заповнити':'Відкрити'}</button></td></tr>`).join('') :
+      r.items.map(a=>`<tr data-id="${a.id}"${String(a.id)===String(CURRENT_AUDIT)?' class="inv-open"':''}><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${({in_progress:'в роботі — не проведено',completed:'проведено',cancelled:'скасовано'})[a.status]||a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ${a.status==='in_progress'?'':'ghost'}" onclick="openAudit(${a.id})">${a.status==='in_progress'?'Відкрити / заповнити':'Відкрити'}</button></td></tr>`).join('') :
       '<tr><td colspan="8" class="empty">Актів немає</td></tr>';
   }catch(e){ alert(e.message); }
   invLoadScopes();
@@ -945,7 +945,7 @@ async function openAudit(id, note){
   INV_ITEMS = r.items || []; INV_MODE = 'all'; INV_Q = ''; INV_LIMIT = 300;
   const box = document.getElementById('inv-search'); if(box) box.value = '';
   document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('active', b.dataset.invf==='all'));
-  const st = {in_progress:'в роботі', completed:'закритий', cancelled:'скасований'}[r.audit.status] || r.audit.status;
+  const st = {in_progress:'в роботі', completed:'проведено', cancelled:'скасовано'}[r.audit.status] || r.audit.status;
   document.getElementById('inv-detail-no').textContent = '#'+id+' ('+st+')';
   INV_AUDIT = r.audit; invRenderStatus();
   const n = document.getElementById('inv-detail-note'); if(n){ n.textContent = note || ''; n.style.display = note ? '' : 'none'; }
