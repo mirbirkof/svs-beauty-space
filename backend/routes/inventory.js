@@ -137,8 +137,15 @@ router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
     const id = Number(req.params.id);
     const a = await pool.query(`SELECT * FROM inventory_audits WHERE id=$1`, [id]);
     if (!a.rows[0]) return res.status(404).json({ error: 'not-found' });
+    // 26.09 (crm-sort-2609): порядок Тип → Бренд → назва по-людськи (тони 1.0 < 6.04 < 10.1 < 1002, регістр не рве
+    // групи) — та сама функція, що на складі (lib/stock-sort). Раніше ORDER BY product_name — текстом.
     const items = await pool.query(
-      `SELECT * FROM inventory_audit_items WHERE audit_id=$1 ORDER BY product_name, sku`, [id]
+      `SELECT i.*, v.volume, v.unit_ml, p.brand_id, b.name AS brand_name, p.category_id, p.attrs, p.price_per_gram
+         FROM inventory_audit_items i
+         LEFT JOIN product_variants v ON v.id = i.variant_id
+         LEFT JOIN products p ON p.id = v.product_id
+         LEFT JOIN brands b ON b.id = p.brand_id
+        WHERE i.audit_id=$1`, [id]
     );
     // 26.09 (Босс: «щоб можна було редагувати ціну й зберігати»): поточна роздрібна/оптова ціна
     // варіанта — для поля ціни в акті (зберігається через PATCH /api/admin/variants/:id).
@@ -148,7 +155,7 @@ router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
       const byId = new Map(pr.rows.map((r) => [r.id, r]));
       for (const r of items.rows) { const v = byId.get(r.variant_id); r.price = v ? v.price : null; r.wholesale = v ? v.wholesale : null; }
     }
-    res.json({ audit: a.rows[0], items: items.rows });
+    res.json({ audit: a.rows[0], items: require('../lib/stock-sort').prepareStockRows(items.rows) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

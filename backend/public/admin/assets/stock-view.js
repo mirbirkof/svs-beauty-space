@@ -64,9 +64,9 @@ th[data-sv-sort].sv-on .sv-ar{opacity:1;color:var(--primary,#6c5ce7)}
     bar.innerHTML = `
       <div class="sv-row">
         <input class="sv-search" id="${esc(o.searchId || '')}" placeholder="${esc(o.searchPlaceholder || 'Пошук: назва, тон, обʼєм, бренд — слова в будь-якому порядку')}" autocomplete="off">
-        ${o.stockChips === false ? '' : '<span class="sv-stock"></span>'}
         ${o.extraHtml || ''}
       </div>
+      ${o.stockChips === false ? '' : '<div class="sv-row"><span class="sv-lbl">Наявність</span><span class="sv-stock" style="display:contents"></span></div>'}
       <div class="sv-row"><span class="sv-lbl">Тип</span><span class="sv-types" style="display:contents"></span></div>
       <div class="sv-row"><span class="sv-lbl">Бренд</span><span class="sv-brands" style="display:contents"></span></div>
       <div class="sv-row"><span class="sv-info"></span></div>`;
@@ -123,14 +123,14 @@ th[data-sv-sort].sv-on .sv-ar{opacity:1;color:var(--primary,#6c5ce7)}
     }
     function chips(field, list, counts, sel, allLabel) {
       return [`<button type="button" class="sv-chip${sel ? '' : ' on'}" data-sv-f="${field}" data-v="">${allLabel}</button>`]
-        .concat(list.map(v => `<button type="button" class="sv-chip${sel === v ? ' on' : ''}${counts[v] ? '' : ' zero'}" data-sv-f="${field}" data-v="${esc(v)}">${esc(v)}<span class="n">${counts[v] || 0}</span></button>`)).join('');
+        .concat(list.filter(v => counts[v] || sel === v).map(v => `<button type="button" class="sv-chip${sel === v ? ' on' : ''}${counts[v] ? '' : ' zero'}" data-sv-f="${field}" data-v="${esc(v)}">${esc(v)}<span class="n">${counts[v] || 0}</span></button>`)).join('');
     }
     function paintChips() {
       const tc = {}, bc = {}, sc = { in: 0, low: 0, out: 0 };
       for (const r of st.rows) {
         if (pass(r, 'type')) tc[r.type] = (tc[r.type] || 0) + 1;
         if (pass(r, 'brand')) { const b = brandOf(r); bc[b] = (bc[b] || 0) + 1; }
-        if (pass(r, 'stock')) { const s = stockState(r); sc[s]++; if (s === 'low') sc.in++; else if (s === 'in') sc.in++; }
+        if (pass(r, 'stock')) { const s = stockState(r); if (s === 'out') sc.out++; else { sc.in++; if (s === 'low') sc.low++; } } // «Є в наявності» включає і ті, що закінчуються
       }
       const types = S.TYPES.filter(x => tc[x] || st.type === x || st.rows.some(r => r.type === x));
       const allBrands = [...new Set(st.rows.map(brandOf))].sort(S.compareBrand ? (a, b) => S.compareBrand(a === NOBRAND ? '' : a, b === NOBRAND ? '' : b) : undefined);
@@ -154,34 +154,66 @@ th[data-sv-sort].sv-on .sv-ar{opacity:1;color:var(--primary,#6c5ce7)}
       let q = 0, v = 0; for (const r of list) { q += Math.max(0, qtyOf(r)); if (o.value) v += Number(o.value(r)) || 0; }
       return `${list.length} поз. · залишок ${fmt(q)}` + (o.value && v > 0 ? ` · вартість ${fmt(Math.round(v))} ₴` : '');
     }
+    // Постепенна відрисовка: 830 рядків з полями й кнопками одразу — це секунди «замерзання» сторінки
+    // (заміряно в пісочниці: сортування 0.1 с, а розкладка всіх рядків — десятки секунд на навантаженій машині).
+    // Показуємо перші FIRST рядків, решту дописуємо порціями при прокрутці до кінця або через more() (Tab/Enter).
+    const FIRST = o.first || 150, STEP = o.step || 250;
+    let pieces = [], shown = 0, io = null;
+    function scrollRoot() { let el = o.tbody.parentElement; while (el && el !== document.body) { const oy = getComputedStyle(el).overflowY; if (oy === 'auto' || oy === 'scroll') return el; el = el.parentElement; } return null; }
+    function moreRow() {
+      return `<tr class="sv-more"><td colspan="${o.colspan}" style="text-align:center;color:#8a8a99;padding:12px">Показано ${shown} з ${pieces.length} — прокрутіть нижче або <button type="button" class="sv-reset" data-sv-more="1">показати ще</button></td></tr>`;
+    }
+    function more(n) {
+      if (shown >= pieces.length) return false;
+      const m = o.tbody.querySelector('tr.sv-more'); if (m) m.remove();
+      const next = Math.min(pieces.length, shown + (n || STEP));
+      o.tbody.insertAdjacentHTML('beforeend', pieces.slice(shown, next).join('') + (next < pieces.length ? '' : ''));
+      shown = next;
+      if (shown < pieces.length) { o.tbody.insertAdjacentHTML('beforeend', moreRow()); watch(); }
+      return true;
+    }
+    function watch() {
+      const m = o.tbody.querySelector('tr.sv-more'); if (!m || typeof IntersectionObserver === 'undefined') return;
+      if (io) io.disconnect();
+      io = new IntersectionObserver((es) => { if (es.some(e => e.isIntersecting)) { io.disconnect(); setTimeout(() => more(), 0); } }, { root: scrollRoot(), rootMargin: '300px' });
+      io.observe(m);
+    }
+    o.tbody.addEventListener('click', (e) => { if (e.target.closest('[data-sv-more]')) more(); });
+
     function render() {
       const vis = sortRows(st.rows.filter(r => pass(r)));
       const words = S.norm(st.q).split(' ').filter(Boolean);
       const cs = o.colspan;
-      let html = '';
+      pieces = [];
       if (!st.sort) {
         const gT = new Map(), gB = new Map();
         for (const r of vis) { (gT.get(r.type) || gT.set(r.type, []).get(r.type)).push(r); const kb = r.type + '|' + brandOf(r); (gB.get(kb) || gB.set(kb, []).get(kb)).push(r); }
         let lt = null, lb = null;
         for (const r of vis) {
-          if (r.type !== lt) { lt = r.type; lb = null; html += `<tr class="sv-grp sv-grp-t"><td colspan="${cs}">${esc(r.type)}<span class="m">${sums(gT.get(r.type))}</span></td></tr>`; }
+          let h = '';
+          if (r.type !== lt) { lt = r.type; lb = null; h += `<tr class="sv-grp sv-grp-t"><td colspan="${cs}">${esc(r.type)}<span class="m">${sums(gT.get(r.type))}</span></td></tr>`; }
           const kb = r.type + '|' + brandOf(r);
-          if (kb !== lb) { lb = kb; html += `<tr class="sv-grp sv-grp-b"><td colspan="${cs}">${esc(brandOf(r))}<span class="m">${sums(gB.get(kb))}</span></td></tr>`; }
-          html += o.rowHtml(r, words);
+          if (kb !== lb) { lb = kb; h += `<tr class="sv-grp sv-grp-b"><td colspan="${cs}">${esc(brandOf(r))}<span class="m">${sums(gB.get(kb))}</span></td></tr>`; }
+          pieces.push(h + o.rowHtml(r, words));
         }
-      } else html = vis.map(r => o.rowHtml(r, words)).join('');
-      o.tbody.innerHTML = html || `<tr><td colspan="${cs}" style="text-align:center;color:#8a8a99;padding:22px">${st.rows.length ? 'Нічого не знайдено — змініть пошук або фільтр' : esc(o.emptyText || 'Позицій немає')}</td></tr>`;
+      } else pieces = vis.map(r => o.rowHtml(r, words));
+      if (io) io.disconnect();
+      shown = Math.min(pieces.length, FIRST);
+      o.tbody.innerHTML = pieces.length
+        ? pieces.slice(0, shown).join('') + (shown < pieces.length ? moreRow() : '')
+        : `<tr><td colspan="${cs}" style="text-align:center;color:#8a8a99;padding:22px">${st.rows.length ? 'Нічого не знайдено — змініть пошук або фільтр' : esc(o.emptyText || 'Позицій немає')}</td></tr>`;
+      if (shown < pieces.length) watch();
       paintChips(); paintHeads();
       const info = $('.sv-info');
       const lbl = st.sort ? ((o.labels && o.labels[st.sort.k]) || (o.thead && o.thead.querySelector(`th[data-sv-sort="${st.sort.k}"]`) || {}).textContent) : '';
-      info.innerHTML = `Показано <b>${vis.length}</b> з ${st.rows.length}` + (st.sort
+      info.innerHTML = `Знайдено <b>${vis.length}</b> з ${st.rows.length}` + (st.sort
         ? ` · сортування: ${esc(String(lbl || '').replace(/[▲▼↕]/g, '').trim())}${o.labels && o.labels[st.sort.k] ? '' : (st.sort.d > 0 ? ' ↑' : ' ↓')} · <button type="button" class="sv-reset">групувати за типом і брендом</button>`
         : ' · згруповано: тип → бренд → назва (клік по заголовку колонки — інше сортування)');
       if (o.onRender) o.onRender(vis);
       return vis;
     }
     function setRows(rows) { st.rows = rows || []; return render(); }
-    return { setRows, render, setSort, state: st, visible: () => st.rows.filter(r => pass(r)), input };
+    return { setRows, render, setSort, more, state: st, visible: () => st.rows.filter(r => pass(r)), input };
   }
 
   window.StockView = { create, defaultLowAt };

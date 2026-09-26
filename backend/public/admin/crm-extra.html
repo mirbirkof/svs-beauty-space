@@ -224,16 +224,12 @@ main { padding:24px 0; }
     <h2>Деталі акту <span id="inv-detail-no"></span></h2>
     <div id="inv-status-box" style="display:none;margin:-2px 0 12px;padding:12px 14px;border-radius:12px;font-size:15px;font-weight:600"></div>
     <div id="inv-detail-note" style="display:none;margin:-4px 0 10px;padding:8px 12px;border-radius:10px;background:#EEF7F1;color:#1d6b43;font-size:13px"></div>
-    <div class="row" id="inv-toolbar" style="margin-bottom:10px">
-      <input id="inv-search" placeholder="Пошук товару за назвою або SKU…" style="flex:1;min-width:280px" oninput="invSearchChanged()" autocomplete="off">
-      <button class="btn sm ghost active" data-invf="all" onclick="invSetMode('all')">Усі</button>
-      <button class="btn sm ghost" data-invf="todo" onclick="invSetMode('todo')">Не підраховані</button>
-      <button class="btn sm ghost" data-invf="done" onclick="invSetMode('done')">Підраховані</button>
-      <button class="btn sm ghost" data-invf="diff" onclick="invSetMode('diff')">З розбіжністю</button>
-    </div>
-    <div id="inv-count" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
-    <div style="max-height:560px;overflow:auto">
-      <table class="inv-tbl"><thead><tr><th>Товар</th><th>SKU</th><th>Облік</th><th>Факт</th><th>Δ</th><th>Причина</th><th></th><th>Ціна, ₴</th></tr></thead><tbody id="inv-items"></tbody></table>
+    <!-- 26.09: ті самі фільтри/групи/сортування, що на складі (assets/stock-view.js): пошук по словах, чипи Тип/Бренд/
+         Наявність, режими підрахунку, «спершу розбіжності», клік по заголовку; Tab/Enter у «Факт» — зберегти й далі -->
+    <div id="inv-toolbar" style="margin-bottom:6px"></div>
+    <div id="inv-count" style="font-size:13px;margin-bottom:8px"></div>
+    <div style="max-height:max(420px,calc(100vh - 260px));overflow:auto">
+      <table class="inv-tbl"><thead><tr><th data-sv-sort="name">Товар</th><th data-sv-sort="expected">Облік</th><th data-sv-sort="fact">Факт</th><th data-sv-sort="diff">Розбіжність</th><th>Причина</th><th></th><th>Ціна, ₴</th></tr></thead><tbody id="inv-items"></tbody></table>
     </div>
     <div class="row" id="inv-actions" style="margin-top:14px">
       <button class="btn" id="inv-complete-btn" onclick="completeAudit(this)" style="font-size:15px;padding:10px 18px">✅ Провести акт → перенести факт у залишки</button>
@@ -802,13 +798,27 @@ function invHi(text, words){
   return out + invEsc(raw.slice(pos));
 }
 
-function invMatch(it, words){
+// режим підрахунку (Усі / Не підраховані / Підраховані / З розбіжністю); пошук, тип, бренд — у StockView
+function invModeOk(it){
   if(INV_MODE==='todo' && it.actual_qty!=null) return false;
   if(INV_MODE==='done' && it.actual_qty==null) return false;
   if(INV_MODE==='diff' && !(it.actual_qty!=null && invDiff(it)!==0)) return false;
-  if(!words.length) return true;
-  const hay = invNorm(it.product_name)+' '+invNorm(it.sku);
-  return words.every(w=>hay.includes(w));
+  return true;
+}
+let INV_VIEW = null;
+function invView(){
+  if(INV_VIEW || !window.StockView) return INV_VIEW;
+  const body = document.getElementById('inv-items');
+  const modes = [['all','Усі'],['todo','Не підраховані'],['done','Підраховані'],['diff','З розбіжністю']]
+    .map(([m,l])=>`<button type="button" class="sv-chip${m==='all'?' on':''}" data-invf="${m}" onclick="invSetMode('${m}')">${l}</button>`).join('');
+  INV_VIEW = StockView.create({ key:'inv_salon', mount:document.getElementById('inv-toolbar'), tbody:body, thead:body.closest('table').tHead,
+    colspan:7, searchId:'inv-search', qty:it=>Number(it.expected_qty)||0, rowHtml:invRowHtml, extraFilter:invModeOk,
+    extraHtml: '<span style="flex-basis:100%;height:0"></span><span class="sv-lbl">Підрахунок</span>' + modes + '<button type="button" class="sv-chip" onclick="INV_VIEW.setSort({k:\'diffabs\',d:-1})" title="Спершу позиції з найбільшою розбіжністю (за модулем)">⇅ Спершу розбіжності</button>',
+    labels:{ diffabs:'спершу розбіжності' },
+    sorts:{ name:'name', expected:it=>Number(it.expected_qty)||0, fact:it=>it.actual_qty==null?null:Number(it.actual_qty),
+      diff:it=>invDiff(it), diffabs:it=>{ const d=invDiff(it); return d==null?null:Math.abs(d); } },
+    onRender:vis=>invUpdateCounter(vis.length) });
+  return INV_VIEW;
 }
 
 const INV_REASONS = [['','—'],['damage','пошкодж.'],['theft','крадіжка'],['miscount','пересорт'],['expired','прострочка'],['other','інше']];
@@ -816,63 +826,59 @@ function invRowHtml(it, words){
   const d = invDiff(it);
   const cls = it.actual_qty==null ? '' : (d!==0 ? 'inv-diff' : 'inv-counted');
   const opts = INV_REASONS.map(([v,l])=>`<option value="${v}"${(it.reason||'')===v?' selected':''}>${l}</option>`).join('');
+  const sub = [it.volume, it.sku].filter(Boolean).map(x=>invHi(x, words)).join(' · ');
   return `<tr id="inv-row-${it.id}" class="${cls}">
-      <td>${invHi(it.product_name, words)}</td><td>${invHi(it.sku, words)}</td><td>${invNum(it.expected_qty)}</td>
-      <td><input type="number" step="any" min="0" value="${it.actual_qty==null?'':invNum(it.actual_qty)}" data-id="${it.id}" class="inv-actual" style="width:86px" onkeydown="invKey(event,${it.id})"></td>
+      <td>${invHi(it.product_name, words)}${sub?`<div style="font-size:11px;color:var(--muted)">${sub}</div>`:''}</td><td>${invNum(it.expected_qty)}</td>
+      <td><input type="number" step="any" min="0" value="${it.actual_qty==null?'':invNum(it.actual_qty)}" data-id="${it.id}" class="inv-actual" style="width:86px" onkeydown="invKey(event,${it.id})" onchange="invAutoSave(${it.id})"></td>
       <td class="inv-delta">${d==null?'—':(d>0?'+':'')+invNum(d)}</td>
-      <td><select class="inv-reason" data-id="${it.id}" style="width:130px">${opts}</select></td>
+      <td><select class="inv-reason" data-id="${it.id}" style="width:130px" onchange="invAutoSave(${it.id})">${opts}</select></td>
       <td><button class="btn sm" onclick="saveItem(${it.id})">Зберегти</button></td>
       ${invPriceCell(it)}
     </tr>`;
 }
 
+// 26.09: усі позиції одразу (раніше 300 + «показати всі» — Tab/Enter упирався в кінець показаного)
 function renderInvItems(){
-  const words = invWords();
-  const vis = INV_ITEMS.filter(it=>invMatch(it, words));
-  const shown = vis.slice(0, INV_LIMIT);
-  const body = document.getElementById('inv-items');
-  body.innerHTML = shown.length
-    ? shown.map(it=>invRowHtml(it, words)).join('') + (vis.length > shown.length
-        ? `<tr><td colspan="8" class="empty">Показано ${shown.length} з ${vis.length}. <a class="lnk" onclick="invShowAll()">Показати всі</a> або уточніть пошук.</td></tr>` : '')
-    : `<tr><td colspan="8" class="empty">${INV_ITEMS.length ? 'Нічого не знайдено — змініть запит або фільтр' : 'Позицій немає'}</td></tr>`;
-  invUpdateCounter(vis.length);
+  const v = invView();
+  if(v) return v.setRows(INV_ITEMS);
+  document.getElementById('inv-items').innerHTML = INV_ITEMS.filter(invModeOk).map(it=>invRowHtml(it, [])).join('');
+  invUpdateCounter();
 }
-function invShowAll(){ INV_LIMIT = Infinity; renderInvItems(); }
 
 function invUpdateCounter(found){
   const el = document.getElementById('inv-count'); if(!el) return;
   const total = INV_ITEMS.length;
   const done = INV_ITEMS.filter(it=>it.actual_qty!=null).length;
   const diffs = INV_ITEMS.filter(it=>it.actual_qty!=null && invDiff(it)!==0).length;
-  if(found==null) found = INV_ITEMS.filter(it=>invMatch(it, invWords())).length;
-  el.innerHTML = `Знайдено <b>${found}</b> з ${total} · підраховано ${done} · залишилось ${total-done} · розбіжностей ${diffs}`;
+  if(found==null) found = INV_VIEW ? INV_VIEW.visible().length : INV_ITEMS.filter(invModeOk).length;
+  const pct = total ? Math.round(done*100/total) : 0;
+  el.innerHTML = `<b style="font-size:14px">Пораховано ${done} з ${total}</b> · залишилось ${total-done} · розбіжностей ${diffs} · показано ${found}
+    <div style="height:6px;background:#eee;border-radius:4px;margin-top:4px;max-width:420px"><div style="height:6px;width:${pct}%;background:var(--p,#6c5ce7);border-radius:4px"></div></div>`;
   invRenderStatus();
 }
 
-function invSearchChanged(){
-  clearTimeout(_invTimer);
-  _invTimer = setTimeout(()=>{
-    INV_Q = document.getElementById('inv-search').value || '';
-    INV_LIMIT = 300;
-    renderInvItems();
-  }, 150);
-}
 function invSetMode(m){
-  INV_MODE = m; INV_LIMIT = 300;
-  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('active', b.dataset.invf===m));
-  renderInvItems();
+  INV_MODE = m;
+  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('on', b.dataset.invf===m));
+  if(INV_VIEW) INV_VIEW.render(); else renderInvItems();
 }
-// Enter у полі кількості = зберегти і перейти до наступного товару
-function invKey(e, id){
-  if(e.key !== 'Enter') return;
+// Enter або Tab у полі «Факт» = зберегти і перейти до наступного товару (Shift+Tab — до попереднього).
+// Порожнє поле — просто перейти далі. Наступне поле само прокручується у видиму частину таблиці.
+async function invKey(e, id){
+  if(e.key !== 'Enter' && e.key !== 'Tab') return;
   e.preventDefault();
-  saveItem(id).then(ok=>{
-    if(!ok) return;
-    const all = Array.from(document.querySelectorAll('.inv-actual'));
-    const i = all.findIndex(x=>+x.dataset.id === id);
-    const next = all[i+1];
-    if(next){ next.focus(); next.select(); }
-  });
+  const inp = e.target;
+  if(inp.value !== ''){ const ok = await saveItem(id); if(!ok) return; }
+  let all = Array.from(document.querySelectorAll('#inv-items .inv-actual'));
+  // кінець показаної порції — дорисувати наступну й іти далі
+  if(!e.shiftKey && all.indexOf(inp) === all.length - 1 && INV_VIEW && INV_VIEW.more()) all = Array.from(document.querySelectorAll('#inv-items .inv-actual'));
+  const next = all[all.indexOf(inp) + (e.shiftKey ? -1 : 1)];
+  if(next){ next.focus(); next.select(); next.scrollIntoView({block:'nearest'}); }
+}
+// зміна мишкою/втрата фокусу — теж зберігаємо (якщо значення справді змінилось)
+function invAutoSave(id){
+  const inp = document.querySelector(`.inv-actual[data-id="${id}"]`);
+  if(inp && inp.value !== '') saveItem(id);
 }
 
 async function loadInventory(){
@@ -942,9 +948,9 @@ async function openAudit(id, note){
   try{ r = await api('/api/inventory/audits/'+id); }
   catch(e){ document.getElementById('inv-detail-no').textContent = '#'+id; document.getElementById('inv-items').innerHTML = '<tr><td colspan="8" class="empty">Не вдалося відкрити акт: '+invEsc(e.message)+'</td></tr>'; return; }
   if(CURRENT_AUDIT !== id) return; // поки вантажили, відкрили інший акт
-  INV_ITEMS = r.items || []; INV_MODE = 'all'; INV_Q = ''; INV_LIMIT = 300;
-  const box = document.getElementById('inv-search'); if(box) box.value = '';
-  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('active', b.dataset.invf==='all'));
+  INV_ITEMS = r.items || []; INV_MODE = 'all';
+  const v = invView(); if(v){ v.input.value = ''; v.state.q = ''; v.state.type = ''; v.state.brand = ''; v.state.stock = ''; }
+  document.querySelectorAll('#inv-toolbar [data-invf]').forEach(b=>b.classList.toggle('on', b.dataset.invf==='all'));
   const st = {in_progress:'в роботі', completed:'проведено', cancelled:'скасовано'}[r.audit.status] || r.audit.status;
   document.getElementById('inv-detail-no').textContent = '#'+id+' ('+st+')';
   INV_AUDIT = r.audit; invRenderStatus();
@@ -960,6 +966,15 @@ async function saveItem(id){
   const actual = inp ? inp.value : '';
   const reason = sel ? sel.value : '';
   if(actual==='') { alert('Введіть фактичну кількість'); return false; }
+  // без змін — не смикаємо сервер (Tab/Enter + втрата фокусу не шлють двічі)
+  const cur = INV_ITEMS.find(x=>+x.id === +id);
+  if(cur && cur.actual_qty!=null && Number(cur.actual_qty)===Number(actual) && (cur.reason||'')===reason) return true;
+  if(_invSaving[id]) return _invSaving[id];
+  _invSaving[id] = saveItemNow(id, actual, reason).finally(()=>{ delete _invSaving[id]; });
+  return _invSaving[id];
+}
+const _invSaving = {};
+async function saveItemNow(id, actual, reason){
   try{
     const res = await api('/api/inventory/items/'+id,{method:'PATCH',body:JSON.stringify({actual_qty:+actual, reason})});
     const it = INV_ITEMS.find(x=>+x.id === +id);
@@ -2089,6 +2104,8 @@ function init(){
 init();
 </script>
 </div>
+<script src="/admin/assets/stock-sort.js"></script>
+<script src="/admin/assets/stock-view.js"></script>
 <script src="/admin/assets/admin-shell.js" data-title="Каса"></script>
 </body>
 </html>

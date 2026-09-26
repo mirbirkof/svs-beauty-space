@@ -1970,13 +1970,15 @@ select.input { background:var(--card); }
         <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
           <div class="card">
             <div class="card-header" style="gap:10px;flex-wrap:wrap"><h3>Залишки на складі <button type="button" class="info-i" data-t="<b>Залишки.</b> Всі товари з поточним залишком. Клік «+» — прихід, «−» — списання: форма справа заповниться сама. Кошик — прибрати позицію зі складу (історія рухів зберігається)." onclick="showInfo(event,this.dataset.t)">i</button></h3>
-              <input id="stListSearch" class="input" placeholder="Пошук: назва або артикул…" style="flex:1;min-width:180px" oninput="clearTimeout(window._stT);window._stT=setTimeout(loadStockList,300)">
               <!-- 15.08 (Бос): завести товар, якого ще нема в базі, можна було ТІЛЬКИ накладною —
                    кнопка «Додати товар» жила лише в каталозі магазину. Тепер вона є і на складі. -->
               <button type="button" class="btn btn-primary" onclick="newProductModal()" title="Завести товар вручну, без накладної"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">add</span> Новий товар</button>
             </div>
-            <div class="card-body" style="padding:0;max-height:520px;overflow:auto">
-              <table class="tbl"><thead><tr><th>Товар</th><th>Обʼєм</th><th style="text-align:right">Залишок</th><th style="text-align:right">Ціна</th><th></th></tr></thead>
+            <!-- 26.09 (Бос: «нормальне сортування… по брендах, по типу»): пошук по словах, чипи Тип/Бренд/Наявність,
+                 групи Тип → Бренд, клік по заголовку — сортування (assets/stock-view.js, спільне зі складом магазину й актами) -->
+            <div id="stListBar" style="padding:10px 14px 0"></div>
+            <div class="card-body" style="padding:0;max-height:max(420px,calc(100vh - 330px));overflow:auto">
+              <table class="tbl"><thead style="position:sticky;top:0;z-index:2;background:var(--card,#fff)"><tr><th data-sv-sort="name">Товар</th><th>Обʼєм</th><th data-sv-sort="qty" style="text-align:right">Залишок</th><th data-sv-sort="price" style="text-align:right">Ціна</th><th></th></tr></thead>
               <tbody id="stListBody"><tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Завантаження…</td></tr></tbody></table>
             </div>
           </div>
@@ -13364,7 +13366,16 @@ async function setPPG(id, name, cur) {
 }
 
 // ═══ STOCK ═══════════════════════════════════
+// 26.09 (перевірка механіки): «Внести» не блокувалась — подвійний клік проводив прихід/списання ДВІЧІ
+// (два рухи, залишок +2×). Тепер повторне натискання, поки йде запит, ігнорується, кнопка сіра.
+let _stAdding = false;
 async function addStock() {
+  if (_stAdding) return;
+  const b = document.querySelector('button[onclick^="addStock"]');
+  _stAdding = true; if (b) b.disabled = true;
+  try { return await addStockNow(); } finally { _stAdding = false; if (b) b.disabled = false; }
+}
+async function addStockNow() {
   if (!userHasPerm('stock.manage')) { toast('Немає права «Склад і ціни» — його вмикає власник у Керуванні доступом', 'error'); return; }
   const variant_id = parseInt(document.getElementById('stockVariantId').value, 10);
   // #109: дробові грами/мл — Number, а не parseInt (він різав 45.5 → 45)
@@ -13378,14 +13389,32 @@ async function addStock() {
   if (r.ok) { document.getElementById('stockQty').value=''; loadStockList(); loadStockMoves(); }
 }
 // ── Склад: список залишків + історія руху ──
+// 26.09: весь склад одним списком (раніше сервер віддавав перші 400 за абеткою — решту не було видно без пошуку),
+// порядок Тип → Бренд → назва по-людськи; фільтри й сортування — спільний компонент StockView (фільтри живуть,
+// поки відкрита сторінка: після приходу/списання список перечитується, а вибрані чипи й пошук лишаються).
+let _stView = null;
+// вартість позиції за закупівлею: для вагового товару опт — за упаковку, склад — у г/мл
+function stCost(v) {
+  const q = Math.max(0, Number(v.stock_qty) || 0), w = Number(v.wholesale) || 0, u = Number(v.unit_ml) || 1;
+  return (v.price_per_gram != null && u > 1) ? q * w / u : q * w;
+}
 async function loadStockList() {
   const body = document.getElementById('stListBody');
   if (!body) return;
+  if (!_stView && window.StockView) _stView = StockView.create({
+    key: 'stock_salon', mount: document.getElementById('stListBar'), tbody: body, thead: body.closest('table').tHead,
+    colspan: 5, searchId: 'stListSearch', value: stCost, rowHtml: stRowHtml, emptyText: 'Склад порожній',
+    sorts: { name: 'name', qty: v => Number(v.stock_qty) || 0, price: v => (v.price == null ? null : Number(v.price)) },
+  });
   try {
-    const q = document.getElementById('stListSearch')?.value.trim() || '';
-    const d = await api('/api/admin/stock/list' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    const d = await api('/api/admin/stock/list');
     const items = d.items || [];
-    body.innerHTML = items.map(v => `<tr>
+    if (_stView) _stView.setRows(items);
+    else body.innerHTML = items.map(v => stRowHtml(v)).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Нічого не знайдено</td></tr>';
+  } catch (_) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+}
+function stRowHtml(v) {
+    return `<tr>
       <td><span style="cursor:pointer;color:var(--primary,#6c5ce7);font-weight:600" title="Відкрити профіль товару" onclick="openProduct('${String(v.product_id||'').replace(/'/g,'&#39;')}')">${escapeHtml(v.product_name||'')}</span><div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(v.sku||'')}</div></td>
       <td>${escapeHtml(v.volume||'')}</td>
       <td style="text-align:right;font-weight:700;${Number(v.stock_qty)<=0?'color:var(--danger,#ef4444)':''}">${(v.price_per_gram!=null && Number(v.unit_ml)>1)?`${Number(v.stock_qty)} <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">мл/г</span>`:Number(v.stock_qty)}${(v.price_per_gram!=null && Number(v.unit_ml)>1 && Number(v.stock_qty)>0)?`<div style="font-size:10px;font-weight:400;color:var(--text-secondary)">≈${(Number(v.stock_qty)/Number(v.unit_ml)).toFixed(2)} пл × ${Number(v.unit_ml)}</div>`:''}</td>
@@ -13394,8 +13423,7 @@ async function loadStockList() {
         <button class="btn btn-sm btn-outline" title="Прихід" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',1)">+</button>
         <button class="btn btn-sm btn-outline" title="Списання" onclick="stPick(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',-1)">−</button>
         <button class="btn btn-sm btn-outline" title="Видалити позицію зі складу" style="color:var(--danger,#ef4444)" onclick="stDelete(${v.id},'${escapeHtml((v.product_name||'')+(v.volume?' '+v.volume:'')).replace(/'/g,'&#39;')}',${Number(v.stock_qty)||0})"><span class="material-icons-round" style="font-size:16px;vertical-align:-3px">delete_outline</span></button>
-      </td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:24px">Нічого не знайдено</td></tr>';
-  } catch (_) { body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger)">Не вдалося завантажити</td></tr>'; }
+      </td></tr>`;
 }
 // 26.09 (Босс: «щоб можна було редагувати ціну і зберігати»): ціна прямо в списку складу.
 // Той самий PATCH, що в картці товару (право «Склад і ціни», журнал дій «було → стало»);
@@ -13414,6 +13442,8 @@ async function stSavePrice(id, inp) {
   const r = await api('/api/admin/variants/' + id, { method: 'PATCH', body: JSON.stringify({ price: n }) });
   if (!r.ok) { if (msg) { msg.style.color = 'var(--danger,#ef4444)'; msg.textContent = r.message || r.error || 'помилка'; } return; }
   if (inp && r.variant) inp.value = Number(r.variant.price);
+  // рядок у пам'яті списку теж оновлюємо — інакше після фільтра/сортування показалась би стара ціна
+  if (_stView && r.variant) { const row = _stView.state.rows.find(x => +x.id === +id); if (row) row.price = r.variant.price; }
   if (msg) { msg.style.color = 'var(--success,#16a34a)'; msg.textContent = 'Збережено'; setTimeout(() => { if (msg.textContent === 'Збережено') msg.textContent = ''; }, 4000); }
 }
 // Видалення позиції зі складу (нотатка #152). Історія рухів і продажів лишається —
@@ -15251,6 +15281,8 @@ function saasFlagEdit(flag){
   else start();
 })();
 </script>
+<script src="/admin/assets/stock-sort.js"></script>
+<script src="/admin/assets/stock-view.js"></script>
 <script src="/admin/assets/notes-widget.js"></script>
 <!-- ═══ РОЗШИРЕНІ МОДУЛІ (реєстр + UI нових backend-модулів) ═══ -->
 <script src="/admin/modules/_core.js"></script>

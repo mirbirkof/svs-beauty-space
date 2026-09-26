@@ -20,3 +20,4 @@ qa1*.mjs
 
 # 26.09 бэкапы склейки дублей товаров (строки БД) — только на диске, не в git
 ops/_merge_dups_backup_*.json
+ops/_fill_brand_type_backup_*.json
