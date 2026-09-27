@@ -102,7 +102,11 @@ if [ "$MODE" != "restart" ] && [ "$MODE" != "force" ]; then
       # только что стартовавший ещё не слушает — не убивать (иначе крон рвёт свой же старт)
       age=$(( $(date +%s) - $(stat -c %Y /proc/$pid 2>/dev/null || echo 0) ))
       [ "$age" -lt 90 ] && continue
-      kill "$pid" 2>/dev/null; say "killed orphan $pid"
+      kill "$pid" 2>/dev/null
+      # [27.09 Jarvis] орфан 3332455 13 часов ел 80% ядра и НЕ умирал от TERM (мёртвый цикл блокирует обработчик сигнала);
+      # крон 161 раз писал «killed orphan» впустую. Не умер за 5с → SIGKILL, и об этом — отдельной строкой.
+      sleep 5
+      if kill -0 "$pid" 2>/dev/null; then kill -9 "$pid" 2>/dev/null; say "killed -9 orphan $pid (не умер от TERM за 5с — мёртвый цикл?)"; else say "killed orphan $pid"; fi
     done
     exit 0
   fi
