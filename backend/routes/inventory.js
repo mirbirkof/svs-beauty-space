@@ -7,6 +7,10 @@ const { requirePerm, logAction } = require('../lib/rbac');
 const router = express.Router();
 const pool = getPool();
 
+// Владелец — как в routes/admin.js (ownerOnlyRoles): роль owner или уровень роли ≥ 100
+// (legacy ADMIN_TOKEN = owner/999).
+const isOwner = (u) => !!u && (u.role === 'owner' || (u.role_level || 0) >= 100);
+
 // POST /api/inventory/audits — создать акт + наполнить позициями по scope
 router.post('/audits', requirePerm('stock.manage'), async (req, res) => {
   const client = await pool.connect();
@@ -125,9 +129,12 @@ router.get('/audits', requirePerm('stock.read'), async (req, res) => {
               (SELECT COUNT(*) FROM inventory_audit_items i WHERE i.audit_id=a.id AND i.actual_qty IS NOT NULL)::int AS counted,
               (SELECT COUNT(*) FROM inventory_audit_items i WHERE i.audit_id=a.id AND i.diff_qty <> 0)::int AS discrepancies
          FROM inventory_audits a
+        WHERE a.deleted_at IS NULL
         ORDER BY a.started_at DESC LIMIT 50`
     );
-    res.json({ items: r.rows, count: r.rows.length });
+    // can_delete — та же проверка владельца, что у маршрута удаления: админка по нему решает,
+    // показывать ли «🗑 Видалити» (кнопка и сервер не расходятся).
+    res.json({ items: r.rows, count: r.rows.length, can_delete: isOwner(req.user) });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
@@ -135,7 +142,7 @@ router.get('/audits', requirePerm('stock.read'), async (req, res) => {
 router.get('/audits/:id', requirePerm('stock.read'), async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const a = await pool.query(`SELECT * FROM inventory_audits WHERE id=$1`, [id]);
+    const a = await pool.query(`SELECT * FROM inventory_audits WHERE id=$1 AND deleted_at IS NULL`, [id]);
     if (!a.rows[0]) return res.status(404).json({ error: 'not-found' });
     // 26.09 (crm-sort-2609): порядок Тип → Бренд → назва по-людськи (тони 1.0 < 6.04 < 10.1 < 1002, регістр не рве
     // групи) — та сама функція, що на складі (lib/stock-sort). Раніше ORDER BY product_name — текстом.
@@ -299,12 +306,61 @@ router.post('/audits/:id/complete', requirePerm('stock.manage'), async (req, res
 router.delete('/audits/:id', requirePerm('stock.manage'), async (req, res) => {
   try {
     const r = await pool.query(
-      `UPDATE inventory_audits SET status='cancelled' WHERE id=$1 AND status<>'completed' RETURNING id`,
+      `UPDATE inventory_audits SET status='cancelled' WHERE id=$1 AND status<>'completed' AND deleted_at IS NULL RETURNING id`,
       [Number(req.params.id)]
     );
     if (!r.rows[0]) return res.status(400).json({ error: 'cannot-cancel' });
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
+// POST /api/inventory/audits/:id/delete — ВИДАЛИТИ зайвий акт зі списку (Босс 30.09).
+// Только владелец. Мягко: deleted_at/deleted_by, строки не стираются (запрет дневника CRM).
+// Можно: in_progress и cancelled — у непроведённого акта к остатку НИЧЕГО не применено
+// (stock_qty меняет только проведение и правка факта в проведённом акте). Проведённый — 409.
+// В той же транзакции акт в работе становится cancelled (его уже нельзя провести/заполнить).
+// Остатки склада не трогаем. Повтор/чужой/несуществующий id — 404.
+router.post('/audits/:id/delete', requirePerm('stock.manage'), async (req, res) => {
+  if (!isOwner(req.user)) {
+    return res.status(403).json({ error: 'owner-only', message: 'Видаляти акти може лише власник' });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN'); await applyTenant(client);
+    const a = await client.query(
+      `SELECT id, status FROM inventory_audits WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [id]);
+    const row = a.rows[0];
+    if (!row) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not-found', message: 'Акт не знайдено або вже видалено' }); }
+    if (row.status === 'completed') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'audit-completed', message: 'Проведений акт змінив залишки, видалити не можна' });
+    }
+    if (row.status !== 'in_progress' && row.status !== 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'bad-status', status: row.status, message: 'Цей акт видалити не можна' });
+    }
+    // Предохранитель: если по акту всё-таки есть движения склада — он менял остатки, не удаляем.
+    const mv = await client.query(
+      `SELECT 1 FROM stock_movements WHERE reason='inventory_audit' AND ref_id=$1 LIMIT 1`, [id]);
+    if (mv.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'audit-has-movements', message: 'Акт змінив залишки, видалити не можна' });
+    }
+    const who = String((req.user.display_name || req.user.name || '') + ' #' + (req.user.id ?? '')).trim();
+    await client.query(
+      `UPDATE inventory_audits
+          SET status = CASE WHEN status='in_progress' THEN 'cancelled' ELSE status END,
+              deleted_at = NOW(), deleted_by = $2
+        WHERE id=$1`, [id, who]);
+    await client.query('COMMIT');
+    await logAction({ user: req.user, action: 'inventory.delete', entity: 'audit', entity_id: id, meta: { was_status: row.status } });
+    res.json({ ok: true, id, was_status: row.status });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) {}
+    console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
+  } finally { client.release(); }
 });
 
 module.exports = router;

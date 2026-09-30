@@ -885,7 +885,7 @@ async function loadInventory(){
   try{
     const r = await api('/api/inventory/audits');
     document.getElementById('inv-list').innerHTML = r.items.length ?
-      r.items.map(a=>`<tr data-id="${a.id}"${String(a.id)===String(CURRENT_AUDIT)?' class="inv-open"':''}><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${({in_progress:'в роботі — не проведено',completed:'проведено',cancelled:'скасовано'})[a.status]||a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ${a.status==='in_progress'?'':'ghost'}" onclick="openAudit(${a.id})">${a.status==='in_progress'?'Відкрити / заповнити':'Відкрити'}</button></td></tr>`).join('') :
+      r.items.map(a=>`<tr data-id="${a.id}"${String(a.id)===String(CURRENT_AUDIT)?' class="inv-open"':''}><td>#${a.id}</td><td>${new Date(a.started_at).toLocaleString('uk')}</td><td><span class="pill ${a.status==='completed'?'ok':a.status==='cancelled'?'dng':'warn'}">${({in_progress:'в роботі — не проведено',completed:'проведено',cancelled:'скасовано'})[a.status]||a.status}</span></td><td>${a.total_items}</td><td>${a.counted}</td><td>${a.discrepancies}</td><td>${(+a.total_diff).toFixed(2)} ₴</td><td><button class="btn sm ${a.status==='in_progress'?'':'ghost'}" onclick="openAudit(${a.id})">${a.status==='in_progress'?'Відкрити / заповнити':'Відкрити'}</button>${r.can_delete && a.status!=='completed' ? ` <button class="btn sm danger inv-del" onclick="deleteAudit(${a.id}, this)">🗑 Видалити</button>` : ''}</td></tr>`).join('') :
       '<tr><td colspan="8" class="empty">Актів немає</td></tr>';
   }catch(e){ alert(e.message); }
   invLoadScopes();
@@ -1054,6 +1054,26 @@ async function invSavePrice(vid, inp){
     document.querySelectorAll(`.inv-price[data-vid="${vid}"]`).forEach(x=>{ x.value = invNum(saved); });
     if(msg){ msg.style.color='#1d6b43'; msg.textContent='Збережено'; setTimeout(()=>{ if(msg.textContent==='Збережено') msg.textContent=''; }, 4000); }
   }catch(e){ if(msg){ msg.style.color='#c62828'; msg.textContent=e.message; } }
+}
+// 30.09 (Босс: «власник має видаляти зайві акти, щоб зникли зі списку»). Кнопка є лише у власника
+// (сервер віддає can_delete) і лише в непроведених актів; видалення м'яке (акт лишається в БД з
+// deleted_at), залишки не змінюються. Подвійний клік = один запит (кнопка блокується + прапорець).
+const _invDeleting = new Set();
+async function deleteAudit(id, btn){
+  if(_invDeleting.has(id)) return;
+  if(!confirm('Видалити акт #'+id+' зі списку?\nЗалишки складу не зміняться. Проведені акти видалити не можна.')) return;
+  if(_invDeleting.has(id)) return;
+  _invDeleting.add(id);
+  if(btn){ btn.disabled = true; btn.textContent = 'Видаляю…'; }
+  try{
+    await api('/api/inventory/audits/'+id+'/delete',{method:'POST',body:'{}'});
+    const tr = document.querySelector(`#inv-list tr[data-id="${id}"]`); if(tr) tr.remove();
+    if(String(CURRENT_AUDIT)===String(id)){ CURRENT_AUDIT=null; document.getElementById('inv-detail-card').style.display='none'; }
+    await loadInventory();
+  }catch(e){
+    alert(e.message);
+    if(btn){ btn.disabled = false; btn.textContent = '🗑 Видалити'; }
+  }finally{ _invDeleting.delete(id); }
 }
 async function cancelAudit(){
   if(!confirm('Скасувати акт без застосування?')) return;
