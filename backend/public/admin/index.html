@@ -12643,7 +12643,7 @@ function _mcTabProfile(){
       <div><label class="set-l">Прізвище</label><input id="mcSurname" class="input" value="${_esc(ms.surname)}"></div>
       <div><label class="set-l">Посада *</label><input id="mcSpec" class="input" value="${_esc(ms.specialty)}"></div>
       <div><label class="set-l">Категорія</label><input id="mcCat" class="input" value="${_esc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
-      <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone)}" placeholder="${ms.login_phone?_esc('номер входу: '+fmtPhone(ms.login_phone)):'+380…'}"></div>
+      <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone||ms.login_phone||'')}" placeholder="+380…">${(!ms.phone&&ms.login_phone)?'<div id="mcPhoneHint" style="font-size:11.5px;color:#9ca3af;margin-top:3px">Номер узято з входу в CRM — збережеться в картку разом із профілем</div>':''}</div>
       <div><label class="set-l">Email</label><input id="mcEmail" class="input" value="${_esc(ms.email)}"></div>
     </div>
     <div style="margin-bottom:12px"><label class="set-l">Відомості про співробітника</label>

@@ -1412,7 +1412,7 @@ function _mcTabProfile(){
       <div><label style="${lbl}">Прізвище</label><input id="mcSurname" class="inp" value="${_mcEsc(ms.surname)}"></div>
       <div><label style="${lbl}">Посада *</label><input id="mcSpec" class="inp" value="${_mcEsc(ms.specialty)}"></div>
       <div><label style="${lbl}">Категорія</label><input id="mcCat" class="inp" value="${_mcEsc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
-      <div><label style="${lbl}">Телефон</label><input id="mcPhone" class="inp" value="${_mcEsc(ms.phone)}" placeholder="${ms.login_phone?_mcEsc('номер входу: '+fmtPhone(ms.login_phone)):'+380…'}"></div>
+      <div><label style="${lbl}">Телефон</label><input id="mcPhone" class="inp" value="${_mcEsc(ms.phone||ms.login_phone||'')}" placeholder="+380…">${(!ms.phone&&ms.login_phone)?'<div id="mcPhoneHint" style="font-size:11.5px;color:#9ca3af;margin-top:3px">Номер узято з входу в CRM — збережеться в картку разом із профілем</div>':''}</div>
       <div><label style="${lbl}">Email</label><input id="mcEmail" class="inp" value="${_mcEsc(ms.email)}"></div>
     </div>
     <div style="margin-bottom:12px"><label style="${lbl}">Відомості про співробітника</label>
