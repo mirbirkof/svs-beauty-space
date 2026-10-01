@@ -376,6 +376,7 @@ router.get('/kpi', requirePerm('reports.finance'), async (req, res) => {
     // 2) План місяця = Σ(plan_per_shift × змін у графіку) по активних майстрах
     let plan = 0;
     try {
+      await require('../lib/month-plan').ensureMonthPlans(pool, year, month); // #162
       const plans = await q(
         `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
            FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true

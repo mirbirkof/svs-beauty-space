@@ -216,6 +216,7 @@ const TOOLS = {
       const revenue = Number(rev.v);
       const ym = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Kiev' }).slice(0, 7);
       const [y, mo] = ym.split('-').map(Number);
+      await require('./month-plan').ensureMonthPlans(pool, y, mo); // #162
       const plans = await q(`SELECT mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts, mp.master_id FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true WHERE mp.year=$1 AND mp.month=$2`, [y, mo]).catch((e) => { console.error('[agent-tools] запит впав (ІІ отримає порожньо):', e.message); return []; });
       let plan = 0;
       try { const { shiftDaysByMaster } = require('./schedule-month'); const grid = await shiftDaysByMaster(pool, ym).catch((e) => { console.error('[agent-tools] запит впав:', e.message); return new Map(); }); for (const p of plans) plan += p.auto_from_shifts ? Math.round(Number(p.plan_per_shift) * (grid.get(p.master_id) || 0)) : Number(p.plan_total); } catch (_) {}

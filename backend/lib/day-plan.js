@@ -30,6 +30,7 @@ async function dayPlan(pool, date) {
   // Адміністратори з сітки графіка ВХОДЯТЬ у план (уточнення Боса 04.09): у адміна
   // теж є план на зміну — мінімум продажу товару (напр. 1000 ₴). Тому беремо всіх,
   // у кого цього дня є зміна, без поділу на майстрів/адмінів.
+  await require('./month-plan').ensureMonthPlans(pool, Y, M); // #162: перенос плану на новий місяць
   const plans = await pool.query(
     `SELECT master_id, plan_per_shift FROM master_monthly_plans WHERE year=$1 AND month=$2`, [Y, M]
   ).catch(() => ({ rows: [] }));

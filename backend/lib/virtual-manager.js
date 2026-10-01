@@ -119,6 +119,7 @@ async function _monthPlanTotal(pool, tenantId = null) {
   try {
     const ym = kyivDate().slice(0, 7);
     const [year, month] = ym.split('-').map(Number);
+    await require('./month-plan').ensureMonthPlans(pool, year, month, tenantId); // #162
     const plans = (await pool.query(
       `SELECT mp.master_id, mp.plan_per_shift, mp.plan_total, mp.auto_from_shifts
          FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)=true

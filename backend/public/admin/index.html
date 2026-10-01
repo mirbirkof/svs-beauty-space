@@ -2351,7 +2351,7 @@ select.input { background:var(--card); }
               </div>
             </div>
             <div class="card-body">
-              <p class="set-p" style="margin-top:0">Задайте план на одну зміну — загальний план місяця порахується автоматично за кількістю змін майстра (з графіка, або за фактично відпрацьованими днями якщо графік не заданий). % показує виконання плану за фактичним оборотом (послуги + товари).</p>
+              <p class="set-p" style="margin-top:0">Задайте план на одну зміну — загальний план місяця порахується автоматично за кількістю змін майстра (з графіка, або за фактично відпрацьованими днями якщо графік не заданий). % показує виконання плану за фактичним оборотом (послуги + товари). На новий місяць план переноситься сам з попереднього — міняйте лише те, що змінилось.</p>
               <div id="planResult"></div>
             </div>
           </div>
@@ -7995,7 +7995,19 @@ async function loadMonthlyPlan(){
         <td style="font-weight:700;color:${pctColor}">${pct}</td>
       </tr>`;
     }).join('');
-    box.innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+    // #162: план, підставлений з минулого місяця, — показуємо чесно звідки
+    const _carr=r.items.filter(m=>m.carried_from);
+    let carryNote='';
+    if(_carr.length){
+      const _mn=['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
+      const src=[...new Set(_carr.map(m=>m.carried_from))].sort().pop();
+      const [sy,sm]=src.split('-').map(Number);
+      const isPrev=_carr.some(m=>m.carried_preview);
+      carryNote=`<div id="planCarryNote" style="padding:10px 14px;border-radius:10px;background:#eef6ff;border:1px solid #bfdbfe;color:#1e3a8a;margin-bottom:12px;font-size:13px">
+        <span class="material-icons-round" style="font-size:16px;vertical-align:-3px">sync</span>
+        План ${isPrev?'буде':'автоматично'} перенесено з ${_mn[sm-1]} ${sy}${isPrev?' — він підставиться сам на початку місяця':''}. Вводити заново не треба: за потреби змініть суми й натисніть «Зберегти плани».</div>`;
+    }
+    box.innerHTML=carryNote+`<div style="overflow-x:auto"><table class="tbl">
       <thead><tr><th>Майстер</th><th>План на зміну</th><th>Змін</th><th>План місяця</th><th>Факт оборот</th><th>%</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <div class="set-actions" style="margin-top:14px"><button class="btn btn-primary" onclick="saveMonthlyPlans()">Зберегти плани</button><span id="planSaveMsg" class="set-msg"></span></div>`;

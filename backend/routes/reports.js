@@ -809,11 +809,17 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
     const fromTs = fromD.toISOString();
 
     const masters = await pool.query(`SELECT id, name, schedule_json FROM masters WHERE active=true ORDER BY name`);
+    // Нотатка #162: план не переносився на новий місяць. Поточний місяць — дописуємо
+    // останній план майстра в БД; майбутній — показуємо перенесений без запису.
+    const { ensureMonthPlans, previewCarry } = require('../lib/month-plan');
+    await ensureMonthPlans(pool, year, month);
     const plans = await pool.query(
-      `SELECT master_id, plan_per_shift, plan_total, auto_from_shifts
+      `SELECT master_id, plan_per_shift, plan_total, auto_from_shifts, carried_from
          FROM master_monthly_plans WHERE year=$1 AND month=$2`, [year, month]
     );
     const planMap = new Map(plans.rows.map(p => [p.master_id, p]));
+    const preview = await previewCarry(pool, year, month);
+    for (const [mid, p] of preview) if (!planMap.has(mid)) planMap.set(mid, p);
 
     // факт оборота (услуги+товары) по мастеру за месяц
     const rev = await pool.query(
@@ -859,6 +865,8 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       return {
         master_id: m.id, name: m.name,
         plan_per_shift: perShift, auto_from_shifts: auto,
+        carried_from: p && p.carried_from ? p.carried_from : null,
+        carried_preview: !!(p && p.preview),
         shifts_scheduled: gridDays || sc.shifts, shifts_worked: workedDays,
         shifts_used: shifts, has_schedule: gridDays > 0 || sc.hasSchedule,
         shift_source: shiftSource,
@@ -896,7 +904,7 @@ router.post('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       `INSERT INTO master_monthly_plans (master_id, year, month, plan_per_shift, plan_total, auto_from_shifts)
             VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (master_id, year, month)
-       DO UPDATE SET plan_per_shift=$4, plan_total=$5, auto_from_shifts=$6, updated_at=NOW()
+       DO UPDATE SET plan_per_shift=$4, plan_total=$5, auto_from_shifts=$6, carried_from=NULL, updated_at=NOW()
        RETURNING *`,
       [master_id, year, month, perShift, planTotal, auto]
     );

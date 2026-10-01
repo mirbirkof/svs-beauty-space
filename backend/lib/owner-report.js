@@ -77,6 +77,7 @@ async function buildDailyReport(pool, tenantId, date = null) {
       WHERE tenant_id=$1 AND type='in' AND category IN ('sale_service','sale_product')
         AND created_at >= date_trunc('month', NOW() AT TIME ZONE '${TZ}')`, [tenantId]);
   const monthRev = Number(mRow.v || 0);
+  { const _ym = require('./month-plan').kyivYM(); await require('./month-plan').ensureMonthPlans(pool, _ym.y, _ym.m, tenantId); } // #162
   const planRow = await one(pool,
     `SELECT COALESCE(SUM(CASE WHEN mp.auto_from_shifts THEN mp.plan_per_shift*COALESCE(sh.shifts,0) ELSE mp.plan_total END),0)::numeric v
        FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)
@@ -322,6 +323,7 @@ async function buildMonthlyReport(pool, tenantId) {
         AND created_at <  NOW() - INTERVAL '1 month'`, [tenantId]);
 
   // План місяця
+  { const _ym = require('./month-plan').kyivYM(); await require('./month-plan').ensureMonthPlans(pool, _ym.y, _ym.m, tenantId); } // #162
   const planRow = await one(pool,
     `SELECT COALESCE(SUM(CASE WHEN mp.auto_from_shifts THEN mp.plan_per_shift*COALESCE(sh.shifts,0) ELSE mp.plan_total END),0)::numeric v
        FROM master_monthly_plans mp JOIN masters m ON m.id=mp.master_id AND COALESCE(m.active,true)
