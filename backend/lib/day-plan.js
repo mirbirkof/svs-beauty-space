@@ -19,10 +19,32 @@ const { buildMonthGrid } = require('./schedule-month');
 // щоб журнал, каса, графік і реєстр команди не рахували це кожен по-своєму.
 const { isAdminSql } = require('./staff-role');
 
+// Джерела сітки, які є ПРОГНОЗОМ (за днем тижня / шаблоном), а не реальним записом графіка.
+const GUESSED_SOURCES = new Set(['history', 'template', 'auto', 'pattern']);
+const kyivToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+/** Хто з адміністрації фактично відпрацював день: найактивніший у журналі входів CRM,
+ *  інакше — відповідальний кассової зміни цього дня. null — фактів ще немає. */
+async function factShiftAdmin(pool, ymd, adminIds) {
+  if (!adminIds.size) return null;
+  const ids = [...adminIds];
+  const a = await pool.query(
+    `SELECT master_id FROM shift_login_audit
+      WHERE work_date = $1::date AND master_id = ANY($2::int[])
+      GROUP BY master_id ORDER BY SUM(seen_count) DESC, MAX(last_seen_at) DESC LIMIT 1`, [ymd, ids]
+  ).catch(() => ({ rows: [] }));
+  if (a.rows[0]) return a.rows[0].master_id;
+  const c = await pool.query(
+    `SELECT u.master_id FROM cash_shifts cs
+       JOIN users u ON u.id = COALESCE(cs.opened_by_user_id, cs.closed_by_user_id)
+      WHERE (cs.opened_at AT TIME ZONE 'Europe/Kyiv')::date = $1::date AND u.master_id = ANY($2::int[])
+      ORDER BY cs.opened_at DESC LIMIT 1`, [ymd, ids]
+  ).catch(() => ({ rows: [] }));
+  return c.rows[0] ? c.rows[0].master_id : null;
+}
+
 async function dayPlan(pool, date) {
-  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))
-    ? date
-    : new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kiev', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : kyivToday();
   const ym = ymd.slice(0, 7);
   const [Y, M] = ym.split('-').map(Number);
 
@@ -50,7 +72,34 @@ async function dayPlan(pool, date) {
     const d = (it.days || []).find(x => x.date === ymd);
     if (!d || d.off) continue;                     // не працює цього дня — у план не входить
     const per = planMap.get(it.id) || 0;
-    masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0, is_admin: adminIds.has(it.id) });
+    masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0,
+                   is_admin: adminIds.has(it.id), guessed: GUESSED_SOURCES.has(d.source) });
+  }
+
+  // ── Адмін ЗМІНИ, а не всі адміни (нотатка #166, Власник 01.10) ───────────────
+  // ПРИЧИНА. Коли графік адміна на день не проставлений руками, сітка «домальовує» його
+  // за днем тижня з історії. Адміни ж працюють позмінно (2/2), а не за днями тижня —
+  // тому прогноз ставив на зміну ОБОХ, і під касою писалось «Адмін · Аліна, Даша»,
+  // а план дня рахував обидві адмінські тисячі.
+  // ПРАВИЛО: 1) є реальний запис у графіку — він і є правда;
+  //          2) лише прогноз, а день уже настав — хто з адмінів ФАКТИЧНО працював у CRM
+  //             (журнал входів — той самий, яким автопілот каси визначає відповідального),
+  //             запасний варіант — відповідальний кассової зміни цього дня;
+  //          3) майбутній день без графіка — лишається прогноз (іншого джерела немає).
+  const isAdm = m => m.is_admin;
+  const realAdm = masters.filter(m => isAdm(m) && !m.guessed);
+  if (!realAdm.length && ymd <= kyivToday()) {
+    const shiftAdminId = await factShiftAdmin(pool, ymd, adminIds);
+    if (shiftAdminId) {
+      for (let i = masters.length - 1; i >= 0; i--) if (isAdm(masters[i]) && masters[i].id !== shiftAdminId) masters.splice(i, 1);
+      if (!masters.some(m => m.id === shiftAdminId)) {
+        const it = (grid.items || []).find(x => x.id === shiftAdminId);
+        const per = planMap.get(shiftAdminId) || 0;
+        if (it) masters.push({ id: it.id, name: it.name, plan_per_shift: per, has_plan: per > 0, is_admin: true, guessed: false });
+      }
+    }
+  } else if (realAdm.length) {
+    for (let i = masters.length - 1; i >= 0; i--) if (isAdm(masters[i]) && masters[i].guessed) masters.splice(i, 1);
   }
   const admins = masters.filter(m => m.is_admin);
   const adminPlan = Math.round(admins.reduce((s, m) => s + m.plan_per_shift, 0));
