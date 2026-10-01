@@ -875,7 +875,17 @@ router.get('/monthly-plan', requirePerm('reports.read'), async (req, res) => {
       };
     });
 
-    res.json({ year, month, period: { from, to }, items });
+    // Нотатка #163: підсумок рахуємо ТУТ, з тих самих рядків, що бачить таблиця, —
+    // щоб «Разом» завжди дорівнював сумі колонок і не мав своєї окремої формули.
+    const sum = (k) => items.reduce((a, it) => a + (Number(it[k]) || 0), 0);
+    const totPlan = sum('plan_total'), totRev = sum('revenue');
+    const totals = {
+      plan_total: totPlan, revenue: totRev, shifts_used: sum('shifts_used'),
+      pct: totPlan > 0 ? Math.round(totRev / totPlan * 100) : null,
+      masters_with_plan: items.filter(it => it.plan_total > 0).length,
+    };
+
+    res.json({ year, month, period: { from, to }, items, totals });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 
