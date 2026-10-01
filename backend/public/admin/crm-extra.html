@@ -287,10 +287,10 @@ main { padding:24px 0; }
     <div class="tm-wrap">
       <table class="tm-table">
         <thead><tr>
-          <th>Людина</th><th>Роль / спеціальність</th><th>Доступ до CRM</th>
+          <th>Людина</th><th>Телефон</th><th>Роль / спеціальність</th><th>Доступ до CRM</th>
           <th>У графіку</th><th>Статус</th><th>Дії</th>
         </tr></thead>
-        <tbody id="tm-list"><tr><td colspan="6" class="empty">Завантаження…</td></tr></tbody>
+        <tbody id="tm-list"><tr><td colspan="7" class="empty">Завантаження…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -1112,7 +1112,7 @@ async function loadMasters(){
     const r = await api('/api/schedule/masters?all=1');
     MASTERS_CACHE = r.items||[];
     tmRender();
-  }catch(e){ const b=document.getElementById('tm-list'); if(b) b.innerHTML='<tr><td colspan="6" class="empty">'+e.message+'</td></tr>'; }
+  }catch(e){ const b=document.getElementById('tm-list'); if(b) b.innerHTML='<tr><td colspan="7" class="empty">'+e.message+'</td></tr>'; }
 }
 // ── Єдиний реєстр команди (нотатка #155) ────────────────────────────────────
 // Джерела: masters (люди салону) + users (у кого є вхід у CRM). Звʼязок — users.master_id.
@@ -1137,7 +1137,8 @@ function tmRows(){
     const fired = m.active===false || m.status==='fired';
     return {
       kind:'master', id:m.id, user:u, name:m.name, specialty:m.specialty,
-      avatar:m.avatar, phone:m.phone, fired,
+      // #164: телефон картки, а якщо не заведений — номер входу в CRM (як і в шапці картки)
+      avatar:m.avatar, phone:(m.phone||(u&&u.phone)||m.login_phone||null), fired,
       in_schedule: m.in_schedule===true,
       // #158: група в реєстрі визначається ТІЛЬКИ явною роллю людини.
       // Раніше сюди домішувалось «не надає послуг» — і будь-який майстер, якому тимчасово
@@ -1220,13 +1221,14 @@ function tmRender(){
     // без nowrap: на вужчому екрані імʼя і кнопки переносяться, а не вилітають вправо (#157)
     return `<tr${r.fired?' style="opacity:.6"':''}>
       <td>${nameCell}</td>
+      <td style="white-space:nowrap">${r.phone?`<a href="tel:${fmtPhone(r.phone)}" class="lnk" style="text-decoration:none">${fmtPhone(r.phone)}</a>`:'<span style="color:#bbb">не вказано</span>'}</td>
       <td>${tmRoleCell(r)}</td>
       <td>${access}</td>
       <td>${sched}</td>
       <td><span class="pill ${r.fired?'gray':'ok'}">${r.fired?'звільнений':'працює'}</span></td>
       <td><div class="tm-acts">${acts.join('')}</div></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty">Нікого не знайдено</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">Нікого не знайдено</td></tr>';
 }
 // Перемикач участі у графіку прямо з реєстру — та сама точка правди, що й
 // «Персонал графіка» в розділі «Графік роботи» (нотатка #153).
@@ -1378,6 +1380,9 @@ function _mcRenderShell(){
           ${bpBadge}
           <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
         </div>
+        ${(()=>{ const p=ms.phone||ms.login_phone; return p
+          ? `<div style="margin-top:8px;font-size:14px">📞 <a href="tel:${fmtPhone(p)}" style="color:#7c5cff;text-decoration:none;font-weight:600">${fmtPhone(p)}</a>${ms.phone?'':' <span style="font-size:11.5px;color:#9ca3af">(номер входу)</span>'}</div>`
+          : '<div style="margin-top:8px;font-size:14px;color:#9ca3af">📞 телефон не вказано</div>'; })()}
       </div>
     </div>
     <div style="display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid #e5e7eb;margin:0 0 14px">${tabsHtml}</div>
@@ -1407,7 +1412,7 @@ function _mcTabProfile(){
       <div><label style="${lbl}">Прізвище</label><input id="mcSurname" class="inp" value="${_mcEsc(ms.surname)}"></div>
       <div><label style="${lbl}">Посада *</label><input id="mcSpec" class="inp" value="${_mcEsc(ms.specialty)}"></div>
       <div><label style="${lbl}">Категорія</label><input id="mcCat" class="inp" value="${_mcEsc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
-      <div><label style="${lbl}">Телефон</label><input id="mcPhone" class="inp" value="${_mcEsc(ms.phone)}"></div>
+      <div><label style="${lbl}">Телефон</label><input id="mcPhone" class="inp" value="${_mcEsc(ms.phone)}" placeholder="${ms.login_phone?_mcEsc('номер входу: '+fmtPhone(ms.login_phone)):'+380…'}"></div>
       <div><label style="${lbl}">Email</label><input id="mcEmail" class="inp" value="${_mcEsc(ms.email)}"></div>
     </div>
     <div style="margin-bottom:12px"><label style="${lbl}">Відомості про співробітника</label>

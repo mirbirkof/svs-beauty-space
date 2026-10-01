@@ -20,6 +20,10 @@ const { emit: emitEvent } = require('../lib/event-bus');
 const settlement = require('../lib/settlement');
 const { adminLastSql } = require('../lib/staff-role');
 const router = express.Router();
+// #164: номер входу в CRM для картки співробітника — запасний телефон, коли в картці
+// власний не заведено. ОДИН фрагмент на всі відповіді з карткою (перегляд і збереження).
+const LOGIN_PHONE_SQL = `(SELECT u.phone FROM users u WHERE u.master_id = masters.id AND u.is_active
+                           ORDER BY u.id LIMIT 1) AS login_phone`;
 
 // АУДИТ 26.07: откаты бонусов после сбоя оплаты стояли с .catch(() => {}) — деньги
 // клиента исчезали МОЛЧА (типовой случай: insufficient-balance, когда начисленное уже
@@ -198,6 +202,7 @@ router.get('/masters', async (req, res) => {
               COALESCE(m.provides_services, true) AS provides_services, m.staff_role,
               COALESCE(m.in_schedule, false) AS in_schedule,
               COALESCE(m.status, 'active') AS status, m.phone,
+              u.phone AS login_phone,   -- #164: номер входу — запасний, коли в картці телефон не заведено
               u.id AS user_id, rr.code AS login_role, rr.name AS login_role_name,
               (u.id IS NOT NULL) AS has_login
          FROM masters m
@@ -311,7 +316,9 @@ router.get('/masters/:id/portfolio', async (req, res) => {
   try {
     const pool = getPool();
     const id = parseInt(req.params.id, 10);
-    const m = await pool.query('SELECT * FROM masters WHERE id = $1', [id]);
+    // #164: login_phone — номер входу в CRM; картка показує його, якщо власний телефон не заведено
+    const m = await pool.query(
+      `SELECT masters.*, ${LOGIN_PHONE_SQL} FROM masters WHERE masters.id = $1`, [id]);
     if (!m.rows[0]) return res.status(404).json({ error: 'master not found' });
     // Статистика — з каси (реально оплачене). стара CRM не присилає статус 'done',
     // тому рахуємо за cash_operations(sale_service/sale_product), а не за appointments.status.
@@ -438,7 +445,7 @@ router.patch('/masters/:id/profile', async (req, res) => {
     if (!sets.length) return res.status(400).json({ error: 'no fields' });
     vals.push(id);
     const r = await pool.query(
-      `UPDATE masters SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+      `UPDATE masters SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *, ${LOGIN_PHONE_SQL}`, vals);
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
     res.json({ ok: true, master: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

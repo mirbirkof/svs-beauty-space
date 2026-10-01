@@ -12561,6 +12561,16 @@ const _MC_TABS = [
 // Безпека (Босс 19.07): «Схема ЗП» і «Доступ» + кнопка «Звільнити» — ЛИШЕ власнику.
 const _mcIsOwner = () => !!(USER && USER.role === 'owner');
 const _MC_OWNER_TABS = ['salary','access'];
+// #164: телефон співробітника видно в шапці картки (у червні його прибрали з шапки —
+// лишився тільки в полі редагування). Власний номер картки, а якщо не заведений — номер входу в CRM.
+function _mcPhoneLine(ms){
+  const own = String(ms.phone||'').trim(), login = String(ms.login_phone||'').trim();
+  const p = own || login;
+  if (!p) return '<div id="mcHeadPhone" style="margin-top:8px;font-size:14px;color:#9ca3af">📞 телефон не вказано</div>';
+  const f = fmtPhone(p);
+  return '<div id="mcHeadPhone" style="margin-top:8px;font-size:14px">📞 <a href="tel:'+f+'" style="color:#7c5cff;text-decoration:none;font-weight:600">'+f+'</a>'
+    + (own ? '' : ' <span style="font-size:11.5px;color:#9ca3af" title="Номер узято з логіну входу в CRM — у картці телефон не заведено">(номер входу)</span>') + '</div>';
+}
 function _mcRenderShell(){
   const ms = _mcData.ms;
   const bpBadge = ms.legacy_ref ? '<span style="font-size:10px;font-weight:700;background:#eef2ff;color:#4338ca;padding:2px 7px;border-radius:6px">Імпорт</span>' : '';
@@ -12592,6 +12602,7 @@ function _mcRenderShell(){
           ${bpBadge}
           <span style="font-size:12px;font-weight:600;color:${ms.active?'#16a34a':'#dc2626'}">${ms.active?'● Працює':'○ Звільнений'}</span>
         </div>
+        ${_mcPhoneLine(ms)}
       </div>
     </div>
     <div style="display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--border,#e5e7eb);margin:0 -4px 14px">${tabsHtml}</div>
@@ -12632,7 +12643,7 @@ function _mcTabProfile(){
       <div><label class="set-l">Прізвище</label><input id="mcSurname" class="input" value="${_esc(ms.surname)}"></div>
       <div><label class="set-l">Посада *</label><input id="mcSpec" class="input" value="${_esc(ms.specialty)}"></div>
       <div><label class="set-l">Категорія</label><input id="mcCat" class="input" value="${_esc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
-      <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone)}"></div>
+      <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone)}" placeholder="${ms.login_phone?_esc('номер входу: '+fmtPhone(ms.login_phone)):'+380…'}"></div>
       <div><label class="set-l">Email</label><input id="mcEmail" class="input" value="${_esc(ms.email)}"></div>
     </div>
     <div style="margin-bottom:12px"><label class="set-l">Відомості про співробітника</label>
