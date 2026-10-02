@@ -14112,6 +14112,25 @@ function _sfFill() {
   const rules = _sfRules.filter(x => String(x.master_id) === String(mid) && x.scope === 'service');
   document.getElementById('sfRules').innerHTML = rules.map(_sfRuleRow).join('');
   _sfTypeHint();
+  _sfSvcForMaster(mid, rules);
+}
+// #168: у «Додати послугу» — лише послуги ОБРАНОГО майстра. Джерело — ті самі звʼязки
+// майстер↔послуга, що й у журналі (getMasterServiceIds). Вже збережені правила майстра
+// лишаються у списку, навіть якщо звʼязку прибрали. Нема звʼязок — весь каталог + підказка.
+let _sfSvcTok = 0;
+async function _sfSvcForMaster(mid, rules) {
+  const tok = ++_sfSvcTok;
+  const dl = document.getElementById('sfSvcList'), hint = document.getElementById('sfSvcHint');
+  if (!dl) return;
+  const ids = await getMasterServiceIds(mid);
+  if (tok !== _sfSvcTok || !document.getElementById('sfSvcList')) return; // майстра вже змінили / форму закрили
+  const keep = new Set((rules || []).map(r => String(r.scope_ref)));
+  const all = _sfSvc || [];
+  const list = ids && ids.size ? all.filter(sv => ids.has(Number(sv.id)) || keep.has(String(sv.id))) : all;
+  dl.innerHTML = list.map(sv => `<option value="${escapeHtml(_sfSvcLabel(sv))}"></option>`).join('');
+  if (hint) hint.textContent = ids && ids.size
+    ? `У списку — лише послуги цього майстра (${list.length}).`
+    : (mid ? 'У майстра не задано його послуг — показано всі послуги салону.' : '');
 }
 function _sfTypeHint() {
   const fixed = document.getElementById('sfType').value === 'fixed';
@@ -14131,7 +14150,6 @@ async function schemeForm() {
     catch (_) { _sfSvc = []; }
   }
   const mopts = _pyMasters.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
-  const svcOpts = (_sfSvc || []).map(sv => `<option value="${escapeHtml(_sfSvcLabel(sv))}"></option>`).join('');
   const html = `<div style="display:flex;flex-direction:column;gap:10px">
     <label>Майстер<select id="sfMaster" class="inp" style="width:100%" onchange="_sfFill()">${mopts}</select></label>
     <label>Тип схеми<select id="sfType" class="inp" style="width:100%" onchange="_sfTypeHint()"><option value="percent">Відсоток з послуг</option><option value="fixed">Фіксована ставка/оклад</option><option value="hybrid">Змішана</option></select></label>
@@ -14150,8 +14168,9 @@ async function schemeForm() {
       <div class="sf-svc-body">
         <div id="sfRules" style="display:flex;flex-direction:column;gap:6px"></div>
         <button type="button" class="btn btn-outline btn-sm" id="sfAddRuleBtn" style="margin-top:6px" onclick="sfAddRule()"><span class="material-icons-round">add</span>Додати послугу</button>
+        <div id="sfSvcHint" style="font-size:11.5px;color:var(--text-secondary);margin-top:4px"></div>
       </div>
-      <datalist id="sfSvcList">${svcOpts}</datalist>
+      <datalist id="sfSvcList"></datalist>
     </div>
   </div>`;
   showModal('Схема нарахування', html, async () => {
