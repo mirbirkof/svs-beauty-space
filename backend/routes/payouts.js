@@ -88,6 +88,15 @@ router.post('/rules', async (req, res) => {
     if (!['all', 'category', 'service', 'branch'].includes(sc)) return res.status(400).json({ error: 'bad scope' });
     if (rt === 'fixed' && !(num(fixed_amount) > 0)) return res.status(400).json({ error: 'fixed_amount>0 required for fixed rule' });
     if (rt !== 'fixed' && !(num(percentage) > 0)) return res.status(400).json({ error: 'percentage>0 required for percent rule' });
+    if (percentage != null && num(percentage) > 100) return res.status(400).json({ error: 'percentage must be <= 100' });
+    // майстер/послуга мають бути СВОГО салону (RLS masters/services): інакше правило на чужого
+    // майстра (FK RLS не перевіряє) — 404, як «не знайдено» (02.10)
+    if (!/^\d+$/.test(String(master_id))) return res.status(400).json({ error: 'bad master_id' });
+    if (!(await q(`SELECT 1 FROM masters WHERE id=$1`, [master_id]))[0]) return res.status(404).json({ error: 'master not found' });
+    if (sc === 'service') {
+      if (!/^\d+$/.test(String(scope_ref || ''))) return res.status(400).json({ error: 'scope_ref (service_id) required for scope=service' });
+      if (!(await q(`SELECT 1 FROM services WHERE id=$1`, [scope_ref]))[0]) return res.status(404).json({ error: 'service not found' });
+    }
     const r = await q(
       `INSERT INTO payroll_rules (master_id, rule_type, scope, scope_ref, percentage, fixed_amount, priority, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
@@ -109,8 +118,11 @@ router.put('/rules/:id', async (req, res) => {
     if (scope !== undefined && !['all', 'category', 'service', 'branch'].includes(scope)) {
       return res.status(400).json({ error: 'bad scope' });
     }
-    if (percentage !== undefined && percentage !== null && !(num(percentage) > 0)) {
-      return res.status(400).json({ error: 'percentage must be a number > 0' });
+    if (percentage !== undefined && percentage !== null && !(num(percentage) > 0 && num(percentage) <= 100)) {
+      return res.status(400).json({ error: 'percentage must be a number > 0 and <= 100' });
+    }
+    if (scope_ref !== undefined && scope_ref !== null && scope === 'service') {
+      if (!/^\d+$/.test(String(scope_ref)) || !(await q(`SELECT 1 FROM services WHERE id=$1`, [scope_ref]))[0]) return res.status(404).json({ error: 'service not found' });
     }
     if (fixed_amount !== undefined && fixed_amount !== null && !(num(fixed_amount) > 0)) {
       return res.status(400).json({ error: 'fixed_amount must be a number > 0' });
