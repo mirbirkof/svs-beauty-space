@@ -52,7 +52,14 @@ router.post('/payroll/schemes', async (req, res) => {
 // GET /api/payroll/schemes — все активные
 router.get('/payroll/schemes', async (req, res) => {
   try {
-    const r = await pool.query(`SELECT * FROM payroll_schemes WHERE is_active=TRUE ORDER BY master_name, master_id`);
+    // #169: разом зі схемою віддаємо стан людини з реєстру команди (masters) —
+    // звільнених UI ховає з поточного списку, але схема лишається (минулі періоди рахуються по ній)
+    const r = await pool.query(
+      `SELECT ps.*, m.name AS team_name, m.staff_role,
+              COALESCE(m.active, false) AS master_active, COALESCE(m.status, 'active') AS master_status
+         FROM payroll_schemes ps
+         LEFT JOIN masters m ON m.id::text = ps.master_id
+        WHERE ps.is_active=TRUE ORDER BY ps.master_name, ps.master_id`);
     res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
