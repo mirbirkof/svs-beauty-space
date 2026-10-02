@@ -14076,7 +14076,7 @@ async function loadPayrollSchemes() {
     // #169: звільнених не показуємо (схема в базі лишається — по ній рахуються минулі місяці);
     // діючих співробітників без схеми (напр. новий адмін) — показуємо рядком «не задано»
     const all = r.items || [];
-    const gone = s => s.master_status === 'fired' || s.master_active === false;
+    const gone = s => s.master_status === 'fired';
     const items = all.filter(s => !gone(s)).map(s => ({ ...s, _admin: s.staff_role === 'admin' }));
     const firedCnt = all.length - items.length;
     const has = new Set(items.map(s => String(s.master_id)));
