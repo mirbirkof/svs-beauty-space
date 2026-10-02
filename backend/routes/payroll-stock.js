@@ -4,7 +4,7 @@ const express = require('express');
 const { getPool, applyTenant, withTx } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
 const { shiftDaysForMasterInRange } = require('../lib/schedule-month');
-const { MATLINES_CTE } = require('../lib/payroll-base');
+const { MATLINES_CTE, SVCPCT_CTE, SVC_SUMS_SQL, svcSums, svcExtra } = require('../lib/payroll-base');
 const { normalizePhoneDb } = require('../lib/phone');
 const router = express.Router();
 const pool = getPool();
@@ -111,11 +111,13 @@ router.post('/payroll/calculate', async (req, res) => {
          SELECT asv.appointment_id aid,
                 SUM(asv.price) FILTER (WHERE (sc.is_material = TRUE OR (sc.is_material IS NOT TRUE AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
            FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
-          GROUP BY asv.appointment_id)
+          GROUP BY asv.appointment_id),
+       svcpct AS (${SVCPCT_CTE})
        SELECT COUNT(*)::int AS cnt,
               COALESCE(SUM(GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0))),0)::numeric AS revenue,
-              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full
-         FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+              COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full,
+              ${SVC_SUMS_SQL()}
+         FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id LEFT JOIN svcpct sp ON sp.aid=a.id
         WHERE a.master_id = $1::int
           AND a.starts_at >= $2::date
           AND a.starts_at <  ($3::date + INTERVAL '1 day')
@@ -135,7 +137,8 @@ router.post('/payroll/calculate', async (req, res) => {
     // 3. рассчитать части
     let percent_part = 0, fixed_part = 0;
     if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') {
-      percent_part = percent_base_amount * (parseFloat(s.percent || 0) / 100);
+      percent_part = percent_base_amount * (parseFloat(s.percent || 0) / 100)
+        + svcExtra(svcSums(ob.rows[0]), s.percent, s.percent_base === 'gross'); // окремий % за послугу (02.10)
     }
     if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
       if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
@@ -680,11 +683,12 @@ router.get('/payroll/my', async (req, res) => {
       // Раніше бралась каса sale_service (повний чек з матеріалами) → кабінет майстра
       // завищував базу для net-схем і розходився з «Підтвердженням витрат» (аудит 06.07).
       const revOf = (yymm) => pool.query(
-        `WITH matlines AS (${MATLINES_CTE})
+        `WITH matlines AS (${MATLINES_CTE}), svcpct AS (${SVCPCT_CTE})
          SELECT COUNT(*)::int AS cnt,
                 COALESCE(SUM(CASE WHEN $3='gross' THEN COALESCE(a.real_amount,a.price,0)
-                                  ELSE GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) END),0)::numeric AS revenue
-           FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+                                  ELSE GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) END),0)::numeric AS revenue,
+                ${SVC_SUMS_SQL()}
+           FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id LEFT JOIN svcpct sp ON sp.aid=a.id
           WHERE a.master_id=$1::int AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
             AND (a.starts_at AT TIME ZONE 'Europe/Kyiv') >= ($2||'-01')::date
@@ -702,7 +706,8 @@ router.get('/payroll/my', async (req, res) => {
       const cnt = ob.rows[0]?.cnt || 0;
       const revenue = parseFloat(ob.rows[0]?.revenue || 0);
       let percent_part = 0, fixed_part = 0;
-      if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = revenue * (parseFloat(s.percent || 0) / 100);
+      if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = revenue * (parseFloat(s.percent || 0) / 100)
+        + svcExtra(svcSums(ob.rows[0]), s.percent, s.percent_base === 'gross'); // окремий % за послугу (02.10)
       if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
         if (s.fixed_per_month) fixed_part = parseFloat(s.fixed_per_month);
         else if (s.fixed_per_day) {

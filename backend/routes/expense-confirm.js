@@ -5,7 +5,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
-const { COMMISSION_EXPR } = require('../lib/payroll-base');
+const { COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
 const { payrollEligibleExpr } = require('../lib/settlement');
 
@@ -47,25 +47,29 @@ router.get('/pending', async (req, res) => {
                    SUM(asv.price) FILTER (WHERE (sc.is_material = TRUE OR (sc.is_material IS NOT TRUE AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
               FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
              GROUP BY asv.appointment_id),
+          svcpct AS (${SVCPCT_CTE}),
           da AS (
             -- net-база візиту = ФАКТИЧНО СПЛАЧЕНЕ за послуги мінус рядки-матеріали.
             -- Це автоматично враховує знижки (сплачено менше → база менша) і віддає салону матеріали.
             SELECT a.master_id,
                    GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                    COALESCE(a.real_amount,a.price,0) rev_full,
-                   (a.starts_at AT TIME ZONE 'Europe/Kiev')::date day_kyiv
+                   (a.starts_at AT TIME ZONE 'Europe/Kiev')::date day_kyiv,
+                   sp.rw, sp.rs   -- окремий % за послугу (Босс 02.10), NULL = як у схемі
               FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+              LEFT JOIN svcpct sp ON sp.aid=a.id
              WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
                AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
                AND ${payrollEligibleExpr('a')}),
           rev AS (SELECT master_id, SUM(rev_labor) rev_labor, SUM(rev_full) rev_full,
+                         SUM(rev_labor*rw) svc_lw, SUM(rev_labor*rs) svc_ls, SUM(rev_full*rw) svc_fw, SUM(rev_full*rs) svc_fs,
                          COUNT(DISTINCT day_kyiv) work_days FROM da GROUP BY master_id)
           SELECT DISTINCT ON (m.id) m.id, m.name, ps.percent, ps.scheme_type, ps.percent_base,
                  ps.fixed_per_month, ps.fixed_per_day, COALESCE(rev.work_days,0)::int work_days,
                  COALESCE(rev.rev_labor,0)::numeric services_revenue,
                  COALESCE(rev.rev_full,0)::numeric services_full,
                  (COALESCE(rev.rev_full,0)-COALESCE(rev.rev_labor,0))::numeric materials_cost,
-                 ROUND((${COMMISSION_EXPR('COALESCE(rev.rev_labor,0)', 'COALESCE(rev.rev_full,0)')})::numeric, 2) amount
+                 ROUND((${COMMISSION_EXPR('COALESCE(rev.rev_labor,0)', 'COALESCE(rev.rev_full,0)', { rule: { lw: 'rev.svc_lw', ls: 'rev.svc_ls', fw: 'rev.svc_fw', fs: 'rev.svc_fs' } })})::numeric, 2) amount
             FROM rev JOIN masters m ON m.id=rev.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=rev.master_id::text AND ps.is_active=TRUE
            WHERE m.active=TRUE OR ps.scheme_type IS NOT NULL -- звільнені зі схемою видно в минулих періодах

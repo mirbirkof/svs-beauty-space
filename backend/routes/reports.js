@@ -5,7 +5,7 @@ const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
-const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
 const { payrollEligibleExpr } = require('../lib/settlement');
 const { cacheReport } = require('../lib/report-cache');
@@ -157,10 +157,11 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
        ),
        -- НАРАХОВАНА ЗП (виручка × % схеми) за період — щоб колонка ЗП не була 0 до дня виплати
        matlines AS (${MATLINES_CTE}),
+       svcpct AS (${SVCPCT_CTE}),
        accrued AS (
          SELECT da.master_id,
-                ROUND(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full')})) AS accrued_sum
-           FROM (SELECT a.master_id,
+                ROUND(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full', { sp: 'sp' })})) AS accrued_sum
+           FROM (SELECT a.master_id, a.id aid,
                         GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                         COALESCE(a.real_amount,a.price,0) rev_full
                    FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
@@ -168,6 +169,7 @@ router.get('/masters', requirePerm('reports.finance'), cacheReport(), async (req
                     AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
                     AND ${payrollEligibleExpr('a')}) da
            LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+           LEFT JOIN svcpct sp ON sp.aid=da.aid
           GROUP BY da.master_id
        )
        SELECT m.id, m.name,

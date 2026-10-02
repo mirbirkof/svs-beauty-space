@@ -7,6 +7,7 @@
 
 // 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
 const { payrollEligibleExpr } = require('./settlement');
+const { SVCPCT_CTE, COMMISSION_EXPR } = require('./payroll-base');
 
 const CAT_LABELS = {
   rent: 'Оренда', salary: 'Зарплата', payroll: 'Зарплата', purchase: 'Закупівлі', purchasing: 'Закупівлі',
@@ -79,8 +80,9 @@ async function liveFinance(pool, from, to) {
                 SUM(asv.price) FILTER (WHERE (sc.is_material = TRUE OR (sc.is_material IS NOT TRUE AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
            FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id
           GROUP BY asv.appointment_id),
+       svcpct AS (${SVCPCT_CTE}),
        da AS (
-         SELECT a.master_id,
+         SELECT a.master_id, a.id aid,
                 GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                 GREATEST(0, COALESCE(a.real_amount,a.price,0)) rev_full  -- симетрія з rev_labor: комісія не в мінус
                 -- УВАГА (аудит 26.07): у lib/payroll-base.js REV_FULL — БЕЗ GREATEST.
@@ -93,11 +95,11 @@ async function liveFinance(pool, from, to) {
           WHERE a.starts_at BETWEEN $1 AND $2 AND a.starts_at <= NOW()
             AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
             AND ${payrollEligibleExpr('a')})
-       SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid')
-                THEN (CASE WHEN ps.percent_base='gross' THEN da.rev_full ELSE da.rev_labor END)*COALESCE(ps.percent,0)/100
-                ELSE 0 END),0)::numeric comm,
+       -- + окремий % за послугу (payroll_rules, Босс 02.10) — поправка через svcpct, див. payroll-base
+       SELECT COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full', { sp: 'sp' })}),0)::numeric comm,
               COUNT(*)::int appts
-         FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE`, [from, to]),
+         FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+         LEFT JOIN svcpct sp ON sp.aid=da.aid`, [from, to]),
     // фікс-оклади: fixed_per_month (пропорційно періоду) + fixed_per_day × реальні зміни графіка.
     // Раніше fixed_per_day ігнорувався повністю (аудит 06.07).
     // 02.08 (наказ власника): день, який ЩЕ ЙДЕ, не є витратою — робота не виконана,

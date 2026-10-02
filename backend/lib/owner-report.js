@@ -2,6 +2,7 @@
 // меню власника в боті). Усе scoped по tenant_id (SaaS). Кожна метрика — окремий
 // guard-запит: якщо одна впаде, звіт усе одно збереться. Часовий пояс — Europe/Kiev.
 const { getPool } = require('../db-pg');
+const { SVCPCT_CTE, COMMISSION_EXPR } = require('./payroll-base');
 
 const TZ = 'Europe/Kiev';
 function money(n) { const v = Math.round(Number(n) || 0); return v.toLocaleString('uk-UA').replace(/ /g, ' ') + ' грн'; }
@@ -152,17 +153,17 @@ async function buildDailyReport(pool, tenantId, date = null) {
                   AND LOWER(COALESCE(sc.name,'')) ~ 'матер[іи]ал'
                   AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%без%' AND LOWER(COALESCE(sc.name,'')) NOT LIKE '%врахуванн%'))) mat
            FROM appointment_services asv LEFT JOIN services sc ON sc.id=asv.service_id GROUP BY asv.appointment_id),
+       svcpct AS (${SVCPCT_CTE}),
        fa AS (
-         SELECT a.master_id,
+         SELECT a.master_id, a.id aid,
                 GREATEST(0, COALESCE(a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                 COALESCE(a.price,0) rev_full
            FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
           WHERE a.tenant_id=$1 AND a.status NOT IN ('cancelled','noshow')
             AND a.starts_at > NOW() AND a.starts_at <= NOW() + INTERVAL '7 days')
-       SELECT COALESCE(SUM(CASE WHEN ps.scheme_type IN ('percent','hybrid')
-                THEN (CASE WHEN ps.percent_base='gross' THEN fa.rev_full ELSE fa.rev_labor END)*COALESCE(ps.percent,0)/100
-                ELSE 0 END),0)::numeric comm
-         FROM fa LEFT JOIN payroll_schemes ps ON ps.master_id=fa.master_id::text AND ps.is_active=TRUE`, [tenantId]);
+       SELECT COALESCE(SUM(${COMMISSION_EXPR('fa.rev_labor', 'fa.rev_full', { sp: 'sp' })}),0)::numeric comm
+         FROM fa LEFT JOIN payroll_schemes ps ON ps.master_id=fa.master_id::text AND ps.is_active=TRUE
+         LEFT JOIN svcpct sp ON sp.aid=fa.aid`, [tenantId]);
     // фікс/зміну (адміни та майстри зі ставкою) за майбутні 7 днів графіка
     const futFix = await one(pool,
       `SELECT COALESCE(SUM(COALESCE(ps.fixed_per_day,0)),0)::numeric v

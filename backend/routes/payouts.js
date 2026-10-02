@@ -22,7 +22,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, logAction } = require('../lib/rbac');
-const { MATLINES_CTE } = require('../lib/payroll-base');
+const { MATLINES_CTE, SVCPCT_CTE, SVC_SUMS_SQL, svcSums, svcExtra } = require('../lib/payroll-base');
 // 27.07 (SaaS-аудит): ведомость выплат — ЕДИНСТВЕННОЕ место расчёта ЗП, где забыли
 // исключить перенесённую историю миграции (source='migrate'). Все остальные пути
 // (live-finance/zones/expense-confirm/reports) фильтр уже применяют. Симметрия с выручкой:
@@ -216,11 +216,12 @@ async function liveEstimate(masterId, from, to) {
   // ЄДИНА формула (lib/payroll-base, правило Босса 06.07): net = сплачене мінус рядки-матеріали,
   // gross = повний чек. Раніше рахувалось повним чеком → відомість розходилась із «Підтвердженням».
   const ob = (await q(
-    `WITH matlines AS (${MATLINES_CTE})
+    `WITH matlines AS (${MATLINES_CTE}), svcpct AS (${SVCPCT_CTE})
      SELECT COUNT(*)::int AS cnt,
             COALESCE(SUM(GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0))),0)::numeric AS revenue,
-            COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full
-       FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
+            COALESCE(SUM(COALESCE(a.real_amount,a.price,0)),0)::numeric AS revenue_full,
+            ${SVC_SUMS_SQL()}
+       FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id LEFT JOIN svcpct sp ON sp.aid=a.id
       WHERE a.master_id=$1::int
         AND a.starts_at >= ($2||' 00:00:00+03')::timestamptz
         AND a.starts_at <  ($3||' 00:00:00+03')::timestamptz
@@ -233,7 +234,8 @@ async function liveEstimate(masterId, from, to) {
   let percent_part = 0, fixed_part = 0, sales_part = 0;
   if (s) {
     const base = (s.percent_base === 'gross') ? revenueFull : revenue;
-    if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = +(base * (num(s.percent) / 100)).toFixed(2);
+    // + окремий % за послугу (payroll_rules, Босс 02.10): поправка 0 при відсутності правил
+    if (s.scheme_type === 'percent' || s.scheme_type === 'hybrid') percent_part = +(base * (num(s.percent) / 100) + svcExtra(svcSums(ob), s.percent, s.percent_base === 'gross')).toFixed(2);
     if (s.scheme_type === 'fixed' || s.scheme_type === 'hybrid') {
       if (s.fixed_per_month) fixed_part = num(s.fixed_per_month);
       else if (s.fixed_per_day) {

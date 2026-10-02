@@ -9,7 +9,7 @@ const { runAs, DEFAULT_TENANT_ID } = require('../lib/tenant');
 const { requirePerm } = require('../lib/rbac');
 const { tgSend } = require('./telegram-notify');
 const { liveFinance } = require('../lib/live-finance');
-const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
 // 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
 const { payrollEligibleExpr } = require('../lib/settlement');
 
@@ -167,18 +167,19 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
            FROM cash_operations co JOIN masters m ON m.id=co.master_id
           WHERE co.type='in' AND co.category IN ('sale_service','sale_product') AND co.created_at BETWEEN $1 AND $2
           GROUP BY m.name HAVING SUM(co.amount)>0 ORDER BY revenue DESC LIMIT 30`, [from, to]),
-      q(`WITH matlines AS (${MATLINES_CTE}),
-          da AS (SELECT a.master_id,
+      q(`WITH matlines AS (${MATLINES_CTE}), svcpct AS (${SVCPCT_CTE}),
+          da AS (SELECT a.master_id, a.id aid,
                         GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                         COALESCE(a.real_amount,a.price,0) rev_full
                    FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
                   WHERE a.starts_at BETWEEN $1 AND $2 AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
                     AND ${payrollEligibleExpr('a')})
           SELECT m.name, MAX(ps.percent) percent, ROUND(SUM(da.rev_labor))::numeric revenue,
-                 ROUND(SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full')}))::numeric sum
+                 ROUND(SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full', { sp: 'sp' })}))::numeric sum
             FROM da JOIN masters m ON m.id=da.master_id
             LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
-           GROUP BY m.name HAVING SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full')})>0
+            LEFT JOIN svcpct sp ON sp.aid=da.aid
+           GROUP BY m.name HAVING SUM(${COMMISSION_EXPR('da.rev_labor', 'da.rev_full', { sp: 'sp' })})>0
            ORDER BY sum DESC LIMIT 50`, [from, to]),
       q(`SELECT created_at, category, amount::numeric, description FROM cash_operations
           WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2

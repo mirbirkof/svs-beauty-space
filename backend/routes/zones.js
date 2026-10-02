@@ -14,7 +14,7 @@
 const express = require('express');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
-const { MATLINES_CTE, COMMISSION_EXPR } = require('../lib/payroll-base');
+const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
 const { payrollEligibleExpr } = require('../lib/settlement');
 const { isAdminStaff } = require('../lib/staff-role');
@@ -92,9 +92,9 @@ router.get('/', async (req, res) => {
                      AND master_id IS NOT NULL -- зал = продажі майстра; без майстра → бакет «магазин» (інакше двоїлось, аудит 06.07)
                    GROUP BY master_id`, [fromTs, toTs]),
       // нарахований % по майстру — ТА САМА формула, що в liveFinance
-      pool.query(`WITH matlines AS (${MATLINES_CTE}),
+      pool.query(`WITH matlines AS (${MATLINES_CTE}), svcpct AS (${SVCPCT_CTE}),
                   da AS (
-                    SELECT a.master_id,
+                    SELECT a.master_id, a.id aid,
                            GREATEST(0, COALESCE(a.real_amount,a.price,0) - COALESCE(ml.mat,0)) rev_labor,
                            COALESCE(a.real_amount,a.price,0) rev_full
                       FROM appointments a LEFT JOIN matlines ml ON ml.aid=a.id
@@ -102,8 +102,9 @@ router.get('/', async (req, res) => {
                        AND (a.status IN ('done','completed') OR (a.status='confirmed' AND a.real_synced_at IS NOT NULL))
                        AND ${payrollEligibleExpr('a')})
                   SELECT da.master_id,
-                         COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full')}),0)::float comm
+                         COALESCE(SUM(${COMMISSION_EXPR('da.rev_labor','da.rev_full', { sp: 'sp' })}),0)::float comm
                     FROM da LEFT JOIN payroll_schemes ps ON ps.master_id=da.master_id::text AND ps.is_active=TRUE
+                    LEFT JOIN svcpct sp ON sp.aid=da.aid
                    GROUP BY da.master_id`, [fromTs, toTs]),
       // фікс-оклади по майстру: fixed_per_month (пропорц. періоду) + fixed_per_day × зміни графіка
       pool.query(`WITH sched AS (
