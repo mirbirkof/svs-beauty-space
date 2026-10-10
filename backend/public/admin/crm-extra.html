@@ -322,20 +322,25 @@ main { padding:24px 0; }
       <input id="u-username" placeholder="Логін (необов.)" style="width:130px">
       <input id="u-password" type="password" placeholder="Пароль" style="width:150px">
       <span id="u-master-fields" style="display:inline-flex;gap:8px;align-items:center">
-        <input id="u-specialty" placeholder="Спеціальність (напр. Манікюр)" style="width:190px">
+        <input id="u-specialty" list="staffSpecList" autocomplete="off" placeholder="Спеціальність (напр. Манікюр)" style="width:190px">
         <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:#666;white-space:nowrap">Комісія
           <input id="u-commission" type="number" min="0" max="100" value="40" style="width:56px">%</label>
       </span>
       <input type="hidden" id="u-master-link" value="">
     </div>
     <div class="hint" style="font-size:12px;color:#888;margin-top:8px">Пароль: мінімум 6 будь-яких символів. Логін = телефон або поле «Логін».</div>
+    <div class="hint" style="font-size:12px;color:#6d28d9;margin-top:6px">Помилились із посадою чи імʼям? Виправте в картці людини (клік по імені в списку) — видаляти й створювати заново не потрібно.</div>
+    <!-- #170: збіг імені/телефону — питання, а не мовчазна склейка -->
+    <div id="u-twin" style="display:none;margin-top:14px;padding:12px 14px;border:1px solid #f59e0b;background:#fffbeb;border-radius:10px;font-size:13px;line-height:1.5"></div>
+    <div id="u-err" style="display:none;margin-top:10px;color:#dc2626;font-size:13px"></div>
     <div class="row" style="gap:8px;margin-top:16px;justify-content:flex-end">
       <button class="btn ghost" onclick="tmNewClose()">Скасувати</button>
-      <button class="btn" onclick="createUser()">Створити</button>
+      <button class="btn" id="u-create-btn" onclick="createUser()">Створити</button>
     </div>
   </div>
 </div>
 
+<datalist id="staffSpecList"></datalist>
 <!-- модалка картки майстра/користувача -->
 <div id="cardModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeCard()">
   <div style="background:#fff;border-radius:14px;max-width:1080px;width:97vw;max-height:94vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
@@ -406,7 +411,7 @@ async function api(path, opts={}){
   if(TOKEN) h['X-Admin-Token']=TOKEN;
   const r = await fetch(API+path, {...opts, headers:h});
   const j = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(j.message || j.error || ('HTTP '+r.status));
+  if(!r.ok){ const e=new Error(j.message || j.error || ('HTTP '+r.status)); e.status=r.status; e.data=j; throw e; }
   return j;
 }
 
@@ -1105,12 +1110,43 @@ function toggleMasterFields(){
   document.getElementById('u-master-fields').style.display = isMaster ? 'inline-flex' : 'none';
 }
 let MASTERS_ALL=false, USERS_CACHE=[], MASTERS_CACHE=[];
+// #170: посади — підказка зі списку (вже вживані в салоні + базові), щоб не плодити
+// «Манкюр» поруч із «Манікюр». Вільне введення лишається, але схоже на відоме — перепитуємо.
+const _SPEC_BASE=['Майстер манікюру','Майстер педикюру','Манікюр','Педикюр','Перукар','Барбер','Косметолог','Лешмейкер','Бровист','Масажист','Візажист','Адміністратор'];
+function _specList(){
+  const seen=new Map();
+  _SPEC_BASE.concat((MASTERS_CACHE||[]).map(m=>m.specialty)).forEach(v=>{
+    const t=String(v||'').trim().replace(/\s+/g,' '); if(t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t); });
+  return [...seen.values()].sort((a,b)=>a.localeCompare(b,'uk'));
+}
+function _specFill(){ const dl=document.getElementById('staffSpecList'); if(!dl) return;
+  dl.innerHTML=_specList().map(v=>'<option value="'+String(v).replace(/"/g,'&quot;')+'">').join(''); }
+function _lev(a,b){ a=a.toLowerCase(); b=b.toLowerCase(); const d=Array.from({length:a.length+1},(_,i)=>[i]);
+  for(let j=1;j<=b.length;j++) d[0][j]=j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length]; }
+// Повертає відому посаду, на яку введене схоже як описка (1–2 літери), або null.
+function _specTypo(v){
+  const t=String(v||'').trim(); if(t.length<4) return null;
+  // описку шукаємо серед БАЗОВИХ і тих, що вживають ≥2 людини — сама описка не має «підтверджувати» себе
+  const cnt={}; (MASTERS_CACHE||[]).forEach(m=>{ const k=String(m.specialty||'').trim().toLowerCase(); if(k) cnt[k]=(cnt[k]||0)+1; });
+  const known=_specList().filter(x=>_SPEC_BASE.includes(x)||cnt[x.toLowerCase()]>=2);
+  if(known.some(x=>x.toLowerCase()===t.toLowerCase())) return null;
+  let best=null, bd=9; known.forEach(x=>{ const dd=_lev(t,x); if(dd<bd){bd=dd;best=x;} });
+  return (bd>0 && bd<=2) ? best : null;
+}
+function _specConfirm(v){
+  const fix=_specTypo(v); if(!fix) return String(v||'').trim();
+  return confirm('Посада «'+String(v).trim()+'» схожа на «'+fix+'».\n\nОК — записати «'+fix+'».\nСкасувати — лишити як ввели.') ? fix : String(v||'').trim();
+}
 async function loadMasters(){
   try{
     // Реєстр завжди тягне ВСІХ (разом зі звільненими) — фільтр «Звільнені» на екрані,
     // а не окремим запитом: інакше лічильники в фільтрах брехали б.
     const r = await api('/api/schedule/masters?all=1');
     MASTERS_CACHE = r.items||[];
+    _specFill();
     tmRender();
   }catch(e){ const b=document.getElementById('tm-list'); if(b) b.innerHTML='<tr><td colspan="7" class="empty">'+e.message+'</td></tr>'; }
 }
@@ -1131,7 +1167,9 @@ function _tmRole(m){ const v=String((m&&m.staff_role)||'').trim().toLowerCase();
 function _tmIsAdm(m){ return _TM_ADMIN_ROLES.includes(_tmRole(m)); }
 function tmRows(){
   const byMaster = new Map();
-  (USERS_CACHE||[]).forEach(u=>{ if(u.master_id) byMaster.set(Number(u.master_id), u); });
+  // один логін на людину (міграція 310); якщо раптом кілька — показуємо робочий, а не останній
+  (USERS_CACHE||[]).forEach(u=>{ if(!u.master_id) return; const k=Number(u.master_id), was=byMaster.get(k);
+    if(!was || (was.is_active===false && u.is_active!==false)) byMaster.set(k, u); });
   const rows = (MASTERS_CACHE||[]).map(m=>{
     const u = byMaster.get(Number(m.id)) || null;
     const fired = m.active===false || m.status==='fired';
@@ -1247,8 +1285,16 @@ function tmNewOpen(masterId){
   if(box){ box.style.display='flex';
     const sel=document.getElementById('u-master-link'); if(sel) sel.value = masterId?String(masterId):'';
     const nm=document.getElementById('u-name');
+    // #170: кожне відкриття — чиста форма (раніше лишались поля від минулої спроби)
+    ['u-phone','u-email','u-username','u-password','u-specialty'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    const cm=document.getElementById('u-commission'); if(cm) cm.value='40';
+    const rl=document.getElementById('u-role'); if(rl){ rl.value='master'; toggleMasterFields(); }
+    _uTwinHide();
+    _specFill();
     if(masterId){ const m=(MASTERS_CACHE||[]).find(x=>Number(x.id)===Number(masterId));
-      if(m&&nm){ nm.value=m.name||''; const ph=document.getElementById('u-phone'); if(ph&&m.phone) ph.value=m.phone; } }
+      if(m&&nm){ nm.value=m.name||''; const ph=document.getElementById('u-phone'); if(ph&&m.phone) ph.value=m.phone;
+        const sp=document.getElementById('u-specialty'); if(sp) sp.value=m.specialty||'';
+        if(rl && m.staff_role && rl.querySelector('option[value="'+m.staff_role+'"]')){ rl.value=m.staff_role; toggleMasterFields(); } } }
     else if(nm) nm.value='';
     setTimeout(()=>nm&&nm.focus(),50);
   }
@@ -1410,7 +1456,7 @@ function _mcTabProfile(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
       <div><label style="${lbl}">Імʼя *</label><input id="mcName" class="inp" value="${_mcEsc(ms.name)}"></div>
       <div><label style="${lbl}">Прізвище</label><input id="mcSurname" class="inp" value="${_mcEsc(ms.surname)}"></div>
-      <div><label style="${lbl}">Посада *</label><input id="mcSpec" class="inp" value="${_mcEsc(ms.specialty)}"></div>
+      <div><label style="${lbl}">Посада *</label><input id="mcSpec" class="inp" list="staffSpecList" autocomplete="off" value="${_mcEsc(ms.specialty)}"></div>
       <div><label style="${lbl}">Категорія</label><input id="mcCat" class="inp" value="${_mcEsc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
       <div><label style="${lbl}">Телефон</label><input id="mcPhone" class="inp" value="${_mcEsc(ms.phone||ms.login_phone||'')}" placeholder="+380…">${(!ms.phone&&ms.login_phone)?'<div id="mcPhoneHint" style="font-size:11.5px;color:#9ca3af;margin-top:3px">Номер узято з входу в CRM — збережеться в картку разом із профілем</div>':''}</div>
       <div><label style="${lbl}">Email</label><input id="mcEmail" class="inp" value="${_mcEsc(ms.email)}"></div>
@@ -1694,7 +1740,7 @@ async function saveMasterCard(){
   const body={
     name:document.getElementById('mcName').value.trim(),
     surname:document.getElementById('mcSurname').value.trim(),
-    specialty:document.getElementById('mcSpec').value.trim(),
+    specialty:_specConfirm(document.getElementById('mcSpec').value),
     category:document.getElementById('mcCat').value.trim(),
     phone:document.getElementById('mcPhone').value.trim(),
     email:document.getElementById('mcEmail').value.trim(),
@@ -1703,10 +1749,21 @@ async function saveMasterCard(){
     // Тепер роль — тільки те, що обрав власник у полі «Роль у системі».
     provides_services:provides, staff_role:(document.getElementById('mcRole')||{}).value||(_mcData.ms&&_mcData.ms.staff_role)||'master'
   };
+  if(!body.name){ alert('Імʼя обовʼязкове'); return; }
   try{
-    const r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)});
+    let r;
+    try{ r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)}); }
+    catch(e){
+      // #170: перейменування в імʼя іншої людини — лише свідомо
+      if(e && e.status===409 && e.data && e.data.error==='duplicate-name'){
+        if(!confirm((e.data.message||'Таке імʼя вже є в команді.')+'\n\nОК — зберегти все одно (це інша людина).\nСкасувати — повернутись і виправити.')) return;
+        body.allow_namesake=true;
+        r=await api('/api/schedule/masters/'+_mcId+'/profile',{method:'PATCH',body:JSON.stringify(body)});
+      } else throw e;
+    }
     if(!r||!r.ok){ alert('Помилка: '+((r&&r.error)||'невідома')); return; }
     _mcData.ms=r.master; _mcToast('Профіль збережено'); _mcRenderShell();
+    if(typeof loadUsers==='function') loadUsers();
     if(typeof loadMasters==='function') loadMasters();
   }catch(e){ alert(e.message||'Помилка збереження'); }
 }
@@ -1980,29 +2037,67 @@ function pwError(e){
   if(e && e.message==='weak-password') return 'Пароль закороткий. Потрібно: мінімум 6 символів.';
   return (e&&e.message)||'Помилка';
 }
-async function createUser(){
-  const display_name = document.getElementById('u-name').value.trim();
+function _uTwinHide(){ const t=document.getElementById('u-twin'); if(t){ t.style.display='none'; t.innerHTML=''; }
+  const e=document.getElementById('u-err'); if(e){ e.style.display='none'; e.textContent=''; } }
+function _uErr(msg){ const e=document.getElementById('u-err'); if(e){ e.textContent=msg; e.style.display='block'; } else alert(msg); }
+function _uEsc(v){ return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// #170: збіг з уже наявною людиною — показуємо, ХТО це, і даємо три чіткі відповіді.
+// Раніше сервер сам «склеював» нову людину зі старою карткою (навіть звільненою) — звідси
+// «все обʼєдналось», стара помилкова посада і три логіни на одну людину.
+function _uShowTwin(info, spec){
+  const t=document.getElementById('u-twin'); if(!t) return;
+  const ex=info.existing||{id:info.existing_id};
+  const who='«'+_uEsc(ex.name||'')+'»'+(ex.specialty?' ('+_uEsc(ex.specialty)+')':'');
+  const state=ex.fired?'<b>звільнена</b>':'працює';
+  const btns=[];
+  if(ex.fired){
+    btns.push(`<button class="btn sm" style="background:#16a34a;color:#fff" onclick="createUser({master_id:${ex.id},rehire:true})">Так, це вона — повернути до роботи${spec?' з посадою «'+_uEsc(spec)+'»':''}</button>`);
+  } else if(ex.has_login){
+    btns.push(`<button class="btn sm" onclick="tmNewClose();openMasterCard(${ex.id})">Так, це вона — відкрити її картку</button>`);
+  } else {
+    btns.push(`<button class="btn sm" style="background:#7c5cff;color:#fff" onclick="createUser({master_id:${ex.id},rehire:true})">Так, це вона — оновити її картку${spec?' (посада «'+_uEsc(spec)+'»)':''}</button>`);
+  }
+  btns.push(`<button class="btn sm ghost" onclick="createUser({allow_namesake:true})">Ні, це інша людина — створити окрему</button>`);
+  t.innerHTML=`<div style="margin-bottom:8px">У команді вже є ${who} — зараз ${state}${ex.same_phone?', з тим самим телефоном':''}.
+    <br>Це та сама людина?</div><div style="display:flex;gap:8px;flex-wrap:wrap">${btns.join('')}</div>`;
+  t.style.display='block';
+}
+let _uBusy=false;
+async function createUser(extra){
+  if(_uBusy) return;                       // подвійний клік не створює двох людей
+  const display_name = document.getElementById('u-name').value.trim().replace(/\s+/g,' ');
   const phone = document.getElementById('u-phone').value.trim();
   const email = document.getElementById('u-email').value.trim();
   const role_code = document.getElementById('u-role').value;
   const username = document.getElementById('u-username').value.trim();
   const password = document.getElementById('u-password').value;
-  const specialty = document.getElementById('u-specialty').value.trim();
+  const specEl = document.getElementById('u-specialty');
   const commission_pct = parseFloat(document.getElementById('u-commission').value)||40;
-  if(!display_name) return alert('Імʼя обовʼязкове');
-  if(password){ const iss=pwIssues(password); if(iss.length) return alert('Пароль заслабкий, додайте: '+iss.join(', ')+'.\n\nПриклад надійного: Salon2026'); }
+  _uTwinHide();
+  if(!display_name){ _uErr('Вкажіть імʼя'); document.getElementById('u-name').focus(); return; }
+  if(password){ const iss=pwIssues(password); if(iss.length){ _uErr('Пароль закороткий: '+iss.join(', ')+'.'); return; } }
+  if(role_code==='master' && !specEl.value.trim()){ _uErr('Вкажіть посаду майстра (напр. Манікюр) — без неї людину важко знайти в записі й звітах.'); specEl.focus(); return; }
+  let specialty = specEl.value.trim();
+  if(role_code==='master' && !extra){ specialty=_specConfirm(specialty); specEl.value=specialty; }
   const body = { display_name, phone, email, role_code, username, password };
   if(role_code==='master'){ body.specialty = specialty; body.commission_pct = commission_pct; }
   // «Дати доступ» існуючому майстру: привʼязуємо логін до його картки, а не плодимо двійника
   const linkId = (document.getElementById('u-master-link')||{}).value;
   if(linkId) body.master_id = Number(linkId);
+  Object.assign(body, extra||{});
+  const btn=document.getElementById('u-create-btn');
+  _uBusy=true; if(btn){ btn.disabled=true; btn.textContent='Зберігаю…'; }
   try{
-    await api('/api/users',{method:'POST',body:JSON.stringify(body)});
+    const r = await api('/api/users',{method:'POST',body:JSON.stringify(body)});
     ['u-name','u-phone','u-email','u-username','u-password','u-specialty'].forEach(id=>document.getElementById(id).value='');
     const lnk=document.getElementById('u-master-link'); if(lnk) lnk.value='';
     if(typeof tmNewClose==='function') tmNewClose();
     await loadUsers(); await loadMasters();
-  }catch(e){ alert(pwError(e)); }
+    if(typeof _mcToast==='function') _mcToast(r&&r.reused ? (r.rehired?'Людину повернуто до роботи ✓':'Картку оновлено ✓') : 'Співробітника додано ✓');
+  }catch(e){
+    if(e && e.status===409 && e.data && e.data.error==='duplicate-name'){ _uShowTwin(e.data, role_code==='master'?specialty:''); }
+    else _uErr(pwError(e));
+  }finally{ _uBusy=false; if(btn){ btn.disabled=false; btn.textContent='Створити'; } }
 }
 async function setPassword(uid){
   const password = prompt('Новий пароль (мінімум 6 символів):');

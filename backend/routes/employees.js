@@ -227,6 +227,16 @@ router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res)
       vals.push(v); sets.push(`${k}=$${vals.length}`);
     }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    // Нотатка #170: перейменування не має мовчки робити другу «таку саму» людину
+    if ('name' in (req.body || {})) {
+      const nm = String(req.body.name || '').trim().replace(/\s+/g, ' ');
+      if (!nm) return res.status(400).json({ error: 'name-required', message: 'Імʼя обовʼязкове' });
+      vals[sets.findIndex(x => x.startsWith('name='))] = nm;
+      if (req.body.allow_namesake !== true) {
+        const twin = await findStaffTwin({ query: (sql, pr) => q(sql, pr).then(rows => ({ rows })) }, nm, +req.params.id);
+        if (twin) return res.status(409).json(twinConflict(twin));
+      }
+    }
     vals.push(+req.params.id);
     const r = await q(`UPDATE masters SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
     if (!r[0]) return res.status(404).json({ error: 'not found' });

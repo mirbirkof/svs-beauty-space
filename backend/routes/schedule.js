@@ -18,7 +18,7 @@ const { emit: emitEvent } = require('../lib/event-bus');
 // Та сама формула використовується у звірці каси (routes/cashbox.js), тому копіпасти
 // тут бути НЕ повинно: розходження цифр між панелями = баг, який ловили вже двічі.
 const settlement = require('../lib/settlement');
-const { adminLastSql } = require('../lib/staff-role');
+const { adminLastSql, findStaffTwin, twinConflict } = require('../lib/staff-role');
 const router = express.Router();
 // #164: номер входу в CRM для картки співробітника — запасний телефон, коли в картці
 // власний не заведено. ОДИН фрагмент на всі відповіді з карткою (перегляд і збереження).
@@ -438,15 +438,34 @@ router.patch('/masters/:id/profile', async (req, res) => {
         if (f === 'online_rank') v = (v === '' || v == null) ? 0 : parseInt(v, 10) || 0;
         if (f === 'max_parallel') v = Math.max(1, parseInt(v, 10) || 1);
         if (boolFields.has(f)) v = !!v;
+        if ((f === 'specialty' || f === 'surname' || f === 'category') && typeof v === 'string') v = v.trim().replace(/\s+/g, ' ');
         if (nullIfEmpty.has(f) && typeof v === 'string' && v.trim() === '') v = null;
         vals.push(v); sets.push(`${f} = $${vals.length}`);
       }
     }
     if (!sets.length) return res.status(400).json({ error: 'no fields' });
+    // Нотатка #170: перейменування — та сама «двері для двійника», що й створення.
+    // Імʼя порожнім бути не може; збіг з ІНШОЮ людиною — лише свідомим підтвердженням.
+    const renaming = req.body && Object.prototype.hasOwnProperty.call(req.body, 'name');
+    if (renaming) {
+      const nm = String(req.body.name || '').trim().replace(/\s+/g, ' ');
+      if (!nm) return res.status(400).json({ error: 'name-required', message: 'Імʼя обовʼязкове' });
+      vals[sets.findIndex(x => x.startsWith('name '))] = nm;
+      if (req.body.allow_namesake !== true) {
+        const twin = await findStaffTwin(pool, nm, id);
+        if (twin) return res.status(409).json(twinConflict(twin));
+      }
+    }
     vals.push(id);
     const r = await pool.query(
-      `UPDATE masters SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *, ${LOGIN_PHONE_SQL}`, vals);
+      `UPDATE masters SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${vals.length} RETURNING *, ${LOGIN_PHONE_SQL}`, vals);
     if (!r.rows[0]) return res.status(404).json({ error: 'master not found' });
+    // імʼя у вході в CRM = імʼя картки, інакше в доступах і в команді людина зветься по-різному
+    if (renaming) {
+      await pool.query(
+        `UPDATE users SET display_name = $2, updated_at = NOW() WHERE master_id = $1 AND display_name IS DISTINCT FROM $2`,
+        [id, [r.rows[0].name, r.rows[0].surname].filter(Boolean).join(' ')]).catch(() => {});
+    }
     res.json({ ok: true, master: r.rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

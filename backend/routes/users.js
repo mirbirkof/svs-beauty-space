@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getPool, applyTenant } = require('../db-pg');
 const { requirePerm, sha256, logAction } = require('../lib/rbac');
 const { hashPassword, checkPasswordComplexity, normalizePhone } = require('../lib/auth-core');
+const { setWorkingState } = require('../lib/employment');
 
 const router = express.Router();
 const pool = getPool();
@@ -159,7 +160,10 @@ router.get('/', requirePerm('users.read'), async (req, res) => {
               u.master_id, u.branch_id, u.is_active, u.last_login_at, u.created_at,
               u.extra_permissions, u.permissions_override, r.permissions AS role_permissions,
               (u.password_hash IS NOT NULL) AS has_password
-         FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id`
+         FROM users u JOIN roles r ON r.id=u.role_id
+        -- злиті логіни-дублі (міграція 310, нотатка #170) — не окремі люди, у реєстрі їх не показуємо
+        WHERE u.merged_into IS NULL
+        ORDER BY u.id`
     );
     res.json({ items: r.rows, count: r.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
@@ -195,7 +199,10 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
   const client = await pool.connect();
   try {
     let { phone, email, display_name, role_code, master_id, branch_id,
-          username, password, specialty, commission_pct, create_master } = req.body || {};
+          username, password, specialty, commission_pct, create_master, allow_namesake, rehire } = req.body || {};
+    display_name = String(display_name || '').trim().replace(/\s+/g, ' ');
+    if (username != null) username = String(username).trim() || null;
+    if (email != null) email = String(email).trim() || null;
     if (!display_name || !role_code) return res.status(400).json({ error: 'display_name, role_code required' });
     await applyTenant(client); // RLS ДО вибору ролі — інакше роль могла смэтчитись із чужого тенанта (аудит 06.07)
     const role = await client.query(`SELECT id, code, level FROM roles WHERE code=$1`, [role_code]);
@@ -223,54 +230,105 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
     // СТАЛО: картку отримує будь-яка РОБОЧА роль салону. 'readonly' — це лише доступ
     // до перегляду (бухгалтер, аудитор), він не співробітник зміни і місце тарифу не займає.
     const WORKING_ROLES = new Set(['master', 'admin', 'manager', 'reception', 'owner']);
-    if (!master_id && (create_master || WORKING_ROLES.has(role.rows[0].code))) {
-      // ЖОДНИХ ДВІЙНИКІВ (нотатка #157): якщо картка цієї людини вже є в салоні —
-      // привʼязуємо логін до неї, а не заводимо другу. Саме так 19.07 у команді
-      // зʼявилися «дві Аліни»: логін пішов на нову порожню картку, а історія
-      // (графік, зміни, записи) лишилась на старій.
-      const nameKey = String(display_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const phoneKey = phone ? String(phone).replace(/\D/g, '').slice(-9) : null;
-      const exist = await client.query(
-        `SELECT id FROM masters
-          WHERE merged_into IS NULL
-            AND ( lower(regexp_replace(COALESCE(name,''), '\\s+', ' ', 'g')) = $1
-                  OR ($2::text IS NOT NULL AND right(regexp_replace(COALESCE(phone,''), '\\D', '', 'g'), 9) = $2) )
-          ORDER BY (COALESCE(active,true) = true) DESC, id
-          LIMIT 1`,
-        [nameKey, phoneKey]
-      );
-      if (exist.rowCount) {
-        master_id = exist.rows[0].id;
-        // не займаємо ще одне місце тарифу і не плодимо картку — лише доповнюємо порожні поля
+    const roleCode = role.rows[0].code;
+    // provides_services: майстер надає послуги, решта ролей — ні (вони не в записі
+    // клієнта), але у складі графіка присутні всі — in_schedule має DEFAULT true (міграція 305).
+    const providesServices = roleCode === 'master';
+    const staffRole = WORKING_ROLES.has(roleCode) ? roleCode : null;
+    const fail = async (status, body) => { await client.query('ROLLBACK').catch(() => {}); return res.status(status).json(body); };
+
+    // 10.10 (нотатка #170, Власник): «неверно написал професию, пришлось удалить, а когда
+    // создал с таким же именем — все объединились». ПРИЧИНА: тут стояла МОВЧАЗНА склейка —
+    // знайшовши картку з тим самим імʼям (навіть ЗВІЛЬНЕНУ), сервер чіпляв новий логін до
+    // неї, не повертав її до роботи і не брав нову посаду (лишалась стара, помилкова).
+    // Людина не зʼявлялась серед працюючих → Власник тиснув «Створити» ще раз → три логіни
+    // на одну картку. ТЕПЕР нічого не склеюється мовчки: збіг імені/телефону = питання
+    // на екрані «це та сама людина чи інша?», і кожна відповідь має один чіткий результат.
+    if (master_id) {
+      // ЯВНА привʼязка до картки: «Дати доступ» або відповідь «так, це вона — повернути».
+      const card = await client.query(
+        `SELECT id, name, COALESCE(active,true) AS active, status, merged_into FROM masters WHERE id=$1 FOR UPDATE`, [master_id]);
+      if (!card.rowCount || card.rows[0].merged_into) return fail(404, { error: 'card-not-found', message: 'Картку співробітника не знайдено' });
+      const cardFired = card.rows[0].active === false || card.rows[0].status === 'fired';
+      if (cardFired && rehire !== true) {
+        return fail(409, { error: 'card-fired', existing_id: card.rows[0].id,
+          message: `«${card.rows[0].name}» зараз звільнена. Спершу поверніть її до роботи.` });
+      }
+      if (cardFired) await setWorkingState(client, card.rows[0].id, true);
+      if (rehire === true) {
+        // власник щойно ввів посаду/телефон — це його актуальне рішення, воно важливіше за старе
         await client.query(
-          `UPDATE masters SET phone = COALESCE(NULLIF(phone,''), $2),
-                              specialty = COALESCE(NULLIF(specialty,''), $3),
+          `UPDATE masters SET specialty = COALESCE(NULLIF($2,''), specialty),
+                              phone = COALESCE(NULLIF(phone,''), $3),
+                              staff_role = COALESCE($4, staff_role),
+                              provides_services = CASE WHEN $4::text IS NULL THEN provides_services ELSE $5 END,
                               updated_at = NOW()
             WHERE id = $1`,
-          [master_id, phone || null, specialty || null]
-        );
-      } else {
-        // ліміт плану max_employees рахуємо ЛИШЕ коли реально заводимо нову людину
-        // (прив'язка логіна до наявної картки місця в тарифі не займає) — аудит 06.07
-        const max = await require('../lib/plan-limits').getPlanLimit('max_employees').catch(() => null);
-        if (max != null) {
-          const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true AND merged_into IS NULL`);
-          if (cnt.rows[0].n >= max) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({ error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
-          }
-        }
-        // provides_services: майстер надає послуги, решта ролей — ні (вони не в записі
-        // клієнта), але у складі графіка присутні всі — in_schedule має DEFAULT true (міграція 305).
-        const providesServices = role.rows[0].code === 'master';
-        const m = await client.query(
-          `INSERT INTO masters (name, phone, specialty, commission_pct, active, provides_services, staff_role)
-           VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id`,
-          [display_name, phone, specialty || null, commission_pct != null ? commission_pct : 40,
-           providesServices, role.rows[0].code]
-        );
-        master_id = m.rows[0].id;
+          [card.rows[0].id, specialty ? String(specialty).trim() : null, phone || null, staffRole, providesServices]);
       }
+      // ОДИН логін на одну людину. Другий логін на ту саму картку = та сама людина
+      // двічі в доступах; у реєстрі видно лише один, решта «губиться».
+      const has = await client.query(`SELECT id, is_active FROM users WHERE master_id=$1 ORDER BY is_active DESC, id LIMIT 1`, [card.rows[0].id]);
+      if (has.rowCount) {
+        if (rehire !== true) {
+          return fail(409, { error: 'card-has-login', existing_user_id: has.rows[0].id,
+            message: `У «${card.rows[0].name}» вже є вхід у CRM. Змініть пароль або поверніть доступ у рядку цієї людини.` });
+        }
+        // повернення людини: її старий логін уже відкрито (setWorkingState) — лише новий пароль, якщо задано
+        if (password_hash) {
+          await client.query(`UPDATE users SET password_hash=$1, password_changed_at=NOW(), failed_login_attempts=0, locked_until=NULL, updated_at=NOW() WHERE id=$2`,
+            [password_hash, has.rows[0].id]);
+        }
+        if (!has.rows[0].is_active && roleCode !== 'owner') {
+          await client.query(`UPDATE users SET is_active=true, updated_at=NOW() WHERE id=$1`, [has.rows[0].id]);
+        }
+        await client.query('COMMIT');
+        await logAction({ user: req.user, action: 'employee.rehire', entity: 'master', entity_id: card.rows[0].id,
+          meta: { display_name, specialty: specialty || null, via: 'users.create', login: has.rows[0].id } });
+        return res.json({ ok: true, id: has.rows[0].id, master_id: card.rows[0].id, reused: true, rehired: cardFired });
+      }
+    } else if (create_master || WORKING_ROLES.has(roleCode)) {
+      if (allow_namesake !== true) {
+        const nameKey = String(display_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const phoneKey = phone ? String(phone).replace(/\D/g, '').slice(-9) : null;
+        const exist = await client.query(
+          `SELECT m.id, m.name, m.specialty, COALESCE(m.active,true) AS active, m.status,
+                  EXISTS (SELECT 1 FROM users u WHERE u.master_id = m.id) AS has_login,
+                  ($2::text IS NOT NULL AND right(regexp_replace(COALESCE(m.phone,''), '\\D', '', 'g'), 9) = $2) AS same_phone
+             FROM masters m
+            WHERE m.merged_into IS NULL
+              AND ( lower(regexp_replace(COALESCE(m.name,''), '\\s+', ' ', 'g')) = $1
+                    OR ($2::text IS NOT NULL AND right(regexp_replace(COALESCE(m.phone,''), '\\D', '', 'g'), 9) = $2) )
+            ORDER BY (COALESCE(m.active,true) = true) DESC, m.id
+            LIMIT 1`,
+          [nameKey, phoneKey]
+        );
+        if (exist.rowCount) {
+          const t = exist.rows[0];
+          const fired = t.active === false || t.status === 'fired';
+          return fail(409, {
+            error: 'duplicate-name', existing_id: t.id,
+            existing: { id: t.id, name: t.name, specialty: t.specialty || null, fired, has_login: t.has_login, same_phone: t.same_phone },
+            message: `«${t.name}» вже є в команді${t.specialty ? ' (' + t.specialty + ')' : ''}${fired ? ' — звільнена' : ''}`
+                   + `${t.same_phone ? ', з тим самим телефоном' : ''}.`,
+          });
+        }
+      }
+      // ліміт плану max_employees рахуємо ЛИШЕ коли реально заводимо нову людину — аудит 06.07
+      const max = await require('../lib/plan-limits').getPlanLimit('max_employees').catch(() => null);
+      if (max != null) {
+        const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM masters WHERE COALESCE(active,true)=true AND merged_into IS NULL`);
+        if (cnt.rows[0].n >= max) {
+          return fail(403, { error: 'plan-limit', message: `Досягнуто ліміт тарифу (майстрів: ${cnt.rows[0].n}/${max}). Оновіть план.` });
+        }
+      }
+      const m = await client.query(
+        `INSERT INTO masters (name, phone, specialty, commission_pct, active, provides_services, staff_role)
+         VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id`,
+        [String(display_name).trim(), phone, specialty ? String(specialty).trim() : null,
+         commission_pct != null ? commission_pct : 40, providesServices, staffRole || 'admin']
+      );
+      master_id = m.rows[0].id;
     }
 
     const r = await client.query(

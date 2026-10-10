@@ -72,15 +72,17 @@ module.exports = { ROLES, ROLE_LABEL, ADMIN_ROLES, staffRole, isAdminStaff, role
 const twinNameKey = (n) => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** Знаходить живу картку з таким самим імʼям. pool — pg Pool/Client. */
-async function findStaffTwin(pool, name) {
+async function findStaffTwin(pool, name, excludeId = null) {
   const key = twinNameKey(name);
   if (!key) return null;
+  // excludeId — при перейменуванні картка не є двійником сама собі (нотатка #170)
   const r = await pool.query(
     `SELECT id, name, specialty, COALESCE(active,true) AS active FROM masters
       WHERE merged_into IS NULL
         AND lower(regexp_replace(COALESCE(name,''), '\\s+', ' ', 'g')) = $1
+        AND ($2::int IS NULL OR id <> $2::int)
       ORDER BY (COALESCE(active,true) = true) DESC, id
-      LIMIT 1`, [key]
+      LIMIT 1`, [key, excludeId == null ? null : Number(excludeId)]
   ).catch(() => ({ rows: [] }));
   return r.rows[0] || null;
 }
