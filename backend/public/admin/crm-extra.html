@@ -1,9 +1,10 @@
 <!doctype html>
 <html lang="uk">
 <head>
-  <script src="/p/tenant-boot.js"></script>
+<script src="/p/tenant-boot.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=1280">
+<script src="/admin/assets/staff-spec.js"></script>
 <title>SVS CRM — Каса, Звіти, Інвентар, Філії, Користувачі</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -1110,36 +1111,9 @@ function toggleMasterFields(){
   document.getElementById('u-master-fields').style.display = isMaster ? 'inline-flex' : 'none';
 }
 let MASTERS_ALL=false, USERS_CACHE=[], MASTERS_CACHE=[];
-// #170: посади — підказка зі списку (вже вживані в салоні + базові), щоб не плодити
-// «Манкюр» поруч із «Манікюр». Вільне введення лишається, але схоже на відоме — перепитуємо.
-const _SPEC_BASE=['Майстер манікюру','Майстер педикюру','Манікюр','Педикюр','Перукар','Барбер','Косметолог','Лешмейкер','Бровист','Масажист','Візажист','Адміністратор'];
-function _specList(){
-  const seen=new Map();
-  _SPEC_BASE.concat((MASTERS_CACHE||[]).map(m=>m.specialty)).forEach(v=>{
-    const t=String(v||'').trim().replace(/\s+/g,' '); if(t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t); });
-  return [...seen.values()].sort((a,b)=>a.localeCompare(b,'uk'));
-}
-function _specFill(){ const dl=document.getElementById('staffSpecList'); if(!dl) return;
-  dl.innerHTML=_specList().map(v=>'<option value="'+String(v).replace(/"/g,'&quot;')+'">').join(''); }
-function _lev(a,b){ a=a.toLowerCase(); b=b.toLowerCase(); const d=Array.from({length:a.length+1},(_,i)=>[i]);
-  for(let j=1;j<=b.length;j++) d[0][j]=j;
-  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
-    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
-  return d[a.length][b.length]; }
-// Повертає відому посаду, на яку введене схоже як описка (1–2 літери), або null.
-function _specTypo(v){
-  const t=String(v||'').trim(); if(t.length<4) return null;
-  // описку шукаємо серед БАЗОВИХ і тих, що вживають ≥2 людини — сама описка не має «підтверджувати» себе
-  const cnt={}; (MASTERS_CACHE||[]).forEach(m=>{ const k=String(m.specialty||'').trim().toLowerCase(); if(k) cnt[k]=(cnt[k]||0)+1; });
-  const known=_specList().filter(x=>_SPEC_BASE.includes(x)||cnt[x.toLowerCase()]>=2);
-  if(known.some(x=>x.toLowerCase()===t.toLowerCase())) return null;
-  let best=null, bd=9; known.forEach(x=>{ const dd=_lev(t,x); if(dd<bd){bd=dd;best=x;} });
-  return (bd>0 && bd<=2) ? best : null;
-}
-function _specConfirm(v){
-  const fix=_specTypo(v); if(!fix) return String(v||'').trim();
-  return confirm('Посада «'+String(v).trim()+'» схожа на «'+fix+'».\n\nОК — записати «'+fix+'».\nСкасувати — лишити як ввели.') ? fix : String(v||'').trim();
-}
+// #170: посади — одне правило в assets/staff-spec.js (те саме в картці співробітника каркаса)
+function _specFill(){ if(window.StaffSpec) StaffSpec.fill('staffSpecList', MASTERS_CACHE); }
+function _specConfirm(v){ return window.StaffSpec ? StaffSpec.confirmFix(v, MASTERS_CACHE) : String(v||'').trim(); }
 async function loadMasters(){
   try{
     // Реєстр завжди тягне ВСІХ (разом зі звільненими) — фільтр «Звільнені» на екрані,

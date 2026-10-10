@@ -12539,6 +12539,7 @@ async function openMasterProfiles(){
         </button>`).join('') + '</div>';
   } catch(e){ body.innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
 }
+let _mcAllStaff = [];
 async function openMasterCard(id){
   _mcId = id;
   const m = document.getElementById('masterCardModal');
@@ -12548,6 +12549,8 @@ async function openMasterCard(id){
     const r = await api('/api/schedule/masters/'+id+'/portfolio');
     _mcData = { ms: r.master, stats: r.stats||{}, top: r.top_services||[], recent: r.recent||[] };
     _mcTabKey = 'profile';
+    // #170: підказки посад (assets/staff-spec.js) — ті самі, що при додаванні співробітника
+    api('/api/schedule/masters?all=1').then(x => { _mcAllStaff = (x && x.items) || []; if (window.StaffSpec) StaffSpec.fill('mcSpecList', _mcAllStaff); }).catch(() => {});
     document.getElementById('masterCardTitle').textContent = _mcData.ms.name || 'Профіль співробітника';
     _mcRenderShell();
   } catch(e){ document.getElementById('masterCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
@@ -12641,7 +12644,7 @@ function _mcTabProfile(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
       <div><label class="set-l">Імʼя *</label><input id="mcName" class="input" value="${_esc(ms.name)}"></div>
       <div><label class="set-l">Прізвище</label><input id="mcSurname" class="input" value="${_esc(ms.surname)}"></div>
-      <div><label class="set-l">Посада *</label><input id="mcSpec" class="input" value="${_esc(ms.specialty)}"></div>
+      <div><label class="set-l">Посада *</label><input id="mcSpec" class="input" list="mcSpecList" autocomplete="off" value="${_esc(ms.specialty)}"><datalist id="mcSpecList">${window.StaffSpec ? StaffSpec.list(_mcAllStaff).map(v => '<option value="'+_esc(v)+'">').join('') : ''}</datalist></div>
       <div><label class="set-l">Категорія</label><input id="mcCat" class="input" value="${_esc(ms.category)}" placeholder="напр. Майстер манікюру"></div>
       <div><label class="set-l">Телефон</label><input id="mcPhone" class="input" value="${_esc(ms.phone||ms.login_phone||'')}" placeholder="+380…">${(!ms.phone&&ms.login_phone)?'<div id="mcPhoneHint" style="font-size:11.5px;color:#9ca3af;margin-top:3px">Номер узято з входу в CRM — збережеться в картку разом із профілем</div>':''}</div>
       <div><label class="set-l">Email</label><input id="mcEmail" class="input" value="${_esc(ms.email)}"></div>
@@ -13010,7 +13013,8 @@ async function saveMasterCard(){
   const body = {
     name: document.getElementById('mcName').value.trim(),
     surname: document.getElementById('mcSurname').value.trim(),
-    specialty: document.getElementById('mcSpec').value.trim(),
+    // #170: описка в посаді («Манкюр») — перепитуємо одним правилом з додаванням співробітника
+    specialty: window.StaffSpec ? StaffSpec.confirmFix(document.getElementById('mcSpec').value, _mcAllStaff) : document.getElementById('mcSpec').value.trim(),
     category: document.getElementById('mcCat').value.trim(),
     phone: document.getElementById('mcPhone').value.trim(),
     email: document.getElementById('mcEmail').value.trim(),
@@ -13021,9 +13025,16 @@ async function saveMasterCard(){
     staff_role: (document.getElementById('mcRole')||{}).value || (_mcData.ms && _mcData.ms.staff_role) || 'master',
     max_parallel: Math.max(1, parseInt(document.getElementById('mcMaxParallel').value, 10) || 1),
   };
+  if (!body.name) { toast('Імʼя обовʼязкове','error'); document.getElementById('mcName').focus(); return; }
   try {
-    const r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
-    if (!r || !r.ok) { toast('Помилка: '+((r&&r.error)||'невідома'),'error'); return; }
+    let r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
+    // #170: перейменування в імʼя ІНШОЇ людини з команди — лише свідомо, інакше двійник
+    if (r && r.error === 'duplicate-name') {
+      if (!confirm((r.message || 'Таке імʼя вже є в команді.') + '\n\nОК — зберегти все одно (це інша людина).\nСкасувати — повернутись і виправити.')) return;
+      body.allow_namesake = true;
+      r = await api('/api/schedule/masters/'+_mcId+'/profile', { method:'PATCH', body: JSON.stringify(body) });
+    }
+    if (!r || !r.ok) { toast('Помилка: '+((r&&(r.message||r.error))||'невідома'),'error'); return; }
     _mcData.ms = r.master;
     document.getElementById('masterCardTitle').textContent = r.master.name || 'Профіль співробітника';
     toast('Профіль збережено','success');
@@ -15461,6 +15472,7 @@ function saasFlagEdit(flag){
 <script src="/admin/assets/stock-sort.js"></script>
 <script src="/admin/assets/stock-view.js"></script>
 <script src="/admin/assets/notes-widget.js"></script>
+<script src="/admin/assets/staff-spec.js"></script>
 <!-- ═══ РОЗШИРЕНІ МОДУЛІ (реєстр + UI нових backend-модулів) ═══ -->
 <script src="/admin/modules/_core.js"></script>
 <script src="/admin/modules/mod-finance.js"></script>

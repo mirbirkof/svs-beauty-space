@@ -55,3 +55,21 @@ test('склад графіка: немає «загублених» карто�
   assert.strictEqual(r.rows.length, 0,
     `картки без прапорця in_schedule (мовчки поза графіком): ${r.rows.map(x => x.name).join(', ')}`);
 });
+
+// Нотатка #170: «створив з таким самим імʼям — все обʼєдналось». Сервер мовчки чіпляв
+// новий логін до вже наявної (навіть звільненої) картки — три логіни на одну «Асю».
+// Сторож: одна людина = максимум один логін, і база сама це тримає (міграція 310).
+test('команда: на одну картку співробітника — не більше одного логіна', async () => {
+  const idx = await db.query(`SELECT 1 FROM pg_indexes WHERE indexname = 'users_one_login_per_master'`);
+  assert.strictEqual(idx.rowCount, 1, 'немає індексу users_one_login_per_master — дублі логінів знову можливі');
+  const r = await db.query(
+    `SELECT master_id, COUNT(*)::int AS n FROM users WHERE master_id IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1`);
+  assert.strictEqual(r.rows.length, 0, `картки з кількома логінами: ${r.rows.map(x => '#' + x.master_id + '×' + x.n).join(', ')}`);
+});
+
+// Шлях появи двійника: при додаванні сервер НЕ має сам склеювати людину з наявною карткою.
+test('команда: додавання з тим самим імʼям не склеюється мовчки', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'routes', 'users.js'), 'utf8');
+  assert.ok(/error: 'duplicate-name'/.test(src), 'POST /api/users має питати про збіг (duplicate-name), а не склеювати');
+  assert.ok(!/master_id = exist\.rows\[0\]\.id/.test(src), 'повернулась мовчазна привʼязка логіна до наявної картки');
+});
