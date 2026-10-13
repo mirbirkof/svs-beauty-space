@@ -338,7 +338,8 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
     );
     await client.query('COMMIT');
     await logAction({ user: req.user, action: 'user.create', entity: 'user', entity_id: r.rows[0].id, meta: { display_name, role_code, has_password: !!password_hash, master_id } });
-    res.json({ ok: true, id: r.rows[0].id, master_id: master_id || null });
+    const svc = master_id ? await require('../lib/master-svc-suggest').autoLinkNew(getPool(), master_id) : { added: 0, categories: [] }; // [13.10] новий майстер — послуги його спеціальності; для привʼязки до наявного майстра з звʼязками нічого не робить
+    res.json({ ok: true, id: r.rows[0].id, master_id: master_id || null, services_added: svc.added, services_categories: svc.categories });
   } catch (e) {
     await client.query('ROLLBACK').catch(()=>{});
     if (/duplicate key|unique/i.test(e.message)) return res.status(409).json({ error: 'duplicate', message: 'Телефон, email або логін вже зайняті' });

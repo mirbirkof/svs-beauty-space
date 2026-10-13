@@ -1478,12 +1478,33 @@ function _mcTabServices(){
     <h4 style="margin:18px 0 8px;font-size:14px">За фактом виконання</h4>
     <table class="tbl" style="width:100%"><thead><tr><th>Послуга</th><th>К-ть</th><th>Сума</th></tr></thead><tbody>${factRows}</tbody></table>`;
 }
+const _sgEsc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+function _mcSvcSuggestHtml(r, canEdit){ // [13.10] майстер без звʼязок: пропозиція за спеціальністю/візитами замість «весь каталог»
+  const sg = r && r.suggested; const ids = (sg && sg.service_ids) || [];
+  if (!ids.length) return '<div class="empty">Звʼязок ще немає, а спеціальність не підказує категорію послуг — додайте послуги кнопкою вище (або вкажіть спеціальність у профілі). Доки не додано, у журналі для цього майстра показується весь каталог салону.</div>';
+  window._mcSvcSuggestIds = ids;
+  const why = sg.source === 'fact' ? 'за виконаними візитами' : sg.source === 'specialty+fact' ? `за спеціальністю «${_sgEsc(sg.specialty||'')}» і виконаними візитами` : `за спеціальністю «${_sgEsc(sg.specialty||'')}»`;
+  const groups = (sg.groups || []).map(g => `${_sgEsc(g.name)} — ${g.n}`).join(' · ');
+  return `<div style="border:1px dashed #f59e0b;background:#fffbeb;border-radius:10px;padding:12px;font-size:13px">
+    <b>Послуги ще не налаштовані.</b> Пропоную ${ids.length} послуг ${why}:<br><span style="color:#92400e">${groups}</span><br>
+    <span style="font-size:12px;color:#6b7280">Доки не додано — у журналі для цього майстра показуються саме ці послуги, а не весь каталог салону.</span>
+    ${canEdit ? `<div style="margin-top:8px"><button class="btn btn-sm btn-primary" id="mcSvcSuggestBtn" onclick="_mcSvcAddSuggested(this)">Додати ${ids.length} послуг</button> <span style="font-size:12px;color:#6b7280">зайві потім вимкнете тумблером</span></div>` : ''}
+  </div>`;
+}
+async function _mcSvcAddSuggested(btn){
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Додаю…'; }
+  try {
+    const r = await api('/api/master-services/bulk', { method:'POST', body: JSON.stringify({ master_id: Number(_mcId), service_ids: window._mcSvcSuggestIds || [] }) });
+    if (r && r.ok) { _mcToast('Додано послуг: ' + r.added); _mcSvcLoad(); }
+    else { _mcToast((r && (r.message || r.error)) || 'Помилка'); if (btn) { btn.disabled = false; btn.textContent = 'Повторити'; } }
+  } catch(e){ _mcToast('Помилка: ' + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = 'Повторити'; } }
+}
 async function _mcSvcLoad(){
   const box=document.getElementById('mcSvcList'); if(!box) return;
   let r; try{ r=await api('/api/master-services/by-master/'+_mcId); }
   catch(e){ box.innerHTML='<div class="empty">Не вдалося завантажити: '+(e.message||e)+'</div>'; return; }
   _mcSvcItems=r.items||[];
-  if(!_mcSvcItems.length){ box.innerHTML='<div class="empty">Звʼязок ще немає — додайте першу послугу кнопкою вище. Поки звʼязки не налаштовані, майстру доступний весь каталог.</div>'; return; }
+  if (!_mcSvcItems.length) { box.innerHTML = _mcSvcSuggestHtml(r, (r.can_edit !== false)); return; } // [13.10] пропозиція замість «доступний весь каталог»
   let html='', cat=null;
   for(const it of _mcSvcItems){
     const c=it.category||'Без категорії';

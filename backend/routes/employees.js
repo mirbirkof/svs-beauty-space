@@ -202,7 +202,8 @@ router.post('/', validateBody(employeeSchema(true)),
     await q(`INSERT INTO employee_history (employee_id, event_type, initiated_by, event_date)
              VALUES ($1,'hired',$2,COALESCE($3,CURRENT_DATE))`, [r[0].id, req.user?.display_name || null, b.hire_date || null]).catch(()=>{});
     logAction({ user: req.user, action: 'employee.create', entity: 'master', entity_id: r[0].id, ip: req.ip }).catch(()=>{});
-    res.json({ ok: true, employee: r[0] });
+    const svc = await require('../lib/master-svc-suggest').autoLinkNew(pool, r[0].id); // [13.10] послуги з категорій спеціальності, не весь каталог
+    res.json({ ok: true, employee: r[0], services_added: svc.added, services_categories: svc.categories });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'phone already exists' });
     err(res, e);

@@ -1230,7 +1230,8 @@ router.post('/masters',
        VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING *`,
       [name, phone || null, specialty || null, bio || null, avatar || null, legacy_ref || null, commission_pct || null]
     );
-    res.status(201).json({ ok: true, master: r.rows[0] });
+    const svc = await require('../lib/master-svc-suggest').autoLinkNew(getPool(), r.rows[0].id); // [13.10] послуги з категорій спеціальності
+    res.status(201).json({ ok: true, master: r.rows[0], services_added: svc.added, services_categories: svc.categories });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

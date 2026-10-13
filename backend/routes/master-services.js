@@ -7,6 +7,7 @@ const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, logAction, hasPermission } = require('../lib/rbac');
 const { getSetting } = require('../lib/settings');
+const { suggestFor } = require('../lib/master-svc-suggest');
 
 const router = express.Router();
 const pool = getPool();
@@ -49,7 +50,9 @@ router.get('/by-master/:masterId', requirePerm('masters.read'), async (req, res)
         ORDER BY s.category NULLS LAST, s.name`,
       [Number(req.params.masterId)]
     );
-    res.json({ items: r.rows, count: r.rows.length, can_edit: await canEditMasterServices(req) });
+    // [13.10] звʼязок нема → пропозиція (спеціальність + реальні візити), щоб пікери не показували весь каталог і картка дала «додати одним кліком»
+    const suggested = r.rows.some(x => x.active !== false) ? null : await suggestFor(pool, Number(req.params.masterId)).catch(() => null);
+    res.json({ items: r.rows, count: r.rows.length, can_edit: await canEditMasterServices(req), suggested });
   } catch (e) { err(res, e); }
 });
 
@@ -86,6 +89,23 @@ router.post('/', requirePerm('masters.read'), requireEdit(), async (req, res) =>
     );
     await logAction(req, 'master_services.add', { master_id, service_id });
     res.json({ ok: true, item: r.rows[0] });
+  } catch (e) { err(res, e); }
+});
+
+// [13.10] додати кілька послуг одним кліком (пропозиція в картці нового майстра); існуючі звʼязки не чіпає
+router.post('/bulk', requirePerm('masters.read'), requireEdit(), async (req, res) => {
+  try {
+    const { master_id } = req.body || {};
+    const ids = [...new Set((Array.isArray(req.body && req.body.service_ids) ? req.body.service_ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, 500);
+    if (!master_id || !ids.length) return res.status(400).json({ error: 'master_id and service_ids required' });
+    const m = await pool.query('SELECT id FROM masters WHERE id=$1', [Number(master_id)]);
+    if (!m.rows.length) return res.status(404).json({ error: 'master not found' }); // RLS: чужого майстра не видно
+    const r = await pool.query(
+      `INSERT INTO master_services (master_id, service_id, source, active)
+       SELECT $1, s.id, 'manual', true FROM services s WHERE s.id = ANY($2) AND s.deleted_at IS NULL
+       ON CONFLICT (tenant_id, master_id, service_id) DO NOTHING RETURNING id`, [Number(master_id), ids]);
+    await logAction(req, 'master_services.bulk_add', { master_id, n: r.rowCount });
+    res.json({ ok: true, added: r.rowCount });
   } catch (e) { err(res, e); }
 });
 
