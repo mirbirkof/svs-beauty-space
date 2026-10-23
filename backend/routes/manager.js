@@ -14,7 +14,7 @@ const router = express.Router();
 const pool = getPool();
 
 // ── Налаштування «мозку» помічника (провайдер/модель/свій ключ) ──
-const AI_PROVIDERS = ['gemini', 'openrouter', 'groq'];
+const AI_PROVIDERS = ['claude', 'gemini', 'openrouter', 'groq']; // авто = тільки Claude (аудит 23.10)
 async function aiConfig() {
   const provider = await getSetting('ai_provider', null);
   const model = await getSetting('ai_model', null);

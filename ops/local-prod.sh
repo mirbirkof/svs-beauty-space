@@ -12,7 +12,30 @@
 #                    или бесшовный путь невозможен. Тоже через щит.
 #   SKIP_SHIELD=1    аварийный обход ворот (когда сломан сам щит, а не код).
 PORT=3011
-LOG=/tmp/crm-local-prod.log
+# [23.10 аудит п.10] Лог прода — ПОСТОЯННЫЙ файл вне /tmp. Раньше /tmp/crm-local-prod.log кто-то удалил
+# (чистка места ~14–17.10), процесс 10 дней писал в удалённый файл — ошибки денежных кронов не видел никто.
+# Старый путь оставлен ссылкой на новый (log-repeat-watch и привычные команды читают /tmp/*.log).
+LOG_DIR=/home/client/workspace/logs
+LOG=$LOG_DIR/crm-prod.log
+LOG_COMPAT=/tmp/crm-local-prod.log
+LOG_MAX_BYTES=$((20*1024*1024)); LOG_KEEP=8   # 20 МБ × 8 сжатых копий
+mkdir -p "$LOG_DIR"; touch "$LOG"
+if [ ! -L "$LOG_COMPAT" ]; then
+  # старый обычный файл не стираем — переносим рядом с логом
+  [ -f "$LOG_COMPAT" ] && mv "$LOG_COMPAT" "$LOG_DIR/crm-local-prod.pre-2310.$(date +%s).log"
+  ln -sfn "$LOG" "$LOG_COMPAT"
+fi
+# Ротация КОПИРОВАНИЕМ + обнуление (copytruncate): файл не подменяется, процесс пишет с O_APPEND (>>)
+# и после обнуления продолжает в тот же файл. mv/rm живого лога = снова «пишет в удалённый».
+rotate_log() {
+  local sz; sz=$(stat -c %s "$LOG" 2>/dev/null || echo 0)
+  [ "$sz" -lt "$LOG_MAX_BYTES" ] && return 0
+  local i
+  for i in $(seq $((LOG_KEEP-1)) -1 1); do [ -f "$LOG.$i.gz" ] && mv -f "$LOG.$i.gz" "$LOG.$((i+1)).gz"; done
+  cp "$LOG" "$LOG.1" && : > "$LOG" && gzip -f "$LOG.1"
+  rm -f "$LOG.$((LOG_KEEP+1)).gz"
+  echo "[$(date '+%F %H:%M:%S')] лог ротирован (было ${sz} байт → $LOG.1.gz)" >> "$LOG"
+}
 APP_DIR=/home/client/workspace/svs-beauty-space/backend
 SHIELD=/home/client/workspace/ops/crm-regression.sh
 MODE="${1:-}"
@@ -50,6 +73,7 @@ if [ "$MODE" = "restart" ] || [ "$MODE" = "force" ]; then
 else
   flock -n 9 || lock_held_by_server || exit 0
 fi
+rotate_log   # под замком: крон и выкатка не ротируют одновременно
 
 # ── ВОРОТА ДЕПЛОЯ (17.09, Босс: «тесты кассы и графика как ворота деплоя») ──
 # Ручной restart/force = выкатка нового кода. Красный щит = код сломан = прод НЕ трогаем.

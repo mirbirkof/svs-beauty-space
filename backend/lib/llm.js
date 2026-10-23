@@ -1,14 +1,15 @@
 /* lib/llm.js — лёгкий LLM-клиент для AI-модулей CRM.
-   Каскад: Gemini 2.5 Flash → OpenRouter → Groq.
-   Емпірично перевірено на проді (Render datacenter IP):
-     - Gemini 2.5-flash: працює, безкоштовно, окремий квота-бакет від 2.0-flash
-       (яку вичерпує gemini-бот). thinkingBudget:0 щоб JSON не обрізався.
-     - OpenRouter: працює з серверного IP, але кредит майже вичерпано → fallback.
-     - Groq: блокує датацентрові IP ("Access denied") → лише локально, останній.
-   Без сторонніх SDK — чистий https. Ніколи не кидає необроблене назовні:
-   код, що викликає, сам вирішує що робити при null. */
+   23.10.2026 (аудит, п.1; правило системы «только Claude»): каскад ПО УМОЛЧАНИЮ = только Claude
+   (CLI Claude Code по подписке — тот же канал, что у движка Jarvis). Gemini/OpenRouter/Groq остались
+   в коде ТОЛЬКО как явный выбор салона в «Налаштування мозку» (ai_provider), в каскад не входят.
+   Телефоны и email вырезаются из промпта и system ДО отправки любому провайдеру (lib/pii-mask.js),
+   метки в ответе возвращаются в настоящие значения уже у нас.
+   Без сторонніх SDK. Ніколи не кидає необроблене назовні: код, що викликає, сам вирішує що робити при null. */
 const https = require('https');
 const meter = require('./llm-meter');   // учёт расхода + «отдых» лежащих провайдеров
+const fs = require('fs');
+const { spawn } = require('child_process');
+const { createMasker } = require('./pii-mask');
 
 function _post(opts, body) {
   return new Promise((resolve, reject) => {
@@ -22,6 +23,61 @@ function _post(opts, body) {
     req.write(body);
     req.end();
   });
+}
+
+// ── Claude (CLI Claude Code, подписка) — основной и единственный по умолчанию ──
+// Голый вызов: без инструментов, без MCP, без хуков/памяти Jarvis (пустая рабочая папка,
+// setting-sources=local), 1 ход. Промпт идёт через stdin. Токен подписки читаем из файла движка
+// в момент вызова (обновился — подхватится без рестарта CRM). Значение токена нигде не логируется.
+const CLAUDE_BIN = process.env.CRM_CLAUDE_BIN || '/home/client/workspace/.npm-local/node_modules/.bin/claude';
+const CLAUDE_TOKEN_FILE = process.env.CRM_CLAUDE_TOKEN_FILE || '/home/client/workspace/own-engine/.claude-oauth-token';
+const CLAUDE_CWD = '/tmp/crm-claude-cwd';
+const CLAUDE_MAX_PAR = 2;           // сервер 3.9 ГБ: один CLI ≈ 250 МБ — больше двух одновременно не пускаем
+let _claudeActive = 0; const _claudeQueue = [];
+function _claudeSlot() {
+  if (_claudeActive < CLAUDE_MAX_PAR) { _claudeActive++; return Promise.resolve(); }
+  return new Promise((r) => _claudeQueue.push(r));
+}
+function _claudeFree() { const n = _claudeQueue.shift(); if (n) n(); else _claudeActive--; }
+function _claudeToken() {
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  try { return fs.readFileSync(CLAUDE_TOKEN_FILE, 'utf8').trim() || null; } catch { return null; }
+}
+
+async function _claude(prompt, { system, model = process.env.CRM_CLAUDE_MODEL || 'sonnet', usageBox, timeoutMs = 90000 } = {}) {
+  const token = _claudeToken();
+  if (!token) throw new Error('no claude token');
+  if (!fs.existsSync(CLAUDE_BIN)) throw new Error('no claude cli');
+  try { fs.mkdirSync(CLAUDE_CWD, { recursive: true }); } catch { /* есть */ }
+  await _claudeSlot();
+  try {
+    return await new Promise((resolve, reject) => {
+      const args = ['--print', '--output-format', 'json', '--model', model, '--max-turns', '1',
+        '--tools', '', '--strict-mcp-config', '--disable-slash-commands', '--setting-sources', 'local',
+        '--no-session-persistence'];
+      if (system) args.push('--system-prompt', String(system));
+      args.push('-');
+      const env = { ...process.env, HOME: '/home/client', CLAUDE_CODE_OAUTH_TOKEN: token };
+      delete env.CLAUDECODE; delete env.CLAUDE_CODE_ENTRYPOINT; delete env.ANTHROPIC_API_KEY;
+      let out = '', err = '', done = false;
+      const child = spawn(CLAUDE_BIN, args, { cwd: CLAUDE_CWD, env, stdio: ['pipe', 'pipe', 'pipe'] });
+      const timer = setTimeout(() => { if (!done) { done = true; try { child.kill('SIGKILL'); } catch {} reject(new Error('LLM timeout')); } }, timeoutMs);
+      child.on('error', (e) => { if (!done) { done = true; clearTimeout(timer); reject(e); } });
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-2000); });
+      child.on('close', (code) => {
+        if (done) return; done = true; clearTimeout(timer);
+        let j; try { j = JSON.parse(out); } catch { return reject(new Error(`claude bad output (exit ${code}) ${err.slice(0, 120)}`)); }
+        if (usageBox && j.usage) usageBox.usage = { in: (j.usage.input_tokens || 0) + (j.usage.cache_read_input_tokens || 0) + (j.usage.cache_creation_input_tokens || 0), out: j.usage.output_tokens || 0 };
+        const text = typeof j.result === 'string' ? j.result.trim() : '';
+        if (j.is_error || !text) return reject(new Error(`claude: ${(text || j.subtype || 'empty').slice(0, 120)}`));
+        if (/^API Error:\s*\d+/.test(text) && text.length < 300) return reject(new Error(text.slice(0, 120)));
+        resolve(text);
+      });
+      child.stdin.on('error', () => {});
+      child.stdin.end(String(prompt));
+    });
+  } finally { _claudeFree(); }
 }
 
 // ── Gemini (generativelanguage REST) ───────────────────────
@@ -96,21 +152,28 @@ async function _openrouter(prompt, { system, maxTokens = 2048, model = 'meta-lla
   throw new Error(j.error?.message || `openrouter empty (status ${status})`);
 }
 
-// Каскад провайдерів. Кілька Gemini-моделей підряд: у кожної free-tier СВІЙ
-// денний квота-бакет, тож коли flash вичерпано — flash-lite ще живе (дає запас
-// х2-3 без оплати). Далі OpenRouter і Groq як резерв.
+// Каскад за замовчуванням — ТІЛЬКИ Claude (правило системи «тільки Claude», аудит 23.10).
+// Sonnet → при збої Haiku. Безкоштовні Gemini/OpenRouter/Groq сюди НЕ повертати: туди йшли
+// імена/нотатки клієнтів. Вони доступні лише як явний вибір у налаштуваннях (PROVIDER_FNS).
 const PROVIDERS = [
-  ['gemini-2.5-flash',      (p, o) => _gemini(p, { ...o, model: 'gemini-2.5-flash' })],
-  ['gemini-2.5-flash-lite', (p, o) => _gemini(p, { ...o, model: 'gemini-2.5-flash-lite' })],
-  ['openrouter',            _openrouter],
-  ['groq',                  _groq],
+  ['claude-sonnet', (p, o) => _claude(p, { ...o, model: 'sonnet' })],
+  ['claude-haiku',  (p, o) => _claude(p, { ...o, model: 'haiku' })],
 ];
 
 /** Спросить LLM с авто-фолбэком. Возвращает строку или бросает если ВСЕ провайдеры упали. */
 // Пряме звернення до конкретного провайдера (для вибору «мозку» в налаштуваннях).
-const PROVIDER_FNS = { gemini: _gemini, openrouter: _openrouter, groq: _groq };
+const PROVIDER_FNS = { claude: _claude, gemini: _gemini, openrouter: _openrouter, groq: _groq };
 
 async function ask(prompt, opts = {}) {
+  // Телефони/email → мітки ДО будь-якого провайдера; у відповіді мітки → справжні значення (локально).
+  const masker = createMasker();
+  const mp = masker.mask(prompt);
+  const mopts = { ...opts, system: opts.system ? masker.mask(opts.system) : opts.system };
+  const text = await _askRaw(mp, mopts);
+  return masker.unmask(text);
+}
+
+async function _askRaw(prompt, opts = {}) {
   // Якщо явно обрано провайдера (налаштування користувача) — пробуємо його першим,
   // потім падаємо у звичайний каскад (надійність важливіша за впертість).
   if (opts.provider && PROVIDER_FNS[opts.provider]) {
@@ -168,7 +231,7 @@ async function askJSON(prompt, opts = {}) {
 }
 
 function available() {
-  return !!(process.env.OPENROUTER_API_KEY || process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY);
+  return !!_claudeToken() && fs.existsSync(CLAUDE_BIN);
 }
 
 module.exports = { ask, askJSON, available };

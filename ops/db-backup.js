@@ -6,7 +6,8 @@
  * Что делает:
  *  - все BASE TABLE из public → NDJSON.gz в ~/workspace/.db-backups/YYYY-MM-DD/
  *  - схема НЕ дампится: полная схема живёт в backend/migrations/*.sql
- *  - ретеншн: папки старше 7 дней удаляются
+ *  - ретеншн (23.10, аудит п.3): ежедневные 30 дней + первая копия каждого месяца 13 месяцев
+ *    (было 7 дней — неделя без замеченной беды = история потеряна). Вне сервера: ops/db-backup-offsite.sh
  *
  * Восстановление: прогнать миграции на чистой базе, затем загрузить NDJSON
  * (INSERT построчно, сессия с session_replication_role=replica чтобы не мешали FK/триггеры).
@@ -21,7 +22,8 @@ const BACKEND = path.join(__dirname, '..', 'backend');
 const { Client } = require(path.join(BACKEND, 'node_modules/pg'));
 
 const OUT_ROOT = path.join(process.env.HOME, 'workspace/.db-backups');
-const KEEP_DAYS = 7;
+const KEEP_DAYS = 30;          // ежедневные
+const KEEP_MONTHLY_DAYS = 400; // первая копия каждого месяца
 const LOG_FILE = '/tmp/db-backup.log';
 
 function log(msg) {
@@ -75,11 +77,17 @@ function notifyBoss(text) {
   }
   await c.end();
 
-  // Ретеншн: удалить папки старше KEEP_DAYS (только внутри OUT_ROOT, только формат YYYY-MM-DD)
-  const cutoff = Date.now() - KEEP_DAYS * 86400000;
-  for (const d of fs.readdirSync(OUT_ROOT)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
-    if (new Date(d + 'T00:00:00Z').getTime() < cutoff) {
+  // Ретеншн: ежедневные — KEEP_DAYS; самая ранняя копия каждого месяца — KEEP_MONTHLY_DAYS.
+  // Только внутри OUT_ROOT, только формат YYYY-MM-DD.
+  const now = Date.now();
+  const days = fs.readdirSync(OUT_ROOT).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const firstOfMonth = new Set();
+  const seenMonth = new Set();
+  for (const d of days) { const m = d.slice(0, 7); if (!seenMonth.has(m)) { seenMonth.add(m); firstOfMonth.add(d); } }
+  for (const d of days) {
+    const age = now - new Date(d + 'T00:00:00Z').getTime();
+    const keep = age < KEEP_DAYS * 86400000 || (firstOfMonth.has(d) && age < KEEP_MONTHLY_DAYS * 86400000);
+    if (!keep) {
       fs.rmSync(path.join(OUT_ROOT, d), { recursive: true, force: true });
       log(`retention: удалён ${d}`);
     }

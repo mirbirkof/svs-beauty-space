@@ -7,14 +7,38 @@ const { getPool } = require('../db-pg');
 const RULES = [
   ['domain_events',      `created_at < NOW() - INTERVAL '60 days'`],
   ['notifications',      `status IN ('sent','delivered','failed','cancelled') AND created_at < NOW() - INTERVAL '30 days'`],
-  ['audit_log',          `created_at < NOW() - INTERVAL '90 days'`],
+  // audit_log НЕ видаляється (аудит 23.10, п.9) — див. ARCHIVE_RULES: перенос в audit_log_archive.
   ['auth_attempts',      `created_at < NOW() - INTERVAL '30 days'`],
   ['webhook_deliveries', `created_at < NOW() - INTERVAL '30 days'`],
   ['sms_codes',          `created_at < NOW() - INTERVAL '24 hours'`],
 ];
 
+// Таблиці, де стара історія ПЕРЕНОСИТЬСЯ в архів, а не стирається. Одна SQL-операція:
+// DELETE … RETURNING → INSERT в архів — атомарно (впало — нічого не зникло з журналу).
+const ARCHIVE_RULES = [
+  ['audit_log', 'audit_log_archive', `created_at < NOW() - INTERVAL '90 days'`,
+   'id, user_id, user_label, action, entity, entity_id, ip, meta, created_at, tenant_id'],
+];
+
 async function runRetention(pool = getPool()) {
   const out = [];
+  for (const [table, archive, cond, cols] of ARCHIVE_RULES) {
+    try {
+      // Немає таблиці-архіву (міграція ще не пройшла) — НЕ чіпаємо журнал зовсім.
+      if (!(await pool.query(`SELECT to_regclass($1) r`, ['public.' + archive])).rows[0].r) {
+        out.push({ table, skipped: 'no archive table' });
+        continue;
+      }
+      const r = await pool.query(
+        `WITH moved AS (DELETE FROM ${table} WHERE ${cond} RETURNING ${cols})
+         INSERT INTO ${archive} (${cols}) SELECT ${cols} FROM moved ON CONFLICT (id) DO NOTHING`);
+      out.push({ table, archived: r.rowCount });
+      if (r.rowCount) console.log(`[retention] ${table}: перенесено в ${archive} ${r.rowCount}`);
+    } catch (e) {
+      out.push({ table, error: e.message });
+      console.error(`[retention] ${table} → ${archive}:`, e.message);
+    }
+  }
   for (const [table, cond] of RULES) {
     try {
       if (!(await pool.query(`SELECT to_regclass($1) r`, ['public.' + table])).rows[0].r) continue;
@@ -38,4 +62,4 @@ function startRetentionCron() {
   console.log('[retention] cron активен (раз в 24ч)');
 }
 
-module.exports = { runRetention, startRetentionCron, RULES };
+module.exports = { runRetention, startRetentionCron, RULES, ARCHIVE_RULES };

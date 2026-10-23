@@ -18,9 +18,18 @@ router.post('/push', express.json({ limit: '2mb' }), (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/data', (req, res) => res.json(SNAP));
+// 23.10 (аудит п.22): чтение тоже только с токеном. Раньше GET / и /data были открыты всем
+// без входа. Нет AUDIT_DASH_TOKEN в env → страница выключена целиком (fail-closed).
+function readGate(req, res, next) {
+  if (!TOKEN) return res.status(404).json({ error: 'not found' });
+  const t = req.headers['x-audit-token'] || req.query.t || '';
+  if (t !== TOKEN) return res.status(403).json({ ok: false });
+  next();
+}
 
-router.get('/', (req, res) => {
+router.get('/data', readGate, (req, res) => res.json(SNAP));
+
+router.get('/', readGate, (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.type('html').send(`<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -44,7 +53,7 @@ router.get('/', (req, res) => {
 <script>
 async function tick(){
  try{
-  const r=await fetch('/api/audit-dash/data',{cache:'no-store'}); const d=await r.json();
+  const r=await fetch('/api/audit-dash/data'+location.search,{cache:'no-store'}); const d=await r.json();
   const running=d.running;
   const age=d.ts?Math.round((Date.now()-new Date(d.ts).getTime())/1000):null;
   document.getElementById('sub').textContent='обновлено '+(age==null?'—':age+'с назад')+' · машина '+(age!=null&&age<25?'на связи':'молчит')+(d.round?' · раунд '+d.round:'')+(d.deadline?' · цикл до '+d.deadline:'');
