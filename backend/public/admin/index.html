@@ -4021,11 +4021,18 @@ function posOpen(){
     + '<th style="text-align:left;padding:4px 6px">Товар</th><th style="padding:4px 6px">К-сть</th><th style="padding:4px 6px">Ціна, ₴</th><th style="text-align:right;padding:4px 6px">Сума</th><th></th></tr></thead>'
     + '<tbody id="posCart"><tr><td colspan="5" style="color:#888;padding:10px 6px">Кошик порожній — знайдіть товар і додайте</td></tr></tbody></table>'
     + '<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">'
-    + '<select id="posMethod" class="input" style="max-width:150px"><option value="cash">Готівка</option><option value="card">Картка</option><option value="transfer">Переказ</option></select>'
+    + '<select id="posMethod" class="input" style="max-width:150px" onchange="posMixToggle()"><option value="cash">Готівка</option><option value="card">Картка</option><option value="transfer">Переказ</option><option value="mixed">Змішана</option></select>'
     + '<select id="posSeller" class="input" style="max-width:210px" title="Хто продав — йому піде % з продажу. Порожньо = адмін (без %)"><option value="">Продавець: адмін (без %)</option></select>'
     + '<input id="posDate" type="date" class="input" style="max-width:160px" title="Дата продажу — можна заднім числом">'
     + '<input id="posNote" class="input" placeholder="Коментар / клієнт (не обовʼязково)" style="flex:1;min-width:180px">'
-    + '</div><div id="posMsg" style="margin-top:8px;font-size:13px;color:#b3261e"></div></div>'
+    + '</div>'
+    // [28.10 Босс] змішана оплата продажу: частина готівкою, частина карткою/переказом; картка = залишок автоматично
+    + '<div id="posMixRow" style="display:none;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;background:var(--bg-secondary,#f8fafc);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:8px 10px">'
+    + '<span style="font-size:13px">💵 Готівка</span><input id="posMixCash" type="number" min="0" step="0.01" class="input" style="width:100px;padding:5px" oninput="posMixBalance(\'cash\')">'
+    + '<span style="font-size:13px">🏦 Переказ</span><input id="posMixTransfer" type="number" min="0" step="0.01" class="input" style="width:100px;padding:5px" placeholder="0" oninput="posMixBalance(\'transfer\')">'
+    + '<span style="font-size:13px">💳 Картка</span><input id="posMixCard" type="number" min="0" step="0.01" class="input" style="width:100px;padding:5px" oninput="posMixCheck()">'
+    + '<span id="posMixHint" style="font-size:12.5px;color:var(--text-secondary,#666)"></span></div>'
+    + '<div id="posMsg" style="margin-top:8px;font-size:13px;color:#b3261e"></div></div>'
     + '<div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;gap:10px">'
     + '<b id="posTotal" style="font-size:16px">Разом: 0 ₴</b>'
     + '<button class="btn" id="posGo" onclick="posSubmit()">Провести продаж</button></div></div>';
@@ -4043,6 +4050,42 @@ function posOpen(){
   document.getElementById('posQ').focus();
 }
 function posClose(){ document.getElementById('posModal')?.remove(); }
+// ── Змішана оплата продажу (Босс 28.10): як у записів — окрема касова операція на кожен спосіб ──
+const _posTotal = () => +_posCart.reduce((a, x) => a + x.qty * x.price, 0).toFixed(2);
+const _posNum = id => { const v = Number(document.getElementById(id)?.value); return Number.isFinite(v) && v > 0 ? +v.toFixed(2) : 0; };
+function posMixToggle(){
+  const on = document.getElementById('posMethod')?.value === 'mixed', row = document.getElementById('posMixRow');
+  if (!row) return; row.style.display = on ? 'flex' : 'none';
+  if (on && !document.getElementById('posMixCash').value) document.getElementById('posMixCash').focus();
+  posMixBalance();
+}
+// готівку/переказ вводять, картка = залишок до суми кошика
+function posMixBalance(){
+  const card = document.getElementById('posMixCard'); if (!card) return;
+  const rest = +(_posTotal() - _posNum('posMixCash') - _posNum('posMixTransfer')).toFixed(2);
+  card.value = rest > 0 ? rest.toFixed(2) : '0';
+  posMixCheck();
+}
+function posMixCheck(){
+  const h = document.getElementById('posMixHint'); if (!h) return;
+  const tot = _posTotal(), sum = +(_posNum('posMixCash') + _posNum('posMixTransfer') + _posNum('posMixCard')).toFixed(2), diff = +(tot - sum).toFixed(2);
+  h.style.color = Math.abs(diff) < 0.01 ? '#15803d' : '#b3261e';
+  h.textContent = Math.abs(diff) < 0.01 ? '✓ сума збігається' : diff > 0 ? 'не вистачає ' + diff.toFixed(2) + ' ₴' : 'більше за суму на ' + (-diff).toFixed(2) + ' ₴';
+}
+// розкласти позиції кошика по способах: кожна позиція отримує частини з «гаманців» по черзі (сума кожного способу — точно як ввели).
+// Перша частина позиції списує склад (variant_id+qty), решта — лише гроші. → [{x, parts:[{method, amount, stock}]}]
+function posSplitMixed(cart, pay){
+  const left = pay.map(p => ({ ...p })); let k = 0;
+  return cart.map(x => {
+    let need = +(x.qty * x.price).toFixed(2); const parts = [];
+    while (need > 0.004 && k < left.length) {
+      const take = +Math.min(need, left[k].amount).toFixed(2);
+      if (take > 0) { parts.push({ method: left[k].method, amount: take, stock: parts.length === 0 }); need = +(need - take).toFixed(2); left[k].amount = +(left[k].amount - take).toFixed(2); }
+      if (left[k].amount <= 0.004) k++;
+    }
+    return { x, parts };
+  });
+}
 function posSearch(){
   clearTimeout(_posT);
   _posT = setTimeout(async () => {
@@ -4087,6 +4130,7 @@ function posRender(){
   const total = _posCart.reduce((a, x) => a + x.qty * x.price, 0);
   const t = document.getElementById('posTotal');
   if (t) t.textContent = 'Разом: ' + total.toFixed(2) + ' ₴';
+  if (document.getElementById('posMethod')?.value === 'mixed') posMixBalance();
 }
 async function posSubmit(){
   const msg = document.getElementById('posMsg');
@@ -4097,31 +4141,48 @@ async function posSubmit(){
   const date = document.getElementById('posDate').value;
   const note = document.getElementById('posNote').value.trim();
   const today = new Date().toLocaleDateString('en-CA');
+  let plan;
+  if (method === 'mixed') {
+    const pay = [['cash', _posNum('posMixCash')], ['transfer', _posNum('posMixTransfer')], ['card', _posNum('posMixCard')]].filter(p => p[1] > 0).map(([m, a]) => ({ method: m, amount: a }));
+    const sum = +pay.reduce((a, p) => a + p.amount, 0).toFixed(2), tot = _posTotal();
+    if (!pay.length) { msg.textContent = 'Змішана оплата: вкажіть суми готівки, переказу або картки'; return; }
+    if (Math.abs(sum - tot) >= 0.01) { msg.textContent = 'Змішана оплата: сума частин ' + sum.toFixed(2) + ' ₴ не дорівнює сумі кошика ' + tot.toFixed(2) + ' ₴'; return; }
+    plan = posSplitMixed(_posCart, pay);
+  } else plan = _posCart.map(x => ({ x, parts: [{ method, amount: +(x.qty * x.price).toFixed(2), stock: true }] }));
+  const mixTag = method === 'mixed' ? plan.flatMap(p => p.parts).reduce((m, p) => { m[p.method] = +((m[p.method] || 0) + p.amount).toFixed(2); return m; }, {}) : null;
+  const mixTxt = mixTag ? ' [змішана: ' + Object.entries(mixTag).map(([m, a]) => ({ cash: 'готівка', card: 'картка', transfer: 'переказ' }[m] + ' ' + a.toFixed(2))).join(', ') + ']' : '';
   const btn = document.getElementById('posGo');
   btn.disabled = true; btn.textContent = 'Проводимо…';
   const done = [], failed = [];
   // ідемпотентність кошика: обрив мережі + повтор «Провести» не задвоює позиції
   if (!window._posBatchId) window._posBatchId = 'pos-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-  for (const x of _posCart) {
-    try {
-      const body = { type: 'in', category: 'sale_product', method,
-        amount: +(x.qty * x.price).toFixed(2),
-        description: 'Продаж: ' + x.name + (x.qty > 1 ? ' ×' + x.qty : '') + (note ? ' — ' + note : ''),
-        variant_id: x.id, qty: x.qty, allow_no_shift: true,
-        ext_ref: window._posBatchId + ':' + x.id };
-      const seller = document.getElementById('posSeller')?.value;
-      if (seller) body.master_id = Number(seller); // продавець → йому % з продажу в ЗП
-      if (date && date !== today) body.date = date;
-      const r = await api('/api/cashbox/operations', { method: 'POST', body: JSON.stringify(body) });
-      if (r && r.ok) done.push(x); else failed.push(x.name + ': ' + ((r && r.error) || 'помилка'));
-    } catch (e) { failed.push(x.name + ': ' + e.message); }
+  for (const { x, parts } of plan) {
+    let okAll = true;
+    for (const p of parts) {
+      try {
+        const body = { type: 'in', category: 'sale_product', method: p.method,
+          amount: p.amount,
+          description: 'Продаж: ' + x.name + (x.qty > 1 ? ' ×' + x.qty : '') + (note ? ' — ' + note : '') + mixTxt + (p.stock ? '' : ' (доплата ' + ({ cash: 'готівкою', card: 'карткою', transfer: 'переказом' }[p.method]) + ')'),
+          allow_no_shift: true,
+          // ext_ref: як і раніше для звичайної оплати; для змішаної — окремий на кожен спосіб (повтор не задвоює)
+          ext_ref: window._posBatchId + ':' + x.id + (method === 'mixed' ? ':' + p.method : '') };
+        if (p.stock) { body.variant_id = x.id; body.qty = x.qty; } // склад списує лише перша частина позиції
+        const seller = document.getElementById('posSeller')?.value;
+        if (seller) body.master_id = Number(seller); // продавець → йому % з продажу в ЗП (з усіх частин)
+        if (date && date !== today) body.date = date;
+        const r = await api('/api/cashbox/operations', { method: 'POST', body: JSON.stringify(body) });
+        if (!(r && r.ok)) { okAll = false; failed.push(x.name + ': ' + ((r && r.error) || 'помилка')); break; }
+      } catch (e) { okAll = false; failed.push(x.name + ': ' + e.message); break; }
+    }
+    if (okAll) done.push(x);
   }
   btn.disabled = false; btn.textContent = 'Провести продаж';
-  if (failed.length) { msg.textContent = 'Не проведено — ' + failed.join('; '); _posCart = _posCart.filter(x => !done.includes(x)); posRender(); return; }
+  // змішана: кошик НЕ урізаємо — повтор розкладе так само, а вже проведені частини не задвояться (ext_ref)
+  if (failed.length) { msg.textContent = 'Не проведено — ' + failed.join('; ') + (method === 'mixed' ? ' · натисніть «Провести» ще раз — проведені частини не задвояться' : ''); if (method !== 'mixed') { _posCart = _posCart.filter(x => !done.includes(x)); posRender(); } return; }
   const total = done.reduce((a, x) => a + x.qty * x.price, 0);
   window._posBatchId = null; // новий кошик = новий чек
   posClose();
-  if (typeof toast === 'function') toast('Продаж проведено: ' + done.length + ' поз. на ' + total.toFixed(2) + ' ₴, склад списано');
+  if (typeof toast === 'function') toast('Продаж проведено: ' + done.length + ' поз. на ' + total.toFixed(2) + ' ₴' + (mixTxt ? ' ' + mixTxt.trim() : '') + ', склад списано');
   else alert('Продаж проведено: ' + done.length + ' поз. на ' + total.toFixed(2) + ' ₴. Склад списано.');
 }
 
