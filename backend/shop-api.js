@@ -782,6 +782,13 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // Необработанные ошибки — главная причина падений прода. Логируем + шлём в Sentry (если включён).
+// [31.10] ОБОРВАННЫЙ ВЫВОД = ПЕТЛЯ. QA-двойник (порт 3054, тестовая база) с 28.10 жёг 63% CPU 3,5 суток: его stdout/stderr —
+// канал родителя, который умер; console.error → EPIPE → uncaughtException → console.error → … Ошибку записи в мёртвый
+// канал глушим здесь, не пуская в uncaughtException.
+for (const _s of [process.stdout, process.stderr]) _s.on('error', (e) => { if (e && (e.code === 'EPIPE' || e.code === 'ERR_STREAM_DESTROYED')) return; });
+// [31.10] QA-сервер (startQaServer) живёт только пока жив запустивший его тест: родитель умер (ppid стал 1) → выходим сами.
+if (process.env.QA_STAGING === '1') setInterval(() => { if (process.ppid === 1) { process.exit(0); } }, 10000).unref();
+
 process.on('unhandledRejection', (reason) => {
   console.error('[shop-api] unhandledRejection:', reason);
   sentry.capture(reason instanceof Error ? reason : new Error(String(reason)), { kind: 'unhandledRejection' });
