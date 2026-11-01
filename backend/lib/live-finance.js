@@ -31,18 +31,35 @@ async function liveFinance(pool, from, to) {
   //   "YYYY-MM-DD HH:MM:SS Europe/Kyiv" (Фінцентр, дайджест) — Postgres розуміє, Date.parse НІ
   //     → раніше NaN заражав оклади → expTotal → «Прибуток: NaN ₴» у Telegram-зведенні;
   //   Date-обʼєкти з pg (owner-report, cashbox); ISO-UTC рядки (reports.js); голі дати (pnl).
-  // ts() зводить усе до мілісекунд: назву зони міняємо на +03:00 (похибка DST ±1 год
-  // гаситься округленням днів). Конвенції меж ("23:59:59" включно і "+1 день 00:00"
+  // ts() зводить усе до мілісекунд: назва зони → справжній київський зсув (EET/EEST, 01.11.2026). Конвенції меж ("23:59:59" включно і "+1 день 00:00"
   // виключно) обидві дають правильний round — тому БЕЗ +1.
+  // 01.11.2026: справжня київська північ (EET/EEST), а не жорсткі +03:00 — взимку (UTC+2)
+  // "2026-11-01" ставало 31.10 23:00 → fromDay=31.10 → у період чіплявся день жовтня
+  // (зайва 1/31 оренди в нарахуванні, години минулого дня в касовому вікні).
+  const kyivWall = (dateStr, timeStr = '00:00:00') => {
+    const utc = Date.parse(dateStr + 'T' + timeStr + 'Z');
+    const off = (t) => {
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv', hourCycle: 'h23',
+        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(new Date(t)).map(x => [x.type, x.value]));
+      return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000;
+    };
+    let t = utc - off(utc);
+    const o2 = off(t); if (utc - o2 !== t) t = utc - o2;
+    return t;
+  };
   const ts = (x) => {
     if (x instanceof Date) return x.getTime();
     const s = String(x);
     // Гола дата (pnl) = київська північ, НЕ UTC-північ (інакше -1мс від ексклюзивної межі
     // "2026-08-01" давав 03:00 Києва 1 серпня → вікно змін чіпляло день наступного місяця).
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return Date.parse(s + 'T00:00:00+03:00');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return kyivWall(s);
     let t = Date.parse(s);
-    if (Number.isNaN(t)) t = Date.parse(s.replace(/ [A-Za-z]+\/[A-Za-z_]+$/, '+03:00'));
-    if (Number.isNaN(t)) t = Date.parse(s.slice(0, 10) + 'T00:00:00+03:00');
+    if (Number.isNaN(t)) {
+      const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)? [A-Za-z]+\/[A-Za-z_]+$/);
+      if (m) t = kyivWall(m[1], m[2]);
+    }
+    if (Number.isNaN(t)) t = kyivWall(s.slice(0, 10));
     return t;
   };
   const days = Math.max(1, Math.round((ts(to) - ts(from)) / 86400000));
@@ -50,7 +67,7 @@ async function liveFinance(pool, from, to) {
   // робота ще йде (наказ власника 02.08).
   const todayKyiv = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   // Скільки днів періоду ПОВНІСТЮ завершено (для пропорції місячного окладу).
-  const _tsToday = Date.parse(todayKyiv + 'T00:00:00+03:00');
+  const _tsToday = kyivWall(todayKyiv);
   const daysDone = Math.max(0, Math.round((Math.min(ts(to), _tsToday) - ts(from)) / 86400000));
   // Календарні дні меж — ЗА КИЇВСЬКИМ часом, для вікна змін (master_schedule_days).
   // Раніше String(from).slice(0,10): Date-обʼєкт давав "Sat Jul 25" (запит падав → оклади
