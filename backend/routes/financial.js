@@ -9,6 +9,7 @@ const { runAs, DEFAULT_TENANT_ID } = require('../lib/tenant');
 const { requirePerm } = require('../lib/rbac');
 const { tgSend } = require('./telegram-notify');
 const { liveFinance } = require('../lib/live-finance');
+const { accruedOps, fmtMargin } = require('../lib/recurring-accrual');
 const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
 // 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
 const { payrollEligibleExpr } = require('../lib/settlement');
@@ -162,7 +163,7 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
     const q = (sql, p = []) => pool.query(sql, p).then(r => r.rows).catch((e) => { console.error('[financial] запит впав (у фінцентрі нулі):', e.message); return []; });
 
     const fin = await liveFinance(pool, from, to);
-    const [revByMaster, commByMaster, cashOps, clientsM] = await Promise.all([
+    const [revByMaster, commByMaster, cashOps, clientsM, accOps] = await Promise.all([
       q(`SELECT m.name, COALESCE(SUM(co.amount),0)::numeric revenue
            FROM cash_operations co JOIN masters m ON m.id=co.master_id
           WHERE co.type='in' AND co.category IN ('sale_service','sale_product') AND co.created_at BETWEEN $1 AND $2
@@ -183,10 +184,19 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
            ORDER BY sum DESC LIMIT 50`, [from, to]),
       q(`SELECT created_at, category, amount::numeric, description FROM cash_operations
           WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
+            AND accrual_month IS NULL -- постійні — окремо, нарахованою часткою (accOps)
           ORDER BY created_at DESC LIMIT 200`, [from, to]),
       q(`SELECT COUNT(DISTINCT client_id) FILTER (WHERE status NOT IN ('cancelled','noshow') AND client_id IS NOT NULL)::int uniq
            FROM appointments WHERE starts_at BETWEEN $1 AND $2`, [from, to]),
+      // 01.11.2026: постійні витрати — частка місяця за дні періоду (сума модалки = картці «Витрати»)
+      accruedOps(pool, fromD, toD).catch((e) => { console.error('[financial] accrual:', e.message); return []; }),
     ]);
+    const accRows = accOps.filter(o => o.accrued > 0).map(o => ({
+      date: o.created_at, category: o.category, label: CAT_LABELS[o.category] || o.category,
+      amount: Math.round(o.accrued * 100) / 100,
+      description: `${o.description || ''} · постійна: ${o.days} з ${o.month_days} дн. місяця (оплачено ${Math.round(Number(o.amount)).toLocaleString('uk-UA')} ₴ ${new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' }).format(new Date(o.created_at))})`,
+      accrued: true, paid_amount: Number(o.amount), accrual_month: o.accrual_month,
+    }));
 
     res.json({
       period: { from: fromD, to: toD },
@@ -200,7 +210,8 @@ router.get('/detail', requirePerm('reports.finance'), async (req, res) => {
         materials: fin.expenses.materials,
         commission_total: fin.expenses.commission,
         commission_by_master: commByMaster.map(r => ({ name: r.name, percent: r.percent != null ? Number(r.percent) : null, revenue: Number(r.revenue), sum: Number(r.sum) })),
-        cash_ops: cashOps.map(o => ({ date: o.created_at, category: o.category, label: CAT_LABELS[o.category] || o.category, amount: Number(o.amount), description: o.description })),
+        cash_ops: [...accRows, ...cashOps.map(o => ({ date: o.created_at, category: o.category, label: CAT_LABELS[o.category] || o.category, amount: Number(o.amount), description: o.description }))],
+        recurring_accrual: true, // постійні витрати розподілені по днях місяця
       },
       profit: { total: fin.profit.net, revenue_total: fin.revenue.total, expense_total: fin.expenses.total, margin_pct: fin.profit.margin_pct },
       metrics: { avg_check: fin.avg_check, tx_count: fin.tx_count, unique_clients: Number(clientsM[0]?.uniq || 0), commission_appts: fin.commission_appts },
@@ -233,7 +244,7 @@ async function buildDigest(opts = {}) {
   }
   lines.push('');
   const profIcon = s.profit.net >= 0 ? '🟢' : '🔴';
-  lines.push(`${profIcon} Прибуток: <b>${s.profit.net.toLocaleString('uk-UA')} ₴</b> (маржа ${s.profit.margin_pct}%)`);
+  lines.push(`${profIcon} Прибуток: <b>${s.profit.net.toLocaleString('uk-UA')} ₴</b> (маржа ${fmtMargin(s.profit.margin_pct)})`);
   if (opts.include_comparison !== false) {
     const lastWeek = new Date(); lastWeek.setDate(lastWeek.getDate() - 7);
     const lw = kyivDate(lastWeek);

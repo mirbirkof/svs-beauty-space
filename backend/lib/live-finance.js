@@ -8,6 +8,7 @@
 // 27.07: % майстрам — лише по візитах, за які платить САМ салон (див. payrollEligibleExpr).
 const { payrollEligibleExpr } = require('./settlement');
 const { SVCPCT_CTE, COMMISSION_EXPR } = require('./payroll-base');
+const { ACCRUAL_SQL, mergeByCategory, marginPct } = require('./recurring-accrual');
 
 const CAT_LABELS = {
   rent: 'Оренда', salary: 'Зарплата', payroll: 'Зарплата', purchase: 'Закупівлі', purchasing: 'Закупівлі',
@@ -58,7 +59,7 @@ async function liveFinance(pool, from, to) {
   const kyivDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' });
   const fromDay = kyivDayFmt.format(new Date(ts(from)));
   const toDay = kyivDayFmt.format(new Date(ts(to) - 1));
-  const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR] = await Promise.all([
+  const [revC, ordR, comm, fixed, cogs, other, finSet, salesComm, visitsR, accrued] = await Promise.all([
     q(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_service'),0)::numeric svc,
               -- 15.08 (правило Боса): САЛОН і МАГАЗИН — різні бізнеси, метрики НЕ змішуються.
               -- Раніше сюди падали приходи по замовленнях магазину (ref_type='order'):
@@ -142,6 +143,9 @@ async function liveFinance(pool, from, to) {
                                     WHERE o.id = (regexp_match(sm.notes,'#([0-9]+)'))[1]::int))`, [from, to]),
     q(`SELECT category, COALESCE(SUM(amount),0)::numeric s FROM cash_operations
         WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2
+          -- 01.11.2026: постійні витрати (оренда/CRM, accrual_month) — НЕ в день оплати, а по нарахуванню
+          -- (запит accrued нижче). Разові ручні витрати — як і були, касою в день оплати.
+          AND accrual_month IS NULL
         GROUP BY category ORDER BY s DESC`, [from, to]),
     // tenant-фільтр (17.07.2026): без нього платформа (GUC порожній → RLS permissive)
     // хапала рядок чужого тенанта
@@ -178,6 +182,9 @@ async function liveFinance(pool, from, to) {
          FROM appointments
         WHERE starts_at BETWEEN $1 AND $2 AND starts_at <= NOW()
           AND status NOT IN ('cancelled','noshow')`, [from, to]),
+    // 01.11.2026: постійні витрати по нарахуванню — частка місяця, що припадає на дні періоду
+    // (оренда 50 000 за 1 день листопада = 1 667, а не 50 000). Каса/журнал не змінюються.
+    q(ACCRUAL_SQL, [fromDay, toDay]),
   ]);
 
   const revServices = Number(revC[0]?.svc || 0);
@@ -204,7 +211,12 @@ async function liveFinance(pool, from, to) {
   const materialPct = Number(finSet[0]?.value?.material_pct || 0);
   const serviceMaterials = Math.round(revServices * materialPct / 100);
   const materials = Math.round(Number(cogs[0]?.g || 0)) + serviceMaterials;
-  const otherCats = other.map(r => ({ category: r.category, label: CAT_LABELS[r.category] || r.category, sum: Math.round(Number(r.s)) }));
+  const otherCats = mergeByCategory(
+      other.map(r => ({ category: r.category, sum: Number(r.s) })),
+      (accrued || []).map(r => ({ category: r.category, sum: Number(r.sum) })))
+    .map(r => ({ category: r.category, label: CAT_LABELS[r.category] || r.category, sum: Math.round(r.sum) }))
+    .filter(r => r.sum > 0)
+    .sort((a, b) => b.sum - a.sum);
   const otherTotal = otherCats.reduce((a, r) => a + r.sum, 0);
   const expTotal = commission + materials + otherTotal;
 
@@ -224,7 +236,8 @@ async function liveFinance(pool, from, to) {
   return {
     revenue: { services: revServices, products: revProducts, total: revTotal },
     expenses: { by_category, total: expTotal, materials, commission, other: otherCats },
-    profit: { net: netProfit, margin_pct: revTotal > 0 ? Math.round(netProfit / revTotal * 100) : 0 },
+    // маржа null = «—»: виручка < 1% витрат (напр. 1-ше число) — відсоток беззмістовний (01.11.2026)
+    profit: { net: netProfit, margin_pct: marginPct(netProfit, revTotal, expTotal) },
     tx_count: txCount,
     visits_count: visitsCount,
     avg_check: visitsCount > 0 ? Math.round(revTotal / visitsCount)

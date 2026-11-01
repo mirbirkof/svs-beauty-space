@@ -18,6 +18,7 @@ const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-ba
 // 27.07: % майстра — тільки по операційних візитах (див. коментар у financial.js)
 const { payrollEligibleExpr } = require('../lib/settlement');
 const { isAdminStaff } = require('../lib/staff-role');
+const { CASH_ONLY, accruedByCategory, marginPct } = require('../lib/recurring-accrual');
 const router = express.Router();
 const pool = getPool();
 
@@ -25,12 +26,15 @@ const pool = getPool();
 router.use((req, res, next) => requirePerm(req.method === 'GET' ? 'reports.read' : 'reports.write')(req, res, next));
 
 // Межі періоду як у Фінцентрі/liveFinance: повний день за Києвом.
+const kyivDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 function bounds(q) {
-  const today = new Date().toISOString().slice(0, 10);
+  // 01.11.2026: «сьогодні» і межі — за КИЇВСЬКИМ часом, як у Фінцентрі (periodBounds у financial.js).
+  // Раніше жорстке +03 узимку (UTC+2) губило останню годину періоду → зали ≠ Фінцентр.
+  const today = kyivDay();
   const re = /^\d{4}-\d{2}-\d{2}$/;
   const from = (q.from && re.test(q.from)) ? q.from : today.slice(0, 8) + '01';
   const to = (q.to && re.test(q.to)) ? q.to : today;
-  return { from, to, fromTs: `${from} 00:00:00+03`, toTs: `${to} 23:59:59+03` };
+  return { from, to, today, fromTs: `${from} 00:00:00 Europe/Kyiv`, toTs: `${to} 23:59:59 Europe/Kyiv` };
 }
 
 // Дефолтний мапінг спеціальності майстра → назва залу (для авто-засіву).
@@ -79,8 +83,14 @@ async function seedZonesIfEmpty() {
 router.get('/', async (req, res) => {
   try {
     await seedZonesIfEmpty();
-    const { from, to, fromTs, toTs } = bounds(req.query);
-    const days = Math.max(1, Math.round((new Date(toTs) - new Date(fromTs)) / 86400000));
+    const { from, to, today, fromTs, toTs } = bounds(req.query);
+    // Оклад — ТА САМА частка, що в liveFinance: завершені дні періоду / днів у місяці початку
+    // (раніше days/30 → зали ≠ Фінцентр у 31-денні місяці і 1-го числа).
+    const _d = (s) => Date.parse(s + 'T00:00:00Z') / 86400000;
+    const daysDone = Math.max(0, Math.min(_d(to) + 1, _d(today)) - _d(from));
+    const _fd = new Date(from + 'T00:00:00Z');
+    const daysInMonth = new Date(Date.UTC(_fd.getUTCFullYear(), _fd.getUTCMonth() + 1, 0)).getUTCDate();
+    const monthShare = Math.min(1, daysDone / (daysInMonth || 30));
 
     const [zonesR, mapR, revR, commR, fixedR, finSetR, prodR, cogsR, otherR] = await Promise.all([
       pool.query('SELECT id, name, color, sort_order FROM salon_zones WHERE active=true ORDER BY sort_order, id'),
@@ -124,14 +134,35 @@ router.get('/', async (req, res) => {
       // товари (магазин) — окремий бакет
       pool.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE category='sale_product' AND ref_type IS DISTINCT FROM 'order' AND master_id IS NULL),0)::float cash_prod
                     FROM cash_operations WHERE type='in' AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]),
-      pool.query(`SELECT COALESCE(SUM(ABS(sm.delta)*COALESCE(pv.wholesale,0)),0)::float g
-                    FROM stock_movements sm JOIN product_variants pv ON pv.id=sm.variant_id
-                   WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%') AND sm.delta<0
-                     AND sm.created_at BETWEEN $1 AND $2`, [fromTs, toTs]),
-      // спільні витрати каси (без зарплат — її замінює нарахований %) для алокації по залах
-      pool.query(`SELECT COALESCE(SUM(amount),0)::float s FROM cash_operations
-                   WHERE type='out' AND category NOT IN ('salary','payroll') AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]),
+      // Собівартість — ТА САМА формула, що в liveFinance (01.11.2026). Раніше тут були лише продажі
+      // товарів, а матеріали послуг (service:<запис>) губились → жовтень: зали 199 231 ≠ Фінцентр 211 725.
+      // Матеріали послуг ідуть у зал майстра запису, продажі/замовлення — у магазин (mid = NULL).
+      pool.query(`SELECT a.master_id AS mid,
+                         COALESCE(SUM(-sm.delta * CASE
+                           WHEN p.price_per_gram IS NOT NULL AND p.cost_per_gram IS NOT NULL THEN p.cost_per_gram
+                           WHEN p.price_per_gram IS NOT NULL AND COALESCE(pv.unit_ml,0) > 1 THEN COALESCE(pv.wholesale,0) / pv.unit_ml
+                           ELSE COALESCE(pv.wholesale,0) END),0)::float g,
+                         (sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%') AS svc
+                    FROM stock_movements sm
+                    JOIN product_variants pv ON pv.id=sm.variant_id
+                    LEFT JOIN products p ON p.id=pv.product_id
+                    LEFT JOIN appointments a ON (sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%')
+                         AND a.id = (regexp_match(sm.reason, '^service(?:-reverse)?:([0-9]+)'))[1]::int
+                   WHERE (sm.reason IN ('sale','order') OR sm.reason LIKE 'order:%'
+                          OR sm.reason LIKE 'service:%' OR sm.reason LIKE 'service-reverse:%')
+                     AND sm.created_at BETWEEN $1 AND $2
+                     AND COALESCE(sm.notes,'') !~* '^(e2e|тест|test)'
+                     AND NOT (sm.notes ~ '^Замовлення #[0-9]+'
+                              AND NOT EXISTS (SELECT 1 FROM orders o
+                                               WHERE o.id = (regexp_match(sm.notes,'#([0-9]+)'))[1]::int))
+                   GROUP BY 1, 3`, [fromTs, toTs]),
+      // спільні витрати каси (без зарплат — її замінює нарахований %) для алокації по залах.
+      // 01.11.2026: постійні (оренда/CRM, accrual_month) — по нарахуванню, нижче; тут лише разові.
+      pool.query(`SELECT category, COALESCE(SUM(amount),0)::float s FROM cash_operations
+                   WHERE type='out' AND category NOT IN ('salary','payroll') AND ${CASH_ONLY}
+                     AND created_at BETWEEN $1 AND $2 GROUP BY category`, [fromTs, toTs]),
     ]);
+    const accrued = await accruedByCategory(pool, from, to);
 
     const ordR = await pool.query(`SELECT COALESCE(SUM(total),0)::float s FROM orders WHERE status='paid' AND created_at BETWEEN $1 AND $2`, [fromTs, toTs]);
 
@@ -154,7 +185,11 @@ router.get('/', async (req, res) => {
        WHERE COALESCE(ps.sales_commission_pct,0)>0`, [fromTs, toTs]);
 
     const materialPct = Number(finSetR.rows[0]?.value?.material_pct || 0);
-    const sharedTotal = Number(otherR.rows[0]?.s || 0);
+    // Округлення — як у liveFinance (по категоріях), щоб сума залів збігалась із Фінцентром до гривні.
+    const _byCat = new Map();
+    for (const r of [...otherR.rows.map(x => ({ category: x.category, sum: Number(x.s) })), ...accrued])
+      _byCat.set(r.category, (_byCat.get(r.category) || 0) + r.sum);
+    const sharedTotal = [..._byCat.values()].reduce((a, v) => a + Math.max(0, Math.round(v)), 0);
 
     // master_id → zone_id
     const m2z = new Map();
@@ -162,8 +197,15 @@ router.get('/', async (req, res) => {
 
     // акумулятори по залах + «без залу»
     const acc = new Map(); // zone_id → {revenue, count, commission}
-    for (const z of zonesR.rows) acc.set(z.id, { revenue: 0, count: 0, commission: 0 });
-    const unassigned = { revenue: 0, count: 0, commission: 0 };
+    for (const z of zonesR.rows) acc.set(z.id, { revenue: 0, count: 0, commission: 0, cogs: 0 });
+    const unassigned = { revenue: 0, count: 0, commission: 0, cogs: 0 };
+    let shopCogs = 0;
+    for (const r of cogsR.rows) {
+      if (!r.svc) { shopCogs += Number(r.g); continue; }
+      const zid = r.mid != null ? m2z.get(Number(r.mid)) : undefined;
+      const bucket = zid && acc.has(zid) ? acc.get(zid) : unassigned;
+      bucket.cogs += Number(r.g);
+    }
 
     for (const r of revR.rows) {
       const zid = r.master_id != null ? m2z.get(Number(r.master_id)) : undefined;
@@ -178,7 +220,7 @@ router.get('/', async (req, res) => {
     for (const r of fixedR.rows) {
       const zid = m2z.get(Number(r.master_id));
       const bucket = zid && acc.has(zid) ? acc.get(zid) : unassigned;
-      bucket.commission += Number(r.fx_month) * (days / 30) + Number(r.fx_day);
+      bucket.commission += Number(r.fx_month) * monthShare + Number(r.fx_day);
     }
     for (const r of salesCommR.rows) {
       const zid = r.master_id != null ? m2z.get(Number(r.master_id)) : undefined;
@@ -190,23 +232,41 @@ router.get('/', async (req, res) => {
     const build = (name, color, b) => {
       const revenue = Math.round(b.revenue);
       const commission = Math.round(b.commission);
-      const materials = Math.round(b.revenue * materialPct / 100);
+      // матеріали = собівартість списаних на послуги матеріалів залу + % від виручки (налаштування)
+      const materials = Math.round(b.cogs + b.revenue * materialPct / 100);
       // спільні витрати — пропорційно частці виручки послуг залу
       const shared = totalSvcRev > 0 ? Math.round(sharedTotal * b.revenue / totalSvcRev) : 0;
       const expense = commission + materials + shared;
       const profit = revenue - expense;
       return { name, color, revenue, count: b.count, commission, materials, shared,
-        expense, profit, margin_pct: revenue > 0 ? Math.round(profit / revenue * 100) : 0 };
+        expense, profit, margin_pct: marginPct(profit, revenue, expense) }; // null = «—» (виручка < 1% витрат)
     };
 
     const zones = zonesR.rows.map(z => ({ id: z.id, ...build(z.name, z.color, acc.get(z.id)) }));
-    if (unassigned.revenue > 0 || unassigned.commission > 0) {
+    if (unassigned.revenue > 0 || unassigned.commission > 0 || unassigned.cogs > 0) {
       zones.push({ id: null, ...build('Без залу', '#9ca3af', unassigned) });
+    }
+    // Хвіст округлення (01.11.2026): спільні і матеріали округлюються по залах, а Фінцентр — разом.
+    // Різницю (±1–2 ₴) віддаємо найбільшому залу → сума залів + магазин = Фінцентр до гривні.
+    if (zones.length) {
+      const svcCogsAll = [...acc.values()].reduce((a, b) => a + b.cogs, 0) + unassigned.cogs;
+      const matTarget = Math.round(shopCogs + svcCogsAll) - Math.round(shopCogs) + Math.round(totalSvcRev * materialPct / 100);
+      const dShared = (totalSvcRev > 0 ? sharedTotal : 0) - zones.reduce((a, z) => a + z.shared, 0);
+      const dMat = matTarget - zones.reduce((a, z) => a + z.materials, 0);
+      const commRaw = [...acc.values()].reduce((a, b) => a + b.commission, 0) + unassigned.commission;
+      const dComm = Math.round(commRaw) - zones.reduce((a, z) => a + z.commission, 0);
+      if (dShared || dMat || dComm) {
+        const big = zones.reduce((m, z) => (z.revenue > m.revenue ? z : m), zones[0]);
+        big.shared += dShared; big.materials += dMat; big.commission += dComm;
+        big.expense = big.commission + big.materials + big.shared;
+        big.profit = big.revenue - big.expense;
+        big.margin_pct = marginPct(big.profit, big.revenue, big.expense);
+      }
     }
 
     // магазин (товари) — окремий бакет, не зал майстрів
     const prodRev = Math.round(Number(prodR.rows[0]?.cash_prod || 0) + Number(ordR.rows[0]?.s || 0));
-    const cogs = Math.round(Number(cogsR.rows[0]?.g || 0));
+    const cogs = Math.round(shopCogs);
     const shop = { revenue: prodRev, cogs, profit: prodRev - cogs };
 
     const totals = {

@@ -7738,6 +7738,7 @@ async function loadWorkPlan(fresh){
 // ═══ AI-прогноз ════════════════════════════════
 let _fcData = null, _fcLoading = false;
 function _fcMoney(v){ return (Math.round(Number(v||0))).toLocaleString('uk-UA') + ' ₴'; }
+function _fcMargin(v){ return v==null ? '—' : v + '%'; } // маржа null = виручка < 1% витрат (01.11.2026)
 async function loadForecast(){
   if (_fcLoading) return; _fcLoading = true;
   const h = document.getElementById('fcHorizon')?.value || '30';
@@ -8710,6 +8711,7 @@ async function fcDrill(type){
       + `<div style="margin:14px 0 6px;font-weight:700">Зарплата майстрів (нараховано):</div>`
       + (d.expenses.commission_by_master.length ? d.expenses.commission_by_master.map(m=>row(m.name, m.sum, (m.percent!=null?m.percent+'% від '+_fcMoney(m.revenue):''))).join('') : '<div class="muted">Немає</div>')
       + `<div style="margin:14px 0 6px;font-weight:700">Касові витрати (операції):</div>`
+      + (d.expenses.recurring_accrual ? `<div style="font-size:12px;color:var(--text-secondary);margin:-2px 0 6px">Постійні витрати (оренда, сервіси) — частка місяця за дні періоду; в касі вони проведені повною сумою в день оплати.</div>` : '')
       + (d.expenses.cash_ops.length ? d.expenses.cash_ops.map(o=>row((o.label||o.category)+(o.description?' · '+o.description:''), o.amount, new Date(o.date).toLocaleDateString('uk-UA'))).join('') : '<div class="muted">Немає</div>')
       + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:16px"><span>Разом витрати</span><span>${_fcMoney(d.expenses.total)}</span></div>`;
   } else if(type==='avgcheck'){
@@ -8736,7 +8738,7 @@ async function fcDrill(type){
       + `<div style="margin:10px 0 4px;color:#dc2626;font-weight:700">Мінус витрати:</div>`
       + d.expenses.by_category.map(c=>row('− '+c.label, c.sum)).join('')
       + `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:2px solid #ddd"><b>Разом витрати</b><b style="color:#dc2626">−${_fcMoney(d.profit.expense_total)}</b></div>`
-      + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:18px"><span>= ПРИБУТОК</span><span style="color:${d.profit.total>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.total)} <span style="font-size:13px;color:var(--text-secondary)">(маржа ${d.profit.margin_pct}%)</span></span></div>`;
+      + `<div style="margin-top:12px;display:flex;justify-content:space-between;font-weight:800;font-size:18px"><span>= ПРИБУТОК</span><span style="color:${d.profit.total>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.total)} <span style="font-size:13px;color:var(--text-secondary)">(маржа ${_fcMargin(d.profit.margin_pct)})</span></span></div>`;
   }
   let ov=document.getElementById('fcDrillModal');
   if(!ov){ ov=document.createElement('div'); ov.id='fcDrillModal'; ov.className='modal-overlay'; ov.onclick=e=>{ if(e.target===ov) ov.style.display='none'; }; document.body.appendChild(ov); }
@@ -8756,8 +8758,8 @@ async function loadFinCenter(){
   const cmp=d.comparison||{};
   document.getElementById('fcKpis').innerHTML=`
     <div class="fc-kpi fc-clk" onclick="fcDrill('revenue')" title="Натисніть — деталі виручки"><div class="lbl">ВИРУЧКА 🔍</div><div class="val">${_fcMoney(d.revenue.total)}</div>${_fcChg(cmp.revenue&&cmp.revenue.change_pct)}</div>
-    <div class="fc-kpi fc-clk" onclick="fcDrill('expenses')" title="Натисніть — перелік усіх витрат"><div class="lbl">ВИТРАТИ 🔍</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}</div>
-    <div class="fc-kpi fc-clk" onclick="fcDrill('profit')" title="Натисніть — з чого склався прибуток"><div class="lbl">ПРИБУТОК 🔍 (маржа ${d.profit.margin_pct}%)</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
+    <div class="fc-kpi fc-clk" onclick="fcDrill('expenses')" title="Натисніть — перелік усіх витрат"><div class="lbl">ВИТРАТИ 🔍</div><div class="val">${_fcMoney(d.expenses.total)}</div>${_fcChg(cmp.expenses&&cmp.expenses.change_pct)}<div style="font-size:10.5px;color:var(--text-secondary);margin-top:3px;line-height:1.2">постійні витрати розподілені по днях місяця</div></div>
+    <div class="fc-kpi fc-clk" onclick="fcDrill('profit')" title="Натисніть — з чого склався прибуток"><div class="lbl">ПРИБУТОК 🔍 (маржа ${_fcMargin(d.profit.margin_pct)})</div><div class="val" style="color:${d.profit.net>=0?'#16a34a':'#dc2626'}">${_fcMoney(d.profit.net)}</div>${_fcChg(cmp.profit&&cmp.profit.change_pct)}</div>
     <div class="fc-kpi fc-clk" onclick="fcDrill('avgcheck')" title="Натисніть — як рахується середній чек"><div class="lbl">СЕРЕДНІЙ ЧЕК 🔍</div><div class="val">${_fcMoney(d.metrics.avg_check)}</div>${_fcChg(cmp.avg_check&&cmp.avg_check.change_pct)}</div>
     <div class="fc-kpi fc-clk" onclick="fcDrill('checks')" title="Натисніть — чеки і клієнти"><div class="lbl">ЧЕКІВ / КЛІЄНТІВ 🔍</div><div class="val">${d.metrics.transaction_count} / ${d.metrics.unique_clients}</div><span class="chg flat">нових ${d.metrics.new_clients}</span></div>`;
   // структура виручки
@@ -8795,7 +8797,7 @@ async function loadZones(){
       <td style="text-align:right;color:#16a34a;font-weight:600">${_fcMoney(z.revenue)}</td>
       <td style="text-align:right;color:#dc2626" title="% майстрам ${_fcMoney(z.commission)} + матеріали ${_fcMoney(z.materials)} + спільні ${_fcMoney(z.shared)}">${_fcMoney(z.expense)}</td>
       <td style="text-align:right;font-weight:700;color:${z.profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(z.profit)}</td>
-      <td style="text-align:right;color:var(--text-secondary)">${z.margin_pct}%</td></tr>`).join('');
+      <td style="text-align:right;color:var(--text-secondary)">${_fcMargin(z.margin_pct)}</td></tr>`).join('');
     const shop=r.shop||{};
     const shopRow=(shop.revenue>0)?`<tr style="opacity:.85"><td>🛍️ Магазин (товари)</td><td style="text-align:right;color:#16a34a">${_fcMoney(shop.revenue)}</td><td style="text-align:right;color:#dc2626">${_fcMoney(shop.cogs)}</td><td style="text-align:right;font-weight:700;color:${shop.profit>=0?'#16a34a':'#dc2626'}">${_fcMoney(shop.profit)}</td><td style="text-align:right">—</td></tr>`:'';
     const t=r.totals||{};

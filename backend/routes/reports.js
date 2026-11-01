@@ -3,6 +3,7 @@
 const express = require('express');
 const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
+const { marginPct } = require('../lib/recurring-accrual');
 const { shiftDaysByMaster, shiftStatsByMasterInRange } = require('../lib/schedule-month');
 const { CHURNED_CTE, CHURN_COUNT_SQL } = require('../lib/churn');
 const { MATLINES_CTE, COMMISSION_EXPR, SVCPCT_CTE } = require('../lib/payroll-base');
@@ -100,11 +101,11 @@ router.get('/pnl', requirePerm('reports.finance'), cacheReport(), async (req, re
       revenue: { products: fin.revenue.products, services: fin.revenue.services, total: revenueTotal },
       cogs: cogsTotal,
       gross_profit: grossProfit,
-      gross_margin_pct: revenueTotal > 0 ? Math.round(grossProfit / revenueTotal * 100) : 0,
+      gross_margin_pct: marginPct(grossProfit, revenueTotal, cogsTotal), // null = «—» (виручка < 1% витрат)
       expenses: expRows.map(x => ({ category: x.category, label: x.label, sum: x.sum })),
       expense_total: expenseTotal,
       net_profit: netProfit,
-      net_margin_pct: revenueTotal > 0 ? Math.round(netProfit / revenueTotal * 100) : 0,
+      net_margin_pct: marginPct(netProfit, revenueTotal, fin.expenses.total),
       counts: { orders: revOrders.rows[0].cnt, service_ops: revServices.rows[0].cnt }
     });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

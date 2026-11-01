@@ -3,6 +3,7 @@
 // guard-запит: якщо одна впаде, звіт усе одно збереться. Часовий пояс — Europe/Kiev.
 const { getPool } = require('../db-pg');
 const { SVCPCT_CTE, COMMISSION_EXPR } = require('./payroll-base');
+const { fmtMargin } = require('./recurring-accrual');
 
 const TZ = 'Europe/Kiev';
 function money(n) { const v = Math.round(Number(n) || 0); return v.toLocaleString('uk-UA').replace(/ /g, ' ') + ' грн'; }
@@ -261,11 +262,11 @@ function formatReport(r, title = 'Щоденний звіт') {
     L.push(`   ➖ Собівартість матеріалів: ${money(r.fin.expenses.materials)}`);
     const otherSum = (r.fin.expenses.other || []).reduce((a, x) => a + x.sum, 0);
     if (otherSum > 0) L.push(`   ➖ Інші витрати: ${money(otherSum)}`);
-    L.push(`   ✅ <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${r.fin.profit.margin_pct}%)`);
-    // Довідково: постійні витрати розмазані по днях (оренда/сервіси/оклади платяться
-    // раз на місяць — у «чистими за день» вони входять у день оплати, як у Фінцентрі)
+    L.push(`   ✅ <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${fmtMargin(r.fin.profit.margin_pct)})`);
+    // 01.11.2026: постійні витрати (оренда/сервіси, оклади) у «чистими» вже розподілені по днях місяця
+    // (як у Фінцентрі) — це довідка, скільки з них припадає на день, а НЕ додаткова витрата.
     if (r.forecast && r.forecast.dailyFixed > 0)
-      L.push(`   📎 Довідково: постійні ≈ ${money(r.forecast.dailyFixed)}/день (оренда, сервіси, оклади)`);
+      L.push(`   📎 Довідково: постійні ≈ ${money(r.forecast.dailyFixed)}/день (оренда, сервіси, оклади) — уже враховані вище`);
   } else {
     L.push(`💸 <b>Витрати:</b> ${money(r.expenses)}`);
   }
@@ -427,7 +428,7 @@ function formatMonthlyReport(r, title = 'Звіт за місяць') {
     L.push(`   ➖ Собівартість матеріалів: ${money(r.fin.expenses.materials)}`);
     for (const o of (r.fin.expenses.other || [])) L.push(`   ➖ ${o.label}: ${money(o.sum)}`);
     L.push(`   Разом витрат: ${money(r.fin.expenses.total)}`);
-    L.push(`   ${r.fin.profit.net >= 0 ? '✅' : '🔴'} <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${r.fin.profit.margin_pct}%)`);
+    L.push(`   ${r.fin.profit.net >= 0 ? '✅' : '🔴'} <b>ЧИСТИМИ: ${money(r.fin.profit.net)}</b> (маржа ${fmtMargin(r.fin.profit.margin_pct)})`);
     L.push(`   💳 Середній чек: ${money(r.fin.avg_check)}`);
   }
   return L.join('\n');

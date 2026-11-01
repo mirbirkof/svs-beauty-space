@@ -25,6 +25,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { liveFinance } = require('../lib/live-finance'); // єдине джерело правди по грошах (аудит 25.07)
+const { accruedByCategory, mergeByCategory } = require('../lib/recurring-accrual');
 const { requirePerm } = require('../lib/rbac');
 
 const pool = getPool();
@@ -236,7 +237,18 @@ async function aggregate(start, end, branchId) {
        FROM cash_operations co ${cb.join}
       WHERE co.type='out' AND co.category NOT IN ('salary','refund','encashment_out')
         AND co.created_at >= $1 AND co.created_at < $2${cb.cond}
+        AND co.accrual_month IS NULL -- постійні (оренда/CRM) — по нарахуванню, нижче (01.11.2026)
       GROUP BY co.category ORDER BY s DESC`, p);
+  // Постійні витрати — частка місяця за дні періоду [start, end) (як у Фінцентрі); каса не змінюється.
+  // Безсменні (shift_id NULL) — тож у філіальний звіт ідуть так само, як і раніше (OR shift_id IS NULL).
+  let accrued = [];
+  try {
+    const lastDay = new Date(Date.parse(String(end).slice(0, 10) + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+    accrued = await accruedByCategory(pool, String(start).slice(0, 10), lastDay);
+  } catch (e) { console.error('[pnl] accrual:', e.message); }
+  const opexAll = mergeByCategory(opexCats.map(c => ({ category: c.category, sum: num(c.s) })), accrued)
+    .map(c => ({ category: c.category, s: Math.round(c.sum * 100) / 100 })).filter(c => c.s > 0)
+    .sort((a, b) => b.s - a.s);
 
   // ── РУЧНІ КОРИГУВАННЯ (амортизація / % / податки / поправки) ───────────────
   const adj = await safeRows(
@@ -280,7 +292,7 @@ async function aggregate(start, end, branchId) {
   add('opex', 'salary_fixed', 'Зарплати (оклад + адмін)',
       num(salFixed[0]?.s) + accruedFixed, 210, { source: 'payroll_records + live-finance', part: 'fixed_part' });
   let so = 220;
-  for (const c of opexCats) {
+  for (const c of opexAll) {
     add('opex', c.category, OPEX_LABELS[c.category] || c.category, num(c.s), so, { source: 'cash_operations', type: 'out', category: c.category });
     so += 10;
   }

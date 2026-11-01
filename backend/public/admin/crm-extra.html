@@ -709,8 +709,8 @@ async function loadReports(){
     document.getElementById('r-pnl').innerHTML = `
       <div class="grid grid-3">
         <div class="metric ok"><div class="label">Дохід</div><div class="value">${(+p.revenue.total).toFixed(0)} ₴</div><div class="sub">товари ${(+p.revenue.products).toFixed(0)} · послуги ${(+p.revenue.services).toFixed(0)}</div></div>
-        <div class="metric"><div class="label">Валовий прибуток</div><div class="value">${(+p.gross_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.gross_margin_pct}%</div></div>
-        <div class="metric ${(+p.net_profit)>=0?'ok':'dng'}"><div class="label">Чистий прибуток</div><div class="value">${(+p.net_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.net_margin_pct}%</div></div>
+        <div class="metric"><div class="label">Валовий прибуток</div><div class="value">${(+p.gross_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.gross_margin_pct==null?'—':p.gross_margin_pct+'%'}</div></div>
+        <div class="metric ${(+p.net_profit)>=0?'ok':'dng'}"><div class="label">Чистий прибуток</div><div class="value">${(+p.net_profit).toFixed(0)} ₴</div><div class="sub">маржа ${p.net_margin_pct==null?'—':p.net_margin_pct+'%'}</div></div>
       </div>
       <div style="margin-top:12px"><b>Витрати по категоріях:</b><br>` +
       (p.expenses.length ? p.expenses.map(e=>`<span class="pill gray">${e.label||e.category}: ${(+e.sum).toFixed(0)} ₴</span> `).join('') : '<span class="empty">немає</span>') + '</div>';

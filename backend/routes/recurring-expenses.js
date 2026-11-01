@@ -41,9 +41,11 @@ async function postDue(db = pool) {
         [ms, t.id]);
       if (claim.rowCount === 0) continue;
       await db.query(
-        `INSERT INTO cash_operations (shift_id, type, category, amount, method, description)
-         VALUES (NULL,'out',$1,$2,$3,$4)`,
-        [t.category, t.amount, t.method || 'cash', (t.description || 'Постійна витрата') + ' (авто)']);
+        // recurring_expense_id + accrual_month (міграція 312): аналітика розносить суму по днях місяця,
+        // каса/журнал бачать ту саму одну проводку на повну суму.
+        `INSERT INTO cash_operations (shift_id, type, category, amount, method, description, recurring_expense_id, accrual_month)
+         VALUES (NULL,'out',$1,$2,$3,$4,$5,$6::date)`,
+        [t.category, t.amount, t.method || 'cash', (t.description || 'Постійна витрата') + ' (авто)', t.id, ms]);
       posted++;
     } catch (e) { console.error('[recurring-exp] post', t.id, e.message); }
   }

@@ -181,10 +181,18 @@ router.post('/confirm', async (req, res) => {
     if (ex.rows[0]) { await client.query('COMMIT'); return res.json({ ok: true, already: true, confirmation: ex.rows[0] }); }
     const cat = b.kind === 'salary' ? 'salary' : (b.category || 'other');
     const desc = (b.label || 'Витрата') + ` (підтв. ${b.period || ''})`;
+    // постійна витрата (ref_key recurring:<id>:<YYYY-MM>) → позначка для аналітики «по нарахуванню» (міграція 312)
+    let recId = null, accrMonth = null;
+    const rk = b.kind === 'recurring' && /^recurring:(\d+):(\d{4}-\d{2})$/.exec(String(b.ref_key));
+    if (rk) {
+      const t = await client.query('SELECT id FROM recurring_expenses WHERE id=$1', [Number(rk[1])]);
+      recId = t.rows[0] ? t.rows[0].id : null;
+      accrMonth = rk[2] + '-01';
+    }
     const op = await client.query(
-      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description)
-       VALUES (NULL,'out',$1,$2,'cash','expense_confirm',$3,$4) RETURNING id`,
-      [cat, Number(b.amount), b.master_id || null, desc]);
+      `INSERT INTO cash_operations (shift_id, type, category, amount, method, ref_type, master_id, description, recurring_expense_id, accrual_month)
+       VALUES (NULL,'out',$1,$2,'cash','expense_confirm',$3,$4,$5,$6::date) RETURNING id`,
+      [cat, Number(b.amount), b.master_id || null, desc, recId, accrMonth]);
     const conf = await client.query(
       `INSERT INTO expense_confirmations (kind, ref_key, period, label, amount_calc, amount_paid, cash_op_id, confirmed_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
