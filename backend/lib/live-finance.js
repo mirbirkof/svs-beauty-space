@@ -14,6 +14,7 @@ const CAT_LABELS = {
   rent: 'Оренда', salary: 'Зарплата', payroll: 'Зарплата', purchase: 'Закупівлі', purchasing: 'Закупівлі',
   marketing: 'Маркетинг', utilities: 'Комуналка', supplies: 'Витратні', taxes: 'Податки', other: 'Інше',
   materials: 'Матеріали (собівартість)', commission: 'Зарплата майстрів (нарахована)',
+  refund: 'Повернення клієнтам',
 };
 
 async function liveFinance(pool, from, to) {

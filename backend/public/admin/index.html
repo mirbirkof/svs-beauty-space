@@ -8769,7 +8769,7 @@ async function loadFinCenter(){
   // витрати
   const exp=(d.expenses.by_category||[]).slice(0,7);
   const expMax=Math.max(1,...exp.map(x=>+x.sum));
-  document.getElementById('fcExpenses').innerHTML=exp.length?exp.map(x=>`<div class="fc-bar"><span class="nm">${_FC_CATS[x.category]||escapeHtml(x.category||'—')}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/expMax*100)}%;background:#f59e0b"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join(''):'<div class="empty">Витрат немає</div>';
+  document.getElementById('fcExpenses').innerHTML=exp.length?exp.map(x=>`<div class="fc-bar"><span class="nm">${_FC_CATS[x.category]||escapeHtml(x.label||x.category||'—')}</span><span class="track"><span class="fill" style="width:${Math.round(x.sum/expMax*100)}%;background:#f59e0b"></span></span><span class="amt">${_fcMoney(x.sum)}</span></div>`).join(''):'<div class="empty">Витрат немає</div>';
   // тренд
   try{
     const t=await api('/api/financial/dashboard/trend?days=30');
