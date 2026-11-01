@@ -2020,6 +2020,11 @@ router.post('/appointments/:id/unpay', async (req, res) => {
                 'Сторно оплати: скасування оплати візиту #' || co.ref_id, 'appt:' || co.ref_id || ':unpay:' || co.id
            FROM cash_operations co
           WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
+            -- [01.11] скасування оплати (:unpay:) і видалення запису (:storno:) мали різні ext_ref →
+            -- «скасував оплату, потім видалив запис» сторнувало ту саму оплату двічі (#8901, 2×850).
+            AND NOT EXISTS (SELECT 1 FROM cash_operations r
+                             WHERE r.ext_ref IN ('appt:' || co.ref_id || ':unpay:' || co.id,
+                                                 'appt:' || co.ref_id || ':storno:' || co.id))
          ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`, [id]);
       // сертифікат назад: повертаємо суму + журнал refund
       if (appt.pay_cert_code && Number(appt.pay_cert_amount) > 0) {
@@ -2558,6 +2563,11 @@ router.delete('/appointments/:id', async (req, res) => {
                 'Сторно оплати: видалення запису #' || co.ref_id, 'appt:' || co.ref_id || ':storno:' || co.id
            FROM cash_operations co
           WHERE co.ref_type='appointment' AND co.ref_id=$1 AND co.type='in'
+            -- [01.11] скасування оплати (:unpay:) і видалення запису (:storno:) мали різні ext_ref →
+            -- «скасував оплату, потім видалив запис» сторнувало ту саму оплату двічі (#8901, 2×850).
+            AND NOT EXISTS (SELECT 1 FROM cash_operations r
+                             WHERE r.ext_ref IN ('appt:' || co.ref_id || ':unpay:' || co.id,
+                                                 'appt:' || co.ref_id || ':storno:' || co.id))
          ON CONFLICT (ext_ref) WHERE ext_ref IS NOT NULL DO NOTHING`, [id]
       );
       // стара CRM-запис не можна видаляти жорстко: автосинк побачить його в BP і
