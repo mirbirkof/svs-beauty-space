@@ -7,9 +7,12 @@ cd /home/client/workspace/svs-beauty-space/backend
 set -a; source .env 2>/dev/null; set +a
 MIN=$(date +%M)
 if [ "$MIN" -lt 20 ]; then MODE=core; SCRIPT=ops/ui-smoke.mjs; else MODE=explore; SCRIPT=ops/ui-explore.mjs; fi
+# [01.11] Браузер ~600 МБ. При нехватке памяти радар (:3008) уходил в swap и падал (01.11 14:38 Київ совпало с :37 explore). Ждём ≥900 МБ до 10 мин, иначе пропуск; nice 10.
+for i in $(seq 1 40); do ma=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo); [ "$ma" -ge 900 ] && break; sleep 15; done
+[ "$ma" -lt 900 ] && { echo "[$(date "+%F %H:%M")] mode=$MODE SKIP: мало памяти ${ma} МБ" >> /tmp/ui-smoke-cron.log; exit 0; }
 OUT=$(PLAYWRIGHT_BROWSERS_PATH=/home/client/workspace/.ms-playwright ADMIN_TOKEN="$ADMIN_TOKEN" \
       SMOKE_BASE="http://127.0.0.1:3011" \
-      /usr/bin/node /home/client/workspace/svs-beauty-space/$SCRIPT 2>&1)
+      nice -n 10 /usr/bin/node /home/client/workspace/svs-beauty-space/$SCRIPT 2>&1)
 CODE=$?
 echo "[$(date '+%F %H:%M')] mode=$MODE code=$CODE" >> /tmp/ui-smoke-cron.log
 notify(){ curl -s -m 10 -X POST http://127.0.0.1:3005/notify \
