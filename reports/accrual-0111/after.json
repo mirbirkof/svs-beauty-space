@@ -1,0 +1,650 @@
+{
+ "nov01": {
+  "fc": {
+   "period": {
+    "from": "2026-11-01",
+    "to": "2026-11-01"
+   },
+   "revenue": {
+    "services": 900,
+    "products": 0,
+    "total": 900
+   },
+   "expenses": {
+    "by_category": [
+     {
+      "category": "refund",
+      "label": "refund",
+      "sum": 1700
+     },
+     {
+      "category": "rent",
+      "label": "Оренда",
+      "sum": 1667
+     },
+     {
+      "category": "commission",
+      "label": "Зарплата майстрів (нарахована)",
+      "sum": 375
+     },
+     {
+      "category": "срм",
+      "label": "срм",
+      "sum": 369
+     }
+    ],
+    "total": 4111
+   },
+   "profit": {
+    "net": -3211,
+    "margin_pct": -357,
+    "materials": 0,
+    "commission": 375
+   },
+   "metrics": {
+    "transaction_count": 2,
+    "avg_check": 300,
+    "done_appts": 4,
+    "unique_clients": 3,
+    "new_clients": 0,
+    "cancelled_appts": 0,
+    "noshow_appts": 0
+   },
+   "comparison": null
+  },
+  "det": {
+   "period": {
+    "from": "2026-11-01",
+    "to": "2026-11-01"
+   },
+   "revenue": {
+    "services": 900,
+    "products": 0,
+    "total": 900,
+    "by_master": [
+     {
+      "name": "Анжела",
+      "revenue": 750
+     },
+     {
+      "name": "Інна",
+      "revenue": 150
+     }
+    ]
+   },
+   "expenses": {
+    "total": 4111,
+    "by_category": [
+     {
+      "category": "refund",
+      "label": "refund",
+      "sum": 1700
+     },
+     {
+      "category": "rent",
+      "label": "Оренда",
+      "sum": 1667
+     },
+     {
+      "category": "commission",
+      "label": "Зарплата майстрів (нарахована)",
+      "sum": 375
+     },
+     {
+      "category": "срм",
+      "label": "срм",
+      "sum": 369
+     }
+    ],
+    "materials": 0,
+    "commission_total": 375,
+    "commission_by_master": [
+     {
+      "name": "Анжела",
+      "percent": 40,
+      "revenue": 750,
+      "sum": 300
+     },
+     {
+      "name": "Інна",
+      "percent": 50,
+      "revenue": 150,
+      "sum": 75
+     }
+    ],
+    "cash_ops": [
+     {
+      "date": "2026-10-31T22:41:27.179Z",
+      "category": "rent",
+      "label": "Оренда",
+      "amount": 1666.67,
+      "description": "Постійна витрата (авто) · постійна: 1 з 30 дн. місяця (оплачено 50 000 ₴ 01.11)",
+      "accrued": true,
+      "paid_amount": 50000,
+      "accrual_month": "2026-11-01"
+     },
+     {
+      "date": "2026-10-31T22:41:27.451Z",
+      "category": "срм",
+      "label": "срм",
+      "amount": 368.5,
+      "description": "разработка срм (авто) · постійна: 1 з 30 дн. місяця (оплачено 11 055 ₴ 01.11)",
+      "accrued": true,
+      "paid_amount": 11055,
+      "accrual_month": "2026-11-01"
+     },
+     {
+      "date": "2026-11-01T10:07:40.983Z",
+      "category": "refund",
+      "label": "refund",
+      "amount": 850,
+      "description": "Сторно оплати: видалення запису #8901"
+     },
+     {
+      "date": "2026-11-01T10:06:53.191Z",
+      "category": "refund",
+      "label": "refund",
+      "amount": 850,
+      "description": "Сторно оплати: скасування оплати візиту #8901"
+     }
+    ],
+    "recurring_accrual": true
+   },
+   "profit": {
+    "total": -3211,
+    "revenue_total": 900,
+    "expense_total": 4111,
+    "margin_pct": -357
+   },
+   "metrics": {
+    "avg_check": 300,
+    "tx_count": 2,
+    "unique_clients": 4,
+    "commission_appts": 2
+   }
+  },
+  "zones": {
+   "from": "2026-11-01",
+   "to": "2026-11-01",
+   "material_pct": 0,
+   "shared_total": 3736,
+   "zones": [
+    {
+     "id": 1,
+     "name": "Манікюр",
+     "color": "#6366f1",
+     "revenue": 750,
+     "count": 1,
+     "commission": 300,
+     "materials": 0,
+     "shared": 3113,
+     "expense": 3413,
+     "profit": -2663,
+     "margin_pct": -355
+    },
+    {
+     "id": 2,
+     "name": "Перукарський зал",
+     "color": "#ec4899",
+     "revenue": 150,
+     "count": 1,
+     "commission": 75,
+     "materials": 0,
+     "shared": 623,
+     "expense": 698,
+     "profit": -548,
+     "margin_pct": -365
+    },
+    {
+     "id": 3,
+     "name": "Брови та вії",
+     "color": "#f59e0b",
+     "revenue": 0,
+     "count": 0,
+     "commission": 0,
+     "materials": 0,
+     "shared": 0,
+     "expense": 0,
+     "profit": 0,
+     "margin_pct": null
+    },
+    {
+     "id": 4,
+     "name": "Інші напрямки",
+     "color": "#10b981",
+     "revenue": 0,
+     "count": 0,
+     "commission": 0,
+     "materials": 0,
+     "shared": 0,
+     "expense": 0,
+     "profit": 0,
+     "margin_pct": null
+    },
+    {
+     "id": 5,
+     "name": "Адміністратори",
+     "color": "#6366f1",
+     "revenue": 0,
+     "count": 0,
+     "commission": 0,
+     "materials": 0,
+     "shared": 0,
+     "expense": 0,
+     "profit": 0,
+     "margin_pct": null
+    }
+   ],
+   "shop": {
+    "revenue": 0,
+    "cogs": 0,
+    "profit": 0
+   },
+   "totals": {
+    "revenue": 900,
+    "expense": 4111,
+    "profit": -3211,
+    "services_revenue": 900
+   }
+  },
+  "pnl": {
+   "period": {
+    "from": "2026-10-31T22:00:00.000Z",
+    "to": "2026-11-01T22:00:00.998Z"
+   },
+   "revenue": {
+    "products": 0,
+    "services": 900,
+    "total": 900
+   },
+   "cogs": 0,
+   "gross_profit": 900,
+   "gross_margin_pct": 100,
+   "expenses": [
+    {
+     "category": "rent",
+     "label": "Оренда",
+     "sum": 3333
+    },
+    {
+     "category": "refund",
+     "label": "refund",
+     "sum": 1700
+    },
+    {
+     "category": "срм",
+     "label": "срм",
+     "sum": 737
+    },
+    {
+     "category": "commission",
+     "label": "Зарплата майстрів (нарахована)",
+     "sum": 375
+    }
+   ],
+   "expense_total": 6145,
+   "net_profit": -5245,
+   "net_margin_pct": -583,
+   "counts": {
+    "orders": 0,
+    "service_ops": 2
+   }
+  },
+  "st": [
+   200,
+   200,
+   200,
+   200
+  ]
+ },
+ "oct": {
+  "fc": {
+   "period": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "revenue": {
+    "services": 223491,
+    "products": 92510,
+    "total": 316001
+   },
+   "expenses": {
+    "by_category": [
+     {
+      "category": "commission",
+      "label": "Зарплата майстрів (нарахована)",
+      "sum": 128568
+     },
+     {
+      "category": "rent",
+      "label": "Оренда",
+      "sum": 50000
+     },
+     {
+      "category": "materials",
+      "label": "Матеріали (собівартість)",
+      "sum": 23102
+     },
+     {
+      "category": "срм",
+      "label": "срм",
+      "sum": 11055
+     }
+    ],
+    "total": 212725
+   },
+   "profit": {
+    "net": 103276,
+    "margin_pct": 33,
+    "materials": 23102,
+    "commission": 128568
+   },
+   "metrics": {
+    "transaction_count": 288,
+    "avg_check": 1423,
+    "done_appts": 270,
+    "unique_clients": 160,
+    "new_clients": 57,
+    "cancelled_appts": 15,
+    "noshow_appts": 0
+   },
+   "comparison": null
+  },
+  "det": {
+   "period": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "revenue": {
+    "services": 223491,
+    "products": 92510,
+    "total": 316001,
+    "by_master": [
+     {
+      "name": "Скібенко Світлана",
+      "revenue": 70714.5
+     },
+     {
+      "name": "Вера",
+      "revenue": 67208
+     },
+     {
+      "name": "Кушнерук Тетяна",
+      "revenue": 56500
+     },
+     {
+      "name": "Інна",
+      "revenue": 42421.5
+     },
+     {
+      "name": "Настя",
+      "revenue": 19275
+     },
+     {
+      "name": "Ксюша",
+      "revenue": 15050
+     },
+     {
+      "name": "Анжела",
+      "revenue": 12550
+     },
+     {
+      "name": "Ася",
+      "revenue": 12250
+     },
+     {
+      "name": "Евеліна",
+      "revenue": 2500
+     }
+    ]
+   },
+   "expenses": {
+    "total": 212725,
+    "by_category": [
+     {
+      "category": "commission",
+      "label": "Зарплата майстрів (нарахована)",
+      "sum": 128568
+     },
+     {
+      "category": "rent",
+      "label": "Оренда",
+      "sum": 50000
+     },
+     {
+      "category": "materials",
+      "label": "Матеріали (собівартість)",
+      "sum": 23102
+     },
+     {
+      "category": "срм",
+      "label": "срм",
+      "sum": 11055
+     }
+    ],
+    "materials": 23102,
+    "commission_total": 128568,
+    "commission_by_master": [
+     {
+      "name": "Кушнерук Тетяна",
+      "percent": 55,
+      "revenue": 56500,
+      "sum": 31075
+     },
+     {
+      "name": "Скібенко Світлана",
+      "percent": 60,
+      "revenue": 36024,
+      "sum": 21614
+     },
+     {
+      "name": "Вера",
+      "percent": 55,
+      "revenue": 32606,
+      "sum": 17933
+     },
+     {
+      "name": "Інна",
+      "percent": 50,
+      "revenue": 24080,
+      "sum": 12040
+     },
+     {
+      "name": "Настя",
+      "percent": 40,
+      "revenue": 19275,
+      "sum": 7790
+     },
+     {
+      "name": "Анжела",
+      "percent": 40,
+      "revenue": 12550,
+      "sum": 5020
+     },
+     {
+      "name": "Евеліна",
+      "percent": 40,
+      "revenue": 2500,
+      "sum": 1000
+     }
+    ],
+    "cash_ops": [
+     {
+      "date": "2026-10-01T07:31:40.719Z",
+      "category": "rent",
+      "label": "Оренда",
+      "amount": 50000,
+      "description": "Постійна витрата (авто) · постійна: 31 з 31 дн. місяця (оплачено 50 000 ₴ 01.10)",
+      "accrued": true,
+      "paid_amount": 50000,
+      "accrual_month": "2026-10-01"
+     },
+     {
+      "date": "2026-10-01T07:31:40.968Z",
+      "category": "срм",
+      "label": "срм",
+      "amount": 11055,
+      "description": "разработка срм (авто) · постійна: 31 з 31 дн. місяця (оплачено 11 055 ₴ 01.10)",
+      "accrued": true,
+      "paid_amount": 11055,
+      "accrual_month": "2026-10-01"
+     }
+    ],
+    "recurring_accrual": true
+   },
+   "profit": {
+    "total": 103276,
+    "revenue_total": 316001,
+    "expense_total": 212725,
+    "margin_pct": 33
+   },
+   "metrics": {
+    "avg_check": 1423,
+    "tx_count": 288,
+    "unique_clients": 160,
+    "commission_appts": 269
+   }
+  },
+  "zones": {
+   "from": "2026-10-01",
+   "to": "2026-10-31",
+   "material_pct": 0,
+   "shared_total": 61055,
+   "zones": [
+    {
+     "id": 1,
+     "name": "Манікюр",
+     "color": "#6366f1",
+     "revenue": 71550,
+     "count": 84,
+     "commission": 37095,
+     "materials": 0,
+     "shared": 14636,
+     "expense": 51731,
+     "profit": 19819,
+     "margin_pct": 28
+    },
+    {
+     "id": 2,
+     "name": "Перукарський зал",
+     "color": "#ec4899",
+     "revenue": 180344,
+     "count": 149,
+     "commission": 53683,
+     "materials": 12494,
+     "shared": 36891,
+     "expense": 103068,
+     "profit": 77276,
+     "margin_pct": 43
+    },
+    {
+     "id": 3,
+     "name": "Брови та вії",
+     "color": "#f59e0b",
+     "revenue": 19275,
+     "count": 40,
+     "commission": 7790,
+     "materials": 0,
+     "shared": 3943,
+     "expense": 11733,
+     "profit": 7542,
+     "margin_pct": 39
+    },
+    {
+     "id": 4,
+     "name": "Інші напрямки",
+     "color": "#10b981",
+     "revenue": 0,
+     "count": 0,
+     "commission": 0,
+     "materials": 0,
+     "shared": 0,
+     "expense": 0,
+     "profit": 0,
+     "margin_pct": null
+    },
+    {
+     "id": 5,
+     "name": "Адміністратори",
+     "color": "#6366f1",
+     "revenue": 0,
+     "count": 0,
+     "commission": 30000,
+     "materials": 0,
+     "shared": 0,
+     "expense": 30000,
+     "profit": -30000,
+     "margin_pct": null
+    },
+    {
+     "id": null,
+     "name": "Без залу",
+     "color": "#9ca3af",
+     "revenue": 27300,
+     "count": 44,
+     "commission": 0,
+     "materials": 0,
+     "shared": 5585,
+     "expense": 5585,
+     "profit": 21715,
+     "margin_pct": 80
+    }
+   ],
+   "shop": {
+    "revenue": 17532,
+    "cogs": 10608,
+    "profit": 6924
+   },
+   "totals": {
+    "revenue": 316001,
+    "expense": 212725,
+    "profit": 103276,
+    "services_revenue": 298469
+   }
+  },
+  "pnl": {
+   "period": {
+    "from": "2026-09-30T21:00:00.000Z",
+    "to": "2026-10-31T22:00:00.998Z"
+   },
+   "revenue": {
+    "products": 92510,
+    "services": 223491,
+    "total": 316001
+   },
+   "cogs": 23102,
+   "gross_profit": 292899,
+   "gross_margin_pct": 93,
+   "expenses": [
+    {
+     "category": "commission",
+     "label": "Зарплата майстрів (нарахована)",
+     "sum": 128568
+    },
+    {
+     "category": "rent",
+     "label": "Оренда",
+     "sum": 51667
+    },
+    {
+     "category": "срм",
+     "label": "срм",
+     "sum": 11424
+    }
+   ],
+   "expense_total": 191659,
+   "net_profit": 101240,
+   "net_margin_pct": 32,
+   "counts": {
+    "orders": 0,
+    "service_ops": 265
+   }
+  },
+  "st": [
+   200,
+   200,
+   200,
+   200
+  ]
+ }
+}
