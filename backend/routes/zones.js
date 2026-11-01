@@ -119,14 +119,16 @@ router.get('/', async (req, res) => {
       // фікс-оклади по майстру: fixed_per_month (пропорц. періоду) + fixed_per_day × зміни графіка
       pool.query(`WITH sched AS (
                     SELECT master_id, COUNT(*)::int shifts FROM master_schedule_days
-                     WHERE work_date >= $1::date AND work_date <= $2::date GROUP BY master_id)
+                     WHERE work_date >= $1::date AND work_date <= $2::date
+                       AND work_date < $3::date -- сьогоднішня зміна ще йде — як у Фінцентрі (наказ 02.08), 01.11.2026
+                     GROUP BY master_id)
                   SELECT m.id master_id,
                          COALESCE(SUM(COALESCE(ps.fixed_per_month,0)),0)::float fx_month,
                          COALESCE(SUM(COALESCE(ps.fixed_per_day,0) * COALESCE(sc.shifts,0)),0)::float fx_day
                     FROM payroll_schemes ps JOIN masters m ON m.id::text=ps.master_id
                     LEFT JOIN sched sc ON sc.master_id=m.id
                    WHERE ps.is_active=TRUE AND ps.scheme_type IN ('fixed','hybrid') AND m.active=TRUE
-                   GROUP BY m.id`, [String(fromTs).slice(0,10), String(toTs).slice(0,10)]),
+                   GROUP BY m.id`, [String(fromTs).slice(0,10), String(toTs).slice(0,10), today]),
       // tenant-фільтр (17.07.2026): платформа з порожнім GUC не має хапати рядок чужого тенанта
       pool.query(`SELECT value FROM app_settings WHERE key='finance'
         AND tenant_id IN (COALESCE(NULLIF(current_setting('app.tenant_id', true), '')::uuid, '00000000-0000-0000-0000-000000000001'::uuid), '00000000-0000-0000-0000-000000000001'::uuid)
