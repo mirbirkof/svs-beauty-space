@@ -157,6 +157,32 @@ if (BOT_TOKEN) {
   } catch (e) { console.error('[booking/reminders-init]', e.message); }
 }
 
+// Mini App (Босс 03.11): кнопка меню чату легасі-бота → застосунок /p/app.html.
+// Звіряємо при старті й раз на 6 год (живий адрес може змінитись). Відкат BOT_TEXT_BOOKING=1 →
+// повертаємо звичайну кнопку (лише якщо зараз стоїть наш web_app — чужі налаштування не чіпаємо).
+async function syncMenuButton() {
+  const cur = await tg('getChatMenuButton', {});
+  const now = (cur && cur.result) || {};
+  if (process.env.BOT_TEXT_BOOKING === '1') {
+    if (now.type === 'web_app' && /\/p\/app\.html/.test((now.web_app && now.web_app.url) || '')) {
+      await tg('setChatMenuButton', { menu_button: { type: 'default' } });
+      console.log('[booking/menu-button] відкат: кнопку меню повернуто до звичайної');
+    }
+    return;
+  }
+  const base = require('../lib/public-url').getPublicBase();
+  if (!base || !/^https:\/\//.test(base)) return; // Telegram приймає web_app лише по https
+  const url = base + '/p/app.html';
+  if (now.type === 'web_app' && now.web_app && now.web_app.url === url) return;
+  await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Запис', web_app: { url } } });
+  console.log('[booking/menu-button] кнопка меню → застосунок запису');
+}
+if (BOT_TOKEN && process.env.CRM_DEFER_JOBS !== '1') {
+  const run = () => syncMenuButton().catch(e => console.error('[booking/menu-button]', e.message));
+  setTimeout(run, 15000).unref();
+  setInterval(run, 6 * 3600 * 1000).unref();
+}
+
 // In-memory schema — no init needed
 
 // Зсув Києва (хв) для конкретного інстанту — з урахуванням літнього/зимового часу.
