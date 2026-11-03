@@ -161,6 +161,7 @@ var Q = new URLSearchParams(location.search);
 var CAT_IMG = [[/волос|перукар|стриж|фарб/i,'hair'],[/брів|брови|вії|вій|lash/i,'brows'],[/ніг|манік|педик|nail/i,'nails'],[/макіяж|make/i,'makeup'],[/масаж|тіл/i,'massage']];
 function catImg(name){ for (var i=0;i<CAT_IMG.length;i++) if (CAT_IMG[i][0].test(name||'')) return '/p/miniapp/'+CAT_IMG[i][1]+'.jpg'; return '/p/miniapp/other.jpg'; }
 var DW = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+var MONN = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 var MON = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
 var DOWL = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
 
@@ -333,7 +334,7 @@ function drawWeek(wrap, next){
   return p.then(function(){
     wrap.innerHTML='';
     var m1 = new Date(S.weekStart+'T12:00:00Z'), m2 = new Date(end+'T12:00:00Z');
-    var title = m1.getUTCMonth()===m2.getUTCMonth() ? MON[m1.getUTCMonth()] : MON[m1.getUTCMonth()]+' – '+MON[m2.getUTCMonth()];
+    var title = m1.getUTCMonth()===m2.getUTCMonth() ? MONN[m1.getUTCMonth()]+' '+m1.getUTCFullYear() : MONN[m1.getUTCMonth()]+' – '+MONN[m2.getUTCMonth()];
     var maxStart = addDays(S.today, 84);
     wrap.appendChild(h('div',{class:'weeknav'},
       h('button',{'aria-label':'Попередній тиждень',disabled:S.weekStart<=S.today,onclick:function(){ haptic(); S.weekStart=addDays(S.weekStart,-7); drawWeek(wrap,next); },text:'‹'}),

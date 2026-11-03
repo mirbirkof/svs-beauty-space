@@ -1,0 +1,93 @@
+{
+ "at": "2026-11-03T19:41:08.121Z",
+ "viewport": "390x844",
+ "passed": 17,
+ "failed": 0,
+ "results": [
+  {
+   "name": "головний: SVS BEAUTY SPACE, Записатися, 4 пункти меню",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "Telegram.WebApp: ready()+expand() викликані",
+   "pass": true,
+   "extra": "{\"expand\":1,\"ready\":1,\"back\":0,\"haptic\":0}"
+  },
+  {
+   "name": "«Оплата онлайн» не показано",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "прогрес-бар 4/4 на підтвердженні",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "BackButton показано в глибині",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "тумблер «Нагадати за 24 год» є",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "бронь у БД: 1 запис source=miniapp + online_bookings channel=miniapp (подвійний тап)",
+   "pass": true,
+   "extra": "appointments=1, ob=miniapp"
+  },
+  {
+   "name": "dblclick «Підтвердити» = рівно 1 нова бронь",
+   "pass": true,
+   "extra": "усього записів у клієнта: 2"
+  },
+  {
+   "name": "зайнятий слот: «Час щойно зайняли», брані у B немає",
+   "pass": true,
+   "extra": "toast=\"Час щойно зайняли, оберіть інший\", C=200, B записів=0"
+  },
+  {
+   "name": "порожній день → «вільного часу немає»",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "initData unsigned → 401",
+   "pass": true,
+   "extra": "браузер 401, /my 401 no_hash"
+  },
+  {
+   "name": "initData expired → 401",
+   "pass": true,
+   "extra": "браузер 401, /my 401 expired"
+  },
+  {
+   "name": "кабінет: 2 майбутні записи",
+   "pass": true,
+   "extra": "18738610,18738611"
+  },
+  {
+   "name": "перенос: старий cancelled, новий активний",
+   "pass": true,
+   "extra": "старий=cancelled, нових=1"
+  },
+  {
+   "name": "скасування з кабінету → cancelled",
+   "pass": true,
+   "extra": "cancelled"
+  },
+  {
+   "name": "?move=id з напоминания відкриває вибір часу",
+   "pass": true,
+   "extra": ""
+  },
+  {
+   "name": "рейтинг «★» лише в майстрів з реальними оцінками",
+   "pass": true,
+   "extra": "★ на екрані: 0, майстрів з оцінками в БД: 0"
+  }
+ ]
+}
