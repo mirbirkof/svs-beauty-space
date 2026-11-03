@@ -96,7 +96,9 @@ function maskPhone(phone) {
 // vs «салон» визначалось числом ПЕРШОГО салону і застосовувалось до всіх (витік/невірна маска номерів).
 const _mcCache = new Map();
 async function activeMastersCount() {
-  const tid = String(getTenantId() || 'default');
+  // 03.11: було getTenantId() — такої змінної тут немає (імпорт _getTenantId) → ReferenceError → 500
+  // у майстра на будь-якому списку з телефонами (з 13.08). Корінь: опечатка в імені.
+  const tid = String(_getTenantId() || 'default');
   const hit = _mcCache.get(tid);
   if (hit && hit.exp > Date.now() && hit.n !== null) return hit.n;
   try {
