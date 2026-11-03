@@ -1154,14 +1154,14 @@ router.get('/online-events', async (req, res) => {
               date_from, channel, status, created_at, updated_at, 'new' AS event_type
          FROM online_bookings
         WHERE id > $1
-          AND COALESCE(channel,'') IN ('bot','bot-chat','site_salon','site_shop')
+          AND COALESCE(channel,'') IN ('bot','bot-chat','site_salon','site_shop','miniapp')
           AND COALESCE(status,'') NOT IN ('cancelled')
       UNION ALL
        SELECT id, client_name, client_phone, service_name, master_name,
               date_from, channel, status, created_at, updated_at, 'cancelled' AS event_type
          FROM online_bookings
         WHERE status = 'cancelled'
-          AND COALESCE(channel,'') IN ('bot','bot-chat','site_salon','site_shop')
+          AND COALESCE(channel,'') IN ('bot','bot-chat','site_salon','site_shop','miniapp')
           AND updated_at > $2::timestamptz
           AND updated_at > created_at + INTERVAL '2 seconds'
         ORDER BY id ASC

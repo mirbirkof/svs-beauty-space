@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>SVS Beauty Space — запис онлайн</title>
+<meta name="robots" content="noindex">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:#141012; --card:#221c1e; --card2:#2a2326; --line:#3a3033; --text:#f4ece9; --muted:#a89a96;
+  --rose:#f1b8ab; --rose2:#e7a596; --roseText:#2a1a17; --gold:#d9b38c; --ok:#7fd4a2; --err:#ff8f8f;
+  --r:18px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+body{min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.app{max-width:480px;margin:0 auto;min-height:100vh;position:relative}
+.screen{padding:0 16px 120px;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.serif{font-family:"Cormorant Garamond","Playfair Display",Georgia,"Times New Roman",serif}
+
+/* головний */
+.hero{position:relative;margin:0 -16px;height:330px;background:#000 url(/p/miniapp/hero.jpg) center 20%/cover no-repeat}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,18,0) 35%,rgba(20,16,18,.75) 72%,var(--bg) 100%)}
+.brand{position:relative;z-index:1;text-align:center;margin-top:-118px}
+.brand .svs{font-size:58px;letter-spacing:2px;color:#efe2dc;line-height:1}
+.brand .bs{font-size:13px;letter-spacing:6px;color:#d8c8c2;margin-top:4px}
+.brand .sub{font-size:20px;color:#e8dcd8;margin:18px 0 18px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;border-radius:26px;font-weight:600;font-size:16px}
+.btn-rose{background:linear-gradient(180deg,var(--rose),var(--rose2));color:var(--roseText);box-shadow:0 6px 22px rgba(241,184,171,.18)}
+.btn-rose:disabled{opacity:.5}
+.btn-ghost{background:var(--card);border:1px solid var(--line)}
+.btn-rose .chev{margin-left:auto;margin-right:6px;font-size:20px}
+.btn-rose .lbl{margin-left:30px}
+.menu{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.mi{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;text-align:left;width:100%}
+.mi .ic{width:24px;text-align:center;font-size:18px;opacity:.9}
+.mi .t{flex:1}
+.mi .ar,.row .ar{color:var(--muted);font-size:20px}
+
+/* шапка кроку */
+.head{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 10px;margin:0 0 6px}
+.head .back{position:absolute;left:-6px;top:12px;width:40px;height:40px;font-size:24px;color:var(--text)}
+.head .step{text-align:center;color:var(--muted);font-size:14px}
+.head .title{text-align:center;font-size:19px;margin-top:2px}
+.bar{display:flex;gap:6px;margin:12px 6px 0}
+.bar i{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.bar i.on{background:var(--rose)}
+
+/* списки */
+.list{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:0 14px 0 0;min-height:60px;text-align:left;width:100%;overflow:hidden}
+.row .thumb{width:66px;height:58px;object-fit:cover;flex:none;border-radius:16px 0 0 16px}
+.row .t{flex:1;font-size:16px}
+.row .cnt{color:var(--muted);font-size:13px}
+.svc{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;text-align:left;width:100%}
+.svc .t{flex:1}
+.svc .n{font-size:15px}
+.svc .m{color:var(--muted);font-size:13px;margin-top:3px}
+.svc .p{color:var(--gold);font-weight:600;white-space:nowrap}
+.cathead{display:flex;align-items:center;gap:12px;margin:2px 0 12px}
+.cathead img{width:46px;height:46px;border-radius:12px;object-fit:cover}
+.cathead b{font-size:17px;font-weight:600}
+
+.mst{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px 14px;text-align:left;width:100%}
+.mst.sel{border-color:var(--rose);box-shadow:0 0 0 1px var(--rose),0 0 22px rgba(241,184,171,.18)}
+.ava{width:58px;height:58px;border-radius:50%;object-fit:cover;flex:none;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--rose)}
+.mst .t{flex:1;min-width:0}
+.mst .n{font-size:16px}
+.mst .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+.mst .rt{font-size:13px;margin-top:3px}
+.mst .rt b{color:var(--gold)}
+.radio{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--muted);flex:none;display:flex;align-items:center;justify-content:center;font-size:14px}
+.mst.sel .radio{background:var(--rose);border-color:var(--rose);color:var(--roseText)}
+
+/* дата і час */
+.weeknav{display:flex;align-items:center;justify-content:space-between;margin:6px 0 2px;color:var(--muted);font-size:14px}
+.weeknav button{width:38px;height:34px;font-size:20px;color:var(--text)}
+.weeknav button:disabled{opacity:.25}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin:8px 0 18px}
+.week .dw{color:var(--muted);font-size:12.5px;margin-bottom:8px}
+.day{height:46px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:17px;width:100%}
+.day.off{opacity:.28}
+.day.sel{background:var(--rose);color:var(--roseText);font-weight:600}
+.day .dot{width:4px;height:4px;border-radius:50%;background:var(--rose);margin-top:3px}
+.day.sel .dot{background:var(--roseText)}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.slot{height:44px;border-radius:22px;background:var(--card);border:1px solid var(--line);font-size:16px}
+.slot.sel{background:var(--rose);border-color:var(--rose);color:var(--roseText);font-weight:600}
+.empty{background:var(--card);border:1px dashed var(--line);border-radius:16px;padding:22px 16px;text-align:center;color:var(--muted)}
+.empty .btn{margin-top:14px}
+
+/* підтвердження */
+.cf{display:flex;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px}
+.cf img{width:92px;height:118px;object-fit:cover;border-radius:12px;flex:none}
+.cf .t{flex:1;min-width:0}
+.cf .n{font-size:17px;font-weight:600;margin-bottom:4px}
+.cf .l{font-size:13.5px;color:#ddd0cc;margin-top:6px;display:flex;gap:8px}
+.cf .l i{font-style:normal;width:18px;text-align:center;opacity:.8}
+.cf .price{font-size:17px;color:var(--text);font-weight:600}
+.opts{background:var(--card);border:1px solid var(--line);border-radius:18px;margin-top:14px}
+.opt{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.opt .t{flex:1}
+.tgl{width:46px;height:28px;border-radius:14px;background:var(--line);position:relative;flex:none;transition:.15s}
+.tgl:after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#f4ece9;transition:.15s}
+.tgl.on{background:var(--rose)}
+.tgl.on:after{left:21px}
+.note{color:var(--muted);font-size:13px;margin-top:12px;text-align:center}
+.fixed{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(20,16,18,0),var(--bg) 30%);z-index:6}
+.fixed .inner{max-width:448px;margin:0 auto}
+
+/* кабінет */
+.hello{font-size:22px;margin:4px 0 2px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.stat b{display:block;font-size:19px;color:var(--gold)}
+.stat span{font-size:12px;color:var(--muted)}
+h3{font-size:15px;color:var(--muted);font-weight:500;margin:20px 2px 10px;text-transform:uppercase;letter-spacing:.6px}
+.ap{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+.ap .n{font-size:16px;font-weight:600}
+.ap .m{color:#ddd0cc;font-size:13.5px;margin-top:5px}
+.ap .acts{display:flex;gap:8px;margin-top:12px}
+.ap .acts button{flex:1;height:40px;border-radius:20px;font-size:14px;background:var(--card2);border:1px solid var(--line)}
+.ap .acts .x{color:var(--err)}
+.hist{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.hist .d{color:var(--muted);font-size:12.5px}
+
+/* телефон / успіх / тости */
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end}
+.sheet .box{background:#1d1719;width:100%;max-width:480px;margin:0 auto;border-radius:22px 22px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.sheet h2{font-size:19px;margin:0 0 6px}
+.sheet p{color:var(--muted);margin:0 0 16px;font-size:14px}
+.in{width:100%;height:50px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:16px;padding:0 14px;margin-bottom:10px}
+.or{text-align:center;color:var(--muted);font-size:13px;margin:12px 0}
+.okic{width:78px;height:78px;border-radius:50%;margin:34px auto 14px;background:var(--rose);color:var(--roseText);display:flex;align-items:center;justify-content:center;font-size:40px}
+.center{text-align:center}
+.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:#3a2b2e;color:var(--text);border:1px solid var(--rose);padding:12px 16px;border-radius:14px;z-index:30;max-width:90%;font-size:14px;text-align:center}
+.err{color:var(--err)}
+.spin{display:flex;justify-content:center;padding:40px 0}
+.spin:after{content:"";width:28px;height:28px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--rose);animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.badge{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px 8px;font-size:12px;color:var(--gold);margin-left:6px}
+.banner{background:var(--card2);border:1px solid var(--rose);border-radius:14px;padding:10px 12px;font-size:13.5px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="spin"></div></div>
+<script>
+(function(){
+'use strict';
+var tg = (window.Telegram && window.Telegram.WebApp) || null;
+// initData: від Telegram (WebApp.initData) або з хеша tgWebAppData, який Telegram передає в URL
+function readInitData(){
+  if (tg && tg.initData) return tg.initData;
+  try { var h = new URLSearchParams(location.hash.slice(1)); return h.get('tgWebAppData') || ''; } catch(e){ return ''; }
+}
+var INIT = readInitData();
+var Q = new URLSearchParams(location.search);
+var CAT_IMG = [[/волос|перукар|стриж|фарб/i,'hair'],[/брів|брови|вії|вій|lash/i,'brows'],[/ніг|манік|педик|nail/i,'nails'],[/макіяж|make/i,'makeup'],[/масаж|тіл/i,'massage']];
+function catImg(name){ for (var i=0;i<CAT_IMG.length;i++) if (CAT_IMG[i][0].test(name||'')) return '/p/miniapp/'+CAT_IMG[i][1]+'.jpg'; return '/p/miniapp/other.jpg'; }
+var DW = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+var MON = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
+var DOWL = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+var S = { me:null, catalog:null, cat:null, svc:null, master:null, masters:null, date:null, slot:null,
+          weekStart:null, days:{}, today:null, remind24:true, move:null, stack:['home'], busy:false };
+
+// ── утиліти ──
+function h(tag, attrs){
+  var el = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    var v = attrs[k]; if (v == null || v === false) continue;
+    if (k === 'class') el.className = v; else if (k === 'text') el.textContent = v;
+    else if (k.slice(0,2) === 'on') el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (var i=2;i<arguments.length;i++) add(el, arguments[i]);
+  return el;
+}
+function add(el, c){ if (c == null || c === false) return; if (Array.isArray(c)) c.forEach(function(x){add(el,x);}); else el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); }
+function haptic(kind){ try { if (!tg || !tg.HapticFeedback) return; if (kind==='ok'||kind==='error'||kind==='warning') tg.HapticFeedback.notificationOccurred(kind); else tg.HapticFeedback.selectionChanged(); } catch(e){} }
+function toast(msg){ var t = h('div',{class:'toast',text:msg}); document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 3200); }
+function price(p){ p = Math.round(+p||0); return p>0 ? p.toLocaleString('uk-UA').replace(/ /g,' ')+' грн' : 'за прайсом'; }
+function dur(m){ m=+m||0; var hh=Math.floor(m/60), mm=m%60; return hh ? (mm ? hh+' год '+mm+' хв' : hh+' год') : mm+' хв'; }
+function lbl(min){ return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
+function addDays(iso,n){ var d=new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function dowMon0(iso){ return (new Date(iso+'T12:00:00Z').getUTCDay()+6)%7; }
+function dateLong(iso){ var d=new Date(iso+'T12:00:00Z'); return DOWL[d.getUTCDay()]+', '+d.getUTCDate()+' '+MON[d.getUTCMonth()]; }
+
+function api(path, opts){
+  opts = opts || {};
+  return fetch('/api/miniapp'+path, { method: opts.method || 'GET',
+    headers: Object.assign({'X-Telegram-Init-Data': INIT}, opts.body ? {'Content-Type':'application/json'} : {}),
+    body: opts.body ? JSON.stringify(opts.body) : undefined })
+  .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ j._status = r.status; return j; }); });
+}
+
+// ── каркас ──
+var root = document.getElementById('app');
+function render(node){ root.innerHTML=''; root.appendChild(node); window.scrollTo(0,0); syncBack(); }
+function head(step, title){
+  var bar = h('div',{class:'bar'}); for (var i=1;i<=4;i++) bar.appendChild(h('i',{class:i<=step?'on':''}));
+  return h('div',{class:'head'},
+    h('button',{class:'back','aria-label':'Назад',onclick:back,text:'←'}),
+    step ? h('div',{class:'step',text:step+'/4'}) : null,
+    h('div',{class:'title',text:title}), step ? bar : null);
+}
+function plainHead(title){ return h('div',{class:'head'}, h('button',{class:'back','aria-label':'Назад',onclick:back,text:'←'}), h('div',{class:'title',text:title})); }
+function go(name){ S.stack.push(name); show(); }
+function back(){ haptic(); if (S.stack.length>1) { S.stack.pop(); show(); } else if (tg) tg.close(); }
+function home(){ S.stack=['home']; show(); }
+function syncBack(){
+  if (!tg || !tg.BackButton) return;
+  try { if (S.stack.length>1) tg.BackButton.show(); else tg.BackButton.hide(); } catch(e){}
+}
+function show(){
+  var cur = S.stack[S.stack.length-1];
+  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam})[cur]();
+}
+
+// ── екрани ──
+function vHome(){
+  var name = S.me && S.me.client && S.me.client.name;
+  render(h('div',{class:'screen'},
+    h('div',{class:'hero'}),
+    h('div',{class:'brand'},
+      h('div',{class:'svs serif',text:'SVS'}), h('div',{class:'bs serif',text:'BEAUTY SPACE'}),
+      h('div',{class:'sub serif',text: name ? 'Вітаємо, '+name+'!' : 'Запис онлайн'})),
+    h('button',{class:'btn btn-rose',id:'go-book',onclick:function(){ haptic(); S.move=null; startBooking(); }},
+      h('span',{class:'lbl',text:'Записатися ✨'}), h('span',{class:'chev',text:'›'})),
+    h('div',{class:'menu'},
+      mi('💅','Послуги',function(){ S.move=null; startBooking(); }),
+      mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
+      mi('🎁','Акції та новини',function(){ location.href='/p/promotions.html'; }),
+      mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'))));
+}
+function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
+
+function startBooking(){
+  S.svc=null; S.master=null; S.date=null; S.slot=null; S.cat=null;
+  S.stack=['home','cats']; show();
+}
+
+function loadCatalog(){
+  if (S.catalog) return Promise.resolve(S.catalog);
+  return api('/catalog').then(function(j){ if (j._status!==200) throw j; S.catalog=j.categories||[]; return S.catalog; });
+}
+
+function vCats(){
+  var box = h('div',{class:'list'}, h('div',{class:'spin'}));
+  render(h('div',{class:'screen'}, head(1,'Послуга'), box));
+  loadCatalog().then(function(cats){
+    box.innerHTML='';
+    if (!cats.length) { box.appendChild(h('div',{class:'empty',text:'Онлайн-запис тимчасово недоступний. Напишіть адміністратору в чаті бота.'})); return; }
+    cats.forEach(function(c){
+      box.appendChild(h('button',{class:'row',onclick:function(){ haptic(); S.cat=c; go('svcs'); }},
+        h('img',{class:'thumb',src:catImg(c.name),alt:''}),
+        h('span',{class:'t',text:c.name}), h('span',{class:'cnt',text:String(c.count)}), h('span',{class:'ar',text:'›'})));
+    });
+  }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити послуги. Спробуйте ще раз.'})); });
+}
+
+function vSvcs(){
+  var c = S.cat; if (!c) return home();
+  var list = h('div',{class:'list'});
+  c.services.forEach(function(s){
+    list.appendChild(h('button',{class:'svc',onclick:function(){ haptic(); S.svc=s; S.master=null; S.masters=null; go('masters'); }},
+      h('span',{class:'t'}, h('div',{class:'n',text:s.name}), h('div',{class:'m',text:dur(s.duration_min)})),
+      h('span',{class:'p',text:price(s.price)})));
+  });
+  render(h('div',{class:'screen'}, head(1,'Послуга'),
+    h('div',{class:'cathead'}, h('img',{src:catImg(c.name),alt:''}), h('b',{text:c.name})), list));
+}
+
+function avatar(m){
+  if (m && m.avatar) { var img = h('img',{class:'ava',src:m.avatar,alt:'',loading:'lazy'}); img.onerror=function(){ img.replaceWith(h('div',{class:'ava',text:(m.name||'?').charAt(0)})); }; return img; }
+  return h('div',{class:'ava',text: m ? (m.name||'?').charAt(0) : '✦'});
+}
+function vMasters(){
+  var box = h('div',{class:'list'}, h('div',{class:'spin'}));
+  var next = h('button',{class:'btn btn-rose',id:'next-master',disabled:!S.master,onclick:function(){ haptic(); go('time'); }}, 'Далі ›');
+  render(h('div',{class:'screen'}, head(2,'Майстер'),
+    h('div',{class:'note',style:'margin:0 0 12px;text-align:left',text:S.svc.name+' · '+dur(S.svc.duration_min)}), box,
+    h('div',{class:'fixed'}, h('div',{class:'inner'}, next))));
+  var p = S.masters ? Promise.resolve(S.masters) : api('/masters?service='+S.svc.id).then(function(j){ if (j._status!==200) throw j; S.masters=j.masters||[]; return S.masters; });
+  p.then(function(ms){
+    box.innerHTML='';
+    if (!ms.length) { box.appendChild(h('div',{class:'empty',text:'Зараз немає майстра для онлайн-запису на цю послугу. Напишіть адміністратору.'})); return; }
+    var all = (ms.length>1 ? [{id:'any',name:'Будь-який вільний майстер',specialty:'Покажемо найближчий вільний час'}] : []).concat(ms);
+    all.forEach(function(m){
+      var sel = S.master && String(S.master.id)===String(m.id);
+      box.appendChild(h('button',{class:'mst'+(sel?' sel':''),'data-id':m.id,onclick:function(){
+          haptic(); S.master=m; S.date=null; S.slot=null; S.days={}; vMastersMark(box); next.disabled=false; }},
+        m.id==='any' ? h('div',{class:'ava',text:'✦'}) : avatar(m),
+        h('span',{class:'t'}, h('div',{class:'n',text:m.name}),
+          m.specialty ? h('div',{class:'s',text:m.specialty}) : null,
+          m.rating ? h('div',{class:'rt'}, h('b',{text:'★ '+m.rating}), ' ('+m.reviews+')') : null),
+        h('span',{class:'radio',text:sel?'✓':''})));
+    });
+  }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити майстрів.'})); });
+}
+function vMastersMark(box){
+  [].forEach.call(box.querySelectorAll('.mst'), function(el){
+    var on = S.master && el.getAttribute('data-id')===String(S.master.id);
+    el.classList.toggle('sel', on); el.querySelector('.radio').textContent = on ? '✓' : '';
+  });
+}
+
+function selQS(){ return 'service='+S.svc.id+'&master='+encodeURIComponent(S.master ? S.master.id : 'any'); }
+function loadDays(from, n){
+  return api('/days?'+selQS()+'&from='+from+'&n='+n).then(function(j){
+    if (j._status!==200) throw j; S.today=j.today; (j.days||[]).forEach(function(d){ S.days[d.date]=d.count; }); return j;
+  });
+}
+function vTime(){
+  var wrap = h('div',{}, h('div',{class:'spin'}));
+  var next = h('button',{class:'btn btn-rose',id:'next-time',disabled:!S.slot,onclick:function(){ haptic(); go('confirm'); }}, 'Далі ›');
+  render(h('div',{class:'screen'}, head(3,'Дата і час'),
+    S.move ? h('div',{class:'banner',text:'🔁 Перенесення: '+(S.move.service||'запис')+' — було '+dateLong(S.move.date)+', '+S.move.time}) : null,
+    wrap, h('div',{class:'fixed'}, h('div',{class:'inner'}, next))));
+  var first = S.date ? Promise.resolve() : loadDays(S.today || new Date().toISOString().slice(0,10), 14).then(function(){
+    var ds = Object.keys(S.days).sort(); S.date = ds.filter(function(d){ return S.days[d]>0; })[0] || ds[0];
+  });
+  first.then(function(){ S.weekStart = addDays(S.date, -dowMon0(S.date)); return drawWeek(wrap, next); })
+    .catch(function(){ wrap.innerHTML=''; wrap.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити розклад.'})); });
+}
+function drawWeek(wrap, next){
+  var from = S.weekStart < S.today ? S.today : S.weekStart, end = addDays(S.weekStart, 6);
+  var need = []; for (var d=from; d<=end; d=addDays(d,1)) if (!(d in S.days)) need.push(d);
+  var p = need.length ? loadDays(need[0], Math.round((Date.parse(end)-Date.parse(need[0]))/864e5)+1) : Promise.resolve();
+  return p.then(function(){
+    wrap.innerHTML='';
+    var m1 = new Date(S.weekStart+'T12:00:00Z'), m2 = new Date(end+'T12:00:00Z');
+    var title = m1.getUTCMonth()===m2.getUTCMonth() ? MON[m1.getUTCMonth()] : MON[m1.getUTCMonth()]+' – '+MON[m2.getUTCMonth()];
+    var maxStart = addDays(S.today, 84);
+    wrap.appendChild(h('div',{class:'weeknav'},
+      h('button',{'aria-label':'Попередній тиждень',disabled:S.weekStart<=S.today,onclick:function(){ haptic(); S.weekStart=addDays(S.weekStart,-7); drawWeek(wrap,next); },text:'‹'}),
+      h('span',{text:title}),
+      h('button',{'aria-label':'Наступний тиждень',disabled:S.weekStart>=maxStart,onclick:function(){ haptic(); S.weekStart=addDays(S.weekStart,7); drawWeek(wrap,next); },text:'›'})));
+    var wk = h('div',{class:'week'});
+    for (var i=0;i<7;i++){ (function(i){
+      var iso = addDays(S.weekStart,i), past = iso < S.today, cnt = S.days[iso]||0;
+      wk.appendChild(h('div',{}, h('div',{class:'dw',text:DW[i]}),
+        h('button',{class:'day'+(iso===S.date?' sel':'')+(past||!cnt?' off':''),'data-date':iso,disabled:past,
+          onclick:function(){ haptic(); S.date=iso; S.slot=null; next.disabled=true; drawWeek(wrap,next); }},
+          String(+iso.slice(8)), cnt && !past ? h('span',{class:'dot'}) : null)));
+    })(i); }
+    wrap.appendChild(wk);
+    var sb = h('div',{}, h('div',{class:'spin'})); wrap.appendChild(sb);
+    if (!S.date || S.date < S.weekStart || S.date > end) { sb.innerHTML=''; sb.appendChild(h('div',{class:'empty',text:'Оберіть день'})); return; }
+    return api('/slots?'+selQS()+'&date='+S.date).then(function(j){
+      sb.innerHTML='';
+      var slots = (j && j.slots) || [];
+      if (!slots.length){
+        var nx = Object.keys(S.days).sort().filter(function(d){ return d > S.date && S.days[d]>0; })[0];
+        sb.appendChild(h('div',{class:'empty',id:'empty-day'}, 'На '+dateLong(S.date)+' вільного часу немає.',
+          nx ? h('button',{class:'btn btn-ghost',onclick:function(){ haptic(); S.date=nx; S.weekStart=addDays(nx,-dowMon0(nx)); drawWeek(wrap,next); }}, 'Найближчий вільний: '+dateLong(nx)) : null));
+        return;
+      }
+      var g = h('div',{class:'slots'});
+      slots.forEach(function(s){
+        var sel = S.slot && S.slot.start_min===s.start_min && S.slot.master_id===s.master_id;
+        g.appendChild(h('button',{class:'slot'+(sel?' sel':''),'data-min':s.start_min,onclick:function(e){
+          haptic(); S.slot=s; [].forEach.call(g.children,function(x){x.classList.remove('sel');}); e.currentTarget.classList.add('sel'); next.disabled=false; }}, s.label));
+      });
+      sb.appendChild(g);
+      if (S.master && S.master.id==='any') sb.appendChild(h('div',{class:'note',text:'Майстра підберемо автоматично — побачите на наступному кроці.'}));
+    });
+  });
+}
+
+function masterOfSlot(){
+  if (S.master && S.master.id!=='any') return S.master;
+  var id = S.slot.master_id; var m = (S.masters||[]).filter(function(x){ return x.id===id; })[0];
+  return m || {id:id, name:S.slot.master_name||''};
+}
+function vConfirm(){
+  if (!S.slot) return back();
+  var m = masterOfSlot();
+  var tgl = h('span',{class:'tgl'+(S.remind24?' on':''),role:'switch','aria-checked':String(S.remind24)});
+  var btn = h('button',{class:'btn btn-rose',id:'confirm-btn',onclick:confirmBooking}, S.move ? 'Перенести запис ✓' : 'Підтвердити запис ✓');
+  var catName = (S.cat && S.cat.name) || '';
+  render(h('div',{class:'screen'}, head(4,'Підтвердження'),
+    S.move ? h('div',{class:'banner',text:'🔁 Старий запис ('+dateLong(S.move.date)+', '+S.move.time+') буде скасовано після підтвердження нового.'}) : null,
+    h('div',{class:'cf'}, h('img',{src:catImg(catName || S.svc.name),alt:''}),
+      h('div',{class:'t'}, h('div',{class:'n',text:S.svc.name}),
+        h('div',{class:'l'}, h('i',{text:'💇'}), 'Майстер: '+m.name),
+        h('div',{class:'l'}, h('i',{text:'📅'}), dateLong(S.date)),
+        h('div',{class:'l'}, h('i',{text:'🕒'}), lbl(S.slot.start_min)+' (≈ '+dur(S.svc.duration_min)+')'),
+        h('div',{class:'l price'}, h('i',{text:'💳'}), price(S.svc.price)))),
+    h('div',{class:'opts'},
+      h('button',{class:'opt',style:'width:100%;text-align:left',id:'remind-toggle',onclick:function(){ haptic(); S.remind24=!S.remind24; tgl.classList.toggle('on',S.remind24); tgl.setAttribute('aria-checked',String(S.remind24)); }},
+        h('span',{text:'🔔'}), h('span',{class:'t',text:'Нагадати за 24 год'}), tgl)),
+    h('div',{class:'note',text:'Підтвердження і нагадування прийдуть у цей чат Telegram.'}),
+    h('div',{class:'fixed'}, h('div',{class:'inner'}, btn))));
+}
+
+function confirmBooking(e){
+  var btn = e.currentTarget;
+  if (S.busy) return; S.busy = true; btn.disabled = true; btn.textContent = 'Записуємо…';
+  ensurePhone().then(function(ok){
+    if (!ok) return null;
+    var m = masterOfSlot();
+    return api('/book',{method:'POST',body:{service_id:S.svc.id, master_id:m.id, date:S.date, start_min:S.slot.start_min,
+      remind24:S.remind24, move_ids:S.move ? S.move.ids : undefined}});
+  }).then(function(j){
+    if (!j) return;
+    if (j._status===200 && j.ok){ haptic('ok'); S.result=j.booking; S.stack=['home','done']; show(); if (S.move) S.move=null; return; }
+    haptic('error');
+    if (j.error==='slot_taken'){ toast(j.message||'Час щойно зайняли, оберіть інший'); S.slot=null; S.days={}; S.stack.pop(); show(); return; }
+    if (j.error==='need_phone'){ toast('Потрібен номер телефону'); return; }
+    toast(j.message || 'Не вдалося записатися. Спробуйте ще раз.');
+  }).catch(function(){ toast('Немає звʼязку. Спробуйте ще раз.'); })
+  .then(function(){ S.busy=false; if (document.body.contains(btn)) { btn.disabled=false; btn.textContent = S.move ? 'Перенести запис ✓' : 'Підтвердити запис ✓'; } });
+}
+
+// телефон питаємо один раз: кнопкою Telegram (підписаний контакт) або вручну
+function ensurePhone(){
+  if (S.me && S.me.client && S.me.client.has_phone) return Promise.resolve(true);
+  return new Promise(function(resolve){
+    var inp = h('input',{class:'in',type:'tel',inputmode:'tel',placeholder:'+380 XX XXX XX XX',id:'phone-in',autocomplete:'tel'});
+    var nm = h('input',{class:'in',type:'text',placeholder:'Ваше імʼя',value:(tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name)||''});
+    var msg = h('div',{class:'note err'});
+    function close(v){ sh.remove(); resolve(v); }
+    function done(j){
+      if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true}); close(true); return; }
+      msg.textContent = j.message || 'Не вдалося зберегти номер';
+    }
+    var share = (tg && tg.requestContact) ? h('button',{class:'btn btn-rose',id:'share-phone',onclick:function(){
+      haptic();
+      try { tg.requestContact(function(ok, resp){
+        if (!ok) { msg.textContent='Можна ввести номер вручну нижче.'; return; }
+        var raw = resp && (resp.response || (typeof resp==='string'?resp:null));
+        if (!raw) { msg.textContent='Telegram не передав номер, введіть вручну.'; return; }
+        api('/contact',{method:'POST',body:{contact:raw}}).then(done);
+      }); } catch(e){ msg.textContent='Введіть номер вручну.'; }
+    }}, '📱 Поділитися номером з Telegram') : null;
+    var sh = h('div',{class:'sheet'}, h('div',{class:'box'},
+      h('h2',{text:'Ваш номер телефону'}), h('p',{text:'Потрібен один раз — щоб салон міг звʼязатися щодо запису.'}),
+      share, share ? h('div',{class:'or',text:'або'}) : null, nm, inp,
+      h('button',{class:'btn btn-ghost',id:'save-phone',onclick:function(){
+        api('/contact',{method:'POST',body:{phone:inp.value, name:nm.value}}).then(done); }}, 'Зберегти номер'),
+      msg, h('button',{class:'btn',style:'margin-top:6px;color:var(--muted)',onclick:function(){ close(false); }}, 'Скасувати')));
+    document.body.appendChild(sh);
+  });
+}
+
+function vDone(){
+  var b = S.result || {};
+  render(h('div',{class:'screen center'},
+    h('div',{class:'okic',text:'✓'}),
+    h('div',{class:'hello serif',text: b.moved ? 'Запис перенесено!' : 'Ви записані!'}),
+    h('div',{class:'cf',style:'text-align:left;margin-top:16px'}, h('div',{class:'t'},
+      h('div',{class:'n',text:b.service||''}),
+      h('div',{class:'l'}, h('i',{text:'💇'}), b.master||''),
+      h('div',{class:'l'}, h('i',{text:'📅'}), b.date_label||''),
+      h('div',{class:'l'}, h('i',{text:'🕒'}), (b.time||'')+' · '+(b.duration||'')),
+      h('div',{class:'l price'}, h('i',{text:'💳'}), price(b.price)))),
+    h('div',{class:'note',text:'Підтвердження надіслали в чат. Нагадаємо перед візитом.'}),
+    h('div',{class:'menu'},
+      h('button',{class:'btn btn-rose',id:'to-cabinet',onclick:function(){ S.stack=['home','cabinet']; show(); }}, 'Мої записи'),
+      h('button',{class:'btn btn-ghost',onclick:home}, 'На головну'))));
+}
+
+function vCabinet(){
+  var box = h('div',{}, h('div',{class:'spin'}));
+  render(h('div',{class:'screen'}, plainHead('Мій кабінет'), box));
+  api('/my').then(function(j){
+    box.innerHTML='';
+    if (j._status!==200){ box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити кабінет.'})); return; }
+    var c = j.client;
+    if (!c){ box.appendChild(h('div',{class:'empty'}, 'У вас ще немає записів.', h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨'))); return; }
+    box.appendChild(h('div',{class:'hello serif',text:'Вітаємо, '+(c.name||'')+'!'}));
+    if (c.phone) box.appendChild(h('div',{class:'note',style:'text-align:left;margin:0',text:c.phone}));
+    box.appendChild(h('div',{class:'stats'},
+      h('div',{class:'stat'}, h('b',{text:String(Math.round(c.points||0))}), h('span',{text:'бонусів'})),
+      h('div',{class:'stat'}, h('b',{text:String(c.visits||0)}), h('span',{text:'візитів'})),
+      h('div',{class:'stat'}, h('b',{text:String((j.upcoming||[]).length)}), h('span',{text:'попереду'}))));
+    box.appendChild(h('h3',{text:'Майбутні записи'}));
+    if (!(j.upcoming||[]).length) box.appendChild(h('div',{class:'empty'}, 'Немає майбутніх записів.', h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨')));
+    var list = h('div',{class:'list'}); box.appendChild(list);
+    (j.upcoming||[]).forEach(function(a){
+      list.appendChild(h('div',{class:'ap','data-id':a.id},
+        h('div',{class:'n',text:a.service}),
+        h('div',{class:'m',text:'📅 '+a.date_label+' · '+a.time}),
+        h('div',{class:'m',text:'💇 '+a.master+(a.price?' · '+price(a.price):'')}),
+        h('div',{class:'acts'},
+          h('button',{class:'mv',onclick:function(){ haptic(); startMove([a.id]); }}, '🔁 Перенести'),
+          h('button',{class:'x',onclick:function(e){ cancelAppt(a, e.currentTarget); }}, '✖ Скасувати'))));
+    });
+    if ((j.history||[]).length){
+      box.appendChild(h('h3',{text:'Історія візитів'}));
+      j.history.forEach(function(a){
+        box.appendChild(h('div',{class:'hist'}, h('div',{}, h('div',{text:a.service||'Візит'}), h('div',{class:'d',text:a.date_label+' · '+a.master})),
+          h('div',{class:'p',style:'color:var(--gold)',text:a.price?price(a.price):''})));
+      });
+    }
+  }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Немає звʼязку.'})); });
+}
+function cancelAppt(a, btn){
+  var doIt = function(){
+    btn.disabled = true;
+    api('/cancel',{method:'POST',body:{ids:[a.id]}}).then(function(j){
+      if (j._status===200){ haptic('ok'); toast('Запис скасовано'); vCabinet(); }
+      else { haptic('error'); toast(j.message||'Не вдалося скасувати'); btn.disabled=false; }
+    });
+  };
+  var q = 'Скасувати запис «'+a.service+'» на '+a.date_label+', '+a.time+'?';
+  if (tg && tg.showConfirm && tg.platform && tg.platform!=='unknown') { try { tg.showConfirm(q, function(ok){ if (ok) doIt(); }); return; } catch(e){} }
+  if (window.confirm(q)) doIt();
+}
+
+function startMove(ids){
+  api('/move-info?ids='+ids.join(',')).then(function(j){
+    if (j._status!==200){ toast(j.message||'Запис уже неактуальний'); S.stack=['home','cabinet']; show(); return; }
+    return loadCatalog().then(function(cats){
+      var svc=null, cat=null;
+      cats.forEach(function(c){ c.services.forEach(function(s){ if (s.id===j.service_id){ svc=s; cat=c; } }); });
+      if (!svc){ toast('Ця послуга зараз недоступна онлайн — напишіть адміністратору'); return; }
+      return api('/masters?service='+svc.id).then(function(mj){
+        S.masters = mj.masters||[];
+        var m = S.masters.filter(function(x){ return x.id===j.master_id; })[0];
+        S.move = {ids:j.ids, date:j.date, time:j.time, service:j.service};
+        S.svc=svc; S.cat=cat; S.master = m || null; S.date=null; S.slot=null; S.days={};
+        S.stack = m ? ['home','cabinet','time'] : ['home','cabinet','masters'];
+        show();
+      });
+    });
+  });
+}
+
+function vTeam(){
+  var box = h('div',{class:'list'}, h('div',{class:'spin'}));
+  render(h('div',{class:'screen'}, plainHead('Наші майстри'), box,
+    h('div',{class:'fixed'}, h('div',{class:'inner'}, h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨')))));
+  api('/masters').then(function(j){
+    box.innerHTML='';
+    (j.masters||[]).forEach(function(m){
+      box.appendChild(h('div',{class:'mst'}, avatar(m), h('span',{class:'t'}, h('div',{class:'n',text:m.name}),
+        m.specialty ? h('div',{class:'s',text:m.specialty}) : null,
+        m.rating ? h('div',{class:'rt'}, h('b',{text:'★ '+m.rating}), ' ('+m.reviews+')') : null)));
+    });
+  });
+}
+
+// ── старт ──
+function boot(){
+  if (tg){ try { tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#141012'); tg.setBackgroundColor && tg.setBackgroundColor('#141012');
+    tg.BackButton && tg.BackButton.onClick(back); } catch(e){} }
+  if (!INIT){
+    render(h('div',{class:'screen center'}, h('div',{class:'hero'}),
+      h('div',{class:'brand'}, h('div',{class:'svs serif',text:'SVS'}), h('div',{class:'bs serif',text:'BEAUTY SPACE'}),
+        h('div',{class:'sub',text:'Відкрийте запис через нашого Telegram-бота'})),
+      h('a',{class:'btn btn-rose',href:'https://t.me/Svs_beautybot',style:'text-decoration:none'}, 'Відкрити @Svs_beautybot')));
+    return;
+  }
+  api('/me').then(function(j){
+    if (j._status===401){ render(h('div',{class:'screen center'}, h('div',{class:'okic',text:'!'}),
+      h('div',{class:'hello',text:'Сесія застаріла'}), h('div',{class:'note',text:'Закрийте і відкрийте застосунок знову з чату бота.'}))); return; }
+    S.me = j;
+    var mv = Q.get('move'), scr = Q.get('screen');
+    if (mv) { S.stack=['home','cabinet']; startMove(mv.split(/[.,]/)); return; }
+    if (scr==='cabinet') { S.stack=['home','cabinet']; show(); return; }
+    if (scr==='book') { startBooking(); return; }
+    show();
+  }).catch(function(){ render(h('div',{class:'screen center'}, h('div',{class:'hello',text:'Немає звʼязку'}),
+    h('button',{class:'btn btn-rose',onclick:boot}, 'Спробувати ще раз'))); });
+}
+boot();
+})();
+</script>
+</body>

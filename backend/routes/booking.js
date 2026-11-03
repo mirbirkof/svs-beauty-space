@@ -259,7 +259,13 @@ async function processUpdate(upd, tg, salon) {
     // tenantId для гілки власника: per-tenant вебхук іде в runAs(t.id) → getTenantId()
     // повертає салон; легасі-бот Босса без контексту → DEFAULT_TENANT_ID.
     const tenantId = require('../lib/tenant').getTenantId() || DEFAULT_TENANT_ID;
-    const botCtx = { tg, pool: getPool(), bp, tenantId, salonName: (salon && salon.name) || null };
+    const botCtx = { tg, pool: getPool(), tenantId, salonName: (salon && salon.name) || null };
+    // Mini App (Босс 03.11): лише легасі-бот салону за замовчуванням. Відкат на текстовий запис —
+    // env BOT_TEXT_BOOKING=1 (тоді salon.miniapp=false і все працює як раніше).
+    if (salon && salon.miniapp) {
+      const base = require('../lib/public-url').getPublicBase();
+      if (base) botCtx.miniappUrl = base + '/p/app.html';
+    }
 
     // Розмовна запис: натискання inline-кнопок → повністю в booking-bot
     if (upd.callback_query) {
@@ -273,6 +279,9 @@ async function processUpdate(upd, tg, salon) {
     // /menu — повернути нижнє меню (owner або клієнт) після того, як його приховали
     if (msg.text && /^\/menu(@\w+)?$/i.test(msg.text.trim())) {
       try { if (await bookingBot.tryOwnerStart(msg, botCtx)) return; } catch (e) { console.error('[booking/menu-owner]', e.message); }
+      if (botCtx.miniappUrl) {
+        return tg('sendMessage', { chat_id: msg.chat.id, text: 'Головне меню 💛', reply_markup: bookingBot.miniappKb(botCtx) });
+      }
       return tg('sendMessage', {
         chat_id: msg.chat.id, parse_mode: 'HTML',
         text: 'Головне меню 💛\nОберіть дію нижче або напишіть послугу.',
@@ -295,6 +304,21 @@ async function processUpdate(upd, tg, salon) {
       if (!token || /^(link|book|site|web|start|zapis|menu)$/i.test(token)) {
         // Власник салону → його меню керування (ізольовано; клієнт цього не бачить).
         try { if (await bookingBot.tryOwnerStart(msg, botCtx)) return; } catch (e) { console.error('[booking/owner-start]', e.message); }
+        // Mini App: клієнту — одна кнопка застосунку (номер, якщо треба, спитаємо всередині).
+        if (botCtx.miniappUrl) {
+          let nm = '';
+          try {
+            const k = await getPool().query(`SELECT name, tg_first_name FROM clients WHERE telegram_id = $1 LIMIT 1`, [msg.from.id]);
+            if (k.rowCount) nm = k.rows[0].name || k.rows[0].tg_first_name || '';
+          } catch (e) { console.error('[booking/cold-start-mini]', e.message); }
+          const salonName = (salon && salon.name) || 'SVS Beauty Space';
+          return tg('sendMessage', {
+            chat_id: msg.chat.id, parse_mode: 'HTML',
+            text: (nm ? `З поверненням, ${String(nm).replace(/[<>&]/g, '')}! 💛` : `Вітаємо у ${salonName}! 👋`) +
+              '\n\nЗапис онлайн — у зручному застосунку: послуга → майстер → час → готово. Там же ваш кабінет, записи та бонуси.\nПідтвердження й нагадування прийдуть сюди, в Telegram.',
+            reply_markup: bookingBot.miniappKb(botCtx),
+          });
+        }
         // Холодний старт. Якщо вже знаємо цей Telegram — вітаємо на імʼя, номер не питаємо.
         try {
           const known = await getPool().query(
@@ -647,7 +671,7 @@ router.post('/telegram', async (req, res) => {
     return res.status(403).json({ ok: false, error: 'bad-secret' });
   }
   try {
-    await processUpdate(req.body, tg, { name: 'SVS Beauty Space' });
+    await processUpdate(req.body, tg, { name: 'SVS Beauty Space', miniapp: process.env.BOT_TEXT_BOOKING !== '1' });
     if (!res.headersSent) res.json({ ok: true });
   } catch (e) {
     // Аудит 13.08 (в2): раніше finally відповідав 200 ЗАВЖДИ — Telegram вважав апдейт
@@ -854,3 +878,6 @@ router.get('/salon-info', async (req, res) => {
 
 module.exports = router;
 module.exports.resolveBookingIds = resolveBookingIds;
+
+module.exports.tg = tg;
+module.exports.processUpdate = processUpdate;

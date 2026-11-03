@@ -197,6 +197,16 @@ app.use('/admin', express.static(__dirname + '/public/admin', {
     }
   }
 }));
+// Telegram Mini App (Босс 03.11): /p/app.html відкривається всередині Telegram (Web-версія — в iframe
+// web.telegram.org). Тому ТІЛЬКИ для цієї сторінки знімаємо X-Frame-Options і дозволяємо фрейм лише Telegram.
+app.use('/p', (req, res, next) => {
+  if (req.path === '/app.html') {
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('Content-Security-Policy', 'frame-ancestors https://web.telegram.org https://*.telegram.org');
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+  next();
+});
 // статика клиентских страниц (promotions, loyalty, my, cabinet, shop)
 app.use('/p', express.static(__dirname + '/public'));
 
@@ -631,6 +641,8 @@ try { app.use('/api/booking', require('./routes/booking-catalog')); } catch(e) {
 // З 03.07 вебхук вказує СЮДИ (svs-shop-api) — старий окремий сервіс запису деплоївся
 // з іншого репо і застряг на червневому коді. /catalog перехоплює booking-catalog вище.
 try { app.use('/api/booking', require('./routes/booking')); } catch(e) { console.error('[booking] mount failed:', e.message); }
+// Telegram Mini App запису: доступ лише з підписаним Telegram initData (routes/miniapp.js)
+try { app.use('/api/miniapp', require('./routes/miniapp')); } catch(e) { console.error('[miniapp] mount failed:', e.message); }
 // SAS этап 1: самостоятельное подключение ТГ-бота салона (BotFather token → всё само)
 try { app.use('/api/bot-connect', require('./routes/bot-connect')); } catch(e) { console.error('[bot-connect] mount failed:', e.message); }
 try { app.use('/api/monitoring', require('./routes/monitoring')); } catch(e) { console.error('[monitoring] mount failed:', e.message); }

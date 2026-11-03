@@ -476,63 +476,20 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
     return ctx.tg('sendMessage', { chat_id: chatId, text: '⚠️ Не вдалось створити запис. Адміністратор звʼяжеться з вами.' });
   }
 
-  // записи в журнал салону: послідовні послуги одного майстра
-  const apptIds = [];
+  // записи в журнал салону: послідовні послуги одного майстра — через спільне ядро
+  // (lib/booking-core.js: транзакція + advisory-лок майстра + тінь online_bookings; той самий
+  // код використовує Mini App, тож гонки між ботом і мініапкою закриті одним локом).
+  let apptIds = [];
   let bookingId = null;
   try {
-    // B2 (регрес-фікс від верифікації): guarded-insert `WHERE count < max_parallel` під
-    // READ COMMITTED все одно ловив гонку — два паралельні запити бачили «вільно» й обидва
-    // вставляли (підзапит count не блокує рядки). Тепер весь блок у транзакції з
-    // advisory-lock на (тенант+майстер): лок тримається до COMMIT, тож перевірка вмістимості
-    // й вставка атомарні між конкурентними бронями. Овербукінг до max_parallel збережено.
-    const { withTx } = require('../db-pg');
-    await withTx(async (client) => {
-      // Ключ лока ЄДИНИЙ з адмін-каналом (schedule.js): hashtext(String(Number(master_id))).
-      // masters.id глобально унікальний → тенант у ключі не потрібен; головне — щоб бот і
-      // адмінка бралися за ОДИН лок на цього майстра, інакше крос-канальна гонка не закрита.
-      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(Number(masterId))]);
-      let cur = slot.startMin;
-      for (const s of chosen) {
-        const d = Number(s.duration_min) || 60;
-        const r = await client.query(
-          `INSERT INTO appointments (client_id, master_id, service_id, starts_at, ends_at, price, status, source, client_name)
-           SELECT $1,$2,$3, ${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)}, $7, 'confirmed', 'bot-chat', $8
-            WHERE (
-              SELECT count(*) FROM appointments
-               WHERE master_id=$2 AND status NOT IN ('cancelled','noshow') AND ends_at IS NOT NULL
-                 AND tstzrange(starts_at, ends_at) && tstzrange(${slotEngine.TS_EXPR(4, 5)}, ${slotEngine.TS_EXPR(4, 6)})
-            ) < COALESCE((SELECT max_parallel FROM masters WHERE id=$2), 1)
-           RETURNING id`,
-          [clientId, masterId, s.id, date, cur, cur + d, Number(s.price) || null, name]);
-        if (!r.rows[0]) { const err = new Error('slot-taken'); err.slotTaken = true; throw err; }
-        apptIds.push(r.rows[0].id);
-        cur += d;
-      }
-      // Журнал online_bookings — В ЭТОЙ ЖЕ транзакции (аудит v6): раньше бронь вставлялась
-      // отдельным запросом ПОСЛЕ коммита записей, и capacity-триггер считал только что
-      // созданные appointments как чужие (связь NEW.appointment_id ещё не видна таблице)
-      // → ложный 23P01, журнальная бронь молча терялась вместе с Mono-предоплатой.
-      // Вместимость уже проверена guarded-insert'ами под advisory-локом выше →
-      // тень идёт с локальным обходом (set_config is_local умирает с транзакцией).
-      await client.query(`SELECT set_config('app.skip_overbook','on', true)`);
-      const ob = await client.query(
-        `INSERT INTO online_bookings
-           (client_id, client_phone, client_name, service_id, service_name, master_id, master_name,
-            date_from, date_to, channel, legacy_appointment_ref, status, telegram_id, appointment_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7, ${slotEngine.TS_EXPR(8, 9)}, ${slotEngine.TS_EXPR(8, 10)},
-                 'bot',$11,'confirmed',$12,$13) RETURNING id`,
-        [clientId, phone, name, String(chosen[0].id), chosen.map(s => s.name).join(' + '),
-         String(masterId), masterNameOf(session, masterId),
-         date, slot.startMin, slot.startMin + chosen.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
-         String(apptIds[0] || ''), uid, Number(apptIds[0]) || null]);
-      bookingId = ob.rows[0].id;
+    const res = await require('./booking-core').createBooking({
+      pool: ctx.pool, clientId, masterId, masterName: masterNameOf(session, masterId),
+      date, startMin: slot.startMin, services: chosen, name, phone, telegramId: uid,
+      apptSource: 'bot-chat', obChannel: 'bot',
     });
+    apptIds = res.apptIds; bookingId = res.bookingId;
   } catch (e) {
     console.error('[bookbot/appt]', e.message);
-    // відкат уже створених записів цього бронювання (щоб не лишити «хвіст» послуг)
-    if (apptIds.length) {
-      await ctx.pool.query(`UPDATE appointments SET status='cancelled', updated_at=NOW() WHERE id = ANY($1::int[])`, [apptIds]).catch(() => {});
-    }
     await clearSession(ctx.pool, uid);
     const txt = e.slotTaken
       ? '😔 На жаль, цей час щойно зайняли. Оберіть, будь ласка, інший.'
@@ -544,10 +501,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
   let moved = false;
   if (Array.isArray(session.data.moveIds) && session.data.moveIds.length) {
     try {
-      await ctx.pool.query(
-        `UPDATE appointments SET status='cancelled', cancelled_at=COALESCE(cancelled_at,NOW()), updated_at=NOW()
-          WHERE id = ANY($1::int[]) AND status IN ('booked','confirmed')`,
-        [session.data.moveIds]);
+      await require('./booking-core').cancelAppointments(ctx.pool, session.data.moveIds);
       moved = true;
     } catch (e) { console.error('[bookbot/move-cancel]', e.message); }
   }
@@ -641,6 +595,56 @@ function salonSocialLinks(sp) {
 }
 
 // ── постійне меню (замінює старе меню погашеного сервісу запису в чатах клієнтів)
+// ── Mini App: посилання й кнопки ───────────────────────────────────────────
+function miniappLink(ctx, q) {
+  const u = String(ctx.miniappUrl || '');
+  const qs = q ? new URLSearchParams(q).toString() : '';
+  return qs ? u + (u.includes('?') ? '&' : '?') + qs : u;
+}
+function miniappKb(ctx) {
+  return { inline_keyboard: [
+    [{ text: '✨ Записатися онлайн', web_app: { url: miniappLink(ctx) } }],
+    [{ text: '👤 Мій кабінет', web_app: { url: miniappLink(ctx, { screen: 'cabinet' }) } },
+     { text: '🧚 Адміністратор', callback_data: 'bk:adm' }],
+  ] };
+}
+// Кнопки старого нижнього меню в режимі мініапки: «Записатись/Кабінет/Мої записи» → мініапка,
+// «Адміністратор» і «Приховати меню» — як були. Повертає true, якщо оброблено.
+async function miniappMenuText(text, msg, ctx) {
+  const chatId = msg.chat.id;
+  const t = text.toLowerCase().replace(/[^а-яёіїєґa-z0-9 ']/g, '').replace(/\s+/g, ' ').trim();
+  if (!t) return false;
+  if (/адміністратор/.test(t)) { await showAdminContact(ctx, chatId); return true; }
+  if (/^приховати меню$|^сховати меню$|^згорнути меню$|^приховати$/.test(t)) {
+    await ctx.tg('sendMessage', { chat_id: chatId, text: '✅ Меню приховано. Записатись можна кнопкою «Запис» внизу ліворуч від поля вводу.', reply_markup: { remove_keyboard: true } });
+    return true;
+  }
+  const cab = /кабінет|мої записи|мої візити|бонус/.test(t);
+  if (cab || /^записатись( на візит)?$|^запис(атися)?$|^меню$|^назад$|^головне меню$|^прайс( ?лист)?$|^послуги$/.test(t)) {
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: cab ? '👤 Ваші записи, історія візитів і бонуси — у застосунку:' : '✨ Запис онлайн — оберіть послугу, майстра й час:',
+      reply_markup: cab
+        ? { inline_keyboard: [[{ text: '👤 Відкрити кабінет', web_app: { url: miniappLink(ctx, { screen: 'cabinet' }) } }]] }
+        : miniappKb(ctx),
+    });
+    return true;
+  }
+  return false;
+}
+async function notifyStaffCancel(ctx, ids, how) {
+  const r = await ctx.pool.query(
+    `SELECT a.id, c.name, c.phone, COALESCE(NULLIF(m.online_title,''), m.name) AS master_name,
+            s.name AS service_name, to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','DD.MM о HH24:MI') AS lbl
+       FROM appointments a LEFT JOIN clients c ON c.id=a.client_id
+       LEFT JOIN masters m ON m.id=a.master_id LEFT JOIN services s ON s.id=a.service_id
+      WHERE a.id = ANY($1::int[]) ORDER BY a.starts_at LIMIT 1`, [ids]);
+  const x = r.rows[0]; if (!x) return;
+  const esc = (v) => String(v == null ? '' : v).replace(/[<>&]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]));
+  await require('./booking-core').notifyStaff(ctx.pool, ctx.tg,
+    `✖ <b>Клієнт скасував запис</b> (${esc(how)})\n👤 ${esc(x.name || 'Клієнт')} ${esc(fmtPhoneFull(x.phone))}\n💅 ${esc(x.service_name || '')}\n💇 ${esc(x.master_name || '')}\n📅 ${esc(x.lbl)}`);
+}
+
 function mainMenu() {
   return {
     keyboard: [
@@ -1021,12 +1025,19 @@ async function onText(msg, ctx) {
     if (owner && await handleOwnerButton(text, msg, ctx)) return true;
   }
 
-  // кнопки меню (старого і нового) — ДО матчера, інакше «Не впізнав послугу "📝 Записатись"»
-  if (await tryMenuButton(text, msg, ctx)) return true;
+  // РЕЖИМ MINI APP (ctx.miniappUrl задає routes/booking.js; відкат — env BOT_TEXT_BOOKING=1):
+  // текстового запису немає — кнопки старого меню й вільний текст ведуть у мініапку.
+  if (ctx.miniappUrl) {
+    if (await miniappMenuText(text, msg, ctx)) return true;
+  } else if (await tryMenuButton(text, msg, ctx)) return true; // кнопки меню — ДО матчера
 
   // FAQ перед розпізнаванням послуги: графік/адреса/телефон
   const faq = await tryFaq(text, ctx);
-  if (faq) { await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq }); return true; }
+  if (faq) {
+    await ctx.tg('sendMessage', { chat_id: chatId, parse_mode: 'HTML', text: faq,
+      ...(ctx.miniappUrl ? { reply_markup: miniappKb(ctx) } : {}) });
+    return true;
+  }
 
   // Введення дати народження з кабінету (стан сесії 'bday')
   {
@@ -1045,6 +1056,16 @@ async function onText(msg, ctx) {
       } catch (e) { console.error('[bookbot/bday]', e.message); await ctx.tg('sendMessage', { chat_id: chatId, text: 'Не вдалось зберегти зараз, спробуйте пізніше.' }); }
       return true;
     }
+  }
+
+  // Mini App: будь-який інший текст — НЕ запускаємо старий діалог, а ввічливо ведемо в мініапку
+  if (ctx.miniappUrl) {
+    await ctx.tg('sendMessage', {
+      chat_id: chatId, parse_mode: 'HTML',
+      text: 'Дякуємо за повідомлення 💛\nЗапис тепер — у зручному застосунку: оберіть послугу, майстра й час у кілька дотиків. Там же ваш кабінет і записи.\n\nЯкщо потрібна людина — натисніть «Адміністратор».',
+      reply_markup: miniappKb(ctx),
+    });
+    return true;
   }
 
   // «комплекс/все разом/пакет» — це не окрема послуга, а набір. Підказуємо назвати конкретні,
@@ -1100,6 +1121,8 @@ async function onCallback(cq, ctx) {
   const target = { chat_id: chatId, message_id: msgId };
   const data = cq.data || '';
   const ack = () => ctx.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
+
+  if (data === 'bk:adm') { await ack(); await showAdminContact(ctx, chatId); return true; }
 
   // Лист очікування: клієнт відповідає на пропозицію вільного слота (wl:confirm/decline:ID)
   if (data.startsWith('wl:')) {
@@ -1287,8 +1310,17 @@ async function onCallback(cq, ctx) {
               WHERE legacy_appointment_ref = ANY($1::text[]) AND COALESCE(status,'') <> 'cancelled'`,
             [cnIds.map(String)]);
         } catch (e) { console.error('[bookbot/ob-cancel]', e.message); }
-        await respond(ctx.tg, target,
-          '✖ Запис скасовано. Будемо раді бачити вас іншим разом 💛\nЩоб записатись знову — просто напишіть послугу.');
+        notifyStaffCancel(ctx, cnIds, 'з нагадування в Telegram').catch(() => {});
+        await respond(ctx.tg, target, ctx.miniappUrl
+          ? '✖ Запис скасовано. Будемо раді бачити вас іншим разом 💛'
+          : '✖ Запис скасовано. Будемо раді бачити вас іншим разом 💛\nЩоб записатись знову — просто напишіть послугу.',
+          ctx.miniappUrl ? [[{ text: '✨ Записатися знову', web_app: { url: miniappLink(ctx) } }]] : undefined);
+        return true;
+      }
+      if (act === 'mv' && ctx.miniappUrl) {
+        const moveIds = own.rows.map(r => r.id).join('.');
+        await respond(ctx.tg, target, '🔁 Оберіть новий час у застосунку — старий запис скасується автоматично, щойно підтвердите новий.',
+          [[{ text: '🔁 Обрати новий час', web_app: { url: miniappLink(ctx, { move: moveIds }) } }]]);
         return true;
       }
       if (act === 'mv') {
@@ -1446,4 +1478,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu, loadCatalog, eligibleMasters, showAdminContact, miniappKb, miniappLink, notifyStaffCancel };
