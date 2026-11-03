@@ -691,3 +691,5 @@ router.post('/auto-run', async (req, res) => {
 
 module.exports = router;
 module.exports.autoPayrollRun = autoPayrollRun;
+// Тільки читання: статистика майстра в мініаппі рахує заробіток тією ж функцією, що й відомість (/sheet).
+module.exports.liveEstimate = liveEstimate;

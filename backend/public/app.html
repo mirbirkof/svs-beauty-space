@@ -143,6 +143,24 @@ h3{font-size:15px;color:var(--muted);font-weight:500;margin:20px 2px 10px;text-t
 @keyframes rot{to{transform:rotate(360deg)}}
 .badge{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px 8px;font-size:12px;color:var(--gold);margin-left:6px}
 .banner{background:var(--card2);border:1px solid var(--rose);border-radius:14px;padding:10px 12px;font-size:13.5px;margin-bottom:12px}
+
+/* режим майстра (03.11, частина 2) */
+.seg{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:12px 0}
+.seg button{flex:1;padding:9px 6px;border-radius:10px;color:var(--muted);font-weight:600}
+.seg button.on{background:var(--rose);color:var(--roseText)}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.kpi .v{font-size:22px;font-weight:700;color:var(--text)} .kpi .k{font-size:12px;color:var(--muted);margin-top:2px}
+.kpi.wide{grid-column:1/3}
+.sec{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:18px 2px 6px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:6px 0}
+.row .t1{font-weight:600} .row .t2{font-size:13px;color:var(--muted);margin-top:2px}
+.row .acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.row .acts a,.row .acts button{font-size:13px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);color:var(--text);text-decoration:none}
+.mnav{display:flex;align-items:center;justify-content:space-between;margin:6px 0}
+.mnav button{padding:6px 12px;border:1px solid var(--line);border-radius:10px}
+.pick{display:block;width:100%;text-align:left;padding:12px;margin:6px 0;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.pick.on{border-color:var(--rose);background:var(--card2)}
 </style>
 </head>
 <body>
@@ -218,7 +236,7 @@ function syncBack(){
 }
 function show(){
   var cur = S.stack[S.stack.length-1];
-  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam})[cur]();
+  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, master:vMaster, claim:vClaim})[cur]();
 }
 
 // ── екрани ──
@@ -231,11 +249,13 @@ function vHome(){
       h('div',{class:'sub serif',text: name ? 'Вітаємо, '+name+'!' : 'Запис онлайн'})),
     h('button',{class:'btn btn-rose',id:'go-book',onclick:function(){ haptic(); S.move=null; startBooking(); }},
       h('span',{class:'lbl',text:'Записатися ✨'}), h('span',{class:'chev',text:'›'})),
+    modeSwitch('client'),
     h('div',{class:'menu'},
       mi('💅','Послуги',function(){ S.move=null; startBooking(); }),
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
       mi('🎁','Акції та новини',function(){ location.href='/p/promotions.html'; }),
-      mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'))));
+      mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'),
+      isMaster() ? null : mi('✂️', claimLabel(), function(){ go('claim'); }, 'claim'))));
 }
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 
@@ -418,15 +438,19 @@ function confirmBooking(e){
 }
 
 // телефон питаємо один раз: кнопкою Telegram (підписаний контакт) або вручну
-function ensurePhone(){
-  if (S.me && S.me.client && S.me.client.has_phone) return Promise.resolve(true);
+function ensurePhone(force, why){
+  if (!force && S.me && S.me.client && S.me.client.has_phone) return Promise.resolve(true);
   return new Promise(function(resolve){
     var inp = h('input',{class:'in',type:'tel',inputmode:'tel',placeholder:'+380 XX XXX XX XX',id:'phone-in',autocomplete:'tel'});
     var nm = h('input',{class:'in',type:'text',placeholder:'Ваше імʼя',value:(tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name)||''});
     var msg = h('div',{class:'note err'});
     function close(v){ sh.remove(); resolve(v); }
     function done(j){
-      if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true}); close(true); return; }
+      if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true});
+        if (j.master && j.master.linked) { S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); }
+        else if (j.master && j.master.needClaim) S.claimHint = j.master.master_id;
+        close(true); return; }
+      if (j.master && j.master.linked) { S.me = S.me || {}; S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); close(true); return; }
       msg.textContent = j.message || 'Не вдалося зберегти номер';
     }
     var share = (tg && tg.requestContact) ? h('button',{class:'btn btn-rose',id:'share-phone',onclick:function(){
@@ -435,13 +459,14 @@ function ensurePhone(){
         if (!ok) { msg.textContent='Можна ввести номер вручну нижче.'; return; }
         var raw = resp && (resp.response || (typeof resp==='string'?resp:null));
         if (!raw) { msg.textContent='Telegram не передав номер, введіть вручну.'; return; }
+        S.contactRaw = raw;
         api('/contact',{method:'POST',body:{contact:raw}}).then(done);
       }); } catch(e){ msg.textContent='Введіть номер вручну.'; }
     }}, '📱 Поділитися номером з Telegram') : null;
     var sh = h('div',{class:'sheet'}, h('div',{class:'box'},
-      h('h2',{text:'Ваш номер телефону'}), h('p',{text:'Потрібен один раз — щоб салон міг звʼязатися щодо запису.'}),
-      share, share ? h('div',{class:'or',text:'або'}) : null, nm, inp,
-      h('button',{class:'btn btn-ghost',id:'save-phone',onclick:function(){
+      h('h2',{text:'Ваш номер телефону'}), h('p',{text: why || 'Потрібен один раз — щоб салон міг звʼязатися щодо запису.'}),
+      share, (share && !force) ? h('div',{class:'or',text:'або'}) : null, force ? null : nm, force ? null : inp,
+      force ? null : h('button',{class:'btn btn-ghost',id:'save-phone',onclick:function(){
         api('/contact',{method:'POST',body:{phone:inp.value, name:nm.value}}).then(done); }}, 'Зберегти номер'),
       msg, h('button',{class:'btn',style:'margin-top:6px;color:var(--muted)',onclick:function(){ close(false); }}, 'Скасувати')));
     document.body.appendChild(sh);
@@ -547,6 +572,122 @@ function vTeam(){
 }
 
 // ── старт ──
+
+// ── режим майстра (Босс 03.11, частина 2) ──
+// Права майстра дає лише номер, яким поділились кнопкою Telegram (підписаний контакт).
+// Сесія — звичайний токен CRM ролі «Майстер», тримається лише в памʼяті сторінки.
+function isMaster(){ return !!(S.me && S.me.master && S.me.master.is_master); }
+function claimLabel(){ var c = S.me && S.me.master && S.me.master.claim; return c && c.status==='pending' ? 'Я майстер — чекаємо підтвердження' : 'Я майстер салону'; }
+function modeSwitch(cur){
+  if (!isMaster()) return null;
+  return h('div',{class:'seg',id:'mode-seg'},
+    h('button',{class:cur==='client'?'on':'',id:'mode-client',onclick:function(){ haptic(); if (cur!=='client') home(); }}, '👤 Я клієнт'),
+    h('button',{class:cur==='master'?'on':'',id:'mode-master',onclick:function(){ haptic(); if (cur!=='master') { S.stack=['home','master']; show(); } }}, '✂️ Я майстер'));
+}
+function mapi(path, opts){
+  opts = opts || {};
+  function call(){ return fetch('/api/me'+path, { method: opts.method || 'GET',
+      headers: Object.assign({'Authorization':'Bearer '+S.mtoken}, opts.body ? {'Content-Type':'application/json'} : {}),
+      body: opts.body ? JSON.stringify(opts.body) : undefined })
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ j._status = r.status; return j; }); }); }
+  function sess(){ return api('/master/session',{method:'POST',body:{}}).then(function(j){ if (j._status!==200) throw j; S.mtoken=j.token; }); }
+  return (S.mtoken ? Promise.resolve() : sess()).then(call).then(function(j){
+    if (j._status===401 && !opts._retry) { S.mtoken=null; opts._retry=true; return sess().then(call); }
+    return j; });
+}
+function money(v){ return Math.round(+v||0).toLocaleString('uk-UA').replace(/ /g,' ')+' грн'; }
+function kpi(v, k, wide, id){ return h('div',{class:'kpi'+(wide?' wide':''),id:id||null}, h('div',{class:'v',text:String(v)}), h('div',{class:'k',text:k})); }
+function hm(iso){ var d=new Date(iso); return d.toLocaleTimeString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit'}); }
+var STLBL = {booked:'записаний', confirmed:'підтверджено', done:'відбувся', completed:'відбувся', cancelled:'скасовано', noshow:'не прийшов'};
+function monthShift(m, n){ var y=+m.slice(0,4), mo=+m.slice(5,7)-1+n; y+=Math.floor(mo/12); mo=((mo%12)+12)%12; return y+'-'+String(mo+1).padStart(2,'0'); }
+function vMaster(){
+  if (!isMaster()) { home(); return; }
+  var box = h('div',{id:'mstats'}, h('div',{class:'spin'}));
+  var todayBox = h('div',{id:'mtoday'});
+  render(h('div',{class:'screen'}, plainHead('Кабінет майстра'), modeSwitch('master'),
+    h('div',{class:'hello',text:'✂️ '+(S.me.master.name||'Майстер')}), box,
+    h('div',{class:'sec',text:'Клієнти сьогодні'}), todayBox));
+  loadStats(box, S.mmonth || null);
+  loadToday(todayBox);
+}
+function loadStats(box, month){
+  mapi('/stats'+(month?'?month='+month:'')).then(function(j){
+    box.innerHTML='';
+    if (j._status!==200) { add(box, h('div',{class:'note err',text: j.message || 'Немає доступу до кабінету майстра'})); return; }
+    S.mmonth = j.month;
+    var ld = j.load.pct==null ? '—' : j.load.pct+'%';
+    add(box, [
+      h('div',{class:'sec',text:'Записи'}),
+      h('div',{class:'kpis'}, kpi(j.upcoming.today,'сьогодні',0,'k-today'), kpi(j.upcoming.tomorrow,'завтра'), kpi(j.upcoming.week,'на 7 днів',1)),
+      h('div',{class:'mnav'},
+        h('button',{onclick:function(){ loadStats(box, monthShift(j.month,-1)); }}, '‹'),
+        h('div',{class:'sec',style:'margin:0',text:'Місяць '+j.month}),
+        h('button',{onclick:function(){ loadStats(box, monthShift(j.month,1)); }, disabled: j.current ? true : null}, '›')),
+      h('div',{class:'kpis'},
+        kpi(money(j.money.earned),'мій заробіток'+(j.current?' (поки що)':''),0,'k-earned'), kpi(money(j.money.revenue),'виручка послуг',0,'k-revenue'),
+        kpi(j.visits,'візитів'+(j.services && j.services!==j.visits ? ' · '+j.services+' послуг' : ''),0,'k-visits'), kpi(money(j.avg_check),'середній чек'),
+        kpi(j.new_clients,'нових клієнтів'), kpi(j.repeat_clients,'повторних'),
+        kpi(ld,'завантаження графіка'), kpi(j.cancelled+' / '+j.noshow,'скасування / неявки'),
+        kpi(j.reviews.count ? ('★ '+j.reviews.avg+' ('+j.reviews.count+')') : 'ще немає','відгуки',1))
+    ]);
+    (j.reviews.last||[]).forEach(function(r){ add(box, h('div',{class:'row'}, h('div',{class:'t1',text:'★'.repeat(r.rating)+' · '+r.d}), r.text ? h('div',{class:'t2',text:r.text}) : null)); });
+  }).catch(function(){ box.innerHTML=''; add(box, h('div',{class:'note err',text:'Не вдалося завантажити статистику'})); });
+}
+function loadToday(box){
+  mapi('/today').then(function(j){
+    box.innerHTML='';
+    if (j._status!==200) return;
+    if (!j.items.length) { add(box, h('div',{class:'note',text:'Сьогодні записів немає'})); return; }
+    j.items.forEach(function(a){
+      var acts = h('div',{class:'acts'});
+      if (a.phone && !j.masked) add(acts, h('a',{href:'tel:'+a.phone}, '📞 '+a.phone));
+      else if (a.phone) add(acts, h('span',{class:'t2',text:a.phone}));
+      if (a.tg_username) add(acts, h('a',{href:'https://t.me/'+a.tg_username}, '✈️ Telegram'));
+      if (a.can_noshow) add(acts, h('button',{class:'ns',onclick:function(){ markNoshow(a.id, false, box); }}, '🚫 Не прийшов'));
+      if (a.status==='noshow') add(acts, h('button',{onclick:function(){ markNoshow(a.id, true, box); }}, '↩︎ Прийшов (скасувати)'));
+      add(box, h('div',{class:'row'},
+        h('div',{class:'t1',text:hm(a.starts_at)+' — '+a.client}),
+        h('div',{class:'t2',text:(a.service||'')+' · '+(STLBL[a.status]||a.status)+(a.paid?' · оплачено':'')}), acts));
+    });
+  });
+}
+function markNoshow(id, undo, box){
+  haptic();
+  mapi('/appointments/'+id+'/noshow',{method:'POST',body:{undo:!!undo}}).then(function(j){
+    if (j._status===200) { toast(undo?'Повернули запис':'Позначено: не прийшов'); loadToday(box); }
+    else toast(j.message||'Не вдалося');
+  });
+}
+// «Я майстер салону»: поділитися номером кнопкою Telegram → вибрати себе → салон підтверджує ✔
+function vClaim(){
+  var msg = h('div',{class:'note'}), list = h('div',{});
+  var c = S.me && S.me.master && S.me.master.claim;
+  render(h('div',{class:'screen'}, plainHead('Я майстер салону'),
+    h('p',{class:'note',text:'Оберіть себе у списку. Адміністратор салону підтвердить запит — після цього тут зʼявиться ваш розклад і статистика.'}),
+    c && c.status==='pending' ? h('div',{class:'note',id:'claim-pending',text:'⏳ Запит «'+c.name+'» уже надіслано — чекаємо підтвердження.'}) : null,
+    c && c.status==='rejected' ? h('div',{class:'note err',text:'Попередній запит відхилено. Можна надіслати ще раз.'}) : null,
+    list, msg));
+  api('/master/candidates').then(function(j){
+    var sel = S.claimHint || null;
+    (j.masters||[]).forEach(function(m){
+      add(list, h('button',{class:'pick'+(sel===m.id?' on':''),'data-id':m.id,onclick:function(e){
+        sel=m.id; Array.prototype.forEach.call(list.querySelectorAll('.pick'), function(b){ b.classList.toggle('on', +b.getAttribute('data-id')===m.id); }); haptic(); }}, m.name));
+    });
+    add(list, h('button',{class:'btn btn-rose',id:'claim-send',style:'margin-top:12px',onclick:function(){
+      if (!sel) { msg.textContent='Оберіть себе у списку'; return; }
+      var p = S.contactRaw ? Promise.resolve(true) : ensurePhone(true, 'Щоб підтвердити, що це ви, поділіться номером кнопкою Telegram (ввести вручну тут не можна).');
+      p.then(function(ok){
+        if (isMaster()) { S.stack=['home','master']; show(); return; }
+        if (!ok || !S.contactRaw) { msg.textContent='Потрібен номер із Telegram'; return; }
+        api('/master/claim',{method:'POST',body:{contact:S.contactRaw, master_id:sel}}).then(function(r){
+          if (r._status===200) { haptic('ok'); S.me.master = {is_master:false, claim:{status:'pending', name:r.master_name}};
+            msg.textContent='✅ Запит надіслано адміністратору салону. Відповідь прийде в цей чат.'; }
+          else msg.textContent = r.message || ('Помилка: '+(r.error||r._status));
+        });
+      });
+    }}, 'Надіслати запит'));
+  });
+}
 function boot(){
   if (tg){ try { tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#141012'); tg.setBackgroundColor && tg.setBackgroundColor('#141012');
     tg.BackButton && tg.BackButton.onClick(back); } catch(e){} }
@@ -565,7 +706,13 @@ function boot(){
     if (mv) { S.stack=['home','cabinet']; startMove(mv.split(/[.,]/)); return; }
     if (scr==='cabinet') { S.stack=['home','cabinet']; show(); return; }
     if (scr==='book') { startBooking(); return; }
+    if (scr==='master' && isMaster()) { S.stack=['home','master']; show(); return; }
     show();
+    // Мʼяко просимо номер у тих, хто ще не поділився (раз на добу, можна закрити)
+    try {
+      var k='svs_phone_ask', last=+localStorage.getItem(k)||0;
+      if (j.client && !j.client.has_phone || !j.client) { if (Date.now()-last > 864e5) { localStorage.setItem(k, Date.now()); setTimeout(function(){ ensurePhone(false).then(function(){ show(); }); }, 600); } }
+    } catch(e){}
   }).catch(function(){ render(h('div',{class:'screen center'}, h('div',{class:'hello',text:'Немає звʼязку'}),
     h('button',{class:'btn btn-rose',onclick:boot}, 'Спробувати ще раз'))); });
 }

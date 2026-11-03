@@ -15,6 +15,7 @@ const initData = require('../lib/tg-initdata');
 const core = require('../lib/booking-core');
 const { DEFAULT_TENANT_ID, runAs } = require('../lib/tenant');
 const { normalizePhoneDb, fmtPhoneFull } = require('../lib/phone');
+const masterLink = require('../lib/master-link');
 
 const router = express.Router();
 const MAX_AGE_SEC = 24 * 3600;
@@ -77,6 +78,7 @@ router.get('/me', async (req, res) => {
       client: c ? { name: c.name || req.tgUser.first_name, has_phone: !!c.phone, phone: c.phone ? fmtPhoneFull(c.phone) : null,
         points: c.points, visits: c.visits } : null,
       salon: { name: 'SVS Beauty Space' },
+      master: await masterState(req.tgUser.id),
     });
   } catch (e) { console.error('[miniapp/me]', e.message); res.status(500).json({ error: 'server' }); }
 });
@@ -104,8 +106,15 @@ router.post('/contact', async (req, res) => {
     const name = String(req.body?.name || cname || req.tgUser.first_name || 'Клієнт').trim() || 'Клієнт';
     if (name.length > NAME_MAX) return res.status(400).json({ error: 'bad_name', message: 'Імʼя задовге' });
 
+    // Режим майстра: ЛИШЕ підтверджений Telegram-номер (ручне введення прав не дає — Босс 03.11).
+    let master = null;
+    if (verified) {
+      try { master = await masterLink.recognize(pool, DEFAULT_TENANT_ID, uid, digits); }
+      catch (e) { console.error('[miniapp/contact master]', e.message); }
+    }
+    const reply = (o) => res.json(Object.assign(o, { master }));
     const mine = await clientOf(uid);
-    if (mine && mine.phone) return res.json({ ok: true, already: true });
+    if (mine && mine.phone) return reply({ ok: true, already: true });
 
     const canon = normalizePhoneDb(digits);
     const ex = (await pool.query(
@@ -113,7 +122,8 @@ router.post('/contact', async (req, res) => {
       [digits, String(canon || digits).replace(/\D/g, '')])).rows[0];
     if (ex) {
       if (ex.telegram_id && Number(ex.telegram_id) !== uid) {
-        return res.status(409).json({ error: 'phone_linked_other', message: 'Цей номер уже привʼязано до іншого Telegram. Звʼяжіться з адміністратором.' });
+        // режим майстра не залежить від клієнтської картки: підтверджений номер майстра вже привʼязано вище
+        return res.status(409).json({ error: 'phone_linked_other', message: 'Цей номер уже привʼязано до іншого Telegram. Звʼяжіться з адміністратором.', master });
       }
       // Існуюча картка салону: привʼязуємо ЛИШЕ підтвердженим Telegram-номером (захист від захоплення чужої картки)
       if (!verified) {
@@ -124,7 +134,7 @@ router.post('/contact', async (req, res) => {
         `UPDATE clients SET telegram_id=$1, tg_first_name=COALESCE(tg_first_name,$3), tg_username=COALESCE(tg_username,$4),
                 name=COALESCE(NULLIF(name,''),$5), updated_at=NOW() WHERE id=$2`,
         [uid, ex.id, req.tgUser.first_name || null, req.tgUser.username, name]);
-      return res.json({ ok: true, linked: true });
+      return reply({ ok: true, linked: true });
     }
     if (mine) {
       await pool.query(`UPDATE clients SET phone=$1, name=COALESCE(NULLIF(name,''),$2), updated_at=NOW() WHERE id=$3`, [canon, name, mine.id]);
@@ -133,11 +143,68 @@ router.post('/contact', async (req, res) => {
         `INSERT INTO clients (phone, name, telegram_id, tg_first_name, tg_username, source) VALUES ($1,$2,$3,$4,$5,'miniapp')`,
         [canon, name, uid, req.tgUser.first_name || null, req.tgUser.username]);
     }
-    res.json({ ok: true, created: true });
+    reply({ ok: true, created: true });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'phone_linked_other', message: 'Цей номер уже використовується. Звʼяжіться з адміністратором.' });
     console.error('[miniapp/contact]', e.message); res.status(500).json({ error: 'server' });
   }
+});
+
+// ── режим майстра (Босс 03.11, частина 2) ─────────────────────────
+// Стан: is_master — Telegram привʼязаний до обліковки «Майстер»; pending — є заявка «Я майстер».
+async function masterState(uid) {
+  const pool = getPool();
+  const u = await masterLink.masterUserByTg(pool, DEFAULT_TENANT_ID, uid);
+  if (u) return { is_master: true, name: u.master_name || u.display_name };
+  const p = await pool.query(
+    `SELECT c.status, m.name FROM master_claims c JOIN masters m ON m.id=c.master_id
+      WHERE c.tenant_id=$1 AND c.tg_user_id=$2 ORDER BY c.id DESC LIMIT 1`, [DEFAULT_TENANT_ID, uid]).catch(() => ({ rows: [] }));
+  const last = p.rows[0];
+  return { is_master: false, claim: last ? { status: last.status, name: last.name } : null };
+}
+
+// Сесія майстра: звичайний Bearer-токен CRM з правами ролі «Майстер» (12 год), лише за перевіреним initData.
+const sessRate = new Map();
+router.post('/master/session', async (req, res) => {
+  const uid = req.tgUser.id;
+  const now = Date.now();
+  const hits = (sessRate.get(uid) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 20) return res.status(429).json({ error: 'rate' });
+  hits.push(now); sessRate.set(uid, hits);
+  try {
+    const s = await masterLink.issueMasterSession(getPool(), DEFAULT_TENANT_ID, uid, req);
+    if (!s) return res.status(403).json({ error: 'not_master', message: 'Цей Telegram не привʼязаний до майстра салону.' });
+    res.json({ ok: true, token: s.token, expires_at: s.expiresAt, master: { id: s.master_id, name: s.name } });
+  } catch (e) { console.error('[miniapp/master/session]', e.message); res.status(500).json({ error: 'server' }); }
+});
+
+router.get('/master/candidates', async (req, res) => {
+  try {
+    const rows = await masterLink.claimCandidates(getPool(), DEFAULT_TENANT_ID);
+    res.json({ masters: rows.map((m) => ({ id: m.id, name: m.name })) });
+  } catch (e) { console.error('[miniapp/master/candidates]', e.message); res.status(500).json({ error: 'server' }); }
+});
+
+// «Я майстер салону»: номер — ЛИШЕ з підписаного контакту (повторно перевіряємо підпис і user_id).
+router.post('/master/claim', async (req, res) => {
+  const uid = req.tgUser.id;
+  try {
+    if (typeof req.body?.contact !== 'string' || !req.body.contact) {
+      return res.status(400).json({ error: 'need_contact', message: 'Спершу поділіться номером кнопкою Telegram.' });
+    }
+    const v = initData.verify(req.body.contact, process.env.TELEGRAM_BOT_TOKEN, MAX_AGE_SEC);
+    if (!v.ok) return res.status(401).json({ error: 'bad_contact_sign' });
+    let ct = null; try { ct = JSON.parse(v.data.contact || 'null'); } catch (_) {}
+    if (!ct || Number(ct.user_id) !== uid || !ct.phone_number) return res.status(400).json({ error: 'not_own_contact' });
+    const mid = Number(req.body?.master_id);
+    if (!Number.isSafeInteger(mid) || mid <= 0) return res.status(400).json({ error: 'bad_master' });
+    if (await masterLink.masterUserByTg(getPool(), DEFAULT_TENANT_ID, uid)) return res.status(409).json({ error: 'already_master' });
+    const r = await masterLink.createClaim(getPool(), DEFAULT_TENANT_ID, req.tgUser, ct.phone_number, mid, botTg());
+    if (r.error === 'bad_master') return res.status(400).json({ error: 'bad_master', message: 'Цього майстра немає у списку.' });
+    if (r.error === 'pending') return res.status(409).json({ error: 'pending', message: 'Запит уже надіслано — чекаємо підтвердження салону.' });
+    if (r.error === 'too_many') return res.status(429).json({ error: 'too_many', message: 'Забагато запитів за добу.' });
+    res.json({ ok: true, sent: r.sent, master_name: r.master_name });
+  } catch (e) { console.error('[miniapp/master/claim]', e.message); res.status(500).json({ error: 'server' }); }
 });
 
 // ── каталог: категорії → послуги (лише з онлайн-майстром) ─────────

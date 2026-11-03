@@ -295,6 +295,11 @@ async function processUpdate(upd, tg, salon) {
 
     // Розмовна запис: натискання inline-кнопок → повністю в booking-bot
     if (upd.callback_query) {
+      // «Я майстер салону»: ✔/✖ власника (lib/master-link перевіряє, хто натиснув)
+      if (/^mc:/.test(String(upd.callback_query.data || ''))) {
+        try { if (await require('../lib/master-link').onClaimCallback(upd.callback_query, botCtx)) return; }
+        catch (e) { console.error('[booking/master-claim]', e.message); return; }
+      }
       await bookingBot.onCallback(upd.callback_query, botCtx);
       return;
     }
@@ -416,6 +421,15 @@ async function processUpdate(upd, tg, salon) {
       if (!row) {
         // Розмовна запис чекає номер для завершення? → бронюємо й виходимо.
         if (await bookingBot.onContact(msg, botCtx)) return;
+        // МАЙСТЕР (Босс 03.11): підтверджений номер = номер майстра → привʼязка Telegram і режим майстра в мініаппі.
+        try {
+          const ml = await require('../lib/master-link').recognize(getPool(), tenantId, msg.from.id, phoneDigits);
+          if (ml.linked) {
+            return tg('sendMessage', { chat_id: msg.chat.id, parse_mode: 'HTML',
+              text: `✂️ <b>${String(ml.name || '').replace(/[<>&]/g, '')}</b>, ви майстер салону — Telegram підвʼязано.\nСюди приходитимуть нові записи, скасування й перенесення, а в застосунку запису зʼявився режим «Я майстер» зі статистикою.`,
+              reply_markup: botCtx.miniappUrl ? { inline_keyboard: [[{ text: '📱 Відкрити застосунок', web_app: { url: botCtx.miniappUrl } }]] } : undefined });
+          }
+        } catch (e) { console.error('[booking/master-link]', e.message); }
         // СПІВРОБІТНИК/ВЛАСНИК: номер збігається з обліковкою CRM цього салону →
         // привʼязуємо telegram_id до users (безпечно: Telegram гарантує, що контакт
         // належить відправнику — перевірка user_id вище; чужий telegram не перетремо).
