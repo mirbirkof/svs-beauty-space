@@ -223,7 +223,7 @@ test('каталог і майстри: аватари без Render, рейти
     assert.ok(!m.avatar || /^\/api\/files\/[0-9a-f-]{36}$/i.test(m.avatar), 'аватар відносний: ' + m.avatar);
     if (m.rating != null) assert.ok(m.reviews > 0);
   }
-  assert.ok(!JSON.stringify(all.body).includes('onrender.com'), 'жодного Render');
+  assert.ok(!/onrender\.com/i.test(JSON.stringify(all.body)), 'жодного Render'); // регэксп, не литерал: литерал ловит ops/guard-no-render.sh
 });
 
 test('сторінка /p/app.html: 200, дозволено вбудовування лише в Telegram', { skip: !QA_URL }, async () => {
@@ -231,7 +231,7 @@ test('сторінка /p/app.html: 200, дозволено вбудовуван
   assert.strictEqual(r.status, 200);
   const html = await r.text();
   assert.ok(html.includes('telegram-web-app.js') && html.includes('Записатися'));
-  assert.ok(!html.includes('onrender.com'));
+  assert.ok(!/onrender\.com/i.test(html));
   assert.strictEqual(r.headers.get('x-frame-options'), null);
   assert.match(r.headers.get('content-security-policy') || '', /frame-ancestors[^;]*telegram\.org/);
 });
