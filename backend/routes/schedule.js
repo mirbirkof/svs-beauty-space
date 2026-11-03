@@ -1580,6 +1580,22 @@ router.patch('/appointments/:id', async (req, res) => {
         } catch (_) {}
       }
     }
+    // Мастеру в Telegram (lib/master-notify, Босс 03.11): отмена из журнала и перенос времени/мастера.
+    // Раньше эти изменения не попадали в журнал событий вовсе — слать было не от чего.
+    if (r.rows[0]) {
+      const after = r.rows[0];
+      if (status === 'cancelled') {
+        await emitAppt('appointment.cancelled', req.params.id, after.master_id);
+      } else if (curRow && (+new Date(curRow.starts_at) !== +new Date(after.starts_at)
+                 || Number(curRow.master_id) !== Number(after.master_id))) {
+        try {
+          await emitEvent('appointment.rescheduled', {
+            appointment_id: Number(req.params.id), master_id: after.master_id || null,
+            old_master_id: curRow.master_id || null, old_starts_at: curRow.starts_at,
+          }, { entityType: 'appointment', entityId: req.params.id });
+        } catch (e) { console.error('[schedule] emit rescheduled failed:', e.message); }
+      }
+    }
     res.json({ ok: true, appointment: r.rows[0], stock });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });

@@ -369,6 +369,8 @@ try { app.use('/api/master-services', require('./routes/master-services')); } ca
 app.use('/api/notes', require('./routes/notes'));
 try { app.use('/api/client-ratings', require('./routes/client-ratings')); } catch(e) { console.error('[client-ratings] mount failed:', e.message); } // оцінка клієнта салоном (263)
 try { app.use('/api/me', require('./routes/master-cabinet')); } catch(e) { console.error('[master-cabinet] mount failed:', e.message); }
+// Мастеру в Telegram: новая запись / отмена / перенос (подписка на event-bus, Босс 03.11)
+try { require('./lib/master-notify').init(); } catch(e) { console.error('[master-notify] init failed:', e.message); }
 try { app.use('/api/events', require('./routes/events')); } catch(e) { console.error('[events] mount failed:', e.message); }
 const notificationsRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoutes);

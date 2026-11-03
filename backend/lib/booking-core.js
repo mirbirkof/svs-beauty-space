@@ -90,6 +90,12 @@ async function createBooking(opts) {
     if (e && (e.slotTaken || e.code === '23P01')) throw slotTakenError();
     throw e;
   }
+  // Журнал событий (как журнал CRM): отсюда уведомление мастеру (lib/master-notify) и вебхуки.
+  if (!existing && apptIds.length) {
+    require('./event-bus').emit('appointment.created',
+      { appointment_id: Number(apptIds[0]), appointment_ids: apptIds.map(Number), master_id: Number(masterId) || null, channel: obChannel },
+      { entityType: 'appointment', entityId: apptIds[0] }).catch(() => {});
+  }
   return { apptIds, bookingId, existing };
 }
 
@@ -104,6 +110,10 @@ async function cancelAppointments(pool, ids) {
     `UPDATE online_bookings SET status='cancelled', updated_at=NOW()
       WHERE legacy_appointment_ref = ANY($1::text[]) AND COALESCE(status,'')<>'cancelled'`,
     [ints.map(String)]).catch(e => console.error('[booking-core/ob-cancel]', e.message));
+  if (r.rowCount) {
+    require('./event-bus').emit('appointment.cancelled', { appointment_id: ints[0], appointment_ids: ints, master_id: null },
+      { entityType: 'appointment', entityId: ints[0] }).catch(() => {});
+  }
   return r.rowCount;
 }
 
