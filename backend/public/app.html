@@ -262,7 +262,7 @@ function syncBack(){
 }
 function show(){
   var cur = S.stack[S.stack.length-1];
-  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, promos:vPromos, master:vMaster, claim:vClaim})[cur]();
+  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, promos:vPromos, master:vMaster})[cur]();
 }
 
 // ── екрани ──
@@ -281,8 +281,7 @@ function vHome(){
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
       mi('🎁','Акції та новини',function(){ go('promos'); }),
       mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'),
-      mi('🧚','Звʼязатися з адміністратором',adminContact,'admin'),
-      isMaster() ? null : mi('✂️', claimLabel(), function(){ go('claim'); }, 'claim'))));
+      mi('🧚','Звʼязатися з адміністратором',adminContact,'admin'))));
 }
 // картка салону (телефон одним дотиком, адреса, години) приходить у чат від бота; застосунок закриваємо, щоб її було видно
 function adminContact(){
@@ -580,10 +579,10 @@ function ensurePhone(force, why){
     function close(v){ sh.remove(); resolve(v); }
     function done(j){
       if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true});
-        if (j.master && j.master.linked) { S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); }
-        else if (j.master && j.master.needClaim) S.claimHint = j.master.master_id;
+        if (j.master && j.master.is_master) { S.me.master = j.master; toast('Вас упізнано як майстра: '+j.master.name); }
         close(true); hsOfferOnce(); refreshMe(); return; }
-      if (j.master && j.master.linked) { S.me = S.me || {}; S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); close(true); return; }
+      // картка клієнта зайнята іншим Telegram, але номер — майстра салону: режим майстра все одно вмикається
+      if (j.master && j.master.is_master) { S.me = S.me || {}; S.me.master = j.master; toast('Вас упізнано як майстра: '+j.master.name); close(true); refreshMe(); return; }
       msg.textContent = j.message || 'Не вдалося зберегти номер';
     }
     var share = (tg && tg.requestContact) ? h('button',{class:'btn btn-rose',id:'share-phone',onclick:function(){
@@ -592,7 +591,6 @@ function ensurePhone(force, why){
         if (!ok) { msg.textContent='Можна ввести номер вручну нижче.'; return; }
         var raw = resp && (resp.response || (typeof resp==='string'?resp:null));
         if (!raw) { msg.textContent='Telegram не передав номер, введіть вручну.'; return; }
-        S.contactRaw = raw;
         api('/contact',{method:'POST',body:{contact:raw}}).then(done);
       }); } catch(e){ msg.textContent='Введіть номер вручну.'; }
     }}, '📱 Поділитися номером з Telegram') : null;
@@ -734,11 +732,11 @@ function vPromos(){
 
 // ── старт ──
 
-// ── режим майстра (Босс 03.11, частина 2) ──
-// Права майстра дає лише номер, яким поділились кнопкою Telegram (підписаний контакт).
+// ── режим майстра (Босс 04.11: визначається автоматично) ──
+// Права майстра дає лише номер, яким поділились кнопкою Telegram (підписаний контакт) і який збігся з працюючим
+// майстром у CRM. Окремої кнопки «Я майстер салону» немає. Звільнили — сервер віддасть is_master:false.
 // Сесія — звичайний токен CRM ролі «Майстер», тримається лише в памʼяті сторінки.
 function isMaster(){ return !!(S.me && S.me.master && S.me.master.is_master); }
-function claimLabel(){ var c = S.me && S.me.master && S.me.master.claim; return c && c.status==='pending' ? 'Я майстер — чекаємо підтвердження' : 'Я майстер салону'; }
 function modeSwitch(cur){
   if (!isMaster()) return null;
   return h('div',{class:'seg',id:'mode-seg'},
@@ -751,7 +749,10 @@ function mapi(path, opts){
       headers: Object.assign({'Authorization':'Bearer '+S.mtoken}, opts.body ? {'Content-Type':'application/json'} : {}),
       body: opts.body ? JSON.stringify(opts.body) : undefined })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ j._status = r.status; return j; }); }); }
-  function sess(){ return api('/master/session',{method:'POST',body:{}}).then(function(j){ if (j._status!==200) throw j; S.mtoken=j.token; }); }
+  function sess(){ return api('/master/session',{method:'POST',body:{}}).then(function(j){
+    // 04.11: майстра звільнили / відвʼязали — сервер більше не дає сесію → тихо переходимо в режим клієнта
+    if (j._status===403) { S.mtoken=null; if (S.me) S.me.master={is_master:false}; toast('Режим майстра вимкнено — ви в режимі клієнта'); home(); }
+    if (j._status!==200) throw j; S.mtoken=j.token; }); }
   return (S.mtoken ? Promise.resolve() : sess()).then(call).then(function(j){
     if (j._status===401 && !opts._retry) { S.mtoken=null; opts._retry=true; return sess().then(call); }
     return j; });
@@ -817,36 +818,6 @@ function markNoshow(id, undo, box){
   mapi('/appointments/'+id+'/noshow',{method:'POST',body:{undo:!!undo}}).then(function(j){
     if (j._status===200) { toast(undo?'Повернули запис':'Позначено: не прийшов'); loadToday(box); }
     else toast(j.message||'Не вдалося');
-  });
-}
-// «Я майстер салону»: поділитися номером кнопкою Telegram → вибрати себе → салон підтверджує ✔
-function vClaim(){
-  var msg = h('div',{class:'note'}), list = h('div',{});
-  var c = S.me && S.me.master && S.me.master.claim;
-  render(h('div',{class:'screen'}, plainHead('Я майстер салону'),
-    h('p',{class:'note',text:'Оберіть себе у списку. Адміністратор салону підтвердить запит — після цього тут зʼявиться ваш розклад і статистика.'}),
-    c && c.status==='pending' ? h('div',{class:'note',id:'claim-pending',text:'⏳ Запит «'+c.name+'» уже надіслано — чекаємо підтвердження.'}) : null,
-    c && c.status==='rejected' ? h('div',{class:'note err',text:'Попередній запит відхилено. Можна надіслати ще раз.'}) : null,
-    list, msg));
-  api('/master/candidates').then(function(j){
-    var sel = S.claimHint || null;
-    (j.masters||[]).forEach(function(m){
-      add(list, h('button',{class:'pick'+(sel===m.id?' on':''),'data-id':m.id,onclick:function(e){
-        sel=m.id; Array.prototype.forEach.call(list.querySelectorAll('.pick'), function(b){ b.classList.toggle('on', +b.getAttribute('data-id')===m.id); }); haptic(); }}, m.name));
-    });
-    add(list, h('button',{class:'btn btn-rose',id:'claim-send',style:'margin-top:12px',onclick:function(){
-      if (!sel) { msg.textContent='Оберіть себе у списку'; return; }
-      var p = S.contactRaw ? Promise.resolve(true) : ensurePhone(true, 'Щоб підтвердити, що це ви, поділіться номером кнопкою Telegram (ввести вручну тут не можна).');
-      p.then(function(ok){
-        if (isMaster()) { S.stack=['home','master']; show(); return; }
-        if (!ok || !S.contactRaw) { msg.textContent='Потрібен номер із Telegram'; return; }
-        api('/master/claim',{method:'POST',body:{contact:S.contactRaw, master_id:sel}}).then(function(r){
-          if (r._status===200) { haptic('ok'); S.me.master = {is_master:false, claim:{status:'pending', name:r.master_name}};
-            msg.textContent='✅ Запит надіслано адміністратору салону. Відповідь прийде в цей чат.'; }
-          else msg.textContent = r.message || ('Помилка: '+(r.error||r._status));
-        });
-      });
-    }}, 'Надіслати запит'));
   });
 }
 function boot(){

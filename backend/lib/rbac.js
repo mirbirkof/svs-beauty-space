@@ -83,16 +83,22 @@ async function resolveUserByToken(token) {
   const r = await getPool().query(
     `SELECT u.id, u.display_name, u.branch_id, u.master_id, u.is_active,
             u.extra_permissions, u.permissions_override,
-            r.code AS role, r.permissions, r.level AS role_level
+            r.code AS role, r.permissions, r.level AS role_level,
+            t.label AS token_label, mm.active AS master_active
        FROM user_tokens t
        JOIN users u ON u.id = t.user_id
        JOIN roles r ON r.id = u.role_id
+       LEFT JOIN masters mm ON mm.id = u.master_id
       WHERE t.token_hash = $1 AND (t.expires_at IS NULL OR t.expires_at > NOW())
       LIMIT 1`,
     [hash]
   );
   if (!r.rows[0]) return null;
   if (!r.rows[0].is_active) return null;
+  // Токен режима мастера из мини-аппа (Босс 04.11): действует, только пока человек — РАБОТАЮЩИЙ мастер.
+  // Уволили (masters.active=false) или сменили роль → токен мёртв сразу, даже если кто-то обошёл lib/employment.
+  if (String(r.rows[0].token_label || '').startsWith('miniapp-master') && (r.rows[0].role !== 'master' || r.rows[0].master_active !== true)) return null;
+  delete r.rows[0].token_label; delete r.rows[0].master_active;
   // обновить last_used (fire-and-forget)
   getPool().query(`UPDATE user_tokens SET last_used=NOW() WHERE token_hash=$1`, [hash]).catch(()=>{});
   const u = r.rows[0];

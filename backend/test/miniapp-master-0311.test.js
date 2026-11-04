@@ -1,14 +1,15 @@
-// Mini App, частина 2 (Босс 03.11): звʼязка «Telegram ↔ майстер», заявка «Я майстер», кабінет майстра, сповіщення.
+// Mini App: звʼязка «Telegram ↔ майстер», кабінет майстра, сповіщення (Босс 03.11) + авто-майстер без кнопки (Босс 04.11).
 // БЕЗПЕКА: окремий сервер :3061 поверх QA_DB_URL (пісочниця). Прод не чіпається.
 // Перевіряє:
-//  • ручний номер майстра (набраний руками) → прав майстра НЕМАЄ (/master/session 403);
+//  • ручний номер майстра (набраний руками) → прав майстра НЕМАЄ (/master/session 403), обліковка не створюється;
 //  • підписаний контакт з номером майстра → автоупізнавання, сесія ролі «Майстер»;
 //  • права: свої /api/me/stats|today, /api/payouts/my → 200; хазяйське /api/payouts/sheet, /api/payouts/rules → 403;
 //    «не прийшов» на чужий запис → 403, на свій сьогоднішній → 200 + undo;
-//  • заявка «Я майстер»: кандидати, дубль → 409, не-власник ✔ → відмова, власник ✔ → учётка + telegram_id,
-//    masters.phone лише якщо був порожній; після ✔ — сесія видається;
-//  • lib/master-notify: нова запис / перенос / скасування → повідомлення в Telegram майстра.
-// Фікстури: TG id 78xxxxxxxx, записи client_name 'QA-P2-0311'; усе повертається/видаляється в after.
+//  • lib/master-notify: нова запис / перенос / скасування → повідомлення в Telegram майстра;
+//  • 04.11: майстер БЕЗ обліковки → обліковка «Майстер» створюється сама; номер внесли в CRM пізніше → /me сам вмикає
+//    режим; звільнення → клієнт + токен мертвий; повернення → знову майстер; номер у двох майстрів → клієнт + audit;
+//    кнопки «Я майстер» більше немає (/master/claim, /master/candidates не 200), старі ✔ заявок працюють.
+// Фікстури: TG id 78xxxxxxxx, записи 'QA-P2-0311', майстри 'QA-AUTO-0411 …'; усе повертається/видаляється в after.
 require('dotenv').config();
 const QA_URL = process.env.QA_DB_URL;
 // модулі lib у процесі тесту ходять ЛИШЕ в QA (ніколи не в прод)
@@ -33,6 +34,13 @@ const initFor = (u) => sign({ auth_date: now(), query_id: 'AAp' + u.id, user: u 
 const contactFor = (u, phone, token = BOT) => sign({ contact: { user_id: u.id, phone_number: phone, first_name: u.first_name }, auth_date: now() }, token);
 
 let pool, S, M = null, CAND = null;
+const qaMasters = []; // майстри-фікстури 04.11 (прибираються в after)
+const rndPhone = () => '38097' + String(Math.floor(1e6 + Math.random() * 8.9e6));
+async function mkMaster(name, phone) {
+  const r = await q(`INSERT INTO masters (tenant_id, name, phone, active, in_schedule) VALUES ($1,$2,$3,true,true) RETURNING id, name`,
+    [TID, 'QA-AUTO-0411 ' + name, phone || null]);
+  qaMasters.push(r[0].id); return r[0];
+}
 const q = async (sql, p) => (await pool.query(sql, p)).rows;
 async function call(init, method, url, body) {
   const r = await fetch(BASE + '/api/miniapp' + url, { method, headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': init },
@@ -95,6 +103,18 @@ after(async () => {
     await c(`DELETE FROM master_claims WHERE tg_user_id = ANY($1::bigint[])`, [uids]);
     await c(`DELETE FROM clients WHERE telegram_id = ANY($1::bigint[]) AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.client_id=clients.id)`, [uids]);
   }
+  if (qaMasters.length) {
+    const fu = (await pool.query(`SELECT id FROM users WHERE master_id = ANY($1::int[])`, [qaMasters]).catch(() => ({ rows: [] }))).rows.map(r => r.id);
+    if (fu.length) {
+      await c(`DELETE FROM user_tokens WHERE user_id = ANY($1::int[])`, [fu]);
+      await c(`DELETE FROM user_sessions WHERE user_id = ANY($1::int[])`, [fu]);
+      await c(`DELETE FROM users WHERE id = ANY($1::int[])`, [fu]);
+    }
+    await c(`DELETE FROM master_claims WHERE master_id = ANY($1::int[])`, [qaMasters]);
+    await c(`DELETE FROM audit_log WHERE entity='master' AND entity_id = ANY($1::int[])`, [qaMasters]);
+    await c(`DELETE FROM masters WHERE id = ANY($1::int[])`, [qaMasters]);
+  }
+  if (uids.length) await c(`DELETE FROM audit_log WHERE action='master.auto_conflict' AND (meta->>'tg')::bigint = ANY($1::bigint[])`, [uids]);
   await pool.end();
 });
 
@@ -112,7 +132,7 @@ test('номер майстра, введений вручну → прав ма
   const u = mkUser('manual'); const init = initFor(u);
   const r = await call(init, 'POST', '/contact', { phone: '+' + String(M.phone).replace(/\D/g, ''), name: 'QA Самозванець' });
   assert.ok([200, 409].includes(r.status), JSON.stringify(r.body));
-  assert.ok(!r.body || !r.body.master, 'ручний номер не розпізнається як майстер');
+  assert.ok(!r.body || !r.body.master || !r.body.master.is_master, 'ручний номер не розпізнається як майстер');
   assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 403);
   assert.strictEqual((await q(`SELECT telegram_id FROM users WHERE id=$1`, [M.uid]))[0].telegram_id, null, 'TG не привʼязано');
   // підписаний контакт, але ЧУЖИЙ user_id → теж ні
@@ -128,7 +148,7 @@ test('номер майстра з контакту Telegram → режим ма
   const r = await call(init, 'POST', '/contact', { contact: contactFor(MU, '+' + String(M.phone).replace(/\D/g, '')) });
   // 409 — клієнтську картку з цим номером уже зайняв «самозванець» ручним вводом (тест 2); режим майстра від цього не залежить
   assert.ok([200, 409].includes(r.status), JSON.stringify(r.body));
-  assert.ok(r.body.master && r.body.master.linked, 'упізнано: ' + JSON.stringify(r.body.master));
+  assert.ok(r.body.master && r.body.master.is_master, 'упізнано: ' + JSON.stringify(r.body.master));
   assert.strictEqual(Number((await q(`SELECT telegram_id FROM users WHERE id=$1`, [M.uid]))[0].telegram_id), MU.id);
   const me = await call(init, 'GET', '/me');
   assert.strictEqual(me.body.master.is_master, true);
@@ -174,46 +194,131 @@ test('сповіщення майстру: нова / перенос / скас�
   assert.ok(!sent.some(s => /\+?380\d{9}/.test(s.text)), 'телефон клієнта не шлемо');
 });
 
-test('заявка «Я майстер»: кандидат → ✔ власника → обліковка «Майстер» і сесія', { skip }, async () => {
-  assert.ok(CAND, 'у QA є працюючий майстер без обліковки');
-  const u = mkUser('claim'); const init = initFor(u);
-  const ph = '+38097' + String(Math.floor(1e6 + Math.random() * 8.9e6));
-  const cands = await call(init, 'GET', '/master/candidates');
-  assert.ok(cands.body.masters.some(m => m.id === CAND.id), 'кандидат у списку');
-  assert.ok(!cands.body.masters.some(m => m.id === M.master_id), 'майстер з привʼязаним TG у список не потрапляє');
-  // без підписаного контакту заявки немає
-  assert.strictEqual((await call(init, 'POST', '/master/claim', { master_id: CAND.id })).status, 400);
-  assert.strictEqual((await call(init, 'POST', '/master/claim', { contact: contactFor(mkUser('x'), ph), master_id: CAND.id })).status, 400, 'чужий контакт');
-  const cl = await call(init, 'POST', '/master/claim', { contact: contactFor(u, ph), master_id: CAND.id });
-  assert.strictEqual(cl.status, 200, JSON.stringify(cl.body));
-  assert.strictEqual((await call(init, 'POST', '/master/claim', { contact: contactFor(u, ph), master_id: CAND.id })).status, 409, 'дубль');
-  assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 403, 'без ✔ прав немає');
-  const claim = (await q(`SELECT * FROM master_claims WHERE tg_user_id=$1 AND status='pending'`, [u.id]))[0];
-  assert.ok(claim); assert.strictEqual(claim.phone, '380' + ph.slice(-9));
-  const me = await call(init, 'GET', '/me');
-  assert.strictEqual(me.body.master.claim.status, 'pending');
+// ─── 04.11: майстер визначається сам, без кнопки «Я майстер салону» ───
+const muser = async (masterId) => (await q(`SELECT u.id, u.telegram_id, u.phone, u.is_active, r.code FROM users u JOIN roles r ON r.id=u.role_id WHERE u.master_id=$1`, [masterId]));
 
+let A = null, AU = null, AT = null;
+test('авто-майстер БЕЗ обліковки: підписаний контакт → обліковка «Майстер» створюється сама, сесія 200', { skip }, async () => {
+  const ph = rndPhone();
+  A = await mkMaster('A', ph);
+  AU = mkUser('auto'); const init = initFor(AU);
+  const r = await call(init, 'POST', '/contact', { contact: contactFor(AU, '+' + ph) });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.master && r.body.master.is_master, 'упізнано без жодної кнопки: ' + JSON.stringify(r.body.master));
+  const us = await muser(A.id);
+  assert.strictEqual(us.length, 1, 'рівно одна обліковка');
+  assert.strictEqual(us[0].code, 'master'); assert.strictEqual(Number(us[0].telegram_id), AU.id); assert.strictEqual(us[0].phone, '380' + ph.slice(-9));
+  const cl = (await q(`SELECT tg_verified_phone FROM clients WHERE telegram_id=$1 AND deleted_at IS NULL`, [AU.id]))[0];
+  assert.ok(cl && cl.tg_verified_phone === '380' + ph.slice(-9), 'підтверджений номер збережено');
+  const s = await call(init, 'POST', '/master/session', {});
+  assert.strictEqual(s.status, 200, JSON.stringify(s.body));
+  assert.strictEqual(s.body.master.id, A.id);
+  AT = s.body.token;
+  assert.strictEqual((await crm(AT, 'GET', '/api/me/stats')).status, 200);
+  assert.ok((await q(`SELECT 1 FROM audit_log WHERE action='master.account_auto_create' AND entity_id=$1`, [A.id])).length, 'audit');
+});
+
+test('звільнення → режим клієнта, кабінет лишається, старий токен майстра одразу не діє', { skip }, async () => {
+  assert.ok(AT, 'попередній тест видав токен');
+  const { setWorkingState } = require('../lib/employment');
+  await setWorkingState(pool, A.id, false, { fired: true });
+  assert.strictEqual((await crm(AT, 'GET', '/api/me/stats')).status, 401, 'токен звільненого майстра мертвий');
+  const init = initFor(AU);
+  const me = await call(init, 'GET', '/me');
+  assert.strictEqual(me.status, 200, 'кабінет лишається');
+  assert.strictEqual(me.body.master.is_master, false, 'тепер клієнт');
+  assert.ok(me.body.client && me.body.client.has_phone, 'клієнтська картка з номером на місці');
+  assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 403);
+  assert.strictEqual((await muser(A.id)).length, 1, 'обліковку не видалено');
+});
+
+test('повернення на роботу → режим майстра вмикається сам', { skip }, async () => {
+  const { setWorkingState } = require('../lib/employment');
+  await setWorkingState(pool, A.id, true);
+  const init = initFor(AU);
+  const me = await call(init, 'GET', '/me');
+  assert.strictEqual(me.body.master.is_master, true, JSON.stringify(me.body.master));
+  const s = await call(init, 'POST', '/master/session', {});
+  assert.strictEqual(s.status, 200, JSON.stringify(s.body));
+  AT = s.body.token;
+  assert.strictEqual((await crm(AT, 'GET', '/api/me/stats')).status, 200);
+  // захист в rbac: картку вимкнули напряму (повз setWorkingState, users.is_active лишився true) → токен однаково мертвий
+  await q(`UPDATE masters SET active=false WHERE id=$1`, [A.id]);
+  try {
+    assert.strictEqual((await crm(AT, 'GET', '/api/me/stats')).status, 401, 'токен miniapp-master неактивної картки');
+  } finally { await q(`UPDATE masters SET active=true WHERE id=$1`, [A.id]); }
+  assert.strictEqual((await crm(AT, 'GET', '/api/me/stats')).status, 200);
+});
+
+test('номер внесли в CRM ПІЗНІШЕ → /me сам вмикає режим майстра без нового запиту номера', { skip }, async () => {
+  const ph = rndPhone();
+  const B = await mkMaster('B', null);
+  const u = mkUser('later'); const init = initFor(u);
+  const r = await call(init, 'POST', '/contact', { contact: contactFor(u, '+' + ph) });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.ok(!r.body.master.is_master, 'поки номера в CRM немає — клієнт');
+  assert.strictEqual((await q(`SELECT tg_verified_phone FROM clients WHERE telegram_id=$1`, [u.id]))[0].tg_verified_phone, '380' + ph.slice(-9));
+  await q(`UPDATE masters SET phone=$2 WHERE id=$1`, [B.id, '0' + ph.slice(-9)]); // інший формат запису — збіг по 9 цифрах
+  const me = await call(init, 'GET', '/me');
+  assert.strictEqual(me.body.master.is_master, true, JSON.stringify(me.body.master));
+  const us = await muser(B.id);
+  assert.ok(us.length === 1 && us[0].code === 'master' && Number(us[0].telegram_id) === u.id);
+  assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 200);
+});
+
+test('ручний номер майстра без обліковки → обліковка НЕ створюється, прав немає', { skip }, async () => {
+  const ph = rndPhone();
+  const E = await mkMaster('E', ph);
+  const u = mkUser('manualE'); const init = initFor(u);
+  const r = await call(init, 'POST', '/contact', { phone: '+' + ph, name: 'QA Ручний' });
+  assert.ok([200, 409].includes(r.status), JSON.stringify(r.body));
+  assert.ok(!r.body.master || !r.body.master.is_master);
+  assert.strictEqual((await call(init, 'GET', '/me')).body.master.is_master, false);
+  assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 403);
+  assert.strictEqual((await muser(E.id)).length, 0, 'обліковки немає');
+  const cl = (await q(`SELECT tg_verified_phone FROM clients WHERE telegram_id=$1`, [u.id]))[0];
+  assert.ok(!cl || !cl.tg_verified_phone, 'ручний номер не позначається підтвердженим');
+});
+
+test('номер у ДВОХ майстрів → клієнт, нічого не привʼязано, audit конфлікту', { skip }, async () => {
+  const ph = rndPhone();
+  const F1 = await mkMaster('F1', ph), F2 = await mkMaster('F2', '0' + ph.slice(-9));
+  const u = mkUser('twin'); const init = initFor(u);
+  const r = await call(init, 'POST', '/contact', { contact: contactFor(u, '+' + ph) });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.master.is_master, false);
+  assert.strictEqual((await call(init, 'POST', '/master/session', {})).status, 403);
+  assert.strictEqual((await muser(F1.id)).length + (await muser(F2.id)).length, 0);
+  const ms = await q(`SELECT telegram_id FROM masters WHERE id = ANY($1::int[])`, [[F1.id, F2.id]]);
+  assert.ok(ms.every(m => m.telegram_id == null), 'TG не привʼязано');
+  const au = await q(`SELECT meta FROM audit_log WHERE action='master.auto_conflict' AND (meta->>'tg')::bigint=$1`, [u.id]);
+  assert.ok(au.length >= 1 && au[0].meta.reason === 'phone_many_masters', JSON.stringify(au));
+});
+
+test('кнопки «Я майстер» більше немає; стара заявка + ✔ власника досі працює', { skip }, async () => {
+  const u = mkUser('claim'); const init = initFor(u);
+  assert.notStrictEqual((await call(init, 'GET', '/master/candidates')).status, 200);
+  assert.notStrictEqual((await call(init, 'POST', '/master/claim', { master_id: 1 })).status, 200);
+  assert.ok(CAND, 'у QA є працюючий майстер без обліковки');
+  const ph = '380' + rndPhone().slice(-9);
+  const claim = (await q(`INSERT INTO master_claims (tenant_id, tg_user_id, tg_name, phone, master_id) VALUES ($1,$2,'QA claim',$3,$4) RETURNING *`,
+    [TID, u.id, ph, CAND.id]))[0];
   const ml = require('../lib/master-link');
   const calls = []; const tg = async (m, p) => { calls.push({ m, p }); return { ok: true }; };
-  // не власник натиснув ✔ → відмова, нічого не записано
   await ml.onClaimCallback({ id: 'q1', data: 'mc:ok:' + claim.id, from: { id: u.id } }, { pool, tg, tenantId: TID });
-  assert.ok(calls.some(c => c.m === 'answerCallbackQuery' && /власник/.test(c.p.text)));
+  assert.ok(calls.some(c => c.m === 'answerCallbackQuery' && /власник/.test(c.p.text)), 'не власник — відмова');
   assert.strictEqual((await q(`SELECT status FROM master_claims WHERE id=$1`, [claim.id]))[0].status, 'pending');
-  // власник ✔
   calls.length = 0;
   await ml.onClaimCallback({ id: 'q2', data: 'mc:ok:' + claim.id, from: { id: OWNER_TG }, message: { chat: { id: OWNER_TG }, message_id: 1, text: 'запит' } }, { pool, tg, tenantId: TID });
   assert.strictEqual((await q(`SELECT status FROM master_claims WHERE id=$1`, [claim.id]))[0].status, 'approved');
   const mm = (await q(`SELECT phone, telegram_id FROM masters WHERE id=$1`, [CAND.id]))[0];
-  assert.strictEqual(Number(mm.telegram_id), u.id); assert.strictEqual(mm.phone, claim.phone, 'masters.phone був порожній → заповнено');
-  const nu = (await q(`SELECT u.phone, r.code FROM users u JOIN roles r ON r.id=u.role_id WHERE u.telegram_id=$1 AND u.master_id=$2`, [u.id, CAND.id]))[0];
+  assert.strictEqual(Number(mm.telegram_id), u.id); assert.strictEqual(mm.phone, ph, 'masters.phone був порожній → заповнено');
+  const nu = (await q(`SELECT r.code FROM users u JOIN roles r ON r.id=u.role_id WHERE u.telegram_id=$1 AND u.master_id=$2`, [u.id, CAND.id]))[0];
   assert.ok(nu && nu.code === 'master', 'обліковка «Майстер» створена');
-  assert.ok(calls.some(c => c.m === 'sendMessage' && Number(c.p.chat_id) === u.id), 'заявнику прийшла відповідь');
-  // повторне ✔ — «вже вирішено», без змін
   calls.length = 0;
   await ml.onClaimCallback({ id: 'q3', data: 'mc:ok:' + claim.id, from: { id: OWNER_TG } }, { pool, tg, tenantId: TID });
   assert.ok(calls.some(c => /вирішено/.test(c.p.text || '')));
   const s = await call(init, 'POST', '/master/session', {});
   assert.strictEqual(s.status, 200, JSON.stringify(s.body));
   assert.strictEqual(s.body.master.id, CAND.id);
-  assert.strictEqual((await crm(s.body.token, 'GET', '/api/me/stats')).status, 200);
 });

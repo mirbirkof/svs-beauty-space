@@ -421,7 +421,8 @@ async function processUpdate(upd, tg, salon) {
       if (!row) {
         // Розмовна запис чекає номер для завершення? → бронюємо й виходимо.
         if (await bookingBot.onContact(msg, botCtx)) return;
-        // МАЙСТЕР (Босс 03.11): підтверджений номер = номер майстра → привʼязка Telegram і режим майстра в мініаппі.
+        // МАЙСТЕР (Босс 04.11): підтверджений номер = номер ПРАЦЮЮЧОГО майстра → привʼязка Telegram (за потреби —
+        // нова обліковка «Майстер») і режим майстра в мініаппі. Конфлікт → нічого не чіпаємо, далі як клієнт.
         try {
           const ml = await require('../lib/master-link').recognize(getPool(), tenantId, msg.from.id, phoneDigits);
           if (ml.linked) {
@@ -467,11 +468,12 @@ async function processUpdate(upd, tg, salon) {
                name = COALESCE(NULLIF(name,''), $3),
                tg_first_name = COALESCE($4, tg_first_name),
                tg_last_name  = COALESCE($5, tg_last_name),
-               tg_username   = COALESCE($6, tg_username)
+               tg_username   = COALESCE($6, tg_username),
+               tg_verified_phone = $7, phone_verified_at = NOW()
              WHERE regexp_replace(phone, '\\D', '', 'g') = $2
                AND (telegram_id IS NULL OR telegram_id = $1)
              RETURNING id, name`,
-            [msg.from.id, phoneDigits, tgFirst, tgFirst, tgLast, tgUser]
+            [msg.from.id, phoneDigits, tgFirst, tgFirst, tgLast, tgUser, normalizePhoneDb(phoneDigits)]
           );
           if (upd2.rowCount) {
             return tg('sendMessage', {
@@ -490,8 +492,9 @@ async function processUpdate(upd, tg, salon) {
           }
           // номера ще немає в базі → створюємо картку клієнта
           await getPool().query(
-            `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username, consent_given_at, consent_source)
-             VALUES ($1, $2, $3, 'bot-link', $4, $5, $6, NOW(), 'bot')
+            `INSERT INTO clients (phone, name, telegram_id, source, tg_first_name, tg_last_name, tg_username, consent_given_at, consent_source,
+                                  tg_verified_phone, phone_verified_at)
+             VALUES ($1, $2, $3, 'bot-link', $4, $5, $6, NOW(), 'bot', $1, NOW())
              ON CONFLICT (tenant_id, phone) DO UPDATE SET
                consent_given_at = COALESCE(clients.consent_given_at, NOW()),
                consent_source = COALESCE(clients.consent_source, 'bot'),

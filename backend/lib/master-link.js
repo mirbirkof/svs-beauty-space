@@ -2,18 +2,20 @@
 /**
  * Связка «Telegram ↔ мастер салона» для мини-аппа и бота (Босс 03.11, часть 2).
  *
- * ПРАВИЛА БЕЗОПАСНОСТИ (дословно из задачи + факт прод-БД от Jarvis):
+ * ПРАВИЛА БЕЗОПАСНОСТИ (Босс 03.11 + 04.11 «майстер визначається автоматично»):
  *  • Права мастера даёт ТОЛЬКО телефон из подписанного Telegram-контакта (contact.user_id == from.id).
  *    Номер, набранный руками, ничего не даёт — сюда он просто не передаётся.
- *  • Автоузнавание: проверенный номер совпал (последние 9 цифр) с телефоном учётки «Майстер»
- *    или карточки активного мастера → привязываем telegram_id. Ровно так бот уже привязывает
- *    сотрудников по контакту (routes/booking.js, ветка staff-link) — это не эвристика, а
- *    подтверждённый Telegram номер.
- *  • Номер есть только в карточке мастера, а учётки нет → учётку САМИ не создаём: только через
- *    заявку «Я майстер» и ✔ владельца/админа.
- *  • Заявка «Я майстер»: без ✔ прав нет. После ✔ — masters.phone (только если пусто),
- *    masters.telegram_id, учётка users с ролью «Майстер» (если нет) — как POST /api/auth-staff/link.
- *  • Подтверждать может только тот, кому заявка ушла: владельцы салона с Telegram + ADMIN_TG_CHAT.
+ *  • Подтверждённый номер совпал (последние 9 цифр) ровно с ОДНИМ работающим мастером →
+ *    режим мастера включается сам: привязываем telegram_id; если у мастера нет учётки users —
+ *    создаём её (роль «Майстер», telegram_id, номер) в одной транзакции с теми же проверками,
+ *    что были у ✔ заявки (linkMasterAccount). Никакой кнопки «Я майстер» больше нет.
+ *  • Любой конфликт (номер у двух мастеров, учётка другой роли, номер уже у другой учётки, этот
+ *    Telegram уже у другой учётки, у мастера другой Telegram) → ничего не трогаем, клиентский
+ *    режим + запись в audit_log (не чаще раза в сутки на человека и причину).
+ *  • Уволили (masters.active=false) → masterUserByTg пуст → клиентский режим; токены мини-аппа
+ *    гасит lib/employment.js, а lib/rbac.js дополнительно не пускает miniapp-master токен неактивного мастера.
+ *  • Старые заявки master_claims: кнопки ✔/✖ у владельцев продолжают работать (onClaimCallback),
+ *    новые заявки не создаются.
  */
 const crypto = require('crypto');
 
@@ -53,28 +55,113 @@ async function findByPhone(pool, tenantId, phone) {
   return { master_id: row.master_id, master_name: row.master_name, user_id: row.user_id || null, user_tg: row.user_tg ? Number(row.user_tg) : null };
 }
 
+// Конфликты пишем в audit не чаще раза в сутки на (человек, причина): masterState зовётся на каждом /me.
+const conflictSeen = new Map();
+async function auditConflict(pool, uid, reason, masterId, meta) {
+  const key = uid + ':' + reason + ':' + (masterId || '');
+  const now = Date.now();
+  if (conflictSeen.has(key) && now - conflictSeen.get(key) < 24 * 3600e3) return;
+  conflictSeen.set(key, now);
+  if (conflictSeen.size > 5000) conflictSeen.clear();
+  await audit(pool, 'master.auto_conflict', masterId || null, { tg: Number(uid), reason, ...(meta || {}) });
+}
+
 /**
- * Автоузнавание мастера по ПРОВЕРЕННОМУ номеру. Пишет только telegram_id (учётке и карточке),
- * и только если он пуст или уже этот же. Возвращает:
- *   {master:false} | {master:true, linked:true, master_id, name} | {master:true, needClaim:true, ...} | {master:true, conflict:true}
+ * Привязать Telegram (и при необходимости СОЗДАТЬ учётку «Майстер») к работающему мастеру.
+ * Одна транзакция, ничего не перетирает, кроме пустых полей. Используется автоузнаванием и старыми ✔ заявок.
+ * opts.client — уже открытая транзакция (для ✔ заявки); opts.forceMasterTg — карточке ставим этот TG даже поверх
+ * (поведение ✔ владельца, решение человека); без него — только если пусто.
+ * → {ok, result:{master_id, user_id, user_created, master_phone_filled}} | {error, message}
+ */
+async function linkMasterAccount(pool, tenantId, masterId, tgId, phone, opts = {}) {
+  const own = !opts.client;
+  const client = opts.client || await pool.connect();
+  const fail = async (error, message) => { if (own) await client.query('ROLLBACK').catch(() => {}); return { error, message }; };
+  const ph = canonPhone(phone);
+  try {
+    if (own) {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
+    }
+    const m = (await client.query(`SELECT id, name, phone, telegram_id FROM masters WHERE id=$1 AND tenant_id=$2 AND active FOR UPDATE`, [masterId, tenantId])).rows[0];
+    if (!m) return await fail('master_gone', 'Майстра не знайдено або він не працює.');
+    const tgBusy = (await client.query(`SELECT id FROM users WHERE tenant_id=$1 AND telegram_id=$2`, [tenantId, tgId])).rows[0];
+    const u = (await client.query(
+      `SELECT u.id, u.telegram_id, u.phone, r.code FROM users u JOIN roles r ON r.id=u.role_id
+        WHERE u.master_id=$1 AND u.tenant_id=$2 AND u.merged_into IS NULL FOR UPDATE OF u`, [m.id, tenantId])).rows[0];
+    if (tgBusy && (!u || tgBusy.id !== u.id)) return await fail('tg_used', 'Цей Telegram уже привʼязано до іншої обліковки CRM.');
+    if (u && u.telegram_id && Number(u.telegram_id) !== Number(tgId)) return await fail('master_has_tg', 'У цього майстра вже привʼязаний інший Telegram.');
+    if (u && u.code !== 'master') return await fail('role', 'Обліковка цього майстра має іншу роль — змініть вручну в CRM.');
+    if (!u) {
+      // Номер уже у другой учётки салона (владелец/админ) — роль сами не меняем, вторую учётку не плодим.
+      const byPhone = ph && (await client.query(`SELECT id FROM users WHERE tenant_id=$1 AND right(regexp_replace(COALESCE(phone,''),'\\D','','g'),9)=$2`,
+        [tenantId, last9(ph)])).rows[0];
+      if (byPhone) return await fail('phone_used', 'Цей номер уже має іншу обліковку CRM — привʼяжіть вручну.');
+    }
+    const result = { master_id: m.id };
+    const mu = await client.query(
+      `UPDATE masters SET phone = CASE WHEN COALESCE(phone,'')='' THEN $1 ELSE phone END,
+              telegram_id = CASE WHEN $4::boolean OR telegram_id IS NULL THEN $2 ELSE telegram_id END
+        WHERE id=$3 RETURNING (phone IS NOT DISTINCT FROM $1) AS phone_set`, [ph, tgId, m.id, !!opts.forceMasterTg]);
+    result.master_phone_filled = !m.phone && !!ph && mu.rows[0].phone_set;
+    if (u) {
+      await client.query(
+        `UPDATE users SET telegram_id=$1,
+                phone = CASE WHEN COALESCE(phone,'')='' AND $4::text IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users x WHERE x.tenant_id=$3 AND x.phone=$4) THEN $4 ELSE phone END,
+                updated_at=NOW() WHERE id=$2`, [tgId, u.id, tenantId, ph]);
+      result.user_id = u.id; result.user_created = false; result.tg_was_set = !!u.telegram_id;
+    } else {
+      const role = (await client.query(`SELECT id FROM roles WHERE code='master' AND tenant_id=$1 LIMIT 1`, [tenantId])).rows[0];
+      if (!role) return await fail('no_role', 'У салоні немає ролі «Майстер».');
+      const ins = await client.query(
+        `INSERT INTO users (tenant_id, phone, display_name, role_id, telegram_id, master_id, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,TRUE) RETURNING id`, [tenantId, ph, m.name, role.id, tgId, m.id]);
+      result.user_id = ins.rows[0].id; result.user_created = true;
+    }
+    if (own) await client.query('COMMIT');
+    return { ok: true, master: m, result };
+  } catch (e) {
+    if (own) await client.query('ROLLBACK').catch(() => {});
+    if (e.code === '23505') return { error: 'conflict', message: 'Конфлікт унікальності (номер або Telegram уже зайняті).' };
+    throw e;
+  } finally { if (own) client.release(); }
+}
+
+/**
+ * Автоузнавание мастера по ПРОВЕРЕННОМУ номеру (Босс 04.11): совпал ровно с одним работающим мастером →
+ * привязка Telegram и, если нужно, создание учётки «Майстер». Возвращает
+ *   {master:false[, reason]} | {master:true, linked:true, created:bool, master_id, name}
  */
 async function recognize(pool, tenantId, uid, phone) {
+  const l9 = last9(phone);
+  if (!l9) return { master: false };
+  // номер у двух+ мастеров или учётка другой роли — findByPhone вернёт null; отличаем, чтобы записать конфликт
   const m = await findByPhone(pool, tenantId, phone);
-  if (!m) return { master: false };
-  if (!m.user_id) return { master: true, needClaim: true, master_id: m.master_id, name: m.master_name };
-  if (m.user_tg && m.user_tg !== Number(uid)) return { master: true, conflict: true, master_id: m.master_id, name: m.master_name };
-  try {
-    const u = await pool.query(
-      `UPDATE users SET telegram_id=$1, updated_at=NOW()
-        WHERE id=$2 AND tenant_id=$3 AND (telegram_id IS NULL OR telegram_id=$1) RETURNING id`, [uid, m.user_id, tenantId]);
-    if (!u.rowCount) return { master: true, conflict: true, master_id: m.master_id, name: m.master_name };
-  } catch (e) {
-    if (e.code === '23505') return { master: true, conflict: true, master_id: m.master_id, name: m.master_name }; // этот TG уже у другой учётки
-    throw e;
+  if (!m) {
+    const any = await pool.query(
+      `SELECT COUNT(DISTINCT m.id)::int n FROM masters m
+         LEFT JOIN users u ON u.master_id=m.id AND u.tenant_id=m.tenant_id AND u.merged_into IS NULL
+        WHERE m.tenant_id=$1 AND ${WORKING}
+          AND (right(regexp_replace(COALESCE(m.phone,''),'\\D','','g'),9)=$2 OR right(regexp_replace(COALESCE(u.phone,''),'\\D','','g'),9)=$2)`,
+      [tenantId, l9]);
+    const n = any.rows[0].n;
+    if (n) {
+      const reason = n > 1 ? 'phone_many_masters' : 'role';
+      await auditConflict(pool, uid, reason, null, { masters: n });
+      return { master: false, reason };
+    }
+    return { master: false };
   }
-  await pool.query(`UPDATE masters SET telegram_id=$1 WHERE id=$2 AND tenant_id=$3 AND telegram_id IS NULL`, [uid, m.master_id, tenantId]);
-  if (!m.user_tg) await audit(pool, 'master.tg_link_auto', m.master_id, { user_id: m.user_id, tg: Number(uid), via: 'verified_contact' });
-  return { master: true, linked: true, master_id: m.master_id, name: m.master_name };
+  // уже привязан этот же TG к учётке — ничего не пишем
+  if (m.user_id && m.user_tg === Number(uid)) return { master: true, linked: true, created: false, master_id: m.master_id, name: m.master_name };
+  const r = await linkMasterAccount(pool, tenantId, m.master_id, uid, phone);
+  if (r.error) {
+    await auditConflict(pool, uid, r.error, m.master_id);
+    return { master: false, reason: r.error };
+  }
+  await audit(pool, r.result.user_created ? 'master.account_auto_create' : 'master.tg_link_auto', m.master_id,
+    { user_id: r.result.user_id, tg: Number(uid), via: 'verified_contact', master_phone_filled: r.result.master_phone_filled });
+  return { master: true, linked: true, created: !!r.result.user_created, master_id: m.master_id, name: m.master_name };
 }
 
 /** Учётка мастера, привязанная к этому Telegram (ровно одна, активная, роль master, с карточкой). */
@@ -106,22 +193,6 @@ async function issueMasterSession(pool, tenantId, uid, req) {
   return { token, expiresAt, master_id: u.master_id, name: u.master_name || u.display_name };
 }
 
-/** Кандидаты для «Я майстер»: работающие мастера без привязанного Telegram у учётки. */
-async function claimCandidates(pool, tenantId) {
-  const r = await pool.query(
-    `SELECT m.id, m.name FROM masters m
-       LEFT JOIN users u ON u.master_id=m.id AND u.merged_into IS NULL
-      WHERE m.tenant_id=$1 AND ${WORKING} AND u.telegram_id IS NULL
-        -- лише ті, хто реально працює: живі записи клієнтів за 90 днів / наперед або робочий графік (на проді є пусті
-        -- демо-картки «Терапевт Один», «Тренер …» без жодного запису — їх у списку не показуємо)
-        AND (EXISTS (SELECT 1 FROM appointments a WHERE a.master_id=m.id AND a.client_id IS NOT NULL
-                        AND COALESCE(a.status,'') <> 'cancelled' AND a.starts_at > NOW() - INTERVAL '90 days')
-          OR EXISTS (SELECT 1 FROM master_schedule_days d WHERE d.master_id=m.id AND d.work_date >= CURRENT_DATE - 60
-                        AND d.start_time IS NOT NULL AND d.end_time > d.start_time))
-      ORDER BY m.name`, [tenantId]);
-  return r.rows;
-}
-
 /** Кому слать заявку и кто вправе нажать ✔/✖: владельцы салона с Telegram + ADMIN_TG_CHAT. */
 async function approvers(pool, tenantId) {
   const set = new Set();
@@ -134,39 +205,7 @@ async function approvers(pool, tenantId) {
   return [...set];
 }
 
-/** Создать заявку и разослать владельцам. phone — ТОЛЬКО из проверенного контакта. */
-async function createClaim(pool, tenantId, tgUser, phone, masterId, tg) {
-  const cands = await claimCandidates(pool, tenantId);
-  const m = cands.find((x) => Number(x.id) === Number(masterId));
-  if (!m) return { error: 'bad_master' };
-  const recent = await pool.query(
-    `SELECT COUNT(*)::int n FROM master_claims WHERE tenant_id=$1 AND tg_user_id=$2 AND created_at > NOW() - INTERVAL '1 day'`,
-    [tenantId, tgUser.id]);
-  if (recent.rows[0].n >= 5) return { error: 'too_many' };
-  const tgName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || 'Без імені';
-  let claim;
-  try {
-    claim = (await pool.query(
-      `INSERT INTO master_claims (tenant_id, tg_user_id, tg_name, tg_username, phone, master_id)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [tenantId, tgUser.id, tgName, tgUser.username || null, canonPhone(phone), m.id])).rows[0];
-  } catch (e) {
-    if (e.code === '23505') return { error: 'pending' };
-    throw e;
-  }
-  const to = await approvers(pool, tenantId);
-  const text = `👤 <b>Запит «Я майстер»</b>\n${esc(tgName)}${tgUser.username ? ' (@' + esc(tgUser.username) + ')' : ''}, номер <b>+${esc(canonPhone(phone))}</b> (підтверджений Telegram) каже, що він майстер <b>${esc(m.name)}</b>.\n\nПідтвердити?`;
-  const kb = { inline_keyboard: [[{ text: '✔ Так, це майстер', callback_data: `mc:ok:${claim.id}` }, { text: '✖ Ні', callback_data: `mc:no:${claim.id}` }]] };
-  let sent = 0;
-  for (const chat of to) {
-    try { await tg('sendMessage', { chat_id: chat, text, parse_mode: 'HTML', reply_markup: kb }); sent++; }
-    catch (e) { console.error('[master-link/claim-send]', e.message); }
-  }
-  await audit(pool, 'master.claim_create', m.id, { claim: claim.id, tg: tgUser.id, sent });
-  return { ok: true, claim_id: claim.id, sent, master_name: m.name };
-}
-
-/** ✔ — записать связку. Всё в одной транзакции; ничего не перетирает, кроме пустых полей. */
+/** ✔ по старой заявке (до 04.11) — та же привязка linkMasterAccount + отметка заявки, в одной транзакции. */
 async function approveClaim(pool, tenantId, claimId, deciderTg) {
   const client = await pool.connect();
   try {
@@ -175,48 +214,16 @@ async function approveClaim(pool, tenantId, claimId, deciderTg) {
     const c = (await client.query(`SELECT * FROM master_claims WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, [claimId, tenantId])).rows[0];
     if (!c) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
     if (c.status !== 'pending') { await client.query('ROLLBACK'); return { error: 'decided', status: c.status }; }
-    const m = (await client.query(`SELECT id, name, phone, telegram_id FROM masters WHERE id=$1 AND tenant_id=$2 AND active FOR UPDATE`, [c.master_id, tenantId])).rows[0];
-    if (!m) { await client.query('ROLLBACK'); return { error: 'master_gone' }; }
-    const tgBusy = (await client.query(
-      `SELECT id, master_id FROM users WHERE tenant_id=$1 AND telegram_id=$2`, [tenantId, c.tg_user_id])).rows[0];
-    let u = (await client.query(
-      `SELECT u.id, u.telegram_id, u.phone, r.code FROM users u JOIN roles r ON r.id=u.role_id
-        WHERE u.master_id=$1 AND u.tenant_id=$2 AND u.merged_into IS NULL`, [m.id, tenantId])).rows[0];
-    if (tgBusy && (!u || tgBusy.id !== u.id)) { await client.query('ROLLBACK'); return { error: 'tg_used', message: 'Цей Telegram уже привʼязано до іншої обліковки CRM.' }; }
-    if (u && u.telegram_id && Number(u.telegram_id) !== Number(c.tg_user_id)) { await client.query('ROLLBACK'); return { error: 'master_has_tg', message: 'У цього майстра вже привʼязаний інший Telegram.' }; }
-    const result = { master_id: m.id };
-    // masters.phone — только если пусто; telegram_id — карточке (уведомления, утренний список)
-    const mu = await client.query(
-      `UPDATE masters SET phone = CASE WHEN COALESCE(phone,'')='' THEN $1 ELSE phone END, telegram_id=$2
-        WHERE id=$3 RETURNING (phone=$1) AS phone_set`, [c.phone, c.tg_user_id, m.id]);
-    result.master_phone_filled = !m.phone && mu.rows[0].phone_set;
-    if (u) {
-      if (u.code !== 'master') { await client.query('ROLLBACK'); return { error: 'role', message: 'Обліковка цього майстра має іншу роль — змініть вручну в CRM.' }; }
-      await client.query(
-        `UPDATE users SET telegram_id=$1,
-                phone = CASE WHEN COALESCE(phone,'')='' AND NOT EXISTS (SELECT 1 FROM users x WHERE x.tenant_id=$3 AND x.phone=$4) THEN $4 ELSE phone END,
-                updated_at=NOW() WHERE id=$2`, [c.tg_user_id, u.id, tenantId, c.phone]);
-      result.user_id = u.id; result.user_created = false;
-    } else {
-      // Номер уже у другой учётки салона (владелец/адмін) — роль сами не меняем.
-      const byPhone = (await client.query(`SELECT id FROM users WHERE tenant_id=$1 AND right(regexp_replace(COALESCE(phone,''),'\\D','','g'),9)=$2`,
-        [tenantId, last9(c.phone)])).rows[0];
-      if (byPhone) { await client.query('ROLLBACK'); return { error: 'phone_used', message: 'Цей номер уже має іншу обліковку CRM — привʼяжіть вручну.' }; }
-      const role = (await client.query(`SELECT id FROM roles WHERE code='master' AND tenant_id=$1 LIMIT 1`, [tenantId])).rows[0];
-      if (!role) { await client.query('ROLLBACK'); return { error: 'no_role' }; }
-      const ins = await client.query(
-        `INSERT INTO users (tenant_id, phone, display_name, role_id, telegram_id, master_id, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,TRUE) RETURNING id`, [tenantId, c.phone, m.name, role.id, c.tg_user_id, m.id]);
-      result.user_id = ins.rows[0].id; result.user_created = true;
-    }
+    const r = await linkMasterAccount(pool, tenantId, c.master_id, c.tg_user_id, c.phone, { client, forceMasterTg: true });
+    if (r.error) { await client.query('ROLLBACK'); return r; }
     await client.query(`UPDATE master_claims SET status='approved', decided_by=$2, decided_at=NOW(), result=$3 WHERE id=$1`,
-      [c.id, deciderTg, JSON.stringify(result)]);
+      [c.id, deciderTg, JSON.stringify(r.result)]);
     await client.query(
       `INSERT INTO audit_log (user_id, user_label, action, entity, entity_id, ip, meta)
        VALUES (NULL, $1, 'master.claim_approve', 'master', $2, NULL, $3)`,
-      [`tg:${deciderTg}`, m.id, JSON.stringify({ claim: c.id, ...result })]);
+      [`tg:${deciderTg}`, c.master_id, JSON.stringify({ claim: c.id, ...r.result })]);
     await client.query('COMMIT');
-    return { ok: true, claim: c, master: m, result };
+    return { ok: true, claim: c, master: r.master, result: r.result };
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     if (e.code === '23505') return { error: 'conflict', message: 'Конфлікт унікальності (номер або Telegram уже зайняті).' };
@@ -262,5 +269,5 @@ async function onClaimCallback(cq, ctx) {
   return true;
 }
 
-module.exports = { last9, canonPhone, findByPhone, recognize, masterUserByTg, issueMasterSession, claimCandidates,
-  approvers, createClaim, approveClaim, rejectClaim, onClaimCallback, SESSION_HOURS };
+module.exports = { last9, canonPhone, findByPhone, recognize, linkMasterAccount, masterUserByTg, issueMasterSession,
+  approvers, approveClaim, rejectClaim, onClaimCallback, SESSION_HOURS };

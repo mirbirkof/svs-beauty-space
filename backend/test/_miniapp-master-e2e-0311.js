@@ -74,8 +74,9 @@ const apptIds = [];
     await p.waitForSelector('#share-phone', { timeout: 8000 }).catch(() => {});
     ok('1. клієнт без телефону → просимо номер (кнопка «Поділитися номером»)', await p.$('#share-phone'), 'лист номера відкрився сам при вході');
     await shot(p, '01-client-no-phone');
-    await p.click('#share-phone'); await pause(900);
-    const c1 = (await q(`SELECT phone FROM clients WHERE telegram_id=$1`, [u1.id]))[0];
+    await p.click('#share-phone');
+    let c1 = null; // чекаємо запис картки до 5 с (фіксовані 900 мс «мигали» на повільній QA-базі)
+    for (let i = 0; i < 25 && !c1; i++) { await pause(200); c1 = (await q(`SELECT phone FROM clients WHERE telegram_id=$1`, [u1.id]))[0]; }
     ok('   номер з Telegram збережено у форматі 380…', c1 && /^\+?380\d{9}$/.test(c1.phone), c1 && c1.phone);
     ok('   звичайний клієнт не бачить перемикача майстра', !(await p.$('#mode-seg')));
     await shot(p, '01b-client-home');
@@ -128,22 +129,13 @@ const apptIds = [];
     await shot(p, '05-master-noshow');
     await p.context().close();
 
-    // 5. екран «Я майстер салону» (заявка) для звичайного клієнта
-    const u5 = mkUser('Нова майстриня');
+    // 5. (04.11) кнопки «Я майстер салону» більше немає — майстер визначається сам за номером з Telegram
+    const u5 = mkUser('Звичайна клієнтка');
     await db.query(`INSERT INTO clients (phone, name, telegram_id, source) VALUES ($1,$2,$3,'miniapp')`, ['+38063' + String(1e6 + Math.floor(Math.random() * 8.9e6)), 'QA P2', u5.id]);
     p = await openApp(initFor(u5), u5, contactFor(u5, '+38063' + String(1e6 + Math.floor(Math.random() * 8.9e6))));
-    await p.waitForSelector('#mi-claim', { timeout: 8000 }).catch(() => {});
-    await shot(p, '06-client-home-claim-button');
-    await p.click('#mi-claim'); await p.waitForSelector('.pick', { timeout: 8000 });
-    const picks = await p.$$eval('.pick', els => els.map(e => e.textContent));
-    ok('5. «Я майстер салону»: список працюючих майстрів без привʼязки', picks.length > 0, picks.join(', '));
-    await p.click('.pick'); await p.click('#claim-send');
-    await p.waitForSelector('#share-phone', { timeout: 5000 }).catch(() => {});
-    ok('   для заявки вимагається номер саме з Telegram (ручного поля немає)', (await p.$('#share-phone')) && !(await p.$('#phone-in')));
-    await p.click('#share-phone'); await pause(1500);
-    const cl = (await q(`SELECT status FROM master_claims WHERE tg_user_id=$1`, [u5.id]))[0];
-    ok('   заявка створена зі статусом pending (прав ще немає)', cl && cl.status === 'pending');
-    await shot(p, '07-claim-sent');
+    await pause(2000);
+    await shot(p, '06-client-home-no-claim');
+    ok('5. у звичайного клієнта немає кнопки «Я майстер салону» і перемикача режимів', !(await p.$('#mi-claim')) && !(await p.$('#mode-seg')));
     await p.context().close();
   } catch (e) {
     ok('сценарій без винятків', false, e.message);
