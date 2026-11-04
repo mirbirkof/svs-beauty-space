@@ -1250,7 +1250,9 @@ router.patch('/masters/:id', async (req, res) => {
       [parseInt(req.params.id), name, phone, specialty, bio, avatar, legacy_ref, commission_pct, active]
     );
     if (!r.rowCount) return res.status(404).json({ error: 'not-found' });
-    res.json({ ok: true, master: r.rows[0] });
+    // combo-0411: спеціальність вказали після створення → послуги розділу (лише якщо звʼязок ще 0)
+    const autolink = specialty ? await require('../lib/master-svc-suggest').autoLinkNew(getPool(), r.rows[0].id) : null;
+    res.json({ ok: true, master: r.rows[0], autolink });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

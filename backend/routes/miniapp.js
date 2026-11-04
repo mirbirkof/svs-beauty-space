@@ -18,6 +18,7 @@ const core = require('../lib/booking-core');
 const { DEFAULT_TENANT_ID, runAs } = require('../lib/tenant');
 const { normalizePhoneDb, fmtPhoneFull } = require('../lib/phone');
 const masterLink = require('../lib/master-link');
+const combo = require('../lib/combo-plan');
 
 const router = express.Router();
 const MAX_AGE_SEC = 24 * 3600;
@@ -220,8 +221,9 @@ router.get('/catalog', async (req, res) => {
 
 async function mastersFor(serviceId) {
   const pool = getPool();
-  const base = serviceId
-    ? await bot().eligibleMasters(pool, [serviceId])
+  const sids = Array.isArray(serviceId) ? serviceId : (serviceId ? [serviceId] : null);
+  const base = sids
+    ? await bot().eligibleMasters(pool, sids)
     // Босс 04.11: у «Наших майстрах» лише ті, хто реально обслуговує клієнтів — без власника й адмінів
     : (await pool.query(`SELECT id FROM masters WHERE active IS NOT FALSE AND online_booking_enabled IS NOT FALSE
                             AND provides_services IS NOT FALSE AND COALESCE(staff_role,'master') = 'master'
@@ -242,30 +244,90 @@ async function mastersFor(serviceId) {
     rating: x.n_rates > 0 && x.rating ? Math.round(x.rating * 10) / 10 : null, reviews: x.n_rates,
   }));
 }
+// combo-0411: послуги з query — services=1,2,3 (комплекс) або service=1 (як раніше)
+function parseServiceIds(src) {
+  const raw = src.services != null && src.services !== '' ? src.services
+    : (src.service_ids != null ? src.service_ids : (src.service != null ? src.service : src.service_id));
+  if (raw == null || raw === '') return null;
+  const list = (Array.isArray(raw) ? raw : String(raw).split(',')).map(x => Number(String(x).trim()));
+  if (!list.length || list.length > combo.MAX_ITEMS || list.some(n => !Number.isInteger(n) || n <= 0)) return null;
+  if (new Set(list).size !== list.length) return null;
+  return list;
+}
+// майстри, у яких Є графік у межах горизонту запису (без графіка — клієнту нема куди записатись)
+async function scheduledSet(ids) {
+  if (!ids.length) return new Set();
+  const st = await slotEngine.getSettings(getPool());
+  const today = slotEngine.kyivToday();
+  const r = await getPool().query(
+    `SELECT DISTINCT master_id FROM master_schedule_days
+      WHERE master_id = ANY($1::int[]) AND work_date >= $2::date AND work_date <= $3::date
+        AND start_time IS NOT NULL AND end_time IS NOT NULL`, [ids, today, slotEngine.addDays(today, st.horizonDays)]);
+  return new Set(r.rows.map(x => Number(x.master_id)));
+}
 router.get('/masters', async (req, res) => {
   try {
-    const sid = req.query.service ? Number(req.query.service) : null;
-    if (req.query.service && !Number.isInteger(sid)) return res.status(400).json({ error: 'bad_service' });
-    res.json({ masters: await mastersFor(sid) });
+    if (!req.query.service && !req.query.services) return res.json({ masters: await mastersFor(null) }); // «Наші майстри»
+    const ids = parseServiceIds(req.query);
+    if (!ids) return res.status(400).json({ error: 'bad_service' });
+    // combo-0411 п.1: майстер без графіка не показуємо у виборі (тупик «вільного часу немає»),
+    // але рахуємо — клієнт бачить «графік ще складається», а не порожнечу
+    const all = await mastersFor(ids);
+    const sched = await scheduledSet(all.map(m => m.id));
+    const masters = all.filter(m => sched.has(m.id));
+    let split = false;
+    if (ids.length > 1) { // комплекс: чи можна зібрати ланцюжком у різних майстрів
+      split = true;
+      for (const id of ids) {
+        const e = await bot().eligibleMasters(getPool(), [id]);
+        const ss = await scheduledSet(e.map(m => m.id));
+        if (!e.some(m => ss.has(m.id))) { split = false; break; }
+      }
+    }
+    res.json({ masters, split, waiting: all.length - masters.length });
   } catch (e) { console.error('[miniapp/masters]', e.message); res.status(500).json({ error: 'server' }); }
 });
 
 // спільна валідація service/master → { svc, masterIds, names }
+// combo-0411: одна послуга — як було; кілька — items у порядку виконання, eligBy — майстри кожної послуги
 async function resolveSel(q) {
-  const sid = Number(q.service);
-  if (!Number.isInteger(sid)) return { err: 'bad_service' };
+  const ids = parseServiceIds(q);
+  if (!ids) return { err: 'bad_service' };
   const cat = await bot().loadCatalog(getPool());
-  const svc = cat.byId.get(sid);
-  if (!svc) return { err: 'service_unavailable' };
-  const elig = await bot().eligibleMasters(getPool(), [sid]);
-  let masterIds = elig.map(m => m.id);
+  const items = ids.map(id => cat.byId.get(id));
+  if (items.some(x => !x)) return { err: 'service_unavailable' };
+  const elig = await bot().eligibleMasters(getPool(), ids);
+  const eligBy = ids.length > 1 ? await Promise.all(ids.map(id => bot().eligibleMasters(getPool(), [id]))) : [elig];
+  const names = new Map();
+  for (const m of [elig, ...eligBy].flat()) names.set(m.id, m.name);
+  let masterIds = elig.map(m => m.id), fixed = null;
   if (q.master != null && q.master !== '' && q.master !== 'any') {
     const mid = Number(q.master);
     if (!masterIds.includes(mid)) return { err: 'master_unavailable' };
-    masterIds = [mid];
+    masterIds = [mid]; fixed = mid;
   }
-  if (!masterIds.length) return { err: 'no_masters' };
-  return { svc, masterIds, names: new Map(elig.map(m => [m.id, m.name])) };
+  const isCombo = ids.length > 1;
+  const chainOk = isCombo && fixed == null && eligBy.every(e => e.length);
+  if (!masterIds.length && !chainOk) return { err: 'no_masters' };
+  const svc = isCombo
+    ? { id: null, name: items.map(s => s.name).join(' + '),
+        duration_min: items.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
+        price: items.reduce((a, s) => a + (Number(s.price) || 0), 0) }
+    : items[0];
+  return { svc, items, ids, isCombo, fixed, masterIds, eligBy: eligBy.map(e => e.map(m => m.id)), names };
+}
+// вільні слоти на дату для вибору (одна послуга або комплекс) — у форматі API
+async function slotsFor(sel, date) {
+  if (!sel.isCombo) {
+    const sl = await slotEngine.freeSlotsForDate(getPool(), { date, masterIds: sel.masterIds, durationMin: Number(sel.svc.duration_min) || 60 });
+    return sl.map(s => ({ label: s.label, start_min: s.startMin, master_id: Number(s.masterId), master_name: sel.names.get(Number(s.masterId)) || null }));
+  }
+  const sl = await combo.comboSlots(getPool(), { date, items: sel.items, eligAll: sel.masterIds, eligBy: sel.eligBy, fixedMaster: sel.fixed });
+  return sl.map(s => ({
+    label: s.label, start_min: s.startMin, master_id: s.legs[0].master_id, master_name: sel.names.get(s.legs[0].master_id) || null,
+    legs: s.legs.map(l => ({ master_id: l.master_id, master_name: sel.names.get(l.master_id) || null, start_min: l.start_min,
+      dur: l.dur, service_ids: l.items.map(it => it.id), services: l.items.map(it => it.name) })),
+  }));
 }
 
 router.get('/days', async (req, res) => {
@@ -281,7 +343,7 @@ router.get('/days', async (req, res) => {
       const date = slotEngine.addDays(from, i);
       const ahead = Math.round((Date.parse(date) - Date.parse(today)) / 86400000);
       if (ahead > st.horizonDays) { days.push({ date, count: 0 }); continue; }
-      const sl = await slotEngine.freeSlotsForDate(getPool(), { date, masterIds: sel.masterIds, durationMin: Number(sel.svc.duration_min) || 60 });
+      const sl = await slotsFor(sel, date);
       days.push({ date, count: sl.length });
     }
     res.json({ today, days });
@@ -293,8 +355,7 @@ router.get('/slots', async (req, res) => {
     const sel = await resolveSel(req.query);
     if (sel.err) return res.status(400).json({ error: sel.err });
     if (!isDate(req.query.date) || req.query.date < slotEngine.kyivToday()) return res.status(400).json({ error: 'bad_date' });
-    const sl = await slotEngine.freeSlotsForDate(getPool(), { date: req.query.date, masterIds: sel.masterIds, durationMin: Number(sel.svc.duration_min) || 60 });
-    res.json({ date: req.query.date, slots: sl.map(s => ({ label: s.label, start_min: s.startMin, master_id: Number(s.masterId), master_name: sel.names.get(Number(s.masterId)) || null })) });
+    res.json({ date: req.query.date, slots: await slotsFor(sel, req.query.date) });
   } catch (e) { console.error('[miniapp/slots]', e.message); res.status(500).json({ error: 'server' }); }
 });
 
@@ -325,8 +386,9 @@ async function doBook(req) {
   const b = req.body || {};
   const c = await clientOf(uid);
   if (!c || !c.phone) return { status: 412, body: { error: 'need_phone' } };
+  if (Array.isArray(b.service_ids) && b.service_ids.length > 1) return doBookCombo(req, c);
   if (b.master_id == null || b.master_id === 'any') return { status: 400, body: { error: 'need_master' } };
-  const sel = await resolveSel({ service: b.service_id, master: b.master_id });
+  const sel = await resolveSel({ service: b.service_id != null ? b.service_id : (Array.isArray(b.service_ids) ? b.service_ids[0] : null), master: b.master_id });
   if (sel.err) return { status: 400, body: { error: sel.err } };
   const masterId = sel.masterIds[0];
   const masterName = sel.names.get(masterId) || '';
@@ -432,10 +494,113 @@ async function doBook(req) {
   return { status: 200, body: { ok: true, booking: out } };
 }
 
+// ── combo-0411: комплекс (кілька послуг підряд) ─────────────────────
+// Сервер САМ перераховує розклад на обраний старт; якщо він не збігся з тим, що клієнт бачив
+// (майстри по ногах), — «час щойно зайняли», без тихої підміни майстра.
+async function doBookCombo(req, c) {
+  const uid = req.tgUser.id;
+  const b = req.body || {};
+  if (b.move_ids) return { status: 400, body: { error: 'combo_move', message: 'Перенесення працює для одного запису.' } };
+  const sel = await resolveSel({ services: b.service_ids, master: b.master_id });
+  if (sel.err) return { status: 400, body: { error: sel.err } };
+  const date = b.date, startMin = Number(b.start_min);
+  if (!isDate(date) || !Number.isInteger(startMin) || startMin < 0 || startMin >= 24 * 60) return { status: 400, body: { error: 'bad_slot' } };
+  // варіанти довжини (волосся) — по кожній послузі окремо
+  const ests = new Map();
+  for (const v of (Array.isArray(b.variants) ? b.variants : [])) {
+    const sid = Number(v && v.service_id);
+    if (!sel.ids.includes(sid) || v.variant_id == null || v.variant_id === '') continue;
+    const hv = await hairVariants.variantFor(getPool(), v.variant_id, sid);
+    if (!hv) return { status: 400, body: { error: 'bad_variant', message: 'Ціни щойно оновилися — оберіть довжину ще раз.' } };
+    ests.set(sid, { hv, est: hairVariants.estimateOf(hv.proc, hv.v, { unknown: v.length_unknown === true }) });
+  }
+  const plan = (await combo.comboSlots(getPool(), { date, items: sel.items, eligAll: sel.masterIds, eligBy: sel.eligBy, fixedMaster: sel.fixed }))
+    .find(s => s.startMin === startMin);
+  if (!plan) return TAKEN;
+  if (Array.isArray(b.legs) && b.legs.length) {
+    const want = b.legs.map(l => `${Number(l.master_id)}@${Number(l.start_min)}`).join(',');
+    const got = plan.legs.map(l => `${l.master_id}@${l.start_min}`).join(',');
+    if (want !== got) return { status: 409, body: { error: 'slot_taken', message: 'Розклад щойно змінився — оберіть час ще раз' } };
+  }
+  const legs = plan.legs.map(l => Object.assign({}, l, { master_name: sel.names.get(l.master_id) || '' }));
+  const clientName = c.name || req.tgUser.first_name || 'Клієнт';
+  let result;
+  try {
+    result = await combo.bookCombo({ pool: getPool(), core, legs, date,
+      base: { pool: getPool(), clientId: c.id, name: clientName, phone: fmtPhoneFull(c.phone), telegramId: uid,
+        apptSource: 'miniapp', obChannel: 'miniapp', dedupeClient: false } });
+  } catch (e) {
+    if (e.slotTaken) return TAKEN;
+    throw e;
+  }
+  const pool = getPool();
+  // appointment id кожної послуги (порядок ніг і послуг у нозі = порядок createBooking)
+  const apptOf = new Map();
+  legs.forEach((l, i) => l.items.forEach((it, j) => { const id = result.perLeg[i].apptIds[j]; if (id) apptOf.set(Number(it.id), id); }));
+  for (const [sid, x] of ests) {
+    const aid = apptOf.get(sid); if (!aid) continue;
+    const hint = '💡 ' + hairVariants.adminHint(x.est);
+    await pool.query(
+      `UPDATE appointments SET length_variant_id=$2, price_estimate=$3::jsonb,
+              notes = CASE WHEN COALESCE(notes,'') LIKE '%' || $4 || '%' THEN notes
+                           ELSE NULLIF(concat_ws(E'\n', NULLIF(notes,''), $4::text), '') END
+        WHERE id = $1`, [aid, x.hv.v.id, JSON.stringify(x.est), hint]).catch(e => console.error('[miniapp/combo-estimate]', e.message));
+  }
+  if (b.remind24 === false && result.apptIds.length) {
+    await pool.query(
+      `INSERT INTO booking_reminders (appointment_id, kind)
+       SELECT x, '24h' FROM unnest($1::int[]) AS x
+        WHERE NOT EXISTS (SELECT 1 FROM booking_reminders r WHERE r.appointment_id = x AND r.kind = '24h')`,
+      [result.apptIds]).catch(e => console.error('[miniapp/remind24]', e.message));
+  }
+  const titleOf = (it) => { const x = ests.get(Number(it.id)); return x ? `${x.hv.proc.title} · ${x.est.length_unknown ? 'довжину визначить майстер' : x.hv.v.label}` : it.name; };
+  const priceOf = (it) => { const x = ests.get(Number(it.id)); if (!x) return Number(it.price) || 0;
+    const e = x.est; return e.length_unknown ? e.range[0] : (e.material_mode === 'extra' || !e.material_known ? e.work : e.total); };
+  const total = sel.items.reduce((a, it) => a + priceOf(it), 0);
+  const dur = Number(sel.svc.duration_min);
+  const masters = [...new Set(legs.map(l => l.master_name))];
+  const out = {
+    ids: result.apptIds, existing: false, combo: true, date, date_label: fmtDateUa(date),
+    time: `${minLabel(startMin)}–${minLabel(startMin + dur)}`, master: masters.join(', '),
+    service: sel.items.map(titleOf).join(' + '), price: total, duration: fmtDur(dur),
+    legs: legs.map(l => ({ master: l.master_name, time: `${minLabel(l.start_min)}–${minLabel(l.start_min + l.dur)}`, services: l.items.map(titleOf) })),
+  };
+  if (ests.size) { out.estimate_text = `≈ ${total} грн (орієнтовно)`; out.price_note = 'орієнтовно, точну суму назве майстер після огляду'; }
+  const lines = out.legs.map(l => `• ${l.time} — ${esc(l.services.join(' + '))} (${esc(l.master)})`).join('\n');
+  const tg = botTg();
+  setImmediate(() => runAs(DEFAULT_TENANT_ID, async () => {
+    const miniUrl = (require('../lib/public-url').getPublicBase() || '') + '/p/app.html';
+    try {
+      await tg('sendMessage', {
+        chat_id: uid, parse_mode: 'HTML',
+        text: `✅ <b>Запис підтверджено!</b> Комплекс за один візит\n\n📅 ${esc(out.date_label)}, <b>${out.time}</b>\n${lines}\n💰 ${ests.size ? 'орієнтовно ' : ''}${fmtPrice(total)}\n\n${b.remind24 === false ? 'Нагадаємо за 2 години до візиту.' : 'Нагадаємо за 24 і за 2 години до візиту.'}\nЧекаємо вас у SVS Beauty Space 💛`,
+        reply_markup: { inline_keyboard: [[{ text: '👤 Мої записи', web_app: { url: miniUrl + '?screen=cabinet' } }]] },
+      });
+    } catch (e) { console.error('[miniapp/notify-client]', e.message); }
+    try {
+      const hints = [...ests.values()].map(x => '💡 ' + esc(hairVariants.adminHint(x.est))).join('\n');
+      await core.notifyStaff(pool, tg,
+        `🆕 <b>Новий онлайн-запис — комплекс</b> (Telegram-застосунок)\n👤 ${esc(clientName)} ${esc(fmtPhoneFull(c.phone))}\n📅 ${esc(out.date_label)}, ${out.time}\n${lines}\n💰 ${fmtPrice(total)}${hints ? '\n' + hints : ''}`);
+    } catch (e) { console.error('[miniapp/notify-staff]', e.message); }
+    if (process.env.MONO_TOKEN) {
+      for (const bid of result.bookingIds) {
+        try {
+          const inv = await require('./payments-mono').createInvoiceForBooking(bid);
+          if (inv && inv.pageUrl) {
+            await tg('sendMessage', { chat_id: uid, text: `💳 Передоплата: ${inv.amount} грн`,
+              reply_markup: { inline_keyboard: [[{ text: `Оплатити ${inv.amount} грн`, url: inv.pageUrl }]] } });
+          }
+        } catch (e) { console.error('[miniapp/prepay]', e.message); }
+      }
+    }
+  }).catch(e => console.error('[miniapp/after-book]', e.message)));
+  return { status: 200, body: { ok: true, booking: out } };
+}
+
 router.post('/book', async (req, res) => {
   const uid = req.tgUser.id;
   const b = req.body || {};
-  const key = [uid, b.master_id, b.date, b.start_min, b.service_id, b.variant_id || '', b.length_unknown ? 'u' : '',
+  const key = [uid, b.master_id, b.date, b.start_min, Array.isArray(b.service_ids) ? b.service_ids.join(',') : b.service_id, b.variant_id || '', b.length_unknown ? 'u' : '',
     Array.isArray(b.move_ids) ? b.move_ids.join(',') : String(b.move_ids || '')].join('|'); // перенос ≠ нова бронь
   try {
     let p = inflight.get(key);

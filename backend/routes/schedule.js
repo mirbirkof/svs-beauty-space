@@ -466,7 +466,12 @@ router.patch('/masters/:id/profile', async (req, res) => {
         `UPDATE users SET display_name = $2, updated_at = NOW() WHERE master_id = $1 AND display_name IS DISTINCT FROM $2`,
         [id, [r.rows[0].name, r.rows[0].surname].filter(Boolean).join(' ')]).catch(() => {});
     }
-    res.json({ ok: true, master: r.rows[0] });
+    // combo-0411: майстра створили без спеціальності, вказали пізніше → послуги розділу привʼязуються самі
+    // (лише коли звʼязок ще 0 — ручний набір ніколи не перезаписуємо)
+    let autolink = null;
+    if (['specialty', 'provides_services'].some(f => Object.prototype.hasOwnProperty.call(req.body || {}, f)))
+      autolink = await require('../lib/master-svc-suggest').autoLinkNew(pool, id);
+    res.json({ ok: true, master: r.rows[0], autolink });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
 });
 

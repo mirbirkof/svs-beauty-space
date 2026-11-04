@@ -53,7 +53,12 @@ async function setupFixture() {
   const svcs = cat.body.categories.flatMap(c => c.services).filter(s => Number(s.duration_min) >= 30 && Number(s.duration_min) <= 90);
   for (const s of svcs) {
     const ms = await call(init, 'GET', '/masters?service=' + s.id);
-    const m = (ms.body.masters || [])[0]; if (!m) continue;
+    // combo-0411: /masters показує лише майстрів із графіком; у QA графіки в минулому → беремо придатного майстра з БД
+    // (ті ж умови, що booking-bot.eligibleMasters), фікстура нижче сама дає йому графік.
+    const m = (ms.body.masters || [])[0] || (await q(
+      `SELECT m.id, m.name FROM masters m JOIN master_services x ON x.master_id = m.id AND x.service_id = $1 AND x.active IS NOT FALSE
+        WHERE m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE ORDER BY m.online_rank NULLS LAST, m.id LIMIT 1`, [s.id]))[0];
+    if (!m) continue;
     const d0 = (await q(`SELECT ((now() AT TIME ZONE 'Europe/Kyiv')::date + 2)::text d`))[0].d;
     const busy = await q(`SELECT 1 FROM master_schedule_days WHERE master_id=$1 AND work_date BETWEEN $2::date AND $2::date + 3`, [m.id, d0]);
     if (busy.length) continue;

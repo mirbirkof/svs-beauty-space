@@ -66,10 +66,33 @@ function totalLabel(chosen, total) {
 // послуги першого салону всім іншим (витік каталогу між тенантами).
 const { getTenantId } = require('./tenant');
 const _catCache = new Map(); // tenantId → { data, at }
+// combo-0411 (Босс: «перевір, як синхронізовано летять»): новий майстер / звʼязка / вимкнений онлайн
+// мають зʼявлятися у боті й міні-аппі одразу, а не через 5 хв кешу. Дешевий відбиток стану
+// (майстри + звʼязки + послуги) — змінився → кеш скидаємо. Сам відбиток памʼятаємо 5 с.
+const CATALOG_SIG_SQL = `SELECT
+   (SELECT count(*)::text || ':' || COALESCE(sum(hashtext(ms.master_id || '/' || ms.service_id || '/' || COALESCE(ms.active, true)::text)), 0)::text
+      FROM master_services ms) || '|' ||
+   (SELECT count(*)::text || ':' || COALESCE(sum(hashtext(m.id || '/' || COALESCE(m.active, true)::text || COALESCE(m.online_booking_enabled, true)::text)), 0)::text
+      FROM masters m) || '|' ||
+   (SELECT count(*)::text || ':' || COALESCE(sum(hashtext(s.id || '/' || COALESCE(s.active, true)::text || (s.deleted_at IS NULL)::text
+             || COALESCE(s.price::text, '') || COALESCE(s.duration_min::text, '') || COALESCE(s.name, '') || COALESCE(s.category, '')
+             || COALESCE(s.is_material, false)::text)), 0)::text
+      FROM services s) AS sig`;
+const _sigMemo = new Map(); // tenantId → { sig, at }
+async function catalogSig(pool, tid) {
+  const m = _sigMemo.get(tid);
+  if (m && Date.now() - m.at < 5000) return m.sig;
+  let sig = null;
+  try { sig = (await pool.query(CATALOG_SIG_SQL)).rows[0].sig; } catch (e) { console.error('[bookbot/catalog-sig]', e.message); }
+  _sigMemo.set(tid, { sig, at: Date.now() });
+  return sig;
+}
+function invalidateCatalog() { _catCache.clear(); _sigMemo.clear(); }
 async function loadCatalog(pool) {
   const tid = String(getTenantId() || 'default');
   const hit = _catCache.get(tid);
-  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.data;
+  const sig = await catalogSig(pool, tid);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000 && (sig == null || hit.sig === sig)) return hit.data;
   const r = await pool.query(
     // Паритет з веб-формою (booking-catalog.js): показуємо послугу, якщо вона активна
     // і має хоча б одного онлайн-майстра. Раніше вимагали legacy_ref IS NOT NULL —
@@ -98,7 +121,7 @@ async function loadCatalog(pool) {
   const indexed = matcher.buildIndex(services);
   const byId = new Map(services.map(s => [s.id, s]));
   const data = { services, indexed, byId };
-  _catCache.set(tid, { data, at: Date.now() });
+  _catCache.set(tid, { data, at: Date.now(), sig });
   return data;
 }
 
@@ -1507,4 +1530,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu, loadCatalog, eligibleMasters, showAdminContact, miniappKb, miniappLink, notifyStaffCancel, priceLabel, totalLabel };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu, loadCatalog, invalidateCatalog, eligibleMasters, showAdminContact, miniappKb, miniappLink, notifyStaffCancel, priceLabel, totalLabel };

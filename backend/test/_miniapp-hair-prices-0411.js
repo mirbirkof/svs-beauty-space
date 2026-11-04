@@ -1,3 +1,4 @@
+// УСТАРЕЛО з combo-0411 (04.11): кнопок #next-master/#next-time більше немає — послуга → одразу час, тап на слот → підтвердження. Актуальний прохід: test/_miniapp-combo-0411.js
 'use strict';
 // price-materials-0411: Playwright-мок мініапу. app.html — з файлу (не з проду), API — мок, каталог — знімок живого (fixtures-hair-catalog-0411.json).
 // Запуск: node test/_miniapp-hair-prices-0411.js  → скріни у reports/hair-prices-0411/, вихід 1 при провалі перевірки.

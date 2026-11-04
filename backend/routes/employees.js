@@ -242,7 +242,9 @@ router.patch('/:id(\\d+)', validateBody(employeeSchema(false)), async (req, res)
     const r = await q(`UPDATE masters SET ${sets.join(', ')}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
     if (!r[0]) return res.status(404).json({ error: 'not found' });
     logAction({ user: req.user, action: 'employee.update', entity: 'master', entity_id: +req.params.id, ip: req.ip }).catch(()=>{});
-    res.json({ ok: true, employee: r[0] });
+    // combo-0411: спеціальність вказали після створення → послуги розділу (лише якщо звʼязок ще 0)
+    const autolink = 'specialty' in (req.body || {}) ? await require('../lib/master-svc-suggest').autoLinkNew(pool, +req.params.id) : null;
+    res.json({ ok: true, employee: r[0], autolink });
   } catch (e) { err(res, e); }
 });
 

@@ -190,6 +190,12 @@ h3{font-size:15px;color:var(--muted);font-weight:500;margin:20px 2px 10px;text-t
 .spin:after{content:"";width:28px;height:28px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--rose);animation:rot .8s linear infinite}
 @keyframes rot{to{transform:rotate(360deg)}}
 .badge{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:2px 8px;font-size:12px;color:var(--gold);margin-left:6px}
+.cartbox{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:13.5px}
+.cartbox .ci{display:flex;align-items:center;gap:8px;padding:3px 0}.cartbox .ci span{flex:1}
+.cartbox .x{border:0;background:none;color:var(--muted);font-size:16px;padding:2px 6px}
+.cartbox .tot{color:var(--muted);margin-top:4px}.cartbox .add{margin-top:8px;width:100%}
+.mchip{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.mchip span{flex:1}.mchip i{font-style:normal;color:var(--rose)}
 .banner{background:var(--card2);border:1px solid var(--rose);border-radius:14px;padding:10px 12px;font-size:13.5px;margin-bottom:12px}
 
 /* режим майстра (03.11, частина 2) */
@@ -343,10 +349,57 @@ if (tg && tg.onEvent) try { tg.onEvent('homeScreenAdded', function(){ try { loca
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 
 function startBooking(){
-  S.svc=null; S.master=null; S.date=null; S.slot=null; S.cat=null; S.q=''; S.scrollMem={};
+  S.cart=[]; S.svc=null; S.master=null; S.date=null; S.slot=null; S.cat=null; S.q=''; S.scrollMem={};
   S.stack=['home','cats']; show();
 }
 
+// ── combo-0411: кілька послуг за один візит ──
+var ANY = {id:'any',name:'Будь-який вільний майстер'};
+function selItems(){ var a=(S.cart||[]).slice(); if (S.svc && !a.some(function(x){ return x.id===S.svc.id; })) a.push(S.svc); return a; }
+function isCombo(){ return selItems().length>1; }
+function selIds(){ return selItems().map(function(x){ return x.id; }); }
+function selSvc(){ // підсумок вибору: одна послуга — як є; комплекс — назва через «+», сума часу й ціни
+  var a = selItems(); if (a.length<2) return S.svc;
+  var d=0, p=0, est=false; a.forEach(function(x){ d+=+x.duration_min||0; p+=+x.price||0; if (x.est || x.sum) est=true; });
+  return {id:null, name:a.map(function(x){ return x.name; }).join(' + '), duration_min:d, price:p, est:est, sum: est ? {big:'≈ '+price(p), sm:''} : null};
+}
+function resetPick(){ S.master=null; S.masters=null; S.mInfo=null; S.date=null; S.slot=null; S.days={}; }
+function goTime(){ resetPick(); go('time'); }   // одразу до часу: «будь-який майстер» за замовчуванням, без окремого кроку
+function addMore(){ haptic(); S.cart = selItems(); S.svc=null; resetPick(); S.q=''; S.stack=['home','cats']; show(); toast('Оберіть ще одну послугу — запишемо підряд'); }
+function dropItem(id){
+  haptic(); var a = selItems().filter(function(x){ return x.id!==id; });
+  S.svc = a.pop() || null; S.cart = a; resetPick();
+  if (!S.svc) return startBooking(); show();
+}
+function cartBox(){
+  var a = selItems(); if (!a.length) return null;
+  var box = h('div',{class:'cartbox',id:'cart'});
+  if (a.length>1) {
+    box.appendChild(h('div',{style:'font-weight:600;margin-bottom:4px',text:'Комплекс за один візит'}));
+    a.forEach(function(x){ box.appendChild(h('div',{class:'ci'}, h('span',{text:x.name+' · '+dur(x.duration_min)}),
+      h('b',{text:(x.sum?'≈ ':'')+price(x.price)}), h('button',{class:'x','aria-label':'Прибрати',onclick:function(){ dropItem(x.id); },text:'×'}))); });
+    var t = selSvc(); box.appendChild(h('div',{class:'tot',text:'Разом: '+dur(t.duration_min)+' · '+(t.est?'≈ ':'')+price(t.price)}));
+  } else box.appendChild(h('div',{text:a[0].name+' · '+dur(a[0].duration_min)}));
+  if (!S.move && a.length<5) box.appendChild(h('button',{class:'btn btn-ghost add',id:'add-more',onclick:addMore}, '＋ Додати ще послугу'));
+  return box;
+}
+// майстри для вибору: з графіком; split — комплекс можна зібрати в різних майстрів підряд; waiting — без графіка
+function loadMasters(){
+  var key = selIds().join(',');
+  if (S.mInfo && S.mInfo.key===key) return Promise.resolve(S.mInfo);
+  return api('/masters?'+(isCombo()?'services=':'service=')+key).then(function(j){
+    if (j._status!==200) throw j; S.masters=j.masters||[];
+    S.mInfo={key:key, masters:S.masters, split:!!j.split, waiting:j.waiting||0}; return S.mInfo;
+  });
+}
+function noSchedule(box, waiting){
+  box.innerHTML='';
+  box.appendChild(h('div',{class:'empty',id:'no-schedule'},
+    waiting ? 'Майстер цієї послуги вже з нами, але графік ще складається — запис відкриється, щойно він буде готовий.'
+            : 'Зараз немає майстра для онлайн-запису на цю послугу.',
+    h('div',{class:'note',text:'Адміністратор підбере час вручну.'}),
+    h('button',{class:'btn btn-rose',style:'margin-top:12px',id:'no-sched-admin',onclick:adminContact}, '🧚 Написати адміністратору')));
+}
 function loadCatalog(){
   if (S.catalog) return Promise.resolve(S.catalog);
   return api('/catalog').then(function(j){ if (j._status!==200) throw j; S.catalog=j.categories||[]; return S.catalog; });
@@ -382,13 +435,14 @@ function svcBtn(sv, c, withCat){
 // ── price-materials-0411: процедура (біовирівнювання, фарбування…) → вибір довжини → робота + матеріал ──
 // Послуга без довжини — одразу до майстра (жодного зайвого кроку); процедура з 1 варіантом — теж.
 function openService(sv, c){
+  if ((S.cart||[]).some(function(x){ return x.id===sv.id || (sv.variants||[]).some(function(v){ return v.work_service_id===x.id; }); })) { toast('Ця послуга вже у візиті'); return; }
   S.cat=c; S.master=null; S.masters=null;
   if (sv.variants && sv.variants.length){
     S.proc=sv; S.variant=null; S.lenUnknown=false;
-    if (sv.variants.length===1){ S.variant=sv.variants[0]; pickVariant(); go('masters'); return; }
+    if (sv.variants.length===1){ S.variant=sv.variants[0]; pickVariant(); goTime(); return; }
     S.svc=null; go('length'); return;
   }
-  S.proc=null; S.svc=sv; go('masters');
+  S.proc=null; S.svc=sv; goTime();
 }
 function variantSum(v){
   if (v.material_mode==='separate' && v.material_known) return {big:'≈ '+price(v.total), sm:'= робота '+nf(v.work)+' + матеріал '+nf(v.material)};
@@ -424,7 +478,7 @@ function vLength(){
   var p = S.proc; if (!p) return back();
   var vs = p.variants, uv = unknownVariant(vs);
   var sum = h('div',{class:'lsum',id:'len-sum'});
-  var next = h('button',{class:'btn btn-rose',id:'next-length',disabled:!S.variant,onclick:function(){ haptic(); pickVariant(); go('masters'); }}, 'Далі — майстер ›');
+  var next = h('button',{class:'btn btn-rose',id:'next-length',disabled:!S.variant,onclick:function(){ haptic(); pickVariant(); goTime(); }}, 'Далі — час ›');
   var grid = h('div',{class:'lgrid'});
   function paint(){
     [].forEach.call(grid.querySelectorAll('.lt'), function(el){
@@ -481,7 +535,9 @@ function vCats(){
   var y = S.restoreY; // список малюється після завантаження — скрол відновлюємо тоді
   var box = h('div',{class:'list'}, h('div',{class:'spin'}));
   var sbox = h('div',{});
-  render(h('div',{class:'screen'}, head(1,'Послуга'), sbox, box));
+  var cb = (S.cart||[]).length ? h('div',{class:'banner',id:'cart-banner'}, 'У візиті: '+S.cart.map(function(x){ return x.name; }).join(' + ')+'. Оберіть ще послугу або ',
+    h('button',{class:'btn btn-ghost',style:'margin-top:8px',id:'cart-done',onclick:function(){ haptic(); S.svc=S.cart.pop(); resetPick(); S.stack=['home','cats','time']; show(); }}, 'Готово — до вибору часу')) : null;
+  render(h('div',{class:'screen'}, head(1,'Послуга'), cb, sbox, box));
   function fill(cats){
     box.innerHTML='';
     if (S.q && fold(S.q).length) return fillSearch(box, S.q);
@@ -541,25 +597,26 @@ function avatar(m){
 }
 function vMasters(){
   var box = h('div',{class:'list'}, h('div',{class:'spin'}));
-  var next = h('button',{class:'btn btn-rose',id:'next-master',disabled:!S.master,onclick:function(){ haptic(); go('time'); }}, 'Далі ›');
-  render(h('div',{class:'screen'}, head(2,'Майстер'),
-    h('div',{class:'note',style:'margin:0 0 12px;text-align:left',text:S.svc.name+' · '+dur(S.svc.duration_min)}), box,
-    h('div',{class:'fixed'}, h('div',{class:'inner'}, next))));
-  var p = S.masters ? Promise.resolve(S.masters) : api('/masters?service='+S.svc.id).then(function(j){ if (j._status!==200) throw j; S.masters=j.masters||[]; return S.masters; });
-  p.then(function(ms){
+  render(h('div',{class:'screen'}, head(2,'Майстер'), cartBox(), box));
+  loadMasters().then(function(mi){
+    var ms = mi.masters;
     box.innerHTML='';
-    if (!ms.length) { box.appendChild(h('div',{class:'empty',text:'Зараз немає майстра для онлайн-запису на цю послугу. Напишіть адміністратору.'})); return; }
-    var all = (ms.length>1 ? [{id:'any',name:'Будь-який вільний майстер',specialty:'Покажемо найближчий вільний час'}] : []).concat(ms);
+    if (!ms.length && !mi.split) return noSchedule(box, mi.waiting);
+    var anyTxt = isCombo() ? (ms.length ? 'Один майстер або кілька підряд — як швидше' : 'Різні майстри одне за одним, без очікування') : 'Покажемо найближчий вільний час';
+    var all = (ms.length>1 || mi.split ? [{id:'any',name:ANY.name,specialty:anyTxt}] : []).concat(ms);
     all.forEach(function(m){
       var sel = S.master && String(S.master.id)===String(m.id);
+      // тап по майстру = одразу до часу (без кнопки «Далі»)
       box.appendChild(h('button',{class:'mst'+(sel?' sel':''),'data-id':m.id,onclick:function(){
-          haptic(); S.master=m; S.date=null; S.slot=null; S.days={}; vMastersMark(box); next.disabled=false; }},
+          haptic(); var was = S.master && String(S.master.id); S.master=m; if (was!==String(m.id)) { S.date=null; S.slot=null; S.days={}; }
+          vMastersMark(box); if (S.stack[S.stack.length-2]==='time') { S.stack.pop(); S.navAt=Date.now(); show(); } else go('time'); }},
         m.id==='any' ? h('div',{class:'ava',text:'✦'}) : avatar(m),
         h('span',{class:'t'}, h('div',{class:'n',text:m.name}),
           m.specialty ? h('div',{class:'s',text:m.specialty}) : null,
           m.rating ? h('div',{class:'rt'}, h('b',{text:'★ '+m.rating}), ' ('+m.reviews+')') : null),
         h('span',{class:'radio',text:sel?'✓':''})));
     });
+    if (mi.waiting) box.appendChild(h('div',{class:'note',text:'Ще '+mi.waiting+' майстр. зʼявиться тут, щойно буде готовий графік.'}));
   }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити майстрів.'})); });
 }
 function vMastersMark(box){
@@ -569,23 +626,37 @@ function vMastersMark(box){
   });
 }
 
-function selQS(){ return 'service='+S.svc.id+'&master='+encodeURIComponent(S.master ? S.master.id : 'any'); }
+function selQS(){ return (isCombo() ? 'services='+selIds().join(',') : 'service='+S.svc.id)+'&master='+encodeURIComponent(S.master ? S.master.id : 'any'); }
 function loadDays(from, n){
   return api('/days?'+selQS()+'&from='+from+'&n='+n).then(function(j){
     if (j._status!==200) throw j; S.today=j.today; (j.days||[]).forEach(function(d){ S.days[d.date]=d.count; }); return j;
   });
 }
 function vTime(){
+  if (!S.svc) return back();
   var wrap = h('div',{}, h('div',{class:'spin'}));
-  var next = h('button',{class:'btn btn-rose',id:'next-time',disabled:!S.slot,onclick:function(){ haptic(); go('confirm'); }}, 'Далі ›');
+  var next = {disabled:true}; // тап по часу одразу веде на підтвердження — окремої кнопки «Далі» немає
+  var chipBox = h('div',{});
   render(h('div',{class:'screen'}, head(3,'Дата і час'),
     S.move ? h('div',{class:'banner',text:'🔁 Перенесення: '+(S.move.service||'запис')+' — було '+dateLong(S.move.date)+', '+S.move.time}) : null,
-    wrap, h('div',{class:'fixed'}, h('div',{class:'inner'}, next))));
-  var first = S.date ? Promise.resolve() : loadDays(S.today || new Date().toISOString().slice(0,10), 14).then(function(){
-    var ds = Object.keys(S.days).sort(); S.date = ds.filter(function(d){ return S.days[d]>0; })[0] || ds[0];
+    S.move ? null : cartBox(), chipBox, wrap));
+  var pre = S.move ? Promise.resolve(null) : loadMasters().then(function(mi){
+    var ms = mi.masters;
+    if (!ms.length && !mi.split) { noSchedule(wrap, mi.waiting); return 'stop'; }
+    if (!S.master) S.master = (ms.length===1 && !mi.split) ? ms[0] : ANY; // один майстер — без вибору; інакше «будь-який»
+    var many = ms.length>1 || mi.split;
+    chipBox.appendChild(h('button',{class:'mchip',id:'master-chip',disabled:!many,onclick:function(){ if (!many) return; haptic(); go('masters'); }},
+      h('b',{text:'💇'}), h('span',{text:'Майстер: '+(S.master.id==='any' ? (isCombo() ? 'підберемо (можна різних підряд)' : 'будь-який вільний') : S.master.name)}),
+      many ? h('i',{text:'змінити ›'}) : null));
   });
-  first.then(function(){ S.weekStart = addDays(S.date, -dowMon0(S.date)); return drawWeek(wrap, next); })
-    .catch(function(){ wrap.innerHTML=''; wrap.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити розклад.'})); });
+  pre.then(function(st){
+    if (st==='stop') return;
+    var first = S.date ? Promise.resolve() : loadDays(S.today || new Date().toISOString().slice(0,10), 14).then(function(){
+      var ds = Object.keys(S.days).sort(); S.date = ds.filter(function(d){ return S.days[d]>0; })[0] || ds[0];
+      S.noSlots14 = !ds.some(function(d){ return S.days[d]>0; });
+    });
+    return first.then(function(){ S.weekStart = addDays(S.date, -dowMon0(S.date)); return drawWeek(wrap, next); });
+  }).catch(function(){ wrap.innerHTML=''; wrap.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити розклад.'})); });
 }
 function drawWeek(wrap, next){
   var from = S.weekStart < S.today ? S.today : S.weekStart, end = addDays(S.weekStart, 6);
@@ -617,17 +688,19 @@ function drawWeek(wrap, next){
       if (!slots.length){
         var nx = Object.keys(S.days).sort().filter(function(d){ return d > S.date && S.days[d]>0; })[0];
         sb.appendChild(h('div',{class:'empty',id:'empty-day'}, 'На '+dateLong(S.date)+' вільного часу немає.',
-          nx ? h('button',{class:'btn btn-ghost',onclick:function(){ haptic(); S.date=nx; S.weekStart=addDays(nx,-dowMon0(nx)); drawWeek(wrap,next); }}, 'Найближчий вільний: '+dateLong(nx)) : null));
+          nx ? h('button',{class:'btn btn-ghost',onclick:function(){ haptic(); S.date=nx; S.weekStart=addDays(nx,-dowMon0(nx)); drawWeek(wrap,next); }}, 'Найближчий вільний: '+dateLong(nx))
+             : h('div',{}, h('div',{class:'note',text:'Найближчими днями онлайн-вікон немає — гляньте наступні тижні стрілкою › або напишіть адміністратору.'}),
+                 h('button',{class:'btn btn-ghost',style:'margin-top:8px',id:'empty-admin',onclick:adminContact}, '🧚 Написати адміністратору'))));
         return;
       }
       var g = h('div',{class:'slots'});
       slots.forEach(function(s){
         var sel = S.slot && S.slot.start_min===s.start_min && S.slot.master_id===s.master_id;
         g.appendChild(h('button',{class:'slot'+(sel?' sel':''),'data-min':s.start_min,onclick:function(e){
-          haptic(); S.slot=s; [].forEach.call(g.children,function(x){x.classList.remove('sel');}); e.currentTarget.classList.add('sel'); next.disabled=false; }}, s.label));
+          haptic(); S.slot=s; [].forEach.call(g.children,function(x){x.classList.remove('sel');}); e.currentTarget.classList.add('sel'); go('confirm'); }}, s.label));
       });
       sb.appendChild(g);
-      if (S.master && S.master.id==='any') sb.appendChild(h('div',{class:'note',text:'Майстра підберемо автоматично — побачите на наступному кроці.'}));
+      if (S.master && S.master.id==='any') sb.appendChild(h('div',{class:'note',text: isCombo() ? 'Торкніться часу — покажемо, хто і коли робить кожну послугу.' : 'Майстра підберемо автоматично — побачите на наступному кроці.'}));
     });
   });
 }
@@ -639,20 +712,21 @@ function masterOfSlot(){
 }
 function vConfirm(){
   if (!S.slot) return back();
-  var m = masterOfSlot();
+  var m = masterOfSlot(), sv = selSvc(), legs = isCombo() && S.slot.legs ? S.slot.legs : null;
   var tgl = h('span',{class:'tgl'+(S.remind24?' on':''),role:'switch','aria-checked':String(S.remind24)});
   var btn = h('button',{class:'btn btn-rose',id:'confirm-btn',onclick:confirmBooking}, S.move ? 'Перенести запис ✓' : 'Підтвердити запис ✓');
   var catName = (S.cat && S.cat.name) || '';
   render(h('div',{class:'screen'}, head(4,'Підтвердження'),
     S.move ? h('div',{class:'banner',text:'🔁 Старий запис ('+dateLong(S.move.date)+', '+S.move.time+') буде скасовано після підтвердження нового.'}) : null,
-    h('div',{class:'cf'}, h('img',{src:catImg(catName || S.svc.name),alt:''}),
-      h('div',{class:'t'}, h('div',{class:'n',text:S.svc.name}),
-        h('div',{class:'l'}, h('i',{text:'💇'}), 'Майстер: '+m.name),
+    h('div',{class:'cf'}, h('img',{src:catImg(catName || sv.name),alt:''}),
+      h('div',{class:'t'}, h('div',{class:'n',text:sv.name}),
+        legs ? null : h('div',{class:'l'}, h('i',{text:'💇'}), 'Майстер: '+m.name),
         h('div',{class:'l'}, h('i',{text:'📅'}), dateLong(S.date)),
-        h('div',{class:'l'}, h('i',{text:'🕒'}), lbl(S.slot.start_min)+' (≈ '+dur(S.svc.duration_min)+')'),
-        h('div',{class:'l price'}, h('i',{text:'💳'}), S.svc.sum ? S.svc.sum.big : price(S.svc.price)),
-        S.svc.sum && S.svc.sum.sm ? h('div',{class:'est',text:S.svc.sum.sm}) : null,
-        S.svc.est ? h('div',{class:'est',text:'Орієнтовно — точну суму назве майстер після огляду.'}) : null)),
+        h('div',{class:'l'}, h('i',{text:'🕒'}), lbl(S.slot.start_min)+'–'+lbl(S.slot.start_min+(+sv.duration_min||0))+' (≈ '+dur(sv.duration_min)+')'),
+        legs ? h('div',{id:'legs'}, legs.map(function(l){ return h('div',{class:'l'}, h('i',{text:'•'}), lbl(l.start_min)+' '+l.services.join(' + ')+' — '+(l.master_name||'')); })) : null,
+        h('div',{class:'l price'}, h('i',{text:'💳'}), (legs?'Разом: ':'')+(sv.sum ? sv.sum.big : price(sv.price))),
+        sv.sum && sv.sum.sm ? h('div',{class:'est',text:sv.sum.sm}) : null,
+        sv.est ? h('div',{class:'est',text:'Орієнтовно — точну суму назве майстер після огляду.'}) : null)),
     h('div',{class:'opts'},
       h('button',{class:'opt',style:'width:100%;text-align:left',id:'remind-toggle',onclick:function(){ haptic(); S.remind24=!S.remind24; tgl.classList.toggle('on',S.remind24); tgl.setAttribute('aria-checked',String(S.remind24)); }},
         h('span',{text:'🔔'}), h('span',{class:'t',text:'Нагадати за 24 год'}), tgl)),
@@ -666,14 +740,17 @@ function confirmBooking(e){
   ensurePhone().then(function(ok){
     if (!ok) return null;
     var m = masterOfSlot();
+    if (isCombo()) return api('/book',{method:'POST',body:{service_ids:selIds(), master_id:S.master ? S.master.id : 'any', date:S.date, start_min:S.slot.start_min,
+      remind24:S.remind24, legs:S.slot.legs,
+      variants:selItems().filter(function(x){ return x.variant_id; }).map(function(x){ return {service_id:x.id, variant_id:x.variant_id, length_unknown:!!x.length_unknown}; })}});
     return api('/book',{method:'POST',body:{service_id:S.svc.id, master_id:m.id, date:S.date, start_min:S.slot.start_min,
       remind24:S.remind24, move_ids:S.move ? S.move.ids : undefined,
       variant_id:S.svc.variant_id || undefined, length_unknown:S.svc.length_unknown || undefined}});
   }).then(function(j){
     if (!j) return;
-    if (j._status===200 && j.ok){ haptic('ok'); S.result=j.booking; S.stack=['home','done']; show(); if (S.move) S.move=null; return; }
+    if (j._status===200 && j.ok){ haptic('ok'); S.result=j.booking; S.cart=[]; S.stack=['home','done']; show(); if (S.move) S.move=null; return; }
     haptic('error');
-    if (j.error==='slot_taken'){ toast(j.message||'Час щойно зайняли, оберіть інший'); S.slot=null; S.days={}; S.stack.pop(); show(); return; }
+    if (j.error==='slot_taken'){ toast(j.message||'Час щойно зайняли, оберіть інший'); S.slot=null; S.days={}; S.date=null; S.stack.pop(); show(); return; }
     if (j.error==='need_phone'){ toast('Потрібен номер телефону'); return; }
     toast(j.message || 'Не вдалося записатися. Спробуйте ще раз.');
   }).catch(function(){ toast('Немає звʼязку. Спробуйте ще раз.'); })
@@ -723,7 +800,8 @@ function vDone(){
     h('div',{class:'hello serif',text: b.moved ? 'Запис перенесено!' : 'Ви записані!'}),
     h('div',{class:'cf',style:'text-align:left;margin-top:16px'}, h('div',{class:'t'},
       h('div',{class:'n',text:b.service||''}),
-      h('div',{class:'l'}, h('i',{text:'💇'}), b.master||''),
+      b.legs ? h('div',{}, b.legs.map(function(l){ return h('div',{class:'l'}, h('i',{text:'•'}), l.time+' '+l.services.join(' + ')+' — '+l.master); }))
+             : h('div',{class:'l'}, h('i',{text:'💇'}), b.master||''),
       h('div',{class:'l'}, h('i',{text:'📅'}), b.date_label||''),
       h('div',{class:'l'}, h('i',{text:'🕒'}), (b.time||'')+' · '+(b.duration||'')),
       h('div',{class:'l price'}, h('i',{text:'💳'}), b.estimate_text ? b.estimate_text : price(b.price)),
@@ -868,6 +946,7 @@ function startMove(ids){
         S.masters = mj.masters||[];
         var m = S.masters.filter(function(x){ return x.id===j.master_id; })[0];
         S.move = {ids:j.ids, date:j.date, time:j.time, service:j.service};
+        S.cart = []; S.mInfo = null;
         if (!proc) S.proc=null;
         S.svc=svc; S.cat=cat; S.master = m || null; S.date=null; S.slot=null; S.days={};
         S.stack = m ? ['home','cabinet','time'] : ['home','cabinet','masters'];
