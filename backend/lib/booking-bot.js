@@ -55,6 +55,8 @@ async function loadCatalog(pool) {
             COALESCE(s.duration_min, 60) AS duration_min, s.price::float AS price, s.category
        FROM services s
       WHERE s.active IS NOT FALSE AND s.deleted_at IS NULL
+        -- 04.11: рядки «матеріал …» — для каси/рахунку, клієнт їх окремо не бронює (було 19 у запису)
+        AND s.is_material IS NOT TRUE
         AND EXISTS (SELECT 1 FROM master_services ms JOIN masters m ON m.id = ms.master_id
                      WHERE ms.service_id = s.id AND ms.active IS NOT FALSE
                        AND m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE)`
