@@ -621,13 +621,22 @@ async function miniappMenuText(text, msg, ctx) {
   }
   const cab = /кабінет|мої записи|мої візити|бонус/.test(t);
   if (cab || /^записатись( на візит)?$|^запис(атися)?$|^меню$|^назад$|^головне меню$|^прайс( ?лист)?$|^послуги$/.test(t)) {
-    await ctx.tg('sendMessage', {
+    // 04.11 (Босс: «зачем лишний раз клацать»): старе нижнє меню шле лише текст, а мініапку з нижньої
+    // клавіатури відкривати не можна — Telegram тоді не передає підписаного клієнта (initData порожній).
+    // Тому прибираємо старе меню ЦИМ ЖЕ повідомленням і чіпляємо до нього кнопку мініапки;
+    // далі клієнт відкриває запис в один дотик кнопкою «Запис» зліва від поля вводу.
+    const kb = cab
+      ? { inline_keyboard: [[{ text: '👤 Відкрити кабінет', web_app: { url: miniappLink(ctx, { screen: 'cabinet' }) } }]] }
+      : miniappKb(ctx);
+    const r = await ctx.tg('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
-      text: cab ? '👤 Ваші записи, історія візитів і бонуси — у застосунку:' : '✨ Запис онлайн — оберіть послугу, майстра й час:',
-      reply_markup: cab
-        ? { inline_keyboard: [[{ text: '👤 Відкрити кабінет', web_app: { url: miniappLink(ctx, { screen: 'cabinet' }) } }]] }
-        : miniappKb(ctx),
+      text: (cab ? '👤 Ваші записи, історія візитів і бонуси — у застосунку.' : '✨ Запис онлайн — оберіть послугу, майстра й час.')
+        + '\nНадалі відкривайте одним дотиком: кнопка <b>«Запис»</b> зліва від поля вводу.',
+      reply_markup: { remove_keyboard: true },
     });
+    const mid = r && r.ok && r.result && r.result.message_id;
+    const ed = mid ? await ctx.tg('editMessageReplyMarkup', { chat_id: chatId, message_id: mid, reply_markup: kb }) : null;
+    if (!ed || !ed.ok) await ctx.tg('sendMessage', { chat_id: chatId, text: '👇', reply_markup: kb });
     return true;
   }
   return false;
@@ -646,6 +655,8 @@ async function notifyStaffCancel(ctx, ids, how) {
 }
 
 function mainMenu() {
+  // режим мініапки (за замовчуванням): старої нижньої клавіатури немає — запис кнопкою «Запис» біля поля вводу
+  if (process.env.BOT_TEXT_BOOKING !== '1') return { remove_keyboard: true };
   return {
     keyboard: [
       [{ text: '🗓 Записатись' }],
