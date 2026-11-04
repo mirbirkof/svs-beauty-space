@@ -231,4 +231,32 @@ async function nearestSlots(pool, { masterIds, durationMin, days = 14, limit = 6
 const TS_EXPR = (dParam, mParam) =>
   `(($${dParam}::date)::timestamp + make_interval(mins => $${mParam}::int)) AT TIME ZONE '${KYIV}'`;
 
-module.exports = { freeSlotsForDate, nearestSlots, getSettings, kyivToday, kyivNowMin, addDays, minToLabel, TS_EXPR, BUSY_STATUSES };
+// combo-0411: хто з майстрів має робочі години хоч в один день вікна [from, from+days) — ТЕ САМЕ джерело,
+// що й freeSlotsForDate (ручні дні + сітка «Графік»: історія тижня/шаблон, явний вихідний поважаємо).
+// Мініап ховає зі списку лише тих, у кого годин немає взагалі («графік складається»), а не тих, у кого лише сітка.
+async function mastersWithHours(pool, masterIds, from, days) {
+  const ids = (masterIds || []).map(Number).filter(Boolean);
+  const out = new Set();
+  if (!ids.length) return out;
+  const to = addDays(from, days - 1);
+  const r = await pool.query(
+    `SELECT DISTINCT master_id FROM master_schedule_days
+      WHERE master_id = ANY($1::int[]) AND work_date BETWEEN $2::date AND $3::date
+        AND start_time IS NOT NULL AND end_time IS NOT NULL`, [ids, from, to]);
+  r.rows.forEach(x => out.add(Number(x.master_id)));
+  const rest = ids.filter(id => !out.has(id));
+  if (!rest.length) return out;
+  const months = [...new Set([from, to].map(d => String(d).substring(0, 7)))];
+  try {
+    for (const ym of months) {
+      const grid = await gridFor(pool, ym);
+      for (const it of grid.items) {
+        if (!rest.includes(Number(it.id))) continue;
+        if (it.days.some(x => x.date >= from && x.date <= to && !x.off && x.start && x.end)) out.add(Number(it.id));
+      }
+    }
+  } catch (e) { console.error('[slot-engine] mastersWithHours grid', e.message); }
+  return out;
+}
+
+module.exports = { mastersWithHours, freeSlotsForDate, nearestSlots, getSettings, kyivToday, kyivNowMin, addDays, minToLabel, TS_EXPR, BUSY_STATUSES };

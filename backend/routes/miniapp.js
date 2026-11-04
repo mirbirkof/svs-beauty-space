@@ -257,13 +257,9 @@ function parseServiceIds(src) {
 // майстри, у яких Є графік у межах горизонту запису (без графіка — клієнту нема куди записатись)
 async function scheduledSet(ids) {
   if (!ids.length) return new Set();
+  // вікно — до 31 дня (не весь горизонт): «є години найближчим місяцем» = клієнт реально запишеться
   const st = await slotEngine.getSettings(getPool());
-  const today = slotEngine.kyivToday();
-  const r = await getPool().query(
-    `SELECT DISTINCT master_id FROM master_schedule_days
-      WHERE master_id = ANY($1::int[]) AND work_date >= $2::date AND work_date <= $3::date
-        AND start_time IS NOT NULL AND end_time IS NOT NULL`, [ids, today, slotEngine.addDays(today, st.horizonDays)]);
-  return new Set(r.rows.map(x => Number(x.master_id)));
+  return slotEngine.mastersWithHours(getPool(), ids, slotEngine.kyivToday(), Math.min(31, st.horizonDays));
 }
 router.get('/masters', async (req, res) => {
   try {
