@@ -1211,7 +1211,11 @@ function tmRender(){
     const access = r.user
       ? `<span class="pill info" title="Заходить у CRM">${r.user.role_name||r.user.role||'логін'}</span>`
         + (r.user.is_active===false?' <span class="pill gray" title="Вхід вимкнено">вимкнено</span>':'')
-      : '<span style="color:#bbb" title="Працює без входу в систему">немає</span>';
+      // Босс 04.11: майстру доступ відкривається сам, коли він заходить у застосунок салону зі своїм номером
+      : (r.kind==='master' && !r.fired
+          ? (r.phone ? '<span style="color:#888;font-size:12px" title="Кабінет майстра відкриється автоматично, коли людина увійде в застосунок салону з цим номером">відкриється сам<br>при вході в застосунок</span>'
+                     : '<span style="color:#c2410c;font-size:12px" title="Без телефону застосунок не впізнає майстра. Клік по імені → вкажіть телефон">немає телефону —<br>вкажіть у картці</span>')
+          : '<span style="color:#bbb" title="Працює без входу в систему">немає</span>');
     const sched = r.kind!=='master' ? '<span style="color:#bbb">—</span>'
       : (r.fired ? '<span style="color:#bbb">—</span>'
         : `<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px">
@@ -1225,10 +1229,11 @@ function tmRender(){
       acts.push(`<button class="btn sm" title="Змінити пароль входу" onclick="setPassword(${r.user.id})">Пароль</button>`);
       acts.push(`<button class="btn sm" title="Одноразове посилання для входу" onclick="issueToken(${r.user.id})">Token</button>`);
       acts.push(r.user.is_active===false
-        ? `<button class="btn sm" style="background:#dcfce7;color:#16a34a" title="Повернути доступ" onclick="reactivateUser(${r.user.id})">✓ Доступ</button>`
-        : `<button class="btn sm ghost" title="Забрати доступ (людина лишається в команді)" onclick="deactivateUser(${r.user.id})">✕ Доступ</button>`);
-    } else if (r.kind==='master' && !r.fired) {
-      acts.push(`<button class="btn sm ghost" title="Створити логін для входу в CRM" onclick="tmNewOpen(${r.id})">Дати доступ</button>`);
+        ? `<button class="btn sm" style="background:#dcfce7;color:#16a34a" title="Повернути доступ" onclick="reactivateUser(${r.user.id})">Повернути доступ</button>`
+        : `<button class="btn sm ghost" title="Забрати доступ (людина лишається в команді)" onclick="deactivateUser(${r.user.id})">Забрати доступ</button>`);
+    } else if (r.kind==='master' && !r.fired && r.phone) {
+      // не форма «Новий співробітник», а одна дія над ЦІЄЮ карткою
+      acts.push(`<button class="btn sm ghost" title="Відкрити кабінет майстра зараз, не чекаючи входу в застосунок" onclick="tmGrantAccess(${r.id})">Відкрити зараз</button>`);
     }
     // без nowrap: на вужчому екрані імʼя і кнопки переносяться, а не вилітають вправо (#157)
     return `<tr${r.fired?' style="opacity:.6"':''}>
@@ -1272,6 +1277,15 @@ function tmNewOpen(masterId){
     else if(nm) nm.value='';
     setTimeout(()=>nm&&nm.focus(),50);
   }
+}
+async function tmGrantAccess(masterId){
+  const m=(MASTERS_CACHE||[]).find(x=>Number(x.id)===Number(masterId)); if(!m) return;
+  if(!confirm('Відкрити доступ для «'+m.name+'»?\n\nКабінет майстра в застосунку салону відкриється, коли вона увійде з номером '+(typeof fmtPhone==='function'?fmtPhone(m.phone):m.phone)+'. Він і так відкрився б сам при першому вході.\n\nПароль для адмінки CRM не створюється — його можна задати потім кнопкою «Пароль».')) return;
+  try{
+    await api('/api/users',{method:'POST',body:JSON.stringify({display_name:m.name, phone:m.phone, role_code:'master', master_id:Number(masterId)})});
+    await loadUsers(); await loadMasters();
+    if(typeof _mcToast==='function') _mcToast('Доступ відкрито ✓');
+  }catch(e){ alert((e&&e.data&&e.data.message)||(e&&e.message)||'Не вдалося відкрити доступ'); }
 }
 function tmNewClose(){ const b=document.getElementById('tmNewModal'); if(b) b.style.display='none'; }
 async function setMasterActive(id, active){
@@ -2102,7 +2116,7 @@ async function setPassword(uid){
   catch(e){ alert(pwError(e)); }
 }
 async function deactivateUser(uid){
-  if(!confirm('Деактивувати співробітника? Він втратить доступ.')) return;
+  if(!confirm('Забрати доступ?\n\nЛюдина лишається в команді, графіку й звітах. Кабінет майстра в застосунку закриється — там вона бачитиме себе як звичайний клієнт. Сам він НЕ повернеться: лише кнопкою «Повернути доступ».')) return;
   try{ await api('/api/users/'+uid,{method:'DELETE'}); loadUsers(); }catch(e){ alert(e.message); }
 }
 async function reactivateUser(uid){
