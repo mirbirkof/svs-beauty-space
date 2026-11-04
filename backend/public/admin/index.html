@@ -1471,7 +1471,7 @@ select.input { background:var(--card); }
         <!-- ═══ AI-рекомендації: повернення клієнтів ═══ -->
         <div class="card" id="reactCard" style="margin-bottom:24px;border:1px solid var(--primary, #6c5ce7);display:none">
           <div class="card-header" style="flex-wrap:wrap;gap:10px">
-            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів). Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
+            <h3 style="display:flex;align-items:center;gap:8px"><span class="material-icons-round" style="color:var(--primary,#6c5ce7)">replay</span> Повернути клієнтів <button type="button" class="info-i" data-t="<b>Повернути клієнтів.</b> Список клієнтів, які давно не приходили (поріг обираєте справа: 45/60/90 днів або 5+ місяців). Період «втрачені за 5 місяців» — лише ті, чий останній візит був за останні 5 місяців; «за весь час» — уся історія. Справа ж — скільки показати (30/100/всіх); число в шапці — усі знайдені. Беруться ті, хто був щонайменше 2 рази — тобто вже «ваші» клієнти, яких варто повернути. Відсортовано за сумою витрат: вгорі ті, хто приносив найбільше грошей. «N днів» рахується від останнього реального візиту в системі.<br><br><i>Якщо клієнт був недавно, а тут показано багато днів — значить його візит ще не підтягнувся.</i>" onclick="showInfo(event,this.dataset.t)">i</button></h3>
             <div style="display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap">
               <span id="reactInfo" style="font-size:12px;color:var(--text-secondary)"></span>
               <select id="reactMode" class="input btn-sm" style="max-width:190px" onchange="loadReactivation()" title="Розумний: порівнює «скільки днів не був» з рекомендованим інтервалом останньої послуги клієнта. Простий: усі, хто зник довше за обраний поріг днів.">
@@ -1482,6 +1482,17 @@ select.input { background:var(--card); }
                 <option value="45">зникли 45+ днів</option>
                 <option value="60" selected>зникли 60+ днів</option>
                 <option value="90">зникли 90+ днів</option>
+                <option value="150">зникли 5+ місяців</option>
+              </select>
+              <select id="reactWithin" class="input btn-sm" style="max-width:190px" onchange="loadReactivation()" title="За який період шукати втрачених: лише тих, чий останній візит був у межах останніх 5 місяців, або за всю історію.">
+                <option value="150" selected>втрачені за 5 місяців</option>
+                <option value="90">втрачені за 3 місяці</option>
+                <option value="0">за весь час</option>
+              </select>
+              <select id="reactLimit" class="input btn-sm" style="max-width:130px" onchange="loadReactivation()" title="Скільки клієнтів показати у списку">
+                <option value="30">показати 30</option>
+                <option value="100" selected>показати 100</option>
+                <option value="200">показати всіх</option>
               </select>
             </div>
           </div>
@@ -7339,13 +7350,17 @@ async function loadReactivation(){
   const body = document.getElementById('reactBody');
   const days = document.getElementById('reactDays')?.value || '60';
   const mode = document.getElementById('reactMode')?.value || 'smart';
+  const within = document.getElementById('reactWithin')?.value || '0';
+  const limit = document.getElementById('reactLimit')?.value || '100';
   body.innerHTML = '<div class="empty"><span class="material-icons-round">replay</span>Шукаю клієнтів...</div>';
   try {
-    const d = await api('/api/recommendations/reactivation?days='+days+'&limit=30'+(mode==='smart'?'&mode=smart':''));
+    const d = await api('/api/recommendations/reactivation?days='+days+'&limit='+limit+'&within='+within+(mode==='smart'?'&mode=smart':''));
     const cl = d.clients || [];
     _reactClients = cl;
     const info = document.getElementById('reactInfo');
-    if (info) info.textContent = cl.length ? `${d.count} ${plUk(d.count,'клієнт','клієнти','клієнтів')} · потенціал ${_money2(d.total_value)}` : '';
+    // #173: count — усі знайдені, shown — скільки виведено в таблицю (раніше шапка рахувала лише показані 30)
+    const shown = d.shown != null ? d.shown : cl.length;
+    if (info) info.textContent = cl.length ? `${d.count} ${plUk(d.count,'клієнт','клієнти','клієнтів')}${shown < d.count ? ` (показано ${shown})` : ''} · потенціал ${_money2(d.total_value)}` : '';
     if (!cl.length){ body.innerHTML = '<div class="empty" style="padding:20px">Немає клієнтів, що зникли — усі активні.</div>'; return; }
     const rows = cl.map((c,i)=>{
       const phone = (c.phone||'').replace(/[^\d+]/g,'');

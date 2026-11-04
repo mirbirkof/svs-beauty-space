@@ -126,6 +126,11 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
     // #102: mode=smart — персональний поріг за rebook_interval_days останньої послуги клієнта;
     // у кого інтервал не задано — загальний поріг days (як у звичайному режимі).
     const smart = req.query.mode === 'smart';
+    // Нотатка #173 (Власник): «відкрий 100 втрачених клієнтів за 5 місяців».
+    // within=N — лише ті, чий останній візит був у межах останніх N днів (втрачені ЗА період),
+    // 0/порожньо — за весь час. Лічильник і потенціал — по ВСІХ знайдених (COUNT/SUM OVER),
+    // а не по показаній сторінці: раніше шапка писала «30 клієнтів», бо рахувала обрізаний список.
+    const within = Math.min(Math.max(parseInt(req.query.within, 10) || 0, 0), 3650);
     // «Останній візит» = максимум з ДВОХ джерел:
     //   1) last_visit_at — заморожений знімок вигрузки MyClients (24.05.2026);
     //   2) жива синхронізація appointments (status не cancelled/noshow, включно з майбутніми записами).
@@ -137,7 +142,7 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
     // Нігті ~3 тижні, перукарські ~місяць, вії ~1-4 тижні — у кожної послуги СВІЙ поріг.
     const rows = await pool.query(
       `WITH ${SVC_CADENCE_CTE}
-       SELECT * FROM (
+       SELECT t.*, COUNT(*) OVER() AS total_n, SUM(COALESCE(t.total_spent,0)) OVER() AS total_sum FROM (
          SELECT c.id, c.name, c.phone, c.total_spent,
                 GREATEST(c.last_visit_at::date, COALESCE(lv.live_last, c.last_visit_at::date)) AS last_visit,
                 c.last_visit_at::date AS snapshot_visit,
@@ -167,8 +172,9 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
          ? `((t.rebook_interval IS NOT NULL AND t.days_since > t.rebook_interval)
              OR (t.rebook_interval IS NULL AND t.last_visit < CURRENT_DATE - ($1)::int))`
          : `t.last_visit < CURRENT_DATE - ($1)::int`}
+         ${within ? 'AND t.last_visit >= CURRENT_DATE - ($3)::int' : ''}
        ORDER BY t.total_spent DESC NULLS LAST, t.days_since ASC
-       LIMIT $2`, [days, limit]).then(r => r.rows).catch((e) => { console.error('[rec:reactivation:q]', e.message); return []; });
+       LIMIT $2`, within ? [days, limit, within] : [days, limit]).then(r => r.rows).catch((e) => { console.error('[rec:reactivation:q]', e.message); return []; });
     const out = rows.map(r => ({
       client_id: r.id, name: r.name, phone: r.phone,
       total_spent: Math.round(Number(r.total_spent || 0)),
@@ -177,8 +183,11 @@ router.get('/reactivation', requirePerm('reports.read'), async (req, res) => {
       rebook_interval_days: r.rebook_interval != null ? Number(r.rebook_interval) : null,
       overdue_days: r.rebook_interval != null ? r.days_since - Number(r.rebook_interval) : null,
     }));
-    const totalValue = out.reduce((s, x) => s + x.total_spent, 0);
-    res.json({ ok: true, mode: smart ? 'smart' : 'simple', threshold_days: days, count: out.length, total_value: totalValue, clients: out });
+    const total = rows.length ? Number(rows[0].total_n) : 0;
+    const totalValue = rows.length ? Math.round(Number(rows[0].total_sum || 0)) : 0;
+    res.json({ ok: true, mode: smart ? 'smart' : 'simple', threshold_days: days, within_days: within || null,
+      count: total, shown: out.length, total_value: totalValue,
+      shown_value: out.reduce((s, x) => s + x.total_spent, 0), clients: out });
   } catch (e) {
     console.error('[rec:reactivation]', e); res.status(500).json({ error: 'internal' });
   }
