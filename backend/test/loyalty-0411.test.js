@@ -117,6 +117,9 @@ after(async () => {
 
 test('кешбек: база = сплачено після знижки; майстру одразу 0.5% за повернення і 0.5% за перезапис', async (t) => {
   if (skipIf(t)) return;
+  // тести нижче — режим «сума умов» (до 1.5%); режим Босса «один бонус за візит» — окремий тест у кінці
+  assert.strictEqual((await admin('PUT', '/api/bonus/master-loyalty', { one_per_visit: false })).status, 200);
+  await VL.saveConfig({ one_per_visit: false }); // і кеш налаштувань цього процесу (VL.grant у тестах)
   const r = await admin('POST', `/api/schedule/appointments/${F.appt}/pay`, { method: 'card', discount_type: 'percent', discount_value: 10 });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
   assert.strictEqual(r.body.final, 900);
@@ -234,4 +237,18 @@ test('налаштування ставок: валідація і збереж�
   const p = await admin('PUT', '/api/bonus/master-loyalty', { rebook_pct: 0.7 });
   assert.strictEqual(p.status, 200); assert.strictEqual(p.body.rebook_pct, 0.7);
   await admin('PUT', '/api/bonus/master-loyalty', { rebook_pct: cur.rebook_pct });
+});
+
+test('один бонус за візит (Босс 04.11): повторна оплата → лише перша умова, решта «one-per-visit»', async (t) => {
+  if (skipIf(t)) return;
+  const p = await admin('PUT', '/api/bonus/master-loyalty', { one_per_visit: true });
+  assert.strictEqual(p.status, 200); assert.strictEqual(p.body.one_per_visit, true);
+  await VL.saveConfig({ one_per_visit: true });
+  const r = await admin('POST', `/api/schedule/appointments/${F.appt}/pay`, { method: 'card', discount_type: 'percent', discount_value: 10 });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const acc = (await rewards(F.appt)).filter(x => x.status === 'accrued');
+  assert.strictEqual(acc.length, 1, 'рівно один бонус майстру: ' + JSON.stringify(acc));
+  assert.strictEqual(acc[0].amount, 4.5);
+  assert.strictEqual((await VL.grant(F.appt, 'rating')).reason, 'one-per-visit');
+  assert.strictEqual(await bal(F.masterCard), 4.5);
 });

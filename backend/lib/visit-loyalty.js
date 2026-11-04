@@ -26,7 +26,8 @@ const { getSetting, setSetting } = require('./settings');
 const bonusLib = require('./bonus');
 
 const WORKING = `m.active AND COALESCE(m.staff_role,'master')='master' AND COALESCE(m.provides_services,true)`;
-const DEFAULTS = { enabled: true, return_pct: 0.5, rebook_pct: 0.5, rating_pct: 0.5, rating_min: 5 };
+// one_per_visit (Босс 04.11 21:35, опитування): майстру ОДИН бонус за візит — за першу виконану умову, не сума умов.
+const DEFAULTS = { enabled: true, return_pct: 0.5, rebook_pct: 0.5, rating_pct: 0.5, rating_min: 5, one_per_visit: true };
 const CONDITIONS = ['return', 'rebook', 'rating'];
 const LABEL = { return: 'повернення клієнта', rebook: 'перезапис у день візиту', rating: 'висока оцінка' };
 const RATE_EDIT_HOURS = 24;
@@ -38,12 +39,14 @@ async function getConfig() {
   for (const k of ['return_pct', 'rebook_pct', 'rating_pct']) c[k] = Math.min(10, Math.max(0, Number(c[k]) || 0));
   c.rating_min = Math.min(5, Math.max(1, Math.round(Number(c.rating_min) || 5)));
   c.enabled = c.enabled !== false;
+  c.one_per_visit = c.one_per_visit !== false;
   return c;
 }
 async function saveConfig(patch = {}, userId = null) {
   const cur = await getConfig();
   const next = { ...cur };
   if (patch.enabled != null) next.enabled = !!patch.enabled;
+  if (patch.one_per_visit != null) next.one_per_visit = !!patch.one_per_visit;
   for (const k of ['return_pct', 'rebook_pct', 'rating_pct']) {
     if (patch[k] == null) continue;
     const n = Number(patch[k]);
@@ -147,7 +150,17 @@ async function conditionMet(v, cond, cfg, db) {
 }
 
 /** Нарахувати майстру бонус за умову cond по візиту. → {granted, amount, reason}. Ніколи не кидає. */
-async function grant(apptId, cond, opts = {}) {
+// Умови одного візиту — по черзі (tick і оцінка можуть прийти одночасно): інакше «один за візит» обійдеться гонкою.
+const _grantChain = new Map();
+function grant(apptId, cond, opts = {}) {
+  const k = String(apptId);
+  const prev = _grantChain.get(k) || Promise.resolve();
+  const run = prev.catch(() => {}).then(() => _grant(apptId, cond, opts));
+  _grantChain.set(k, run);
+  run.finally(() => { if (_grantChain.get(k) === run) _grantChain.delete(k); }).catch(() => {});
+  return run;
+}
+async function _grant(apptId, cond, opts = {}) {
   const db = opts.db || getPool();
   try {
     if (!CONDITIONS.includes(cond)) return { granted: false, reason: 'bad-condition' };
@@ -165,6 +178,11 @@ async function grant(apptId, cond, opts = {}) {
     const done = (await db.query(
       `SELECT status FROM master_loyalty_rewards WHERE appointment_id=$1 AND condition=$2`, [v.id, cond])).rows[0];
     if (done && done.status === 'accrued') return { granted: false, reason: 'already' };
+    if (cfg.one_per_visit) {
+      const other = (await db.query(
+        `SELECT 1 FROM master_loyalty_rewards WHERE appointment_id=$1 AND condition<>$2 AND status='accrued' LIMIT 1`, [v.id, cond])).rows[0];
+      if (other) return { granted: false, reason: 'one-per-visit' };
+    }
     if (!(await conditionMet(v, cond, cfg, db))) return { granted: false, reason: 'condition-not-met' };
 
     const mcid = await ensureMasterClientCard(v.master_id, db);

@@ -71,7 +71,7 @@
       <!-- 04.11 Бонуси майстру за клієнта -->
       <div class="card" id="mlCard">
         <h3>Бонуси майстрам за клієнтів</h3>
-        <div class="muted" style="font-size:13px;margin-bottom:10px">Відсоток від суми, яку клієнт реально сплатив за візит. Нараховується на бонусний рахунок клієнтської картки майстра — окремо за кожну умову. Не нараховується, якщо клієнт сам майстер салону, візит скасовано або сума 0.</div>
+        <div class="muted" style="font-size:13px;margin-bottom:10px">Відсоток від суми, яку клієнт реально сплатив за візит. Нараховується на бонусний рахунок клієнтської картки майстра — один раз за візит, за першу виконану умову (або за кожну умову окремо — див. «Нарахування»). Не нараховується, якщо клієнт сам майстер салону, візит скасовано або сума 0.</div>
         <div class="row">
           <div class="fld"><label>Увімкнено</label><select id="ml_enabled"><option value="true">Так</option><option value="false">Ні</option></select></div>
           <div class="fld"><label>Клієнт повернувся до майстра, %</label><input id="ml_return" type="number" min="0" max="10" step="0.1"></div>
@@ -82,6 +82,7 @@
         </div>
         <div class="row">
           <div class="fld"><label>Висока оцінка — від скількох зірок</label><select id="ml_min"><option>5</option><option>4</option><option>3</option></select></div>
+          <div class="fld"><label>Нарахування</label><select id="ml_once"><option value="true">Один бонус за візит</option><option value="false">За кожну умову (сумуються)</option></select></div>
           <div class="fld"></div>
         </div>
         <button class="btn primary" id="mlSave" onclick="saveMasterLoyalty()">Зберегти ставки</button>
@@ -161,6 +162,7 @@ async function loadMasterLoyalty(){
     document.getElementById('ml_rebook').value=c.rebook_pct;
     document.getElementById('ml_rating').value=c.rating_pct;
     document.getElementById('ml_min').value=String(c.rating_min);
+    document.getElementById('ml_once').value=String(c.one_per_visit!==false);
     _mlLoaded=true;
   }catch(e){ document.getElementById('mlMsg').textContent='Не вдалося завантажити ставки'; }
 }
@@ -174,8 +176,9 @@ async function saveMasterLoyalty(){
       return_pct:Number(document.getElementById('ml_return').value),
       rebook_pct:Number(document.getElementById('ml_rebook').value),
       rating_pct:Number(document.getElementById('ml_rating').value),
-      rating_min:Number(document.getElementById('ml_min').value)})});
-    m.style.color='#2E7D4F'; m.textContent='Збережено: '+c.return_pct+'% + '+c.rebook_pct+'% + '+c.rating_pct+'% (оцінка від '+c.rating_min+'⭐)';
+      rating_min:Number(document.getElementById('ml_min').value),
+      one_per_visit:document.getElementById('ml_once').value==='true'})});
+    m.style.color='#2E7D4F'; m.textContent='Збережено: '+c.return_pct+'% + '+c.rebook_pct+'% + '+c.rating_pct+'% (оцінка від '+c.rating_min+'⭐) · '+(c.one_per_visit!==false?'один бонус за візит':'за кожну умову');
   }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+(e.message||e); }
 }
 
