@@ -1208,7 +1208,10 @@ function tmRender(){
     const nameCell = r.id
       ? `${av}<a href="#" class="lnk" onclick="openMasterCard(${r.id});return false">${r.name||''}</a>`
       : `${av}<a href="#" class="lnk" onclick="openUserCard(${r.user.id});return false">${r.name||''}</a>`;
-    const access = r.user
+    // Босс 04.11 (Ася vs Евеліна): логін без телефону, без логіна і без пароля — порожня оболонка, увійти по ній нікуди.
+    // Показуємо його так само, як «немає доступу», а не як робочий доступ.
+    const emptyLogin = !!(r.user && r.user.is_active!==false && !r.phone && !r.user.phone && !r.user.username && !r.user.has_password);
+    const access = (r.user && !emptyLogin)
       ? `<span class="pill info" title="Заходить у CRM">${r.user.role_name||r.user.role||'логін'}</span>`
         + (r.user.is_active===false?' <span class="pill gray" title="Вхід вимкнено">вимкнено</span>':'')
       // Босс 04.11: майстру доступ відкривається сам, коли він заходить у застосунок салону зі своїм номером
@@ -1225,7 +1228,9 @@ function tmRender(){
     if (r.kind==='master') acts.push(r.fired
       ? `<button class="btn sm" onclick="setMasterActive(${r.id},true)">Повернути</button>`
       : `<button class="btn sm ghost" onclick="setMasterActive(${r.id},false)">Звільнити</button>`);
-    if (r.user) {
+    if (emptyLogin) {
+      acts.push(`<button class="btn sm ghost" title="Задати пароль для входу в адмінку CRM (необовʼязково)" onclick="setPassword(${r.user.id})">Пароль</button>`);
+    } else if (r.user) {
       acts.push(`<button class="btn sm" title="Змінити пароль входу" onclick="setPassword(${r.user.id})">Пароль</button>`);
       acts.push(`<button class="btn sm" title="Одноразове посилання для входу" onclick="issueToken(${r.user.id})">Token</button>`);
       acts.push(r.user.is_active===false
