@@ -368,7 +368,10 @@ let CURRENT_SHIFT = null;
 let CURRENT_AUDIT = null;
 document.getElementById('token').value = TOKEN;
 // Телефон для відображення: БД зберігає цифри, показуємо +XXXXXXXXXXX
-function fmtPhone(p){ const d = String(p||'').replace(/\D/g,''); return d ? '+'+d : '—'; }
+// показ: український номер завжди повний +380XXXXXXXXX, навіть якщо в старому рядку лежить 0XX… (Босс 04.11)
+function fmtPhone(p){ let d = String(p||'').replace(/\D/g,''); if(!d) return '—';
+  if(d.length===10 && d[0]==='0') d='38'+d; else if(d.length===11 && d.startsWith('80')) d='3'+d; else if(d.length===9) d='380'+d;
+  return '+'+d; }
 
 // Ручной ввод токена (скрыт по умолчанию — для сервисных случаев)
 document.getElementById('token-toggle').addEventListener('click', (e) => {
