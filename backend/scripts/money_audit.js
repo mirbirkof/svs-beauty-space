@@ -35,13 +35,13 @@ const EPS = 0.5;              // допуск округления, грн
     sec('ЗП ↔ КАССА');
     const ym = process.env.YM || null; // YYYY-MM, по умолчанию — весь период
     const range = ym
-      ? `AND created_at >= date_trunc('month', to_date($1,'YYYY-MM')) AND created_at < date_trunc('month', to_date($1,'YYYY-MM')) + interval '1 month'`
+      ? `AND co.created_at >= date_trunc('month', to_date($1,'YYYY-MM')) AND co.created_at < date_trunc('month', to_date($1,'YYYY-MM')) + interval '1 month'`
       : '';
     const rangeP = ym ? [ym] : [];
     if (await has(c, 'cash_operations')) {
       // выручка мастеров из кассы — источник истины для ЗП
       const perM = await q(c, `SELECT master_id, sum(amount) rev, count(*) ops
-        FROM cash_operations WHERE type='in' AND master_id IS NOT NULL ${range}
+        FROM cash_operations co WHERE type='in' AND master_id IS NOT NULL ${range}
         GROUP BY master_id ORDER BY rev DESC`, rangeP);
       if (!perM.length) {
         info(`в кассе нет доходных операций с master_id${ym ? ' за ' + ym : ''} — ЗП будет 0 у всех (это может быть правдой, а может — обрыв привязки)`);
