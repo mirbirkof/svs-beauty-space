@@ -297,10 +297,29 @@ async function resolveSel(q) {
   const names = new Map();
   for (const m of [elig, ...eligBy].flat()) names.set(m.id, m.name);
   let masterIds = elig.map(m => m.id), fixed = null;
+  // price-cards-0411: картка з топ-майстром (нігті) — базова послуга в одних майстрів, топ-послуга в топ-майстра.
+  // Одна картка = обидві групи: слоти й бронь — кожна зі СВОЄЮ послугою/тривалістю.
+  let groups = null;
+  if (ids.length === 1) {
+    let pairs = [];
+    try { pairs = hairVariants.topPairsFor(await hairVariants.loadProcedures(getPool()), ids[0]); } catch (e) { console.error('[miniapp/top-pairs]', e.message); }
+    const pr = pairs[0], topSvc = pr && cat.byId.get(pr.topId);
+    if (topSvc) {
+      const te = (await bot().eligibleMasters(getPool(), [pr.topId])).filter(m => pr.topMasterIds.includes(Number(m.id)));
+      if (te.length) {
+        for (const m of te) names.set(m.id, m.name);
+        const topIds = te.map(m => m.id);
+        const baseIds = masterIds.filter(id => !topIds.includes(id));
+        groups = [{ svc: items[0], masterIds: baseIds }, { svc: topSvc, masterIds: topIds }].filter(g => g.masterIds.length);
+        masterIds = [...baseIds, ...topIds];
+      }
+    }
+  }
   if (q.master != null && q.master !== '' && q.master !== 'any') {
     const mid = Number(q.master);
     if (!masterIds.includes(mid)) return { err: 'master_unavailable' };
     masterIds = [mid]; fixed = mid;
+    if (groups) groups = groups.filter(g => g.masterIds.includes(mid)).map(g => ({ ...g, masterIds: [mid] }));
   }
   const isCombo = ids.length > 1;
   const chainOk = isCombo && fixed == null && eligBy.every(e => e.length);
@@ -309,11 +328,21 @@ async function resolveSel(q) {
     ? { id: null, name: items.map(s => s.name).join(' + '),
         duration_min: items.reduce((a, s) => a + (Number(s.duration_min) || 60), 0),
         price: items.reduce((a, s) => a + (Number(s.price) || 0), 0) }
-    : items[0];
-  return { svc, items, ids, isCombo, fixed, masterIds, eligBy: eligBy.map(e => e.map(m => m.id)), names };
+    : (groups && fixed != null ? groups[0].svc : items[0]); // фіксований топ-майстер → його послуга
+  return { svc, items, ids, isCombo, fixed, masterIds, eligBy: eligBy.map(e => e.map(m => m.id)), names, groups };
 }
 // вільні слоти на дату для вибору (одна послуга або комплекс) — у форматі API
 async function slotsFor(sel, date) {
+  if (!sel.isCombo && sel.groups && sel.groups.length > 1) {
+    // базова група першою (дешевше), топ-майстер — на час, де базові зайняті; один слот на час
+    const seen = new Set(), out = [];
+    for (const g of sel.groups) {
+      const sl = await slotEngine.freeSlotsForDate(getPool(), { date, masterIds: g.masterIds, durationMin: Number(g.svc.duration_min) || 60 });
+      for (const s of sl) if (!seen.has(s.startMin)) { seen.add(s.startMin); out.push(s); }
+    }
+    out.sort((a, b) => a.startMin - b.startMin);
+    return out.map(s => ({ label: s.label, start_min: s.startMin, master_id: Number(s.masterId), master_name: sel.names.get(Number(s.masterId)) || null }));
+  }
   if (!sel.isCombo) {
     const sl = await slotEngine.freeSlotsForDate(getPool(), { date, masterIds: sel.masterIds, durationMin: Number(sel.svc.duration_min) || 60 });
     return sl.map(s => ({ label: s.label, start_min: s.startMin, master_id: Number(s.masterId), master_name: sel.names.get(Number(s.masterId)) || null }));
@@ -396,9 +425,13 @@ async function doBook(req) {
   if (b.variant_id != null && b.variant_id !== '') {
     hv = await hairVariants.variantFor(getPool(), b.variant_id, sel.svc.id);
     if (!hv) return { status: 400, body: { error: 'bad_variant', message: 'Ціни щойно оновилися — оберіть довжину ще раз.' } };
-    est = hairVariants.estimateOf(hv.proc, hv.v, { unknown: b.length_unknown === true });
+    // price-cards-0411: у топ-майстра — його послуга CRM; ціна прайсу — за майстром; опції — лише з процедури
+    if (hairVariants.serviceFor(hv.proc, hv.v, masterId) !== Number(sel.svc.id)) return { status: 400, body: { error: 'bad_variant', message: 'Ціни щойно оновилися — оберіть послугу ще раз.' } };
+    est = hairVariants.estimateOf(hv.proc, hv.v, { unknown: b.length_unknown === true, masterId, addons: hairVariants.pickAddons(hv.proc, b.addons) });
   }
-  const svcTitle = hv ? `${hv.proc.title} · ${est.length_unknown ? 'довжину визначить майстер' : hv.v.label + (hv.v.cm ? ' (' + hv.v.cm + ')' : '')}` : sel.svc.name;
+  const single = hv && hv.proc.variants.length === 1 && hv.proc.variant_kind !== 'length';
+  const svcTitle = hv ? (single ? hv.proc.title : `${hv.proc.title} · ${est.length_unknown ? 'довжину визначить майстер' : hv.v.label + (hv.v.cm ? ' (' + hv.v.cm + ')' : '')}`)
+    + (est.addons && est.addons.length ? ' + ' + est.addons.map(a => a.label).join(', ') : '') : sel.svc.name;
   const services = [{ id: sel.svc.id, name: sel.svc.name, duration_min: dur, price: sel.svc.price }];
   const moveIds = b.move_ids ? await ownActive(c.id, b.move_ids) : [];
   if (b.move_ids && !moveIds.length) return { status: 409, body: { error: 'move_gone', message: 'Запис, який ви переносите, вже неактуальний.' } };
@@ -434,7 +467,7 @@ async function doBook(req) {
   };
   if (est) {
     out.estimate = est; out.estimate_text = hairVariants.estimateText(est);
-    out.price_note = 'орієнтовно, точну суму назве майстер після огляду';
+    out.price_note = est.list ? (est.hint || (est.from ? 'точну суму назве майстер після огляду' : '')) : 'орієнтовно, точну суму назве майстер після огляду';
   }
   if (result.existing) return { status: 200, body: { ok: true, booking: out } };
 
@@ -468,7 +501,7 @@ async function doBook(req) {
     try {
       await tg('sendMessage', {
         chat_id: uid, parse_mode: 'HTML',
-        text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n💅 ${esc(svcTitle)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, <b>${out.time}</b>\n💰 ${est ? 'орієнтовно ' + esc(out.estimate_text) + '\nТочну суму назве майстер після огляду.' : fmtPrice(out.price)}\n\n${b.remind24 === false ? 'Нагадаємо за 2 години до візиту.' : 'Нагадаємо за 24 і за 2 години до візиту.'}\nЧекаємо вас у SVS Beauty Space 💛`,
+        text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n💅 ${esc(svcTitle)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, <b>${out.time}</b>\n💰 ${est ? (est.list ? esc(out.estimate_text) + (out.price_note ? '\n' + esc(out.price_note) : '') : 'орієнтовно ' + esc(out.estimate_text) + '\nТочну суму назве майстер після огляду.') : fmtPrice(out.price)}\n\n${b.remind24 === false ? 'Нагадаємо за 2 години до візиту.' : 'Нагадаємо за 24 і за 2 години до візиту.'}\nЧекаємо вас у SVS Beauty Space 💛`,
         reply_markup: { inline_keyboard: [[{ text: '👤 Мої записи', web_app: { url: miniUrl + '?screen=cabinet' } }]] },
       });
     } catch (e) { console.error('[miniapp/notify-client]', e.message); }
@@ -508,7 +541,8 @@ async function doBookCombo(req, c) {
     if (!sel.ids.includes(sid) || v.variant_id == null || v.variant_id === '') continue;
     const hv = await hairVariants.variantFor(getPool(), v.variant_id, sid);
     if (!hv) return { status: 400, body: { error: 'bad_variant', message: 'Ціни щойно оновилися — оберіть довжину ще раз.' } };
-    ests.set(sid, { hv, est: hairVariants.estimateOf(hv.proc, hv.v, { unknown: v.length_unknown === true }) });
+    ests.set(sid, { hv, unknown: v.length_unknown === true, addons: hairVariants.pickAddons(hv.proc, v.addons),
+      est: hairVariants.estimateOf(hv.proc, hv.v, { unknown: v.length_unknown === true }) });
   }
   const plan = (await combo.comboSlots(getPool(), { date, items: sel.items, eligAll: sel.masterIds, eligBy: sel.eligBy, fixedMaster: sel.fixed }))
     .find(s => s.startMin === startMin);
@@ -519,6 +553,11 @@ async function doBookCombo(req, c) {
     if (want !== got) return { status: 409, body: { error: 'slot_taken', message: 'Розклад щойно змінився — оберіть час ще раз' } };
   }
   const legs = plan.legs.map(l => Object.assign({}, l, { master_name: sel.names.get(l.master_id) || '' }));
+  // price-cards-0411: ціна прайсу — за майстром ноги (топ/інші) + опції
+  for (const l of legs) for (const it of l.items) {
+    const x = ests.get(Number(it.id));
+    if (x) x.est = hairVariants.estimateOf(x.hv.proc, x.hv.v, { unknown: x.unknown, masterId: l.master_id, addons: x.addons });
+  }
   const clientName = c.name || req.tgUser.first_name || 'Клієнт';
   let result;
   try {
@@ -551,7 +590,8 @@ async function doBookCombo(req, c) {
   }
   const titleOf = (it) => { const x = ests.get(Number(it.id)); return x ? `${x.hv.proc.title} · ${x.est.length_unknown ? 'довжину визначить майстер' : x.hv.v.label}` : it.name; };
   const priceOf = (it) => { const x = ests.get(Number(it.id)); if (!x) return Number(it.price) || 0;
-    const e = x.est; return e.length_unknown ? e.range[0] : (e.material_mode === 'extra' || !e.material_known ? e.work : e.total); };
+    const e = x.est; if (e.list) return e.length_unknown ? e.range[0] : e.total;
+    return e.length_unknown ? e.range[0] : (e.material_mode === 'extra' || !e.material_known ? e.work : e.total); };
   const total = sel.items.reduce((a, it) => a + priceOf(it), 0);
   const dur = Number(sel.svc.duration_min);
   const masters = [...new Set(legs.map(l => l.master_name))];
@@ -597,6 +637,7 @@ router.post('/book', async (req, res) => {
   const uid = req.tgUser.id;
   const b = req.body || {};
   const key = [uid, b.master_id, b.date, b.start_min, Array.isArray(b.service_ids) ? b.service_ids.join(',') : b.service_id, b.variant_id || '', b.length_unknown ? 'u' : '',
+    Array.isArray(b.addons) ? b.addons.join(',') : '', // price-cards-0411: інші опції = інша бронь
     Array.isArray(b.move_ids) ? b.move_ids.join(',') : String(b.move_ids || '')].join('|'); // перенос ≠ нова бронь
   try {
     let p = inflight.get(key);

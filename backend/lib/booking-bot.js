@@ -45,6 +45,7 @@ const nf = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d
 function priceLabel(s) {
   const h = s && s.hair;
   if (!h) return fmtPrice(s.price) + (hairVariants.MATERIAL_EXTRA_RE.test(s.name || '') ? ' + матеріал за фактом' : '');
+  if (h.list != null) return `від ${nf(h.list)} грн`; // price-cards-0411: прайс салону
   if (h.material_mode === 'separate' && h.material_known) return `≈ ${nf(h.total)} грн (робота ${nf(h.work)} + матеріал ${nf(h.material)})`;
   if (h.material_mode === 'extra' || !h.material_known) return `${fmtPrice(h.work)} + матеріал за фактом`;
   return fmtPrice(s.price);
@@ -54,7 +55,8 @@ function totalLabel(chosen, total) {
   let sum = 0, approx = false, extra = false;
   for (const s of chosen || []) {
     const h = s.hair;
-    if (h) { approx = true; sum += (h.material_mode === 'separate' && h.material_known) ? h.total : h.work; if (h.material_mode === 'extra' || !h.material_known) extra = true; }
+    if (h && h.list != null) { approx = true; sum += h.list; }
+    else if (h) { approx = true; sum += (h.material_mode === 'separate' && h.material_known) ? h.total : h.work; if (h.material_mode === 'extra' || !h.material_known) extra = true; }
     else { sum += Number(s.price) || 0; if (hairVariants.MATERIAL_EXTRA_RE.test(s.name || '')) { approx = true; extra = true; } }
   }
   if (!approx) return fmtPrice(total);
