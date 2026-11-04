@@ -9,8 +9,10 @@ const PROD = require('./fixtures-miniapp-prod-catalog-0411.json');
 test('синоніми категорій → канонічні назви, регістр/пробіли не важливі', () => {
   assert.equal(normCategory('Перукарські послуги'), 'Волосся');
   assert.equal(normCategory('  перукарські   ПОСЛУГИ '), 'Волосся');
-  assert.equal(normCategory('Брови'), 'Брови та вії');
-  assert.equal(normCategory('Вії'), 'Брови та вії');
+  assert.equal(normCategory('Брови'), 'Брови');
+  assert.equal(normCategory('Брови та вії', 'LED нарощування вій 2D'), 'Вії');
+  assert.equal(normCategory('Брови та вії', 'корекція та фарбування брів'), 'Брови');
+  assert.equal(normCategory('Вії'), 'Вії');
   assert.equal(normCategory('Манікюр'), 'Нігті');
   assert.equal(normCategory('Масаж'), 'Масаж та тіло');
   assert.equal(normCategory(''), 'Інші послуги');
@@ -34,8 +36,8 @@ test('прод-знімок: немає «Перукарські послуги�
   const cats = groupCatalog(PROD);
   const names = cats.map(c => c.name);
   assert.ok(!names.includes('Перукарські послуги'), names.join(','));
-  assert.ok(!names.includes('Брови'), names.join(','));
-  assert.deepEqual(names, ['Волосся', 'Нігті', 'Брови та вії']);
+  assert.ok(!names.includes('Брови та вії'), names.join(','));
+  assert.deepEqual(names, ['Волосся', 'Нігті', 'Брови']);
   assert.equal(cats.reduce((s, c) => s + c.count, 0), PROD.length);
   const ids = cats.flatMap(c => c.services.map(s => s.id));
   assert.equal(new Set(ids).size, PROD.length, 'id не змінюються і не дублюються');

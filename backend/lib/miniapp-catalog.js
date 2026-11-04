@@ -5,8 +5,11 @@
 //  2) serviceGroup — підгрупа всередині великої категорії (Стрижки / Фарбування / … ) для чіпів і заголовків;
 //  3) groupCatalog — готова відповідь /api/miniapp/catalog.
 
-const CAT_ORDER = ['Волосся', 'Нігті', 'Брови та вії', 'Макіяж', 'Масаж та тіло'];
+// Босс 04.11 19:56: вії окремо від брів
+const CAT_ORDER = ['Волосся', 'Нігті', 'Брови', 'Вії', 'Макіяж', 'Масаж та тіло'];
 const OTHER = 'Інші послуги';
+const MIXED_BL = '\u0000brows+lashes'; // змішана категорія в БД — розводимо за назвою послуги
+const isLash = (n) => /вій|вії|ресниц|lash/i.test(String(n || ''));
 
 // ключ — нижній регістр без зайвих пробілів; значення — канонічна категорія
 const CAT_SYNONYMS = new Map(Object.entries({
@@ -14,16 +17,17 @@ const CAT_SYNONYMS = new Map(Object.entries({
   'перукар': 'Волосся', 'стрижки': 'Волосся', 'стрижка': 'Волосся', 'фарбування': 'Волосся', 'фарбування волосся': 'Волосся',
   'парикмахерские услуги': 'Волосся', 'волосы': 'Волосся',
   'нігті': 'Нігті', 'манікюр': 'Нігті', 'педикюр': 'Нігті', 'манікюр та педикюр': 'Нігті', 'нігтьовий сервіс': 'Нігті', 'ногти': 'Нігті',
-  'брови та вії': 'Брови та вії', 'брови': 'Брови та вії', 'вії': 'Брови та вії', 'брови і вії': 'Брови та вії',
-  'брови й вії': 'Брови та вії', 'брови/вії': 'Брови та вії', 'ресницы': 'Брови та вії', 'брови и ресницы': 'Брови та вії',
+  'брови': 'Брови', 'брови та вії': MIXED_BL, 'вії': 'Вії', 'брови і вії': MIXED_BL,
+  'брови й вії': MIXED_BL, 'брови/вії': MIXED_BL, 'ресницы': 'Вії', 'брови и ресницы': MIXED_BL,
   'макіяж': 'Макіяж', 'візаж': 'Макіяж', 'макияж': 'Макіяж',
   'масаж та тіло': 'Масаж та тіло', 'масаж': 'Масаж та тіло', 'тіло': 'Масаж та тіло', 'догляд за тілом': 'Масаж та тіло', 'массаж': 'Масаж та тіло',
 }));
 
-function normCategory(raw) {
+function normCategory(raw, name) {
   const s = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
   if (!s) return OTHER;
-  return CAT_SYNONYMS.get(s.toLowerCase()) || s;
+  const c = CAT_SYNONYMS.get(s.toLowerCase()) || s;
+  return c === MIXED_BL ? (isLash(name) ? 'Вії' : 'Брови') : c;
 }
 
 // Підгрупи: перший збіг виграє, тож порядок важливий («Фарбування + стрижка» — це фарбування).
@@ -57,7 +61,7 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'uk', { numeric: true, sen
 function groupCatalog(services) {
   const cats = new Map();
   for (const s of services || []) {
-    const c = normCategory(s.category);
+    const c = normCategory(s.category, s.name);
     if (!cats.has(c)) cats.set(c, []);
     const row = { id: s.id, name: String(s.name || '').trim(), duration_min: Number(s.duration_min) || 60, price: Number(s.price) || 0 };
     // price-materials-0411: картка процедури (робота + матеріал, варіанти довжини) — поля проходять як є
