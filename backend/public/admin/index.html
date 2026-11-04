@@ -14352,14 +14352,18 @@ async function ecUndo(refkeyEnc){
   catch(e){ toast(e.message,'error'); }
 }
 
-async function loadPayrollMasters() {
-  if (_pyMasters.length) return;
+// #172: ОДНЕ правило «працює» для всієї сторінки зарплати — як у реєстрі команди:
+// увімкнений (active) і не звільнений. Раніше схеми ховали лише звільнених, і вимкнені
+// в команді люди (Лера, Анастасія, Russo…) висіли в «Схемах» як діючі.
+const _pyWorking = (active, status) => !!active && status !== 'fired';
+async function loadPayrollMasters(force) {
+  if (_pyMasters.length && !force) return;
   try {
     // #169: зарплата — уся ДІЮЧА команда з єдиного реєстру (майстри + адміністрація),
     // без звільнених. Раніше брались лише ті, хто надає послуги, — адмінів (Даша) тут не було.
     const r = await dikidiApi('/api/schedule/masters?all=1');
-    _pyMasters = (r.items || []).filter(m => m.active && m.status !== 'fired')
-      .map(m => ({ id: String(m.id), name: m.name || ('#' + m.id), admin: m.staff_role === 'admin' || m.provides_services === false }))
+    _pyMasters = (r.items || []).filter(m => _pyWorking(m.active, m.status))
+      .map(m => ({ id: String(m.id), name: m.name || ('#' + m.id), owner: m.staff_role === 'owner', admin: m.staff_role === 'admin' || m.provides_services === false }))
       .sort((a, b) => (a.admin - b.admin) || a.name.localeCompare(b.name, 'uk'));
   } catch (e) {
     // Аудит 13.08 (в2): пустий селект майстрів = «нарахування нікому» — тепер видно, що це збій
@@ -14384,15 +14388,17 @@ function payrollTab(t) {
 async function loadPayrollSchemes() {
   try {
     const [r, rr] = await Promise.all([api('/api/payroll/schemes'), api('/api/payouts/rules?active=1').catch(() => ({ items: [] }))]);
-    await loadPayrollMasters();
-    // #169: звільнених не показуємо (схема в базі лишається — по ній рахуються минулі місяці);
+    // #172: команда перечитується щоразу — новий/повернений співробітник з'являється сам, без F5
+    await loadPayrollMasters(true);
+    // #169/#172: хто не працює (звільнений або вимкнений у команді) — не показуємо
+    // (схема в базі лишається — по ній рахуються минулі місяці);
     // діючих співробітників без схеми (напр. новий адмін) — показуємо рядком «не задано»
     const all = r.items || [];
-    const gone = s => s.master_status === 'fired';
-    const items = all.filter(s => !gone(s)).map(s => ({ ...s, _admin: s.staff_role === 'admin' }));
+    const items = all.filter(s => _pyWorking(s.master_active, s.master_status)).map(s => ({ ...s, _admin: s.staff_role === 'admin' }));
     const firedCnt = all.length - items.length;
     const has = new Set(items.map(s => String(s.master_id)));
-    _pyMasters.filter(m => !has.has(m.id)).forEach(m => items.push({ master_id: m.id, master_name: m.name, _admin: m.admin, _none: true }));
+    // власників (службові акаунти) без схеми рядком «не задано» не тягнемо — їм ЗП не нараховується
+    _pyMasters.filter(m => !has.has(m.id) && !m.owner).forEach(m => items.push({ master_id: m.id, master_name: m.name, _admin: m.admin, _none: true }));
     items.sort((a, b) => (a._admin - b._admin) || String(a.master_name || '').localeCompare(String(b.master_name || ''), 'uk'));
     // окремий % за послуги (Босс 02.10): кількість активних правил по майстру
     const svcCnt = {};
@@ -14405,7 +14411,7 @@ async function loadPayrollSchemes() {
           if (s._none) return `<tr><td>${who}</td><td colspan="6" style="color:#b45309">схему не задано — натисніть «Нова / змінити схему», щоб призначити</td></tr>`;
           return `<tr><td>${who}${mark}</td><td><span class="badge b-new">${s.scheme_type}</span></td>
           <td>${s.percent || '—'}</td><td>${s.percent_base === 'gross' ? 'вся сума чека' : 'послуги (без матер.)'}</td><td>${s.fixed_per_day || '—'}</td><td>${s.fixed_per_month || '—'}</td><td>${s.sales_commission_pct || '—'}</td></tr>`; }).join('')
-      }</tbody></table>${firedCnt ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:8px">Звільнених зі схемою приховано: ${firedCnt} (їхні минулі нарахування зберігаються)</div>` : ''}` : '<div class="empty"><span class="material-icons-round">payments</span>Схеми зарплати не задані</div>';
+      }</tbody></table>${firedCnt ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:8px">Не працюють (звільнені або вимкнені в команді), схему приховано: ${firedCnt} — їхні минулі нарахування зберігаються</div>` : ''}` : '<div class="empty"><span class="material-icons-round">payments</span>Схеми зарплати не задані</div>';
   } catch { document.getElementById('payrollList').innerHTML = '<div class="empty">Сервер зарплати недоступний</div>'; }
 }
 
