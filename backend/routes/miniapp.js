@@ -8,6 +8,7 @@
    (clients.telegram_id) — жодних client_id з тіла запиту.
    Бронь — спільне ядро lib/booking-core (той самий лок/схема, що в бота).
    ═══════════════════════════════════════════════════════════════ */
+const { groupCatalog } = require('../lib/miniapp-catalog');
 const express = require('express');
 const { getPool } = require('../db-pg');
 const slotEngine = require('../lib/slot-engine');
@@ -208,21 +209,12 @@ router.post('/master/claim', async (req, res) => {
 });
 
 // ── каталог: категорії → послуги (лише з онлайн-майстром) ─────────
-const CAT_ORDER = ['Волосся', 'Нігті', 'Брови та вії', 'Макіяж', 'Масаж та тіло'];
+// Вітрина каталогу: синоніми категорій злиті («Перукарські послуги» → «Волосся»), великі категорії — з підгрупами.
+// Назви/категорії в БД не змінюються (lib/miniapp-catalog.js).
 router.get('/catalog', async (req, res) => {
   try {
     const cat = await bot().loadCatalog(getPool());
-    const groups = new Map();
-    for (const s of cat.services) {
-      const c = (s.category && String(s.category).trim()) || 'Інші послуги';
-      if (!groups.has(c)) groups.set(c, []);
-      groups.get(c).push({ id: s.id, name: s.name, duration_min: Number(s.duration_min) || 60, price: Number(s.price) || 0 });
-    }
-    const rank = (c) => { const i = CAT_ORDER.indexOf(c); return i < 0 ? 99 : i; };
-    const categories = [...groups.entries()]
-      .sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0], 'uk'))
-      .map(([name, services]) => ({ name, count: services.length, services: services.sort((a, b) => a.name.localeCompare(b.name, 'uk')) }));
-    res.json({ categories });
+    res.json({ categories: groupCatalog(cat.services) });
   } catch (e) { console.error('[miniapp/catalog]', e.message); res.status(500).json({ error: 'server' }); }
 });
 

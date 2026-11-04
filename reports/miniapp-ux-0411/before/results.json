@@ -1,0 +1,42 @@
+[
+ {
+  "name": "[390x844-dark] прохід відображення без збоїв",
+  "pass": false,
+  "extra": "page.click: Timeout 30000ms exceeded."
+ },
+ {
+  "name": "[390x844-light] прохід відображення без збоїв",
+  "pass": false,
+  "extra": "page.click: Timeout 30000ms exceeded."
+ },
+ {
+  "name": "[360x740-dark] прохід відображення без збоїв",
+  "pass": false,
+  "extra": "page.click: Timeout 30000ms exceeded."
+ },
+ {
+  "name": "[360x740-light] прохід відображення без збоїв",
+  "pass": false,
+  "extra": "page.click: Timeout 30000ms exceeded."
+ },
+ {
+  "name": "повільна мережа: видно індикатор завантаження",
+  "pass": true,
+  "extra": ""
+ },
+ {
+  "name": "повільна мережа: категорії зʼявились",
+  "pass": true,
+  "extra": ""
+ },
+ {
+  "name": "[390x844-dark] шлях запису без збоїв",
+  "pass": false,
+  "extra": "locator.dblclick: Timeout 30000ms exceeded."
+ },
+ {
+  "name": "[360x740-light] шлях запису без збоїв",
+  "pass": false,
+  "extra": "locator.click: Timeout 30000ms exceeded."
+ }
+]

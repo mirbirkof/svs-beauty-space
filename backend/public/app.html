@@ -56,10 +56,27 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .row .t{flex:1;font-size:16px}
 .row .cnt{color:var(--muted);font-size:13px}
 .svc{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;text-align:left;width:100%}
-.svc .t{flex:1}
+.svc .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.svc .c{color:var(--muted);font-size:12px;margin-top:2px;opacity:.85}
 .svc .n{font-size:15px}
 .svc .m{color:var(--muted);font-size:13px;margin-top:3px}
 .svc .p{color:var(--gold);font-weight:600;white-space:nowrap}
+.srch{position:relative;margin:4px 0 10px}
+.srch input{width:100%;box-sizing:border-box;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-size:16px;padding:0 40px 0 38px;outline:none;-webkit-appearance:none;appearance:none}
+.srch input:focus{border-color:var(--rose)}
+.srch input::placeholder{color:var(--muted)}
+.srch input::-webkit-search-cancel-button{display:none}
+.srch .ico{position:absolute;left:12px;top:11px;font-size:16px;opacity:.6;pointer-events:none}
+.srch .clr{position:absolute;right:4px;top:3px;width:36px;height:36px;font-size:18px;color:var(--muted)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;margin:0 -16px;padding-left:16px;padding-right:16px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;white-space:nowrap;font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+.chip.on{background:var(--rose);border-color:var(--rose);color:var(--roseText)}
+.chip i{font-style:normal;color:var(--muted);margin-left:4px}
+.chip.on i{color:var(--roseText);opacity:.7}
+.grp{display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 2px;color:var(--gold);font-size:14px;font-weight:600;letter-spacing:.2px}
+.grp span{color:var(--muted);font-weight:400;font-size:12.5px}
+.found{color:var(--muted);font-size:13px;margin:0 2px 2px}
 .cathead{display:flex;align-items:center;gap:12px;margin:2px 0 12px}
 .cathead img{width:46px;height:46px;border-radius:12px;object-fit:cover}
 .cathead b{font-size:17px;font-weight:600}
@@ -156,6 +173,8 @@ h3{font-size:15px;color:var(--muted);font-weight:500;margin:20px 2px 10px;text-t
 .row{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:6px 0}
 .row .t1{font-weight:600} .row .t2{font-size:13px;color:var(--muted);margin-top:2px}
 .row .acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.row.cat{padding:0 14px 0 0;margin:0;border-radius:16px;min-height:60px}
+.row.cat .t{min-width:0;overflow-wrap:anywhere}
 .row .acts a,.row .acts button{font-size:13px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);color:var(--text);text-decoration:none}
 .mnav{display:flex;align-items:center;justify-content:space-between;margin:6px 0}
 .mnav button{padding:6px 12px;border:1px solid var(--line);border-radius:10px}
@@ -218,7 +237,7 @@ function api(path, opts){
 
 // ── каркас ──
 var root = document.getElementById('app');
-function render(node){ root.innerHTML=''; root.appendChild(node); window.scrollTo(0,0); syncBack(); }
+function render(node){ root.innerHTML=''; root.appendChild(node); var y=S.restoreY||0; S.restoreY=0; window.scrollTo(0,y); syncBack(); }
 function head(step, title){
   var bar = h('div',{class:'bar'}); for (var i=1;i<=4;i++) bar.appendChild(h('i',{class:i<=step?'on':''}));
   return h('div',{class:'head'},
@@ -227,8 +246,14 @@ function head(step, title){
     h('div',{class:'title',text:title}), step ? bar : null);
 }
 function plainHead(title){ return h('div',{class:'head'}, h('button',{class:'back','aria-label':'Назад',onclick:back,text:'←'}), h('div',{class:'title',text:title})); }
-function go(name){ S.stack.push(name); show(); }
-function back(){ haptic(); if (S.stack.length>1) { S.stack.pop(); show(); } else if (tg) tg.close(); }
+function go(name){
+  if (S.stack[S.stack.length-1] === name) return;           // подвійний тап — один крок
+  S.scrollMem = S.scrollMem || {}; S.scrollMem[S.stack[S.stack.length-1]] = window.scrollY;
+  S.navAt = Date.now(); S.stack.push(name); show();
+}
+function back(){ haptic(); if (S.stack.length>1) { S.stack.pop(); S.navAt = Date.now(); S.restoreY = (S.scrollMem||{})[S.stack[S.stack.length-1]] || 0; show(); } else if (tg) tg.close(); }
+// другий клік подвійного тапу, що прилетів уже на НОВИЙ екран, не повинен нічого натискати
+document.addEventListener('click', function(e){ if (e.detail >= 2 && S.navAt && Date.now() - S.navAt < 500) { e.stopPropagation(); e.preventDefault(); } }, true);
 function home(){ S.stack=['home']; show(); }
 function syncBack(){
   if (!tg || !tg.BackButton) return;
@@ -260,7 +285,7 @@ function vHome(){
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 
 function startBooking(){
-  S.svc=null; S.master=null; S.date=null; S.slot=null; S.cat=null;
+  S.svc=null; S.master=null; S.date=null; S.slot=null; S.cat=null; S.q=''; S.scrollMem={};
   S.stack=['home','cats']; show();
 }
 
@@ -269,30 +294,110 @@ function loadCatalog(){
   return api('/catalog').then(function(j){ if (j._status!==200) throw j; S.catalog=j.categories||[]; return S.catalog; });
 }
 
+// ── пошук послуг: регістр, і/и/ї/ы, е/є/э, апострофи, рос. варіанти основних слів ──
+var STEMS = [[/^(окраш|покраск|краск|фарб)/,'фарб'],[/^(ногт|нигт)/,'нигт'],[/^(наращ|нарощ)/,'нарощ'],[/^(ресниц|вии$|вия)/,'вии'],
+  [/^(бров|брив)/,'бров'],[/^(кончик|кинчик)/,'кинчик'],[/^(челк|чубчик)/,'чубчик'],[/^(укладк|укладан|вкладан)/,'вкладан'],
+  [/^(митт|мите|мити|мит$)/,'митт'],[/^(восстан|видновл|видновал)/,'видновл'],[/^(выпрям|випрям|виривн)/,'виривн'],
+  [/^(мелир|милир)/,'мелир'],[/^масс?аж/,'масаж'],[/^(педикюр|педик)/,'педик'],[/^(маникюр|маник)/,'маник']];
+function fold(t){
+  return String(t||'').toLowerCase().replace(/['’`ʼ"«»]/g,'').replace(/[ьъ]/g,'').replace(/ґ/g,'г').replace(/[іїыйи]/g,'и').replace(/[еєэё]/g,'е')
+    .split(/[^a-zа-я0-9]+/).filter(Boolean).map(function(w){ for (var i=0;i<STEMS.length;i++) if (STEMS[i][0].test(w)) return STEMS[i][1]; return w; });
+}
+function searchServices(q){
+  var words = fold(q); if (!words.length) return null;
+  var out = [];
+  (S.catalog||[]).forEach(function(c){ c.services.forEach(function(sv){
+    var nm = fold(sv.name), hay = ' '+nm.concat(fold(c.name)).join(' ');
+    if (words.every(function(w){ return hay.indexOf(w) >= 0; }))
+      out.push({s:sv, c:c, r: (nm[0] && nm[0].indexOf(words[0])===0) ? 0 : 1, i: out.length}); // «Стрижка…» вище за «Фарбування + стрижка»
+  }); });
+  return out.sort(function(a,b){ return a.r-b.r || a.i-b.i; });
+}
+function svcBtn(sv, c, withCat){
+  return h('button',{class:'svc',onclick:function(){ haptic(); S.svc=sv; S.cat=c; S.master=null; S.masters=null; go('masters'); }},
+    h('span',{class:'t'}, h('div',{class:'n',text:sv.name}), h('div',{class:'m',text:dur(sv.duration_min)}),
+      withCat ? h('div',{class:'c',text:c.name+(sv.group?' · '+sv.group:'')}) : null),
+    h('span',{class:'p',text:price(sv.price)}));
+}
+// поле пошуку; onChange отримує рядок, перерисовує лише список (фокус і клавіатура не зникають)
+function searchField(onChange){
+  var t = null;
+  var inp = h('input',{id:'q',type:'search',inputmode:'search',enterkeyhint:'search',autocomplete:'off',autocapitalize:'off',spellcheck:'false',
+    placeholder:'Пошук послуги: стрижка, манікюр…','aria-label':'Пошук послуги',value:S.q||''});
+  var clr = h('button',{class:'clr','aria-label':'Очистити пошук',text:'✕',style:S.q?'':'display:none',onclick:function(){ inp.value=''; fire(); inp.focus(); }});
+  function fire(){ S.q = inp.value; clr.style.display = S.q ? '' : 'none'; onChange(S.q); }
+  inp.addEventListener('input', function(){ clearTimeout(t); t = setTimeout(fire, 120); });
+  inp.addEventListener('keydown', function(e){ if (e.key==='Enter') { clearTimeout(t); fire(); inp.blur(); } });
+  return h('div',{class:'srch'}, h('span',{class:'ico',text:'🔍'}), inp, clr);
+}
+function fillSearch(box, q){
+  var r = searchServices(q); box.innerHTML='';
+  if (r.length) {
+    box.appendChild(h('div',{class:'found',text:'Знайдено: '+r.length}));
+    r.forEach(function(x){ box.appendChild(svcBtn(x.s, x.c, true)); });
+    return;
+  }
+  box.appendChild(h('div',{class:'empty',id:'nothing'}, 'Нічого не знайдено за «'+q.trim()+'».',
+    h('div',{class:'note',text:'Спробуйте коротше слово (напр. «стриж», «фарб», «манік») або оберіть категорію.'}),
+    h('button',{class:'btn btn-ghost',style:'margin-top:12px',onclick:function(){ var i=document.getElementById('q'); if (i){ i.value=''; i.dispatchEvent(new Event('input')); S.q=''; } show(); }}, 'Показати всі категорії')));
+}
+
 function vCats(){
+  var y = S.restoreY; // список малюється після завантаження — скрол відновлюємо тоді
   var box = h('div',{class:'list'}, h('div',{class:'spin'}));
-  render(h('div',{class:'screen'}, head(1,'Послуга'), box));
-  loadCatalog().then(function(cats){
+  var sbox = h('div',{});
+  render(h('div',{class:'screen'}, head(1,'Послуга'), sbox, box));
+  function fill(cats){
     box.innerHTML='';
-    if (!cats.length) { box.appendChild(h('div',{class:'empty',text:'Онлайн-запис тимчасово недоступний. Напишіть адміністратору в чаті бота.'})); return; }
+    if (S.q && fold(S.q).length) return fillSearch(box, S.q);
     cats.forEach(function(c){
-      box.appendChild(h('button',{class:'row',onclick:function(){ haptic(); S.cat=c; go('svcs'); }},
+      box.appendChild(h('button',{class:'row cat',onclick:function(){ haptic(); S.cat=c; S.q=''; S.scrollMem=S.scrollMem||{}; S.scrollMem.svcs=0; go('svcs'); }},
         h('img',{class:'thumb',src:catImg(c.name),alt:''}),
         h('span',{class:'t',text:c.name}), h('span',{class:'cnt',text:String(c.count)}), h('span',{class:'ar',text:'›'})));
     });
+  }
+  loadCatalog().then(function(cats){
+    if (!cats.length) { box.innerHTML=''; box.appendChild(h('div',{class:'empty',text:'Онлайн-запис тимчасово недоступний. Напишіть адміністратору в чаті бота.'})); return; }
+    sbox.appendChild(searchField(function(){ fill(cats); }));
+    fill(cats); if (y) window.scrollTo(0, y);
   }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити послуги. Спробуйте ще раз.'})); });
 }
 
 function vSvcs(){
   var c = S.cat; if (!c) return home();
+  var hd = head(1,'Послуга');
   var list = h('div',{class:'list'});
-  c.services.forEach(function(s){
-    list.appendChild(h('button',{class:'svc',onclick:function(){ haptic(); S.svc=s; S.master=null; S.masters=null; go('masters'); }},
-      h('span',{class:'t'}, h('div',{class:'n',text:s.name}), h('div',{class:'m',text:dur(s.duration_min)})),
-      h('span',{class:'p',text:price(s.price)})));
+  var groups = c.groups || [];
+  var chips = groups.length ? h('div',{class:'chips'}) : null;
+  function jump(g, btn){
+    haptic();
+    [].forEach.call(chips.children, function(x){ x.classList.toggle('on', x===btn); });
+    var el = document.querySelector('.grp[data-g="'+g.replace(/"/g,'')+'"]'); if (!el) return;
+    var top = el.getBoundingClientRect().top + window.scrollY - hd.getBoundingClientRect().height - 4;
+    window.scrollTo({top: Math.max(0, top), behavior: 'smooth'});
+  }
+  if (chips) groups.forEach(function(g){
+    var b = h('button',{class:'chip',onclick:function(){ jump(g.name, b); }}, g.name, h('i',{text:String(g.count)})); chips.appendChild(b);
   });
-  render(h('div',{class:'screen'}, head(1,'Послуга'),
-    h('div',{class:'cathead'}, h('img',{src:catImg(c.name),alt:''}), h('b',{text:c.name})), list));
+  var ch = h('div',{class:'cathead'}, h('img',{src:catImg(c.name),alt:''}), h('b',{text:c.name+' · '+c.count}));
+  function fill(q){
+    list.innerHTML='';
+    var on = !!(q && fold(q).length);
+    if (chips) chips.style.display = on ? 'none' : '';
+    ch.style.display = on ? 'none' : '';             // пошук іде по всіх категоріях — плашка категорії тут лише плутає
+    if (q && fold(q).length) return fillSearch(list, q);
+    var last = null;
+    c.services.forEach(function(sv){
+      if (sv.group && sv.group !== last) {
+        last = sv.group; var g = groups.filter(function(x){ return x.name===sv.group; })[0];
+        list.appendChild(h('div',{class:'grp','data-g':sv.group.replace(/"/g,'')}, sv.group, h('span',{text: g ? String(g.count) : ''})));
+      }
+      list.appendChild(svcBtn(sv, c, false));
+    });
+  }
+  hd.appendChild(searchField(fill)); if (chips) hd.appendChild(chips);
+  render(h('div',{class:'screen'}, hd, ch, list));
+  fill(S.q);
 }
 
 function avatar(m){
@@ -711,7 +816,10 @@ function boot(){
     // Мʼяко просимо номер у тих, хто ще не поділився (раз на добу, можна закрити)
     try {
       var k='svs_phone_ask', last=+localStorage.getItem(k)||0;
-      if (j.client && !j.client.has_phone || !j.client) { if (Date.now()-last > 864e5) { localStorage.setItem(k, Date.now()); setTimeout(function(){ ensurePhone(false).then(function(){ show(); }); }, 600); } }
+      if (j.client && !j.client.has_phone || !j.client) { if (Date.now()-last > 864e5) setTimeout(function(){
+        if (S.stack.length!==1 || S.stack[0]!=='home' || document.querySelector('.sheet')) return; // клієнт уже пішов записуватись — номер попросимо при підтвердженні
+        localStorage.setItem(k, Date.now());
+        ensurePhone(false).then(function(){ if (S.stack.length===1) show(); }); }, 900); }
     } catch(e){}
   }).catch(function(){ render(h('div',{class:'screen center'}, h('div',{class:'hello',text:'Немає звʼязку'}),
     h('button',{class:'btn btn-rose',onclick:boot}, 'Спробувати ще раз'))); });
