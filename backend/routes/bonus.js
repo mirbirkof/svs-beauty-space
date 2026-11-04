@@ -22,6 +22,24 @@ router.put('/settings', async (req, res) => {
   try { res.json(await bonus.saveSettings(req.body || {})); } catch (e) { fail(res, e); }
 });
 
+// ── 04.11 Бонуси майстру за клієнта (lib/visit-loyalty) ─────────────
+// ставки за умовами (повернення / перезапис / висока оцінка) і поріг оцінки
+router.get('/master-loyalty', async (req, res) => {
+  try { res.json(await require('../lib/visit-loyalty').getConfig()); } catch (e) { fail(res, e); }
+});
+router.put('/master-loyalty', async (req, res) => {
+  try {
+    res.json(await require('../lib/visit-loyalty').saveConfig(req.body || {}, req.user && req.user.id));
+  } catch (e) { /^invalid-/.test(e.message) ? res.status(400).json({ error: e.message }) : fail(res, e); }
+});
+// історія нарахувань конкретному майстру (картка майстра в CRM)
+router.get('/master-rewards', async (req, res) => {
+  const mid = Number(req.query.master_id);
+  if (!Number.isSafeInteger(mid) || mid <= 0) return res.status(400).json({ error: 'master_id required' });
+  try { res.json(await require('../lib/visit-loyalty').masterRewards(mid, Math.min(500, Number(req.query.limit) || 100))); }
+  catch (e) { fail(res, e); }
+});
+
 // ── Правила нарахування (CRUD) ──────────────────────────────────────
 router.get('/rules', async (req, res) => {
   try { res.json({ items: await bonus.listRules() }); } catch (e) { fail(res, e); }

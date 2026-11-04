@@ -17,7 +17,7 @@ const n = (v) => Math.round((+v || 0) * 100) / 100;
 
 // лимиты из настроек салона (подтверждены Боссом 04.07)
 const BONUS_LIMIT_PCT = 10;   // бонусами можно гасить не больше 10% чека
-const CASHBACK_PCT = 3;       // кешбек 3% от оплаченного
+const CASHBACK_PCT = 3;       // ИСТОРИЧЕСКИЙ потолок кешбека (до 04.11 было 3%; с 04.11 — 2%, см. проверку ниже по pay_bonus_base)
 const EPS = 0.5;              // допуск округления, грн
 
 (async () => {
@@ -78,6 +78,16 @@ const EPS = 0.5;              // допуск округления, грн
             GREATEST(COALESCE(price,0) - COALESCE(discount_amount,0) - COALESCE(pay_bonus_money,0) - COALESCE(pay_cert_amount,0), 0) * ${CASHBACK_PCT}/100.0) + ${EPS}
         ORDER BY id DESC LIMIT 5`);
       badCb.length ? bad(`визитов с кешбеком >3% реально оплаченного: ${badCb.length} (напр. #${badCb[0].id}: начислено ${n(badCb[0].pay_bonus_accrued)})`) : ok('кешбек нигде не превышает 3% оплаченного');
+      // 04.11: с переходом на 2% каждый новый визит хранит базу кешбека (pay_bonus_base) —
+      // начисление не должно превышать текущую ставку правила от неё
+      if (await col(c, 'appointments', 'pay_bonus_base')) {
+        const rule = await q(c, `SELECT percent FROM bonus_rules WHERE trigger_event='payment' AND is_active ORDER BY priority DESC, id LIMIT 1`);
+        const pct = rule[0] ? +rule[0].percent : 0;
+        const over = await q(c, `SELECT id, pay_bonus_base, pay_bonus_accrued FROM appointments
+          WHERE pay_settled_at IS NOT NULL AND pay_bonus_base IS NOT NULL AND COALESCE(pay_bonus_accrued,0) > pay_bonus_base * ${pct}/100.0 + ${EPS}
+          ORDER BY id DESC LIMIT 5`);
+        over.length ? bad(`визитов с кешбеком выше текущих ${pct}% от оплаченного: ${over.length} (напр. #${over[0].id})`) : ok(`новые визиты: кешбек ≤ ${pct}% реально оплаченного`);
+      }
     } else info('колонки начисления кешбека нет — пропуск');
 
     // ═══ 4. ГРАММ-ЦЕНА: заряд материала = граммы × ₴/грам ═══

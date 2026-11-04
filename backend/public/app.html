@@ -131,6 +131,13 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 
 /* кабінет */
 .hello{font-size:22px;margin:4px 0 2px}
+.rate{background:var(--card,#fff);border-radius:16px;padding:14px 16px;margin:0 0 16px;box-shadow:0 2px 10px rgba(0,0,0,.06);text-align:center}
+.rate .rt{font-weight:600;font-size:16px;margin-bottom:2px}
+.rate .d,.hist .bon{font-size:12px;opacity:.7}
+.hist .bon{color:var(--gold);opacity:1}
+.stars{display:flex;justify-content:center;gap:6px;margin:10px 0 6px}
+.stars .star{background:none;border:0;font-size:34px;line-height:1;color:#5a4c4f;cursor:pointer;padding:0 2px}
+.stars .star.on{color:#f5b301}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 18px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
 .stat b{display:block;font-size:19px;color:var(--gold)}
@@ -648,6 +655,9 @@ function vCabinet(){
       h('div',{class:'stat'}, h('b',{text:String(Math.round(c.points||0))}), h('span',{text:'бонусів'})),
       h('div',{class:'stat'}, h('b',{text:String(c.visits||0)}), h('span',{text:'візитів'})),
       h('div',{class:'stat'}, h('b',{text:String((j.upcoming||[]).length)}), h('span',{text:'попереду'}))));
+    // 04.11 «Оцініть візит»: найсвіжіший оплачений візит, який ще можна оцінити (або змінити оцінку 24 год)
+    var toRate = (j.history||[]).filter(function(a){ return a.can_rate; })[0];
+    if (toRate) box.appendChild(rateCard(toRate));
     box.appendChild(h('h3',{text:'Майбутні записи'}));
     if (!(j.upcoming||[]).length) box.appendChild(h('div',{class:'empty'}, 'Немає майбутніх записів.', h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨')));
     var list = h('div',{class:'list'}); box.appendChild(list);
@@ -668,12 +678,34 @@ function vCabinet(){
         var b = a.bill, showBill = b && b.can_pay;
         var right = a.paid ? '✅ Оплачено' : (showBill ? billMoney(b.amount) : '');
         box.appendChild(h('div',{class:'hist','data-id':a.id}, h('div',{}, h('div',{text:a.service||'Візит'}), h('div',{class:'d',text:a.date_label+' · '+a.master}),
-            null),
+            a.bonus_accrued>0 ? h('div',{class:'bon',text:'+'+Math.round(a.bonus_accrued)+' бонусів за візит'}) : null,
+            a.rating ? h('div',{class:'d',text:'Ваша оцінка: '+'⭐'.repeat(a.rating)}) : null),
           h('div',{class:'p',style:'color:var(--gold)',text:right})));
         if (showBill) box.appendChild(billCard(a));
       });
     }
   }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Немає звʼязку.'})); });
+}
+// 04.11 Картка «Оцініть візит»: 5 зірок майстру. Одна оцінка на візит, змінити можна протягом 24 год.
+function rateCard(a){
+  var card = h('div',{class:'rate','data-rate':a.id});
+  var title = h('div',{class:'rt',text: a.rating ? 'Ваша оцінка візиту' : 'Оцініть візит'});
+  var sub = h('div',{class:'d',text:a.service+' · '+a.master+' · '+a.date_label});
+  var row = h('div',{class:'stars'});
+  var note = h('div',{class:'d',text: a.rating ? 'Змінити оцінку можна протягом 24 годин.' : 'Торкніться зірки — це допомагає нам ставати кращими 💛'});
+  function paint(n){ Array.prototype.forEach.call(row.children, function(b,i){ b.classList.toggle('on', i<n); }); }
+  [1,2,3,4,5].forEach(function(n){
+    row.appendChild(h('button',{class:'star','data-n':n,'aria-label':n+' з 5',onclick:function(){
+      haptic(); paint(n);
+      api('/appointments/'+a.id+'/rate',{method:'POST',body:{stars:n}}).then(function(j){
+        if (j._status===200){ a.rating = n; title.textContent = 'Дякуємо за оцінку!'; note.textContent = 'Змінити оцінку можна протягом 24 годин.'; toast('Оцінку збережено'); }
+        else { paint(a.rating||0); haptic('error'); toast(j.message||'Не вдалося зберегти оцінку'); }
+      }).catch(function(){ paint(a.rating||0); toast('Немає звʼязку. Спробуйте ще раз.'); });
+    }}, '★'));
+  });
+  paint(a.rating||0);
+  card.appendChild(title); card.appendChild(sub); card.appendChild(row); card.appendChild(note);
+  return card;
 }
 // 04.11 Рахунок візиту (послуги + товари − знижки) і оплата Apple Pay / Google Pay через monobank.
 function billMoney(v){ v=Math.round((+v||0)*100)/100; return (v%1 ? v.toFixed(2).replace('.',',') : String(v)).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' грн'; }

@@ -729,10 +729,10 @@ async function showCabinet(ctx, uid, chatId) {
     });
   }
   const st = (await ctx.pool.query(
-    `SELECT COALESCE(total_visits,0) v, COALESCE(total_spent,0) sp, COALESCE(loyalty_points,0) pts FROM clients WHERE id=$1`, [cl.id])).rows[0] || {};
+    `SELECT COALESCE(total_visits,0) v, COALESCE(loyalty_points,0) pts FROM clients WHERE id=$1`, [cl.id])).rows[0] || {};
   const head = `👤 <b>${cl.name || 'Мій кабінет'}</b>\n` +
     `🎁 Бонусів: <b>${Math.round(st.pts)}</b> (= ${Math.round(st.pts)} ₴ знижки)\n` +
-    (Number(st.v) ? `💛 Візитів: ${st.v}${Number(st.sp) ? ` на ${Math.round(st.sp)} ₴` : ''}` : 'Раді вітати вас 💛');
+    (Number(st.v) ? `💛 Візитів: ${st.v}` : 'Раді вітати вас 💛'); // 04.11: суми витрат клієнту не показуємо
   const kb = [
     [{ text: '📅 Мої записи', callback_data: 'bk:cab:visits' }],
     [{ text: '🎁 Мої бонуси', callback_data: 'bk:cab:bonus' }],
@@ -784,9 +784,9 @@ async function showProfile(ctx, uid, chatId) {
   if (!cl) return showCabinet(ctx, uid, chatId);
   const c = (await ctx.pool.query(
     `SELECT name, phone, to_char(birthday,'DD.MM.YYYY') bday, COALESCE(total_visits,0) v,
-            COALESCE(total_spent,0) sp, to_char(first_visit_at,'DD.MM.YYYY') fv FROM clients WHERE id=$1`, [cl.id])).rows[0];
+            to_char(first_visit_at,'DD.MM.YYYY') fv FROM clients WHERE id=$1`, [cl.id])).rows[0];
   const out = ['👤 <b>Профіль</b>\n', `Імʼя: <b>${c.name || '—'}</b>`, `Телефон: ${fmtPhoneFull(c.phone)}`, `День народження: ${c.bday || 'не вказано'}`];
-  if (Number(c.v)) out.push(`\n💛 З нами: ${c.v} візит(ів)${Number(c.sp) ? ` на ${Math.round(c.sp)} ₴` : ''}${c.fv ? ` з ${c.fv}` : ''}`);
+  if (Number(c.v)) out.push(`\n💛 З нами: ${c.v} візит(ів)${c.fv ? ` з ${c.fv}` : ''}`);
   const kb = [];
   if (!c.bday) kb.push([{ text: '🎂 Вказати день народження', callback_data: 'bk:cab:setbday' }]);
   kb.push([{ text: '‹ Кабінет', callback_data: 'bk:cab:home' }]);
@@ -1249,38 +1249,21 @@ async function onCallback(cq, ctx) {
       const stars = Math.min(5, Math.max(1, Number(p[3]) || 0));
       await ack();
       if (!rIds.length || !stars) return true;
-      // безпека: оцінювати можна ТІЛЬКИ власні візити
-      const own = await ctx.pool.query(
-        `SELECT a.id, a.client_id, a.master_id FROM appointments a
-          JOIN clients c ON c.id = a.client_id
-         WHERE a.id = ANY($1::int[]) AND c.telegram_id = $2 AND a.status='done'`, [rIds, uid]);
-      if (!own.rows.length) { await respond(ctx.tg, target, 'Цей візит вже неактуальний.'); return true; }
-      for (const r of own.rows) {
-        if (salonStep) {
-          await ctx.pool.query(
-            `UPDATE visit_ratings SET salon_stars=$2, updated_at=NOW() WHERE appointment_id=$1`, [r.id, stars]);
-        } else {
-          await ctx.pool.query(
-            `INSERT INTO visit_ratings (appointment_id, client_id, master_id, master_stars)
-             VALUES ($1,$2,$3,$4)
-             ON CONFLICT (tenant_id, appointment_id)
-             DO UPDATE SET master_stars=EXCLUDED.master_stars, updated_at=NOW()`,
-            [r.id, r.client_id, r.master_id, stars]);
-        }
+      // 04.11: спільна логіка з мініапом (lib/visit-loyalty.rateVisit): лише власний
+      // ОПЛАЧЕНИЙ візит, одна оцінка на візит, змінити можна 24 год, 1–3⭐ → тихе
+      // сповіщення власнику (одне на натискання, не на кожен візит групи).
+      const VL = require('./visit-loyalty');
+      const notify = VL.ownerNotifier(ctx.tg, ctx.pool);
+      const own = { rows: [] };
+      let lastErr = null;
+      for (const rid of rIds) {
+        const r = await VL.rateVisit({ apptId: rid, telegramId: uid, stars, field: salonStep ? 'salon' : 'master',
+          ownerNotify: own.rows.length ? null : notify }, ctx.pool);
+        if (r.ok) own.rows.push({ id: rid }); else lastErr = r;
       }
-      // 1-3 зірки → одразу алерт власнику: незадоволений клієнт, треба реагувати
-      if (stars <= 3) {
-        try {
-          const oc = (await ctx.pool.query(
-            `SELECT owner_chat_id FROM tenant_bot_settings
-              WHERE tenant_id=current_tenant_id() AND owner_chat_id IS NOT NULL LIMIT 1`)).rows[0];
-          const who = (await ctx.pool.query(
-            `SELECT c.name, COALESCE(NULLIF(m.online_title,''), m.name) AS master_name
-               FROM appointments a JOIN clients c ON c.id=a.client_id
-               LEFT JOIN masters m ON m.id=a.master_id WHERE a.id=$1`, [own.rows[0].id])).rows[0] || {};
-          if (oc) await ctx.tg('sendMessage', { chat_id: oc.owner_chat_id,
-            text: `⚠️ Низька оцінка ${salonStep ? 'салону' : 'майстра'}: ${'⭐'.repeat(stars)} від ${who.name || 'клієнта'}${who.master_name ? ' (майстер ' + who.master_name + ')' : ''}. Варто звʼязатись.` });
-        } catch (_) {}
+      if (!own.rows.length) {
+        await respond(ctx.tg, target, (lastErr && lastErr.message) || 'Цей візит вже неактуальний.');
+        return true;
       }
       if (!salonStep) {
         const idsKey = own.rows.map(r => r.id).join('.');

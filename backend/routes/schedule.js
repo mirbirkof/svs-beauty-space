@@ -2118,6 +2118,9 @@ router.post('/appointments/:id/unpay', async (req, res) => {
           [appt.client_id, id]).catch(() => {});
       }
     }
+    // 04.11: сторно бонусів майстру за цей візит (повернення/перезапис/оцінка)
+    await require('../lib/visit-loyalty').reverseVisit(id, 'скасування оплати').catch(() => []);
+    await pool.query(`UPDATE appointments SET pay_bonus_base=NULL WHERE id=$1`, [id]).catch(() => {});
     // абонемент: якщо візит було списано з абонемента (у т.ч. вручну зі сторінки
     // абонементів) — повертаємо візит. Без цього «скасувати оплату» спалює візит клієнта (18.08).
     let subReverted = false;
@@ -2544,10 +2547,19 @@ async function payHandler(req, res) {
       stock = await writeOffForAppointment(id);
     } catch (e) { stock = { written: false, error: e.message }; }
     // нарахування бонусів за візит (від суми, сплаченої грошима; ідемпотентно по source)
+    // 04.11 (Босс): база кешбеку = реально сплачені гроші за візит (каса/термінал/Mono +
+    // передоплата), уже після знижок, БЕЗ частини, закритої бонусами/сертифікатом/абонементом.
+    // Зберігаємо в pay_bonus_base — від неї ж рахуються бонуси майстру (lib/visit-loyalty).
+    const VL = require('../lib/visit-loyalty');
+    const bonusBase = round2(finalCash + (Number(prepaidApplied) || 0));
+    await pool.query(`UPDATE appointments SET pay_bonus_base=$2 WHERE id=$1`, [id, bonusBase])
+      .catch((e) => console.error('[pay/bonus-base]', id, e.message));
+    // майстер як клієнт (працює зараз) → без кешбеку; звільнили → звичайний клієнт
+    const clientIsMaster = appt.client_id ? await VL.workingMasterOfClient(appt.client_id).catch(() => null) : null;
     let accrued = 0;
-    if (appt.client_id && finalCash > 0) {
+    if (appt.client_id && bonusBase > 0 && !clientIsMaster) {
       try {
-        const acc = await bonusLib.accrue({ clientId: appt.client_id, checkAmount: finalCash, autoRule: 'payment',
+        const acc = await bonusLib.accrue({ clientId: appt.client_id, checkAmount: bonusBase, autoRule: 'payment',
           sourceType: 'appointment', sourceId: id, description: `Візит #${id}` });
         accrued = acc ? Number(acc.amount || 0) : 0;
         if (accrued > 0) await pool.query(`UPDATE appointments SET pay_bonus_accrued=$2 WHERE id=$1`, [id, accrued])
@@ -2558,6 +2570,9 @@ async function payHandler(req, res) {
         accrued = -1; // маркер збою для відповіді
       }
     }
+    // бонуси майстру за клієнта (повернення / перезапис) — best-effort, не блокує оплату
+    let masterBonus = null;
+    try { masterBonus = await VL.onVisitPaid(id); } catch (e) { console.error('[pay/master-bonus]', id, e.message); }
     await emitAppointmentCompleted(id, appt.master_id);
 
     // Вітринні лічильники клієнта (total_spent/total_visits/last_visit_at) — перерахунок
@@ -2570,7 +2585,9 @@ async function payHandler(req, res) {
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount },
       discount_parts: { services: discSvc, products: discProd, check: discCheck },
       prepaid: prepaidApplied,
-      bonus_accrued: Math.max(0, accrued),
+      bonus_accrued: Math.max(0, accrued), bonus_base: bonusBase,
+      ...(clientIsMaster ? { bonus_skipped: 'client-is-master' } : {}),
+      ...(masterBonus ? { master_bonus: masterBonus } : {}),
       ...(accrued === -1 ? { bonus_warning: 'Бонуси за візит НЕ нараховано (технічний збій) — нарахуйте вручну.' } : {}),
       ...(stock && stock.written === false ? { stock_warning: 'Матеріали візиту НЕ списано зі складу — спишіть вручну.' } : {}) });
   } catch (e) {
@@ -2741,6 +2758,8 @@ router.delete('/appointments/:id', async (req, res) => {
         }).catch(e => console.error('[schedule] bonus storno:', e.message));
       }
     } catch (e) { console.error('[schedule] bonus storno lookup:', e.message); }
+    // 04.11: сторно бонусів майстру за цей візит (best-effort, власні tx)
+    await require('../lib/visit-loyalty').reverseVisit(id, 'візит скасовано/видалено').catch(() => []);
     await emitAppt('appointment.cancelled', id, null); // в журнал событий + вебхуки
     res.json({ ok: true, deleted: id, soft });
   } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }

@@ -59,6 +59,8 @@ async function tick(pool, tg) {
       ORDER BY c.telegram_id, a.starts_at`);
   // пост-візитні оцінки — незалежно від нагадувань (свій дедуп всередині)
   try { await ratingTick(pool, tg); } catch (e) { console.error('[reminders/rate]', e.message); }
+  // 04.11: бонуси майстру за перезапис у день візиту і за високу оцінку (після 24-год вікна)
+  try { await require('./visit-loyalty').tick(pool); } catch (e) { console.error('[reminders/master-loyalty]', e.message); }
   if (!due.rows.length) return;
 
   // групуємо: один клієнт + один день + один kind = одне повідомлення
@@ -115,8 +117,10 @@ async function ratingTick(pool, tg) {
        FROM appointments a
        JOIN clients c ON c.id = a.client_id AND c.telegram_id IS NOT NULL
        LEFT JOIN masters m ON m.id = a.master_id
-      WHERE a.status = 'done'
-        AND COALESCE(a.ends_at, a.starts_at) BETWEEN NOW() - interval '26 hours' AND NOW() - interval '2 hours'
+      -- 04.11 (Босс): просимо оцінку лише після ОПЛАЧЕНОГО візиту (каса/термінал/Mono),
+      -- через ~20 хв після оплати, вікно 26 год; скасовані/неявки — ні
+      WHERE a.pay_settled_at IS NOT NULL AND a.status NOT IN ('cancelled','no_show')
+        AND a.pay_settled_at BETWEEN NOW() - interval '26 hours' AND NOW() - interval '20 minutes'
         AND NOT EXISTS (SELECT 1 FROM booking_reminders r WHERE r.appointment_id = a.id AND r.kind = 'rate')
         AND NOT EXISTS (SELECT 1 FROM visit_ratings vr WHERE vr.appointment_id = a.id)
       ORDER BY c.telegram_id, a.starts_at`);

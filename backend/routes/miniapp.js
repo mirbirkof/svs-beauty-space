@@ -423,20 +423,24 @@ router.get('/my', async (req, res) => {
     if (!c) return res.json({ client: null, upcoming: [], history: [] });
     const q = (where, order, lim = 20) => getPool().query(
       `SELECT a.id, a.status, a.service_id, a.master_id,
-              (a.pay_settled_at IS NOT NULL) AS paid,
+              (a.pay_settled_at IS NOT NULL) AS paid, COALESCE(a.pay_bonus_accrued,0)::float AS bonus_accrued,
+              vr.master_stars, (vr.created_at IS NULL OR vr.created_at > NOW() - interval '24 hours') AS rate_open,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM-DD') AS date,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t1,
               to_char(a.ends_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t2,
               COALESCE(s.name, '') AS service, COALESCE(NULLIF(m.online_title,''), m.name, '') AS master
          FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN masters m ON m.id=a.master_id
+         LEFT JOIN visit_ratings vr ON vr.appointment_id=a.id
         WHERE a.client_id=$1 AND ${where} ORDER BY a.starts_at ${order} LIMIT ${Number(lim)}`, [c.id]);
     const up = await q(`a.status IN ('booked','confirmed') AND a.starts_at > NOW()`, 'ASC');
     const hist = await q(`(a.status IN ('done','arrived') OR (a.status IN ('booked','confirmed') AND a.starts_at <= NOW()))`, 'DESC', 300); // 04.11: історія без обрізки до 20 (у клієнта 121 візит)
     const map = (r) => ({ id: Number(r.id), date: r.date, date_label: fmtDateUa(r.date), time: r.t2 ? `${r.t1}–${r.t2}` : r.t1,
       service: r.service, master: r.master, service_id: r.service_id, master_id: r.master_id,
       // 04.11 (Босс): клієнту НЕ віддаємо суми витрат (ні ціну візиту, ні «витрачено»).
-      // Лише: оплачено чи ні; сума — тільки в рахунку, який ще треба сплатити.
-      paid: !!r.paid });
+      // Лише: оплачено, скільки бонусів нараховано за візит, оцінка і чи можна її поставити/змінити.
+      paid: !!r.paid, bonus_accrued: Number(r.bonus_accrued) || 0,
+      rating: r.master_stars != null ? Number(r.master_stars) : null,
+      can_rate: !!r.paid && !['cancelled', 'no_show'].includes(r.status) && !!r.rate_open });
     const history = hist.rows.map(map);
     // 04.11 Рахунок візиту (послуги + товари з CRM − знижки/сертифікат/бонуси/передоплата) — та сама
     // функція, що рахує каса (lib/visit-bill). Тільки для візитів, які вже почались, за останні 30 днів:
@@ -496,6 +500,20 @@ router.post('/appointments/:id/pay', async (req, res) => {
   }
 });
 
+// 04.11 Оцінка майстра після ОПЛАЧЕНОГО візиту (та сама логіка, що й у боті): 1–5⭐,
+// одна оцінка на візит, змінити можна 24 год, 1–3⭐ → тихе сповіщення власнику.
+router.post('/appointments/:id/rate', async (req, res) => {
+  try {
+    const c = await clientOf(req.tgUser.id);
+    const id = Number(req.params.id);
+    if (!c || !Number.isSafeInteger(id) || id <= 0) return res.status(403).json({ error: 'forbidden' });
+    const VL = require('../lib/visit-loyalty');
+    const r = await VL.rateVisit({ apptId: id, clientId: c.id, stars: req.body && req.body.stars, field: 'master',
+      ownerNotify: VL.ownerNotifier(botTg(), getPool()) }, getPool());
+    if (r.error) return res.status(r.error === 'not-found' ? 403 : r.error === 'bad-stars' ? 400 : 409).json(r);
+    res.json({ ok: true, rating: r.stars });
+  } catch (e) { console.error('[miniapp/rate]', e.message); res.status(500).json({ error: 'server' }); }
+});
 
 router.post('/cancel', async (req, res) => {
   try {

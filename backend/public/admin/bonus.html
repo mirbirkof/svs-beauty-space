@@ -68,6 +68,25 @@
     </div>
 
     <div>
+      <!-- 04.11 Бонуси майстру за клієнта -->
+      <div class="card" id="mlCard">
+        <h3>Бонуси майстрам за клієнтів</h3>
+        <div class="muted" style="font-size:13px;margin-bottom:10px">Відсоток від суми, яку клієнт реально сплатив за візит. Нараховується на бонусний рахунок клієнтської картки майстра — окремо за кожну умову. Не нараховується, якщо клієнт сам майстер салону, візит скасовано або сума 0.</div>
+        <div class="row">
+          <div class="fld"><label>Увімкнено</label><select id="ml_enabled"><option value="true">Так</option><option value="false">Ні</option></select></div>
+          <div class="fld"><label>Клієнт повернувся до майстра, %</label><input id="ml_return" type="number" min="0" max="10" step="0.1"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label>Перезапис у день візиту, %</label><input id="ml_rebook" type="number" min="0" max="10" step="0.1"></div>
+          <div class="fld"><label>Висока оцінка, %</label><input id="ml_rating" type="number" min="0" max="10" step="0.1"></div>
+        </div>
+        <div class="row">
+          <div class="fld"><label>Висока оцінка — від скількох зірок</label><select id="ml_min"><option>5</option><option>4</option><option>3</option></select></div>
+          <div class="fld"></div>
+        </div>
+        <button class="btn primary" id="mlSave" onclick="saveMasterLoyalty()">Зберегти ставки</button>
+        <div class="msg" id="mlMsg"></div>
+      </div>
       <!-- Баланс клієнта + коригування -->
       <div class="card">
         <h3>Гаманець клієнта</h3>
@@ -127,15 +146,42 @@
 
 <script src="/admin/assets/admin-shell.js" data-title="Бонуси"></script>
 <script>
+async function aj(p,o){const r=await adminFetch(p,o);let j={};try{j=await r.json()}catch(_){}if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 const EV={payment:'Оплата',review:'Відгук',referral:'Реферал',birthday:'ДН',visit_series:'Серія',welcome:'Привітання'};
 const CAT={all:'Усі',services:'Послуги',products:'Товари'};
 
-async function loadAll(){ await Promise.all([loadKpis(),loadRules(),loadSettings()]); }
+async function loadAll(){ await Promise.all([loadKpis(),loadRules(),loadSettings(),loadMasterLoyalty()]); }
+let _mlLoaded=false;
+async function loadMasterLoyalty(){
+  try{
+    const c=await aj('/api/bonus/master-loyalty');
+    document.getElementById('ml_enabled').value=String(c.enabled!==false);
+    document.getElementById('ml_return').value=c.return_pct;
+    document.getElementById('ml_rebook').value=c.rebook_pct;
+    document.getElementById('ml_rating').value=c.rating_pct;
+    document.getElementById('ml_min').value=String(c.rating_min);
+    _mlLoaded=true;
+  }catch(e){ document.getElementById('mlMsg').textContent='Не вдалося завантажити ставки'; }
+}
+async function saveMasterLoyalty(){
+  const m=document.getElementById('mlMsg');
+  if(!_mlLoaded){ m.style.color='#B23B2E'; m.textContent='Ставки не завантажені — збереження скасовано.'; return; }
+  m.style.color=''; m.textContent='Збереження…';
+  try{
+    const c=await aj('/api/bonus/master-loyalty',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      enabled:document.getElementById('ml_enabled').value==='true',
+      return_pct:Number(document.getElementById('ml_return').value),
+      rebook_pct:Number(document.getElementById('ml_rebook').value),
+      rating_pct:Number(document.getElementById('ml_rating').value),
+      rating_min:Number(document.getElementById('ml_min').value)})});
+    m.style.color='#2E7D4F'; m.textContent='Збережено: '+c.return_pct+'% + '+c.rebook_pct+'% + '+c.rating_pct+'% (оцінка від '+c.rating_min+'⭐)';
+  }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+(e.message||e); }
+}
 
 async function loadKpis(){
   try{
-    const a=await adminFetch('/api/bonus/analytics');
+    const a=await aj('/api/bonus/analytics');
     const k=[
       ['Активне зобов\u0027язання',Number(a.liability||0).toFixed(0),'бонусів на балансах'],
       ['Нараховано всього',Number(a.accrued||0).toFixed(0),''],
@@ -150,7 +196,7 @@ async function loadKpis(){
 async function loadRules(){
   const tb=document.querySelector('#rulesTbl tbody');
   try{
-    const r=await adminFetch('/api/bonus/rules'); const items=r.items||[];
+    const r=await aj('/api/bonus/rules'); const items=r.items||[];
     _bonusRules = items; // XSS-фікс: тримаємо об'єкти в пам'яті, у onclick — тільки id
     if(!items.length){ tb.innerHTML='<tr><td colspan="6" class="muted">Правил ще немає. Додайте перше.</td></tr>'; return; }
     tb.innerHTML=items.map(x=>{
@@ -165,7 +211,7 @@ async function loadRules(){
 
 async function loadSettings(){
   try{
-    const s=await adminFetch('/api/bonus/settings');
+    const s=await aj('/api/bonus/settings');
     document.getElementById('s_enabled').value=String(s.enabled!==false);
     document.getElementById('s_max').value=s.max_pay_percent;
     document.getElementById('s_min').value=s.min_redeem_amount;
@@ -191,7 +237,7 @@ async function saveSettings(){
     return;
   }
   try{
-    await adminFetch('/api/bonus/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    await aj('/api/bonus/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       enabled:document.getElementById('s_enabled').value==='true',
       max_pay_percent:Number(document.getElementById('s_max').value),
       min_redeem_amount:Number(document.getElementById('s_min').value),
@@ -244,14 +290,14 @@ async function saveRule(){
   };
   if(!body.name){ m.style.color='#B23B2E'; m.textContent='Вкажіть назву'; return; }
   try{
-    if(id) await adminFetch('/api/bonus/rules/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    else await adminFetch('/api/bonus/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(id) await aj('/api/bonus/rules/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    else await aj('/api/bonus/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     closeRule(); loadRules();
   }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }
 }
 async function delRule(id){
   if(!confirm('Видалити правило?')) return;
-  try{ await adminFetch('/api/bonus/rules/'+id,{method:'DELETE'}); loadRules(); }catch(e){ alert('Помилка: '+e.message); }
+  try{ await aj('/api/bonus/rules/'+id,{method:'DELETE'}); loadRules(); }catch(e){ alert('Помилка: '+e.message); }
 }
 
 // ── Гаманець клієнта ──
@@ -261,7 +307,7 @@ async function loadClient(){
   if(!cid){ box.textContent='Введіть ID.'; return; }
   box.textContent='Завантаження…';
   try{
-    const r=await adminFetch('/api/bonus/balance/'+cid); curClient=cid;
+    const r=await aj('/api/bonus/balance/'+cid); curClient=cid;
     const b=r.balance||{}; const h=r.history||[];
     box.innerHTML=`<div style="font-size:26px;font-weight:700;margin-bottom:4px">${Number(b.balance||0).toFixed(0)} <span style="font-size:14px;color:var(--text-secondary)">бонусів</span></div>
       <div class="muted">Нараховано ${Number(b.total_accrued||0).toFixed(0)} · Списано ${Number(b.total_redeemed||0).toFixed(0)} · Згоріло ${Number(b.total_expired||0).toFixed(0)}</div>
@@ -277,7 +323,7 @@ async function doAdjust(){
   if(!curClient||!amt){ m.style.color='#B23B2E'; m.textContent='Вкажіть клієнта і суму'; return; }
   m.style.color=''; m.textContent='Застосування…';
   try{
-    await adminFetch('/api/bonus/adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:curClient,amount:amt,description:document.getElementById('adj_desc').value||undefined})});
+    await aj('/api/bonus/adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:curClient,amount:amt,description:document.getElementById('adj_desc').value||undefined})});
     document.getElementById('adj_amt').value=''; document.getElementById('adj_desc').value='';
     m.style.color='#1B7A3D'; m.textContent='Готово ✓'; loadClient(); loadKpis();
   }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }

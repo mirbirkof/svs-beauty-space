@@ -12716,7 +12716,7 @@ async function openMasterCard(id){
 const _MC_TABS = [
   ['profile','Профіль'], ['schedule','Графік'], ['services','Послуги'],
   ['salary','Схема ЗП'], ['online','Онлайн-запис'], ['notify','Оповіщення'],
-  ['stats','Статистика'], ['photos','Фото робіт'], ['access','Доступ']
+  ['stats','Статистика'], ['bonus','Бонуси від клієнтів'], ['photos','Фото робіт'], ['access','Доступ']
 ];
 // Безпека (Босс 19.07): «Схема ЗП» і «Доступ» + кнопка «Звільнити» — ЛИШЕ власнику.
 const _mcIsOwner = () => !!(USER && USER.role === 'owner');
@@ -12781,10 +12781,39 @@ function mcTab(k, skipShell){
   }
   const fn = { profile:_mcTabProfile, schedule:_mcTabSchedule, services:_mcTabServices,
               salary:_mcTabSalary, online:_mcTabOnline, notify:_mcTabNotify,
-              stats:_mcTabStats, photos:_mcTabPhotos, access:_mcTabAccess }[k];
+              stats:_mcTabStats, bonus:_mcTabBonus, photos:_mcTabPhotos, access:_mcTabAccess }[k];
   document.getElementById('mcTabBody').innerHTML = fn ? fn() : '';
 }
 const _esc = s => String(s||'').replace(/"/g,'&quot;');
+// loyalty-0411: бонуси майстру від візитів клієнтів (0.5% за умову) — історія з причиною і сторно
+function _mcTabBonus(){
+  const id = _mcId;
+  setTimeout(async ()=>{
+    const el = document.getElementById('mcBonusBody'); if(!el) return;
+    let r; try{ r = await api('/api/bonus/master-rewards?master_id='+id+'&limit=200'); }catch(e){ el.innerHTML='<div class="empty">Помилка: '+escapeHtml(e.message||e)+'</div>'; return; }
+    const items = (r && r.items) || [];
+    const fmt = n => (Math.round(Number(n||0)*100)/100).toLocaleString('uk-UA');
+    const fd = d => d ? new Date(d).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+    const head = '<div style="display:flex;gap:24px;margin-bottom:14px;font-size:14px">'
+      + '<div>Баланс бонусів майстра: <b>'+fmt(r.balance)+'</b></div>'
+      + '<div>Нараховано (діючі): <b>'+fmt(r.total)+'</b></div>'
+      + '<div>Сторновано: <b>'+fmt(r.total_reversed)+'</b></div>'
+      + (r.master_client_id ? '' : '<div style="color:#f59e0b">клієнтська картка ще не створена — з\'явиться при першому нарахуванні</div>')
+      + '</div>';
+    if(!items.length){ el.innerHTML = head + '<div class="empty">Нарахувань ще не було</div>'; return; }
+    const rows = items.map(x=>{
+      const rev = x.status==='reversed';
+      return '<tr'+(rev?' style="opacity:.6"':'')+'><td>'+(x.visit_date||fd(x.created_at))+'</td><td>'+escapeHtml(x.client_name||'—')+'</td>'
+        +'<td>'+escapeHtml(x.label||x.condition)+'</td><td style="text-align:right">'+fmt(x.percent)+'%</td>'
+        +'<td style="text-align:right">'+fmt(x.check_amount)+' ₴</td><td style="text-align:right;font-weight:600">'+(rev?'<s>':'')+'+'+fmt(x.amount)+(rev?'</s>':'')+'</td>'
+        +'<td>'+(rev?'<span style="color:#ef4444">сторно</span>'+(x.reverse_reason?' — '+escapeHtml(x.reverse_reason):''):'<span style="color:#10b981">нараховано</span>')+'</td></tr>';
+    }).join('');
+    el.innerHTML = head + '<table class="tbl" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>'
+      + '<th style="text-align:left">Візит</th><th style="text-align:left">Клієнт</th><th style="text-align:left">Причина</th><th>%</th><th>Чек</th><th>Бонуси</th><th style="text-align:left">Статус</th>'
+      + '</tr></thead><tbody>'+rows+'</tbody></table>';
+  },0);
+  return '<div id="mcBonusBody"><div class="empty">Завантаження…</div></div>';
+}
 function _mcTabProfile(){
   const ms = _mcData.ms;
   // зірки від клієнтів (visit_ratings, 264) — підвантажуються асинхронно
