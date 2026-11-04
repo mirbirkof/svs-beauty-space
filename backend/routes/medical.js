@@ -342,6 +342,7 @@ router.get('/formulas', async (req, res) => {
     const add = (c, v) => { p.push(v); w.push(c.replace('?', '$' + p.length)); };
     if (req.query.client_id) add('client_id = ?', Number(req.query.client_id));
     if (req.query.employee_id) add('employee_id = ?', Number(req.query.employee_id));
+    if (req.query.appointment_id) add('appointment_id = ?', Number(req.query.appointment_id));
     if (req.query.date_from) add('formula_date >= ?', req.query.date_from);
     if (req.query.date_to) add('formula_date <= ?', req.query.date_to);
     const limit = Math.min(Number(req.query.limit) || 50, 200);
@@ -363,19 +364,41 @@ router.get('/formulas/:id(\\d+)', async (req, res) => {
 router.post('/formulas', async (req, res) => {
   try {
     const b = req.body || {};
+    // [04.11 Босс] формула прив'язується до ВІЗИТУ: клієнт, дата, майстер і послуга беруться з запису,
+    // щоб формули можна було порівнювати по візитах. Чужий клієнт для візиту → 400.
+    let appt = null;
+    if (b.appointment_id) {
+      appt = (await q(`SELECT a.id, a.client_id, a.master_id, a.service_id,
+                              ((a.starts_at AT TIME ZONE 'Europe/Kyiv')::date)::text AS d, m.name AS master_name
+                         FROM appointments a LEFT JOIN masters m ON m.id = a.master_id WHERE a.id=$1`, [Number(b.appointment_id)]))[0];
+      if (!appt) return res.status(404).json({ ok: false, error: 'appointment not found' });
+      if (b.client_id && appt.client_id && Number(b.client_id) !== Number(appt.client_id)) return res.status(400).json({ ok: false, error: 'appointment belongs to another client' });
+      if (!b.client_id) b.client_id = appt.client_id;
+      if (req.user && req.user.role === 'master' && req.user.master_id && Number(req.user.master_id) !== Number(appt.master_id)) {
+        return res.status(403).json({ ok: false, error: 'forbidden' });
+      }
+    }
     if (!b.client_id) return res.status(400).json({ ok: false, error: 'client_id required' });
-    const card = (await q(`SELECT id FROM medical_cards WHERE client_id=$1 AND tenant_id=current_tenant_id()`, [Number(b.client_id)]))[0];
-    // попередня поточна формула → not current, лінкуємо
-    const prev = (await q(`SELECT id FROM coloring_formulas WHERE client_id=$1 AND tenant_id=current_tenant_id() AND is_current=true ORDER BY formula_date DESC LIMIT 1`, [Number(b.client_id)]))[0];
-    if (prev) await q(`UPDATE coloring_formulas SET is_current=false, updated_at=NOW() WHERE id=$1 AND tenant_id=current_tenant_id()`, [prev.id]);
+    const clientId = Number(b.client_id);
+    const fdate = b.formula_date || (appt && appt.d) || null;
+    const card = (await q(`SELECT id FROM medical_cards WHERE client_id=$1 AND tenant_id=current_tenant_id()`, [clientId]))[0];
+    // попередня формула = остання ДО цієї дати (формулу давнього візиту можна внести заднім числом);
+    // «поточна» лише та, після якої новіших немає.
+    const prev = (await q(`SELECT id FROM coloring_formulas WHERE client_id=$1 AND tenant_id=current_tenant_id()
+                            AND formula_date <= COALESCE($2::date, CURRENT_DATE) ORDER BY formula_date DESC, id DESC LIMIT 1`, [clientId, fdate]))[0];
+    const newer = (await q(`SELECT 1 FROM coloring_formulas WHERE client_id=$1 AND tenant_id=current_tenant_id()
+                             AND formula_date > COALESCE($2::date, CURRENT_DATE) LIMIT 1`, [clientId, fdate]))[0];
+    const isCurrent = !newer;
+    if (isCurrent) await q(`UPDATE coloring_formulas SET is_current=false, updated_at=NOW() WHERE client_id=$1 AND tenant_id=current_tenant_id() AND is_current=true`, [clientId]);
     const ins = await q(
       `INSERT INTO coloring_formulas (client_id, medical_card_id, appointment_id, employee_id, employee_name, service_id, formula_date,
         zones, pre_treatment, post_treatment, total_amount_g, result_notes, result_rating, client_rating, next_visit_recommendation, photo_id, previous_formula_id, is_current)
-       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,CURRENT_DATE),COALESCE($8::jsonb,'[]'),$9,$10,$11,$12,$13,$14,$15,$16,$17,true) RETURNING *`,
-      [Number(b.client_id), card?.id || null, num(b.appointment_id), b.employee_id || req.user?.id || null, b.employee_name || req.user?.display_name || null,
-       num(b.service_id), b.formula_date || null, jb(b.zones), b.pre_treatment || null, b.post_treatment || null, num(b.total_amount_g),
-       b.result_notes || null, num(b.result_rating), num(b.client_rating), b.next_visit_recommendation || null, num(b.photo_id), prev?.id || null]);
-    logAction({ user: req.user, action: 'medical.formula.create', entity: 'coloring_formula', entity_id: ins[0].id, ip: req.ip, meta: { client_id: Number(b.client_id) } }).catch(() => {});
+       VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7::date,CURRENT_DATE),COALESCE($8::jsonb,'[]'),$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [clientId, card?.id || null, num(b.appointment_id), b.employee_id || req.user?.id || null,
+       b.employee_name || (appt && appt.master_name) || req.user?.display_name || null,
+       num(b.service_id) || (appt && appt.service_id) || null, fdate, jb(b.zones), b.pre_treatment || null, b.post_treatment || null, num(b.total_amount_g),
+       b.result_notes || null, num(b.result_rating), num(b.client_rating), b.next_visit_recommendation || null, num(b.photo_id), prev?.id || null, isCurrent]);
+    logAction({ user: req.user, action: 'medical.formula.create', entity: 'coloring_formula', entity_id: ins[0].id, ip: req.ip, meta: { client_id: clientId, appointment_id: num(b.appointment_id) } }).catch(() => {});
     res.json({ ok: true, formula: ins[0] });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

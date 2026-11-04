@@ -296,6 +296,8 @@ select.input { background:var(--card); }
 /* Fix 20.07 (Jarvis): AI-помічник (#aiFab/#aiPanel z-index:99999) перекривав модалки (було z-index:10000) —
    форма «Новий запис» та вікно оплати ховалися під панеллю плану дня. Підняв модалку вище помічника,
    але нижче тостів (100001), щоб сповіщення про збереження лишались видимими поверх модалки. */
+.fml-row .input { width:100%; min-width:0; box-sizing:border-box; padding:7px 8px; }
+.cc-ev-click:hover { background:rgba(124,92,255,.07); }
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100000; padding:16px; }
 .modal { background:var(--card); border-radius:var(--radius); max-width:640px; width:100%; max-height:90vh; overflow-y:auto; }
 .modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
@@ -3008,6 +3010,18 @@ select.input { background:var(--card); }
     </div>
   </div>
 
+  <!-- [04.11] Деталь візиту: послуги, оплата, матеріали, формула фарбування -->
+  <div id="visitDetailModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeVisitDetail()">
+    <div class="modal" style="max-width:720px">
+      <div class="modal-header">
+        <h3 id="visitDetailTitle">Візит</h3>
+        <button type="button" class="info-i" data-t="<b>Деталі візиту.</b> Що саме робили (усі послуги з цінами), хто робив, скільки й як заплатили, які матеріали списали зі складу і яку формулу фарбування використали. Формулу можна записати прямо тут — вона прив'язується до цього візиту." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
+        <button class="modal-close" onclick="closeVisitDetail()">✕</button>
+      </div>
+      <div class="modal-body" id="visitDetailBody"></div>
+    </div>
+  </div>
+
   <!-- Beauty: редактор медкарты -->
   <div id="medCardModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeMedCard()">
     <div class="modal" style="max-width:560px">
@@ -3022,7 +3036,7 @@ select.input { background:var(--card); }
 
   <!-- Beauty: формула окрашивания -->
   <div id="formulaModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeFormula()">
-    <div class="modal" style="max-width:540px">
+    <div class="modal" style="max-width:820px">
       <div class="modal-header">
         <h3 id="formulaTitle">Формула фарбування</h3>
         <button type="button" class="info-i" data-t="<b>Формула фарбування.</b> Рецепт кольору для клієнта: які фарби, оксид і в яких пропорціях змішали. Збережи — і наступного разу повториш точно той самий відтінок без вгадування." onclick="showInfo(event,this.dataset.t)" style="margin-left:8px">i</button>
@@ -10327,6 +10341,7 @@ async function openAppt(id, masterId) {
           </div>
         </div>
       </div>
+      <div id="apptFormula"></div>
       <div id="apptProducts"></div>
       <div id="apptMaterials"></div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
@@ -10430,10 +10445,24 @@ async function openAppt(id, masterId) {
   loadApptPhotos(a.id, 'after');
   loadApptProducts(a.id);
   loadApptMaterials(a.id);
+  loadApptFormula(a.id, a.client_id);
   if (!a.paid) loadPayOptions(a.id);
 }
 
 // Товари / розхідники візиту — підтягуємо реальні продажі товарів цього клієнта того дня
+// [04.11 Босс] Формула фарбування прямо у вікні запису журналу — майстер пише її після процедури,
+// вона прив'язується до цього візиту й потрапляє в картку клієнта (хронологія + порівняння).
+async function loadApptFormula(apptId, clientId){
+  const box=document.getElementById('apptFormula'); if(!box) return;
+  const r=await api('/api/medical/formulas?appointment_id='+Number(apptId)+'&limit=1');
+  if(!r || r.ok===false){ box.innerHTML=''; return; }
+  const f=(r.items||[])[0];
+  const again=`()=>loadApptFormula(${Number(apptId)},${clientId?Number(clientId):'null'})`;
+  box.innerHTML=`<div style="border:1px solid #ddd3ff;background:#faf8ff;border-radius:12px;padding:10px 12px">
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:14px">🎨 Формула фарбування</b>
+      ${clientId?`<button class="btn btn-sm ${f?'btn-outline':'btn-primary'}" style="margin-left:auto" onclick="formulaForVisit(${Number(apptId)},${Number(clientId)},${again})">${f?'✎ Редагувати':'➕ Записати формулу'}</button>`:'<span style="margin-left:auto;font-size:12px;color:var(--text-secondary)">спершу вкажіть клієнта</span>'}</div>
+    ${f?'<div style="margin-top:6px">'+_fmlTableHtml(f)+'</div>':''}</div>`;
+}
 async function loadApptProducts(id) {
   const box = document.getElementById('apptProducts');
   if (!box) return;
@@ -11653,8 +11682,8 @@ function _ccTimeline(c){
   const ev = [];
   const esc = s => String(s==null?'':s).replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
   (c.visits||[]).forEach(v=>{ if(v.starts_at) ev.push({ t:new Date(v.starts_at), icon:'content_cut', color:'#7c5cff',
-    title:'Візит'+(v.services_text?': '+esc(v.services_text):''), sub:(v.master_name?esc(v.master_name):'')+(v.status?' · '+esc(v.status):''),
-    amount:Number(v.price||0) }); });
+    title:'Візит'+(v.services_text?': '+esc(v.services_text):'')+(v.has_formula?' 🎨':''), sub:(v.master_name?esc(v.master_name):'')+(v.status?' · '+esc((typeof ST_LABEL!=='undefined'&&ST_LABEL[v.status])||v.status):''),
+    amount:Number(v.price||0), click: v.id ? `openVisitDetail(${Number(v.id)})` : '' }); });
   (c.product_sales||[]).forEach(p=>{ if(p.sale_date) ev.push({ t:new Date(p.sale_date), icon:'shopping_bag', color:'#0aa',
     title:'Покупка: '+esc(p.product_name||'товар')+(p.qty?' ×'+Number(p.qty):''), sub:(p.master_name?esc(p.master_name):''),
     amount:Number(p.total_price||0) }); });
@@ -11662,13 +11691,14 @@ function _ccTimeline(c){
     title:'Замовлення №'+o.id, sub:esc(o.status||''), amount:Number(o.total||0) }); });
   ev.sort((a,b)=>b.t-a.t);
   if(!ev.length) return '<div class="empty">Подій ще немає</div>';
-  return ev.slice(0,40).map(e=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border,#eee)">
+  return ev.slice(0,40).map(e=>`<div class="${e.click?'cc-ev-click':''}" ${e.click?`onclick="${e.click}" title="Відкрити деталі візиту"`:''} style="display:flex;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border,#eee)${e.click?';cursor:pointer':''}">
     <span class="material-icons-round" style="font-size:18px;color:${e.color};margin-top:1px">${e.icon}</span>
     <div style="flex:1;min-width:0">
       <div style="font-size:13px;font-weight:600">${e.title}</div>
       <div style="font-size:11px;color:var(--text-secondary,#888)">${e.t.toLocaleDateString('uk-UA')}${e.sub?' · '+e.sub:''}</div>
     </div>
     ${e.amount?`<div style="font-size:13px;font-weight:600;white-space:nowrap">${e.amount.toLocaleString('uk-UA')} ₴</div>`:''}
+    ${e.click?'<span class="material-icons-round" style="font-size:18px;color:var(--text-secondary,#aaa);align-self:center">chevron_right</span>':''}
   </div>`).join('');
 }
 function _ccRenderTags(tags){
@@ -11771,10 +11801,10 @@ async function openClientCard(id){
     const c = r.client; const st = c.stats || {};
     const bday = c.birthday ? new Date(c.birthday).toISOString().slice(0,10) : '';
     const visitsHtml = (c.visits||[]).map(v=>`
-      <tr><td>${v.starts_at?new Date(v.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
-      <td>${v.services_text||'—'}</td><td>${v.master_name||'—'}</td>
+      <tr class="cc-ev-click" style="cursor:pointer" title="Відкрити деталі візиту" onclick="openVisitDetail(${Number(v.id)})"><td>${v.starts_at?new Date(v.starts_at).toLocaleDateString('uk-UA'):'—'}</td>
+      <td>${escapeHtml(v.services_text||'—')}${v.has_formula?' <span title="Є формула фарбування">🎨</span>':''}</td><td>${escapeHtml(v.master_name||'—')}</td>
       <td>${Number(v.price||0).toLocaleString()} ₴</td>
-      <td><span class="badge b-${v.status}">${v.status}</span></td></tr>`).join('')
+      <td><span class="badge b-${escapeHtml(v.status||'')}">${escapeHtml((typeof ST_LABEL!=='undefined'&&ST_LABEL[v.status])||v.status||'—')}</span></td></tr>`).join('')
       || '<tr><td colspan="5"><div class="empty">Візитів немає</div></td></tr>';
     const prodHtml = (c.product_sales||[]).map(p=>`
       <tr><td>${p.sale_date?new Date(p.sale_date).toLocaleDateString('uk-UA'):'—'}</td>
@@ -11816,6 +11846,7 @@ async function openClientCard(id){
       <div id="ccInsights" style="margin-bottom:14px"></div>
       <div id="ccRating" style="margin-bottom:18px"></div>
       <div id="ccRecs" style="margin-bottom:18px"></div>
+      <div id="ccFormulas" style="margin-bottom:18px"></div>
       <h4 style="margin:0 0 8px;font-size:14px">Хронологія</h4>
       <div class="cc-timeline" style="margin-bottom:18px">${timelineHtml}</div>
       <h4 style="margin:0 0 4px;font-size:14px">Історія візитів у системі${(c.visits||[]).length?' ('+(c.visits||[]).length+')':''}</h4>
@@ -11839,10 +11870,83 @@ async function openClientCard(id){
     loadClientHistory(id);
     loadClientRecs(id);
     loadClientMedical(id);
+    loadClientFormulas(id);
     loadClientRating(id);
     loadClientInsights(id);
     loadClientUpsellTags(id);
   } catch(e){ document.getElementById('clientCardBody').innerHTML = '<div class="empty">Помилка: '+(e.message||e)+'</div>'; }
+}
+// [04.11 Босс] Формули фарбування в картці клієнта: хронологія (дата → деталь візиту) + порівняння двох візитів.
+let _ccFormulas = [];
+async function loadClientFormulas(id){
+  const box=document.getElementById('ccFormulas'); if(!box) return;
+  let html='';
+    // Аудит 13.08: збій ≠ «формул немає» (майстер підбирав би склад наосліп)
+    let fh = null, fhErr = null;
+    try { fh = await api('/api/medical/formulas/history/'+id); if (!fh || fh.ok===false) { fhErr = fh; fh = null; } } catch (e) { fhErr = e; }
+    if (fhErr) html += '<div style="margin-top:8px;font-size:12px;color:#c0392b;font-weight:600">⚠️ Історія формул не завантажилась (збій) — не вважайте, що її немає.</div>';
+    html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🎨 Формули фарбування${fh&&fh.items?' ('+fh.items.length+')':''}</b>`
+      + `<button class="btn btn-sm" style="margin-left:auto" onclick="openFormula(${id})">➕ Нова формула</button></div>`;
+    if(fh && fh.items && !fh.items.length) html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">Формул ще немає. Запишіть формулу з візиту: клік по візиту в хронології → «Записати формулу».</div>';
+    if(fh && fh.items && fh.items.length){
+      // [04.11] хронологія формул: дата → деталь візиту, ✎ редагувати, ↻ повторити; нижче порівняння двох візитів
+      _ccFormulas = fh.items.slice();
+      const E=s=>escapeHtml(String(s==null?'':s));
+      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Майстер</th><th>Формула / зони</th><th>Оцінка</th><th></th></tr></thead><tbody>';
+      html += fh.items.slice(0,20).map(f=>{
+        const d=f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
+        const zones=_fmlArr(f.zones).map(_fmlZoneText).filter(Boolean).join('; ');
+        const formula=zones||f.result_notes||(f.total_amount_g?f.total_amount_g+' г':'—');
+        const rating=f.result_rating?('★'.repeat(Number(f.result_rating))):'—';
+        const dCell=f.appointment_id?`<a href="javascript:void(0)" title="Відкрити візит" onclick="openVisitDetail(${Number(f.appointment_id)})">${d} ›</a>`:d;
+        return `<tr><td style="white-space:nowrap">${dCell}</td><td>${E(f.employee_name)}</td><td>${E(formula)}${f.total_amount_g?' <span style="color:var(--text-secondary)">· '+E(f.total_amount_g)+' г</span>':''}</td><td>${rating}</td>`
+          + `<td style="white-space:nowrap"><button class="btn btn-sm" title="Редагувати" onclick="editFormula(${id},${f.id})">✎</button> <button class="btn btn-sm" title="Повторити" onclick="repeatFormula(${id},${f.id})">↻</button></td></tr>`;
+      }).join('');
+      html += '</tbody></table>';
+      if(fh.items.length>=2){
+        const opt=(sel)=>fh.items.map(f=>`<option value="${f.id}" ${f.id===sel?'selected':''}>${f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—'} · ${E(f.employee_name||'')}</option>`).join('');
+        html += `<div style="margin-top:10px;padding:10px;border:1px solid var(--border,#e5e5ea);border-radius:10px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px"><b style="font-size:13px">⇄ Порівняти формули</b>
+            <select id="ccFmlA" class="input" style="width:auto" onchange="ccFmlCompare()">${opt(fh.items[1].id)}</select>
+            <span>→</span>
+            <select id="ccFmlB" class="input" style="width:auto" onchange="ccFmlCompare()">${opt(fh.items[0].id)}</select></div>
+          <div id="ccFmlCmp"></div></div>`;
+      }
+    }
+  box.innerHTML = html;
+  if(document.getElementById('ccFmlA')) ccFmlCompare();
+}
+function ccFmlCompare(){
+  const out=document.getElementById('ccFmlCmp'); if(!out) return;
+  const A=_ccFormulas.find(f=>String(f.id)===document.getElementById('ccFmlA').value);
+  const B=_ccFormulas.find(f=>String(f.id)===document.getElementById('ccFmlB').value);
+  if(!A||!B){ out.innerHTML=''; return; }
+  const E=escapeHtml, dt=f=>f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
+  // рядки зіставляємо по зоні (n-й барвник у зоні ↔ n-й), решта — як є
+  const key=arr=>{ const cnt={}; return arr.map(x=>{ const z=String(x.zone||'').trim().toLowerCase(); cnt[z]=(cnt[z]||0)+1; return [z+'#'+cnt[z], x]; }); };
+  const ka=key(_fmlArr(A.zones)), kb=key(_fmlArr(B.zones));
+  const keys=[...new Set([...ka.map(k=>k[0]), ...kb.map(k=>k[0])])];
+  const ma=Object.fromEntries(ka), mb=Object.fromEntries(kb);
+  const F=[['brand','Бренд',''],['shade','Відтінок',''],['amount_g','Грами',' г'],['oxidant_pct','Окисник','%'],['time_min','Час',' хв']];
+  const val=(x,f)=>{ if(!x) return ''; const v=x[f[0]]; if(v==null||v==='') return (f[0]==='shade'&&x.formula&&!x.shade&&!x.brand)?String(x.formula):''; return String(v)+f[2]; };
+  const cell=(x,y,f)=>{ const a=val(x,f), b=val(y,f); const diff=a!==b; return [a,b,diff]; };
+  let changes=0;
+  const rows=keys.map(k=>{
+    const x=ma[k], y=mb[k]; const zone=(x&&x.zone)||(y&&y.zone)||'—';
+    const cols=F.map(f=>cell(x,y,f));
+    cols.forEach(c=>{ if(c[2]) changes++; });
+    const td=(c)=>c[2]?`<td style="background:#fff4d6"><span style="color:#999;text-decoration:line-through">${E(c[0]||'—')}</span><br><b style="color:#b35c00">${E(c[1]||'—')}</b></td>`:`<td>${E(c[1]||'')}</td>`;
+    return `<tr><td><b>${E(zone)}</b>${!x?' <span style="color:#1e7b34;font-size:11px">нова</span>':''}${!y?' <span style="color:#c0392b;font-size:11px">прибрали</span>':''}</td>${cols.map(td).join('')}</tr>`;
+  }).join('');
+  const meta=[['total_amount_g','Всього грамів',' г'],['pre_treatment','Догляд до',''],['post_treatment','Догляд після',''],['result_rating','Оцінка',''],['result_notes','Результат','']].map(m=>{
+    const a=A[m[0]], b=B[m[0]]; const sa=a==null||a===''?'':String(a)+m[2], sb=b==null||b===''?'':String(b)+m[2];
+    if(!sa && !sb) return '';
+    const d=sa!==sb; if(d) changes++;
+    return `<tr><td>${m[1]}</td><td${d?' style="background:#fff4d6"':''}>${E(sa||'—')}</td><td${d?' style="background:#fff4d6"':''}>${E(sb||'—')}</td></tr>`;
+  }).join('');
+  out.innerHTML = `<div style="font-size:12.5px;margin-bottom:6px">${dt(A)} → <b>${dt(B)}</b>: ${changes?'<span style="color:#b35c00;font-weight:600">змін: '+changes+'</span> (підсвічено; закреслено — як було)':'<span style="color:#1e7b34;font-weight:600">без змін</span>'}</div>
+    ${rows?`<table class="tbl"><thead><tr><th>Зона</th><th>Бренд</th><th>Відтінок</th><th>Грами</th><th>Окисник</th><th>Час</th></tr></thead><tbody>${rows}</tbody></table>`:''}
+    ${meta?`<table class="tbl" style="margin-top:6px"><thead><tr><th></th><th>${dt(A)}</th><th>${dt(B)}</th></tr></thead><tbody>${meta}</tbody></table>`:''}`;
 }
 // Підказка майстру прямо в картці: чого людина в нас ніколи не робила / що прострочила (25.07)
 async function loadClientUpsellTags(id){
@@ -11959,27 +12063,7 @@ async function loadClientMedical(id){
     if(!blockers.length && !warns.length){
       html += '<div style="font-size:12px;color:#27ae60">✓ Протипоказань і алергій не зазначено</div>';
     }
-    // история формул окрашивания
-    // Аудит 13.08: збій ≠ «формул немає» (майстер підбирав би склад наосліп)
-    let fh = null, fhErr = null;
-    try { fh = await api('/api/medical/formulas/history/'+id); } catch (e) { fhErr = e; }
-    if (fhErr) html += '<div style="margin-top:8px;font-size:12px;color:#c0392b;font-weight:600">⚠️ Історія формул не завантажилась (збій) — не вважайте, що її немає.</div>';
-    html += `<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><b style="font-size:13px">🎨 Формули фарбування${fh&&fh.items?' ('+fh.items.length+')':''}</b>`
-      + `<button class="btn btn-sm" style="margin-left:auto" onclick="openFormula(${id})">➕ Нова формула</button></div>`;
-    if(fh && fh.items && fh.items.length){
-      html += '<table class="tbl" style="margin-top:4px"><thead><tr><th>Дата</th><th>Майстер</th><th>Формула / зони</th><th>Оцінка</th><th></th></tr></thead><tbody>';
-      html += fh.items.slice(0,8).map(f=>{
-        const d=f.formula_date?new Date(f.formula_date).toLocaleDateString('uk-UA'):'—';
-        const E=s=>_aiEsc?_aiEsc(String(s||'')):String(s||'');
-        let zones='';
-        try{ const z=typeof f.zones==='string'?JSON.parse(f.zones):f.zones; if(Array.isArray(z)) zones=z.map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('; '); }catch(_){}
-        const formula=zones||E(f.result_notes)||(f.total_amount_g?f.total_amount_g+' г':'—');
-        const rating=f.result_rating?('★'.repeat(Number(f.result_rating))):'—';
-        return `<tr><td>${d}</td><td>${E(f.employee_name)}</td><td>${E(formula)}</td><td>${rating}</td>`
-          + `<td><button class="btn btn-sm" title="Повторити" onclick="repeatFormula(${id},${f.id})">↻</button></td></tr>`;
-      }).join('');
-      html += '</tbody></table>';
-    }
+    // [04.11] формули фарбування — окремий блок картки (#ccFormulas, loadClientFormulas): видно й без медкарти
     // алергопроби
     let at = null, atErr = null;
     try { at = await api('/api/medical/allergy-tests?client_id='+id+'&limit=6'); }
@@ -12083,51 +12167,200 @@ async function saveMedCard(){
     closeMedCard(); loadClientMedical(_medClientId);
   }catch(e){ alert('Помилка збереження: '+(e.message||e)); }
 }
-// Формула окрашивания: создать / повторить предыдущую.
-let _formClientId = null;
+// Формула фарбування (04.11 Босс): структуровані зони — бренд / відтінок / грами / окисник % / час,
+// прив'язка до візиту (appointment_id), редагування, порівняння двох візитів у картці клієнта.
+// zones jsonb: [{zone, brand, shade, amount_g, oxidant_pct, time_min, formula}] — formula = текстова зведена
+// (для старих рендерів і пошуку формул по zones::text). Старі записи {zone, formula} показуються як є.
+let _formClientId = null, _formApptId = null, _formEditId = null, _formOnSaved = null;
 function closeFormula(){ document.getElementById('formulaModal').style.display='none'; }
-function _zonesToText(z){ try{ const a=typeof z==='string'?JSON.parse(z):z; if(Array.isArray(a)) return a.map(x=>(x.zone?x.zone+': ':'')+(x.formula||x.name||'')).filter(Boolean).join('\n'); }catch(_){} return ''; }
-async function openFormula(clientId, prefill){
-  _formClientId=clientId;
+function _fmlArr(z){ try{ const a=typeof z==='string'?JSON.parse(z):z; return Array.isArray(a)?a:[]; }catch(_){ return []; } }
+function _fmlZoneText(x){
+  if(!x) return '';
+  const parts=[x.brand, x.shade].filter(v=>v!=null&&String(v).trim()!=='').join(' ');
+  const g = x.amount_g!=null&&x.amount_g!=='' ? ' '+x.amount_g+' г' : '';
+  const ox = x.oxidant_pct!=null&&x.oxidant_pct!=='' ? ' · окисник '+x.oxidant_pct+'%' : '';
+  const t = x.time_min!=null&&x.time_min!=='' ? ' · '+x.time_min+' хв' : '';
+  const body = (parts||g||ox||t) ? (parts+g+ox+t).trim() : (x.formula||x.name||'');
+  return (x.zone?x.zone+': ':'')+body;
+}
+function _zonesToText(z){ return _fmlArr(z).map(_fmlZoneText).filter(Boolean).join('\n'); }
+function _fmlRowHtml(x){
+  const E=s=>String(s==null?'':s).replace(/"/g,'&quot;');
+  // старий запис без структури — текст іде у «відтінок», щоб нічого не загубити
+  const legacy = x && !x.brand && !x.shade && x.formula ? x.formula : '';
+  return `<div class="fml-row" style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.6fr) minmax(0,.7fr) minmax(0,.6fr) 32px;gap:6px;margin-bottom:6px">
+    <input class="input fz-zone" placeholder="Корінь" value="${E(x&&x.zone)}">
+    <input class="input fz-brand" placeholder="Wella Koleston" value="${E(x&&x.brand)}">
+    <input class="input fz-shade" placeholder="6/0 або 7.1+8.0" value="${E((x&&x.shade)||legacy)}">
+    <input class="input fz-g" type="number" min="0" step="1" placeholder="г" value="${E(x&&x.amount_g)}" oninput="_fmlSumG()">
+    <input class="input fz-ox" type="number" min="0" max="12" step="0.5" placeholder="%" value="${E(x&&x.oxidant_pct)}">
+    <input class="input fz-t" type="number" min="0" step="1" placeholder="хв" value="${E(x&&x.time_min)}">
+    <button class="btn btn-sm" type="button" title="Прибрати рядок" onclick="this.parentNode.remove();_fmlSumG()">✕</button></div>`;
+}
+function _fmlAddRow(x){ const box=document.getElementById('fRows'); box.insertAdjacentHTML('beforeend', _fmlRowHtml(x||{})); }
+function _fmlSumG(){
+  const g=[...document.querySelectorAll('#fRows .fz-g')].reduce((s,i)=>s+(Number(i.value)||0),0);
+  const t=document.getElementById('fGram'); if(t && t.dataset.manual!=='1') t.value = g ? Math.round(g*10)/10 : '';
+}
+// openFormula(clientId, prefill, opts) — opts: { appointmentId, editId, title, onSaved }
+async function openFormula(clientId, prefill, opts){
+  opts = opts || {};
+  _formClientId=clientId; _formApptId=opts.appointmentId||null; _formEditId=opts.editId||null; _formOnSaved=opts.onSaved||null;
   const m=document.getElementById('formulaModal'); const body=document.getElementById('formulaBody');
-  document.getElementById('formulaTitle').textContent = prefill?'Повторити формулу (нова на основі минулої)':'Нова формула фарбування';
-  const E=s=>String(s==null?'':s).replace(/"/g,'&quot;'); const L='font-size:12px;color:var(--text-secondary)';
-  const zonesTxt = prefill?_zonesToText(prefill.zones):'';
+  document.getElementById('formulaTitle').textContent = opts.title || (_formEditId?'Редагувати формулу':(prefill?'Повторити формулу (нова на основі минулої)':'Нова формула фарбування'));
+  const E=s=>String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); const L='font-size:12px;color:var(--text-secondary)';
+  const p = prefill || {};
+  const rows = _fmlArr(p.zones);
+  const H='font-size:11px;color:var(--text-secondary);font-weight:600';
   body.innerHTML=`
-    <div style="margin-bottom:10px"><label style="${L}">Формула по зонах (по рядку: «Зона: формула»)</label>
-      <textarea id="fZones" class="input" rows="4" placeholder="Корінь: 6.0 + 9.0 (1:1) 6%&#10;Довжина: 8.1 9%">${E(zonesTxt)}</textarea></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div><label style="${L}">Догляд до</label><input id="fPre" class="input" value="${E(prefill&&prefill.pre_treatment)}"></div>
-      <div><label style="${L}">Догляд після</label><input id="fPost" class="input" value="${E(prefill&&prefill.post_treatment)}"></div>
-      <div><label style="${L}">Всього грамів</label><input id="fGram" type="number" class="input"></div>
-      <div><label style="${L}">Оцінка результату (1-5)</label><input id="fRating" type="number" min="1" max="5" class="input"></div>
+    ${_formApptId?`<div id="fApptInfo" style="font-size:12.5px;background:#f4f1ff;border:1px solid #ddd3ff;border-radius:8px;padding:6px 10px;margin-bottom:10px">Прив'язано до візиту №${Number(_formApptId)}</div>`:''}
+    <div style="margin-bottom:4px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.6fr) minmax(0,.7fr) minmax(0,.6fr) 32px;gap:6px">
+      <span style="${H}">Зона</span><span style="${H}">Бренд / лінія</span><span style="${H}">Відтінок</span><span style="${H}">Грами</span><span style="${H}">Окисник %</span><span style="${H}">Час, хв</span><span></span></div>
+    <div id="fRows"></div>
+    <button class="btn btn-sm" type="button" onclick="_fmlAddRow({})" style="margin-bottom:12px">+ барвник / зона</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="${L}">Всього грамів</label><input id="fGram" type="number" class="input" value="${E(p.total_amount_g)}" oninput="this.dataset.manual='1'"></div>
+      <div><label style="${L}">Оцінка результату (1-5)</label><input id="fRating" type="number" min="1" max="5" class="input" value="${E(_formEditId?p.result_rating:'')}"></div>
+      <div><label style="${L}">Догляд до</label><input id="fPre" class="input" value="${E(p.pre_treatment)}"></div>
+      <div><label style="${L}">Догляд після</label><input id="fPost" class="input" value="${E(p.post_treatment)}"></div>
     </div>
-    <div style="margin-bottom:10px"><label style="${L}">Нотатки по результату</label><textarea id="fNotes" class="input" rows="2"></textarea></div>
-    <div style="margin-bottom:12px"><label style="${L}">Рекомендація на наступний візит</label><input id="fNext" class="input"></div>
-    <button class="btn btn-primary btn-sm" onclick="saveFormula()">Зберегти формулу</button>`;
+    <div style="margin-bottom:10px"><label style="${L}">Нотатки по результату (що вийшло, як лягло, що змінити)</label><textarea id="fNotes" class="input" rows="2">${E(_formEditId?p.result_notes:'')}</textarea></div>
+    <div style="margin-bottom:12px"><label style="${L}">Рекомендація на наступний візит</label><input id="fNext" class="input" value="${E(_formEditId?p.next_visit_recommendation:'')}"></div>
+    <button class="btn btn-primary btn-sm" id="fSaveBtn" onclick="saveFormula()">Зберегти формулу</button>`;
+  (rows.length?rows:[{},{}]).forEach(x=>_fmlAddRow(x));
+  if (p.total_amount_g) document.getElementById('fGram').dataset.manual='1'; else _fmlSumG();
   m.style.display='flex';
 }
+function _fmlCollect(){
+  const num=v=>{ if(v==null||String(v).trim()==='') return null; const n=Number(String(v).replace(',','.')); return Number.isFinite(n)?n:null; };
+  return [...document.querySelectorAll('#fRows .fml-row')].map(r=>{
+    const x={ zone:r.querySelector('.fz-zone').value.trim(), brand:r.querySelector('.fz-brand').value.trim(),
+      shade:r.querySelector('.fz-shade').value.trim(), amount_g:num(r.querySelector('.fz-g').value),
+      oxidant_pct:num(r.querySelector('.fz-ox').value), time_min:num(r.querySelector('.fz-t').value) };
+    if(!x.zone && !x.brand && !x.shade && x.amount_g==null && x.oxidant_pct==null && x.time_min==null) return null;
+    x.formula=_fmlZoneText({...x, zone:''});
+    return x;
+  }).filter(Boolean);
+}
 async function saveFormula(){
-  const zones=document.getElementById('fZones').value.split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{
-    const i=line.indexOf(':'); return i>0?{zone:line.slice(0,i).trim(),formula:line.slice(i+1).trim()}:{formula:line};
-  });
-  const body={ client_id:_formClientId, zones,
+  const zones=_fmlCollect();
+  const notes=document.getElementById('fNotes').value.trim();
+  if(!zones.length && !notes){ toast('Додайте хоча б один барвник або нотатку','error'); return; }
+  const g=document.getElementById('fGram').value;
+  const body={ zones,
     pre_treatment:document.getElementById('fPre').value||null,
     post_treatment:document.getElementById('fPost').value||null,
-    total_amount_g:document.getElementById('fGram').value||null,
+    total_amount_g:g!==''?Number(g):null,
     result_rating:document.getElementById('fRating').value||null,
-    result_notes:document.getElementById('fNotes').value||null,
+    result_notes:notes||null,
     next_visit_recommendation:document.getElementById('fNext').value||null };
-  try{ await api('/api/medical/formulas',{method:'POST',body:JSON.stringify(body)});
-    closeFormula();
-    try{ loadClientMedical(_formClientId); }catch(_){/* збережено не з картки клієнта — панелі може не бути */}
-    const fp=document.getElementById('page-formulas');
-    if(fp && fp.classList.contains('active')) searchFormulas().catch(()=>{});
-  }catch(e){ alert('Помилка: '+(e.message||e)); }
+  const btn=document.getElementById('fSaveBtn'); if(btn) btn.disabled=true;
+  let r;
+  if(_formEditId) r=await api('/api/medical/formulas/'+_formEditId,{method:'PATCH',body:JSON.stringify(body)});
+  else { body.client_id=_formClientId; if(_formApptId) body.appointment_id=_formApptId;
+    r=await api('/api/medical/formulas',{method:'POST',body:JSON.stringify(body)}); }
+  if(btn) btn.disabled=false;
+  if(!r || r.ok===false || r.error){ toast('Формулу не збережено: '+((r&&r.error)||'збій'),'error'); return; }
+  closeFormula(); toast('Формулу збережено','success');
+  const cb=_formOnSaved; _formOnSaved=null;
+  if(cb){ try{ cb(r.formula); }catch(_){} }
+  if(_ccId && _formClientId && Number(_ccId)===Number(_formClientId)){ try{ loadClientFormulas(_formClientId); }catch(_){} }
+  const fp=document.getElementById('page-formulas');
+  if(fp && fp.classList.contains('active')) searchFormulas().catch(()=>{});
 }
 async function repeatFormula(clientId, formulaId){
-  try{ const r=await api('/api/medical/formulas/'+formulaId); openFormula(clientId, r.formula); }
-  catch(e){ alert('Не вдалося завантажити формулу: '+(e.message||e)); }
+  const r=await api('/api/medical/formulas/'+formulaId);
+  if(!r || !r.formula){ toast('Не вдалося завантажити формулу','error'); return; }
+  openFormula(clientId, r.formula);
+}
+async function editFormula(clientId, formulaId, onSaved){
+  const r=await api('/api/medical/formulas/'+formulaId);
+  if(!r || !r.formula){ toast('Не вдалося завантажити формулу','error'); return; }
+  openFormula(clientId, r.formula, { editId: formulaId, appointmentId: r.formula.appointment_id, onSaved });
+}
+// Формула до конкретного візиту: є — редагуємо, немає — нова з підказкою «як минулого разу».
+async function formulaForVisit(apptId, clientId, onSaved){
+  const ex=await api('/api/medical/formulas?appointment_id='+Number(apptId)+'&limit=1');
+  if(ex && ex.items && ex.items.length) return editFormula(ex.items[0].client_id||clientId, ex.items[0].id, onSaved);
+  let prev=null;
+  if(clientId){ const h=await api('/api/medical/formulas/history/'+clientId); if(h && h.items && h.items.length) prev=h.items[0]; }
+  openFormula(clientId, prev?{ zones:prev.zones, pre_treatment:prev.pre_treatment, post_treatment:prev.post_treatment }:null,
+    { appointmentId: apptId, title: prev?'Формула до візиту (підставлено минулу — змініть, що інакше)':'Формула до візиту', onSaved });
+}
+// Таблиця формули (деталь візиту, порівняння)
+function _fmlTableHtml(f){
+  const E=escapeHtml; const z=_fmlArr(f.zones);
+  const structured = z.some(x=>x.brand||x.shade||x.amount_g!=null||x.oxidant_pct!=null);
+  let h='';
+  if(z.length && structured){
+    h+='<table class="tbl" style="margin-top:4px"><thead><tr><th>Зона</th><th>Бренд</th><th>Відтінок</th><th>Грами</th><th>Окисник</th><th>Час</th></tr></thead><tbody>'
+      + z.map(x=>`<tr><td>${E(x.zone||'—')}</td><td>${E(x.brand||'')}</td><td><b>${E(x.shade||x.formula||'')}</b></td><td>${x.amount_g!=null?E(x.amount_g)+' г':''}</td><td>${x.oxidant_pct!=null?E(x.oxidant_pct)+'%':''}</td><td>${x.time_min!=null?E(x.time_min)+' хв':''}</td></tr>`).join('')
+      + '</tbody></table>';
+  } else if(z.length){
+    h+='<div style="font-size:13px;white-space:pre-line">'+E(_zonesToText(z))+'</div>';
+  }
+  const meta=[];
+  if(f.total_amount_g) meta.push('Всього: <b>'+E(f.total_amount_g)+' г</b>');
+  if(f.pre_treatment) meta.push('До: '+E(f.pre_treatment));
+  if(f.post_treatment) meta.push('Після: '+E(f.post_treatment));
+  if(f.result_rating) meta.push('Оцінка: '+'★'.repeat(Number(f.result_rating)));
+  if(meta.length) h+='<div style="font-size:12.5px;margin-top:6px">'+meta.join(' · ')+'</div>';
+  if(f.result_notes) h+='<div style="font-size:12.5px;margin-top:4px"><b>Результат:</b> '+E(f.result_notes)+'</div>';
+  if(f.next_visit_recommendation) h+='<div style="font-size:12.5px;margin-top:4px"><b>Наступного разу:</b> '+E(f.next_visit_recommendation)+'</div>';
+  return h || '<div class="empty">Формула порожня</div>';
+}
+
+// ═══ ДЕТАЛЬ ВІЗИТУ (04.11) ═══════════════════════════
+let _vdId = null;
+function closeVisitDetail(){ document.getElementById('visitDetailModal').style.display='none'; _vdId=null; }
+async function openVisitDetail(id){
+  if(!id) return;
+  _vdId = id;
+  const m=document.getElementById('visitDetailModal'), b=document.getElementById('visitDetailBody');
+  b.innerHTML='<div class="empty">Завантаження…</div>'; m.style.display='flex';
+  const r=await api('/api/admin/visits/'+Number(id));
+  if(!r || !r.visit){ b.innerHTML='<div class="empty">Не вдалося завантажити візит'+(r&&r.error?': '+escapeHtml(r.error):'')+'</div>'; return; }
+  const v=r.visit, E=escapeHtml, money=n=>Number(n||0).toLocaleString('uk-UA')+' ₴';
+  const st=v.starts_at?new Date(v.starts_at):null, en=v.ends_at?new Date(v.ends_at):null;
+  const tm=d=>d.toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Kyiv'});
+  const when=st?st.toLocaleDateString('uk-UA',{weekday:'short',day:'numeric',month:'long',year:'numeric',timeZone:'Europe/Kyiv'})+', '+tm(st)+(en?'–'+tm(en):''):'—';
+  document.getElementById('visitDetailTitle').textContent='Візит '+(st?st.toLocaleDateString('uk-UA',{timeZone:'Europe/Kyiv'}):'')+(v.client_name?' · '+v.client_name:'');
+  const METH={cash:'готівка',card:'картка',terminal:'термінал',transfer:'переказ',online:'онлайн',mono:'monobank',certificate:'сертифікат',bonus:'бонуси',mixed:'змішана'};
+  const meth=x=>METH[x]||x||'—';
+  const svcSum=(v.services||[]).reduce((s,x)=>s+Number(x.price||0),0);
+  const svcRows=(v.services||[]).map(x=>`<tr><td>${E(x.name)}</td><td>${E(x.master_name||v.master_name||'—')}</td><td>${x.duration_min?Number(x.duration_min)+' хв':''}</td><td style="text-align:right">${money(x.price)}</td></tr>`).join('')
+    || '<tr><td colspan="4"><div class="empty">Послуги не вказані</div></td></tr>';
+  const pay=[];
+  pay.push(`<div>Вартість: <b>${money(v.price)}</b></div>`);
+  if(v.real_amount!=null) pay.push(`<div>Сплачено фактично: <b>${money(v.real_amount)}</b></div>`);
+  else if(v.paid_total) pay.push(`<div>Надійшло в касу: <b>${money(v.paid_total)}</b></div>`);
+  if(v.payment_method) pay.push(`<div>Спосіб оплати: <b>${E(meth(v.payment_method))}</b></div>`);
+  if(Number(v.discount_amount)) pay.push(`<div>Знижка: ${money(v.discount_amount)}</div>`);
+  if(Number(v.pay_cert_amount)) pay.push(`<div>Сертифікатом: ${money(v.pay_cert_amount)}${v.pay_cert_code?' ('+E(v.pay_cert_code)+')':''}</div>`);
+  if(Number(v.pay_bonus_money)) pay.push(`<div>Бонусами: ${money(v.pay_bonus_money)}</div>`);
+  if(Number(v.pay_bonus_accrued)) pay.push(`<div>Нараховано бонусів: ${Number(v.pay_bonus_accrued)}</div>`);
+  if(Number(v.bill_prepaid_amount)) pay.push(`<div>Передоплата: ${money(v.bill_prepaid_amount)}</div>`);
+  const cashRows=(v.cash||[]).map(o=>`<span style="display:inline-block;background:#eef7ee;border-radius:10px;padding:2px 8px;margin:2px 4px 0 0;font-size:12px">${E(meth(o.method))}: ${money(o.amount)}</span>`).join('');
+  const matRows=(v.materials||[]).map(x=>`<tr><td>${E(x.name)}${x.volume?' <span style="color:var(--text-secondary)">'+E(x.volume)+'</span>':''}</td><td>${Number(x.qty)} ${E(x.unit)}</td><td>${x.billable?'клієнту':'салон'}</td><td>${E(x.note||'')}</td><td style="text-align:right">${money(x.amount)}</td></tr>`).join('');
+  const prodRows=(v.products||[]).map(x=>`<tr><td>${E(x.name)}</td><td>${Number(x.qty||1)} шт</td><td style="text-align:right">${money(x.total_price)}</td></tr>`).join('');
+  const f=(v.formulas||[])[0];
+  const H='margin:14px 0 6px;font-size:14px';
+  const box=(l,x)=>`<div style="background:var(--bg-secondary,#f6f7fb);border-radius:10px;padding:8px 12px"><div style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.03em">${l}</div><div style="font-size:14px;font-weight:700;margin-top:2px">${x}</div></div>`;
+  b.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:6px">
+      ${box('Дата і час', when)}${box('Майстер', E(v.master_name||'—'))}${box('Статус', E((typeof ST_LABEL!=='undefined'&&ST_LABEL[v.status])||v.status||'—'))}
+    </div>
+    <h4 style="${H}">Послуги${(v.services||[]).length?' ('+v.services.length+')':''}</h4>
+    <table class="tbl"><thead><tr><th>Послуга</th><th>Майстер</th><th>Тривалість</th><th style="text-align:right">Ціна</th></tr></thead>
+      <tbody>${svcRows}</tbody>${(v.services||[]).length>1?`<tfoot><tr><td colspan="3"><b>Разом за прайсом</b></td><td style="text-align:right"><b>${money(svcSum)}</b></td></tr></tfoot>`:''}</table>
+    <h4 style="${H}">Оплата</h4>
+    <div style="font-size:13px;line-height:1.7">${pay.join('')}${cashRows?'<div>Каса: '+cashRows+'</div>':''}</div>
+    ${matRows?`<h4 style="${H}">Матеріали (списано зі складу)</h4><table class="tbl"><thead><tr><th>Матеріал</th><th>Кількість</th><th>За рахунок</th><th>Примітка</th><th style="text-align:right">Собівартість</th></tr></thead><tbody>${matRows}</tbody></table>`:''}
+    ${prodRows?`<h4 style="${H}">Куплено того ж дня</h4><table class="tbl"><thead><tr><th>Товар</th><th>К-сть</th><th style="text-align:right">Сума</th></tr></thead><tbody>${prodRows}</tbody></table>`:''}
+    ${v.notes?`<h4 style="${H}">Нотатки</h4><div style="font-size:13px;white-space:pre-line;background:var(--bg-secondary,#f7f7f9);border-radius:8px;padding:8px 10px">${E(v.notes)}</div>`:''}
+    <div style="display:flex;align-items:center;gap:8px;margin:16px 0 6px"><h4 style="margin:0;font-size:14px">🎨 Формула фарбування</h4>
+      <button class="btn btn-sm ${f?'':'btn-primary'}" style="margin-left:auto" onclick="formulaForVisit(${Number(v.id)},${v.client_id?Number(v.client_id):'null'},()=>openVisitDetail(${Number(v.id)}))">${f?'✎ Редагувати формулу':'➕ Записати формулу'}</button></div>
+    <div id="vdFormula">${f?_fmlTableHtml(f):'<div style="font-size:12.5px;color:var(--text-secondary)">Формулу до цього візиту ще не записано.</div>'}</div>`;
 }
 // Додавання формули зі сторінки «Пошук формул» (заметка #111): вибір клієнта → та сама модалка.
 function fsNewFormula(){

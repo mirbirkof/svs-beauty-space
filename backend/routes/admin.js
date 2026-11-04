@@ -763,7 +763,8 @@ router.get('/clients/:id', async (req, res) => {
                    FROM appointment_services x JOIN services sv ON sv.id = x.service_id WHERE x.appointment_id = a.id),
                 s0.name) AS services_text,
               a.payment_method,
-              m.name AS master_name
+              m.name AS master_name,
+              EXISTS (SELECT 1 FROM coloring_formulas f WHERE f.appointment_id = a.id AND f.tenant_id = current_tenant_id()) AS has_formula
          FROM appointments a
          LEFT JOIN masters m ON m.id = a.master_id
          LEFT JOIN services s0 ON s0.id = a.service_id
@@ -809,6 +810,73 @@ router.get('/clients/:id', async (req, res) => {
     logAction({ user: req.user, action: 'client.view', entity: 'client', entity_id: id, ip: req.ip }).catch(() => {});
     res.json({ ok: true, client: { ...c.rows[0], orders: orders.rows, visits, product_sales: productSales, stats, tags: tagsRows.rows } });
   } catch (e) { console.error('[admin:client]', e); res.status(500).json({ error: 'internal' }); }
+});
+
+// ── GET /api/admin/visits/:id — деталь візиту для картки клієнта (Босс 04.11 22:52) ──
+// «Хронологія кликабельна»: дата/час, майстер, УСІ послуги з цінами, оплата (сума/спосіб/знижки/
+// сертифікат/бонуси), матеріали зі складу по візиту, товари того ж дня, нотатки й формула фарбування.
+// Лише читання. Суми — ті самі поля, що й у касі/рахунку (real_amount, cash_operations), нічого не рахуємо наново.
+router.get('/visits/:id', async (req, res) => {
+  try {
+    const pool = getPool();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad-id' });
+    const a = (await pool.query(
+      `SELECT a.id, a.client_id, a.master_id, a.service_id, a.starts_at, a.ends_at, a.status, a.source, a.notes,
+              a.price::float AS price, a.real_amount::float AS real_amount, a.payment_method, a.pay_settled_at,
+              a.discount_amount::float AS discount_amount, a.pay_cert_code, a.pay_cert_amount::float AS pay_cert_amount,
+              a.pay_bonus_money::float AS pay_bonus_money, a.pay_bonus_accrued::float AS pay_bonus_accrued,
+              a.bill_prepaid_amount::float AS bill_prepaid_amount, a.services_text, a.cancelled_at, a.rating,
+              m.name AS master_name, c.name AS client_name, s0.name AS service_name
+         FROM appointments a
+         LEFT JOIN masters m ON m.id = a.master_id
+         LEFT JOIN clients c ON c.id = a.client_id
+         LEFT JOIN services s0 ON s0.id = a.service_id
+        WHERE a.id = $1`, [id])).rows[0];
+    if (!a) return res.status(404).json({ error: 'not-found' });
+    let services = (await pool.query(
+      `SELECT x.id, x.service_id, COALESCE(sv.name, 'Послуга') AS name, x.price::float AS price, x.duration_min,
+              x.starts_at, mm.name AS master_name
+         FROM appointment_services x
+         LEFT JOIN services sv ON sv.id = x.service_id
+         LEFT JOIN masters mm ON mm.id = x.master_id
+        WHERE x.appointment_id = $1
+        ORDER BY x.starts_at NULLS LAST, x.id`, [id])).rows;
+    if (!services.length && (a.service_name || a.services_text)) {
+      services = [{ id: null, service_id: a.service_id, name: a.service_name || a.services_text, price: a.price, duration_min: null, starts_at: a.starts_at, master_name: a.master_name }];
+    }
+    const materials = (await pool.query(
+      `SELECT am.id, COALESCE(p.name, 'Товар') AS name, pv.volume, am.qty_used::float AS qty,
+              CASE WHEN p.price_per_gram IS NOT NULL THEN 'г' ELSE 'шт' END AS unit,
+              am.billable, am.note,
+              (CASE WHEN p.price_per_gram IS NOT NULL THEN ROUND(am.qty_used * p.price_per_gram, 2)
+                    WHEN pv.price IS NOT NULL THEN ROUND(am.qty_used * pv.price, 2) ELSE 0 END)::float AS amount
+         FROM appointment_materials am
+         JOIN product_variants pv ON pv.id = am.variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+        WHERE am.appointment_id = $1 ORDER BY am.id`, [id])).rows;
+    const cash = (await pool.query(
+      `SELECT category, method, amount::float AS amount, created_at
+         FROM cash_operations WHERE ref_type = 'appointment' AND ref_id = $1 AND type = 'in' ORDER BY id`, [id])).rows;
+    let products = [];
+    if (a.client_id && a.starts_at) {
+      try {
+        products = (await pool.query(
+          `SELECT DISTINCT ON (product_name, total_price, qty) product_name AS name, qty::float AS qty, total_price::float AS total_price, master_name
+             FROM salon_product_sales
+            WHERE client_id = $1
+              AND (sale_date AT TIME ZONE 'Europe/Kyiv')::date = (($2::timestamptz) AT TIME ZONE 'Europe/Kyiv')::date
+            ORDER BY product_name, total_price, qty, id`, [a.client_id, a.starts_at])).rows;
+      } catch (_) { /* міграція 037 */ }
+    }
+    let formulas = [];
+    try {
+      formulas = (await pool.query(
+        `SELECT * FROM coloring_formulas WHERE appointment_id = $1 AND tenant_id = current_tenant_id() ORDER BY id DESC`, [id])).rows;
+    } catch (_) { /* медмодуль не застосовано */ }
+    const paid_total = cash.reduce((s, o) => s + Number(o.amount || 0), 0);
+    res.json({ ok: true, visit: { ...a, services, materials, cash, paid_total: Math.round(paid_total * 100) / 100, products, formulas } });
+  } catch (e) { console.error('[admin:visit]', e); res.status(500).json({ error: 'internal' }); }
 });
 
 // ── PATCH /api/admin/clients/:id — редактирование карточки клиента ──
