@@ -628,15 +628,18 @@ async function miniappMenuText(text, msg, ctx) {
     const kb = cab
       ? { inline_keyboard: [[{ text: '👤 Відкрити кабінет', web_app: { url: miniappLink(ctx, { screen: 'cabinet' }) } }]] }
       : miniappKb(ctx);
-    const r = await ctx.tg('sendMessage', {
+    // 04.11 аудит: повідомлення з remove_keyboard Telegram редагувати НЕ дає («message can't be edited») —
+    // старий варіант (edit → inline-кнопка) завжди падав і слав друге «👇». Тепер: службове повідомлення
+    // прибирає клавіатуру й одразу видаляється, клієнт бачить ОДНЕ повідомлення з кнопкою застосунку.
+    const r = await ctx.tg('sendMessage', { chat_id: chatId, text: '⏳', reply_markup: { remove_keyboard: true } });
+    const mid = r && r.ok && r.result && r.result.message_id;
+    if (mid) await ctx.tg('deleteMessage', { chat_id: chatId, message_id: mid });
+    await ctx.tg('sendMessage', {
       chat_id: chatId, parse_mode: 'HTML',
       text: (cab ? '👤 Ваші записи, історія візитів і бонуси — у застосунку.' : '✨ Запис онлайн — оберіть послугу, майстра й час.')
         + '\nНадалі відкривайте одним дотиком: кнопка <b>«Запис»</b> зліва від поля вводу.',
-      reply_markup: { remove_keyboard: true },
+      reply_markup: kb,
     });
-    const mid = r && r.ok && r.result && r.result.message_id;
-    const ed = mid ? await ctx.tg('editMessageReplyMarkup', { chat_id: chatId, message_id: mid, reply_markup: kb }) : null;
-    if (!ed || !ed.ok) await ctx.tg('sendMessage', { chat_id: chatId, text: '👇', reply_markup: kb });
     return true;
   }
   return false;

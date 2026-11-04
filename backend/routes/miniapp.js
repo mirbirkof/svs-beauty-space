@@ -433,16 +433,16 @@ router.get('/my', async (req, res) => {
   try {
     const c = await clientOf(req.tgUser.id);
     if (!c) return res.json({ client: null, upcoming: [], history: [] });
-    const q = (where, order) => getPool().query(
+    const q = (where, order, lim = 20) => getPool().query(
       `SELECT a.id, a.status, a.price::float AS price, a.service_id, a.master_id,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM-DD') AS date,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t1,
               to_char(a.ends_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t2,
               COALESCE(s.name, '') AS service, COALESCE(NULLIF(m.online_title,''), m.name, '') AS master
          FROM appointments a LEFT JOIN services s ON s.id=a.service_id LEFT JOIN masters m ON m.id=a.master_id
-        WHERE a.client_id=$1 AND ${where} ORDER BY a.starts_at ${order} LIMIT 20`, [c.id]);
+        WHERE a.client_id=$1 AND ${where} ORDER BY a.starts_at ${order} LIMIT ${Number(lim)}`, [c.id]);
     const up = await q(`a.status IN ('booked','confirmed') AND a.starts_at > NOW()`, 'ASC');
-    const hist = await q(`(a.status IN ('done','arrived') OR (a.status IN ('booked','confirmed') AND a.starts_at <= NOW()))`, 'DESC');
+    const hist = await q(`(a.status IN ('done','arrived') OR (a.status IN ('booked','confirmed') AND a.starts_at <= NOW()))`, 'DESC', 300); // 04.11: історія без обрізки до 20 (у клієнта 121 візит)
     const map = (r) => ({ id: Number(r.id), date: r.date, date_label: fmtDateUa(r.date), time: r.t2 ? `${r.t1}–${r.t2}` : r.t1,
       service: r.service, master: r.master, price: Number(r.price) || 0, service_id: r.service_id, master_id: r.master_id });
     res.json({

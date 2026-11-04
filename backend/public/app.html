@@ -23,7 +23,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .serif{font-family:"Cormorant Garamond","Playfair Display",Georgia,"Times New Roman",serif}
 
 /* головний */
-.hero{position:relative;margin:calc(-1 * var(--topsafe)) -16px 0;height:calc(330px + var(--topsafe));background:#000 url(/p/miniapp/hero.jpg) center 20%/cover no-repeat}
+.hero{position:relative;margin:calc(-1 * var(--topsafe)) -16px 0;height:calc(330px + var(--topsafe));background:#000 url(/p/miniapp/hero.jpg?v=0411hd) center 20%/cover no-repeat}
 .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,18,0) 35%,rgba(20,16,18,.75) 72%,var(--bg) 100%)}
 .brand{position:relative;z-index:1;text-align:center;margin-top:-118px}
 .brand .svs{font-size:58px;letter-spacing:2px;color:#efe2dc;line-height:1}
@@ -197,7 +197,7 @@ function readInitData(){
 var INIT = readInitData();
 var Q = new URLSearchParams(location.search);
 var CAT_IMG = [[/волос|перукар|стриж|фарб/i,'hair'],[/брів|брови|вії|вій|lash/i,'brows'],[/ніг|манік|педик|nail/i,'nails'],[/макіяж|make/i,'makeup'],[/масаж|тіл/i,'massage']];
-function catImg(name){ for (var i=0;i<CAT_IMG.length;i++) if (CAT_IMG[i][0].test(name||'')) return '/p/miniapp/'+CAT_IMG[i][1]+'.jpg'; return '/p/miniapp/other.jpg'; }
+function catImg(name){ for (var i=0;i<CAT_IMG.length;i++) if (CAT_IMG[i][0].test(name||'')) return '/p/miniapp/'+CAT_IMG[i][1]+'.jpg?v=0411hd'; return '/p/miniapp/other.jpg?v=0411hd'; }
 var DW = ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
 var MONN = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 var MON = ['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
@@ -262,7 +262,7 @@ function syncBack(){
 }
 function show(){
   var cur = S.stack[S.stack.length-1];
-  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, master:vMaster, claim:vClaim})[cur]();
+  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, promos:vPromos, master:vMaster, claim:vClaim})[cur]();
 }
 
 // ── екрани ──
@@ -279,7 +279,7 @@ function vHome(){
     h('div',{class:'menu'},
       mi('💅','Послуги',function(){ S.move=null; startBooking(); }),
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
-      mi('🎁','Акції та новини',function(){ location.href='/p/promotions.html'; }),
+      mi('🎁','Акції та новини',function(){ go('promos'); }),
       mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'),
       mi('🧚','Звʼязатися з адміністратором',adminContact,'admin'),
       isMaster() ? null : mi('✂️', claimLabel(), function(){ go('claim'); }, 'claim'))));
@@ -289,7 +289,7 @@ function adminContact(){
   api('/admin-contact',{method:'POST'}).then(function(j){
     if (j._status===200) { haptic('ok'); toast('Контакти салону надіслали вам у чат 💛'); setTimeout(function(){ if (tg && tg.close) tg.close(); }, 1200); }
     else toast('Не вдалося. Напишіть нам у чат бота — відповімо.');
-  });
+  }).catch(function(){ toast('Немає звʼязку. Спробуйте ще раз.'); });
 }
 // 04.11 ярлик застосунку на робочому столі телефона (Telegram Bot API 8.0: addToHomeScreen).
 // Картку показуємо, доки ярлика нема; «added»/«unsupported» — не показуємо зовсім.
@@ -582,7 +582,7 @@ function ensurePhone(force, why){
       if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true});
         if (j.master && j.master.linked) { S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); }
         else if (j.master && j.master.needClaim) S.claimHint = j.master.master_id;
-        close(true); hsOfferOnce(); return; }
+        close(true); hsOfferOnce(); refreshMe(); return; }
       if (j.master && j.master.linked) { S.me = S.me || {}; S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); close(true); return; }
       msg.textContent = j.message || 'Не вдалося зберегти номер';
     }
@@ -631,7 +631,12 @@ function vCabinet(){
     box.innerHTML='';
     if (j._status!==200){ box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити кабінет.'})); return; }
     var c = j.client;
-    if (!c){ box.appendChild(h('div',{class:'empty'}, 'У вас ще немає записів.', h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨'))); return; }
+    if (!c){
+      // картка CRM знаходиться лише після номера: без нього не кажемо «немає записів», а пропонуємо поділитися
+      if (!(S.me && S.me.client && S.me.client.has_phone)) { box.appendChild(h('div',{class:'empty'}, 'Щоб побачити свої записи й бонуси, поділіться номером, з яким ви записувались у салон.',
+        h('button',{class:'btn btn-rose',id:'cab-share',onclick:function(){ haptic(); ensurePhone(false).then(function(ok){ if (ok) refreshMe().then(vCabinet); }); }}, '📱 Поділитися номером'),
+        h('button',{class:'btn btn-ghost',style:'margin-top:8px',onclick:startBooking}, 'Записатися ✨'))); return; }
+      box.appendChild(h('div',{class:'empty'}, 'У вас ще немає записів.', h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨'))); return; }
     box.appendChild(h('div',{class:'hello serif',text:'Вітаємо, '+(c.name||'')+'!'}));
     if (c.phone) box.appendChild(h('div',{class:'note',style:'text-align:left;margin:0',text:c.phone}));
     box.appendChild(h('div',{class:'stats'},
@@ -665,7 +670,7 @@ function cancelAppt(a, btn){
     api('/cancel',{method:'POST',body:{ids:[a.id]}}).then(function(j){
       if (j._status===200){ haptic('ok'); toast('Запис скасовано'); vCabinet(); }
       else { haptic('error'); toast(j.message||'Не вдалося скасувати'); btn.disabled=false; }
-    });
+    }).catch(function(){ toast('Немає звʼязку. Спробуйте ще раз.'); btn.disabled=false; });
   };
   var q = 'Скасувати запис «'+a.service+'» на '+a.date_label+', '+a.time+'?';
   if (tg && tg.showConfirm && tg.platform && tg.platform!=='unknown') { try { tg.showConfirm(q, function(ok){ if (ok) doIt(); }); return; } catch(e){} }
@@ -688,7 +693,7 @@ function startMove(ids){
         show();
       });
     });
-  });
+  }).catch(function(){ toast('Немає звʼязку. Спробуйте ще раз.'); });
 }
 
 function vTeam(){
@@ -697,12 +702,34 @@ function vTeam(){
     h('div',{class:'fixed'}, h('div',{class:'inner'}, h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨')))));
   api('/masters').then(function(j){
     box.innerHTML='';
+    if (j._status!==200){ box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити майстрів.'})); return; }
+    if (!(j.masters||[]).length) box.appendChild(h('div',{class:'empty',text:'Список майстрів скоро зʼявиться.'}));
     (j.masters||[]).forEach(function(m){
       box.appendChild(h('div',{class:'mst'}, avatar(m), h('span',{class:'t'}, h('div',{class:'n',text:m.name}),
         m.specialty ? h('div',{class:'s',text:m.specialty}) : null,
         m.rating ? h('div',{class:'rt'}, h('b',{text:'★ '+m.rating}), ' ('+m.reviews+')') : null)));
     });
-  });
+  }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Немає звʼязку.'})); });
+}
+function refreshMe(){ return api('/me').then(function(j){ if (j._status===200) S.me = j; }).catch(function(){}); }
+
+// акції — екраном усередині застосунку (раніше вели на окрему вебсторінку без кнопки «назад»)
+function vPromos(){
+  var box = h('div',{class:'list'}, h('div',{class:'spin'}));
+  render(h('div',{class:'screen'}, plainHead('Акції та новини'), box,
+    h('div',{class:'fixed'}, h('div',{class:'inner'}, h('button',{class:'btn btn-rose',onclick:startBooking}, 'Записатися ✨')))));
+  fetch('/api/promotions').then(function(r){ if (!r.ok) throw 0; return r.json(); }).then(function(j){
+    box.innerHTML='';
+    var items = (j.items||[]).filter(function(p){ return p.category!=='shop'; });
+    if (!items.length){ box.appendChild(h('div',{class:'empty',text:'Акцій зараз немає — завітайте пізніше 💛'})); return; }
+    items.forEach(function(p){
+      var d = p.discount_pct ? '−'+p.discount_pct+'%' : (p.discount_uah ? '−'+p.discount_uah+' ₴' : '🎁');
+      box.appendChild(h('div',{class:'ap'},
+        h('div',{class:'n'}, h('b',{style:'color:var(--gold);margin-right:8px',text:d}), p.title||''),
+        p.description ? h('div',{class:'m',text:p.description}) : null,
+        h('div',{class:'m',text: p.ends_at ? 'до '+new Date(p.ends_at).toLocaleDateString('uk-UA') : 'безстроково'})));
+    });
+  }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Не вдалося завантажити акції — спробуйте ще раз.'})); });
 }
 
 // ── старт ──

@@ -34,6 +34,26 @@ test('вільний текст → ввічлива відповідь з кн�
   assert.ok(r.freeText.n >= 1 && r.freeText.webApp, JSON.stringify(r.freeText));
 });
 
+test('старе нижнє меню («Записатись», «Мій кабінет») → клавіатура прибрана, ОДНЕ видиме повідомлення з кнопкою застосунку', { skip: !QA_URL }, () => {
+  const r = harness();
+  for (const k of ['oldMenuBook', 'oldMenuCab']) {
+    const x = r[k];
+    assert.ok(x.removeKb && x.webApp && x.visible === 1 && x.edits === 0, k + ' ' + JSON.stringify(x));
+  }
+});
+
+test('кнопки нагадування: Буду / Перенести (у застосунок) / Скасувати; чужий запис не скасувати', { skip: !QA_URL }, () => {
+  const x = harness().remind;
+  assert.ok(!x.error, x.error);
+  assert.match(x.ok.txt, /Дякуємо за підтвердження/);
+  assert.ok(x.mv.webApp && /move=/.test(x.mv.txt), x.mv.txt);
+  assert.match(x.foreign.txt, /неактуальний/); assert.strictEqual(x.foreignStatus, 'booked');
+  assert.match(x.cn.txt, /Запис скасовано/); assert.strictEqual(x.cnStatus, 'cancelled');
+  assert.match(x.again.txt, /неактуальний/);
+  assert.ok(x.startKnown.n >= 1 && x.startKnown.webApp, 'start відомого: ' + JSON.stringify(x.startKnown.texts));
+  assert.ok(x.admin.n >= 1 && x.admin.contactAdmin, 'адміністратор: ' + JSON.stringify(x.admin.texts));
+});
+
 test('відкат BOT_TEXT_BOOKING=1 → старий текстовий запис без web_app', { skip: !QA_URL }, () => {
   const r = harness();
   assert.ok(r.startOld.n >= 1 && !r.startOld.webApp, JSON.stringify(r.startOld));
