@@ -1,0 +1,22 @@
+[
+ {
+  "id": 64,
+  "name": "Власник",
+  "online_booking_enabled": true
+ },
+ {
+  "id": 51,
+  "name": "Фломастер",
+  "online_booking_enabled": true
+ },
+ {
+  "id": 65,
+  "name": "СВС",
+  "online_booking_enabled": true
+ },
+ {
+  "id": 69,
+  "name": "Даша",
+  "online_booking_enabled": true
+ }
+]

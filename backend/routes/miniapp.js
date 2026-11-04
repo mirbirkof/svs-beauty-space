@@ -209,8 +209,10 @@ async function mastersFor(serviceId) {
   const pool = getPool();
   const base = serviceId
     ? await bot().eligibleMasters(pool, [serviceId])
+    // Босс 04.11: у «Наших майстрах» лише ті, хто реально обслуговує клієнтів — без власника й адмінів
     : (await pool.query(`SELECT id FROM masters WHERE active IS NOT FALSE AND online_booking_enabled IS NOT FALSE
-                           ORDER BY online_rank NULLS LAST, name`)).rows.map(r => ({ id: Number(r.id) }));
+                            AND provides_services IS NOT FALSE AND COALESCE(staff_role,'master') = 'master'
+                          ORDER BY online_rank NULLS LAST, name`)).rows.map(r => ({ id: Number(r.id) }));
   if (!base.length) return [];
   const ids = base.map(m => m.id);
   const r = await pool.query(
