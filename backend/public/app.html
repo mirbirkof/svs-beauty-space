@@ -280,7 +280,15 @@ function vHome(){
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
       mi('🎁','Акції та новини',function(){ location.href='/p/promotions.html'; }),
       mi('👤','Мої записи / кабінет',function(){ go('cabinet'); }, 'cab'),
+      mi('🧚','Звʼязатися з адміністратором',adminContact,'admin'),
       isMaster() ? null : mi('✂️', claimLabel(), function(){ go('claim'); }, 'claim'))));
+}
+// картка салону (телефон одним дотиком, адреса, години) приходить у чат від бота; застосунок закриваємо, щоб її було видно
+function adminContact(){
+  api('/admin-contact',{method:'POST'}).then(function(j){
+    if (j._status===200) { haptic('ok'); toast('Контакти салону надіслали вам у чат 💛'); setTimeout(function(){ if (tg && tg.close) tg.close(); }, 1200); }
+    else toast('Не вдалося. Напишіть нам у чат бота — відповімо.');
+  });
 }
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 

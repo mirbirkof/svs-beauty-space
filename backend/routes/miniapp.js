@@ -477,6 +477,21 @@ router.post('/cancel', async (req, res) => {
   } catch (e) { console.error('[miniapp/cancel]', e.message); res.status(500).json({ error: 'server' }); }
 });
 
+// 04.11 «Звʼязатися з адміністратором» (Босс: після прибирання нижнього меню зникла кнопка «Адміністратор»).
+// Бот шле в чат ту саму картку салону, що й раніше кнопка «Адміністратор»: номер, по якому дзвонять одним дотиком,
+// адреса, години, соцмережі. Не частіше разу на 15 с на людину — щоб не засмічувати чат подвійними тапами.
+const _adminTapAt = new Map();
+router.post('/admin-contact', async (req, res) => {
+  const uid = req.tgUser.id; const now = Date.now();
+  if (now - (_adminTapAt.get(uid) || 0) < 15000) return res.json({ ok: true, repeated: true });
+  _adminTapAt.set(uid, now);
+  if (_adminTapAt.size > 5000) _adminTapAt.clear();
+  try {
+    await runAs(DEFAULT_TENANT_ID, () => bot().showAdminContact({ pool: getPool(), tg: botTg(), tenantId: DEFAULT_TENANT_ID }, uid));
+    res.json({ ok: true });
+  } catch (e) { _adminTapAt.delete(uid); console.error('[miniapp/admin-contact]', e.message); res.status(500).json({ error: 'server' }); }
+});
+
 // дані для переносу: що саме переносимо (послуга+майстер) — лише свої активні записи
 router.get('/move-info', async (req, res) => {
   try {
