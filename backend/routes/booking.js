@@ -790,7 +790,7 @@ router.get('/services', async (req, res) => {
     const r = await getPool().query(
       `SELECT ${catId('svc')} AS id, name, duration_min AS duration,
               price::float AS price, category
-         FROM services WHERE active IS NOT FALSE AND deleted_at IS NULL
+         FROM services WHERE active IS NOT FALSE AND deleted_at IS NULL AND is_material IS NOT TRUE
         ORDER BY sort_order NULLS LAST, name`);
     res.json(r.rows);
   } catch (e) { upstreamFail(res, e, 'services'); }
