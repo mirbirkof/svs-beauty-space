@@ -7346,7 +7346,9 @@ async function loadTopMasters() {
 }
 // ═══ AI-07: повернення клієнтів ════════════════
 let _reactClients = []; // #102: кеш рядків віджета для кнопок «Записати»/«Нагадати»
+let _reactSeq = 0; // #173: показуємо лише відповідь на ОСТАННІЙ запит (швидке перемикання фільтрів давало чужий список)
 async function loadReactivation(){
+  const seq = ++_reactSeq;
   const body = document.getElementById('reactBody');
   const days = document.getElementById('reactDays')?.value || '60';
   const mode = document.getElementById('reactMode')?.value || 'smart';
@@ -7355,6 +7357,7 @@ async function loadReactivation(){
   body.innerHTML = '<div class="empty"><span class="material-icons-round">replay</span>Шукаю клієнтів...</div>';
   try {
     const d = await api('/api/recommendations/reactivation?days='+days+'&limit='+limit+'&within='+within+(mode==='smart'?'&mode=smart':''));
+    if (seq !== _reactSeq) return;
     const cl = d.clients || [];
     _reactClients = cl;
     const info = document.getElementById('reactInfo');
@@ -7391,7 +7394,7 @@ async function loadReactivation(){
     <p style="font-size:11px;color:var(--text-secondary);padding:8px 14px;margin:0">${mode==='smart'
       ? 'Розумний режим: клієнти, що перевищили рекомендований інтервал своєї останньої послуги (без інтервалу — загальний поріг днів). Червоним — на скільки днів прострочено.'
       : 'Клієнти з 2+ візитами, які давно не приходили — відсортовані за сумою витрат.'} Подзвоніть, запишіть або створіть нагадування.</p>`;
-  } catch(e){ body.innerHTML = '<div class="empty" style="padding:20px">Не вдалося завантажити список.</div>'; }
+  } catch(e){ if (seq === _reactSeq) body.innerHTML = '<div class="empty" style="padding:20px">Не вдалося завантажити список.</div>'; }
 }
 // #102: «📅 Записати» — журнал на сьогодні + модалка нового запису з предзаповненим клієнтом.
 // Модалка створення (openCreate/ncPickClient) живе в журналі й потребує journalData.masters —
