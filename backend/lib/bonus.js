@@ -92,7 +92,17 @@ async function accrue(opts = {}) {
       if (check < Number(rule.min_check_amount)) return null;
       if (rule.type === 'percent_check') amount = round2(check * Number(rule.percent) / 100);
       else amount = round2(Number(rule.fixed_amount));
-      const mult = opts.applyTier === false ? 1 : await _tierMultiplier(client, clientId, rule.loyalty_multipliers);
+      // [04.11 Босс] градація за сумою покупок клієнта: loyalty_multipliers.spend_tiers = [{from, percent}]
+      // (до 30 000 ₴ — % правила, від 30 000 — 2%). Сума — clients.total_spent ДО цієї оплати (перерахунок іде після).
+      const spendTiers = rule.type === 'percent_check' && rule.loyalty_multipliers && Array.isArray(rule.loyalty_multipliers.spend_tiers)
+        ? rule.loyalty_multipliers.spend_tiers.filter(t => Number.isFinite(Number(t.from)) && Number(t.percent) >= 0) : null;
+      if (spendTiers && spendTiers.length) {
+        const spent = Number((await client.query('SELECT COALESCE(total_spent,0)::float t FROM clients WHERE id=$1', [clientId])).rows[0]?.t) || 0;
+        let pct = Number(rule.percent);
+        for (const t of [...spendTiers].sort((a, b) => Number(a.from) - Number(b.from))) if (spent >= Number(t.from)) pct = Number(t.percent);
+        amount = round2(check * pct / 100);
+      }
+      const mult = (opts.applyTier === false || (spendTiers && spendTiers.length)) ? 1 : await _tierMultiplier(client, clientId, rule.loyalty_multipliers);
       amount = round2(amount * mult);
       if (rule.max_accrual != null) amount = Math.min(amount, Number(rule.max_accrual));
       if (rule.expiry_days != null) expiryDays = rule.expiry_days;

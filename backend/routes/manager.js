@@ -177,10 +177,10 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     // [04.11] «Чому так?» — правила з ЖИВИХ налаштувань, а не з тексту промпта (був «кешбек ~3%», а реально 2%)
     let whyNote = '';
     try {
-      const cb = (await pool.query(`SELECT percent::float p FROM bonus_rules WHERE is_active AND trigger_event='payment' AND COALESCE(category,'all')='all' ORDER BY priority DESC, id LIMIT 1`)).rows[0];
+      const cb = (await pool.query(`SELECT percent::float p, loyalty_multipliers lm FROM bonus_rules WHERE is_active AND trigger_event='payment' AND COALESCE(category,'all')='all' ORDER BY priority DESC, id LIMIT 1`)).rows[0];
       const ml = await require('../lib/visit-loyalty').getConfig();
       whyNote = `\nЯК ПРАЦЮЄ CRM — ЖИВІ ПРАВИЛА (на «чому так / звідки ця сума» пояснюй ПО НИХ, з розрахунком на цифрах):
-• Кешбек клієнту: ${cb ? cb.p + '%' : 'вимкнено'} від суми, реально сплаченої грошима після знижок (без оплати бонусами/сертифікатом/абонементом). Майстер салону як клієнт кешбеку не отримує.
+• Кешбек клієнту: ${cb ? cb.p + '%' + ((cb.lm && Array.isArray(cb.lm.spend_tiers) && cb.lm.spend_tiers.length) ? ' (градація за сумою всіх покупок клієнта до цієї оплати: ' + cb.lm.spend_tiers.map(t => 'від ' + Number(t.from).toLocaleString('uk-UA') + ' ₴ — ' + t.percent + '%').join(', ') + '; нижче — ' + cb.p + '%)' : '') : 'вимкнено'} від суми, реально сплаченої грошима після знижок (без оплати бонусами/сертифікатом/абонементом). Майстер салону як клієнт кешбеку не отримує.
 • Бонус майстру за клієнта: ${ml.enabled ? (ml.one_per_visit ? `ОДИН за візит — за першу виконану умову (повернувся до майстра ${ml.return_pct}% / записався знову в день візиту ${ml.rebook_pct}% / оцінка від ${ml.rating_min}⭐ ${ml.rating_pct}%), решта умов цього візиту не додають` : `за кожну умову окремо: повернення ${ml.return_pct}% + перезапис у день візиту ${ml.rebook_pct}% + оцінка від ${ml.rating_min}⭐ ${ml.rating_pct}%`) + '; від сплаченої суми візиту, на бонусну картку майстра; скасування оплати знімає бонус. Перемикач — Фінанси → Бонуси' : 'вимкнено'}.
 • Онлайн-запис: вільний час = години з «Графіка роботи» (ручний день, інакше звичний тижневий графік) мінус наявні записи, перерви і мінімальний час до запису. Немає вікон — день у графіку вихідний, усе зайнято або послуга не привʼязана до майстра чи онлайн-запис майстра вимкнено.
 Якщо правила тут немає — скажи чесно, що точно не знаєш, і запропонуй відкрити розділ; НЕ вигадуй.\n`;
