@@ -253,12 +253,12 @@ test('один бонус за візит (Босс 04.11): повторна о�
   assert.strictEqual(await bal(F.masterCard), 4.5);
 });
 
-test('кешбек за градацією (Босс 04.11): покупки < 30 000 → 1%, ≥ 30 000 → 2%', async (t) => {
+test('кешбек за градацією (Босс 04.11): покупки < 30 000 → 1%, ≥ 30 000 → 2%, ≥ 100 000 (Gold) → 3%', async (t) => {
   if (skipIf(t)) return;
   const bonus = require('../lib/bonus');
   const rule = (await q(`INSERT INTO bonus_rules (name,type,trigger_event,percent,category,loyalty_multipliers,priority,is_active,tenant_id)
      VALUES ($1,'percent_check','qa-tier',1,'all',$2,-1000,true,$3) RETURNING id`,
-     [MARK + ' градація', JSON.stringify({ spend_tiers: [{ from: 30000, percent: 2 }] }), TENANT]))[0].id;
+     [MARK + ' градація', JSON.stringify({ spend_tiers: [{ from: 100000, percent: 3 }, { from: 30000, percent: 2 }] }), TENANT]))[0].id;
   try {
     const c = await client(MARK + ' градація', rnd9());
     await q(`UPDATE clients SET total_spent=29999 WHERE id=$1`, [c]);
@@ -267,5 +267,8 @@ test('кешбек за градацією (Босс 04.11): покупки < 30
     await q(`UPDATE clients SET total_spent=30000 WHERE id=$1`, [c]);
     const b = await bonus.accrue({ clientId: c, checkAmount: 1000, ruleId: rule, sourceType: 'qa_tier', sourceId: 2 });
     assert.strictEqual(Number(b.amount), 20, '30 000 ₴ покупок → 2%');
+    await q(`UPDATE clients SET total_spent=100000 WHERE id=$1`, [c]);
+    const g = await bonus.accrue({ clientId: c, checkAmount: 1000, ruleId: rule, sourceType: 'qa_tier', sourceId: 3 });
+    assert.strictEqual(Number(g.amount), 30, 'Gold: 100 000 ₴ покупок → 3%');
   } finally { await q(`DELETE FROM bonus_rules WHERE id=$1`, [rule]); }
 });
