@@ -17,12 +17,13 @@ html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 -apple-
 body{min-height:100vh;padding-bottom:env(safe-area-inset-bottom)}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .app{max-width:480px;margin:0 auto;min-height:100vh;position:relative}
-.screen{padding:0 16px 120px;animation:fade .18s ease}
+:root{--topsafe:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
+.screen{padding:var(--topsafe) 16px 120px;animation:fade .18s ease}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .serif{font-family:"Cormorant Garamond","Playfair Display",Georgia,"Times New Roman",serif}
 
 /* головний */
-.hero{position:relative;margin:0 -16px;height:330px;background:#000 url(/p/miniapp/hero.jpg) center 20%/cover no-repeat}
+.hero{position:relative;margin:calc(-1 * var(--topsafe)) -16px 0;height:calc(330px + var(--topsafe));background:#000 url(/p/miniapp/hero.jpg) center 20%/cover no-repeat}
 .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,18,0) 35%,rgba(20,16,18,.75) 72%,var(--bg) 100%)}
 .brand{position:relative;z-index:1;text-align:center;margin-top:-118px}
 .brand .svs{font-size:58px;letter-spacing:2px;color:#efe2dc;line-height:1}
@@ -35,13 +36,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .btn-rose .chev{margin-left:auto;margin-right:6px;font-size:20px}
 .btn-rose .lbl{margin-left:30px}
 .menu{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+/* 04.11 ярлик на робочий стіл: ободок переливається (обертовий градієнт) + відблиск + пульс світіння */
+.hs{position:relative;overflow:hidden;border-radius:19px;padding:3px;margin-top:14px;box-shadow:0 0 16px rgba(241,184,171,.22);animation:hsGlow 2.4s ease-in-out infinite}
+.hs::before{content:'';position:absolute;left:50%;top:50%;width:140%;aspect-ratio:1/1;transform:translate(-50%,-50%);background:conic-gradient(var(--rose),var(--gold),#fff4e6,var(--rose2),#b76e79,var(--rose));animation:hsSpin 3.2s linear infinite}
+.hs::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.7) 50%,transparent 65%);background-size:250% 100%;animation:hsShine 2.6s ease-in-out infinite;pointer-events:none}
+.hs .mi{position:relative;z-index:1;border:0;border-radius:16px}
+@keyframes hsSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes hsGlow{50%{box-shadow:0 0 30px rgba(217,179,140,.5)}}
+@keyframes hsShine{0%{background-position:160% 0}100%{background-position:-60% 0}}
+@media (prefers-reduced-motion:reduce){.hs,.hs::before,.hs::after{animation:none}}
 .mi{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;text-align:left;width:100%}
 .mi .ic{width:24px;text-align:center;font-size:18px;opacity:.9}
 .mi .t{flex:1}
 .mi .ar,.row .ar{color:var(--muted);font-size:20px}
 
 /* шапка кроку */
-.head{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 10px;margin:0 0 6px}
+.head{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(14px + var(--topsafe)) 0 10px;margin:calc(-1 * var(--topsafe)) 0 6px}
 .head .back{position:absolute;left:-6px;top:12px;width:40px;height:40px;font-size:24px;color:var(--text)}
 .head .step{text-align:center;color:var(--muted);font-size:14px}
 .head .title{text-align:center;font-size:19px;margin-top:2px}
@@ -275,6 +285,7 @@ function vHome(){
     h('button',{class:'btn btn-rose',id:'go-book',onclick:function(){ haptic(); S.move=null; startBooking(); }},
       h('span',{class:'lbl',text:'Записатися ✨'}), h('span',{class:'chev',text:'›'})),
     modeSwitch('client'),
+    homeShortcut(h('div',{id:'hs-slot'})),
     h('div',{class:'menu'},
       mi('💅','Послуги',function(){ S.move=null; startBooking(); }),
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
@@ -290,6 +301,26 @@ function adminContact(){
     else toast('Не вдалося. Напишіть нам у чат бота — відповімо.');
   });
 }
+// 04.11 ярлик застосунку на робочому столі телефона (Telegram Bot API 8.0: addToHomeScreen).
+// Картку показуємо, доки ярлика нема; «added»/«unsupported» — не показуємо зовсім.
+function hsSupported(){ return !!(tg && tg.addToHomeScreen && tg.checkHomeScreenStatus && (!tg.isVersionAtLeast || tg.isVersionAtLeast('8.0'))); }
+function hsAdd(){ try { tg.addToHomeScreen(); } catch(e){} }
+function homeShortcut(slot){
+  if (!hsSupported()) return slot;
+  try { tg.checkHomeScreenStatus(function(st){
+    S.hsStatus = st;
+    if (st==='added' || st==='unsupported') return;
+    slot.innerHTML=''; add(slot, h('div',{class:'hs',id:'hs-card'}, mi('📲','Додати SVS на робочий стіл',hsAdd,'hs')));
+  }); } catch(e){}
+  return slot;
+}
+// після першого успішного запису — один раз самі пропонуємо ярлик (системне вікно Telegram)
+function hsOfferOnce(){
+  if (!hsSupported() || S.hsStatus==='added' || S.hsStatus==='unsupported') return;
+  try { if (localStorage.getItem('svs_hs_offered')) return; localStorage.setItem('svs_hs_offered','1'); } catch(e){ return; }
+  setTimeout(hsAdd, 1800);
+}
+if (tg && tg.onEvent) try { tg.onEvent('homeScreenAdded', function(){ S.hsStatus='added'; var c=document.getElementById('hs-card'); if (c) c.remove(); haptic('ok'); toast('Ярлик SVS додано на робочий стіл 💛'); }); } catch(e){}
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 
 function startBooking(){
@@ -587,6 +618,7 @@ function ensurePhone(force, why){
 }
 
 function vDone(){
+  hsOfferOnce();
   var b = S.result || {};
   render(h('div',{class:'screen center'},
     h('div',{class:'okic',text:'✓'}),
@@ -802,7 +834,10 @@ function vClaim(){
   });
 }
 function boot(){
-  if (tg){ try { tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#141012'); tg.setBackgroundColor && tg.setBackgroundColor('#141012');
+  if (tg){ try { tg.ready(); tg.expand();
+    // 04.11 Босс: «зроби повноекранним» — Bot API 8.0 fullscreen; свайп вниз не закриває застосунок посеред скролу
+    try { if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && tg.requestFullscreen && !tg.isFullscreen) tg.requestFullscreen(); } catch(e){}
+    try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch(e){} tg.setHeaderColor && tg.setHeaderColor('#141012'); tg.setBackgroundColor && tg.setBackgroundColor('#141012');
     tg.BackButton && tg.BackButton.onClick(back); } catch(e){} }
   if (!INIT){
     render(h('div',{class:'screen center'}, h('div',{class:'hero'}),
