@@ -144,6 +144,13 @@ h3{font-size:15px;color:var(--muted);font-weight:500;margin:20px 2px 10px;text-t
 .ap .acts .x{color:var(--err)}
 .hist{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);font-size:14px}
 .hist .d{color:var(--muted);font-size:12.5px}
+.bill{margin:2px 0 12px;padding:10px 12px;background:var(--card2);border:1px solid var(--line);border-radius:14px;font-size:13.5px}
+.bill .r{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.bill .r.minus span:last-child{color:var(--ok)}
+.bill .tot{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:600}
+.bill .tot b{color:var(--gold)}
+.bill .paid{color:var(--ok);font-weight:600;margin-top:6px}
+.bill .btn{margin-top:10px}
 
 /* телефон / успіх / тости */
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end}
@@ -648,20 +655,60 @@ function vCabinet(){
       list.appendChild(h('div',{class:'ap','data-id':a.id},
         h('div',{class:'n',text:a.service}),
         h('div',{class:'m',text:'📅 '+a.date_label+' · '+a.time}),
-        h('div',{class:'m',text:'💇 '+a.master+(a.price?' · '+price(a.price):'')}),
+        h('div',{class:'m',text:'💇 '+a.master}),
         h('div',{class:'acts'},
           h('button',{class:'mv',onclick:function(){ haptic(); startMove([a.id]); }}, '🔁 Перенести'),
           h('button',{class:'x',onclick:function(e){ cancelAppt(a, e.currentTarget); }}, '✖ Скасувати'))));
     });
     if ((j.history||[]).length){
       box.appendChild(h('h3',{text:'Історія візитів'}));
+      // 04.11 (Босс): в історії — дата, послуга, майстер; без цін. Оплачений візит → «✅ Оплачено»
+      // і «+N бонусів за візит». Сума показується лише в рахунку, який ще треба сплатити.
       j.history.forEach(function(a){
-        box.appendChild(h('div',{class:'hist'}, h('div',{}, h('div',{text:a.service||'Візит'}), h('div',{class:'d',text:a.date_label+' · '+a.master})),
-          h('div',{class:'p',style:'color:var(--gold)',text:a.price?price(a.price):''})));
+        var b = a.bill, showBill = b && b.can_pay;
+        var right = a.paid ? '✅ Оплачено' : (showBill ? billMoney(b.amount) : '');
+        box.appendChild(h('div',{class:'hist','data-id':a.id}, h('div',{}, h('div',{text:a.service||'Візит'}), h('div',{class:'d',text:a.date_label+' · '+a.master}),
+            null),
+          h('div',{class:'p',style:'color:var(--gold)',text:right})));
+        if (showBill) box.appendChild(billCard(a));
       });
     }
   }).catch(function(){ box.innerHTML=''; box.appendChild(h('div',{class:'empty err',text:'Немає звʼязку.'})); });
 }
+// 04.11 Рахунок візиту (послуги + товари − знижки) і оплата Apple Pay / Google Pay через monobank.
+function billMoney(v){ v=Math.round((+v||0)*100)/100; return (v%1 ? v.toFixed(2).replace('.',',') : String(v)).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' грн'; }
+function billCard(a){
+  var b = a.bill, card = h('div',{class:'bill','data-bill':a.id});
+  (b.lines||[]).forEach(function(l){ card.appendChild(h('div',{class:'r'+(l.amount<0?' minus':'')}, h('span',{text:l.label}), h('span',{text:(l.amount<0?'−':'')+billMoney(Math.abs(l.amount))}))); });
+  if (b.paid) { card.appendChild(h('div',{class:'paid',text:'✅ Оплачено'})); return card; }
+  card.appendChild(h('div',{class:'tot'}, h('span',{text:'Рахунок'}), h('b',{text:billMoney(b.amount)})));
+  if (b.can_pay) card.appendChild(h('button',{class:'btn btn-rose',onclick:function(e){ payBill(a, e.currentTarget); }}, 'Оплатити '+billMoney(b.amount)+' ·  Apple Pay / Google Pay'));
+  return card;
+}
+function payBill(a, btn){
+  haptic(); btn.disabled = true; var t = btn.textContent; btn.textContent = 'Відкриваю оплату…';
+  api('/appointments/'+a.id+'/pay',{method:'POST'}).then(function(j){
+    btn.disabled = false; btn.textContent = t;
+    if (j._status===200 && j.already_paid){ toast('Візит уже оплачено'); vCabinet(); return; }
+    if (j._status===200 && j.page_url){
+      S.payWatch = a.id;
+      try { if (tg && tg.openLink) tg.openLink(j.page_url); else window.open(j.page_url,'_blank'); } catch(e){ window.location.href = j.page_url; }
+      return;
+    }
+    haptic('error'); toast(j.message||'Не вдалося відкрити оплату');
+  }).catch(function(){ btn.disabled=false; btn.textContent=t; toast('Немає звʼязку. Спробуйте ще раз.'); });
+}
+// повернулись зі сторінки оплати — оновлюємо кабінет, щоб побачити «Оплачено» (вебхук Mono приходить за секунди)
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState!=='visible' || !S.payWatch) return;
+  var id = S.payWatch, n = 0;
+  (function poll(){
+    api('/appointments/'+id+'/bill').then(function(j){
+      if (j.bill && j.bill.paid){ S.payWatch = null; haptic('ok'); toast('Оплату отримано 💛'); if (S.stack[S.stack.length-1]==='cabinet') vCabinet(); return; }
+      if (++n < 6) setTimeout(poll, 3000);
+    }).catch(function(){});
+  })();
+});
 function cancelAppt(a, btn){
   var doIt = function(){
     btn.disabled = true;

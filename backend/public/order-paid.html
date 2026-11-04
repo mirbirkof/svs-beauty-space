@@ -39,6 +39,13 @@
         document.getElementById('orderLine').innerHTML =
           'Замовлення <strong>№' + order.replace(/[^a-z0-9\-]/gi, '') + '</strong>';
       }
+      // оплата візиту (рахунок із застосунку/бота) — інший текст, без «продовжити покупки»
+      if (q.get('kind') === 'visit') {
+        document.getElementById('msg').textContent =
+          'Дякуємо! Візит оплачено — у застосунку «Мої записи» він позначиться як оплачений за кілька секунд. Цю сторінку можна закрити.';
+        document.getElementById('orderLine').textContent = '';
+        var b = document.querySelector('.btn'); if (b) b.style.display = 'none';
+      }
       // якщо повернулись без підтвердження статусу — підкажемо, що оплата обробляється
       if (q.get('status') === 'pending') {
         document.getElementById('icon').className = 'icon pending';

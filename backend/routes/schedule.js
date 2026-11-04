@@ -1495,7 +1495,20 @@ router.patch('/appointments/:id', async (req, res) => {
 
     // Зміна ціни ВЖЕ оплаченого запису → синхронізуємо суму приходу в касі (заметка #114).
     // Сума в касі = ціна послуги + платні матеріали (фарба за грам). Продажі BP не чіпаємо.
+    // 04.11: оплачений візит НОВОЇ моделі (окремі знижки на послуги/товари/чек) — перерахунок
+    // однією функцією lib/visit-bill (каса по методах, знижки, база ЗП). Старі візити — як раніше.
+    let _vbResynced = false;
     if (newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
+      const vbc = await pool.connect();
+      try {
+        await vbc.query('BEGIN'); await applyTenant(vbc);
+        const rs = await require('../lib/visit-bill').resyncPaidVisit(vbc, Number(req.params.id));
+        await vbc.query('COMMIT');
+        _vbResynced = !!(rs && rs.ok); // skipped (старий візит / не оплачено) → стара логіка нижче
+      } catch (e) { await vbc.query('ROLLBACK').catch(() => {}); console.error('[schedule] price→bill resync:', e.message); }
+      finally { vbc.release(); }
+    }
+    if (!_vbResynced && newPrice != null && Number.isFinite(newPrice) && newPrice > 0) {
       // Чек розділений: sale_service = послуга, sale_product = платні матеріали.
       // Легасі (без sale_product) — матеріали лишаються в sale_service.
       // ІСТОРИЧНА ЗНИЖКА (SaaS-аудит 06.07): знижка/сертифікат/бонуси оплати
@@ -2061,7 +2074,9 @@ router.post('/appointments/:id/unpay', async (req, res) => {
         `UPDATE appointments SET status='confirmed', updated_at=NOW(),
                 discount_amount=NULL, pay_cert_code=NULL, pay_cert_amount=NULL,
                 pay_bonus_redeemed=NULL, pay_bonus_money=NULL, pay_bonus_accrued=NULL, pay_settled_at=NULL,
-                real_amount=NULL, real_synced_at=NULL
+                real_amount=NULL, real_synced_at=NULL,
+                discount_services_amount=NULL, discount_products_amount=NULL, discount_check_amount=NULL,
+                bill_services_total=NULL, bill_products_total=NULL, bill_sub_amount=NULL, bill_prepaid_amount=NULL
           WHERE id=$1`, [id]);
       if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
       // передоплата: /pay позначає онлайн-передоплату спожитою (prepaid_consumed_at).
@@ -2129,9 +2144,13 @@ router.post('/appointments/:id/unpay', async (req, res) => {
 // ── POST /api/schedule/appointments/:id/pay — провести оплату ──
 // Помічає запис виконаним + створює прихід у касу (готівка/картка).
 // Ідемпотентно: повторний виклик не дублює операцію (ref_type='appointment').
-router.post('/appointments/:id/pay', async (req, res) => {
+// Ядро оплати візиту. Викликається маршрутом каси і (через payAppointmentInternal) Mono-вебхуком
+// оплати рахунку з застосунку — логіка грошей ОДНА. req._payInternal = { online, expectFinal }.
+async function payHandler(req, res) {
   try {
     const pool = getPool();
+    const internal = req._payInternal || null;
+    const VB = require('../lib/visit-bill');
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'bad-id' });
     const method = ['cash', 'card', 'transfer', 'mono', 'mixed'].includes(req.body?.method) ? req.body.method : 'cash';
@@ -2139,7 +2158,8 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // запис + ціна + майстер + GUID клієнта (для точної перевірки оплати в BP)
     const ap = await pool.query(
       `SELECT a.id, a.master_id, a.client_id, a.status, a.legacy_client_ref, a.starts_at, a.tenant_id,
-              COALESCE(a.price, s.price) AS price, s.name AS service_name
+              COALESCE(a.price, s.price) AS price, s.name AS service_name,
+              a.disc_svc_type, a.disc_svc_value, a.disc_prod_type, a.disc_prod_value, a.disc_check_type, a.disc_check_value
          FROM appointments a LEFT JOIN services s ON s.id = a.service_id
         WHERE a.id = $1`, [id]
     );
@@ -2204,8 +2224,12 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // ── ЗНИЖКИ: ручна знижка → сертифікат → бонуси. Каса отримує РЕШТУ (реальні гроші). ──
     const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
     const bonusLib = require('../lib/bonus');
-    const dType = req.body?.discount_type;         // 'percent' | 'fixed'
-    const dVal = Number(req.body?.discount_value) || 0;
+    // знижки (04.11): {discounts:{services,products,check}} з нової каси → стара одна знижка
+    // discount_type/value = «на весь чек» → збережені на візиті (рахунок, надісланий клієнту)
+    // Збережені на візиті знижки («Зберегти рахунок» / застосунок) застосовує лише онлайн-оплата (Mono):
+    // на касі діє рівно те, що надіслала форма (вона сама підтягує збережені), — інакше після
+    // «Скасувати оплату» стара знижка тихо застосувалася б до наступної оплати без знижки.
+    const specs = VB.resolveSpecs(req.body, internal ? appt : null);
     const certCode = String(req.body?.certificate_code || '').trim().toUpperCase();
     const bonusReq = Number(req.body?.bonus_amount) || 0;
     let bonusMoney = 0, bonusRedeemed = 0;
@@ -2274,9 +2298,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
 
     // 1) ручна знижка — від решти чека ПІСЛЯ абонемента (не від base: інакше знижка
     // «їсть» уже покриту абонементом послугу і чек іде в мінус)
-    let discountMoney = 0;
-    if (dType === 'percent' && dVal > 0) discountMoney = round2(remaining * Math.min(dVal, 100) / 100);
-    else if (dType === 'fixed' && dVal > 0) discountMoney = Math.min(round2(dVal), remaining);
+    // 1) знижки: на послуги (від послуги після абонемента), на товари, на весь чек (від решти).
+    // Без знижок на послуги/товари = рівно стара формула (знижка від remaining).
+    const S1 = round2((Number(appt.price) || 0) - subApplied);
+    const discSvc = VB.discOf(specs.svc, S1);
+    const discProd = VB.discOf(specs.prod, matTotal);
+    const discCheck = VB.discOf(specs.check, round2(S1 - discSvc + matTotal - discProd));
+    const discountMoney = round2(discSvc + discProd + discCheck);
     remaining = round2(remaining - discountMoney);
 
     // 2) сертифікат (валідуємо зараз, списуємо в транзакції)
@@ -2334,6 +2362,9 @@ router.post('/appointments/:id/pay', async (req, res) => {
     const totalDiscount = round2(discountMoney + certMoney + bonusMoney);
     // сумісність зі старим кодом нижче: amount = скільки реально в касу
     const amount = finalCash;
+    // оплата з застосунку (Mono): сума інвойсу мусить збігатися з рахунком, інакше — не закриваємо
+    if (internal && internal.expectFinal != null && round2(internal.expectFinal) !== finalCash)
+      return await failPay(409, { error: 'bill-changed', message: 'Рахунок змінився після виставлення інвойсу', expected: finalCash });
 
     // ── ЗМІШАНА ОПЛАТА: частина готівкою + частина карткою (побажання адміна 04.07) ──
     // parts = [[method, sum], ...] — на кожну частину своя касова операція.
@@ -2372,14 +2403,14 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // відкрита зміна каси (обовʼязкова лише при require_open_shift='true' — заметка #103)
     const sh = await pool.query(`SELECT id FROM cash_shifts WHERE status='open' ORDER BY opened_at DESC LIMIT 1`);
     const requireShift = String(await getSetting('require_open_shift', false)) === 'true';
-    if (!sh.rows[0] && requireShift) return res.status(400).json({ error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
+    if (!sh.rows[0] && requireShift && !internal) return await failPay(400, { error: 'no-open-shift', message: 'Немає відкритої зміни каси. Відкрийте зміну в розділі «Каса».' });
     let shiftId = sh.rows[0]?.id || null;
 
     // Ретро-оплата (заметка #112): якщо візит був у МИНУЛИЙ день, а «Виконано» натиснули
     // сьогодні — гроші датуємо днем візиту, інакше вони хибно потрапляють у «Касу за день»
     // сьогодні. До поточної зміни таку операцію теж не чіпляємо (щоб не псувати підсумок зміни).
     const _kyivDay = ts => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(new Date(ts));
-    const isRetro = appt.starts_at && _kyivDay(appt.starts_at) < _kyivDay(Date.now());
+    const isRetro = !internal && appt.starts_at && _kyivDay(appt.starts_at) < _kyivDay(Date.now()); // онлайн-оплата — гроші прийшли сьогодні
     const opCreatedAt = isRetro ? appt.starts_at : null; // null → NOW() за замовчуванням
     if (isRetro) shiftId = null;
 
@@ -2405,8 +2436,8 @@ router.post('/appointments/:id/pay', async (req, res) => {
         // Знижка/сертифікат/бонуси розподіляються пропорційно часткам чека.
         // база пропорції БЕЗ частини послуги, покритої абонементом: інакше матеріали
         // недоотримують свою частку і фінзведення знову показує «товари ≈ 0» (18.08)
-        const propBase = Math.max(0.01, round2(base - subApplied));
-        const productCash = matTotal > 0 ? Math.min(finalCash, round2(matTotal * finalCash / propBase)) : 0;
+        // 04.11: частки — ПІСЛЯ знижок на послуги/товари (без них = base − абонемент, як раніше)
+        const productCash = VB.splitCash({ S3: round2(S1 - discSvc), P3: round2(matTotal - discProd), finalCash }).product;
         let svcLeft = round2(finalCash - productCash);
         let prodLeft = productCash;
         for (const [pMethod, pSum] of payParts) {
@@ -2459,16 +2490,25 @@ router.post('/appointments/:id/pay', async (req, res) => {
         // Знижка розподіляється пропорційно між послугою та матеріалами (чек = послуга + матеріали),
         // матеріали в базу ЗП НЕ входять (розхідники не дають %). Раніше real_amount не писався
         // взагалі → ЗП рахувалась від планової ціни, знижки базу не зменшували (баг).
-        const svcShare = base > 0 ? (Number(appt.price) || 0) / base : 0;
-        const realServiceAmount = round2(Math.max(0, (Number(appt.price) || 0) - totalDiscount * svcShare));
+        // 04.11: послуга після «знижки на послуги» мінус частка (знижка на чек + сертифікат + бонуси)
+        const realServiceAmount = VB.realServiceAmount({ S: Number(appt.price) || 0, P: matTotal, Ds: discSvc, Dp: discProd,
+          other: round2(discCheck + certMoney + bonusMoney) });
         await client.query(
           `UPDATE appointments SET status='done', updated_at=NOW(),
                   discount_amount=$2, pay_cert_code=$3, pay_cert_amount=$4,
                   pay_bonus_redeemed=$5, pay_bonus_money=$6, pay_settled_at=NOW(),
-                  real_amount=$7
+                  real_amount=$7,
+                  disc_svc_type=$8, disc_svc_value=$9, discount_services_amount=$10,
+                  disc_prod_type=$11, disc_prod_value=$12, discount_products_amount=$13,
+                  disc_check_type=$14, disc_check_value=$15, discount_check_amount=$16,
+                  bill_services_total=$17, bill_products_total=$18, bill_sub_amount=$19, bill_prepaid_amount=$20
             WHERE id=$1`,
           [id, discountMoney || null, certMoney > 0 ? certRow.code : null, certMoney || null,
-           bonusRedeemed || null, bonusMoney || null, realServiceAmount]);
+           bonusRedeemed || null, bonusMoney || null, realServiceAmount,
+           specs.svc?.type || null, specs.svc?.value ?? null, discSvc,
+           specs.prod?.type || null, specs.prod?.value ?? null, discProd,
+           specs.check?.type || null, specs.check?.value ?? null, discCheck,
+           round2(Number(appt.price) || 0), matTotal, subApplied || null, prepaidApplied || null]);
         // Major #4: позначаємо передоплату спожитою в тій самій транзакції (idempotent —
         // WHERE prepaid_consumed_at IS NULL), щоб її не відняли вдруге при повторній оплаті.
         if (prepaidBookingId && prepaidApplied > 0) {
@@ -2523,9 +2563,13 @@ router.post('/appointments/:id/pay', async (req, res) => {
     // Вітринні лічильники клієнта (total_spent/total_visits/last_visit_at) — перерахунок
     // з першоджерела, не інкремент (аудит 25.07: поле роками тільки зменшувалось). Fire-and-forget.
     if (appt.client_id) { try { require('../lib/client-stats').recalcClientStats(appt.client_id).catch(() => {}); } catch (_) {} }
+    // закрили на касі → відкритий Mono-рахунок клієнта більше не потрібен (best-effort, не блокує)
+    if (!internal) { try { require('./payments-mono').cancelApptInvoices(id, 'paid-at-desk').catch(() => {}); } catch (_) {} }
     res.json({ ok: true, operation_id: op.rows[0].id, base, final: finalCash, method, stock,
       ...(subRow ? { subscription_used: { id: subRow.id, applied: subApplied, visits_remaining: subRow._balanceAfter ?? Number(subRow.visits_remaining) } } : {}),
       discount: { manual: discountMoney, certificate: certMoney, bonus: bonusMoney, total: totalDiscount },
+      discount_parts: { services: discSvc, products: discProd, check: discCheck },
+      prepaid: prepaidApplied,
       bonus_accrued: Math.max(0, accrued),
       ...(accrued === -1 ? { bonus_warning: 'Бонуси за візит НЕ нараховано (технічний збій) — нарахуйте вручну.' } : {}),
       ...(stock && stock.written === false ? { stock_warning: 'Матеріали візиту НЕ списано зі складу — спишіть вручну.' } : {}) });
@@ -2538,6 +2582,66 @@ router.post('/appointments/:id/pay', async (req, res) => {
       return res.status(409).json({ error: 'cert-race', message: 'Сертифікат уже використано або на ньому недостатньо коштів. Оновіть сторінку й перевірте баланс.' });
     console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message });
   }
+}
+router.post('/appointments/:id/pay', payHandler);
+
+// ── Внутрішнє проведення оплати візиту (онлайн Monobank) ──
+// Той самий обробник, що й каса: одна формула рахунку, ті самі рядки каси, бонуси, сертифікат,
+// зарплата майстра. expectFinal — сума, яку клієнт реально сплатив: якщо рахунок за цей час
+// змінився, оплату НЕ проводимо (409 bill-changed) — нехай адмін розбереться.
+async function payAppointmentInternal(apptId, body, opts = {}) {
+  const run = async () => {
+    const out = { status: 200, body: null };
+    const req = { params: { id: String(apptId) }, body: body || {}, user: { display_name: 'Monobank онлайн' },
+                  _payInternal: { online: true, expectFinal: opts.expectFinal != null ? Number(opts.expectFinal) : null } };
+    const res = { locals: {}, status(c) { out.status = c; return this; }, json(b) { out.body = b; return this; } };
+    await payHandler(req, res);
+    return out;
+  };
+  if (opts.tenantId != null) { const { runAs } = require('../lib/tenant'); return runAs(opts.tenantId, run); }
+  return run();
+}
+
+// ── Рахунок візиту (послуги + товари − знижки − сертифікат/бонуси/передоплата) ──
+router.get('/appointments/:id/bill', async (req, res) => {
+  try {
+    const bill = await require('../lib/visit-bill').loadVisitBill(getPool(), Number(req.params.id));
+    if (!bill) return res.status(404).json({ error: 'appointment-not-found' });
+    const inv = await getPool().query(
+      `SELECT invoice_id, page_url, amount, status, created_at FROM payments
+        WHERE appointment_id=$1 AND provider='mono' AND purpose='appt_bill' ORDER BY id DESC LIMIT 3`, [Number(req.params.id)]);
+    res.json({ ...bill, invoices: inv.rows });
+  } catch (e) { console.error('[schedule:bill]', e.message); res.status(500).json({ error: 'bill-failed' }); }
+});
+
+// зберегти знижки рахунку (без проведення оплати) — щоб клієнт бачив ту саму суму в застосунку
+router.put('/appointments/:id/bill', async (req, res) => {
+  try {
+    const VB = require('../lib/visit-bill');
+    const id = Number(req.params.id);
+    const pool = getPool();
+    const a = await pool.query(`SELECT id, pay_settled_at, disc_svc_type, disc_svc_value, disc_prod_type, disc_prod_value, disc_check_type, disc_check_value FROM appointments WHERE id=$1`, [id]);
+    if (!a.rows[0]) return res.status(404).json({ error: 'appointment-not-found' });
+    const paidQ = await pool.query(`SELECT 1 FROM cash_operations WHERE ref_type='appointment' AND ref_id=$1 AND type='in' LIMIT 1`, [id]);
+    if (a.rows[0].pay_settled_at || paidQ.rowCount) return res.status(409).json({ error: 'already-paid', message: 'Візит уже оплачено — знижку змінюйте через «Скасувати оплату».' });
+    const sp = VB.resolveSpecs(req.body || {}, {});
+    await pool.query(
+      `UPDATE appointments SET disc_svc_type=$2, disc_svc_value=$3, disc_prod_type=$4, disc_prod_value=$5, disc_check_type=$6, disc_check_value=$7 WHERE id=$1`,
+      [id, sp.svc?.type || null, sp.svc?.value ?? null, sp.prod?.type || null, sp.prod?.value ?? null, sp.check?.type || null, sp.check?.value ?? null]);
+    const bill = await VB.loadVisitBill(pool, id);
+    // сума змінилась — відкритий онлайн-рахунок клієнта більше не актуальний
+    try { await require('./payments-mono').cancelApptInvoices(id, 'bill-changed', bill.final); } catch (_) {}
+    res.json(bill);
+  } catch (e) { console.error('[schedule:bill-put]', e.message); res.status(500).json({ error: 'bill-save-failed' }); }
+});
+
+// надіслати клієнту рахунок у Telegram (кнопка «Оплатити» → Mono)
+router.post('/appointments/:id/bill/send', async (req, res) => {
+  try {
+    const r = await require('./payments-mono').sendApptBill(Number(req.params.id), { force: true });
+    if (r.error) return res.status(r.status || 400).json(r);
+    res.json(r);
+  } catch (e) { console.error('[schedule:bill-send]', e.message); res.status(500).json({ error: 'bill-send-failed', message: e.message }); }
 });
 
 // ── DELETE /api/schedule/appointments/:id — видалити запис ──
@@ -2588,6 +2692,12 @@ router.delete('/appointments/:id', async (req, res) => {
       );
       // стара CRM-запис не можна видаляти жорстко: автосинк побачить його в BP і
       // відтворить знову. Тому мʼяке видалення: cancelled + manual_override.
+      // онлайн-рахунки візиту (payments.appointment_id, FK) лишаються як історія: відкриті — скасовано,
+      // при жорсткому видаленні відвʼязуємо, щоб FK не заблокував видалення запису
+      await client.query(
+        `UPDATE payments SET status=CASE WHEN status IN ('created','processing','hold') THEN 'cancelled' ELSE status END,
+                appointment_id=CASE WHEN $2::boolean THEN appointment_id ELSE NULL END, updated_at=NOW()
+          WHERE appointment_id=$1`, [id, !!soft]);
       if (soft) {
         await client.query(
           `UPDATE appointments SET status='cancelled', manual_override=true, cancelled_at=COALESCE(cancelled_at,NOW()), updated_at=NOW() WHERE id=$1`, [id]
@@ -2639,3 +2749,4 @@ router.delete('/appointments/:id', async (req, res) => {
 module.exports = router;
 // для інтеграційного тесту абонемент-у-касі (18.08): логіка тестується бойова, не копія
 module.exports._test = { findUsableSubscription, rollbackSubUse };
+module.exports.payAppointmentInternal = payAppointmentInternal;

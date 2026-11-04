@@ -10235,11 +10235,18 @@ async function openAppt(id, masterId) {
         <button class="btn btn-outline" style="width:100%;margin-top:8px;color:#dc2626;border-color:#fca5a5" onclick="unpayAppt(${a.id})" title="Анулювати оплату повністю: гроші з каси, бонуси, сертифікат і матеріали повертаються; потім можна провести заново">↩ Скасувати оплату</button>` : `
         <div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--bg-secondary,#f8fafc)">
           <div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:8px">💸 Знижки та лояльність</div>
-          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-            <span style="font-size:12px;width:56px">Знижка</span>
-            <input id="payDiscVal" type="number" min="0" step="1" placeholder="0" class="input" style="flex:1;padding:5px" oninput="payRecalc(${a.id})">
-            <select id="payDiscType" class="input" style="width:70px;padding:5px" onchange="payRecalc(${a.id})"><option value="percent">%</option><option value="fixed">грн</option></select>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:6px" title="Знижка на послуги і на товари — кожна від своєї частини. Знижка на весь чек — поверх них, від того, що лишилось. Знижка не більша за частину. Потім сертифікат і бонуси.">
+            ${[['svc','На послуги'],['prod','На товари'],['check','На весь чек']].map(([k,l]) => `
+            <div>
+              <div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px">${l}</div>
+              <div style="display:flex;gap:4px">
+                <input id="payDisc_${k}" data-disc="${k}" type="number" min="0" step="1" placeholder="0" class="input" style="flex:1;min-width:0;padding:5px" oninput="payRecalc(${a.id})">
+                <select id="payDiscT_${k}" class="input" style="width:58px;padding:5px" onchange="payRecalc(${a.id})"><option value="percent">%</option><option value="fixed">грн</option></select>
+              </div>
+              <div id="payDiscL_${k}" style="font-size:11px;color:var(--text-secondary);margin-top:3px;min-height:14px"></div>
+            </div>`).join('')}
           </div>
+          <div id="payPromoHint" style="font-size:11px;margin-bottom:6px"></div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
             <span style="font-size:12px;width:56px">Сертиф.</span>
             <input id="payCertCode" placeholder="GC-XXXX-XXXX" class="input" style="flex:1;padding:5px;text-transform:uppercase" oninput="payRecalc(${a.id})">
@@ -10268,7 +10275,12 @@ async function openAppt(id, masterId) {
           <span id="payMixNote" style="font-size:11px;color:var(--text-secondary);flex-basis:100%"></span>
         </div>
         <button id="apptPayBtn" data-pay-btn data-service="${Number(a.price)||0}" class="btn" style="background:#10b981;color:#fff;width:100%;margin-top:10px;font-weight:600"
-                onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>`}
+                onclick="payAppt(${a.id})">💳 Провести оплату · ${_money(a.price)}</button>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-outline" style="flex:1" onclick="billSave(${a.id})" title="Зберегти знижки в рахунку без оплати — клієнт побачить цю суму в застосунку">💾 Зберегти рахунок</button>
+          <button class="btn btn-outline" style="flex:1" onclick="billSend(${a.id})" title="Бот надішле клієнту рахунок із розшифровкою і кнопкою оплати monobank (Apple Pay / Google Pay)">📲 Надіслати рахунок клієнту</button>
+        </div>
+        <div id="billOnline" style="font-size:11px;color:var(--text-secondary);margin-top:4px"></div>`}
       </div>
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
         <span style="color:var(--text-secondary);font-size:12px">Перенести запис — дата / час / майстер</span>
@@ -10352,7 +10364,7 @@ async function loadApptMaterials(id) {
     const grand = items.reduce((s,m)=>s+(rowSum(m)||0),0);
     const billable = Number(d.billable_total)||0; // позиції у продаж клієнту (грам + пляшки) — ДОДАЄТЬСЯ ДО ЧЕКА
     // освіжаємо базу оплати (послуга + платні матеріали), щоб знижки/бонуси рахувались від повного чека
-    { const btn=document.getElementById('apptPayBtn'); if(btn){ _payOpts.base = Math.round(((Number(btn.dataset.service)||0)+billable)*100)/100; if(typeof payRecalc==='function') payRecalc(id); } }
+    { const btn=document.getElementById('apptPayBtn'); if(btn){ _payOpts.prod = billable; _payOpts.base = Math.round(((Number(btn.dataset.service)||0)+billable)*100)/100; if(typeof payRecalc==='function') payRecalc(id); } }
     const noPrice = items.some(m=>rowSum(m)==null);
     // кнопка оплати показує повну суму: послуга + платні матеріали
     const payBtn = document.getElementById('apptPayBtn');
@@ -10503,7 +10515,32 @@ async function loadPayOptions(id) {
   // база = ціна послуги + платні матеріали (продаж клієнту)
   let billable = 0;
   try { billable = Number((await api('/api/consumables/appointment/' + id)).billable_total) || 0; } catch (_) {}
+  _payOpts.prod = billable;
   _payOpts.base = Math.round((service + billable) * 100) / 100;
+  _payOpts.prepaid = 0;
+  // збережений рахунок (знижки, передоплата, Mono-інвойси) — щоб каса і застосунок показували одне й те саме
+  try {
+    const bl = await api('/api/schedule/appointments/' + id + '/bill');
+    const b = bl && bl.appointment_id ? bl : null;
+    if (b) {
+      _payOpts.prepaid = Number(b.prepaid) || 0;
+      for (const k of ['svc', 'prod', 'check']) {
+        const sp = b.specs && b.specs[k]; if (!sp) continue;
+        const v = document.getElementById('payDisc_' + k), t = document.getElementById('payDiscT_' + k);
+        if (v && !v.value) v.value = sp.value; if (t) t.value = sp.type;
+      }
+      const inv = (bl.invoices || [])[0], bo = document.getElementById('billOnline');
+      if (bo) bo.textContent = [b.bill_sent_at ? 'Рахунок надіслано клієнту ' + new Date(b.bill_sent_at).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '',
+        inv ? 'онлайн-оплата: ' + ({ created: 'очікує', processing: 'в процесі', hold: 'в процесі', success: 'оплачено', cancelled: 'скасовано', superseded: 'замінено новим рахунком', failure: 'не пройшла', expired: 'прострочено' }[inv.status] || inv.status) + ' · ' + _money(inv.amount) : ''].filter(Boolean).join(' · ');
+    }
+  } catch (_) {}
+  // акції в касі автоматично НЕ застосовуються — лише підказка, адмін вирішує сам (клік підставляє)
+  try {
+    const pr = await api('/api/promotions');
+    const items = ((pr && pr.items) || []).filter(x => Number(x.discount_pct) > 0 || Number(x.discount_uah) > 0).slice(0, 3);
+    const box = document.getElementById('payPromoHint');
+    if (box && items.length) box.innerHTML = '💡 Акції: ' + items.map(x => `<a href="#" style="color:#2563eb" onclick="event.preventDefault();payPromoApply(${id},${Number(x.discount_pct)||0},${Number(x.discount_uah)||0})">${escapeHtml(x.title || '')}</a>`).join(' · ') + ' <span style="color:var(--text-secondary)">(клік — підставити на послуги; перевірте умови)</span>';
+  } catch (_) {}
   try {
     const o = await api('/api/schedule/appointments/' + id + '/pay-options');
     _payOpts.bonus_balance = Number(o.bonus_balance) || 0;
@@ -10527,22 +10564,42 @@ async function loadPayOptions(id) {
   } catch (_) {}
   payRecalc(id);
 }
-function payRecalc(id) {
-  const base = Number(_payOpts.base) || 0;
-  const dType = document.getElementById('payDiscType')?.value || 'percent';
-  const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
-  const r2 = n => Math.round(n * 100) / 100;
-  let remaining = base, disc = 0;
-  // 0) абонемент покриває ПОСЛУГУ (матеріали — за гроші), йде до знижок — як на бекенді
-  let subMoney = 0;
-  if (document.getElementById('paySubUse')?.checked && _payOpts.sub) {
-    const svc = Number(document.getElementById('apptPayBtn')?.dataset.service) || 0;
-    subMoney = Math.min(r2(svc), remaining);
-    remaining = r2(remaining - subMoney);
+function payDiscSpecs() {
+  const o = {};
+  for (const k of ['svc', 'prod', 'check']) {
+    const v = Number(document.getElementById('payDisc_' + k)?.value) || 0;
+    o[k] = v > 0 ? { type: document.getElementById('payDiscT_' + k)?.value || 'percent', value: v } : null;
   }
-  if (dType === 'percent' && dVal > 0) disc = r2(remaining * Math.min(dVal, 100) / 100);
-  else if (dType === 'fixed' && dVal > 0) disc = Math.min(r2(dVal), remaining);
-  remaining = r2(remaining - disc);
+  return o;
+}
+function payPromoApply(id, pct, uah) {
+  const v = document.getElementById('payDisc_svc'), t = document.getElementById('payDiscT_svc');
+  if (!v || !t) return;
+  if (pct > 0) { v.value = pct; t.value = 'percent'; } else { v.value = uah; t.value = 'fixed'; }
+  payRecalc(id);
+}
+// Та сама модель, що на сервері (lib/visit-bill computeBill): абонемент → знижка на послуги / на товари
+// (кожна від своєї частини, не більша за неї) → знижка на чек поверх → сертифікат → бонуси → передоплата.
+function payRecalc(id) {
+  const r2 = n => Math.round(n * 100) / 100;
+  const S = Number(document.getElementById('apptPayBtn')?.dataset.service) || 0;
+  const P = r2(Number(_payOpts.prod) || Math.max(0, (Number(_payOpts.base) || 0) - S));
+  const base = r2(S + P);
+  const sp = payDiscSpecs();
+  const discOf = (spec, x) => { x = Math.max(0, r2(x)); if (!spec || x <= 0) return 0;
+    return spec.type === 'percent' ? Math.min(x, r2(x * Math.min(spec.value, 100) / 100)) : Math.min(x, r2(spec.value)); };
+  let subMoney = 0;
+  if (document.getElementById('paySubUse')?.checked && _payOpts.sub) subMoney = S;
+  const S1 = r2(S - subMoney);
+  const Ds = discOf(sp.svc, S1), Dp = discOf(sp.prod, P);
+  const S3 = r2(S1 - Ds), P3 = r2(P - Dp);
+  const Dc = discOf(sp.check, S3 + P3);
+  let remaining = r2(S3 + P3 - Dc);
+  const setL = (k, txt, warn) => { const el = document.getElementById('payDiscL_' + k); if (el) { el.textContent = txt; el.style.color = warn ? '#d97706' : 'var(--text-secondary)'; } };
+  const over = (spec, x) => spec && (spec.type === 'percent' ? spec.value > 100 : spec.value > x);
+  setL('svc', S1 > 0 ? `${_money(S1)}${Ds ? ' − ' + _money(Ds) + ' = ' + _money(S3) : ''}${over(sp.svc, S1) ? ' (обрізано до суми)' : ''}` : (sp.svc ? 'послуг до сплати нема' : ''), over(sp.svc, S1));
+  setL('prod', P > 0 ? `${_money(P)}${Dp ? ' − ' + _money(Dp) + ' = ' + _money(P3) : ''}${over(sp.prod, P) ? ' (обрізано до суми)' : ''}` : (sp.prod ? 'товарів у чеку нема' : ''), over(sp.prod, P) || (sp.prod && !P));
+  setL('check', Dc ? `${_money(r2(S3 + P3))} − ${_money(Dc)} = ${_money(remaining)}` : '', over(sp.check, S3 + P3));
   // бонуси (превʼю з лімітом %)
   let bonusMoney = 0;
   if (document.getElementById('payBonusUse')?.checked && _payOpts.bonus_balance > 0) {
@@ -10551,15 +10608,49 @@ function payRecalc(id) {
     bonusMoney = Math.min(_payOpts.bonus_balance * rate, maxMoney, remaining);
   }
   const cert = (document.getElementById('payCertCode')?.value || '').trim();
+  const prepaid = Math.min(Number(_payOpts.prepaid) || 0, r2(remaining - bonusMoney));
   const note = document.getElementById('payCalcNote');
-  const finalApprox = r2(remaining - bonusMoney);
-  if (note) note.innerHTML = `Повна: <b>${_money(base)}</b>${subMoney>0?` · абонемент −${_money(subMoney)}`:''}${disc>0?` · знижка −${_money(disc)}`:''}${cert?` · сертифікат (при оплаті)`:''}${bonusMoney>0?` · бонуси −${_money(bonusMoney)}`:''}<br>До сплати${cert?' (мінус сертифікат)':''}: <b style="color:#10b981">${_money(finalApprox)}</b>`;
+  const finalApprox = r2(remaining - bonusMoney - prepaid);
+  const parts = [`Послуги ${_money(S)}`];
+  if (P > 0) parts.push(`товари ${_money(P)}`);
+  if (subMoney > 0) parts.push(`абонемент −${_money(subMoney)}`);
+  if (Ds > 0) parts.push(`знижка на послуги −${_money(Ds)}`);
+  if (Dp > 0) parts.push(`знижка на товари −${_money(Dp)}`);
+  if (Dc > 0) parts.push(`знижка на чек −${_money(Dc)}`);
+  if (cert) parts.push('сертифікат (при оплаті)');
+  if (bonusMoney > 0) parts.push(`бонуси −${_money(bonusMoney)}`);
+  if (prepaid > 0) parts.push(`передоплата −${_money(prepaid)}`);
+  if (note) note.innerHTML = `${parts.join(' · ')}<br>Разом ${_money(base)} → до сплати${cert ? ' (мінус сертифікат)' : ''}: <b style="color:#10b981;font-size:14px">${_money(finalApprox)}</b>`;
   const btn = document.getElementById('apptPayBtn');
   if (btn) btn.textContent = `💳 Провести оплату · ${_money(finalApprox)}`;
   // змішана оплата: тримаємо актуальну «до сплати» і перебиваємо картку залишком
   _payOpts._final = finalApprox;
   const mixRow = document.getElementById('payMixedRow');
   if (mixRow && mixRow.style.display !== 'none') payMixedBalance(id);
+}
+// Зберегти знижки в рахунку без оплати (клієнт бачить суму в застосунку; відкритий Mono-інвойс на стару суму скасується)
+async function billSave(id, quiet) {
+  const msg = document.getElementById('apptMsg');
+  const sp = payDiscSpecs();
+  try {
+    const r = await api('/api/schedule/appointments/' + id + '/bill', { method: 'PUT', body: JSON.stringify({ discounts: { services: sp.svc, products: sp.prod, check: sp.check } }) });
+    if (r && r.appointment_id) { if (!quiet && msg) { msg.style.color = '#10b981'; msg.textContent = `Рахунок збережено ✓ до сплати ${_money(r.final)}`; } return r; }
+    if (msg) { msg.style.color = '#ef4444'; msg.textContent = (r && (r.message || r.error)) || 'Не вдалося зберегти рахунок'; }
+  } catch (e) { if (msg) { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; } }
+  return null;
+}
+async function billSend(id) {
+  const msg = document.getElementById('apptMsg');
+  const b = await billSave(id, true); if (!b) return;
+  if (!(Number(b.final) > 0)) { msg.style.color = '#ef4444'; msg.textContent = 'До сплати 0 грн — надсилати нічого'; return; }
+  msg.style.color = 'var(--text-secondary)'; msg.textContent = 'Надсилаю рахунок…';
+  try {
+    const r = await api('/api/schedule/appointments/' + id + '/bill/send', { method: 'POST', body: '{}' });
+    if (r && r.ok) { msg.style.color = '#10b981'; msg.textContent = `Рахунок ${_money(r.amount != null ? r.amount : b.final)} надіслано клієнту в Telegram ✓`; }
+    else if (r && r.error === 'no-telegram') { msg.style.color = '#ef4444'; msg.textContent = 'Клієнт не підключений до бота Telegram — надіслати нема куди. Оплата на касі.'; }
+    else if (r && (r.already_paid || r.error === 'already-paid')) { msg.style.color = '#10b981'; msg.textContent = 'Візит уже оплачено ✓'; }
+    else { msg.style.color = '#ef4444'; msg.textContent = (r && (r.message || r.error)) || 'Не вдалося надіслати'; }
+  } catch (e) { msg.style.color = '#ef4444'; msg.textContent = 'Помилка мережі'; }
 }
 // ── Змішана оплата: показ полів + автозаповнення залишку карткою ──
 function payMixedToggle(id) {
@@ -10615,8 +10706,7 @@ async function payAppt(id) {
     body.mixed_cash = mc; body.mixed_card = mk;
   }
   if (document.getElementById('paySubUse')?.checked && _payOpts.sub) body.subscription_id = _payOpts.sub.id;
-  const dVal = Number(document.getElementById('payDiscVal')?.value) || 0;
-  if (dVal > 0) { body.discount_type = document.getElementById('payDiscType')?.value || 'percent'; body.discount_value = dVal; }
+  { const sp = payDiscSpecs(); body.discounts = { services: sp.svc, products: sp.prod, check: sp.check }; }
   const cert = (document.getElementById('payCertCode')?.value || '').trim();
   if (cert) body.certificate_code = cert;
   if (document.getElementById('payBonusUse')?.checked && _payOpts.bonus_balance > 0) body.bonus_amount = _payOpts.bonus_balance;

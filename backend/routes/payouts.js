@@ -269,7 +269,7 @@ async function liveEstimate(masterId, from, to) {
     // % з продажу продукції — банки по продавцю + POS (та сама формула, що «Підтвердження»)
     if (num(s.sales_commission_pct) > 0) {
       const sold = (await q(
-        `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2))
+        `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2)*COALESCE(GREATEST(0, 1 - a.discount_products_amount/NULLIF(a.bill_products_total,0)), 1))
              FROM appointment_materials am
              JOIN appointments a ON a.id=am.appointment_id
              JOIN product_variants pv ON pv.id=am.variant_id

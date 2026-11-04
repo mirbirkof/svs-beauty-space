@@ -62,8 +62,7 @@ router.use(auth);
 async function clientOf(uid) {
   const r = await getPool().query(
     `SELECT id, COALESCE(NULLIF(name,''), tg_first_name) AS name, phone,
-            COALESCE(loyalty_points,0)::float AS points, COALESCE(total_visits,0)::int AS visits,
-            COALESCE(total_spent,0)::float AS spent
+            COALESCE(loyalty_points,0)::float AS points, COALESCE(total_visits,0)::int AS visits
        FROM clients WHERE telegram_id = $1 AND deleted_at IS NULL LIMIT 1`, [uid]);
   const c = r.rows[0] || null;
   if (c && !String(c.phone || '').replace(/\D/g, '')) c.phone = null;
@@ -423,7 +422,8 @@ router.get('/my', async (req, res) => {
     const c = await clientOf(req.tgUser.id);
     if (!c) return res.json({ client: null, upcoming: [], history: [] });
     const q = (where, order, lim = 20) => getPool().query(
-      `SELECT a.id, a.status, a.price::float AS price, a.service_id, a.master_id,
+      `SELECT a.id, a.status, a.service_id, a.master_id,
+              (a.pay_settled_at IS NOT NULL) AS paid,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM-DD') AS date,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t1,
               to_char(a.ends_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t2,
@@ -433,13 +433,69 @@ router.get('/my', async (req, res) => {
     const up = await q(`a.status IN ('booked','confirmed') AND a.starts_at > NOW()`, 'ASC');
     const hist = await q(`(a.status IN ('done','arrived') OR (a.status IN ('booked','confirmed') AND a.starts_at <= NOW()))`, 'DESC', 300); // 04.11: історія без обрізки до 20 (у клієнта 121 візит)
     const map = (r) => ({ id: Number(r.id), date: r.date, date_label: fmtDateUa(r.date), time: r.t2 ? `${r.t1}–${r.t2}` : r.t1,
-      service: r.service, master: r.master, price: Number(r.price) || 0, service_id: r.service_id, master_id: r.master_id });
+      service: r.service, master: r.master, service_id: r.service_id, master_id: r.master_id,
+      // 04.11 (Босс): клієнту НЕ віддаємо суми витрат (ні ціну візиту, ні «витрачено»).
+      // Лише: оплачено чи ні; сума — тільки в рахунку, який ще треба сплатити.
+      paid: !!r.paid });
+    const history = hist.rows.map(map);
+    // 04.11 Рахунок візиту (послуги + товари з CRM − знижки/сертифікат/бонуси/передоплата) — та сама
+    // функція, що рахує каса (lib/visit-bill). Тільки для візитів, які вже почались, за останні 30 днів:
+    // неоплачений → сума і кнопка «Оплатити», оплачений → «Оплачено».
+    const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    for (const h of history) {
+      if (h.date < since) continue;
+      try { h.bill = billView(await VB.loadVisitBill(getPool(), h.id)); } catch (e) { console.error('[miniapp/my bill]', h.id, e.message); }
+    }
     res.json({
-      client: { name: c.name, phone: c.phone ? fmtPhoneFull(c.phone) : null, points: c.points, visits: c.visits, spent: c.spent },
-      upcoming: up.rows.map(map), history: hist.rows.map(map),
+      client: { name: c.name, phone: c.phone ? fmtPhoneFull(c.phone) : null, points: c.points, visits: c.visits },
+      upcoming: up.rows.map(map), history,
     });
   } catch (e) { console.error('[miniapp/my]', e.message); res.status(500).json({ error: 'server' }); }
 });
+
+const VB = require('../lib/visit-bill');
+// Що бачить клієнт: лише рядки рахунку і підсумок (без собівартості, без внутрішніх полів).
+function billView(b) {
+  if (!b) return null;
+  // 04.11 (Босс): по оплаченому візиту клієнт бачить лише «Оплачено» — без сум і рядків
+  // (історія витрат прихована). Суму і рядки показуємо тільки для рахунку ДО СПЛАТИ.
+  if (b.paid) return { paid: true, can_pay: false };
+  return { paid: !!b.paid, paid_amount: b.paid ? b.paid_amount : 0, amount: b.paid ? b.paid_amount : VB.round2(b.final || 0),
+    can_pay: !b.paid && !['cancelled', 'no_show'].includes(b.status) && Number(b.final) > 0,
+    lines: (b.lines || []).map(l => ({ label: l.label, amount: VB.round2(l.amount) })) };
+}
+// Рахунок свого візиту. Чужий / неіснуючий → 403 (не розкриваємо, чи існує запис).
+async function ownBill(req, res) {
+  const c = await clientOf(req.tgUser.id);
+  const id = Number(req.params.id);
+  if (!c || !Number.isSafeInteger(id) || id <= 0) { res.status(403).json({ error: 'forbidden' }); return null; }
+  const b = await VB.loadVisitBill(getPool(), id).catch(() => null);
+  if (!b || Number(b.client_id) !== Number(c.id)) { res.status(403).json({ error: 'forbidden' }); return null; }
+  return b;
+}
+router.get('/appointments/:id/bill', async (req, res) => {
+  try { const b = await ownBill(req, res); if (b) res.json({ ok: true, bill: billView(b) }); }
+  catch (e) { console.error('[miniapp/bill]', e.message); res.status(500).json({ error: 'server' }); }
+});
+// «Оплатити» → Mono-інвойс (Apple Pay / Google Pay / картка). Сума ТІЛЬКИ з сервера.
+router.post('/appointments/:id/pay', async (req, res) => {
+  try {
+    const b = await ownBill(req, res); if (!b) return;
+    if (b.paid) return res.json({ ok: true, already_paid: true, bill: billView(b) });
+    const kyiv = (d) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
+    if (kyiv(b.starts_at) > kyiv(Date.now())) return res.status(409).json({ error: 'future-visit', message: 'Оплата відкриється в день візиту.' });
+    const r = await require('./payments-mono').createInvoiceForAppointment(b.appointment_id);
+    if (r.alreadyPaid) return res.json({ ok: true, already_paid: true });
+    if (r.nothingToPay) return res.json({ ok: true, nothing_to_pay: true });
+    res.json({ ok: true, page_url: r.pageUrl, amount: r.amount });
+  } catch (e) {
+    console.error('[miniapp/pay]', e.message);
+    const st = Number.isInteger(e.code) && e.code >= 400 && e.code < 500 ? e.code : 500;
+    res.status(st).json({ error: st === 500 ? 'server' : e.message,
+      message: st === 409 ? 'Цей запис не можна оплатити онлайн. Зверніться до адміністратора.' : 'Не вдалося створити оплату. Спробуйте ще раз або оплатіть у салоні.' });
+  }
+});
+
 
 router.post('/cancel', async (req, res) => {
   try {

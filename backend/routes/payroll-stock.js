@@ -192,7 +192,7 @@ router.post('/payroll/calculate', async (req, res) => {
       // Продавець = am.seller_master_id, якщо задано (кейс 06.07: клієнтку робила
       // Світлана, а косметику продала Відюк), інакше майстер візиту. Адмінам % не йде.
       const bo = await pool.query(
-        `SELECT COALESCE(SUM(ROUND(am.qty_used * pv.price, 2)), 0)::numeric AS revenue
+        `SELECT COALESCE(SUM(ROUND(am.qty_used * pv.price, 2)*COALESCE(GREATEST(0, 1 - a.discount_products_amount/NULLIF(a.bill_products_total,0)), 1)), 0)::numeric AS revenue
          FROM appointment_materials am
          JOIN appointments a ON a.id = am.appointment_id
          JOIN product_variants pv ON pv.id = am.variant_id
@@ -757,7 +757,7 @@ router.get('/payroll/my', async (req, res) => {
       let sales_part = 0;
       if (parseFloat(s.sales_commission_pct || 0) > 0) {
         const sq = await pool.query(
-          `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2))
+          `SELECT COALESCE((SELECT SUM(ROUND(am.qty_used*pv.price,2)*COALESCE(GREATEST(0, 1 - a.discount_products_amount/NULLIF(a.bill_products_total,0)), 1))
                FROM appointment_materials am
                JOIN appointments a ON a.id=am.appointment_id
                JOIN product_variants pv ON pv.id=am.variant_id

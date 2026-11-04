@@ -47,6 +47,11 @@ async function syncPaidMaterials(aid) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN'); await applyTenant(client);
+    // Візит закрито за новою моделлю рахунку (04.11: окремі знижки на послуги/товари/чек) —
+    // пересчёт каси/ЗП/товарів робить lib/visit-bill (одне джерело правди з касою і застосунком).
+    // Старі візити (bill_services_total IS NULL) → {skipped} і йдуть старою гілкою нижче без змін.
+    const _rs = await require('../lib/visit-bill').resyncPaidVisit(client, aid);
+    if (_rs && _rs.ok) { await client.query('COMMIT'); return _rs.bill ? _rs.bill.product_cash : 0; }
     const ops = await client.query(
       `SELECT id, category, method, master_id, created_at FROM cash_operations
         WHERE type='in' AND ref_type='appointment' AND ref_id=$1 ORDER BY id FOR UPDATE`, [aid]);

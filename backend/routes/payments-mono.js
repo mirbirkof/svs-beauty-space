@@ -66,7 +66,7 @@ async function applyInvoiceStatus(data) {
   }
 
   const cur = await pool.query(
-    `SELECT id, order_id, booking_id, amount, status, purpose, tenant_id FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
+    `SELECT id, order_id, booking_id, appointment_id, amount, status, purpose, tenant_id FROM payments WHERE provider = 'mono' AND invoice_id = $1`,
     [invoiceId]
   );
   if (!cur.rowCount) {
@@ -136,6 +136,10 @@ async function applyInvoiceStatus(data) {
           .catch(() => {});
       }
     } catch (e) { console.error('[mono:module]', e.message); }
+  } else if (data.status === 'success' && p.purpose === 'appt_bill') {
+    // ── рахунок візиту CRM (послуги + товари) — проводимо в касу тим самим обробником ──
+    try { await applyApptBillPaid(p, data, invoiceId); }
+    catch (e) { alertCashMiss(`рахунок візиту #${p.appointment_id}`, invoiceId, data.amount ? data.amount / 100 : p.amount, e.message); }
   } else if (data.status === 'success' && p.booking_id && p.purpose === 'visit') {
     // ── оплата послуги ПІСЛЯ візиту ──
     const paid = data.amount ? data.amount / 100 : p.amount;
@@ -600,6 +604,144 @@ router.get('/health', async (req, res) => {
   }
 });
 
+// ══════════ РАХУНОК ВІЗИТУ (CRM appointments): оплата з телефону через Mono ══════════
+// Сума — ТІЛЬКИ з сервера (lib/visit-bill: послуги + товари − знижки − передоплата), та сама,
+// що рахує каса. Оплата проводиться ТИМ САМИМ обробником каси (schedule.payAppointmentInternal),
+// методом 'mono' → у касі «Monobank онлайн», зарплата/бонуси/звіти — як при оплаті на касі.
+const _r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+const _esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const APPT_PENDING = ['created', 'processing', 'hold'];
+
+// Скасувати відкриті онлайн-рахунки візиту (закрили на касі / рахунок змінився).
+// keepAmount — не чіпати рахунок саме на цю суму (він ще актуальний).
+async function cancelApptInvoices(apptId, reason, keepAmount) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT id, invoice_id, amount::float AS amount FROM payments
+      WHERE appointment_id=$1 AND provider='mono' AND purpose='appt_bill' AND status = ANY($2)`,
+    [apptId, APPT_PENDING]);
+  let n = 0;
+  for (const p of r.rows) {
+    if (keepAmount != null && _r2(p.amount) === _r2(keepAmount)) continue;
+    try { await mono.removeInvoice(p.invoice_id); }
+    catch (e) { console.warn('[mono:appt-remove]', p.invoice_id, e.message); }
+    await pool.query(
+      `UPDATE payments SET status=$2, failure_reason=$3, updated_at=NOW() WHERE id=$1 AND status = ANY($4)`,
+      [p.id, reason === 'paid-at-desk' ? 'cancelled' : 'superseded', reason, APPT_PENDING]);
+    n++;
+  }
+  return { cancelled: n };
+}
+
+// Створити (або переюзати) Mono-інвойс на рахунок візиту.
+async function createInvoiceForAppointment(apptId) {
+  const VB = require('../lib/visit-bill');
+  const pool = getPool();
+  const bill = await VB.loadVisitBill(pool, apptId);
+  if (!bill) { const e = new Error('appointment-not-found'); e.code = 404; throw e; }
+  if (bill.paid) return { alreadyPaid: true, bill };
+  if (bill.status === 'cancelled') { const e = new Error('appointment-cancelled'); e.code = 409; throw e; }
+  const amount = _r2(bill.final);
+  if (!(amount > 0)) return { nothingToPay: true, bill };
+  // рахунок змінився (товари/знижки) — старі інвойси на іншу суму інвалідуємо
+  await cancelApptInvoices(apptId, 'bill-changed', amount);
+  const ex = await pool.query(
+    `SELECT invoice_id, page_url FROM payments
+      WHERE appointment_id=$1 AND provider='mono' AND purpose='appt_bill' AND status = ANY($2)
+        AND amount = $3 AND page_url IS NOT NULL AND created_at > NOW() - INTERVAL '23 hours'
+      ORDER BY id DESC LIMIT 1`, [apptId, APPT_PENDING, amount]);
+  if (ex.rows[0]) return { invoiceId: ex.rows[0].invoice_id, pageUrl: ex.rows[0].page_url, amount, bill, reused: true };
+  const what = bill.items && bill.items.length ? `${bill.service_name} + товари` : bill.service_name;
+  const inv = await mono.createInvoice({
+    amountUah: amount,
+    orderId: `appt-${apptId}`,
+    destination: `Оплата візиту: ${what} — SVS Beauty Space`.slice(0, 280),
+    redirectPath: '/p/order-paid.html?kind=visit',
+  });
+  await pool.query(
+    `INSERT INTO payments (appointment_id, provider, invoice_id, page_url, amount, status, purpose)
+     VALUES ($1, 'mono', $2, $3, $4, 'created', 'appt_bill')`,
+    [apptId, inv.invoiceId, inv.pageUrl, amount]);
+  return { invoiceId: inv.invoiceId, pageUrl: inv.pageUrl, amount, bill };
+}
+
+function _ownerAlert(text) {
+  console.error('[mono:appt-bill]', text.replace(/<[^>]+>/g, ''));
+  try {
+    if (process.env.ADMIN_TG_CHAT) {
+      const { tgSend } = require('./telegram-notify');
+      tgSend(process.env.ADMIN_TG_CHAT, text).catch(e => console.error('[mono:appt-alert]', e.message));
+    }
+  } catch (e) { console.error('[mono:appt-alert]', e.message); }
+}
+
+async function _clientTg(clientId) {
+  if (!clientId) return null;
+  const r = await getPool().query(`SELECT telegram_id FROM clients WHERE id=$1`, [clientId]).catch(() => ({ rows: [] }));
+  return r.rows[0] && r.rows[0].telegram_id ? r.rows[0].telegram_id : null;
+}
+
+// Вебхук/крон: інвойс рахунку візиту оплачено → проводимо оплату в касу CRM.
+async function applyApptBillPaid(p, data, invoiceId) {
+  const pool = getPool();
+  const VB = require('../lib/visit-bill');
+  const paid = data.amount != null ? _r2(Number(data.amount) / 100) : _r2(p.amount);
+  const mark = (why) => pool.query(`UPDATE payments SET failure_reason=$2, updated_at=NOW() WHERE id=$1`, [p.id, why]).catch(() => {});
+  if (!p.appointment_id) {
+    await mark('appointment-missing');
+    return alertCashMiss('рахунок візиту (запис видалено)', invoiceId, paid, 'запис у журналі не знайдено');
+  }
+  const bill = await VB.loadVisitBill(pool, p.appointment_id);
+  const doublePaid = async (how) => {
+    await mark('double-paid');
+    _ownerAlert(`⚠️ <b>Візит оплачено двічі</b>\nЗапис #${p.appointment_id}: ${_esc(bill && bill.service_name)}\n` +
+      `Вже оплачено ${how}, а клієнт ще й сплатив онлайн ${paid.toFixed(2)} грн (Mono, інвойс <code>${_esc(invoiceId)}</code>).\n` +
+      `Гроші НЕ повернено автоматично. Вирішіть: повернути через кабінет monobank або залишити як аванс клієнту.`);
+    return { double_paid: true };
+  };
+  if (!bill) { await mark('appointment-missing'); return alertCashMiss('рахунок візиту', invoiceId, paid, 'запис не знайдено'); }
+  if (bill.paid) return doublePaid(`на касі (${bill.paid_amount.toFixed(2)} грн)`);
+  const r = await require('./schedule').payAppointmentInternal(p.appointment_id, { method: 'mono' }, { expectFinal: paid });
+  if (r.status === 200 && r.body && r.body.already_paid) return doublePaid('паралельно на касі');
+  if (r.status !== 200 || !r.body || !r.body.ok) {
+    const why = (r.body && (r.body.message || r.body.error)) || ('http ' + r.status);
+    await mark('cash-failed: ' + why);
+    return alertCashMiss(`рахунок візиту #${p.appointment_id}` + (r.body && r.body.error === 'bill-changed' ? ` (рахунок змінився: тепер ${r.body.expected} грн)` : ''), invoiceId, paid, why);
+  }
+  emitPaymentCompleted(invoiceId, paid, 'appointment');
+  await cancelApptInvoices(p.appointment_id, 'paid-at-desk').catch(() => {}); // інші відкриті інвойси цього візиту
+  const tg = await _clientTg(bill.client_id);
+  if (tg) bookingBotSend(tg, `✅ Оплату ${paid.toFixed(2).replace('.00', '')} грн отримано. Візит оплачено — дякуємо, що ви з нами! 💛`).catch(e => console.error('[mono:appt-notify]', e.message));
+  _ownerAlert(`💳 <b>Візит оплачено онлайн</b>\n#${p.appointment_id} ${_esc(bill.service_name)}\nMono: ${paid.toFixed(2)} грн — у касі «Monobank онлайн»`);
+  return { ok: true };
+}
+
+// Надіслати клієнту рахунок у Telegram-бот (кнопка «Оплатити» → Mono, Apple/Google Pay).
+async function sendApptBill(apptId, { force = false } = {}) {
+  const pool = getPool();
+  const VB = require('../lib/visit-bill');
+  const bill = await VB.loadVisitBill(pool, apptId);
+  if (!bill) return { error: 'appointment-not-found', status: 404 };
+  if (bill.paid) return { error: 'already-paid', status: 409, message: 'Візит уже оплачено.' };
+  if (!(bill.final > 0)) return { error: 'nothing-to-pay', status: 409, message: 'До сплати 0 грн.' };
+  if (!force && bill.bill_sent_at) return { skipped: 'already-sent' };
+  const tg = await _clientTg(bill.client_id);
+  if (!tg) return { error: 'no-telegram', status: 409, message: 'Клієнт не підключений до Telegram-бота салону — рахунок можна оплатити в салоні.' };
+  const inv = await createInvoiceForAppointment(apptId);
+  if (!inv.pageUrl) return { error: 'no-invoice', status: 409 };
+  const fmt = n => (Math.round(n * 100) / 100).toFixed(2).replace('.00', '');
+  const lines = bill.lines.map(l => `${_esc(l.label)}: ${l.amount < 0 ? '−' : ''}${fmt(Math.abs(l.amount))} грн`).join('\n');
+  const text = `🧾 <b>Рахунок за візит</b>\n\n${lines}\n\n<b>До сплати: ${fmt(inv.amount)} грн</b>\n\nОплатити можна карткою, Apple Pay або Google Pay. Якщо ви вже розрахувалися в салоні — просто проігноруйте це повідомлення.`;
+  const kb = [[{ text: `💳 Оплатити ${fmt(inv.amount)} грн`, url: inv.pageUrl }]];
+  try {
+    const base = require('../lib/public-url').getPublicBase();
+    if (base) kb.push([{ text: '📋 Мої записи', web_app: { url: base + '/p/app.html?screen=cabinet' } }]);
+  } catch (_) {}
+  await bookingBotSend(tg, text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: kb } });
+  await pool.query(`UPDATE appointments SET bill_sent_at=NOW() WHERE id=$1`, [apptId]);
+  return { ok: true, sent: true, amount: inv.amount, invoice_id: inv.invoiceId };
+}
+
 // ── cron: поллинг pending-инвойсов (страховка от потерянных вебхуков) ──
 let _cronTimer = null;
 // Один проход скана — выполняется В КОНТЕКСТЕ ОДНОГО салона (forEachTenant).
@@ -612,6 +754,11 @@ async function monoScanTick() {
         `SELECT invoice_id FROM payments
          WHERE provider = 'mono' AND status IN ('created','processing','hold')
            AND created_at > NOW() - INTERVAL '25 hours'
+         UNION
+         -- скасовані рахунки візиту, які клієнт міг устигнути сплатити (подвійна оплата → алерт)
+         SELECT invoice_id FROM payments
+         WHERE provider = 'mono' AND purpose = 'appt_bill' AND status IN ('cancelled','superseded')
+           AND updated_at > NOW() - INTERVAL '2 hours'
          LIMIT 50`
       );
       for (const row of r.rows) {
@@ -709,3 +856,6 @@ module.exports.bookingBotSend = bookingBotSend;
 module.exports.sendPayLinkToClient = sendPayLinkToClient;
 module.exports.applyInvoiceStatus = applyInvoiceStatus;
 module.exports.startCron = startCron;
+module.exports.createInvoiceForAppointment = createInvoiceForAppointment;
+module.exports.cancelApptInvoices = cancelApptInvoices;
+module.exports.sendApptBill = sendApptBill;

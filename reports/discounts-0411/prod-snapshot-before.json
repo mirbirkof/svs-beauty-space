@@ -1,0 +1,12 @@
+[{"k":"disc+mat","id":8496,"tenant_id":"00000000-0000-0000-0000-000000000001","price":1000,"disc":122,"cert":0,"bonus":0,"real_amount":924.88,"mat":624,"cash_svc":924.88,"cash_prod":577.12},
+{"k":"disc+mat","id":8486,"tenant_id":"00000000-0000-0000-0000-000000000001","price":0,"disc":162.4,"cert":0,"bonus":0,"real_amount":0,"mat":5177,"cash_svc":0,"cash_prod":5014.6},
+{"k":"disc+mat","id":8417,"tenant_id":"00000000-0000-0000-0000-000000000001","price":3000,"disc":27,"cert":0,"bonus":0,"real_amount":2985.56,"mat":2608,"cash_svc":2985.56,"cash_prod":2595.44},
+{"k":"disc+mat","id":8049,"tenant_id":"00000000-0000-0000-0000-000000000001","price":2250,"disc":112,"cert":0,"bonus":0,"real_amount":2231.08,"mat":11071.5,"cash_svc":2231.08,"cash_prod":10978.42},
+{"k":"disc","id":9054,"tenant_id":"00000000-0000-0000-0000-000000000001","price":100,"disc":100,"cert":0,"bonus":0,"real_amount":0,"mat":0,"cash_svc":0,"cash_prod":0},
+{"k":"disc","id":9013,"tenant_id":"00000000-0000-0000-0000-000000000001","price":450,"disc":225,"cert":0,"bonus":0,"real_amount":225,"mat":0,"cash_svc":225,"cash_prod":0},
+{"k":"disc","id":8997,"tenant_id":"00000000-0000-0000-0000-000000000001","price":1250,"disc":1250,"cert":0,"bonus":0,"real_amount":0,"mat":0,"cash_svc":0,"cash_prod":0},
+{"k":"mat","id":9019,"tenant_id":"00000000-0000-0000-0000-000000000001","price":1300,"disc":0,"cert":0,"bonus":0,"real_amount":1300,"mat":1430,"cash_svc":1300,"cash_prod":1430},
+{"k":"mat","id":9016,"tenant_id":"00000000-0000-0000-0000-000000000001","price":0,"disc":0,"cert":0,"bonus":0,"real_amount":0,"mat":1062,"cash_svc":0,"cash_prod":1062},
+{"k":"mat","id":9011,"tenant_id":"00000000-0000-0000-0000-000000000001","price":950,"disc":0,"cert":0,"bonus":0,"real_amount":950,"mat":548,"cash_svc":950,"cash_prod":548},
+{"k":"plain","id":9058,"tenant_id":"00000000-0000-0000-0000-000000000001","price":250,"disc":0,"cert":0,"bonus":0,"real_amount":250,"mat":0,"cash_svc":250,"cash_prod":0},
+{"k":"plain","id":9053,"tenant_id":"00000000-0000-0000-0000-000000000001","price":750,"disc":0,"cert":0,"bonus":0,"real_amount":750,"mat":0,"cash_svc":750,"cash_prod":0}]

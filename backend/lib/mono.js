@@ -100,7 +100,7 @@ function getPublicBase() {
 }
 
 /** Создать инвойс. amountUah — гривны (переводим в копейки). */
-async function createInvoice({ amountUah, orderId, destination, basket, saveCardData }) {
+async function createInvoice({ amountUah, orderId, destination, basket, saveCardData, redirectPath }) {
   const base = getPublicBase();
   const payload = {
     amount: Math.round(Number(amountUah) * 100),
@@ -123,7 +123,7 @@ async function createInvoice({ amountUah, orderId, destination, basket, saveCard
     // активації токенізації у підтримці monobank). saveCardData={saveCard,walletId}.
     ...(saveCardData ? { saveCardData } : {}),
     ...(base ? {
-      redirectUrl: `${base}/p/order-paid.html?order=${orderId}`,
+      redirectUrl: redirectPath ? `${base}${redirectPath}` : `${base}/p/order-paid.html?order=${orderId}`,
       // Метка салона в webhook-URL (аудит-контроль): вебхук Mono не несёт tenant, а подпись
       // проверяется pubkey КОНКРЕТНОГО мерчанта. Для салона-арендатора кладём ?t=<tenantId>,
       // чтобы обработчик поднял его контекст и проверил подпись ЕГО токеном. Платформа
@@ -146,6 +146,12 @@ function _tenantTag() {
 
 function getInvoiceStatus(invoiceId) {
   return monoRequest('GET', `/api/merchant/invoice/status?invoiceId=${encodeURIComponent(invoiceId)}`);
+}
+
+// Скасувати неоплачений інвойс (рахунок змінився / візит закрили на касі) — посилання перестає приймати оплату.
+// Mono: POST /api/merchant/invoice/remove {invoiceId}; на вже оплаченому інвойсі поверне помилку — це нормально.
+function removeInvoice(invoiceId) {
+  return monoRequest('POST', '/api/merchant/invoice/remove', { invoiceId });
 }
 
 function getMerchantDetails() {
@@ -222,4 +228,4 @@ function personalStatement(fromUnix, toUnix, account) {
     null, token), { label: 'mono-personal', tries: 2, baseDelay: 1000 });
 }
 
-module.exports = { createInvoice, getInvoiceStatus, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache, walletPayment, merchantStatement, personalStatement };
+module.exports = { createInvoice, getInvoiceStatus, removeInvoice, getMerchantDetails, verifyWebhook, getPublicBase, invalidateTokenCache, walletPayment, merchantStatement, personalStatement };
