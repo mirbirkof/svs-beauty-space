@@ -84,6 +84,14 @@ router.get('/me', async (req, res) => {
 });
 
 // ── номер телефону: підписаний requestContact або ручне введення ──
+const manualPhoneRate = new Map(); // uid → [timestamps] ручних введень номера
+function manualPhoneOk(uid) {
+  const now = Date.now();
+  const arr = (manualPhoneRate.get(uid) || []).filter(t => now - t < 600000);
+  arr.push(now); manualPhoneRate.set(uid, arr);
+  if (manualPhoneRate.size > 5000) manualPhoneRate.clear();
+  return arr.length <= 5;
+}
 router.post('/contact', async (req, res) => {
   const uid = req.tgUser.id;
   const pool = getPool();
@@ -99,6 +107,8 @@ router.post('/contact', async (req, res) => {
       cname = [ct.first_name, ct.last_name].filter(Boolean).join(' ') || null;
       verified = true;
     } else if (typeof req.body?.phone === 'string') {
+      // 04.11 фінальний аудит: ручне введення — до 5 спроб / 10 хв на TG (захист від перебору номерів бази)
+      if (!manualPhoneOk(uid)) return res.status(429).json({ error: 'too_many', message: 'Забагато спроб. Скористайтеся кнопкою «Поділитися номером з Telegram» або спробуйте пізніше.' });
       digits = req.body.phone.replace(/\D/g, '');
       if (digits.length === 10 && digits.startsWith('0')) digits = '38' + digits;
       if (!/^380\d{9}$/.test(digits)) return res.status(400).json({ error: 'bad_phone', message: 'Введіть номер у форматі +380XXXXXXXXX' });

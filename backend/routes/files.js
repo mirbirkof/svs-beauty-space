@@ -9,6 +9,8 @@
    ═══════════════════════════════════════════════════════ */
 const express = require('express');
 const router = express.Router();
+// 04.11 фінальний аудит: id файлу — UUID; сміття в :id (напр. GET /api/files/upload) давало 500 від Postgres → 404
+router.param('id', (req, res, next, id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? next() : res.status(404).json({ error: 'not-found' }));
 const multer = require('multer');
 const crypto = require('crypto');
 const fs = require('fs');
