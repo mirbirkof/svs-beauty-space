@@ -36,15 +36,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .btn-rose .chev{margin-left:auto;margin-right:6px;font-size:20px}
 .btn-rose .lbl{margin-left:30px}
 .menu{margin-top:14px;display:flex;flex-direction:column;gap:10px}
-/* 04.11 ярлик на робочий стіл: ободок переливається (обертовий градієнт) + відблиск + пульс світіння */
-.hs{position:relative;overflow:hidden;border-radius:19px;padding:3px;margin-top:14px;box-shadow:0 0 16px rgba(241,184,171,.22);animation:hsGlow 2.4s ease-in-out infinite}
-.hs::before{content:'';position:absolute;left:50%;top:50%;width:140%;aspect-ratio:1/1;transform:translate(-50%,-50%);background:conic-gradient(var(--rose),var(--gold),#fff4e6,var(--rose2),#b76e79,var(--rose));animation:hsSpin 3.2s linear infinite}
-.hs::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.7) 50%,transparent 65%);background-size:250% 100%;animation:hsShine 2.6s ease-in-out infinite;pointer-events:none}
-.hs .mi{position:relative;z-index:1;border:0;border-radius:16px}
-@keyframes hsSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
-@keyframes hsGlow{50%{box-shadow:0 0 30px rgba(217,179,140,.5)}}
-@keyframes hsShine{0%{background-position:160% 0}100%{background-position:-60% 0}}
-@media (prefers-reduced-motion:reduce){.hs,.hs::before,.hs::after{animation:none}}
 .mi{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;text-align:left;width:100%}
 .mi .ic{width:24px;text-align:center;font-size:18px;opacity:.9}
 .mi .t{flex:1}
@@ -285,7 +276,6 @@ function vHome(){
     h('button',{class:'btn btn-rose',id:'go-book',onclick:function(){ haptic(); S.move=null; startBooking(); }},
       h('span',{class:'lbl',text:'Записатися ✨'}), h('span',{class:'chev',text:'›'})),
     modeSwitch('client'),
-    homeShortcut(h('div',{id:'hs-slot'})),
     h('div',{class:'menu'},
       mi('💅','Послуги',function(){ S.move=null; startBooking(); }),
       mi('👩‍🎨','Наші майстри',function(){ go('team'); }),
@@ -305,22 +295,21 @@ function adminContact(){
 // Картку показуємо, доки ярлика нема; «added»/«unsupported» — не показуємо зовсім.
 function hsSupported(){ return !!(tg && tg.addToHomeScreen && tg.checkHomeScreenStatus && (!tg.isVersionAtLeast || tg.isVersionAtLeast('8.0'))); }
 function hsAdd(){ try { tg.addToHomeScreen(); } catch(e){} }
-function homeShortcut(slot){
-  if (!hsSupported()) return slot;
-  try { tg.checkHomeScreenStatus(function(st){
-    S.hsStatus = st;
-    if (st==='added' || st==='unsupported') return;
-    slot.innerHTML=''; add(slot, h('div',{class:'hs',id:'hs-card'}, mi('📲','Додати SVS на робочий стіл',hsAdd,'hs')));
-  }); } catch(e){}
-  return slot;
-}
-// після першого успішного запису — один раз самі пропонуємо ярлик (системне вікно Telegram)
+// 04.11 Босс: «не кнопку в застосунку, а щоб ярлик з'являвся сам після реєстрації, як при встановленні».
+// Тихо поставити ярлик ОС не дозволяє (Android/iOS завжди питають людину), тож одразу після реєстрації
+// САМІ відкриваємо системне вікно Telegram «Додати на головний екран» — клієнту лишається одне «Додати».
+// Якщо відмовився — ще раз (один) після першого запису. Ярлик уже є / не підтримується — мовчимо.
 function hsOfferOnce(){
-  if (!hsSupported() || S.hsStatus==='added' || S.hsStatus==='unsupported') return;
-  try { if (localStorage.getItem('svs_hs_offered')) return; localStorage.setItem('svs_hs_offered','1'); } catch(e){ return; }
-  setTimeout(hsAdd, 1800);
+  if (!hsSupported()) return;
+  var n = 0; try { n = +(localStorage.getItem('svs_hs_offered')||0); } catch(e){ return; }
+  if (n >= 2) return;
+  try { tg.checkHomeScreenStatus(function(st){
+    if (st==='added' || st==='unsupported') return;
+    try { localStorage.setItem('svs_hs_offered', String(n+1)); } catch(e){ return; }
+    setTimeout(hsAdd, 1200);
+  }); } catch(e){}
 }
-if (tg && tg.onEvent) try { tg.onEvent('homeScreenAdded', function(){ S.hsStatus='added'; var c=document.getElementById('hs-card'); if (c) c.remove(); haptic('ok'); toast('Ярлик SVS додано на робочий стіл 💛'); }); } catch(e){}
+if (tg && tg.onEvent) try { tg.onEvent('homeScreenAdded', function(){ try { localStorage.setItem('svs_hs_offered','9'); } catch(e){} haptic('ok'); toast('Ярлик SVS додано на робочий стіл 💛'); }); } catch(e){}
 function mi(ic, t, fn, id){ return h('button',{class:'mi',id:id?'mi-'+id:null,onclick:function(){ haptic(); fn(); }}, h('span',{class:'ic',text:ic}), h('span',{class:'t',text:t}), h('span',{class:'ar',text:'›'})); }
 
 function startBooking(){
@@ -593,7 +582,7 @@ function ensurePhone(force, why){
       if (j._status===200 && j.ok){ S.me = S.me || {}; S.me.client = Object.assign({}, S.me.client||{}, {has_phone:true});
         if (j.master && j.master.linked) { S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); }
         else if (j.master && j.master.needClaim) S.claimHint = j.master.master_id;
-        close(true); return; }
+        close(true); hsOfferOnce(); return; }
       if (j.master && j.master.linked) { S.me = S.me || {}; S.me.master = {is_master:true, name:j.master.name}; toast('Вас упізнано як майстра: '+j.master.name); close(true); return; }
       msg.textContent = j.message || 'Не вдалося зберегти номер';
     }
