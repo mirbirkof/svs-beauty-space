@@ -257,7 +257,7 @@ test('Mono: інвойс на суму рахунку, повторний зап
   const view = await mini('GET', `/appointments/${F.a1}/bill`, F.tg);
   assert.strictEqual(view.body.bill.paid, true);
   assert.strictEqual(view.body.bill.can_pay, false);
-  assert.strictEqual(view.body.bill.amount, 1282.5);
+  assert.strictEqual(view.body.bill.amount, undefined, "оплачений рахунок — без сум (рішення Боса)");
 });
 
 test('Mono: повторний вебхук і крон-поллінг не дублюють касу (ідемпотентно)', async (t) => {
@@ -308,7 +308,7 @@ test('оплата на касі (термінал) → відкритий ін�
   const view = await mini('GET', `/appointments/${F.a3}/bill`, F.tg);
   assert.strictEqual(view.body.bill.paid, true);
   assert.strictEqual(view.body.bill.can_pay, false);
-  assert.strictEqual(view.body.bill.amount, 600);
+  assert.strictEqual(view.body.bill.amount, undefined, "оплачений рахунок — без сум (рішення Боса)");
   const payBtn = await mini('POST', `/appointments/${F.a3}/pay`, F.tg);
   assert.strictEqual(payBtn.body.already_paid, true);
   // клієнт таки сплатив старе посилання → касу не чіпаємо, позначка double-paid (алерт власнику)
