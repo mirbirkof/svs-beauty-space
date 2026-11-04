@@ -36,6 +36,16 @@ function addDays(dateStr, days) {
 // перший салон «отруював» решту своїми налаштуваннями бронювання (lead/step/horizon).
 const { getTenantId } = require('./tenant');
 const _setCache = new Map(); // tenantId → { data, at }
+// Сітка графіка місяця (та сама, що екран «Графік»), кеш 60с на салон+місяць
+const _gridCache = new Map();
+async function gridFor(pool, ym) {
+  const k = String(getTenantId() || 'default') + '|' + ym;
+  const hit = _gridCache.get(k);
+  if (hit && Date.now() - hit.at < 60000) return hit.data;
+  const data = await require('./schedule-month').buildMonthGrid(pool, ym);
+  _gridCache.set(k, { data, at: Date.now() });
+  return data;
+}
 async function getSettings(pool) {
   const tid = String(getTenantId() || 'default');
   const hit = _setCache.get(tid);
@@ -86,6 +96,24 @@ async function freeSlotsForDate(pool, { date, masterIds, durationMin, dedupe = t
         AND start_time IS NOT NULL AND end_time IS NOT NULL`,
     [date, masterIds]
   );
+  // [04.11] День без ручного запису — години з тієї ж сітки, що екран «Графік» і ЗП
+  // (buildMonthGrid: явні дні → історія тижня → шаблон). Раніше запис бачив лише ручні дні,
+  // і в Ксюші/Тетяни було 0 вікон, хоча в CRM графік на весь листопад. Явний вихідний сітка поважає.
+  const have = new Set(sched.rows.map(r => Number(r.master_id)));
+  const missing = masterIds.map(Number).filter(id => !have.has(id));
+  if (missing.length) {
+    try {
+      const grid = await gridFor(pool, String(date).slice(0, 7));
+      for (const it of grid.items) {
+        if (!missing.includes(Number(it.id))) continue;
+        const d = it.days.find(x => x.date === date);
+        if (!d || d.off || !d.start || !d.end) continue;
+        const [sh, sm] = d.start.split(':').map(Number), [eh, em] = d.end.split(':').map(Number);
+        if ([sh, sm, eh, em].some(isNaN) || eh * 60 + em <= sh * 60 + sm) continue;
+        sched.rows.push({ master_id: it.id, s_min: sh * 60 + sm, e_min: eh * 60 + em });
+      }
+    } catch (e) { /* fail-open: лишаємо тільки ручні дні */ }
+  }
   if (!sched.rows.length) return [];
 
   // зайнятість: записи, що перетинають цей київський день (хвилини від півночі, кламп 0..1440)
