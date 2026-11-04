@@ -331,6 +331,15 @@ router.post('/', requirePerm('users.write'), async (req, res) => {
       master_id = m.rows[0].id;
     }
 
+    // Босс 04.11 (Ася): без телефону, логіна і пароля увійти нікуди — порожній логін лише вводить в оману
+    // («є доступ», а його нема). Заводимо тільки картку; вхід зʼявиться сам, коли людина зайде в застосунок зі своїм номером
+    // (lib/master-link створює логін при впізнанні) або коли власник задасть пароль/телефон.
+    if (!phone && !username && !password_hash && master_id) {
+      await client.query('COMMIT');
+      await logAction({ user: req.user, action: 'employee.create_no_login', entity: 'master', entity_id: master_id, meta: { display_name, role_code } });
+      const svc0 = await require('../lib/master-svc-suggest').autoLinkNew(getPool(), master_id);
+      return res.json({ ok: true, id: null, master_id, no_login: true, services_added: svc0.added, services_categories: svc0.categories });
+    }
     const r = await client.query(
       `INSERT INTO users (phone, email, display_name, role_id, master_id, branch_id, username, password_hash, is_active, password_changed_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text,true, CASE WHEN $8::text IS NULL THEN NULL ELSE NOW() END) RETURNING id`,

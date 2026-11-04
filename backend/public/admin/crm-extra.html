@@ -1229,7 +1229,7 @@ function tmRender(){
       ? `<button class="btn sm" onclick="setMasterActive(${r.id},true)">Повернути</button>`
       : `<button class="btn sm ghost" onclick="setMasterActive(${r.id},false)">Звільнити</button>`);
     if (emptyLogin) {
-      acts.push(`<button class="btn sm ghost" title="Задати пароль для входу в адмінку CRM (необовʼязково)" onclick="setPassword(${r.user.id})">Пароль</button>`);
+      // як у майстра без входу: жодних кнопок доступу, доки не вказано телефон
     } else if (r.user) {
       acts.push(`<button class="btn sm" title="Змінити пароль входу" onclick="setPassword(${r.user.id})">Пароль</button>`);
       acts.push(`<button class="btn sm" title="Одноразове посилання для входу" onclick="issueToken(${r.user.id})">Token</button>`);
