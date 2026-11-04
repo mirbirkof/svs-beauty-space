@@ -756,10 +756,17 @@ router.get('/clients/:id', async (req, res) => {
       // Аудит 25.07: картка рахувала планову ціну (a.price) замість фактично сплаченої —
       // по базі це заниження на 384 502 ₴. Беремо реальну суму візиту.
       `SELECT a.id, a.starts_at, a.status, COALESCE(a.real_amount, a.price, 0) AS price,
-              a.services_text, a.payment_method,
+              -- [04.11 Босс] «в історії не вказані послуги»: services_text заповнений лише в імпорті зі старої CRM,
+              -- нові візити тримають послуги в appointment_services / service_id → 2302 з 3700 показували «—».
+              COALESCE(NULLIF(a.services_text, ''),
+                (SELECT string_agg(sv.name, ', ' ORDER BY x.starts_at NULLS LAST, x.id)
+                   FROM appointment_services x JOIN services sv ON sv.id = x.service_id WHERE x.appointment_id = a.id),
+                s0.name) AS services_text,
+              a.payment_method,
               m.name AS master_name
          FROM appointments a
          LEFT JOIN masters m ON m.id = a.master_id
+         LEFT JOIN services s0 ON s0.id = a.service_id
         WHERE a.client_id = $1
         ORDER BY a.starts_at DESC NULLS LAST
         LIMIT 200`,
