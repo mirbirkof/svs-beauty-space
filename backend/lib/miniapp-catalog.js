@@ -59,7 +59,10 @@ function groupCatalog(services) {
   for (const s of services || []) {
     const c = normCategory(s.category);
     if (!cats.has(c)) cats.set(c, []);
-    cats.get(c).push({ id: s.id, name: String(s.name || '').trim(), duration_min: Number(s.duration_min) || 60, price: Number(s.price) || 0 });
+    const row = { id: s.id, name: String(s.name || '').trim(), duration_min: Number(s.duration_min) || 60, price: Number(s.price) || 0 };
+    // price-materials-0411: картка процедури (робота + матеріал, варіанти довжини) — поля проходять як є
+    for (const k of ['proc_id', 'price_from', 'price_to', 'price_note', 'variants']) if (s[k] != null) row[k] = s[k];
+    cats.get(c).push(row);
   }
   const rank = (c) => { const i = CAT_ORDER.indexOf(c); return i < 0 ? 99 : i; };
   return [...cats.entries()]

@@ -270,7 +270,7 @@ async function flowPass(vw, vh, theme) {
   await page.click('#next-time'); await page.waitForSelector('#confirm-btn');
   await shot(page, `${tag}-4-confirm`);
   a = await layoutAudit(page); ok(`[${tag}] підтвердження: нічого не обрізано`, !a.issues.length, a.issues.join('; '));
-  const cf = await page.textContent('.cf'); ok(`[${tag}] підтвердження: назва, майстер, ціна, тривалість`, cf.includes(P.svc.name) && cf.includes(P.master.name) && /грн|прайсом/.test(cf) && /хв|год/.test(cf));
+  const cf = await page.textContent('.cf'); ok(`[${tag}] підтвердження: назва, майстер, ціна, тривалість`, cf.includes(P.svc.name) && cf.includes(P.master.name) && /₴|грн|прайсом/.test(cf) && /хв|год/.test(cf));
   await page.evaluate(() => { const b = document.getElementById('confirm-btn'); b.click(); b.click(); });
   await page.waitForSelector('#phone-in'); await shot(page, `${tag}-5-phone`);
   await page.fill('#phone-in', '+38099' + String(1000000 + Math.floor(Math.random() * 8999999)));

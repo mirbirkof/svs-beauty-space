@@ -1,0 +1,1355 @@
+[
+ {
+  "name": "Волосся",
+  "count": 57,
+  "groups": [
+   {
+    "name": "Фарбування та мелірування",
+    "count": 38
+   },
+   {
+    "name": "Біовирівнювання та завивка",
+    "count": 3
+   },
+   {
+    "name": "Відновлення та догляд",
+    "count": 5
+   },
+   {
+    "name": "Стрижки та укладання",
+    "count": 10
+   },
+   {
+    "name": "Інше",
+    "count": 1
+   }
+  ],
+  "services": [
+   {
+    "id": 14,
+    "name": "Американське мелірування + тонування + стрижка волосся, 1-2 довжина",
+    "duration_min": 360,
+    "price": 1400,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 15,
+    "name": "Американське мелірування + тонування + стрижка волосся, 3-4 довжина",
+    "duration_min": 360,
+    "price": 1550,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 16,
+    "name": "Американське мелірування волосся + тонування 1-2 довжина",
+    "duration_min": 300,
+    "price": 1200,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 17,
+    "name": "Американське мелірування волосся + тонування 3-4 довжина",
+    "duration_min": 300,
+    "price": 1350,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 45,
+    "name": "вихід з чорного",
+    "duration_min": 360,
+    "price": 2500,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 46,
+    "name": "Вихід з чорного ( без матеріалу)",
+    "duration_min": 480,
+    "price": 3000,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 61,
+    "name": "Контуринг",
+    "duration_min": 420,
+    "price": 1300,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 62,
+    "name": "Контуринг + зона корони",
+    "duration_min": 60,
+    "price": 2000,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 60,
+    "name": "Контурінг",
+    "duration_min": 420,
+    "price": 1500,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 96,
+    "name": "Мелірування  + тонування волосся 1-2 довжина",
+    "duration_min": 300,
+    "price": 1200,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 97,
+    "name": "Мелірування  + тонування волосся 3-4  довжина(без врахування матеріалу)",
+    "duration_min": 300,
+    "price": 1350,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 80,
+    "name": "Мелірування + тонування + стрижка 1-2 довжина",
+    "duration_min": 390,
+    "price": 1600,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 81,
+    "name": "Мелірування + тонування + стрижка 3-4 довжина",
+    "duration_min": 390,
+    "price": 1750,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 98,
+    "name": "Мелірування + тонування + стрижка волосся, 1-2 довжина ( без врахування матеріалу)",
+    "duration_min": 360,
+    "price": 1400,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 99,
+    "name": "Мелірування + тонування + стрижка волосся, 3-4 довжина",
+    "duration_min": 360,
+    "price": 1550,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 100,
+    "name": "Мелірування + тонування 1-2 довжина",
+    "duration_min": 360,
+    "price": 1500,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 82,
+    "name": "Мелірування + тонування 3-4 довжина",
+    "duration_min": 360,
+    "price": 1650,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 141,
+    "name": "Складне фарбування Airtouch ( без матеріалу)",
+    "duration_min": 480,
+    "price": 2500,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": "p4",
+    "name": "Фарбування",
+    "duration_min": 120,
+    "price": 800,
+    "proc_id": 4,
+    "price_from": true,
+    "price_to": 1100,
+    "price_note": "+ матеріал за фактом",
+    "variants": [
+     {
+      "id": 11,
+      "code": "1",
+      "label": "1 довжина",
+      "cm": "",
+      "cm_from": null,
+      "cm_to": null,
+      "level": 1,
+      "work_service_id": 168,
+      "work_name": "Фарбування 1 довжина (без барвників)",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 800,
+      "material": null,
+      "material_known": false,
+      "total": 800,
+      "duration_min": 120
+     },
+     {
+      "id": 12,
+      "code": "2",
+      "label": "2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 170,
+      "work_name": "Фарбування 2 довжина (без барвників)",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 950,
+      "material": null,
+      "material_known": false,
+      "total": 950,
+      "duration_min": 120
+     },
+     {
+      "id": 13,
+      "code": "3",
+      "label": "3 довжина",
+      "cm": "25–45 см",
+      "cm_from": 25,
+      "cm_to": 45,
+      "level": 3,
+      "work_service_id": 172,
+      "work_name": "Фарбування 3 довжина (без барвників)",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1100,
+      "material": null,
+      "material_known": false,
+      "total": 1100,
+      "duration_min": 150
+     },
+     {
+      "id": 14,
+      "code": "4",
+      "label": "4 довжина",
+      "cm": "45–60 см",
+      "cm_from": 45,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 174,
+      "work_name": "Фарбування 4 довжина (без барвників)",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1100,
+      "material": null,
+      "material_known": false,
+      "total": 1100,
+      "duration_min": 150
+     }
+    ],
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": "p5",
+    "name": "Фарбування + миття",
+    "duration_min": 120,
+    "price": 950,
+    "proc_id": 5,
+    "price_from": true,
+    "price_to": 1100,
+    "price_note": "+ матеріал за фактом",
+    "variants": [
+     {
+      "id": 15,
+      "code": "1",
+      "label": "1 довжина",
+      "cm": "",
+      "cm_from": null,
+      "cm_to": null,
+      "level": 1,
+      "work_service_id": 164,
+      "work_name": "Фарбування ( без барвників ) + миття 1 довжина",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 950,
+      "material": null,
+      "material_known": false,
+      "total": 950,
+      "duration_min": 120
+     },
+     {
+      "id": 16,
+      "code": "2",
+      "label": "2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 165,
+      "work_name": "Фарбування (без барвників) + миття 2 довжина",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 950,
+      "material": null,
+      "material_known": false,
+      "total": 950,
+      "duration_min": 120
+     },
+     {
+      "id": 17,
+      "code": "3",
+      "label": "3 довжина",
+      "cm": "25–45 см",
+      "cm_from": 25,
+      "cm_to": 45,
+      "level": 3,
+      "work_service_id": 166,
+      "work_name": "Фарбування (без барвників)+ миття 3 довжина",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1100,
+      "material": null,
+      "material_known": false,
+      "total": 1100,
+      "duration_min": 120
+     },
+     {
+      "id": 18,
+      "code": "4",
+      "label": "4 довжина",
+      "cm": "45–60 см",
+      "cm_from": 45,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 167,
+      "work_name": "Фарбування (без барвників)+ миття, 4 довжина волосся",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1100,
+      "material": null,
+      "material_known": false,
+      "total": 1100,
+      "duration_min": 120
+     }
+    ],
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 169,
+    "name": "Фарбування 1 довжина + стрижка (без барвників)",
+    "duration_min": 180,
+    "price": 900,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 171,
+    "name": "Фарбування 2 довжина + стрижка (без барвників)",
+    "duration_min": 180,
+    "price": 1050,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 173,
+    "name": "Фарбування 3 довжина + стрижка (без барвників)",
+    "duration_min": 180,
+    "price": 1200,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 175,
+    "name": "Фарбування 4 довжина + стрижка ( без барвників)",
+    "duration_min": 180,
+    "price": 1200,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 178,
+    "name": "Фарбування в один тон 1-2 довжина",
+    "duration_min": 150,
+    "price": 950,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 179,
+    "name": "Фарбування в один тон 1-2 довжина (без врахування матеріалів)",
+    "duration_min": 120,
+    "price": 900,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 180,
+    "name": "Фарбування в один тон 3-4 довжина",
+    "duration_min": 150,
+    "price": 1100,
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 181,
+    "name": "Фарбування в один тон 3-4 довжина (без врахування матеріалів)",
+    "duration_min": 150,
+    "price": 1000,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 163,
+    "name": "Фарбування в складній техніці (AirTouch)(робота без врахування матеріалу)",
+    "duration_min": 360,
+    "price": 2500,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 182,
+    "name": "Фарбування контурінг ( без барвників)",
+    "duration_min": 270,
+    "price": 1000,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 183,
+    "name": "Фарбування контурінг ( без фарбників ) + стрижка",
+    "duration_min": 300,
+    "price": 1200,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 184,
+    "name": "Фарбування контурінг( без матеріалу)",
+    "duration_min": 300,
+    "price": 1500,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": "p6",
+    "name": "Фарбування однотон + стрижка",
+    "duration_min": 180,
+    "price": 1100,
+    "proc_id": 6,
+    "price_from": true,
+    "price_to": 1200,
+    "price_note": "+ матеріал за фактом",
+    "variants": [
+     {
+      "id": 19,
+      "code": "1-2",
+      "label": "1–2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 185,
+      "work_name": "Фарбування однотон 1-2 довжина ( без фарбників) + стрижка",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1100,
+      "material": null,
+      "material_known": false,
+      "total": 1100,
+      "duration_min": 180
+     },
+     {
+      "id": 20,
+      "code": "3-4",
+      "label": "3–4 довжина",
+      "cm": "25–60 см",
+      "cm_from": 25,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 186,
+      "work_name": "Фарбування однотонне 3-4 довжина ( без фарбників ) + стрижка",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1200,
+      "material": null,
+      "material_known": false,
+      "total": 1200,
+      "duration_min": 180
+     }
+    ],
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": "p7",
+    "name": "Фарбування тотал блонд",
+    "duration_min": 240,
+    "price": 1200,
+    "proc_id": 7,
+    "price_from": true,
+    "price_to": 1300,
+    "price_note": "+ матеріал за фактом",
+    "variants": [
+     {
+      "id": 21,
+      "code": "1-2",
+      "label": "1–2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 187,
+      "work_name": "Фарбування тотал блонд (освітлення+тонування+догляд) 1-2",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1200,
+      "material": null,
+      "material_known": false,
+      "total": 1200,
+      "duration_min": 240
+     },
+     {
+      "id": 22,
+      "code": "3-4",
+      "label": "3–4 довжина",
+      "cm": "25–60 см",
+      "cm_from": 25,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 188,
+      "work_name": "Фарбування тотал блонд (освітлення+тонування+догляд) 3-4",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1250,
+      "material": null,
+      "material_known": false,
+      "total": 1250,
+      "duration_min": 270
+     },
+     {
+      "id": 23,
+      "code": "5-6",
+      "label": "5–6 довжина",
+      "cm": "понад 60 см",
+      "cm_from": 60,
+      "cm_to": null,
+      "level": 6,
+      "work_service_id": 189,
+      "work_name": "Фарбування тотал блонд (освітлення+тонування+догляд) 5-6",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "extra",
+      "material_note": null,
+      "work": 1300,
+      "material": null,
+      "material_known": false,
+      "total": 1300,
+      "duration_min": 300
+     }
+    ],
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 190,
+    "name": "Фарбування(без барвників) + стрижка 1 довжина",
+    "duration_min": 180,
+    "price": 1150,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 191,
+    "name": "Фарбування(без барвників) + стрижка 2 довжина",
+    "duration_min": 180,
+    "price": 1150,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 192,
+    "name": "Фарбування(без барвників) + стрижка 3 довжина",
+    "duration_min": 180,
+    "price": 1300,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": 193,
+    "name": "Фарбування(без барвників) + стрижка 4  довжина",
+    "duration_min": 180,
+    "price": 1150,
+    "price_note": "+ матеріал за фактом",
+    "group": "Фарбування та мелірування"
+   },
+   {
+    "id": "p1",
+    "name": "Біовирівнювання",
+    "duration_min": 180,
+    "price": 3000,
+    "proc_id": 1,
+    "price_from": true,
+    "price_to": 6000,
+    "price_note": "робота + матеріал",
+    "variants": [
+     {
+      "id": 1,
+      "code": "2",
+      "label": "2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 25,
+      "work_name": "біовирівнювання 2 довжина (до 25 см)",
+      "material_service_id": 93,
+      "material_name": "матеріал біовирівнювання 2 довжина ( до 25 см 30 мл)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 2400,
+      "material": 600,
+      "material_known": true,
+      "total": 3000,
+      "duration_min": 180
+     },
+     {
+      "id": 2,
+      "code": "3",
+      "label": "3 довжина",
+      "cm": "25–45 см",
+      "cm_from": 25,
+      "cm_to": 45,
+      "level": 3,
+      "work_service_id": 26,
+      "work_name": "біовирівнювання 3 довжина ( до 45 см)",
+      "material_service_id": 94,
+      "material_name": "матеріал біовирівнювання 3 довжина ( до 45 см 40 мл)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 3200,
+      "material": 800,
+      "material_known": true,
+      "total": 4000,
+      "duration_min": 180
+     },
+     {
+      "id": 3,
+      "code": "4",
+      "label": "4 довжина",
+      "cm": "45–60 см",
+      "cm_from": 45,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 31,
+      "work_name": "біовирівнювання 4 довжина ( до 60 см )",
+      "material_service_id": 95,
+      "material_name": "матеріал біовирівнювання 4 довжина ( до 60 см 55 мл)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 3900,
+      "material": 1100,
+      "material_known": true,
+      "total": 5000,
+      "duration_min": 180
+     },
+     {
+      "id": 4,
+      "code": "5",
+      "label": "5 довжина",
+      "cm": "60–80 см",
+      "cm_from": 60,
+      "cm_to": 80,
+      "level": 5,
+      "work_service_id": 36,
+      "work_name": "біовирівнювання 5 довжина ( до 80 см)",
+      "material_service_id": 41,
+      "material_name": "біовирівнювання матеріал 5 довжина (до 80 см 70 мл)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 4600,
+      "material": 1400,
+      "material_known": true,
+      "total": 6000,
+      "duration_min": 300
+     }
+    ],
+    "group": "Біовирівнювання та завивка"
+   },
+   {
+    "id": 43,
+    "name": "Біозавивка 3-4 довжина (робота)",
+    "duration_min": 300,
+    "price": 3000,
+    "group": "Біовирівнювання та завивка"
+   },
+   {
+    "id": 74,
+    "name": "курс біовирівнювання",
+    "duration_min": 240,
+    "price": 7000,
+    "group": "Біовирівнювання та завивка"
+   },
+   {
+    "id": 135,
+    "name": "Полірування волосся",
+    "duration_min": 120,
+    "price": 1000,
+    "group": "Відновлення та догляд"
+   },
+   {
+    "id": 136,
+    "name": "Полірування волосся 1-2 довжина",
+    "duration_min": 60,
+    "price": 1500,
+    "group": "Відновлення та догляд"
+   },
+   {
+    "id": 137,
+    "name": "Полірування волосся 3-4 довжина",
+    "duration_min": 60,
+    "price": 1500,
+    "group": "Відновлення та догляд"
+   },
+   {
+    "id": "p2",
+    "name": "Холодне відновлення",
+    "duration_min": 105,
+    "price": 1000,
+    "proc_id": 2,
+    "price_from": true,
+    "price_to": 1350,
+    "price_note": "робота + матеріал",
+    "variants": [
+     {
+      "id": 5,
+      "code": "1-2",
+      "label": "1–2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 201,
+      "work_name": "Холодне відновлення 1-2 довжина робота",
+      "material_service_id": 196,
+      "material_name": "Холодне відновлення 1-2 довжина (матеріал)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 600,
+      "material": 400,
+      "material_known": true,
+      "total": 1000,
+      "duration_min": 105
+     },
+     {
+      "id": 6,
+      "code": "3-4",
+      "label": "3–4 довжина",
+      "cm": "25–60 см",
+      "cm_from": 25,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 206,
+      "work_name": "Холодне відновлення 3-4 довжина робота",
+      "material_service_id": 202,
+      "material_name": "Холодне відновлення 3-4 довжина ( матеріал)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 750,
+      "material": 500,
+      "material_known": true,
+      "total": 1250,
+      "duration_min": 105
+     },
+     {
+      "id": 7,
+      "code": "5-6",
+      "label": "5–6 довжина",
+      "cm": "понад 60 см",
+      "cm_from": 60,
+      "cm_to": null,
+      "level": 6,
+      "work_service_id": 211,
+      "work_name": "Холодне відновлення 5-6 довжина робота",
+      "material_service_id": 207,
+      "material_name": "Холодне відновлення 5-6 довжина (матеріал)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 800,
+      "material": 550,
+      "material_known": true,
+      "total": 1350,
+      "duration_min": 105
+     }
+    ],
+    "group": "Відновлення та догляд"
+   },
+   {
+    "id": "p3",
+    "name": "Холодне відновлення Biomimetic",
+    "duration_min": 90,
+    "price": 1100,
+    "proc_id": 3,
+    "price_from": true,
+    "price_to": 1500,
+    "price_note": "робота + матеріал",
+    "variants": [
+     {
+      "id": 8,
+      "code": "1-2",
+      "label": "1–2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 212,
+      "work_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic 1-2 довжина",
+      "material_service_id": 217,
+      "material_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic матеріал 1-2 довжина",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 700,
+      "material": 400,
+      "material_known": true,
+      "total": 1100,
+      "duration_min": 90
+     },
+     {
+      "id": 9,
+      "code": "3-4",
+      "label": "3–4 довжина",
+      "cm": "25–60 см",
+      "cm_from": 25,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 213,
+      "work_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic 3-4 довжина",
+      "material_service_id": 214,
+      "material_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic 3-4 довжина ( матеріал)",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 800,
+      "material": 500,
+      "material_known": true,
+      "total": 1300,
+      "duration_min": 90
+     },
+     {
+      "id": 10,
+      "code": "5-6",
+      "label": "5–6 довжина",
+      "cm": "понад 60 см",
+      "cm_from": 60,
+      "cm_to": null,
+      "level": 6,
+      "work_service_id": 215,
+      "work_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic 5-6 довжина",
+      "material_service_id": 216,
+      "material_name": "ХОЛОДНЕ ВІДНОВЛЕННЯ Biomimetic 5-6 довжина ( матеріал )",
+      "material_mode": "separate",
+      "material_note": null,
+      "work": 900,
+      "material": 600,
+      "material_known": true,
+      "total": 1500,
+      "duration_min": 90
+     }
+    ],
+    "group": "Відновлення та догляд"
+   },
+   {
+    "id": 47,
+    "name": "Вкладання/накрутка",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 102,
+    "name": "Миття голови",
+    "duration_min": 60,
+    "price": 350,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 142,
+    "name": "Стрижка дитяча",
+    "duration_min": 60,
+    "price": 300,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": "p8",
+    "name": "Стрижка жіноча",
+    "duration_min": 60,
+    "price": 750,
+    "proc_id": 8,
+    "price_from": true,
+    "price_to": 1000,
+    "price_note": "",
+    "variants": [
+     {
+      "id": 24,
+      "code": "1-2",
+      "label": "1–2 довжина",
+      "cm": "до 25 см",
+      "cm_from": null,
+      "cm_to": 25,
+      "level": 2,
+      "work_service_id": 145,
+      "work_name": "Стрижка жіноча 1-2 довжина",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "none",
+      "material_note": null,
+      "work": 750,
+      "material": 0,
+      "material_known": true,
+      "total": 750,
+      "duration_min": 60
+     },
+     {
+      "id": 25,
+      "code": "3-4",
+      "label": "3–4 довжина",
+      "cm": "25–60 см",
+      "cm_from": 25,
+      "cm_to": 60,
+      "level": 4,
+      "work_service_id": 147,
+      "work_name": "Стрижка жіноча 3-4 довжина",
+      "material_service_id": null,
+      "material_name": null,
+      "material_mode": "none",
+      "material_note": null,
+      "work": 1000,
+      "material": 0,
+      "material_known": true,
+      "total": 1000,
+      "duration_min": 60
+     }
+    ],
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 154,
+    "name": "Стрижка кінчиків",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 148,
+    "name": "Стрижка кінчиків (без миття)",
+    "duration_min": 60,
+    "price": 300,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 151,
+    "name": "Стрижка кінчиків + миття голови",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 152,
+    "name": "Стрижка кінчиків без миття",
+    "duration_min": 60,
+    "price": 400,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 156,
+    "name": "Стрижка чоловіча",
+    "duration_min": 60,
+    "price": 400,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 160,
+    "name": "Стрижка чубчика",
+    "duration_min": 15,
+    "price": 350,
+    "group": "Стрижки та укладання"
+   },
+   {
+    "id": 58,
+    "name": "Консультація",
+    "duration_min": 30,
+    "price": 1,
+    "group": "Інше"
+   }
+  ]
+ },
+ {
+  "name": "Нігті",
+  "count": 33,
+  "groups": [
+   {
+    "name": "Нарощування та корекція",
+    "count": 11
+   },
+   {
+    "name": "Педикюр",
+    "count": 10
+   },
+   {
+    "name": "Манікюр",
+    "count": 6
+   },
+   {
+    "name": "Дизайн, ремонт, зняття",
+    "count": 6
+   }
+  ],
+  "services": [
+   {
+    "id": 66,
+    "name": "Корекція нарощених нігтів + гель лак 1-2 довжина",
+    "duration_min": 120,
+    "price": 850,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 67,
+    "name": "Корекція нарощених нігтів 1-2 довжина",
+    "duration_min": 120,
+    "price": 750,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 68,
+    "name": "Корекція нарощених нігтів 3 - 4 довжина",
+    "duration_min": 120,
+    "price": 900,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 69,
+    "name": "Корекція нарощених нігтів 3-4 довжина",
+    "duration_min": 120,
+    "price": 800,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 70,
+    "name": "Корекція нарощених нігтів 5 - 6 довжина",
+    "duration_min": 120,
+    "price": 950,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 115,
+    "name": "Нарощування нігтів + гель лак 1-2 довжина",
+    "duration_min": 120,
+    "price": 850,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 116,
+    "name": "Нарощування нігтів 1-2 довжина",
+    "duration_min": 120,
+    "price": 800,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 118,
+    "name": "Нарощування нігтів 3-4 довжина",
+    "duration_min": 150,
+    "price": 900,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 119,
+    "name": "Нарощування нігтів 5-6 довжина (спеціаліст)",
+    "duration_min": 150,
+    "price": 1000,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 120,
+    "name": "Нарощування нігтів 5-6 довжина (топ-майстер)",
+    "duration_min": 150,
+    "price": 1100,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 139,
+    "name": "Ремонт нігтя при нарощуванні",
+    "duration_min": 10,
+    "price": 100,
+    "group": "Нарощування та корекція"
+   },
+   {
+    "id": 125,
+    "name": "Педикюр жіночий",
+    "duration_min": 40,
+    "price": 600,
+    "group": "Педикюр"
+   },
+   {
+    "id": 126,
+    "name": "Педикюр жіночий повний",
+    "duration_min": 90,
+    "price": 550,
+    "group": "Педикюр"
+   },
+   {
+    "id": 127,
+    "name": "Педикюр жіночий тільки пальчики",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Педикюр"
+   },
+   {
+    "id": 128,
+    "name": "Педикюр з покриттям гель-лак тільки пальчики",
+    "duration_min": 90,
+    "price": 650,
+    "group": "Педикюр"
+   },
+   {
+    "id": 129,
+    "name": "Педикюр повний + гель лак",
+    "duration_min": 90,
+    "price": 800,
+    "group": "Педикюр"
+   },
+   {
+    "id": 130,
+    "name": "Педикюр повний з покриттям гель-лак",
+    "duration_min": 90,
+    "price": 750,
+    "group": "Педикюр"
+   },
+   {
+    "id": 131,
+    "name": "Педикюр тільки пальчики (без п`ятки)",
+    "duration_min": 40,
+    "price": 550,
+    "group": "Педикюр"
+   },
+   {
+    "id": 132,
+    "name": "Педикюр тільки пальчики + гель лак",
+    "duration_min": 60,
+    "price": 700,
+    "group": "Педикюр"
+   },
+   {
+    "id": 133,
+    "name": "Педикюр чоловічий (спеціаліст)",
+    "duration_min": 60,
+    "price": 450,
+    "group": "Педикюр"
+   },
+   {
+    "id": 134,
+    "name": "Педикюр чоловічий (топ-майстер)",
+    "duration_min": 60,
+    "price": 650,
+    "group": "Педикюр"
+   },
+   {
+    "id": 87,
+    "name": "Манікюр + покриття гель лаком",
+    "duration_min": 120,
+    "price": 800,
+    "group": "Манікюр"
+   },
+   {
+    "id": 88,
+    "name": "Манікюр жіночий (спеціаліст)",
+    "duration_min": 60,
+    "price": 450,
+    "group": "Манікюр"
+   },
+   {
+    "id": 89,
+    "name": "Манікюр жіночий (топ-майстер)",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Манікюр"
+   },
+   {
+    "id": 90,
+    "name": "Манікюр з покриттям гель лак",
+    "duration_min": 120,
+    "price": 800,
+    "group": "Манікюр"
+   },
+   {
+    "id": 91,
+    "name": "Манікюр з покриттям гель-лак",
+    "duration_min": 120,
+    "price": 700,
+    "group": "Манікюр"
+   },
+   {
+    "id": 92,
+    "name": "Манікюр чоловічий",
+    "duration_min": 60,
+    "price": 500,
+    "group": "Манікюр"
+   },
+   {
+    "id": 52,
+    "name": "Дизайн (втирка, френч, фольга)",
+    "duration_min": 15,
+    "price": 100,
+    "group": "Дизайн, ремонт, зняття"
+   },
+   {
+    "id": 56,
+    "name": "Зняття гель лаку без подальшого покриття",
+    "duration_min": 30,
+    "price": 250,
+    "group": "Дизайн, ремонт, зняття"
+   },
+   {
+    "id": 138,
+    "name": "Ремонт нігтя",
+    "duration_min": 15,
+    "price": 100,
+    "group": "Дизайн, ремонт, зняття"
+   },
+   {
+    "id": 140,
+    "name": "Ремонт свого нігтя гель лак",
+    "duration_min": 5,
+    "price": 50,
+    "group": "Дизайн, ремонт, зняття"
+   },
+   {
+    "id": 162,
+    "name": "Укріплення",
+    "duration_min": 10,
+    "price": 50,
+    "group": "Дизайн, ремонт, зняття"
+   },
+   {
+    "id": 194,
+    "name": "Френч + втирання + розпис + стемпінг на всіх нігтях",
+    "duration_min": 10,
+    "price": 100,
+    "group": "Дизайн, ремонт, зняття"
+   }
+  ]
+ },
+ {
+  "name": "Брови та вії",
+  "count": 14,
+  "groups": [],
+  "services": [
+   {
+    "id": 64,
+    "name": "Корекція брів",
+    "duration_min": 30,
+    "price": 250,
+    "group": null
+   },
+   {
+    "id": 104,
+    "name": "Нарощування вій  3D",
+    "duration_min": 120,
+    "price": 800,
+    "group": null
+   },
+   {
+    "id": 105,
+    "name": "Нарощування вій ( класика)",
+    "duration_min": 90,
+    "price": 700,
+    "group": null
+   },
+   {
+    "id": 106,
+    "name": "Нарощування вій 2D",
+    "duration_min": 120,
+    "price": 750,
+    "group": null
+   },
+   {
+    "id": 108,
+    "name": "Нарощування вій 2d (PREMIUM вії)",
+    "duration_min": 120,
+    "price": 800,
+    "group": null
+   },
+   {
+    "id": 110,
+    "name": "Нарощування вій 3d (PREMIUM вії)",
+    "duration_min": 120,
+    "price": 850,
+    "group": null
+   },
+   {
+    "id": 121,
+    "name": "Нарущування вій Hollywood (PREMIUM вії)",
+    "duration_min": 120,
+    "price": 900,
+    "group": null
+   },
+   {
+    "id": 176,
+    "name": "Фарбування брів",
+    "duration_min": 30,
+    "price": 200,
+    "group": null
+   },
+   {
+    "id": 2,
+    "name": "LED нарощування вій 2D",
+    "duration_min": 120,
+    "price": 700,
+    "group": null
+   },
+   {
+    "id": 3,
+    "name": "LED Нарощування вій 2D (PREMIUM вії)",
+    "duration_min": 120,
+    "price": 800,
+    "group": null
+   },
+   {
+    "id": 4,
+    "name": "LED нарощування вій 3D",
+    "duration_min": 120,
+    "price": 750,
+    "group": null
+   },
+   {
+    "id": 5,
+    "name": "LED Нарощування вій 3d (PREMIUM вії)",
+    "duration_min": 120,
+    "price": 850,
+    "group": null
+   },
+   {
+    "id": 8,
+    "name": "LED нарощування вій класика",
+    "duration_min": 120,
+    "price": 750,
+    "group": null
+   },
+   {
+    "id": 6,
+    "name": "LED нарощування вій HOLLYWOOD",
+    "duration_min": 120,
+    "price": 800,
+    "group": null
+   }
+  ]
+ }
+]

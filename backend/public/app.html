@@ -62,6 +62,22 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .svc .n{font-size:15px}
 .svc .m{color:var(--muted);font-size:13px;margin-top:3px}
 .svc .p{color:var(--gold);font-weight:600;white-space:nowrap}
+.svc .pn{color:var(--gold);font-size:12px;margin-top:2px;opacity:.9}
+/* price-materials-0411: вибір довжини волосся (силует + см) */
+.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lt{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 8px 12px;color:var(--text);min-width:0}
+.lt svg{width:46px;height:62px;flex:none}
+.lt .cm{font-size:16px;font-weight:600}
+.lt .lv{font-size:12px;color:var(--muted)}
+.lt .pr{font-size:14px;color:var(--gold);font-weight:600;margin-top:2px}
+.lt.on{border-color:var(--rose);background:var(--card2);box-shadow:0 0 0 1px var(--rose) inset}
+.lt.unk{grid-column:1/-1;flex-direction:row;justify-content:center;gap:10px;padding:12px}
+.lt.unk .cm{font-size:15px}
+.lsum{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;min-height:62px}
+.lsum .big{font-size:22px;font-weight:700;color:var(--text)}
+.lsum .sm{font-size:13.5px;color:#ddd0cc;margin-top:3px}
+.lsum .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
+.cf .est{font-size:12.5px;color:var(--muted);margin-top:4px}
 .srch{position:relative;margin:4px 0 10px}
 .srch input{width:100%;box-sizing:border-box;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-size:16px;padding:0 40px 0 38px;outline:none;-webkit-appearance:none;appearance:none}
 .srch input:focus{border-color:var(--rose)}
@@ -235,7 +251,8 @@ function h(tag, attrs){
 function add(el, c){ if (c == null || c === false) return; if (Array.isArray(c)) c.forEach(function(x){add(el,x);}); else el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); }
 function haptic(kind){ try { if (!tg || !tg.HapticFeedback) return; if (kind==='ok'||kind==='error'||kind==='warning') tg.HapticFeedback.notificationOccurred(kind); else tg.HapticFeedback.selectionChanged(); } catch(e){} }
 function toast(msg){ var t = h('div',{class:'toast',text:msg}); document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 3200); }
-function price(p){ p = Math.round(+p||0); return p>0 ? p.toLocaleString('uk-UA').replace(/ /g,' ')+' грн' : 'за прайсом'; }
+function price(p){ p = Math.round(+p||0); return p>0 ? nf(p)+' ₴' : 'за прайсом'; }
+function nf(n){ return String(Math.round(+n||0)).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
 function dur(m){ m=+m||0; var hh=Math.floor(m/60), mm=m%60; return hh ? (mm ? hh+' год '+mm+' хв' : hh+' год') : mm+' хв'; }
 function lbl(min){ return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
 function addDays(iso,n){ var d=new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
@@ -276,7 +293,7 @@ function syncBack(){
 }
 function show(){
   var cur = S.stack[S.stack.length-1];
-  ({home:vHome, cats:vCats, svcs:vSvcs, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, promos:vPromos, master:vMaster})[cur]();
+  ({home:vHome, cats:vCats, svcs:vSvcs, length:vLength, masters:vMasters, time:vTime, confirm:vConfirm, done:vDone, cabinet:vCabinet, team:vTeam, promos:vPromos, master:vMaster})[cur]();
 }
 
 // ── екрани ──
@@ -355,10 +372,87 @@ function searchServices(q){
   return out.sort(function(a,b){ return a.r-b.r || a.i-b.i; });
 }
 function svcBtn(sv, c, withCat){
-  return h('button',{class:'svc',onclick:function(){ haptic(); S.svc=sv; S.cat=c; S.master=null; S.masters=null; go('masters'); }},
-    h('span',{class:'t'}, h('div',{class:'n',text:sv.name}), h('div',{class:'m',text:dur(sv.duration_min)}),
+  var multiDur = sv.variants && sv.variants.some(function(v){ return v.duration_min !== sv.duration_min; });
+  return h('button',{class:'svc',onclick:function(){ haptic(); openService(sv, c); }},
+    h('span',{class:'t'}, h('div',{class:'n',text:sv.name}), h('div',{class:'m',text:(multiDur?'від ':'')+dur(sv.duration_min)}),
+      sv.price_note ? h('div',{class:'pn',text:sv.price_note}) : null,
       withCat ? h('div',{class:'c',text:c.name+(sv.group?' · '+sv.group:'')}) : null),
-    h('span',{class:'p',text:price(sv.price)}));
+    h('span',{class:'p',text:(sv.price_from?'від ':'')+price(sv.price)}));
+}
+// ── price-materials-0411: процедура (біовирівнювання, фарбування…) → вибір довжини → робота + матеріал ──
+// Послуга без довжини — одразу до майстра (жодного зайвого кроку); процедура з 1 варіантом — теж.
+function openService(sv, c){
+  S.cat=c; S.master=null; S.masters=null;
+  if (sv.variants && sv.variants.length){
+    S.proc=sv; S.variant=null; S.lenUnknown=false;
+    if (sv.variants.length===1){ S.variant=sv.variants[0]; pickVariant(); go('masters'); return; }
+    S.svc=null; go('length'); return;
+  }
+  S.proc=null; S.svc=sv; go('masters');
+}
+function variantSum(v){
+  if (v.material_mode==='separate' && v.material_known) return {big:'≈ '+price(v.total), sm:'= робота '+nf(v.work)+' + матеріал '+nf(v.material)};
+  if (v.material_mode==='extra' || !v.material_known) return {big:'≈ '+price(v.work), sm:'робота + матеріал (барвник) за фактом'};
+  if (v.material_mode==='included') return {big:'≈ '+price(v.total), sm:'матеріал уже в ціні'};
+  return {big:price(v.total), sm:''};
+}
+function unknownVariant(vs){ // бронюємо найдовший за часом — щоб майстру точно вистачило часу
+  return vs.slice().sort(function(a,b){ return (b.duration_min-a.duration_min) || (b.total-a.total); })[0];
+}
+function rangeSum(vs){
+  var t = vs.map(function(v){ return v.material_mode==='extra' ? v.work : v.total; });
+  var lo = Math.min.apply(null,t), hi = Math.max.apply(null,t);
+  var extra = vs.some(function(v){ return v.material_mode==='extra' || !v.material_known; });
+  return {big:'≈ '+(lo===hi ? price(lo) : nf(lo)+' – '+price(hi)), sm: extra ? 'робота + матеріал за фактом' : 'залежно від довжини, робота + матеріал'};
+}
+function pickVariant(){
+  var p=S.proc, v=S.variant; if (!p || !v) return;
+  var unk = !!S.lenUnknown, sum = unk ? rangeSum(p.variants) : variantSum(v);
+  S.svc = {id:v.work_service_id, name:p.name+' · '+(unk ? 'довжину визначить майстер' : (v.cm || v.label)),
+    duration_min:v.duration_min, price:v.work, variant_id:v.id, length_unknown:unk, sum:sum,
+    est:(v.material_mode!=='none' || unk)};
+  S.master=null; S.masters=null;
+}
+function hairSvg(level){
+  var y = 26 + Math.min(6, Math.max(1, +level||3)) * 5.4;      // нижній край волосся: 1 — коротко, 6 — до пояса
+  return '<svg viewBox="0 0 46 62" aria-hidden="true">'
+    + '<path d="M8 62c0-11 7-16 15-16s15 5 15 16z" fill="#3a3033"/>'
+    + '<path d="M23 6c-9 0-14 6-14 14v'+(y-20).toFixed(1)+'c0 2 2 3 4 2l2-1V20c2-3 5-5 8-5s6 2 8 5v'+(y-21).toFixed(1)+'l2 1c2 1 4 0 4-2V20c0-8-5-14-14-14z" fill="#d9b38c"/>'
+    + '<ellipse cx="23" cy="21" rx="7.5" ry="9" fill="#f1d6cb"/></svg>';
+}
+function vLength(){
+  var p = S.proc; if (!p) return back();
+  var vs = p.variants, uv = unknownVariant(vs);
+  var sum = h('div',{class:'lsum',id:'len-sum'});
+  var next = h('button',{class:'btn btn-rose',id:'next-length',disabled:!S.variant,onclick:function(){ haptic(); pickVariant(); go('masters'); }}, 'Далі — майстер ›');
+  var grid = h('div',{class:'lgrid'});
+  function paint(){
+    [].forEach.call(grid.querySelectorAll('.lt'), function(el){
+      var on = S.variant && (el.getAttribute('data-unk')==='1' ? S.lenUnknown : (!S.lenUnknown && el.getAttribute('data-id')===String(S.variant.id)));
+      el.classList.toggle('on', !!on); el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    sum.innerHTML='';
+    if (!S.variant){ sum.appendChild(h('div',{class:'sm',text:'Оберіть довжину — покажемо суму: робота + матеріал.'})); next.disabled=true; return; }
+    var x = S.lenUnknown ? rangeSum(vs) : variantSum(S.variant);
+    sum.appendChild(h('div',{class:'big',text:x.big}));
+    if (x.sm) sum.appendChild(h('div',{class:'sm',text:x.sm}));
+    sum.appendChild(h('div',{class:'hint',text: S.lenUnknown ? 'Довжину визначить майстер на огляді — час бронюємо з запасом.' : 'Орієнтовно — точну суму назве майстер після огляду.'}));
+    next.disabled=false;
+  }
+  vs.forEach(function(v){
+    var t = h('button',{class:'lt','data-id':v.id,'aria-pressed':'false',onclick:function(){ haptic(); S.variant=v; S.lenUnknown=false; paint(); }});
+    var ic = h('span',{}); ic.innerHTML = hairSvg(v.level); t.appendChild(ic);
+    t.appendChild(h('div',{class:'cm',text:v.cm || v.label}));
+    if (v.cm) t.appendChild(h('div',{class:'lv',text:v.label}));
+    t.appendChild(h('div',{class:'pr',text:(v.material_mode==='extra'||!v.material_known ? price(v.work)+' + мат.' : price(v.total))}));
+    grid.appendChild(t);
+  });
+  grid.appendChild(h('button',{class:'lt unk','data-unk':'1','aria-pressed':'false',onclick:function(){ haptic(); S.variant=uv; S.lenUnknown=true; paint(); }},
+    h('div',{class:'cm',text:'🤷‍♀️ Не знаю — майстер визначить'})));
+  render(h('div',{class:'screen'}, head(1,'Довжина волосся'),
+    h('div',{class:'note',style:'margin:0 0 12px;text-align:left',text:p.name+(p.price_note ? ' · '+p.price_note : '')}), grid, sum,
+    h('div',{class:'fixed'}, h('div',{class:'inner'}, next))));
+  paint();
 }
 // поле пошуку; onChange отримує рядок, перерисовує лише список (фокус і клавіатура не зникають)
 function searchField(onChange){
@@ -556,7 +650,9 @@ function vConfirm(){
         h('div',{class:'l'}, h('i',{text:'💇'}), 'Майстер: '+m.name),
         h('div',{class:'l'}, h('i',{text:'📅'}), dateLong(S.date)),
         h('div',{class:'l'}, h('i',{text:'🕒'}), lbl(S.slot.start_min)+' (≈ '+dur(S.svc.duration_min)+')'),
-        h('div',{class:'l price'}, h('i',{text:'💳'}), price(S.svc.price)))),
+        h('div',{class:'l price'}, h('i',{text:'💳'}), S.svc.sum ? S.svc.sum.big : price(S.svc.price)),
+        S.svc.sum && S.svc.sum.sm ? h('div',{class:'est',text:S.svc.sum.sm}) : null,
+        S.svc.est ? h('div',{class:'est',text:'Орієнтовно — точну суму назве майстер після огляду.'}) : null)),
     h('div',{class:'opts'},
       h('button',{class:'opt',style:'width:100%;text-align:left',id:'remind-toggle',onclick:function(){ haptic(); S.remind24=!S.remind24; tgl.classList.toggle('on',S.remind24); tgl.setAttribute('aria-checked',String(S.remind24)); }},
         h('span',{text:'🔔'}), h('span',{class:'t',text:'Нагадати за 24 год'}), tgl)),
@@ -571,7 +667,8 @@ function confirmBooking(e){
     if (!ok) return null;
     var m = masterOfSlot();
     return api('/book',{method:'POST',body:{service_id:S.svc.id, master_id:m.id, date:S.date, start_min:S.slot.start_min,
-      remind24:S.remind24, move_ids:S.move ? S.move.ids : undefined}});
+      remind24:S.remind24, move_ids:S.move ? S.move.ids : undefined,
+      variant_id:S.svc.variant_id || undefined, length_unknown:S.svc.length_unknown || undefined}});
   }).then(function(j){
     if (!j) return;
     if (j._status===200 && j.ok){ haptic('ok'); S.result=j.booking; S.stack=['home','done']; show(); if (S.move) S.move=null; return; }
@@ -629,7 +726,8 @@ function vDone(){
       h('div',{class:'l'}, h('i',{text:'💇'}), b.master||''),
       h('div',{class:'l'}, h('i',{text:'📅'}), b.date_label||''),
       h('div',{class:'l'}, h('i',{text:'🕒'}), (b.time||'')+' · '+(b.duration||'')),
-      h('div',{class:'l price'}, h('i',{text:'💳'}), price(b.price)))),
+      h('div',{class:'l price'}, h('i',{text:'💳'}), b.estimate_text ? b.estimate_text : price(b.price)),
+      b.price_note ? h('div',{class:'est',text:'Орієнтовно — точну суму назве майстер після огляду.'}) : null)),
     h('div',{class:'note',text:'Підтвердження надіслали в чат. Нагадаємо перед візитом.'}),
     h('div',{class:'menu'},
       h('button',{class:'btn btn-rose',id:'to-cabinet',onclick:function(){ S.stack=['home','cabinet']; show(); }}, 'Мої записи'),
@@ -758,13 +856,19 @@ function startMove(ids){
   api('/move-info?ids='+ids.join(',')).then(function(j){
     if (j._status!==200){ toast(j.message||'Запис уже неактуальний'); S.stack=['home','cabinet']; show(); return; }
     return loadCatalog().then(function(cats){
-      var svc=null, cat=null;
-      cats.forEach(function(c){ c.services.forEach(function(s){ if (s.id===j.service_id){ svc=s; cat=c; } }); });
+      var svc=null, cat=null, proc=null, pv=null;
+      cats.forEach(function(c){ c.services.forEach(function(s){
+        if (s.id===j.service_id){ svc=s; cat=c; }
+        (s.variants||[]).forEach(function(v){ // робота процедури з довжиною → та сама картка й варіант
+          if (v.work_service_id===j.service_id && (!pv || v.id===j.variant_id)){ proc=s; pv=v; cat=c; } });
+      }); });
+      if (proc){ S.proc=proc; S.variant=pv; S.lenUnknown=!!j.length_unknown; pickVariant(); svc=S.svc; }
       if (!svc){ toast('Ця послуга зараз недоступна онлайн — напишіть адміністратору'); return; }
       return api('/masters?service='+svc.id).then(function(mj){
         S.masters = mj.masters||[];
         var m = S.masters.filter(function(x){ return x.id===j.master_id; })[0];
         S.move = {ids:j.ids, date:j.date, time:j.time, service:j.service};
+        if (!proc) S.proc=null;
         S.svc=svc; S.cat=cat; S.master = m || null; S.date=null; S.slot=null; S.days={};
         S.stack = m ? ['home','cabinet','time'] : ['home','cabinet','masters'];
         show();

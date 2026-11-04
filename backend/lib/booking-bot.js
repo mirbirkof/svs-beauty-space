@@ -37,6 +37,30 @@ function fmtDur(min) {
   return h ? (m ? `${h} год ${m} хв` : `${h} год`) : `${m} хв`;
 }
 
+
+// price-materials-0411: волосся — клієнт бачить «робота + матеріал», а не лише роботу (Босс 04.11).
+// s.hair (з lib/hair-variants) — варіант довжини процедури, у якому ця послуга є роботою.
+const hairVariants = require('./hair-variants');
+const nf = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+function priceLabel(s) {
+  const h = s && s.hair;
+  if (!h) return fmtPrice(s.price) + (hairVariants.MATERIAL_EXTRA_RE.test(s.name || '') ? ' + матеріал за фактом' : '');
+  if (h.material_mode === 'separate' && h.material_known) return `≈ ${nf(h.total)} грн (робота ${nf(h.work)} + матеріал ${nf(h.material)})`;
+  if (h.material_mode === 'extra' || !h.material_known) return `${fmtPrice(h.work)} + матеріал за фактом`;
+  return fmtPrice(s.price);
+}
+// «Разом»: робота + відомий матеріал; позначка, що сума орієнтовна
+function totalLabel(chosen, total) {
+  let sum = 0, approx = false, extra = false;
+  for (const s of chosen || []) {
+    const h = s.hair;
+    if (h) { approx = true; sum += (h.material_mode === 'separate' && h.material_known) ? h.total : h.work; if (h.material_mode === 'extra' || !h.material_known) extra = true; }
+    else { sum += Number(s.price) || 0; if (hairVariants.MATERIAL_EXTRA_RE.test(s.name || '')) { approx = true; extra = true; } }
+  }
+  if (!approx) return fmtPrice(total);
+  return `≈ ${nf(sum)} грн${extra ? ' + матеріал за фактом' : ' (робота + матеріал)'} — точну суму назве майстер після огляду`;
+}
+
 // ── каталог послуг (кеш 5 хв, ПЕР-ТЕНАНТ) ──────────────────────────────────
 // Major-фікс: раніше кеш каталогу був глобальний → бот першого салону віддавав
 // послуги першого салону всім іншим (витік каталогу між тенантами).
@@ -65,6 +89,12 @@ async function loadCatalog(pool) {
     id: s.id, bp_id: s.bp_id, name: s.name,
     duration_min: s.duration_min, price: s.price, category: s.category,
   }));
+  try { // робота процедури волосся → її варіант довжини (сума робота + матеріал)
+    const procs = await hairVariants.loadProcedures(pool);
+    const byWork = new Map();
+    for (const p of procs) for (const v of p.variants) byWork.set(Number(v.work_service_id), v);
+    for (const s of services) { const v = byWork.get(Number(s.id)); if (v) s.hair = v; }
+  } catch (e) { console.error('[bookbot/hair-variants]', e.message); }
   const indexed = matcher.buildIndex(services);
   const byId = new Map(services.map(s => [s.id, s]));
   const data = { services, indexed, byId };
@@ -208,7 +238,7 @@ async function advance(ctx, uid, target, session) {
   if (next >= 0) {
     const part = session.data.parts[next];
     const btns = part.candidates.map((c, i) => [{
-      text: `${c.name} · ${fmtPrice(c.price)}`, callback_data: `bk:pick:${next}:${c.id}`,
+      text: `${c.name} · ${priceLabel(c)}`, callback_data: `bk:pick:${next}:${c.id}`,
     }]);
     btns.push([{ text: '✖ Скасувати', callback_data: 'bk:cancel' }]);
     await saveSession(ctx.pool, uid, target.chat_id, 'svc', session.data);
@@ -272,9 +302,9 @@ async function showQuick(ctx, uid, target, session) {
   } catch (e) { console.error('[bookbot/quick]', e.message); }
   session.data.quick = quick;
 
-  const lines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
+  const lines = chosen.map(s => `• ${s.name} — ${priceLabel(s)}`).join('\n');
   const head = chosen.length > 1
-    ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${fmtPrice(total)}</b>, ~${fmtDur(dur)}`
+    ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${totalLabel(chosen, total)}</b>, ~${fmtDur(dur)}`
     : `${lines}\n~${fmtDur(dur)}`;
   const mName = session.data.master !== 'any' ? masterNameOf(session, Number(session.data.master)) : null;
 
@@ -305,9 +335,9 @@ async function showQuick(ctx, uid, target, session) {
 async function showDates(ctx, uid, target, session) {
   const { chosen, total, dur } = summarize(session);
   if (!chosen.length) return restart(ctx, uid, target, 'Не вдалось визначити послугу.');
-  const lines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
+  const lines = chosen.map(s => `• ${s.name} — ${priceLabel(s)}`).join('\n');
   const head = chosen.length > 1
-    ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${fmtPrice(total)}</b>, ~${fmtDur(dur)}`
+    ? `🧩 <b>Комплекс</b>:\n${lines}\n\nРазом: <b>${totalLabel(chosen, total)}</b>, ~${fmtDur(dur)}`
     : `${lines}\n~${fmtDur(dur)}`;
 
   // «Сьогодні» рахуємо в київському поясі, а не в UTC сервера (Render крутиться на UTC):
@@ -404,12 +434,12 @@ async function showConfirm(ctx, uid, target, session) {
   const slot = session.data.sel;
   if (!slot) return restart(ctx, uid, target, 'Слот не знайдено, почнімо спочатку.');
   const masterName = masterNameOf(session, slot.masterId);
-  const svcLines = chosen.map(s => `• ${s.name} — ${fmtPrice(s.price)}`).join('\n');
+  const svcLines = chosen.map(s => `• ${s.name} — ${priceLabel(s)}`).join('\n');
   const text =
     `<b>Перевірте запис:</b>\n\n${svcLines}\n\n` +
     `💇 Майстер: <b>${masterName}</b>\n` +
     `📅 ${fmtDateKey(slot.date)}, <b>${slot.label}</b>\n` +
-    `💰 Разом: <b>${fmtPrice(total)}</b> · ~${fmtDur(dur)}`;
+    `💰 Разом: <b>${totalLabel(chosen, total)}</b> · ~${fmtDur(dur)}`;
   const kb = [
     [{ text: '✅ Підтвердити запис', callback_data: 'bk:confirm' }],
     [{ text: '‹ Інший час', callback_data: 'bk:back:quick' }, { text: '✖ Скасувати', callback_data: 'bk:cancel' }],
@@ -512,7 +542,7 @@ async function doBook(ctx, uid, chatId, session, phoneDigits, clientName) {
   const masterName = masterNameOf(session, masterId);
   await ctx.tg('sendMessage', {
     chat_id: chatId, parse_mode: 'HTML',
-    text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${fmtPrice(total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
+    text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n📅 ${fmtDateKey(date)}, <b>${slot.label}</b>\n💇 ${masterName}\n💰 ${totalLabel(chosen, total)}\n\nЧекаємо вас у SVS Beauty Space 💛`,
     reply_markup: mainMenu(),
   });
 
@@ -1477,4 +1507,4 @@ async function onContact(msg, ctx) {
   return true;
 }
 
-module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu, loadCatalog, eligibleMasters, showAdminContact, miniappKb, miniappLink, notifyStaffCancel };
+module.exports = { onText, onCallback, onContact, onStartKnown, mainMenu, tryOwnerStart, ownerMenu, loadCatalog, eligibleMasters, showAdminContact, miniappKb, miniappLink, notifyStaffCancel, priceLabel, totalLabel };

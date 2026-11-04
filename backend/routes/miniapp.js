@@ -10,6 +10,7 @@
    ═══════════════════════════════════════════════════════════════ */
 const { groupCatalog } = require('../lib/miniapp-catalog');
 const express = require('express');
+const hairVariants = require('../lib/hair-variants');
 const { getPool } = require('../db-pg');
 const slotEngine = require('../lib/slot-engine');
 const initData = require('../lib/tg-initdata');
@@ -210,7 +211,10 @@ router.post('/master/session', async (req, res) => {
 router.get('/catalog', async (req, res) => {
   try {
     const cat = await bot().loadCatalog(getPool());
-    res.json({ categories: groupCatalog(cat.services) });
+    // price-materials-0411: волосся — одна картка «від X ₴ · робота + матеріал» замість робіт/матеріалів окремо
+    let procs = [];
+    try { procs = await hairVariants.loadProcedures(getPool()); } catch (e) { console.error('[miniapp/catalog] procs', e.message); }
+    res.json({ categories: groupCatalog(hairVariants.applyProcedures(cat.services, procs)) });
   } catch (e) { console.error('[miniapp/catalog]', e.message); res.status(500).json({ error: 'server' }); }
 });
 
@@ -329,6 +333,14 @@ async function doBook(req) {
   const date = b.date, startMin = Number(b.start_min);
   if (!isDate(date) || !Number.isInteger(startMin) || startMin < 0 || startMin >= 24 * 60) return { status: 400, body: { error: 'bad_slot' } };
   const dur = Number(sel.svc.duration_min) || 60;
+  // price-materials-0411: варіант довжини (робота + матеріал). У візит іде РОБОТА; матеріал — оцінкою й підказкою адміну.
+  let hv = null, est = null;
+  if (b.variant_id != null && b.variant_id !== '') {
+    hv = await hairVariants.variantFor(getPool(), b.variant_id, sel.svc.id);
+    if (!hv) return { status: 400, body: { error: 'bad_variant', message: 'Ціни щойно оновилися — оберіть довжину ще раз.' } };
+    est = hairVariants.estimateOf(hv.proc, hv.v, { unknown: b.length_unknown === true });
+  }
+  const svcTitle = hv ? `${hv.proc.title} · ${est.length_unknown ? 'довжину визначить майстер' : hv.v.label + (hv.v.cm ? ' (' + hv.v.cm + ')' : '')}` : sel.svc.name;
   const services = [{ id: sel.svc.id, name: sel.svc.name, duration_min: dur, price: sel.svc.price }];
   const moveIds = b.move_ids ? await ownActive(c.id, b.move_ids) : [];
   if (b.move_ids && !moveIds.length) return { status: 409, body: { error: 'move_gone', message: 'Запис, який ви переносите, вже неактуальний.' } };
@@ -359,12 +371,26 @@ async function doBook(req) {
   }
   const out = {
     ids: result.apptIds, existing: !!result.existing, date, date_label: fmtDateUa(date),
-    time: `${minLabel(startMin)}–${minLabel(startMin + dur)}`, master: masterName, service: sel.svc.name,
+    time: `${minLabel(startMin)}–${minLabel(startMin + dur)}`, master: masterName, service: svcTitle,
     price: Number(sel.svc.price) || 0, duration: fmtDur(dur),
   };
+  if (est) {
+    out.estimate = est; out.estimate_text = hairVariants.estimateText(est);
+    out.price_note = 'орієнтовно, точну суму назве майстер після огляду';
+  }
   if (result.existing) return { status: 200, body: { ok: true, booking: out } };
 
   const pool = getPool();
+  if (est && result.apptIds.length) {
+    // візит = робота; оцінка (робота+матеріал, довжина) — у price_estimate, підказка адміну — у нотатку візиту
+    const hint = '💡 ' + hairVariants.adminHint(est);
+    await pool.query(
+      `UPDATE appointments SET length_variant_id=$2, price_estimate=$3::jsonb,
+              notes = CASE WHEN COALESCE(notes,'') LIKE '%' || $4 || '%' THEN notes
+                           ELSE NULLIF(concat_ws(E'\n', NULLIF(notes,''), $4::text), '') END
+        WHERE id = ANY($1::int[])`,
+      [result.apptIds, hv.v.id, JSON.stringify(est), hint]).catch(e => console.error('[miniapp/estimate]', e.message));
+  }
   if (b.remind24 === false && result.apptIds.length) {
     // клієнт вимкнув «Нагадати за 24 год» → позначаємо 24h як уже оброблене (нагадування за 2 год лишається)
     await pool.query(
@@ -384,13 +410,13 @@ async function doBook(req) {
     try {
       await tg('sendMessage', {
         chat_id: uid, parse_mode: 'HTML',
-        text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n💅 ${esc(sel.svc.name)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, <b>${out.time}</b>\n💰 ${fmtPrice(out.price)}\n\n${b.remind24 === false ? 'Нагадаємо за 2 години до візиту.' : 'Нагадаємо за 24 і за 2 години до візиту.'}\nЧекаємо вас у SVS Beauty Space 💛`,
+        text: `${moved ? '🔁 <b>Запис перенесено!</b>' : '✅ <b>Запис підтверджено!</b>'}\n\n💅 ${esc(svcTitle)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, <b>${out.time}</b>\n💰 ${est ? 'орієнтовно ' + esc(out.estimate_text) + '\nТочну суму назве майстер після огляду.' : fmtPrice(out.price)}\n\n${b.remind24 === false ? 'Нагадаємо за 2 години до візиту.' : 'Нагадаємо за 24 і за 2 години до візиту.'}\nЧекаємо вас у SVS Beauty Space 💛`,
         reply_markup: { inline_keyboard: [[{ text: '👤 Мої записи', web_app: { url: miniUrl + '?screen=cabinet' } }]] },
       });
     } catch (e) { console.error('[miniapp/notify-client]', e.message); }
     try {
       await core.notifyStaff(pool, tg,
-        `${moved ? '🔁 <b>Перенесення запису</b>' : '🆕 <b>Новий онлайн-запис</b>'} (Telegram-застосунок)\n👤 ${esc(clientName)} ${esc(fmtPhoneFull(c.phone))}\n💅 ${esc(sel.svc.name)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, ${out.time}\n💰 ${fmtPrice(out.price)}`);
+        `${moved ? '🔁 <b>Перенесення запису</b>' : '🆕 <b>Новий онлайн-запис</b>'} (Telegram-застосунок)\n👤 ${esc(clientName)} ${esc(fmtPhoneFull(c.phone))}\n💅 ${esc(est ? svcTitle : sel.svc.name)}\n💇 ${esc(masterName)}\n📅 ${esc(out.date_label)}, ${out.time}\n💰 ${est ? 'робота ' + fmtPrice(out.price) + ' · клієнту показано ' + esc(out.estimate_text) + '\n💡 ' + esc(hairVariants.adminHint(est)) : fmtPrice(out.price)}`);
     } catch (e) { console.error('[miniapp/notify-staff]', e.message); }
     // передоплата Mono — та сама логіка, що в бота (інвойс лише якщо налаштовано правилами салону)
     if (result.bookingId && process.env.MONO_TOKEN) {
@@ -409,7 +435,7 @@ async function doBook(req) {
 router.post('/book', async (req, res) => {
   const uid = req.tgUser.id;
   const b = req.body || {};
-  const key = [uid, b.master_id, b.date, b.start_min, b.service_id,
+  const key = [uid, b.master_id, b.date, b.start_min, b.service_id, b.variant_id || '', b.length_unknown ? 'u' : '',
     Array.isArray(b.move_ids) ? b.move_ids.join(',') : String(b.move_ids || '')].join('|'); // перенос ≠ нова бронь
   try {
     let p = inflight.get(key);
@@ -573,11 +599,11 @@ router.get('/move-info', async (req, res) => {
     const ids = await ownActive(c.id, req.query.ids);
     if (!ids.length) return res.status(404).json({ error: 'not_found', message: 'Запис уже неактуальний.' });
     const r = (await getPool().query(
-      `SELECT a.service_id, a.master_id, to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM-DD') AS date,
+      `SELECT a.service_id, a.length_variant_id, (a.price_estimate->>'length_unknown')::boolean AS length_unknown, a.master_id, to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','YYYY-MM-DD') AS date,
               to_char(a.starts_at AT TIME ZONE 'Europe/Kyiv','HH24:MI') AS t, s.name AS service
          FROM appointments a LEFT JOIN services s ON s.id=a.service_id
         WHERE a.id = ANY($1::int[]) ORDER BY a.starts_at LIMIT 1`, [ids])).rows[0];
-    res.json({ ids, service_id: r.service_id, master_id: r.master_id, date: r.date, time: r.t, service: r.service });
+    res.json({ ids, service_id: r.service_id, variant_id: r.length_variant_id || null, length_unknown: !!r.length_unknown, master_id: r.master_id, date: r.date, time: r.t, service: r.service });
   } catch (e) { console.error('[miniapp/move-info]', e.message); res.status(500).json({ error: 'server' }); }
 });
 

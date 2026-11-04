@@ -2080,6 +2080,7 @@ select.input { background:var(--card); }
             <option value="">Усі статуси</option><option value="active">Активні</option>
             <option value="inactive">Неактивні</option><option value="draft">Чернетки</option>
           </select>
+          <button class="btn btn-outline" id="hairPricesBtn" onclick="hairPricesOpen()" title="Робота + матеріал за довжиною волосся">✂️ Ціни волосся</button>
           <button class="btn btn-primary" onclick="svcEdit(null)"><span class="material-icons-round" style="font-size:18px;vertical-align:-4px">add</span> Послуга</button>
         </div>
         <div id="svcBulkBar" style="display:none;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap">
@@ -5168,7 +5169,7 @@ async function svcEdit(id){
     + svcCats.map(c=>'<option value="'+c.id+'"'+(c.id===selCatId?' selected':'')+'>'+'　'.repeat(c.depth||0)+escapeHtml(c.name)+'</option>').join('');
   const ov=document.createElement('div'); ov.id='svcModal'; ov.className='modal-overlay'; ov.style.display='flex';
   ov.onclick=e=>{ if(e.target===ov) ov.remove(); };
-  const tabs = id ? ['Картка','Варіації','Ціни майстрів','Історія цін'] : ['Картка'];
+  const tabs = id ? ['Картка','Варіації','Ціни майстрів','Історія цін','Довжина волосся'] : ['Картка'];
   ov.innerHTML='<div class="modal" style="max-width:620px;width:96%"><div class="modal-header"><h3>'+(id?'Послуга: '+escapeHtml(s.name):'Нова послуга')+'</h3><button class="modal-close" onclick="document.getElementById(\'svcModal\').remove()">✕</button></div>'+
     '<div style="display:flex;gap:4px;padding:10px 18px 0;flex-wrap:wrap">'+tabs.map((t,i)=>'<button class="btn btn-outline svc-tab" data-t="'+i+'" style="padding:5px 12px;'+(i===0?'background:var(--sidebar-active,#7c5cff);color:#fff':'')+'" onclick="svcTab('+i+')">'+t+'</button>').join('')+'</div>'+
     '<div class="modal-body" style="max-height:62vh;overflow:auto">'+
@@ -5202,7 +5203,8 @@ async function svcEdit(id){
       '</div>'+
       (id?'<div class="svc-pane" data-t="1" style="display:none"><div id="svcVarBox"></div></div>'+
       '<div class="svc-pane" data-t="2" style="display:none"><div id="svcMpBox"></div></div>'+
-      '<div class="svc-pane" data-t="3" style="display:none"><div id="svcHistBox"></div></div>':'')+
+      '<div class="svc-pane" data-t="3" style="display:none"><div id="svcHistBox"></div></div>'+
+      '<div class="svc-pane" data-t="4" style="display:none"><div id="svcLenBox"></div></div>':'')+
     '</div>'+
     '<div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border,#eee)">'+
       '<button class="btn btn-outline" onclick="document.getElementById(\'svcModal\').remove()">Скасувати</button>'+
@@ -5210,7 +5212,60 @@ async function svcEdit(id){
     '</div></div>';
   document.body.appendChild(ov);
   document.getElementById('svcSaveBtn').onclick=()=>svcSave(id);
-  if(id){ _svcRenderVars(id,data.variations); _svcRenderMp(id,data.master_prices); _svcRenderHist(data.price_history); }
+  if(id){ _svcRenderVars(id,data.variations); _svcRenderMp(id,data.master_prices); _svcRenderHist(data.price_history); _svcRenderLen(id); }
+}
+// ── price-materials-0411: варіанти довжини волосся (робота + матеріал). Ціни правляться в самих послугах.
+const LEN_MODES = {separate:'окрема послуга-матеріал', included:'включено в роботу', extra:'за фактом', none:'не потрібен'};
+function _lenMoney(n){ return n==null ? '—' : String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,' ')+' ₴'; }
+function _lenRows(procs){
+  return procs.map(p=>{
+    const head='<tr style="background:var(--bg-secondary,#f6f4fb)"><td colspan="9" style="font-weight:700;padding:8px 6px">'+escapeHtml(p.title)+
+      ' <span style="font-weight:400;opacity:.65;font-size:12px">· '+escapeHtml(p.category||'')+(p.active?'':' · вимкнено')+(p.alias_service_ids.length?' · ховає послуги #'+p.alias_service_ids.join(', #'):'')+'</span></td></tr>';
+    return head+p.variants.map(v=>{
+      const sum = v.material_mode==='separate' && v.material_known ? _lenMoney(v.total)
+        : v.material_mode==='extra' || !v.material_known ? _lenMoney(v.work)+' + за фактом' : _lenMoney(v.total);
+      return '<tr data-vid="'+v.id+'"'+(v.active===false?' style="opacity:.5"':'')+'>'+
+        '<td><input class="input" data-f="length_label" value="'+escapeHtml(v.label||'')+'" style="width:110px;padding:4px 6px"></td>'+
+        '<td style="white-space:nowrap"><input class="input" data-f="cm_from" type="number" value="'+(v.cm_from??'')+'" style="width:58px;padding:4px"> – <input class="input" data-f="cm_to" type="number" value="'+(v.cm_to??'')+'" style="width:58px;padding:4px"></td>'+
+        '<td><a href="#" onclick="event.preventDefault();svcEdit('+v.work_service_id+')">#'+v.work_service_id+'</a> '+escapeHtml(v.work_name||'')+'</td>'+
+        '<td style="text-align:right;white-space:nowrap">'+_lenMoney(v.work)+'</td>'+
+        '<td><select class="input" data-f="material_mode" style="padding:4px;width:auto">'+Object.keys(LEN_MODES).map(k=>'<option value="'+k+'"'+(k===v.material_mode?' selected':'')+'>'+LEN_MODES[k]+'</option>').join('')+'</select></td>'+
+        '<td><input class="input" data-f="material_service_id" type="number" value="'+(v.material_service_id??'')+'" title="ID послуги-матеріалу" style="width:70px;padding:4px"> '+
+          (v.material_name?'<span style="font-size:12px;opacity:.75">'+escapeHtml(v.material_name)+'</span>':'')+'</td>'+
+        '<td style="text-align:right;white-space:nowrap">'+(v.material_mode==='separate'?_lenMoney(v.material):v.material_mode==='extra'?'за фактом':'—')+'</td>'+
+        '<td style="text-align:right;white-space:nowrap;font-weight:700">'+sum+'</td>'+
+        '<td style="white-space:nowrap"><label style="font-size:12px"><input type="checkbox" data-f="active"'+(v.active!==false?' checked':'')+'> онлайн</label> '+
+          '<button class="btn btn-outline" style="padding:3px 10px" onclick="lenSave(this)">Зберегти</button></td></tr>';
+    }).join('');
+  }).join('');
+}
+function _lenTable(procs){
+  if(!procs.length) return '<div style="opacity:.7;padding:10px 0">Ця послуга не входить у жодну процедуру з варіантами довжини.</div>';
+  return '<table class="table" style="width:100%;font-size:13px"><thead><tr><th>Довжина</th><th>См</th><th>Робота (іде у візит)</th><th style="text-align:right">Робота</th><th>Матеріал</th><th>ID матеріалу</th><th style="text-align:right">Матеріал</th><th style="text-align:right">Клієнт бачить</th><th></th></tr></thead><tbody>'+_lenRows(procs)+'</tbody></table>';
+}
+async function lenSave(btn){
+  const tr=btn.closest('tr'), b={};
+  tr.querySelectorAll('[data-f]').forEach(el=>{ b[el.dataset.f] = el.type==='checkbox' ? el.checked : el.value; });
+  btn.disabled=true;
+  const r=await api('/api/services/length-variants/'+tr.dataset.vid,{method:'PATCH',body:JSON.stringify(b)});
+  btn.disabled=false;
+  if(r.ok){ toast('Збережено — мініап і бот покажуть нову суму за хвилину'); if(document.getElementById('hairPricesModal')) hairPricesOpen(); const box=document.getElementById('svcLenBox'); if(box&&box.dataset.sid) _svcRenderLen(box.dataset.sid); }
+  else toast(r.error||'Помилка','error');
+}
+async function _svcRenderLen(id){
+  const box=document.getElementById('svcLenBox'); if(!box) return; box.dataset.sid=id;
+  const r=await api('/api/services/'+id+'/length-variants');
+  box.innerHTML='<div style="font-size:12px;opacity:.75;margin-bottom:8px">Клієнт бачить «від X ₴ · робота + матеріал» і обирає довжину. У візит іде робота; матеріал адмін додає в рахунок за підказкою в записі. Ціни — у самих послугах (вкладка «Картка» потрібної послуги).</div>'+
+    _lenTable(r.procedures||[])+'<button class="btn btn-outline" style="margin-top:10px" onclick="hairPricesOpen()">Уся таблиця цін волосся ›</button>';
+}
+async function hairPricesOpen(){
+  const r=await api('/api/services/length-procedures');
+  let ov=document.getElementById('hairPricesModal');
+  if(!ov){ ov=document.createElement('div'); ov.id='hairPricesModal'; ov.className='modal-overlay'; ov.style.display='flex'; ov.style.zIndex='1100'; ov.onclick=e=>{ if(e.target===ov) ov.remove(); }; document.body.appendChild(ov); }
+  ov.innerHTML='<div class="modal" style="max-width:1220px;width:96%"><div class="modal-header"><h3>Ціни волосся: робота + матеріал за довжиною</h3><button class="modal-close" onclick="document.getElementById(\'hairPricesModal\').remove()">✕</button></div>'+
+    '<div class="modal-body" style="max-height:78vh;overflow:auto">'+
+    '<div style="font-size:13px;opacity:.8;margin-bottom:10px">Сума для клієнта = робота + матеріал тієї самої довжини. Щоб змінити ціну — відкрийте послугу (#id) і змініть «Ціна» там: таблиця, мініап і бот підхоплять її самі. Тут — довжини, см, звʼязок із матеріалом і показ онлайн.</div>'+
+    _lenTable(r.procedures||[])+'</div></div>';
 }
 function svcTab(i){
   document.querySelectorAll('#svcModal .svc-tab').forEach(b=>{ const on=b.dataset.t==i; b.style.background=on?'var(--sidebar-active,#7c5cff)':''; b.style.color=on?'#fff':''; });

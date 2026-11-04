@@ -142,6 +142,60 @@ router.get('/combos/:id', async (req, res) => {
 });
 
 /* ─────────────── 01.02 Карточка услуги ─────────────── */
+// ── price-materials-0411: варіанти довжини (процедура → довжина → робота + матеріал). Ціни — у самих послугах.
+const hairVariants = require('../lib/hair-variants');
+router.get('/length-procedures', async (req, res) => {
+  try { res.json({ procedures: await hairVariants.loadProcedures(pool, { all: true }) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+router.get('/:id/length-variants', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const procs = (await hairVariants.loadProcedures(pool, { all: true })).filter(p =>
+      p.alias_service_ids.includes(id) || p.variants.some(v => Number(v.work_service_id) === id || Number(v.material_service_id) === id));
+    res.json({ procedures: procs });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+const LV_FIELDS = { length_label: 'text', cm_from: 'int', cm_to: 'int', level: 'int', material_mode: 'mode', material_service_id: 'int', material_price: 'num', material_note: 'text', sort: 'int', active: 'bool', work_service_id: 'int' };
+router.patch('/length-variants/:vid', WRITE, async (req, res) => {
+  try {
+    const b = req.body || {}, sets = [], vals = [];
+    for (const [k, t] of Object.entries(LV_FIELDS)) {
+      if (!(k in b)) continue;
+      let v = b[k];
+      if (v === '' || v === undefined) v = null;
+      if (v != null && (t === 'int' || t === 'num')) { v = Number(v); if (!Number.isFinite(v)) return res.status(400).json({ error: 'bad_' + k }); if (t === 'int') v = Math.round(v); }
+      if (t === 'bool') v = v === true || v === 'true' || v === 1;
+      if (t === 'mode' && !['separate', 'included', 'extra', 'none'].includes(v)) return res.status(400).json({ error: 'bad_material_mode' });
+      if (k === 'level' && v != null && (v < 1 || v > 6)) return res.status(400).json({ error: 'bad_level' });
+      if ((k === 'length_label' || k === 'work_service_id' || k === 'level') && v == null) return res.status(400).json({ error: k + '_required' });
+      vals.push(v); sets.push(`${k}=$${vals.length}`);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
+    vals.push(req.params.vid);
+    const r = await pool.query(`UPDATE service_length_variants SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
+    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+    hairVariants.clearCache();
+    await logAction({ user: req.user, action: 'service.length_variant.update', entity: 'service', entity_id: r.rows[0].work_service_id, meta: { variant: r.rows[0].id, fields: Object.keys(b) } });
+    res.json({ ok: true, variant: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+router.patch('/length-procedures/:pid', WRITE, async (req, res) => {
+  try {
+    const b = req.body || {}, sets = [], vals = [];
+    if ('title' in b) { if (!String(b.title || '').trim()) return res.status(400).json({ error: 'title_required' }); vals.push(String(b.title).trim()); sets.push(`title=$${vals.length}`); }
+    if ('note' in b) { vals.push(b.note || null); sets.push(`note=$${vals.length}`); }
+    if ('active' in b) { vals.push(b.active === true || b.active === 'true'); sets.push(`active=$${vals.length}`); }
+    if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
+    vals.push(req.params.pid);
+    const r = await pool.query(`UPDATE service_procedures SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${vals.length} RETURNING *`, vals);
+    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+    hairVariants.clearCache();
+    await logAction({ user: req.user, action: 'service.procedure.update', entity: 'service_procedure', entity_id: r.rows[0].id, meta: { fields: Object.keys(b) } });
+    res.json({ ok: true, procedure: r.rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: process.env.NODE_ENV === "production" ? "Internal server error" : e.message }); }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const s = await pool.query(`SELECT * FROM services WHERE id=$1 AND deleted_at IS NULL`, [req.params.id]);
