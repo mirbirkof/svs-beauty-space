@@ -3317,7 +3317,10 @@ function showApp() {
   document.getElementById('app').style.display='';
   try { document.getElementById('aiFab')?.classList.remove('hidden'); } catch(_){}
   const h = location.hash.replace('#','');
-  if (!currentPage || currentPage === 'dashboard') go(document.getElementById('page-' + h) ? h : 'journal');
+  if (!currentPage || currentPage === 'dashboard') {
+    // #embed після F5: повертаємо відкритий модуль, а не журнал (нотатка #171)
+    if (!(h === 'embed' && _restoreEmbedState())) go(document.getElementById('page-' + h) ? h : 'journal');
+  }
   loadBillingAlert();
   try { startOnlineEventsPoll(); } catch (_) {}
   try { applyEntitlements(); } catch (_) {}
@@ -4864,6 +4867,34 @@ function openEmbed(url, title) {
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.toggle('active', i.dataset.embed === url));
   document.getElementById('sidebar').classList.remove('open');
   if (location.hash !== '#embed') history.replaceState(null, '', '#embed');
+  // Нотатка #171: адреса модуля в #embed не зберігалась → після F5 кидало в журнал.
+  // Запамʼятовуємо відкритий модуль у межах вкладки — після оновлення відкриємо його ж.
+  _saveEmbedState(url, title);
+}
+function _saveEmbedState(url, title) {
+  try { sessionStorage.setItem('svs_embed_last', JSON.stringify({ url: url, title: title || '' })); } catch (_) {}
+}
+// Перед оновленням беремо ПОТОЧНУ адресу всередині модуля (вкладка/розділ модуля могли змінитись),
+// без службового ?v= — щоб повернутись рівно туди, де був користувач.
+window.addEventListener('pagehide', function () {
+  try {
+    if (currentPage !== 'embed') return;
+    const f = document.getElementById('embedFrame');
+    const loc = f && f.contentWindow && f.contentWindow.location;
+    if (!loc || loc.origin !== location.origin || loc.pathname === 'blank') return;
+    const sp = new URLSearchParams(loc.search); sp.delete('v');
+    const q = sp.toString();
+    const saved = JSON.parse(sessionStorage.getItem('svs_embed_last') || 'null') || {};
+    _saveEmbedState(loc.pathname + (q ? '?' + q : '') + loc.hash, saved.title);
+  } catch (_) {}
+});
+function _restoreEmbedState() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('svs_embed_last') || 'null');
+    if (!saved || typeof saved.url !== 'string' || saved.url.charAt(0) !== '/') return false;
+    openEmbed(saved.url, saved.title);
+    return currentPage === 'embed';
+  } catch (_) { return false; }
 }
 
 function go(page) {
