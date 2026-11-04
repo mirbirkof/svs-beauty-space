@@ -20,7 +20,7 @@ const BOT = '7000000001:QA-' + crypto.randomBytes(10).toString('hex');
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const FIX_SRC = 'qa-combo-0411';
 // стара версія екрана — для чесного «ДО» (коміт до правок combo-0411)
-const OLD_REF = process.env.OLD_APP_REF || 'HEAD';
+const OLD_REF = process.env.OLD_APP_REF || '74530aa1^'; // батько коміту combo-0411 = екран ДО змін
 const now = () => Math.floor(Date.now() / 1000);
 const uids = [];
 const mkUser = (n) => { const id = 7700000000 + Math.floor(Math.random() * 99999999); uids.push(id); return { id, first_name: n, username: 'qa_combo_' + id }; };

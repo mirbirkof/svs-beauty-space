@@ -26,6 +26,7 @@ const initFor = (user, authDate = now(), token = BOT) => sign({ auth_date: authD
 const phone = () => '+38099' + String(Math.floor(1e6 + Math.random() * 8.9e6));
 
 let db, S;
+const slotEngine = require('../lib/slot-engine');
 const q = async (sql, p) => (await db.query(sql, p)).rows;
 async function call(init, method, url, body) {
   const res = await fetch(BASE + '/api/miniapp' + url, { method,
@@ -52,16 +53,16 @@ async function setupFixture() {
   assert.strictEqual(cat.status, 200, 'catalog');
   const svcs = cat.body.categories.flatMap(c => c.services).filter(s => Number(s.duration_min) >= 30 && Number(s.duration_min) <= 90);
   for (const s of svcs) {
-    const ms = await call(init, 'GET', '/masters?service=' + s.id);
-    // combo-0411: /masters показує лише майстрів із графіком; у QA графіки в минулому → беремо придатного майстра з БД
-    // (ті ж умови, що booking-bot.eligibleMasters), фікстура нижче сама дає йому графік.
-    const m = (ms.body.masters || [])[0] || (await q(
-      `SELECT m.id, m.name FROM masters m JOIN master_services x ON x.master_id = m.id AND x.service_id = $1 AND x.active IS NOT FALSE
-        WHERE m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE ORDER BY m.online_rank NULLS LAST, m.id LIMIT 1`, [s.id]))[0];
-    if (!m) continue;
+    // combo-0411: /masters показує лише майстрів із годинами (ручні дні АБО сітка «Графік»: історія/шаблон).
+    // Фікстурі потрібен майстер БЕЗ жодних годин на d0..d0+3 (інакше «порожній день» не порожній) →
+    // перебираємо придатних майстрів послуги з БД (умови booking-bot.eligibleMasters) і перевіряємо тим самим джерелом, що й слоти.
     const d0 = (await q(`SELECT ((now() AT TIME ZONE 'Europe/Kyiv')::date + 2)::text d`))[0].d;
-    const busy = await q(`SELECT 1 FROM master_schedule_days WHERE master_id=$1 AND work_date BETWEEN $2::date AND $2::date + 3`, [m.id, d0]);
-    if (busy.length) continue;
+    const cands = await q(
+      `SELECT m.id, m.name FROM masters m JOIN master_services x ON x.master_id = m.id AND x.service_id = $1 AND x.active IS NOT FALSE
+        WHERE m.active IS NOT FALSE AND m.online_booking_enabled IS NOT FALSE ORDER BY m.online_rank NULLS LAST, m.id`, [s.id]);
+    let m = null;
+    for (const c of cands) { if (!(await slotEngine.mastersWithHours(db, [c.id], d0, 4)).size) { m = c; break; } }
+    if (!m) continue;
     await q(`INSERT INTO master_schedule_days (master_id, work_date, start_time, end_time, tenant_id, source)
              SELECT $1, $2::date + i, '10:00', '18:00', $3, $4 FROM generate_series(0,2) i`, [m.id, d0, '00000000-0000-0000-0000-000000000001', FIX_SRC]);
     const date = d0;
