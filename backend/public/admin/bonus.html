@@ -383,8 +383,8 @@ function openStats(kind,days){
 }
 function _cl(id,name){ return `<a onclick="stOpenClient(${Number(id)})">${esc(name||('Клієнт #'+id))}</a>`; }
 function stOpenClient(id){ closeStats(); document.getElementById('cid').value=id; loadClient(); document.getElementById('walletBox').scrollIntoView({behavior:'smooth',block:'center'}); }
-function _bars(rows,lab){ const mx=Math.max(1,...rows.map(r=>Number(r.sum)));
-  return `<table><thead><tr><th>${lab}</th><th>Операцій</th><th style="text-align:right">Бонусів</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.label||r.month)}<div class="bar"><i style="width:${Math.round(Number(r.sum)/mx*100)}%"></i></div></td><td>${_n(r.count)}</td><td style="text-align:right"><b>${_n(r.sum)}</b></td></tr>`).join('')}</tbody></table>`; }
+function _bars(rows,lab,cntLab){ const mx=Math.max(1,...rows.map(r=>Number(r.sum)));
+  return `<table><thead><tr><th>${lab}</th><th>${cntLab||'Операцій'}</th><th style="text-align:right">Бонусів</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.label||r.month)}<div class="bar"><i style="width:${Math.round(Number(r.sum)/mx*100)}%"></i></div></td><td>${_n(r.count)}</td><td style="text-align:right"><b>${_n(r.sum)}</b></td></tr>`).join('')}</tbody></table>`; }
 function _stTx(d){
   if(!Number(d.count)) return '<div class="muted" style="padding:20px 0">За цей період операцій немає.</div>';
   const sign=d.kind==='accrued'?'+':'−';
@@ -395,7 +395,7 @@ function _stTx(d){
 }
 function _stBal(d){
   return `<div class="st-sum"><div><span class="muted">Бонусів на балансах</span><b>${_n(d.total)}</b></div><div><span class="muted">Клієнтів з балансом</span><b>${_n(d.clients)}</b></div><div><span class="muted">Згорить за 30 дн</span><b>${_n(d.expiring.d30)}</b></div><div><span class="muted">Згорить за 90 дн</span><b>${_n(d.expiring.d90)}</b></div></div>
-  <div class="st-g"><div><h4>Розмір балансу</h4>${_bars(d.buckets,'Баланс')}</div>
+  <div class="st-g"><div><h4>Розмір балансу</h4>${_bars(d.buckets,'Баланс','Клієнтів')}</div>
   <div><h4>Найбільші баланси</h4><div style="max-height:420px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Нарах.</th><th>Спис.</th><th style="text-align:right">Баланс</th></tr></thead><tbody>${d.top.map(r=>`<tr><td>${_cl(r.client_id,r.name)}</td><td>${_n(r.total_accrued)}</td><td>${_n(r.total_redeemed)}</td><td style="text-align:right"><b>${_n(r.amount)}</b></td></tr>`).join('')}</tbody></table></div></div></div>`;
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeStats(); });
