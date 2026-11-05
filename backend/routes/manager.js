@@ -141,7 +141,15 @@ router.post('/assistant', requirePerm(), async (req, res) => {
       const s = String(t || '').toLowerCase();
       if (/[іїєґ]/.test(s)) return 'uk';
       if (/[ыэъё]/.test(s)) return 'ru';
-      if (/[а-я]/.test(s)) return 'uk';                 // прочая кириллица → язык салона украинский по умолч.
+      if (/[а-я]/.test(s)) {
+        // 05.11: «чо там у тани по записям» — русский без ы/э/ё ловим по словам-маркерам, иначе язык салона
+        const w = s.split(/[^а-яё]+/).filter(Boolean);
+        const RU = new Set(['что','чо','че','как','где','сколько','скока','скоко','сегодня','седня','почему','какой','какая','какие','кто','нужно','надо','можно','есть','нет','мне','меня','она','они','это','этот','эта','записям','записать','посмотреть','глянуть','мастер','мастера','мастеру','деньги','касса','кассе','выручка','был','была','было','будет','или','если','когда','сейчас','теперь','завтра','вчера','пятницу','четверг','среду','субботу','воскресенье','понедельник','вторник','клиент','клиента','клиенту','мой','моя','мои','свою','сделать','покажи','скажи','надо','там','тут','очень','всех','всё','все','его','ее','ей','нам','вам','денег','окошко','окошки','записи','запись']);
+        const UK = new Set(['що','шо','як','де','скільки','сьогодні','чому','який','яка','які','хто','треба','можна','немає','мені','мене','вона','вони','це','цей','ця','записам','записати','подивитись','глянути','майстер','майстра','майстру','гроші','каса','касі','виручка','був','була','було','буде','або','якщо','коли','зараз','тепер','вчора','пятницю','четвер','середу','суботу','неділю','понеділок','вівторок','клієнт','клієнта','мій','моя','мої','свою','зробити','покажи','скажи','дуже','всіх','все','його','її','їй','нам','вам','грошей','віконце','запис']);
+        let ru = 0, uk = 0; for (const x of w) { if (RU.has(x)) ru++; if (UK.has(x)) uk++; }
+        if (ru > uk) return 'ru';
+        return salonLang === 'ru' ? 'ru' : 'uk';        // прочая кириллица → язык салона (по умолч. украинский)
+      }
       if (/[ąćęłńóśźż]/.test(s) || /\b(jak|gdzie|czy|dodac|wizyt|klient|platnosc)\b/.test(s)) return 'pl';
       if (/[a-z]/.test(s)) return 'en';
       return salonLang;
@@ -167,9 +175,19 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     // Заметка #91: власник/керівник з повним доступом ('*') — бот НІКОЛИ не має йому відмовляти
     // «доступно лише для керівника»: він і є керівник. Інакше модель галюцинує відмову навіть власнику.
     const fullAccess = Array.isArray(u.permissions) && u.permissions.includes('*');
-    const denyPhrase = fullAccess
-      ? 'Цей запит зараз недоступний у помічнику.'
-      : 'Цей розділ доступний лише для вашого керівника.';
+    // 05.11: фраза відмови — мовою питання (раніше українська завжди → на ru-питання відповідь йшла українською)
+    const DENY_TXT = {
+      uk: ['Цей запит зараз недоступний у помічнику.', 'Цей розділ доступний лише для вашого керівника.'],
+      ru: ['Этот запрос пока недоступен в помощнике.', 'Этот раздел доступен только вашему руководителю.'],
+      en: ['This request is not available in the assistant yet.', 'This section is available only to your manager.'],
+      pl: ['To zapytanie nie jest jeszcze dostępne w asystencie.', 'Ta sekcja jest dostępna tylko dla Twojego kierownika.'],
+    };
+    const denyPhrase = (DENY_TXT[qLang] || DENY_TXT.uk)[fullAccess ? 0 : 1];
+    // 05.11: майстер має свій «Кабінет майстра» — своя зарплата/графік/клієнти НЕ є відмовою
+    const isMaster = !fullAccess && (u.role === 'master' || (u.master_id && !hasPermission(u.permissions, 'reports.finance')));
+    const masterNote = isMaster
+      ? `\nЦЕ МАЙСТЕР. СВОЇ дані він бачить сам у «Кабінет майстра» (окрема сторінка, відкривається одразу після входу): вкладки «Графік» (свої записи по днях), «Клієнти» (свої клієнти), «Зарплата» («До виплати», «Бонуси», «Штрафи», «Виплачено»), «Послуги». На «де моя зп / мої клієнти» — НЕ відмовляй, а дай final-текст із кроками (Кабінет майстра → вкладка); це НЕ ключ open_page. Якщо для питання є інструмент у переліку (напр. «мої записи на завтра» → get_appointments на дату з master_id майстра) — виклич його, а кабінет згадай лише додатково. Відмова — лише на ЧУЖІ дані (чужа зарплата, виручка салону, каса салону).`
+      : '';
     const ownerNote = fullAccess
       ? `\nВАЖЛИВО: цей користувач — ВЛАСНИК/керівник салону з ПОВНИМ доступом. Йому дозволено АБСОЛЮТНО ВСЕ. НІКОЛИ не кажи йому «доступно лише для керівника» чи «у вас немає прав» — він і є керівник. Якщо чогось немає в переліку інструментів/сторінок нижче — це просто ще не підключено в помічнику, так і скажи, але не як відмову по правах.`
       : '';
@@ -189,7 +207,7 @@ router.post('/assistant', requirePerm(), async (req, res) => {
     const hist0 = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-2) : [];
     // [05.11 assistant-smart] Розуміння питання — те, що можна порахувати кодом, рахуємо кодом
     let mastersList = [];
-    try { mastersList = (await pool.query(`SELECT id, name FROM masters WHERE COALESCE(active,true)=true ORDER BY name LIMIT 80`)).rows; } catch (e) { console.error('[assistant/masters]', e.message); }
+    try { mastersList = (await pool.query(`SELECT id, name, COALESCE(active,true) AS active FROM masters ORDER BY COALESCE(active,true) DESC, name LIMIT 120`)).rows; } catch (e) { console.error('[assistant/masters]', e.message); }
     const namesNote = brain.mastersHint(question, mastersList);
     const kbAllowed = (k) => (ALL_PAGES[k] ? pageAllowed(k) : ALL_EMBEDS[k] ? embedAllowed(k) : true);
     const kbSecs = brain.pickKB(question + ' ' + hist0.map(h => (h && h.text) || '').join(' '), kbAllowed, 4);
@@ -202,7 +220,7 @@ ${brain.dateTable(kyivISO)}
 
 ХТО З ТОБОЮ ГОВОРИТЬ: «${u.display_name || u.role}» — ${fullAccess
       ? 'ВЛАСНИК салону. Йому можна все, звертайся з повагою, показуй повну картину.'
-      : `співробітник салону, роль «${u.role}». Це НЕ власник: відповідай лише в межах його прав (перелік нижче), фінанси салону, чужі зарплати й недоступні розділи — не показуй і не переказуй навіть приблизно.`}
+      : `співробітник салону, роль «${u.role}». Це НЕ власник: відповідай лише в межах його прав (перелік нижче), фінанси салону, чужі зарплати й недоступні розділи — не показуй і не переказуй навіть приблизно.`}${masterNote}
 
 ЯК РОЗУМІТИ ЛЮДИНУ: пишуть по-простому, з помилками, суржиком, без термінів — «а де в нас фарби?», «шо по касі?», «де подивитись хто записаний?». Зрозумій намір і відповідай по суті одразу; перепитуй лише якщо намір справді неясний. Не вимагай точних назв розділів. Побутові слова салону мапь на розділи: фарба/окисник/шампунь/матеріали/товар → Склад (Залишки, Товари); «хто сьогодні працює» → Графіки роботи (wsched) або Зміни; «хто записаний» → Журнал записів; «скільки коштує послуга» → Послуги/Прайс. ВАЖЛИВО про ЛОЯЛЬНІСТЬ/КЕШБЕК/БОНУСИ: налаштування кешбеку (відсоток нарахування) — у розділі Налаштування (settings), блок «Лояльність»; бонуси клієнта видно в його картці (Усі клієнти); бонуси/штрафи майстрам — у розділі Зарплата (payroll). Окремого розділу «Лояльність» НЕМАЄ — не вигадуй його, направляй у Налаштування.
 ${brain.SLANG}
@@ -276,6 +294,10 @@ ${kbSecs.length ? 'КАРТА CRM — розділи, найближчі до п
         }
         if (PAGES[d.page]) return res.json(withTrace({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` }));
         if (EMBEDS[d.page]) return res.json(withTrace({ navigate: { embed: EMBEDS[d.page][1], label: EMBEDS[d.page][0] }, answer: d.response || `Відкриваю «${EMBEDS[d.page][0]}»` }));
+        // 05.11: невідомий ключ сторінки (модель вигадала, напр. «master_cabinet») → раніше тихо «Готово.»
+        trail.push(`ASSISTANT: ${JSON.stringify(d)}`);
+        trail.push(`OBSERVATION: сторінки «${d.page}» немає серед ключів open_page. Дай action "final" з текстовою покроковою підказкою.`);
+        continue;
       }
       if (d.action === 'tool') {
         const t = TOOLS[d.tool];
@@ -293,9 +315,24 @@ ${kbSecs.length ? 'КАРТА CRM — розділи, найближчі до п
       break;
     }
     if (pending) return res.json(withTrace({ pending }));
+    answer = await _fixLang(answer, qLang, cfg);
     res.json(withTrace({ question, answer: answer || 'Готово.' }));
   } catch (e) { console.error('[manager/assistant]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
+
+// 05.11: мова відповіді = мова питання. Довгий український system тягне відповідь в українську навіть на ru-питання
+// (after-прогін: 5 промахів). Перевіряємо КОДОМ: є українські літери (і/ї/є/ґ) у частці слів → один переклад.
+const _UK_NAME = { ru: 'русский', en: 'English', pl: 'polski' };
+async function _fixLang(answer, qLang, cfg) {
+  if (!answer || !_UK_NAME[qLang]) return answer;
+  const ws = String(answer).split(/\s+/).filter(w => /[а-яіїєґ]/i.test(w));
+  const ukW = ws.filter(w => /[іїєґ]/i.test(w)).length;
+  if (ws.length < 3 || ukW / ws.length < 0.12) return answer;
+  try {
+    const d = await llm.askJSON(`Переклади текст на мову: ${_UK_NAME[qLang]}. Збережи зміст, цифри, дати, імена людей і назви розділів CRM у лапках «…» як є. Поверни JSON {"text":"<переклад>"}.\n\nТЕКСТ:\n${answer}`, { maxTokens: 900, ...cfg });
+    return (d && typeof d.text === 'string' && d.text.trim()) ? d.text.trim() : answer;
+  } catch (_) { return answer; }
+}
 
 // ── Утрішній брифінг: вільні вікна майстрів на сьогодні ──────────────
 // Голова-бот першочергово показує адміну на зміні, де у майстрів «дірки» в записі,

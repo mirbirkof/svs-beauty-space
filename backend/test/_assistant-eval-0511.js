@@ -51,8 +51,9 @@ const CASES = [
     any: [{ final: /кешбе?к|cashback|бонус/i }, { tool: 'search_kb' }] },
   { id: 'O12', role: 'owner', q: 'почему у мастера бонус меньше чем в прошлом месяце', lang: 'ru', why: '«почему» по бонусам → правила/зарплата',
     any: [{ final: /бонус|правил|процент|зарплат|план/i }, { page: ['payroll'] }] },
-  { id: 'O13', role: 'owner', q: 'есть окошко у лизы завтра?', lang: 'ru', why: 'окошко = свободный слот, завтра 2026-11-06, Ліза id 26',
-    any: [{ tool: 'get_free_slots', args: /2026-11-06/ }] },
+  { id: 'O13', role: 'owner', q: 'есть окошко у лизы завтра?', lang: 'ru', why: 'окошко = свободный слот; в QA Ліза id 26 НЕАКТИВНА → честно сказать, не подменять другим мастером (уточнено после before: кейс писался без проверки active)',
+    any: [{ final: /(ліз|лиз)[\s\S]*(неактив|не працю|не работа|уволен|звільн|нет в списке|нет среди|немає в списку|немає серед|не найден|не нашл|не знайд)/i }, { tool: 'get_free_slots', args: /"master_id":26/ }],
+    forbidArgs: /get_free_slots.*"master_id":(?!26)/ },
   { id: 'O14', role: 'owner', q: 'склад де', lang: 'uk', why: 'неполный вопрос → склад/залишки',
     any: [{ page: ['stock', 'inventory', 'products'] }] },
   { id: 'O15', role: 'owner', q: 'как разослать всем кто месяц не приходил', lang: 'ru', why: 'рассылка по сегменту → кампании/сегменты',
@@ -73,7 +74,7 @@ const CASES = [
   { id: 'O22', role: 'owner', q: 'запиши клієнтку на завтра', lang: 'uk', why: 'неполный: нет кого/куда → уточнить или журнал',
     any: [{ final: CLARIFY }, { page: ['journal'] }] },
   { id: 'O23', role: 'owner', q: 'шоб клієнтам саме приходило нагадування перед записом де ето', lang: 'uk', why: 'суржик → нагадування/тригери',
-    any: [{ page: ['reminders', 'triggers'] }, { final: /нагадуван/i }] },
+    any: [{ page: ['reminders', 'triggers', 'settings'] }, { final: /нагадуван/i }] }, // settings — по карте CRM: Налаштування → Сповіщення → «Нагадувати за»
   { id: 'O24', role: 'owner', q: 'хто з адмінів щас в системі', lang: 'uk', why: '«в системі» = хто онлайн',
     any: [{ page: ['online'] }] },
   { id: 'O25', role: 'owner', q: 'чо по кассе за вчера', lang: 'ru', why: 'суржик-ru: касса за вчера',
@@ -132,7 +133,7 @@ function grade(c, r) {
   const nav = r.body.navigate ? (r.body.navigate.page || embedKey(r.body.navigate.embed)) : null;
   const pend = r.body.pending || null;
   const ans = String(r.body.answer || (pend && pend.label) || '');
-  const hit = c.any.some((o) => {
+  const hit0 = c.any.some((o) => {
     if (o.pending) return !!pend && pend.tool === o.pending && (!o.args || o.args.test(JSON.stringify(pend.args || {}) + ' ' + (pend.label || '')));
     if (o.page) return !!nav && o.page.includes(nav);
     if (o.tool && o.final) return tools.some((t) => t.tool === o.tool) && o.final.test(ans);
@@ -140,6 +141,7 @@ function grade(c, r) {
     if (o.final) return !pend && !nav && o.final.test(ans);
     return false;
   });
+  const hit = hit0 && !(c.forbidArgs && tools.some((t) => c.forbidArgs.test(t.tool + t.args)));
   const lang = langOf(ans);
   const langOk = !c.lang || lang === '?' || lang === c.lang;
   const sec = [];

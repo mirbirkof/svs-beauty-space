@@ -132,7 +132,10 @@ function matchMasters(question, masters) {
       const parts = norm(m.name).split(/[^a-zа-я0-9]+/).filter(Boolean);
       return parts.some(p => _tokenMatchesName(tok, p) || (dimStems && dimStems.some(s => p.startsWith(s))));
     });
-    if (found.length) hits.push({ word: (String(question).match(new RegExp('[^\\s,.!?;:()«»"]+', 'g')) || []).find(w => norm(w) === tok) || tok, masters: found.map(m => ({ id: m.id, name: m.name })) });
+    // активні мають пріоритет: неактивного показуємо лише коли активного з таким іменем немає
+    const act = found.filter(m => m.active !== false);
+    const use = act.length ? act : found;
+    if (use.length) hits.push({ word: (String(question).match(new RegExp('[^\\s,.!?;:()«»"]+', 'g')) || []).find(w => norm(w) === tok) || tok, masters: use.map(m => ({ id: m.id, name: m.name, active: m.active !== false })) });
   }
   return hits;
 }
@@ -140,7 +143,9 @@ function mastersHint(question, masters) {
   const hits = matchMasters(question, masters || []);
   if (!hits.length) return '';
   return hits.map(h => h.masters.length === 1
-    ? `«${h.word}» → майстер ${h.masters[0].name} (master_id ${h.masters[0].id})`
+    ? (h.masters[0].active
+      ? `«${h.word}» → майстер ${h.masters[0].name} (master_id ${h.masters[0].id})`
+      : `«${h.word}» → майстер ${h.masters[0].name} (master_id ${h.masters[0].id}) НЕАКТИВНА/звільнена — записів не приймає. Так і скажи; НЕ підставляй іншого майстра мовчки, запропонуй вибрати з активних`)
     : `«${h.word}» → кілька майстрів: ${h.masters.map(m => `${m.name} (master_id ${m.id})`).join(', ')} — якщо з контексту не ясно, кого саме, коротко перепитай, назвавши варіанти`).join('\n');
 }
 
