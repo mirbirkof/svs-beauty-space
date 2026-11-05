@@ -57,7 +57,7 @@
       { icon: 'point_of_sale', label: 'Каса салону', href: '/admin/crm-extra.html#cashbox' },
       // Аудит 26.07: тут був захардкожений vercel-домен, який ВЖЕ віддає 404 (перевірено) —
       // пункт меню вів у нікуди. Відносний шлях працює на будь-якому домені/тунелі.
-      { icon: 'language', label: 'Вітрина (сайт)', href: '/p/book.html' },
+      { icon: 'event_available', label: 'Онлайн-запис (бот)', href: 'https://t.me/Svs_beautybot?start=book' },
     ] },
     { group: 'Фінанси', icon: 'account_balance_wallet', items: [
       { icon: 'swap_vert', label: 'Доходи і Витрати', href: '/admin/index.html#finance' },

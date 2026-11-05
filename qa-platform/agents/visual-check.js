@@ -10,7 +10,7 @@ const cfg = require('../config');
 // login: экран входа (тут ловим лишние плавающие виджеты). book/signup: клиентские страницы.
 const PUBLIC_PAGES = [
   { path: '/admin/index.html', key: 'login', kind: 'auth' },
-  { path: '/p/book.html',      key: 'booking', kind: 'public' },
+  { path: '/p/app.html',       key: 'booking', kind: 'public' }, // [05.11] /p/book.html → редірект у бота
   { path: '/p/signup.html',    key: 'signup', kind: 'public' },
 ];
 
