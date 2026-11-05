@@ -7,6 +7,12 @@
   var u='https://t.me/Svs_beautybot?start=book';
   /* booking-link.json пише ops/booking-link-check.sh: коли в @BotFather увімкнено головну мініапку — ?startapp (одразу екран запису) */
   try{var x=new XMLHttpRequest();x.open('GET','/p/booking-link.json?'+Date.now(),false);x.send();var j=JSON.parse(x.responseText);if(j&&/^https:\/\/t\.me\//.test(j.url))u=j.url;}catch(e){}
+  /* [05.11 Босс: «відкривається телеграм, просто посилання на бота»] https://t.me/… у браузері показує картку бота, а не мініапку.
+     tg://resolve?domain=…&startapp=… відкриває застосунок Telegram ОДРАЗУ в мініапці; нема Telegram (ПК без клієнта) → через 1,5 с звичайне посилання. */
+  var m=/^https:\/\/t\.me\/([A-Za-z0-9_]+)\?startapp=?([^&]*)/.exec(u);
+  if(m){var gone=false;document.addEventListener('visibilitychange',function(){if(document.hidden)gone=true;});
+    location.href='tg://resolve?domain='+m[1]+'&startapp='+(m[2]||'book');
+    setTimeout(function(){if(!gone)location.replace(u);},1500);return;}
   location.replace(u);}catch(e){}})();</script>
   <script src="/p/tenant-boot.js"></script>
 <meta charset="utf-8">
