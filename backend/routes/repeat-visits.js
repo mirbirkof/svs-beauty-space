@@ -29,6 +29,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../db-pg');
 const { requirePerm } = require('../lib/rbac');
+const { maskPhone, shouldMaskPhones } = require('../lib/settings');
 
 const MIN_GAPS = 2;            // ≥2 проміжки = ≥3 дні візитів, інакше «ритму» ще немає
 const MIN_INTERVAL_DAYS = 7;   // не пропонувати частіше ніж раз на тиждень
@@ -141,12 +142,15 @@ router.get('/candidates', requirePerm('clients.read'), async (req, res) => {
     const scope = req.query.scope === 'all' ? 'all' : 'fresh';
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
     const rows = await findDueClients({ scope, limit });
+    // Майстер салону не бачить номерів клієнтів (як у картці/журналі)
+    const mask = await shouldMaskPhones(req.user);
     res.json({
+      phone_hidden: mask,
       scope,
       items: rows.map(c => ({
         client_id: c.client_id,
         name: c.name,
-        phone: c.phone,
+        phone: mask ? maskPhone(c.phone) : c.phone,
         visits: Number(c.visit_days),
         avg_interval_days: c.avg_interval_days,
         last_visit: c.last_visit,

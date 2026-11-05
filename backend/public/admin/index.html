@@ -6809,7 +6809,8 @@ function repRender() {
   }
   document.getElementById('repBody').innerHTML = list.map(([c, i]) => {
     const phone = (c.phone || '').replace(/[^\d+]/g, '');
-    const tel = phone ? `<a href="tel:${phone}" style="color:var(--primary,#6c5ce7);text-decoration:none">${escapeHtml(c.phone)}</a>` : '—';
+    const masked = (c.phone || "").includes("•"); // майстер салону бачить маску — без дзвінка
+    const tel = masked ? escapeHtml(c.phone) : phone ? `<a href="tel:${phone}" style="color:var(--primary,#6c5ce7);text-decoration:none">${escapeHtml(c.phone)}</a>` : '—';
     const late = Number(c.overdue_days) || 0;
     const lateCol = late > c.avg_interval_days ? '#dc2626' : late > 7 ? '#b36b00' : '#1e7b34';
     const rem = c.last_reminded_at ? `<div style="font-size:11px;color:var(--text-secondary)">нагадували ${new Date(c.last_reminded_at).toLocaleDateString('uk-UA')}</div>` : '';
