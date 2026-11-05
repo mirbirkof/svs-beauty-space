@@ -2487,20 +2487,26 @@ select.input { background:var(--card); }
         </div>
       </div>
 
-      <!-- ═══ REPEAT VISITS ═══ -->
+      <!-- ═══ REPEAT VISITS (нотатка #175: переписано 05.11) ═══ -->
       <div class="page" id="page-repeat">
-        <div class="kpi-grid" id="repStatsRepeat" style="max-width:800px"></div>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
+        <div class="kpi-grid" id="repStatsRepeat" style="max-width:1100px"></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <select id="repScope" class="input btn-sm" style="max-width:300px" onchange="loadRepeat()" title="Кого показувати">
+            <option value="fresh" selected>Пора записатись (прострочка до 3 інтервалів)</option>
+            <option value="all">Усі, хто пропустив свій ритм</option>
+          </select>
+          <input id="repSearch" class="input btn-sm" style="max-width:220px" placeholder="Пошук: імʼя або телефон" oninput="repRender()">
           <button onclick="loadRepeat()" class="btn btn-sm"><span class="material-icons-round" style="font-size:16px">refresh</span> Оновити</button>
-          <button onclick="runRepeat()" class="btn btn-primary btn-sm"><span class="material-icons-round" style="font-size:16px">send</span> Запустити кампанію</button>
+          <button id="repRunBtn" onclick="runRepeat()" class="btn btn-primary btn-sm" title="Надіслати повідомлення «час записатися» тим кандидатам, у кого підключений Telegram (не частіше разу на 7 днів)"><span class="material-icons-round" style="font-size:16px">send</span> Надіслати в Telegram</button>
+          <span id="repCount" style="font-size:12px;color:var(--text-secondary)"></span>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Кандидати на повторний візит <button type="button" class="info-i" data-t="<b>Кандидати на повторний візит.</b> Клієнти, яких час запросити знову (за типовим інтервалом їхньої послуги). Готовий список для дзвінка чи розсилки." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
+          <div class="card-header"><h3>Кому пора на повторний візит <button type="button" class="info-i" data-t="<b>Повторні візити.</b> Постійні клієнти (3+ візити), у яких минув їхній ВЛАСНИЙ звичний проміжок між візитами, і які ще не записані наперед. Натисніть імʼя — картка клієнта, телефон — дзвінок, «Записати» — новий запис у журналі, «Нагадати» — задача адміністратору подзвонити. Давно втрачені клієнти — у віджеті «Повернення клієнтів» на дашборді та в розділі «Апсейл і повернення»." onclick="showInfo(event,this.dataset.t)">i</button></h3></div>
           <div class="card-body" style="padding:0">
-            <table class="tbl">
-              <thead><tr><th>Клієнт</th><th>Телефон</th><th>Останній візит</th><th>Послуга</th><th>Сума</th><th>Дій</th></tr></thead>
+            <div style="overflow-x:auto"><table class="tbl" style="font-size:13px">
+              <thead><tr><th>Клієнт</th><th>Телефон</th><th style="text-align:center">Візитів</th><th style="text-align:center">Звичний ритм</th><th>Останній візит</th><th style="text-align:center">Прострочено</th><th>Остання послуга</th><th>Майстер</th><th style="text-align:right">Витратив</th><th style="text-align:center">Дії</th></tr></thead>
               <tbody id="repBody"></tbody>
-            </table>
+            </table></div>
           </div>
         </div>
       </div>
@@ -2741,7 +2747,7 @@ select.input { background:var(--card); }
                   <span><b>Онлайн-запис увімкнено</b><i>Клієнти можуть записуватись самостійно через посилання/віджет.</i></span>
                 </label>
                 <div class="set-form" style="margin-top:14px">
-                  <label class="set-field"><span>Посилання на запис</span><input id="ob_url" class="input" placeholder="https://t.me/Svs_beautybot?start=book"></label>
+                  <label class="set-field"><span>Посилання на запис</span><input id="ob_url" class="input" placeholder="https://zvetlacrm.tailed6c1a.ts.net/book"></label>
                   <label class="set-field"><span>Крок часу, хв</span><input id="ob_step" class="input" type="number" min="5" max="180" step="5" value="30"></label>
                   <label class="set-field"><span>Мін. час до запису, год</span><input id="ob_minlead" class="input" type="number" min="0" max="168" value="2"></label>
                   <label class="set-field"><span>Скасування за, год</span><input id="ob_cancel" class="input" type="number" min="0" max="168" value="24"></label>
@@ -3279,7 +3285,7 @@ function tenantHeader() { return TENANT_SLUG ? { 'X-Tenant-Slug': TENANT_SLUG } 
 // клиенты арендатора уходили в дефолтный салон. Для салона Босса slug пуст → голый /book.
 function bookingUrl() {
   // [05.11 Босс: без дублюючих шляхів] салон Босса — лише мініапка в Telegram; стара сторінка /book — тільки для орендарів
-  if (!TENANT_SLUG || TENANT_SLUG === 'svs-beauty-space') return 'https://t.me/Svs_beautybot?start=book';
+  if (!TENANT_SLUG || TENANT_SLUG === 'svs-beauty-space') return location.origin + '/book'; // /book сам веде в мініапку (див. book.html + ops/booking-link-check.sh)
   return location.origin + '/book?tenant=' + encodeURIComponent(TENANT_SLUG);
 }
 function applyBookingLinks() {
@@ -6761,24 +6767,73 @@ async function runReminders() {
   loadReminders();
 }
 
-// ═══ REPEAT VISITS ════════════════════════════
+// ═══ REPEAT VISITS (нотатка #175) ════════════════
+// Кандидати за ВЛАСНИМ ритмом клієнта (сервер: /api/repeat-visits). Кнопки «Записати»/«Нагадати» —
+// ті самі дії, що й у віджеті повернення на дашборді (rbBookClient / rbRemindClient), одна задача-нагадування.
+let _repItems = [], _repSeq = 0;
 async function loadRepeat() {
+  const seq = ++_repSeq;
+  const scope = document.getElementById('repScope')?.value || 'fresh';
+  document.getElementById('repBody').innerHTML = '<tr><td colspan="10" class="empty">Завантаження…</td></tr>';
   try {
     const [st, cand] = await Promise.all([
       api('/api/repeat-visits/stats'),
-      api('/api/repeat-visits/candidates?limit=100'),
+      api('/api/repeat-visits/candidates?scope=' + scope),
     ]);
-    const k = st.stats || {};
+    if (seq !== _repSeq) return;
+    if (cand && cand.error) throw new Error(cand.error);
+    const k = (st && st.stats) || {};
+    const kpi = (l, v, c, sub, onclick) => `<div class="kpi-card ${c}"${onclick ? ` style="cursor:pointer" onclick="${onclick}"` : ''}><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div>${sub ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${sub}</div>` : ''}</div>`;
     document.getElementById('repStatsRepeat').innerHTML = [
-      ['Кандидатів', k.candidates ?? '—', 'orange'],
-      ['Відправлено', k.sent_total ?? '—', 'blue'],
-      ['Конверсія', (k.conversion ?? '0') + '%', 'green'],
-      ['Виручка повторних', (k.revenue_back ?? 0).toLocaleString() + ' ₴', 'purple'],
-    ].map(([l,v,c]) => `<div class="kpi-card ${c}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div></div>`).join('');
-    const items = cand.items || [];
-    document.getElementById('repBody').innerHTML = items.length ? items.map(c => `
-      <tr><td>${escapeHtml(c.client_name)||'—'}</td><td>${escapeHtml(c.client_phone)||''}</td><td>${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'}</td><td>${escapeHtml(c.service_name)||'—'}</td><td>${(c.total||0).toLocaleString()} ₴</td><td>${c.days_since||'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">Кандидатів немає</td></tr>';
-  } catch(e) { document.getElementById('repBody').innerHTML = `<tr><td colspan="6" class="empty">Помилка: ${e.message}</td></tr>`; }
+      kpi('Пора записатись', k.candidates ?? '—', 'orange', `усього пропустили ритм: ${k.candidates_all ?? '—'}`, "repSetScope('fresh')"),
+      kpi('З них у Telegram', k.with_telegram ?? '—', 'blue', k.tg_pending ? `${k.tg_pending} у черзі на відправку` : 'можна надіслати повідомлення'),
+      kpi('Нагадали за 90 днів', k.reminded_90d ?? '—', 'purple', 'задачі «подзвонити» + Telegram', "go('tasks')"),
+      kpi('Повернулись після нагадування', `${k.returned_90d ?? 0} (${k.conversion ?? 0}%)`, 'green', `виручка: ${_money2(k.revenue_back || 0)}`),
+    ].join('');
+    _repItems = cand.items || [];
+    const runBtn = document.getElementById('repRunBtn');
+    if (runBtn) { runBtn.disabled = !k.with_telegram; runBtn.lastChild.textContent = ` Надіслати в Telegram (${k.with_telegram || 0})`; }
+    repRender();
+  } catch (e) {
+    if (seq === _repSeq) document.getElementById('repBody').innerHTML = `<tr><td colspan="10" class="empty">Помилка: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+function repSetScope(v) { const s = document.getElementById('repScope'); if (s && s.value !== v) { s.value = v; loadRepeat(); } }
+function repRender() {
+  const q = (document.getElementById('repSearch')?.value || '').trim().toLowerCase();
+  const list = _repItems.map((c, i) => [c, i]).filter(([c]) => !q || (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q));
+  document.getElementById('repCount').textContent = `${list.length} ${plUk(list.length,'клієнт','клієнти','клієнтів')}`;
+  if (!list.length) {
+    document.getElementById('repBody').innerHTML = `<tr><td colspan="10" class="empty">${_repItems.length ? 'Нікого не знайдено за пошуком' : 'Зараз немає постійних клієнтів, яким пора на повторний візит. Усі або ходять за своїм ритмом, або вже записані.'}</td></tr>`;
+    return;
+  }
+  document.getElementById('repBody').innerHTML = list.map(([c, i]) => {
+    const phone = (c.phone || '').replace(/[^\d+]/g, '');
+    const tel = phone ? `<a href="tel:${phone}" style="color:var(--primary,#6c5ce7);text-decoration:none">${escapeHtml(c.phone)}</a>` : '—';
+    const late = Number(c.overdue_days) || 0;
+    const lateCol = late > c.avg_interval_days ? '#dc2626' : late > 7 ? '#b36b00' : '#1e7b34';
+    const rem = c.last_reminded_at ? `<div style="font-size:11px;color:var(--text-secondary)">нагадували ${new Date(c.last_reminded_at).toLocaleDateString('uk-UA')}</div>` : '';
+    return `<tr>
+      <td><a href="#" onclick="openClientCard(${c.client_id});return false" style="color:var(--primary,#6c5ce7);font-weight:600;text-decoration:none">${escapeHtml(c.name || 'без імені')}</a>${c.has_telegram ? ' <span title="Є Telegram" style="font-size:11px;color:#0b6bcb">✈</span>' : ''}${rem}</td>
+      <td style="white-space:nowrap">${tel}</td>
+      <td style="text-align:center">${c.visits}</td>
+      <td style="text-align:center">кожні ~${c.avg_interval_days} дн.</td>
+      <td style="white-space:nowrap">${c.last_visit ? new Date(c.last_visit).toLocaleDateString('uk-UA') : '—'} <span style="color:var(--text-secondary)">(${c.days_since} дн.)</span></td>
+      <td style="text-align:center;color:${lateCol};font-weight:600">${late > 0 ? '+' + late + ' дн.' : 'сьогодні'}</td>
+      <td>${escapeHtml(c.last_service || '—')}</td>
+      <td>${escapeHtml(c.last_master || '—')}</td>
+      <td style="text-align:right;font-weight:600">${_money2(c.total_spent || 0)}</td>
+      <td style="text-align:center;white-space:nowrap">
+        <button type="button" class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="rbBookClient(_repItems[${i}])" title="Відкрити журнал на сьогодні й створити запис для цього клієнта">📅 Записати</button>
+        <button type="button" class="btn btn-outline" style="padding:4px 8px;font-size:12px" onclick="repRemind(${i},this)" title="Створити задачу «подзвонити клієнту» на дошці задач">Нагадати</button>
+      </td></tr>`;
+  }).join('');
+}
+async function repRemind(i, btn) {
+  const c = _repItems[i];
+  if (!c) return;
+  const ok = await rbRemindClient(c, btn, `Звичний ритм: кожні ~${c.avg_interval_days} дн., прострочено на ${c.overdue_days} дн. (візитів: ${c.visits})`);
+  if (ok) loadRepeat();
 }
 // ── Апсейл і повернення (25.07) ───────────────────────────────
 // Норма повернення береться з API (медіана/p75 фактичних інтервалів салону), не хардкод.
@@ -6880,9 +6935,10 @@ async function retExport(e) {
 }
 
 async function runRepeat() {
-  if (!confirm('Запустити кампанію повторних візитів зараз?')) return;
+  if (!confirm('Надіслати в Telegram повідомлення «час записатися» кандидатам, у яких підключений Telegram?')) return;
   const r = await api('/api/repeat-visits/run', { method:'POST' });
-  alert(`Відправлено: ${r.sent ?? 0}, помилок: ${r.failed ?? 0}`);
+  if (!r || r.error || !r.ok) { toast((r && r.error) || 'Не вдалося поставити розсилку', 'error'); return; }
+  toast(`У черзі на відправку: ${r.scheduled ?? 0}` + (r.skipped ? `, пропущено (вже нагадували за 7 днів): ${r.skipped}` : '') + '. Повідомлення підуть протягом 15 хв.');
   loadRepeat();
 }
 
@@ -7414,8 +7470,9 @@ async function loadReactivation(){
 // #102: «📅 Записати» — журнал на сьогодні + модалка нового запису з предзаповненим клієнтом.
 // Модалка створення (openCreate/ncPickClient) живе в журналі й потребує journalData.masters —
 // тому спершу відкриваємо журнал і чекаємо на завантаження.
-async function rbBook(i){
-  const c = _reactClients[i];
+function rbBook(i){ return rbBookClient(_reactClients[i]); }
+// Спільна дія «Записати» для віджета повернення і розділу «Повторні візити» (#175).
+async function rbBookClient(c){
   if (!c) return;
   const today = _ymd(new Date());
   const dEl = document.getElementById('journalDate');
@@ -7432,25 +7489,28 @@ async function rbBook(i){
 }
 // #102: «Нагадати» — задача на дошці задач через штатний POST /api/tasks.
 // Дедуп: якщо по клієнту вже є ВІДКРИТА задача-нагадування — нову не створюємо.
-async function rbRemind(i, btn){
-  const c = _reactClients[i];
-  if (!c) return;
+function rbRemind(i, btn){ return rbRemindClient(_reactClients[i], btn); }
+// Спільна дія «Нагадати» (віджет повернення + «Повторні візити», #175): одна й та сама задача на дошці,
+// з неї ж рахується статистика «нагадали → повернулись» у розділі повторних візитів.
+async function rbRemindClient(c, btn, extra){
+  if (!c) return false;
   const title = `Подзвонити клієнту ${c.name || 'без імені'} — пора на повторний візит`;
   if (btn) btn.disabled = true;
   try {
     const ex = await api('/api/tasks?limit=200&q=' + encodeURIComponent('пора на повторний візит')).catch(() => ({ tasks: [] }));
     const dup = (ex.tasks || []).find(t => !['done','cancelled'].includes(t.status)
       && (Number(t.client_id) === Number(c.client_id) || t.title === title));
-    if (dup) { toast('Відкрита задача по цьому клієнту вже є на дошці', 'error'); return; }
+    if (dup) { toast('Відкрита задача по цьому клієнту вже є на дошці', 'error'); return false; }
     const r = await api('/api/tasks', { method: 'POST', body: JSON.stringify({
       title, priority: 'medium', client_id: c.client_id, tags: ['повернення'], due_date: _ymd(new Date()),
       description: `Телефон: ${c.phone || '—'}\nНе був(ла): ${c.days_since} дн.`
         + (c.rebook_interval_days != null ? ` (рекомендований інтервал ${c.rebook_interval_days} дн., прострочено на ${c.overdue_days})` : '')
+        + (extra ? `\n${extra}` : '')
         + `\nОстання послуга: ${c.last_service || '—'} · майстер ${c.last_master || '—'}\nВитратив(ла): ${_money2(c.total_spent)}`,
     })});
-    if (r && r.ok) toast('Задачу створено — дивіться дошку «Задачі»');
-    else toast((r && r.error) || 'Не вдалося створити задачу', 'error');
-  } catch { toast('Не вдалося створити задачу', 'error'); }
+    if (r && r.ok) { toast('Задачу створено — дивіться дошку «Задачі»'); return true; }
+    toast((r && r.error) || 'Не вдалося створити задачу', 'error'); return false;
+  } catch { toast('Не вдалося створити задачу', 'error'); return false; }
   finally { if (btn) btn.disabled = false; }
 }
 

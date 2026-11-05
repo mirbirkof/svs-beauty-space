@@ -3,7 +3,11 @@
 <head>
 <script>/* [05.11 Босс] «за адресою не наша мініапка — не повинно бути дублюючих шляхів». Запис салону = ЛИШЕ мініапка в Telegram (@Svs_beautybot).
    Ця стара веб-сторінка лишається тільки для інших салонів-орендарів (?tenant=інший). */
-(function(){try{var t=new URLSearchParams(location.search).get('tenant');if(!t||t==='svs-beauty-space')location.replace('https://t.me/Svs_beautybot?start=book');}catch(e){}})();</script>
+(function(){try{var t=new URLSearchParams(location.search).get('tenant');if(t&&t!=='svs-beauty-space')return;
+  var u='https://t.me/Svs_beautybot?start=book';
+  /* booking-link.json пише ops/booking-link-check.sh: коли в @BotFather увімкнено головну мініапку — ?startapp (одразу екран запису) */
+  try{var x=new XMLHttpRequest();x.open('GET','/p/booking-link.json?'+Date.now(),false);x.send();var j=JSON.parse(x.responseText);if(j&&/^https:\/\/t\.me\//.test(j.url))u=j.url;}catch(e){}
+  location.replace(u);}catch(e){}})();</script>
   <script src="/p/tenant-boot.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
