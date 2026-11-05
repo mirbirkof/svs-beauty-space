@@ -31,6 +31,21 @@
   .tx .plus{color:#1B7A3D;font-weight:700}.tx .minus{color:#B23B2E;font-weight:700}
   .muted{color:var(--text-secondary);font-size:12.5px}
   .msg{font-size:12.5px;margin-top:6px;min-height:16px}
+  /* #174: плитки клікабельні → розбивка */
+  .kpi.click{cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .15s;position:relative}
+  .kpi.click:hover{border-color:#c9b4f5;box-shadow:0 4px 14px rgba(120,80,200,.12);transform:translateY(-1px)}
+  .kpi.click .more{position:absolute;top:12px;right:12px;font-size:18px;color:#a68be0}
+  .st-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:60;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 0}
+  .st-box{background:#fff;border-radius:16px;padding:22px 24px;width:960px;max-width:94vw}
+  .st-per{display:flex;gap:6px;margin:4px 0 14px}
+  .st-per button{padding:5px 12px;border-radius:999px;border:1px solid var(--border,#ddd);background:#fff;font-size:12.5px;cursor:pointer;font-family:inherit}
+  .st-per button.on{background:#6d4bd1;border-color:#6d4bd1;color:#fff}
+  .st-sum{display:flex;gap:26px;margin-bottom:16px}
+  .st-sum b{display:block;font-size:22px}
+  .st-g{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .st-g h4{margin:0 0 8px;font-size:13.5px}
+  .bar{height:6px;background:#efe9fb;border-radius:4px;margin-top:3px}.bar i{display:block;height:6px;background:#8b6ae0;border-radius:4px}
+  .st-box td a{color:#6d4bd1;cursor:pointer;text-decoration:none}.st-box td a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -106,6 +121,17 @@
         <div class="msg" id="adjMsg"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- #174: модалка статистики по плитці -->
+<div class="st-bg" id="stBg" onclick="if(event.target===this)closeStats()">
+  <div class="st-box">
+    <h3 style="margin:0 0 4px;font-size:17px"><span id="stTitle">Статистика</span>
+      <button class="btn sm" style="float:right" onclick="closeStats()">✕ Закрити</button></h3>
+    <div class="muted" id="stHint"></div>
+    <div class="st-per" id="stPer"></div>
+    <div id="stBody" class="muted">Завантаження…</div>
   </div>
 </div>
 
@@ -186,13 +212,14 @@ async function loadKpis(){
   try{
     const a=await aj('/api/bonus/analytics');
     const k=[
-      ['Активне зобов\u0027язання',Number(a.liability||0).toFixed(0),'бонусів на балансах'],
-      ['Нараховано всього',Number(a.accrued||0).toFixed(0),''],
-      ['Списано всього',Number(a.redeemed||0).toFixed(0),''],
-      ['Згоріло',Number(a.expired||0).toFixed(0),''],
-      ['Клієнтів з балансом',Number(a.active_clients||0).toFixed(0),'+'+Number(a.accrued_30||0).toFixed(0)+' за 30 дн'],
+      ['liability','Активне зобов\u0027язання',Number(a.liability||0).toFixed(0),'бонусів на балансах'],
+      ['accrued','Нараховано всього',Number(a.accrued||0).toFixed(0),'+'+Number(a.accrued_30||0).toFixed(0)+' за 30 дн'],
+      ['redeemed','Списано всього',Number(a.redeemed||0).toFixed(0),'−'+Number(a.redeemed_30||0).toFixed(0)+' за 30 дн'],
+      ['expired','Згоріло',Number(a.expired||0).toFixed(0),'−'+Number(a.expired_30||0).toFixed(0)+' за 30 дн'],
+      ['clients','Клієнтів з балансом',Number(a.active_clients||0).toFixed(0),'хто має бонуси зараз'],
     ];
-    document.getElementById('kpis').innerHTML=k.map(([l,v,s])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`).join('');
+    // #174: кожна плитка клікабельна — відкриває розбивку з того ж журналу, що й число
+    document.getElementById('kpis').innerHTML=k.map(([kind,l,v,s])=>`<div class="kpi click" data-kind="${kind}" onclick="openStats('${kind}')" title="Натисніть — детальна статистика"><span class="material-icons-round more">insights</span><div class="lbl">${l}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`).join('');
   }catch(e){ document.getElementById('kpis').innerHTML='<div class="kpi"><div class="lbl">Помилка завантаження</div></div>'; }
 }
 
@@ -331,6 +358,47 @@ async function doAdjust(){
     m.style.color='#1B7A3D'; m.textContent='Готово ✓'; loadClient(); loadKpis();
   }catch(e){ m.style.color='#B23B2E'; m.textContent='Помилка: '+e.message; }
 }
+
+// ── #174: статистика по кліку на плитку ──
+const ST_T={accrued:'Нараховано бонусів',redeemed:'Списано бонусів',expired:'Згоріло бонусів',liability:'Активне зобов\u0027язання — бонуси на балансах',clients:'Клієнти з бонусним балансом'};
+const ST_H={accrued:'Усі нарахування з журналу операцій: звідки прийшли, по місяцях, кому найбільше.',
+  redeemed:'Усе, що знято з балансів (крім згорання): оплата бонусами, зняття при скасуванні оплати, ручні списання.',
+  expired:'Бонуси, що згоріли через закінчення терміну дії.',
+  liability:'Скільки бонусів зараз лежить на балансах клієнтів і в кого найбільше.',
+  clients:'Хто зараз має бонуси, розподіл за розміром балансу.'};
+let _stKind='',_stDays=0;
+const _n=v=>Number(v||0).toLocaleString('uk',{maximumFractionDigits:0});
+function closeStats(){ document.getElementById('stBg').style.display='none'; }
+function openStats(kind,days){
+  _stKind=kind; _stDays=days||0;
+  document.getElementById('stTitle').textContent=ST_T[kind]||'Статистика';
+  document.getElementById('stHint').textContent=ST_H[kind]||'';
+  const bal=(kind==='liability'||kind==='clients');
+  document.getElementById('stPer').innerHTML=bal?'':[[0,'За весь час'],[30,'30 днів'],[90,'90 днів'],[365,'Рік']]
+    .map(([d,l])=>`<button class="${d===_stDays?'on':''}" onclick="openStats('${kind}',${d})">${l}</button>`).join('');
+  document.getElementById('stBg').style.display='flex';
+  const body=document.getElementById('stBody'); body.innerHTML='<div class="muted">Завантаження…</div>';
+  aj('/api/bonus/stats?kind='+kind+'&days='+_stDays).then(d=>{ if(kind!==_stKind) return; body.innerHTML=bal?_stBal(d):_stTx(d); })
+    .catch(e=>{ body.innerHTML='<div class="muted" style="color:#B23B2E">Помилка: '+esc(e.message)+'</div>'; });
+}
+function _cl(id,name){ return `<a onclick="stOpenClient(${Number(id)})">${esc(name||('Клієнт #'+id))}</a>`; }
+function stOpenClient(id){ closeStats(); document.getElementById('cid').value=id; loadClient(); document.getElementById('walletBox').scrollIntoView({behavior:'smooth',block:'center'}); }
+function _bars(rows,lab){ const mx=Math.max(1,...rows.map(r=>Number(r.sum)));
+  return `<table><thead><tr><th>${lab}</th><th>Операцій</th><th style="text-align:right">Бонусів</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.label||r.month)}<div class="bar"><i style="width:${Math.round(Number(r.sum)/mx*100)}%"></i></div></td><td>${_n(r.count)}</td><td style="text-align:right"><b>${_n(r.sum)}</b></td></tr>`).join('')}</tbody></table>`; }
+function _stTx(d){
+  if(!Number(d.count)) return '<div class="muted" style="padding:20px 0">За цей період операцій немає.</div>';
+  const sign=d.kind==='accrued'?'+':'−';
+  return `<div class="st-sum"><div><span class="muted">Разом</span><b>${sign}${_n(d.total)}</b></div><div><span class="muted">Операцій</span><b>${_n(d.count)}</b></div><div><span class="muted">Клієнтів</span><b>${_n(d.clients)}</b></div></div>
+  <div class="st-g"><div><h4>Звідки</h4>${_bars(d.sources,'Джерело')}</div><div><h4>По місяцях</h4>${_bars(d.months,'Місяць')}</div></div>
+  <div class="st-g" style="margin-top:16px"><div><h4>Найбільше по клієнтах</h4><table><thead><tr><th>Клієнт</th><th>Операцій</th><th style="text-align:right">Бонусів</th></tr></thead><tbody>${d.top.map(r=>`<tr><td>${_cl(r.client_id,r.name)}</td><td>${_n(r.cnt)}</td><td style="text-align:right"><b>${_n(r.amount)}</b></td></tr>`).join('')}</tbody></table></div>
+  <div><h4>Останні операції</h4><div style="max-height:420px;overflow:auto"><table><thead><tr><th>Дата</th><th>Клієнт</th><th>Що</th><th style="text-align:right">Б.</th></tr></thead><tbody>${d.recent.map(r=>`<tr><td style="white-space:nowrap">${new Date(r.created_at).toLocaleDateString('uk')}</td><td>${_cl(r.client_id,r.name)}</td><td title="${esc(r.description||'')}">${esc(r.source)}</td><td style="text-align:right;color:${Number(r.amount)>=0?'#1B7A3D':'#B23B2E'};font-weight:700">${Number(r.amount)>=0?'+':''}${_n(r.amount)}</td></tr>`).join('')}</tbody></table></div></div></div>`;
+}
+function _stBal(d){
+  return `<div class="st-sum"><div><span class="muted">Бонусів на балансах</span><b>${_n(d.total)}</b></div><div><span class="muted">Клієнтів з балансом</span><b>${_n(d.clients)}</b></div><div><span class="muted">Згорить за 30 дн</span><b>${_n(d.expiring.d30)}</b></div><div><span class="muted">Згорить за 90 дн</span><b>${_n(d.expiring.d90)}</b></div></div>
+  <div class="st-g"><div><h4>Розмір балансу</h4>${_bars(d.buckets,'Баланс')}</div>
+  <div><h4>Найбільші баланси</h4><div style="max-height:420px;overflow:auto"><table><thead><tr><th>Клієнт</th><th>Нарах.</th><th>Спис.</th><th style="text-align:right">Баланс</th></tr></thead><tbody>${d.top.map(r=>`<tr><td>${_cl(r.client_id,r.name)}</td><td>${_n(r.total_accrued)}</td><td>${_n(r.total_redeemed)}</td><td style="text-align:right"><b>${_n(r.amount)}</b></td></tr>`).join('')}</tbody></table></div></div></div>`;
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeStats(); });
 
 loadAll();
 </script>

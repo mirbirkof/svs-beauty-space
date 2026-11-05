@@ -367,6 +367,16 @@ async function deleteRule(id) {
 }
 
 // ── Аналітика (зведення по tenant) ──────────────────────────────────
+// ── #174: ОДНЕ визначення «нараховано / списано / згоріло» ─────────
+// Ці ж умови використовує звірка лічильників (lib/bonus-reconcile), плитки та розбивка
+// по кліку — тому число в плитці і сума в деталях не можуть розійтися.
+// Згорання пишеться типом 'expired' (expireBonuses); 'expire' — історичний варіант, лишаємо обидва.
+const TX_KIND_SQL = {
+  accrued:  `amount > 0`,
+  redeemed: `amount < 0 AND type NOT IN ('expire','expired')`,
+  expired:  `amount < 0 AND type IN ('expire','expired')`,
+};
+
 async function analytics() {
   const a = (await query(
     `SELECT COALESCE(SUM(balance),0) AS liability,
@@ -376,10 +386,87 @@ async function analytics() {
             COUNT(*) FILTER (WHERE balance > 0) AS active_clients
      FROM bonus_balances`)).rows[0];
   const last30 = (await query(
-    `SELECT COALESCE(SUM(amount) FILTER (WHERE amount>0),0) AS accrued_30,
-            COALESCE(-SUM(amount) FILTER (WHERE type='redemption'),0) AS redeemed_30
+    `SELECT COALESCE(SUM(amount) FILTER (WHERE ${TX_KIND_SQL.accrued}),0) AS accrued_30,
+            COALESCE(-SUM(amount) FILTER (WHERE ${TX_KIND_SQL.redeemed}),0) AS redeemed_30,
+            COALESCE(-SUM(amount) FILTER (WHERE ${TX_KIND_SQL.expired}),0) AS expired_30
      FROM bonus_transactions WHERE created_at >= now() - interval '30 days'`)).rows[0];
   return { ...a, ...last30 };
+}
+
+// Підпис джерела операції для розбивки (людською мовою)
+function _sourceLabel(type, src, desc) {
+  if (type === 'expire' || type === 'expired') return 'Згоріло за терміном';
+  if (type === 'redemption') return 'Оплата бонусами';
+  if (type === 'adjust' && src === 'reconcile') return 'Знято звіркою (скасовані/змінені візити)';
+  if (type === 'manual_deduct') {
+    if (/^Зняття нарахування/.test(desc || '') || src === 'appointment_delete') return 'Знято при скасуванні оплати / видаленні візиту';
+    return 'Ручне списання';
+  }
+  if (src === 'appointment') return 'Кешбек за візити';
+  if (src === 'order') return 'Кешбек за покупки товарів';
+  if (/^master_/.test(src || '')) return 'Бонуси майстрам за клієнтів';
+  if (type === 'manual_add' || src === 'manual') return 'Ручне нарахування';
+  const ev = { referral: 'Реферал', review: 'Відгук', birthday: 'День народження', welcome: 'Привітальний', visit_series: 'Серія візитів' };
+  return ev[src] || ev[type] || (src || type || 'Інше');
+}
+
+// #174: деталі по кліку на плитку. kind: accrued|redeemed|expired (журнал) або
+// liability|clients (поточні баланси). days: 0 = за весь час (збігається з плиткою).
+async function stats(kind, days = 0) {
+  days = Math.max(0, Math.min(3650, Number(days) || 0));
+  if (kind === 'liability' || kind === 'clients') {
+    const tot = (await query(
+      `SELECT COALESCE(SUM(balance),0) AS total, COUNT(*) FILTER (WHERE balance > 0) AS clients
+         FROM bonus_balances`)).rows[0];
+    const buckets = (await query(
+      `SELECT CASE WHEN balance < 100 THEN 'до 100' WHEN balance < 500 THEN '100–499'
+                   WHEN balance < 1000 THEN '500–999' ELSE '1000+' END AS label,
+              MIN(balance) AS o, COUNT(*) AS cnt, SUM(balance) AS sum
+         FROM bonus_balances WHERE balance > 0 GROUP BY 1 ORDER BY 2`)).rows;
+    const expiring = (await query(
+      `SELECT COALESCE(SUM(remaining) FILTER (WHERE expires_at <= now() + interval '30 days'),0) AS d30,
+              COALESCE(SUM(remaining) FILTER (WHERE expires_at <= now() + interval '90 days'),0) AS d90
+         FROM bonus_transactions WHERE remaining > 0 AND expires_at IS NOT NULL`)).rows[0];
+    const top = (await query(
+      `SELECT b.client_id, c.name, b.balance AS amount, b.total_accrued, b.total_redeemed, b.total_expired
+         FROM bonus_balances b LEFT JOIN clients c ON c.id = b.client_id
+        WHERE b.balance > 0 ORDER BY b.balance DESC LIMIT 50`)).rows;
+    return { kind, days: 0, total: tot.total, count: tot.clients, clients: tot.clients,
+      buckets: buckets.map(({ label, cnt, sum }) => ({ label, count: cnt, sum })), expiring, top };
+  }
+  const cond = TX_KIND_SQL[kind];
+  if (!cond) throw new Error('kind-required');
+  const per = days ? `AND t.created_at >= now() - ($1 || ' days')::interval` : '';
+  const args = days ? [String(days)] : [];
+  const tot = (await query(
+    `SELECT COALESCE(ABS(SUM(t.amount)),0) AS total, COUNT(*) AS cnt, COUNT(DISTINCT t.client_id) AS clients
+       FROM bonus_transactions t WHERE ${cond} ${per}`, args)).rows[0];
+  const srcRows = (await query(
+    `SELECT t.type, t.source_type, (t.description LIKE 'Зняття нарахування%') AS undo,
+            COUNT(*) AS cnt, ABS(SUM(t.amount)) AS sum
+       FROM bonus_transactions t WHERE ${cond} ${per} GROUP BY 1,2,3`, args)).rows;
+  const bySrc = {};
+  for (const r of srcRows) {
+    const l = _sourceLabel(r.type, r.source_type, r.undo ? 'Зняття нарахування' : '');
+    if (!bySrc[l]) bySrc[l] = { label: l, count: 0, sum: 0 };
+    bySrc[l].count += Number(r.cnt); bySrc[l].sum = round2(bySrc[l].sum + Number(r.sum));
+  }
+  const months = (await query(
+    `SELECT to_char(date_trunc('month', t.created_at AT TIME ZONE 'Europe/Kyiv'),'YYYY-MM') AS month,
+            COUNT(*) AS cnt, ABS(SUM(t.amount)) AS sum
+       FROM bonus_transactions t WHERE ${cond} ${per} GROUP BY 1 ORDER BY 1 DESC LIMIT 12`, args)).rows;
+  const top = (await query(
+    `SELECT t.client_id, c.name, ABS(SUM(t.amount)) AS amount, COUNT(*) AS cnt
+       FROM bonus_transactions t LEFT JOIN clients c ON c.id = t.client_id
+      WHERE ${cond} ${per} GROUP BY 1,2 ORDER BY 3 DESC LIMIT 15`, args)).rows;
+  const recent = (await query(
+    `SELECT t.id, t.client_id, c.name, t.type, t.source_type, t.amount, t.description, t.created_at
+       FROM bonus_transactions t LEFT JOIN clients c ON c.id = t.client_id
+      WHERE ${cond} ${per} ORDER BY t.created_at DESC, t.id DESC LIMIT 100`, args)).rows
+    .map((r) => ({ ...r, source: _sourceLabel(r.type, r.source_type, r.description) }));
+  return { kind, days, total: tot.total, count: tot.cnt, clients: tot.clients,
+    sources: Object.values(bySrc).sort((a, b) => b.sum - a.sum),
+    months: months.map(({ month, cnt, sum }) => ({ month, count: cnt, sum })), top, recent };
 }
 
 // ── Внутрішні ───────────────────────────────────────────────────────
@@ -410,5 +497,5 @@ async function _pickRule(client, ruleId, triggerEvent, category) {
 module.exports = {
   getSettings, saveSettings, getBalance, getHistory,
   accrue, redeem, previewRedeem, manualAdjust, expireBonuses,
-  listRules, createRule, updateRule, deleteRule, analytics,
+  listRules, createRule, updateRule, deleteRule, analytics, stats, TX_KIND_SQL,
 };

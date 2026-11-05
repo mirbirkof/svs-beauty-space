@@ -107,4 +107,13 @@ router.get('/analytics', async (req, res) => {
   try { res.json(await bonus.analytics()); } catch (e) { fail(res, e); }
 });
 
+// #174: розбивка по кліку на плитку (нараховано / списано / згоріло / баланси)
+router.get('/stats', async (req, res) => {
+  try {
+    const kind = String(req.query.kind || '');
+    if (!/^(accrued|redeemed|expired|liability|clients)$/.test(kind)) return res.status(400).json({ error: 'kind-required' });
+    res.json(await bonus.stats(kind, Number(req.query.days) || 0));
+  } catch (e) { fail(res, e); }
+});
+
 module.exports = router;

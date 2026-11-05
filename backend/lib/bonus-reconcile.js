@@ -12,6 +12,7 @@
  * Списані клієнтом бонуси не забираємо в мінус — гасимо лише те, що ще лишилось (remaining).
  */
 const { getPool } = require('../db-pg');
+const { TX_KIND_SQL } = require('./bonus');
 
 // Нарахування, чий візит скасовано / зник, і які ще не сторновані
 const ORPHAN_SQL = `
@@ -104,13 +105,12 @@ async function reconcileBonusCounters({ dryRun = false } = {}) {
       FROM bonus_balances b
       LEFT JOIN (
         SELECT client_id,
-               SUM(amount) FILTER (WHERE amount > 0)                  AS accrued,
-               -- Аудит 13.08 (регрес!): фільтр type='redemption' не існує в даних —
-               -- реальні списання лежать під типами 'manual_deduct' та відʼємний 'adjust'.
-               -- Перша версія цього перерахунку через це обнулила total_redeemed у 20 клієнтів.
-               -- Правильно: списане = будь-яка відʼємна сума, крім згорання.
-               -SUM(amount) FILTER (WHERE amount < 0 AND type <> 'expire') AS redeemed,
-               -SUM(amount) FILTER (WHERE type = 'expire')            AS expired
+               -- #174: умови — спільні з плитками/розбивкою (lib/bonus TX_KIND_SQL).
+               -- Аудит 13.08: списане = будь-яка відʼємна сума, крім згорання (не type='redemption').
+               -- Згорання пишеться типом 'expired' — колишній фільтр type='expire' його не бачив.
+               SUM(amount) FILTER (WHERE ${TX_KIND_SQL.accrued})   AS accrued,
+               -SUM(amount) FILTER (WHERE ${TX_KIND_SQL.redeemed}) AS redeemed,
+               -SUM(amount) FILTER (WHERE ${TX_KIND_SQL.expired})  AS expired
           FROM bonus_transactions GROUP BY client_id
       ) t ON t.client_id = b.client_id
      WHERE ABS(b.total_accrued  - COALESCE(t.accrued, 0))  > 0.01

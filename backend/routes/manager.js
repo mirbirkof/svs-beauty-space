@@ -6,6 +6,7 @@ const { getPool } = require('../db-pg');
 const { requirePerm, hasPermission } = require('../lib/rbac');
 const { shiftDaysByMaster } = require('../lib/schedule-month');
 const llm = require('../lib/llm');
+const brain = require('../lib/assistant-brain'); // 05.11: дати/імена/народні слова/карта CRM — рахує код
 const { TOOLS } = require('../lib/agent-tools');
 const { getSetting, setSetting } = require('../lib/settings');
 const { liveFinance } = require('../lib/live-finance');
@@ -127,7 +128,7 @@ router.post('/assistant', requirePerm(), async (req, res) => {
       return res.json({ answer: ok ? `✅ Виконано: ${_label(cf.tool, cf.args)}` : `❌ Не вдалося: ${(out && out.error) || 'помилка'}` });
     }
 
-    const question = String((req.body && req.body.message) || '').trim().slice(0, 500);
+    const question = String((req.body && req.body.message) || '').trim().slice(0, 1500); // 05.11: 500 → 1500, довгі «криві» пояснення не обрізаються
     if (!question) return res.status(400).json({ error: 'no_message' });
 
     // Язык салона (для мультиаренды) — запасной, если язык вопроса не определился.
@@ -185,15 +186,28 @@ router.post('/assistant', requirePerm(), async (req, res) => {
 • Онлайн-запис: вільний час = години з «Графіка роботи» (ручний день, інакше звичний тижневий графік) мінус наявні записи, перерви і мінімальний час до запису. Немає вікон — день у графіку вихідний, усе зайнято або послуга не привʼязана до майстра чи онлайн-запис майстра вимкнено.
 Якщо правила тут немає — скажи чесно, що точно не знаєш, і запропонуй відкрити розділ; НЕ вигадуй.\n`;
     } catch (e) { console.error('[assistant/whyNote]', e.message); }
+    const hist0 = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-2) : [];
+    // [05.11 assistant-smart] Розуміння питання — те, що можна порахувати кодом, рахуємо кодом
+    let mastersList = [];
+    try { mastersList = (await pool.query(`SELECT id, name FROM masters WHERE COALESCE(active,true)=true ORDER BY name LIMIT 80`)).rows; } catch (e) { console.error('[assistant/masters]', e.message); }
+    const namesNote = brain.mastersHint(question, mastersList);
+    const kbAllowed = (k) => (ALL_PAGES[k] ? pageAllowed(k) : ALL_EMBEDS[k] ? embedAllowed(k) : true);
+    const kbSecs = brain.pickKB(question + ' ' + hist0.map(h => (h && h.text) || '').join(' '), kbAllowed, 4);
     const system = `${LANG_CMD}
 Ти — помічник у CRM салону краси. Відповідай КОРОТКО, цифрами.
-ЗАРАЗ: ${kyivNow} (Київ). Сьогодні = ${kyivISO}. «Завтра» = наступний день від цієї дати — рахуй дати САМ і передавай в інструменти у форматі YYYY-MM-DD. Мова поля "response" — визначена командою у першому рядку (мова питання користувача), незалежно від того, що цей промпт українською.
+ЗАРАЗ: ${kyivNow} (Київ). Сьогодні = ${kyivISO}.
+ДАТИ ВЖЕ ПОРАХОВАНІ (бери ЗВІДСИ, сам не рахуй; в інструменти — YYYY-MM-DD):
+${brain.dateTable(kyivISO)}
+Вибір «минулий/найближчий» день тижня: минулий час («був», «було», «скільки вийшло», «каса», виручка) → минулий; запис наперед, вільні вікна, «буде», «прийде» → найближчий. Мова поля "response" — визначена командою у першому рядку (мова питання користувача), незалежно від того, що цей промпт українською.
 
 ХТО З ТОБОЮ ГОВОРИТЬ: «${u.display_name || u.role}» — ${fullAccess
       ? 'ВЛАСНИК салону. Йому можна все, звертайся з повагою, показуй повну картину.'
       : `співробітник салону, роль «${u.role}». Це НЕ власник: відповідай лише в межах його прав (перелік нижче), фінанси салону, чужі зарплати й недоступні розділи — не показуй і не переказуй навіть приблизно.`}
 
 ЯК РОЗУМІТИ ЛЮДИНУ: пишуть по-простому, з помилками, суржиком, без термінів — «а де в нас фарби?», «шо по касі?», «де подивитись хто записаний?». Зрозумій намір і відповідай по суті одразу; перепитуй лише якщо намір справді неясний. Не вимагай точних назв розділів. Побутові слова салону мапь на розділи: фарба/окисник/шампунь/матеріали/товар → Склад (Залишки, Товари); «хто сьогодні працює» → Графіки роботи (wsched) або Зміни; «хто записаний» → Журнал записів; «скільки коштує послуга» → Послуги/Прайс. ВАЖЛИВО про ЛОЯЛЬНІСТЬ/КЕШБЕК/БОНУСИ: налаштування кешбеку (відсоток нарахування) — у розділі Налаштування (settings), блок «Лояльність»; бонуси клієнта видно в його картці (Усі клієнти); бонуси/штрафи майстрам — у розділі Зарплата (payroll). Окремого розділу «Лояльність» НЕМАЄ — не вигадуй його, направляй у Налаштування.
+${brain.SLANG}
+${namesNote ? 'ІМЕНА З ПИТАННЯ (знайдено кодом за базою майстрів, ru/uk-написання і зменшувальні враховано — get_masters для них НЕ потрібен):\n' + namesNote + '\n' : ''}ЯКЩО ПИТАННЯ НЕОДНОЗНАЧНЕ: виконай НАЙІМОВІРНІШИЙ варіант одразу, а в кінці відповіді ОДНИМ рядком дай 2–3 інші варіанти («Якщо ви мали на увазі … — уточніть»). Перепитуй БЕЗ дії лише коли без цього не можна (кілька людей з тим самим іменем і контекст не підказує, або сума/дата для дії взагалі не названа).
+На «чому так» — спершу дістань дані інструментом, потім поясни причину по живих правилах. На «як зробити» — кроки з реальних підписів кнопок (карта нижче).
 
 ТВОЯ МЕЖА: ти працюєш ЛИШЕ з цією CRM і роботою салону. Але ВСЕ, що стосується салону — товари, матеріали, фарби, ціни, залишки, записи, клієнти, майстри, графіки, каса — це ТВОЯ тема, на неї відповідай. Відмовляй лише на справді сторонні теми (політика, погода, загальні знання, поради поза салоном): «Я помічник лише по CRM салону — спитайте про записи, клієнтів, склад чи розділи системи».
 
@@ -202,7 +216,7 @@ ${catalog ? 'Інструменти:\n' + catalog : 'Інструментів д
 Сторінки (open_page): ${Object.entries(PAGES).map(([k,v])=>`${k}=${v}`).join(', ') || '—'}
 Розділи окремим вікном: ${Object.entries(EMBEDS).map(([k,v])=>`${k}=${v[0]}`).join(', ') || '—'}
 
-${whyNote}ДОВІДКА ПО CRM — ти ПОВНОЦІННИЙ консультант-інструкція. На «як зробити Y» давай ПОКРОКОВУ відповідь (нумеровані кроки 1→2→3), а не одну фразу. Коли для задачі є розділ із переліку вище — ВІДКРИЙ його через open_page (наочно приведи людину на місце, це твоя «ілюстрація»). Наприкінці складних інструкцій можеш додати: «Повна інструкція — розділ Інструкція в меню (/help)». Розповідай лише про доступні користувачу розділи; якщо розділу немає в переліку — «${denyPhrase}».
+${kbSecs.length ? 'КАРТА CRM — розділи, найближчі до питання (підписи кнопок дослівні з інтерфейсу; кажи людині саме їх):\n' + kbSecs.map(x => x.text).join('\n\n') + '\n\n' : ''}${whyNote}ДОВІДКА ПО CRM — ти ПОВНОЦІННИЙ консультант-інструкція. На «як зробити Y» давай ПОКРОКОВУ відповідь (нумеровані кроки 1→2→3), а не одну фразу. Коли для задачі є розділ із переліку вище — ВІДКРИЙ його через open_page (наочно приведи людину на місце, це твоя «ілюстрація»). Наприкінці складних інструкцій можеш додати: «Повна інструкція — розділ Інструкція в меню (/help)». Розповідай лише про доступні користувачу розділи; якщо розділу немає в переліку — «${denyPhrase}».
 
 ПОКРОКОВІ ІНСТРУКЦІЇ (використовуй як базу знань, адаптуй під питання):
 • Записати клієнта: 1) Журнал записів; 2) клік по вільній клітинці часу майстра; 3) обери клієнта (чи створи нового) і послугу; 4) час і сума підставляться з послуги. Кілька послуг — кнопка «+ послугу», сума перерахується.
@@ -224,11 +238,11 @@ ${whyNote}ДОВІДКА ПО CRM — ти ПОВНОЦІННИЙ консуль
 
 ‼ МОВА ВІДПОВІДІ (НАЙВИЩИЙ ПРІОРИТЕТ): визнач мову ПИТАННЯ користувача і поле "response" пиши ТІЄЮ Ж мовою. Питання англійською → response English. Питання польською → response po polsku. Питання російською → response русский. НЕ перекладай на українську, якщо питали іншою мовою — цей промпт українською, але ТИ відповідаєш мовою користувача. Якщо мова питання незрозуміла — мовою «${salonLang}».
 
-Працюй покроково. Перед кожною дією СПОЧАТКУ подумай у полі "thought" (1 коротке речення:
-що людина хоче і який інструмент/крок наступний — це поле користувач НЕ бачить).
+Працюй покроково. Перед кожною дією СПОЧАТКУ подумай у полі "thought" (користувач його НЕ бачить): переформулюй питання повністю і точно —
+хто/що, за який період (КОНКРЕТНІ дати з таблиці вище), який майстер (id), і який інструмент/крок наступний. Приклад: «скока вышло за выхи» → «виручка за 2026-10-31…2026-11-01 → get_revenue».
 Відповідай ЛИШЕ валідним JSON:
 {"thought":"<міркування>","action":"tool","tool":"<імʼя>","args":{...}}
-{"action":"open_page","page":"<ключ>","response":"<не лише «відкрив X», а Й КОРОТКА покрокова інструкція 1→2→3 що робити на цій сторінці>"}
+{"action":"open_page","page":"<ключ>","response":"<мовою питання; не лише «відкрив X», а Й КОРОТКА покрокова інструкція 1→2→3 що робити на цій сторінці>"}
 {"action":"final","response":"<відповідь людині>"}
 Для дій (create_expense/add_bonus/add_penalty) за потреби знайди id через get_masters, потім виклич дію — система попросить підтвердження.`;
 
@@ -237,26 +251,31 @@ ${whyNote}ДОВІДКА ПО CRM — ти ПОВНОЦІННИЙ консуль
     const hist = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-14) : [];
     const trail = [];
     for (const h of hist) {
-      if (h && h.text) trail.push(`${h.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(h.text).slice(0, 500)}`);
+      if (h && h.text) trail.push(`${h.role === 'assistant' ? 'ASSISTANT' : 'USER'}: ${String(h.text).slice(0, 1500)}`);
     }
     trail.push(`USER: ${question}`);
     let answer = null, pending = null;
+    // Трасса шагов — только для оценки на QA (ASSISTANT_TRACE=1), на проде в ответ не попадает
+    const trace = [];
+    const withTrace = (o) => (process.env.ASSISTANT_TRACE === '1' ? { ...o, trace, sys_chars: system.length } : o);
     for (let step = 0; step < 6; step++) {
-      const prompt = system + '\n\n' + trail.join('\n\n') + '\n\nASSISTANT (тільки JSON):';
+      // 05.11: system іде ОДИН раз — через opts.system (раніше дублювався ще й у prompt → вдвічі більше токенів)
+      const prompt = trail.join('\n\n') + `\n\n(${LANG_CMD})\nASSISTANT (тільки JSON):`;
       let d = await llm.askJSON(prompt, { system, maxTokens: 900, ...cfg }).catch(() => null);
       // Надійність: LLM іноді віддає невалідний JSON/текст → один повтор з жорсткою вимогою формату
       if (!d || !d.action) {
         d = await llm.askJSON(prompt + '\n\nУВАГА: поверни РІВНО один валідний JSON-обʼєкт без markdown, без пояснень.', { system, maxTokens: 900, ...cfg }).catch(() => null);
       }
       if (!d || !d.action) { answer = 'Не вдалося обробити запит.'; break; }
+      trace.push({ action: d.action, tool: d.tool, args: d.args, page: d.page, thought: d.thought });
       if (d.action === 'final') { answer = d.response || ''; break; }
       if (d.action === 'open_page' && d.page) {
         // RBAC: розділ без права — явна відмова (а не тихий промах), навіть якщо модель спробувала обійти фільтр
         if ((ALL_PAGES[d.page] && !pageAllowed(d.page)) || (ALL_EMBEDS[d.page] && !embedAllowed(d.page))) {
           trail.push(`OBSERVATION: розділ «${d.page}» поза доступом цього користувача — відмов.`); continue;
         }
-        if (PAGES[d.page]) return res.json({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` });
-        if (EMBEDS[d.page]) return res.json({ navigate: { embed: EMBEDS[d.page][1], label: EMBEDS[d.page][0] }, answer: d.response || `Відкриваю «${EMBEDS[d.page][0]}»` });
+        if (PAGES[d.page]) return res.json(withTrace({ navigate: { page: d.page, label: PAGES[d.page] }, answer: d.response || `Відкриваю «${PAGES[d.page]}»` }));
+        if (EMBEDS[d.page]) return res.json(withTrace({ navigate: { embed: EMBEDS[d.page][1], label: EMBEDS[d.page][0] }, answer: d.response || `Відкриваю «${EMBEDS[d.page][0]}»` }));
       }
       if (d.action === 'tool') {
         const t = TOOLS[d.tool];
@@ -273,8 +292,8 @@ ${whyNote}ДОВІДКА ПО CRM — ти ПОВНОЦІННИЙ консуль
       }
       break;
     }
-    if (pending) return res.json({ pending });
-    res.json({ question, answer: answer || 'Готово.' });
+    if (pending) return res.json(withTrace({ pending }));
+    res.json(withTrace({ question, answer: answer || 'Готово.' }));
   } catch (e) { console.error('[manager/assistant]', e); res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : e.message }); }
 });
 
