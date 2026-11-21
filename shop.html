@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Магазин професійної косметики — SVS Beauty Space | Raywell, Extremo, Envie</title>
+  <meta name="description" content="Купити професійну косметику для волосся в Сумах: Raywell, Extremo, Envie, Invidia. Фарби, маски, відновлення. Те, чим працюють наші майстри — для вас. Доставка по Україні.">
+  <meta name="keywords" content="професійна косметика Суми, купити Raywell, фарба для волосся, маски для волосся, косметика для волосся Україна">
+  <meta property="og:title" content="SVS Beauty Space — Магазин професійної косметики">
+  <meta property="og:description" content="Raywell, Extremo, Envie — професійна косметика з доставкою по Україні. Консультація майстра безкоштовно.">
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/shop.css">
+  <link rel="stylesheet" href="css/product.css">
+  <link rel="stylesheet" href="css/shop-atelier.css?v=1">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav nav--scrolled">
+    <div class="container nav__inner">
+      <a href="index.html" class="nav__logo">
+        <span class="nav__logo-main">
+          <canvas class="nav__lotus nav__lotus--shop" id="shopLotus" aria-hidden="true"></canvas>
+          SVS
+        </span>
+        <span class="nav__logo-sub">Beauty Space</span>
+      </a>
+      <div class="shop-nav">
+        <button class="shop-nav__search-btn" id="searchToggle" aria-label="Пошук">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        </button>
+        <a href="/p/promotions.html" class="shop-nav__account-btn" aria-label="Акції">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8M22 7H2v5h20V7zM12 22V7M12 7s-1.5-5-4.5-5C5 2 4 3.5 4 5s1.5 2 3.5 2H12zM12 7s1.5-5 4.5-5C19 2 20 3.5 20 5s-1.5 2-3.5 2H12z"/></svg>
+          <span class="shop-nav__account-label">Акції</span>
+        </a>
+        <a href="account.html" class="shop-nav__account-btn" id="accountBtn" aria-label="Особистий кабінет">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          <span class="shop-nav__account-label" id="accountLabel">Вхід</span>
+        </a>
+        <button class="shop-nav__cart-btn" id="cartToggle" aria-label="Кошик">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
+          <span class="shop-nav__cart-count" id="cartCount" style="display:none">0</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- SEARCH BAR (hidden by default) -->
+  <div class="search-bar" id="searchBar">
+    <div class="container">
+      <input type="text" class="search-bar__input" id="searchInput" placeholder="Шампунь, маска, фарба, олія..." autocomplete="off">
+      <button class="search-bar__close" id="searchClose" aria-label="Закрити">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- HERO — compact with inline search + trust -->
+  <section class="shop-hero">
+    <div class="container">
+      <h1 class="shop-hero__title">Професійна косметика</h1>
+      <div class="shop-hero__search" id="heroSearch">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" class="shop-hero__search-input" id="heroSearchInput" placeholder="Знайти серед 267 товарів..." autocomplete="off">
+      </div>
+      <div class="shop-hero__trust">
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Оригінал
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Доставка по Україні
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Працюємо цим у салоні
+        </span>
+        <span class="shop-hero__trust-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg>
+          Консультація майстра
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- BRAND MARQUEE (atelier style) -->
+  <div class="atelier-marquee" aria-hidden="true">
+    <div class="track">
+      <span>Raywell</span><span>Extremo</span><span>Envie</span><span>Invidia</span><span>Eterna</span>
+      <span>Raywell</span><span>Extremo</span><span>Envie</span><span>Invidia</span><span>Eterna</span>
+    </div>
+  </div>
+
+  <!-- FILTERS BAR — brands + category button + sort -->
+  <section class="shop-filters" id="filters">
+    <div class="container">
+      <div class="shop-filters__row">
+        <div class="shop-brands__grid" id="brandGrid"></div>
+        <div class="shop-filters__right">
+          <button class="shop-filters__cat-btn" id="catToggle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+            <span id="catBtnLabel">Категорії</span>
+            <span class="shop-filters__cat-arrow">›</span>
+          </button>
+          <select id="sortSelect" class="shop-sort">
+            <option value="popular">Популярні</option>
+            <option value="price-asc">Дешевші</option>
+            <option value="price-desc">Дорожчі</option>
+            <option value="name">За назвою</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORY DROPDOWN -->
+  <div class="cat-dropdown" id="catDropdown">
+    <div class="cat-dropdown__inner" id="catDropdownInner">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+  <div class="cat-dropdown__overlay" id="catOverlay"></div>
+
+  <!-- PRODUCTS -->
+  <section class="shop-products" id="products">
+    <div class="container">
+      <div class="shop-products__header">
+        <h2 class="shop-products__title" id="productsTitle">Усі товари</h2>
+        <div class="shop-products__per-page">
+          <span class="shop-products__per-label">Показувати:</span>
+          <select id="perPageSelect" class="shop-sort shop-sort--sm">
+            <option value="30">30</option>
+            <option value="60" selected>60</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+      </div>
+      <div class="shop-products__grid" id="productsGrid"></div>
+      <div class="shop-products__empty" id="productsEmpty" style="display:none">
+        <p>Товарів не знайдено</p>
+      </div>
+      <!-- PAGINATION -->
+      <div class="shop-pagination" id="pagination" style="display:none">
+        <button class="shop-pagination__btn" id="pagePrev" aria-label="Попередня">‹</button>
+        <div class="shop-pagination__pages" id="pageNumbers"></div>
+        <button class="shop-pagination__btn" id="pageNext" aria-label="Наступна">›</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CART DRAWER -->
+  <div class="cart-overlay" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-drawer__header">
+      <h3>Кошик</h3>
+      <button class="cart-drawer__close" id="cartClose" aria-label="Закрити кошик">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="cart-drawer__items" id="cartItems"></div>
+    <div class="cart-drawer__empty" id="cartEmpty">
+      <p>Кошик порожній</p>
+    </div>
+    <div class="cart-drawer__footer" id="cartFooter" style="display:none">
+      <div class="cart-drawer__total">
+        <span>Разом:</span>
+        <span id="cartTotal">0 ₴</span>
+      </div>
+      <a href="checkout.html" class="btn btn--filled cart-drawer__checkout">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Оформити замовлення
+      </a>
+      <div class="cart-drawer__alt-actions">
+        <a href="tel:+380991283375" class="cart-drawer__alt-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          Зателефонувати
+        </a>
+        <a href="https://instagram.com/svs_beauty_space" target="_blank" class="cart-drawer__alt-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5" fill="currentColor"/></svg>
+          Instagram
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- REVIEWS -->
+  <section class="shop-reviews" id="reviews">
+    <div class="container">
+      <h2 class="shop-reviews__title">Відгуки клієнтів</h2>
+      <div class="shop-reviews__grid">
+        <div class="shop-reviews__card">
+          <div class="shop-reviews__stars">★★★★★</div>
+          <p class="shop-reviews__text">Замовляла маску Botox та олію Raywell. Ефект як після салону — волосся шовкове вже після першого використання. Дякую за швидку доставку!</p>
+          <span class="shop-reviews__author">— Олена К., Суми</span>
+        </div>
+        <div class="shop-reviews__card">
+          <div class="shop-reviews__stars">★★★★★</div>
+          <p class="shop-reviews__text">Купую фарбу Eterna для домашнього підфарбовування між візитами до салону. Майстер порадила пропорції — результат ідеальний.</p>
+          <span class="shop-reviews__author">— Марина В., Київ</span>
+        </div>
+        <div class="shop-reviews__card">
+          <div class="shop-reviews__stars">★★★★★</div>
+          <p class="shop-reviews__text">Нарешті знайшла де купити професійну косметику з консультацією. Підібрали засоби під мій тип волосся — різниця відчутна.</p>
+          <span class="shop-reviews__author">— Анна Д., Харків</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <a href="index.html" class="footer__back">← Повернутись на сайт</a>
+      <span class="t-caption">&copy; 2026 SVS Beauty Space</span>
+    </div>
+  </footer>
+
+  <div class="atelier-grain" aria-hidden="true"></div>
+
+  <script src="js/shop-atelier.js?v=1" defer></script>
+  <script src="js/lotus.js"></script>
+  <script src="js/shop-data.js"></script>
+  <script src="js/shop-data-live.js"></script>
+  <script src="js/shop.js"></script>
+</body>
+</html>

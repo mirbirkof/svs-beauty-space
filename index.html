@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVS Beauty Space — Салон краси Суми | Фарбування, біовирівнювання</title>
+<meta name="description" content="SVS Beauty Space — преміальний салон краси в Сумах. Складне фарбування, Airtouch, Brazilian Blond, стрижки, догляд. Онлайн-запис 24/7.">
+<meta property="og:title" content="SVS Beauty Space — Салон краси Суми">
+<meta property="og:description" content="Краса, яка відчувається. Преміальний салон в Сумах — фарбування, реконструкція, стрижки.">
+<meta property="og:type" content="website">
+<style>body{margin:0;background:#0b0b10;color:#e8c87a;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;font-size:13px;letter-spacing:.2em;text-transform:uppercase}</style>
+</head>
+<body>
+SVS Beauty Space…
+<script>
+(function(){
+  // Боевая главная: редирект на выбранный дизайн. На проде только v2 (Atelier) и v4 (Noir).
+  var def='concept-3d-v2.html', choice=def;
+  try{ choice=localStorage.getItem('svs-concept-choice')||def; }catch(e){}
+  if(!/^concept-3d-v(2|4)\.html$/.test(choice)) choice=def;
+  location.replace(choice);
+})();
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=concept-3d-v2.html"></noscript>
+</body>
+</html>

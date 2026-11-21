@@ -1,0 +1,70 @@
+/* ═══════════════════════════════════════════════════════
+   SVS Shop — Atelier layer (стиль concept-3d-v2)
+   Grain · Cormorant · marquee · іскра в кошик · reveal
+   ═══════════════════════════════════════════════════════ */
+
+/* Серіф як на сайті */
+:root { --ff-serif: 'Cormorant Garamond', 'Playfair Display', Georgia, serif; }
+.shop-hero__title { letter-spacing: -0.01em; font-weight: 500; }
+.shop-hero__title em, .shop-products__title em { font-style: italic; color: var(--c-gold); font-weight: 400; }
+
+/* Плівкове зерно поверх усього (як на сайті) */
+.atelier-grain {
+  position: fixed; inset: -100%; z-index: 60; pointer-events: none; opacity: .06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  animation: atelier-grain 7s steps(10) infinite;
+}
+@keyframes atelier-grain {
+  0%,100%{transform:translate(0,0)}10%{transform:translate(-3%,2%)}20%{transform:translate(2%,-4%)}
+  30%{transform:translate(-4%,-2%)}40%{transform:translate(3%,3%)}50%{transform:translate(-2%,4%)}
+  60%{transform:translate(4%,-3%)}70%{transform:translate(-3%,-4%)}80%{transform:translate(2%,2%)}90%{transform:translate(-4%,3%)}
+}
+
+/* Бігучий рядок брендів (як marquee послуг на сайті) */
+.atelier-marquee {
+  overflow: hidden; padding: 22px 0; white-space: nowrap;
+  border-top: 1px solid rgba(237,231,223,.08); border-bottom: 1px solid rgba(237,231,223,.08);
+}
+.atelier-marquee .track { display: inline-block; animation: atelier-mq 28s linear infinite; }
+.atelier-marquee span {
+  font-family: var(--ff-serif); font-size: clamp(20px, 2.6vw, 32px); font-style: italic;
+  color: rgba(201,169,110,.5); margin: 0 34px; letter-spacing: .04em;
+}
+@keyframes atelier-mq { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+
+/* Іскра, що летить у кошик */
+.atelier-spark {
+  position: fixed; z-index: 90; width: 10px; height: 10px; border-radius: 50%;
+  pointer-events: none; margin: -5px 0 0 -5px;
+  background: radial-gradient(circle, #F2CC85 0%, #CDA86B 55%, transparent 75%);
+  box-shadow: 0 0 14px 4px rgba(205,168,107,.55);
+}
+.atelier-cart-pop { animation: atelier-pop .35s cubic-bezier(.16,1,.3,1); }
+@keyframes atelier-pop {
+  0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); }
+}
+.shop-nav__cart-count { transition: transform .25s cubic-bezier(.16,1,.3,1); }
+.atelier-cart-pop .shop-nav__cart-count { transform: scale(1.4); }
+
+/* Reveal-поява секцій */
+.atelier-fade { opacity: 0; transform: translateY(30px);
+  transition: opacity 1s ease, transform 1s cubic-bezier(.16,1,.3,1); }
+.atelier-fade.atelier-in { opacity: 1; transform: none; }
+
+/* Магнітна кнопка оформлення — плавне повернення */
+.cart-drawer__checkout { transition: transform .35s cubic-bezier(.16,1,.3,1), background .3s, color .3s; will-change: transform; }
+
+/* Картки: золоте підсвічування при наведенні (відлуння ниток) */
+.product-card { transition: border-color .4s ease, box-shadow .5s ease, transform .45s cubic-bezier(.16,1,.3,1); }
+@media (pointer:fine) {
+  .product-card:hover {
+    border-color: rgba(201,169,110,.45);
+    box-shadow: 0 14px 44px rgba(0,0,0,.5), 0 0 0 1px rgba(201,169,110,.18), 0 0 34px rgba(201,169,110,.07);
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-grain, .atelier-marquee .track { animation: none; }
+  .atelier-fade { opacity: 1; transform: none; transition: none; }
+}
